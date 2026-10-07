@@ -1,3 +1,4 @@
+import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -275,7 +276,8 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
-  const status = mateStatus(mateActivity);
+  const linkVoice = useMateVoice();
+  const status = linkVoice.surface === "none" ? mateStatus(mateActivity) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;

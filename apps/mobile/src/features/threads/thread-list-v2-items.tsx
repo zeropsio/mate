@@ -24,6 +24,7 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr, type ThreadPrPresentation } from "../../state/use-thread-pr";
+import { useSwipeRowDormant } from "../home/swipe-row-activation";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
 import {
@@ -420,6 +421,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     changeRequest: ThreadListV2ChangeRequestState | null,
   ) => void;
   readonly projectCwd?: string | null;
+  /** List key checked against the Home swipe row activation. */
+  readonly activationKey?: string;
   readonly searchMatch?: EnvironmentThreadSearchMatch;
   readonly searchQuery?: string;
   readonly simultaneousSwipeGesture?: ComponentProps<
@@ -448,6 +451,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   } = props;
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
+  const dormant = useSwipeRowDormant(props.activationKey);
 
   const pr = useThreadPr(thread, props.projectCwd ?? props.project?.workspaceRoot ?? null);
   const livePr = pr !== null && "state" in pr ? pr : null;
@@ -1084,6 +1088,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   return (
     <>
       <ThreadSwipeable
+        dormant={dormant}
         threadKey={`${thread.environmentId}:${thread.id}`}
         backgroundColor={sidebarPane ? drawerColor : screenColor}
         compactActions={variant === "slim"}

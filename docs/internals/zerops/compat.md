@@ -97,6 +97,35 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   - _Fixture set:_ row 5; no replay golden moved (chat-gate A byte-identical)
   - _Goldens/driver:_ unchanged from row 5
   - _Notes:_ See below
+- **8** — 2026-10-07
+  - _Ported upstream SHA:_ `10f39eb9a` (row 7's) — intake row 6b: lane conv's V1
+    re-implementations of V2 fixes plus 3 ports, and lane server's provider-zone ports (Claude
+    commands per workspace, a subagent's own model, Antigravity files by path), see `intake.md`
+  - _Claude CLI:_ unchanged from row 5
+  - _Claude Agent SDK:_ unchanged from row 5
+  - _Codex CLI:_ floor `0.155.1` unchanged
+  - _Effect:_ unchanged from row 5
+  - _Fixture set:_ unchanged from row 5
+  - _Goldens/driver:_ counts unchanged from row 5; `claude/zerops-workflow-envelope`'s expected
+    output regenerated (see notes)
+  - _Notes:_ See below
+
+- **9** — 2026-10-08
+  - _Ported upstream SHA:_ unchanged from row 8; recording refresh only, no import or port
+  - _Claude CLI / SDK:_ recordings unchanged from row 5; a fresh signed-in Claude capture is unverified
+  - _Codex CLI:_ `0.160.0`, live app-server turn on a disposable KRLS e2e rig, model `gpt-6-luna`
+  - _Effect:_ `4.0.0-rc.115`; _SPI:_ `2.8`, unchanged
+  - _Fixture set:_ `codex/multi-agent-wire` replaces the 0.145.0 capture with current native command,
+    read-only Zerops discovery and helper/parent completions; consistent anonymization of project,
+    service and URL values only. `codex/helper-wait` retains the old wait shapes as synthetic evidence.
+  - _Goldens/driver:_ claude 5, codex 2, cursor 2, grok 1, opencode 1, antigravity 1 (12 total)
+  - _Boundary proof:_ A preserves native output, canonical Zerops result and distinct child/parent
+    answer and terminal identities. B's J11 keeps the parent's Stop control and draft after a helper
+    returns, then retains the answer, helper name and command output after reload. A does not replay
+    the session-runtime helper synthesis; B supplies reported wire facts, not a live backend.
+  - _Gate:_ 15 provider assertions, 30 hosted journeys and wire-consumer typechecks passed. Measured
+    stage durations: A 6.76 s, B 157.81 s including its cold bundle, typecheck 21.38 s; these are
+    diagnostics, not correctness thresholds.
 
 ## Row 0 notes
 
@@ -270,3 +299,25 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   live turn passes and the manifest range moves to `=1.3.0`.
 - **SPI stays at 2.6.** The interim effect-acp guard (`81ebf0815`) wraps every session-update
   handler in `AcpSessionRuntime.ts` with a logged defect catch; it changes no event member.
+
+## Row 8 notes
+
+- **SPI 2.7: `presentation` on an item's lifecycle payload.** Claude reads Claude Code's
+  `tool_use_meta` (the call's display name, its server's display name and icon) through the
+  provider-neutral `mcpToolPresentation` / `claudeToolUseMeta` (`@t3tools/shared/toolActivity`), in
+  an `item.updated` once the assistant frame names a running call and on every later step of it.
+  The other drivers do not emit it yet.
+- **SPI 2.8: `stopped` in an item's `status`.** Claude ends a call its `tool_result_meta` marks
+  `non_execution_kind: "cancelled"` as `stopped`, told apart from failed or declined. The other
+  drivers do not emit it yet.
+- **One golden moved.** The `zerops-workflow-envelope` recording carries `tool_use_meta`, so each
+  of its two MCP calls gains one `item.updated` with its presentation (38 → 40 events), and the
+  call's later steps repeat it; nothing else moved.
+- **What a port must carry.** `ClaudeAdapter.ts`: `presentation` on `ToolInFlight`,
+  `claudeCallPresentation`, `presentCalls` in `handleAssistantMessage`, the presentation at a
+  helper call's start and on the result update, completion and unreturned close; the
+  `non_execution_kind` read on a tool result. `CodexSessionRuntime.ts`: the unarchive-and-resume
+  retry on an archived session. From lane server, the fork-side lines in ported upstream fixes:
+  `ClaudeAdapter.ts` resolves a call seen only in a snapshot through `subagentToolParents` →
+  `helperOfCall` (upstream's `hasSubagents` is absent), and `AntigravityAcpSupport.ts` keeps the
+  unreadable copy with `fileContextOverLimit` for any file. No event member changed with them.

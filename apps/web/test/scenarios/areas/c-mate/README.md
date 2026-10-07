@@ -8,8 +8,8 @@ mobile keeps its existing path and is not certified by these browser journeys.
 
 `chat.scenario.ts` owns J01 (entry/return) and J02 (send, ownership and answers).
 The eight additional cases are J03/J05/J09 in `composer.scenario.ts`, J04/J08 in
-`replay.scenario.ts`, and J06/J07/J10 in `results.scenario.ts`. Lifecycle admission
-cases live beside J02 and are retained separately.
+`replay.scenario.ts`, and J06/J07/J10 in `results.scenario.ts`. J11 in `results.scenario.ts` retains the parent’s working state when a helper finishes first.
+Lifecycle admission cases live beside J02 and are retained separately.
 
 Drivers supply schema-checked snapshots, events, receipts, bytes and explicit
 refusals. Assertions inspect visible words, accessible controls, destinations and
@@ -30,7 +30,7 @@ neither elapsed-time ratios nor private stores/reducer decisions determine succe
 | Z10       | J10                   | Busy main cannot be archived; main stays first without message-driven reshuffling; replacement main and crew return stay reachable.                   |
 | Z11       | J10                   | Selected handle routes Tell/message to Scout; task opens its report/brief; job seam appears once.                                                     |
 | Z12       | J04/J06               | Reading, work expansion, live settlement and reload preserve distinct messages and outputs.                                                           |
-| Z13       | J06 + A               | Helper retains its name/work; concurrent calls have their own outputs; unreturned call says No result. A protects provider attribution.               |
+| Z13       | J06/J11 + A           | Helper retains its name/work; concurrent calls have their own outputs; unreturned call says No result. A protects provider attribution.               |
 | Z14       | J07 + A               | One crash explanation retains partial work; follow-up succeeds; Stop has a stopped outcome. A protects typed terminal events.                         |
 | Z15       | J08 + A               | Usage pause holds work; resume switch works both ways and survives reload; source resumption releases the question.                                   |
 | Z16       | J06                   | Failed and retried deploy remain distinguishable; reported platform build still says Deploying after the turn finishes.                               |

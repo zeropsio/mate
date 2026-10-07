@@ -46,6 +46,12 @@ import Animated, {
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import {
+  composerDraftsAtom,
+  getComposerDraftSnapshot,
+  setComposerDraftText,
+} from "../../state/use-composer-drafts";
+import { appAtomRegistry } from "../../state/atom-registry";
 
 import { AppText as Text } from "../../components/AppText";
 import { ComposerAttachmentButton } from "../../components/ComposerAttachmentButton";
@@ -357,9 +363,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   });
   const voiceInput = useVoiceInputController({
     ownerKey: composerOwnerKey,
-    draftMessage: props.draftMessage,
+    label: props.selectedThread.title || "Untitled thread",
+    readDraftMessage: () => getComposerDraftSnapshot(composerOwnerKey).text,
+    subscribeToDraftChanges: (onChange) => appAtomRegistry.subscribe(composerDraftsAtom, onChange),
     selection: composerMenu.selection,
-    onChangeDraftMessage: props.onChangeDraftMessage,
+    onChangeDraftMessage: (text) => setComposerDraftText(composerOwnerKey, text),
     onChangeSelection: composerMenu.onSelectionChange,
   });
   const voicePresentation = resolveVoiceComposerPresentation(

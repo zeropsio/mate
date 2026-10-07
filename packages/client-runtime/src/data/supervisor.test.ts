@@ -17,6 +17,33 @@ const transient: StreamFault = { outcome: "transient", message: "socket closed" 
 
 describe("superviseLink", () => {
   it.effect(
+    "network return starts a real retry immediately, without declaring the source live",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let attempts = 0;
+        const supervisor = yield* superviseLink({
+          key: LINK,
+          scopes: [],
+          store,
+          attempt: () =>
+            Effect.suspend(() => {
+              attempts++;
+              return attempts === 1 ? Effect.fail(transient) : Effect.never;
+            }),
+          repairSession: Effect.void,
+        });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* Effect.yieldNow;
+        expect(store.state().streams.get(LINK)?.phase).toBe("recovering");
+        yield* supervisor.signal("resume");
+        yield* Effect.yieldNow;
+        expect(attempts).toBe(2);
+        expect(store.state().streams.get(LINK)?.phase).toBe("connecting");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+  it.effect(
     "retries a transient failure when the machine says, and leaves its scopes stale meanwhile",
     () =>
       Effect.gen(function* () {

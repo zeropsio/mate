@@ -77,6 +77,24 @@
  *   an unreturned call as "No result". Claude emits both, the other drivers
  *   do not; a driver that names no response keeps the order of starts and
  *   returns. Additive.
+ * - 2.7 (2026-10-07): an item's lifecycle payload gains an optional
+ *   `presentation` — how a call presents itself where its tool name says
+ *   too little: an MCP tool's own title and the server it comes from, by
+ *   name and icon (`mcpToolPresentation`, `@t3tools/shared/toolActivity`).
+ *   Claude emits it from Claude Code's `tool_use_meta`, in an update once
+ *   its assistant frame names the call and on every step after; the other
+ *   drivers do not yet. Additive.
+ * - 2.8 (2026-10-07): an item's `status` gains `stopped` — the call was
+ *   cancelled before it ran to an answer (Claude's `tool_result_meta`
+ *   `non_execution_kind: "cancelled"`), told apart from a call that failed
+ *   or that the person declined. Claude emits it, the other drivers do not
+ *   yet. Additive.
+ *
+ * - 2.9 (2026-10-08): `account.rate-limits.updated` gains optional `refused`:
+ *   a parked turn's provider refusal (`true`) or explicit window recovery (`false`),
+ *   independent of any reset time. Claude emits it; the other adapters keep their
+ *   terminal usage-limit errors. Codex also supplies the existing typed `blocked`
+ *   reset on a refused turn when its snapshot names an exhausted window.
  *
  * @module providerRuntimeSpi
  */
@@ -90,7 +108,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.6";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.9";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

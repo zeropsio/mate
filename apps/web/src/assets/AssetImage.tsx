@@ -1,7 +1,7 @@
 import { parseMateImageSource, demandedImageSize } from "@t3tools/client-runtime/data";
 import { useMateImage } from "./MateImages";
 import { AssetDownloadLink } from "./AssetDownloadLink";
-import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
+import { useEffect, useState, type RefObject, type ComponentPropsWithoutRef } from "react";
 
 import { useNearViewport } from "../hooks/useNearViewport";
 
@@ -18,6 +18,58 @@ export function ImageUnavailable({
   );
 }
 
+function reservedImageStyle(props: ComponentPropsWithoutRef<"img">) {
+  const width = Number(props.width);
+  const height = Number(props.height);
+  return {
+    width: width > 0 ? `min(100%, ${width}px)` : "100%",
+    ...(width > 0 && height > 0 ? { aspectRatio: `${width} / ${height}` } : {}),
+    ...props.style,
+  };
+}
+
+/** The reserved image keeps its geometry; only decoded pixels become visible. */
+function DecodedImage({
+  imageRef,
+  reserved = false,
+  ...props
+}: ComponentPropsWithoutRef<"img"> & {
+  readonly imageRef: RefObject<HTMLImageElement | null>;
+  readonly reserved?: boolean;
+}) {
+  const [decoded, setDecoded] = useState<string>();
+  useEffect(() => {
+    const element = imageRef.current;
+    if (!element || !props.src || typeof element.decode !== "function") return;
+    let active = true;
+    void element.decode().then(
+      () => {
+        if (active) setDecoded(props.src);
+      },
+      () => {
+        // The img error event owns the failure and retry presentation.
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [imageRef, props.src]);
+  const ready = props.src !== undefined && decoded === props.src;
+  return (
+    <span
+      className="asset-image-frame"
+      data-image-pending={!ready || undefined}
+      style={reserved ? reservedImageStyle(props) : undefined}
+    >
+      <img
+        {...props}
+        ref={imageRef}
+        style={{ ...props.style, ...(reserved ? { width: "100%" } : {}), opacity: ready ? 1 : 0 }}
+      />
+    </span>
+  );
+}
+
 /** Keep hidden history and the browser's broad native preload margin from reading asset bytes. */
 function DirectAssetImage({
   src,
@@ -27,20 +79,33 @@ function DirectAssetImage({
 }: ComponentPropsWithoutRef<"img"> & { readonly retrying?: boolean }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
   const [failedSrc, setFailedSrc] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
   if (src !== undefined && failedSrc === src && !retrying) {
     return (
-      <ImageUnavailable
-        role="img"
-        aria-label={props.alt ? `Image unavailable · ${props.alt}` : "Image unavailable"}
-        className={props.className}
-        style={{ width: props.width, height: props.height, ...props.style }}
-      />
+      <span className="asset-image-frame" style={reservedImageStyle(props)}>
+        <ImageUnavailable
+          role="img"
+          aria-label={props.alt ? `Image unavailable · ${props.alt}` : "Image unavailable"}
+          className={props.className}
+        />
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setFailedSrc(undefined);
+            setAttempt((value) => value + 1);
+          }}
+        >
+          Try again
+        </button>
+      </span>
     );
   }
   return (
-    <img
+    <DecodedImage
       {...props}
-      ref={ref}
+      key={attempt}
+      imageRef={ref}
       src={near ? src : undefined}
       data-image-src={src}
       loading="lazy"
@@ -126,11 +191,25 @@ function ManagedAssetImage({
       ? { ...reference, rendition: original ? ("original" as const) : demanded! }
       : null;
   const { read, url, loadingOriginal, retry } = useMateImage(key);
-  if (read.kind === "failed" && !url)
+  const [failedUrl, setFailedUrl] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
+  const decodeFailed = url !== undefined && failedUrl === url;
+  if ((read.kind === "failed" && !url) || decodeFailed)
     return (
-      <span className={props.className}>
-        <ImageUnavailable reason={read.reason} />
-        {read.originalAvailable ? (
+      <span
+        className={`asset-image-frame ${props.className ?? ""}`}
+        style={reservedImageStyle(props)}
+      >
+        <ImageUnavailable
+          reason={
+            decodeFailed
+              ? "Image cannot be displayed."
+              : read.kind === "failed"
+                ? read.reason
+                : undefined
+          }
+        />
+        {read.kind === "failed" && read.originalAvailable ? (
           <AssetDownloadLink source={props.src ?? ""} download={props.alt || "image"}>
             Download original
           </AssetDownloadLink>
@@ -139,6 +218,8 @@ function ManagedAssetImage({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            setFailedUrl(undefined);
+            setAttempt((value) => value + 1);
             retry();
           }}
         >
@@ -157,14 +238,20 @@ function ManagedAssetImage({
           {original ? "Loading original" : "Loading image"}
         </span>
       ) : null}
-      <img
+      <DecodedImage
         {...props}
-        ref={ref}
+        key={attempt}
+        imageRef={ref}
+        reserved
         src={url}
         data-image-src={props.src}
         loading="lazy"
         decoding="async"
         aria-busy={!url || loadingOriginal}
+        onError={(event) => {
+          setFailedUrl(url);
+          props.onError?.(event);
+        }}
       />
     </>
   );

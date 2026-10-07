@@ -110,7 +110,10 @@ vi.mock("~/zerops/useHqOffers", () => ({
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
-vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
+vi.mock("~/zerops/useMenuMateReadings", () => ({
+  useToldActivity: () => app.told,
+  useLastKnownMateWords: () => undefined,
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
@@ -453,8 +456,7 @@ describe("a Mate's own view while its link is made", () => {
         reachability: { kind: "gone", because: "direct-not-found" },
       } satisfies MateLink,
       listing: listingOf([QUINN]),
-      words:
-        "Quinn's project is no longer available. It was deleted, or you no longer have access.",
+      words: "Quinn's project was deleted. This conversation is no longer available.",
       name: "Quinn",
     },
     {

@@ -147,7 +147,7 @@ must not dispatch before it.
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.6"` (`providerRuntimeSpi.ts`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.9"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
@@ -165,7 +165,15 @@ code reads it yet. Claude emits it, the other drivers do not yet. 2.6 adds an op
 to an item's lifecycle payload, on the start of each of the agent's own calls — the model response
 it was written in — and an optional `unreturned` on the completion a turn's end gives a call that
 never returned; the live run card and the menu row's live step read a batch as one model response
-by it. Claude emits both, the other drivers do not. The bus
+by it. Claude emits both, the other drivers do not. 2.7 adds an optional `presentation` to an
+item's lifecycle payload — an MCP tool's own title and its server, by name and icon — which Claude
+reads from Claude Code's `tool_use_meta`; the other drivers do not yet. 2.8 adds `stopped` to an item's `status`: a
+call cancelled before it ran to an answer, told apart from one that failed or was declined; Claude
+emits it from its own `non_execution_kind`, the other drivers do not yet. 2.9 adds optional
+`refused` to `account.rate-limits.updated`: explicit refusal/recovery for a parked turn independent of a
+reset time. Claude emits it; terminal usage-limit errors remain the other adapters' path. Codex
+also emits the existing typed `blocked` reset when its refused turn has an exhausted window.
+The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the
@@ -297,13 +305,13 @@ them with the comparing host's cwd/home/tmpdir made the result depend on where t
 deep-equal the recorded one, or the replay stops naming the line. Hooks exist only under a profile,
 so a fixture with hook lines replays with a `ClaudeReplayPolicy` (`replay/crewReplayPolicy.ts`).
 
-Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`),
-1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a first-prompt session start, a
-`terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
-ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
-baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) and 1 synthetic Cursor MCP
-fixture (`mcp-calls`) = 11 goldens total. The
-no-crew goldens (`fixtures/claude-options/no-crew.expected.json`,
+Fixture provenance lives in each `fixtures/<driver>/*.meta.json`: it names the captured CLI/SDK,
+model, origin and any anonymization, or marks authored evidence `synthetic: true`. The current
+Codex recording includes native output, a read-only Zerops result and a helper finishing before
+its parent. `replayCodex` pins the adapter mapper at each notification's own thread/turn identity;
+it does not certify the session runtime's child-registration or synthesized helper events.
+Historical wait-call shapes remain in the synthetic `helper-wait` fixture. The no-crew option
+snapshots (`fixtures/claude-options/no-crew.expected.json`,
 `fixtures/codex-options/no-crew.expected.json`, §1a) are not replay goldens.
 
 ## 8. Porting checklist

@@ -6,6 +6,7 @@ import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
+import { resolveTestBrowser } from "../../testBrowser.ts";
 
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
@@ -80,6 +81,7 @@ export async function openBrowser(
   routes: Record<string, string>,
   wallClock?: ScenarioWallClock,
 ) {
+  const executablePath = await resolveTestBrowser(process.env.MATE_CHROME_BIN);
   const web = await serve(async ({ url }) => {
     const path = NodePath.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
     if (!path.startsWith(`${dist}/`) && path !== dist) return { status: 403 };
@@ -98,25 +100,6 @@ export async function openBrowser(
       };
     }
   });
-  const candidates = [
-    process.env.MATE_CHROME_BIN,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-  ].filter((path): path is string => path !== undefined);
-  const available = await Promise.all(
-    candidates.map(async (path) => {
-      try {
-        await NodeFSP.access(path);
-        return path;
-      } catch {
-        return undefined;
-      }
-    }),
-  );
-  const executablePath = available.find((path) => path !== undefined);
-  if (!executablePath)
-    throw new Error("Install Chrome or set MATE_CHROME_BIN; this suite never downloads browsers.");
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,

@@ -26,7 +26,7 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
@@ -34,6 +34,7 @@ import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import { hqProjectAtom } from "../state/zerops";
+import { useZeropsMate } from "../zerops/useZeropsMates";
 import {
   hqNamedTarget,
   useAccountEnvironments,
@@ -147,7 +148,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const account = useAccountEnvironments();
   const machines = useEnvironmentMachines();
   const index = useDescriptorIndex();
-  const { environments } = useEnvironments();
+  const mate = useZeropsMate(environmentId ?? EnvironmentId.make("route-gate:no-environment"));
   const inventory = useContext(InventoryContext);
   const { organizationStatus } = useZeropsSession();
   const content = useAtomValue(
@@ -181,10 +182,10 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
       ":",
     )[1],
     projectId:
+      (mate.kind === "mate" ? mate.mate.projectId : undefined) ??
       (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(":")[0] ??
       null,
-    mateName:
-      environments.find((entry) => entry.environmentId === environmentId)?.label ?? "This Mate",
+    mateName: mate.kind === "mate" ? mate.mate.name : "This Mate",
   };
 }
 

@@ -7,6 +7,7 @@
  * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
+import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
@@ -62,10 +63,10 @@ function MateLinkWords({ voice }: { readonly voice: Spoken }) {
     <MateEmptyStateView
       coming={{
         kind: "reaching",
-        face: voice.face,
+        face: voice.text === null ? "sleep" : voice.face,
         severity: voice.severity,
         headline: voice.headline ?? voice.text ?? "The Mate is opening the conversation.",
-        sentence: voice.secondary ?? "Waiting for the conversation to be read.",
+        sentence: voice.secondary ?? "Picking up where you left off.",
         below: null,
       }}
       mate={null}
@@ -117,34 +118,43 @@ function MateLinkStageOf({
       composer={composer}
       header={mate === null ? null : <MateComingHeader mate={mate} />}
     >
-      <MateEmptyStateView
-        coming={{
-          kind: "reaching",
-          face: voice.face,
-          severity: voice.severity,
-          headline:
-            voice.headline ??
-            voice.text ??
-            `${known?.name || "The Mate"} is opening the conversation.`,
-          sentence: voice.secondary,
-          below: (
-            <MateLinkLine
-              mateServiceId={mate?.serviceId}
-              onTryNow={onTryNow}
-              projectId={projectId}
-              projectUrl={
-                mate?.projectUrl ?? (projectId === null ? undefined : zeropsProjectUrl(projectId))
-              }
-              voice={{ ...voice, text: null }}
-            />
-          ),
-        }}
-        mate={mate}
-        phase={null}
-        signIn={null}
-        signInRequired={false}
-        unknown={null}
-      />
+      {voice.opening === true ||
+      (voice.text === null &&
+        !voice.processes &&
+        voice.actions.length === 0 &&
+        voice.restarting !== true) ? (
+        <ConversationOpeningStage ready={false} name={known?.name} mate={mate} />
+      ) : (
+        <MateEmptyStateView
+          coming={{
+            kind: "reaching",
+            face: voice.text === null ? "sleep" : voice.face,
+            severity: voice.severity,
+            headline:
+              voice.headline ??
+              voice.text ??
+              `${known?.name || "The Mate"} is opening the conversation.`,
+            sentence: voice.secondary,
+            restarting: voice.restarting === true,
+            below: (
+              <MateLinkLine
+                mateServiceId={mate?.serviceId}
+                onTryNow={onTryNow}
+                projectId={projectId}
+                projectUrl={
+                  mate?.projectUrl ?? (projectId === null ? undefined : zeropsProjectUrl(projectId))
+                }
+                voice={{ ...voice, text: null }}
+              />
+            ),
+          }}
+          mate={mate}
+          phase={null}
+          signIn={null}
+          signInRequired={false}
+          unknown={null}
+        />
+      )}
     </MateComingFrame>
   );
 }

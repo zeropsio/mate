@@ -4,6 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { selectsChatGate } from "./chat-gate.ts";
+import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 
 export const scenarioAreas = [
   "a-signin",
@@ -16,6 +17,7 @@ export const scenarioAreas = [
   "h-budget",
   "foundation",
   "harness",
+  "lifecycle-mutations",
 ] as const;
 
 // An area owns these paths. Shared transport, data and shell changes reach every area.
@@ -65,6 +67,55 @@ export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
     selected.add("foundation");
   }
   return scenarioAreas.filter((area) => selected.has(area));
+}
+
+/** Explicit files relative to the web root, matching the scenario config's include paths. */
+export function scenarioFiles(
+  root: string,
+  areas: ReadonlyArray<string>,
+  chatGate: boolean,
+): string[] {
+  const web = NodePath.join(root, "apps/web");
+  const collect = (directory: string, suffix: string): string[] =>
+    NodeFS.readdirSync(NodePath.join(web, directory), { withFileTypes: true }).flatMap((entry) => {
+      const path = `${directory}/${entry.name}`;
+      return entry.isDirectory()
+        ? collect(path, suffix)
+        : entry.isFile() && path.endsWith(suffix)
+          ? [path]
+          : [];
+    });
+  const files = areas.flatMap((area) => {
+    const path = `test/scenarios/areas/${area}`;
+    if (!NodeFS.existsSync(NodePath.join(web, path)))
+      throw new Error(`Missing selected scenario path: ${path}`);
+    if (chatGate && area === "c-mate") return [];
+    const tests = collect(path, ".scenario.ts");
+    if (tests.length === 0) throw new Error(`No scenario files in selected path: ${path}`);
+    return tests;
+  });
+  if (areas.length) {
+    // Root fakes serve multiple areas; area-specific fake directories are optional.
+    const fakes = collect("test/scenarios/fakes", ".test.ts");
+    files.push(
+      ...fakes.filter((path) => {
+        const own = /^test\/scenarios\/fakes\/([^/]+)\//u.exec(path)?.[1];
+        return own === undefined || areas.includes(own);
+      }),
+    );
+  }
+  validateSelectedFiles(web, files);
+  return files.sort();
+}
+
+export function validateSelectedFiles(root: string, files: ReadonlyArray<string>): void {
+  for (const file of files) {
+    if (
+      !NodeFS.existsSync(NodePath.join(root, file)) ||
+      !NodeFS.statSync(NodePath.join(root, file)).isFile()
+    )
+      throw new Error(`Missing selected file: ${file}`);
+  }
 }
 
 export interface GatePackage {
@@ -157,6 +208,9 @@ if (import.meta.main) {
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
   const chatGate = selectsChatGate(paths);
+  // Validate selection before any check, including --list.
+  const areas = selectScenarioAreas(paths);
+  const files = scenarioFiles(root, areas, chatGate);
   const packages = touchedPackages(paths, workspacePackages(root));
   const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
   steps.push({
@@ -247,22 +301,12 @@ if (import.meta.main) {
       args: ["test", "run", "scripts/surface-manifest.test.ts"],
     });
   // C journeys already ran in the boundary gate; retain C driver tests here.
-  const areas = selectScenarioAreas(paths);
-  if (areas.length)
+  if (files.length)
     steps.push({
       name: `scenarios ${areas.join(",")}`,
       cwd: "apps/web",
       command: "vp",
-      args: [
-        "test",
-        "run",
-        "--config",
-        "test/scenarios/vitest.config.ts",
-        ...(chatGate ? ["--exclude", "test/scenarios/areas/c-mate/**"] : []),
-        ...(areas.length === scenarioAreas.length
-          ? []
-          : areas.flatMap((area) => [`areas/${area}/`, `fakes/${area}/`])),
-      ],
+      args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
     });
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
@@ -271,9 +315,11 @@ if (import.meta.main) {
     const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
       NodePath.delimiter,
     );
-    for (const step of steps) {
+    const logs = gateLogDirectory("gate-changed");
+    console.log(`Full logs: ${logs}`);
+    for (const [index, step] of steps.entries()) {
+      const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
-      // Lanes share the laptop. Standalone runs can opt into the same budget explicitly.
       const env: typeof process.env = {
         ...process.env,
         MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
@@ -282,15 +328,19 @@ if (import.meta.main) {
       // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
       if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
         delete env.VITEST_MAX_WORKERS;
-      const result = NodeChildProcess.spawnSync(step.command, step.args, {
-        cwd: NodePath.join(root, step.cwd ?? "."),
-        env,
-        stdio: "inherit",
-      });
-      console.log(
-        `${result.status === 0 ? "ok" : "FAIL"} ${step.name} (${((Date.now() - started) / 1000).toFixed(2)}s)`,
+      const status = runLogged(
+        step.command,
+        step.args,
+        { cwd: NodePath.join(root, step.cwd ?? "."), env },
+        logPath,
       );
-      if (result.status !== 0) process.exit(result.status ?? 1);
+      console.log(
+        `${status === 0 ? "ok" : "FAIL"} ${step.name} (${((Date.now() - started) / 1000).toFixed(2)}s)`,
+      );
+      if (status !== 0) {
+        console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
+        process.exit(status);
+      }
     }
   }
 }

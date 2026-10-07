@@ -5,6 +5,7 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
 import {
+  shownHqMateIdentitiesAtom,
   mateArrival,
   setupFailure as setupFailureProjection,
   setupFailureLogQuery,
@@ -43,7 +44,7 @@ import { environmentShell } from "~/state/shell";
  */
 import { useMateRegistration } from "~/zerops/registration";
 import { useMateOffers } from "~/zerops/useHqOffers";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
   FINISH_MATE_SETUP_VERB,
@@ -123,7 +124,7 @@ import {
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { useToldActivity } from "~/zerops/useMenuMateReadings";
+import { useToldActivity, useLastKnownMateWords } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -161,7 +162,6 @@ import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
@@ -340,10 +340,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // one surface from the press to the sign-in (`mateArrivalShown`).
   const arrival = mateArrivalShown({ page, cameUp, failuresSinceConnect });
 
-  // Who it is: its listing's, the moment it is listed — the name and the tint the menu gives it —
-  // and until then what its creation or its press knew.
+  // HQ names it as the menu does. Before registration, its creation or press names it.
+  const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
+    if (identity !== undefined)
+      return {
+        ...(candidate === undefined ? {} : zeropsMateIdentityOf(candidate, tints)),
+        ...identity,
+        connected: candidate?.group === "connected",
+      };
     if (candidate !== undefined) {
       const listed = zeropsMateIdentityOf(candidate, tints);
       // Listed before HQ places it: no application to cut its name under, but its creation or its
@@ -368,7 +374,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [press, candidate, creation, projectId, projectUnavailable, recovery.standing, tints, viewer]);
+  }, [
+    identity,
+    press,
+    candidate,
+    creation,
+    projectId,
+    projectUnavailable,
+    recovery.standing,
+    tints,
+    viewer,
+  ]);
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
@@ -433,7 +449,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
-        handOverMateConversation(scopedThreadKey(threadRef), Date.now());
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",
@@ -692,12 +707,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       : page?.kind === "up"
         ? (link.reachability ?? null)
         : null;
+  const lastKnown = useLastKnownMateWords(projectId, named.name);
   const linkVoice = mateNoticeVoice({
     reachability: linkReachability,
     recovery,
     conversationShown: false,
     nowMs,
     mateName: named.name,
+    lastKnown,
   });
   const view: MateEmptyComing | null =
     page === undefined
@@ -792,6 +809,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     ? undefined
                     : (linkVoice.headline ?? linkVoice.text ?? undefined),
                 sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}

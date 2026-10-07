@@ -195,6 +195,7 @@ import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
+import { REPLAY_MARKER_MAX_AGE } from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
@@ -778,7 +779,11 @@ const buildAppUnderTest = (options?: {
     const gitVcsDriverLayer = Layer.mock(GitVcsDriver.GitVcsDriver)({
       ...options?.layers?.gitVcsDriver,
     });
+    // Worktrees go through GitManager, which adds the submodule setting; a
+    // test that stubs only the driver's createWorktree still reaches it.
+    const driverCreateWorktree = options?.layers?.gitVcsDriver?.createWorktree;
     const gitManagerLayer = Layer.mock(GitManager.GitManager)({
+      ...(driverCreateWorktree ? { createWorktree: driverCreateWorktree } : {}),
       ...options?.layers?.gitManager,
     });
     const workspaceEntriesLayer = WorkspaceEntries.layer.pipe(
@@ -2883,6 +2888,37 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("rejects a DPoP replay by time alone once its marker can be pruned", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+
+      const tokenUrl = yield* getHttpServerUrl("/oauth/token");
+      const acceptedAt = yield* DateTime.now;
+      // The longest-lived proof: `iat` at the 5 s future skew the verifier allows.
+      const dpop = makeDpopProof({
+        method: "POST",
+        url: tokenUrl,
+        iat: Math.floor(acceptedAt.epochMilliseconds / 1_000) + 5,
+      });
+      // Fixture grants are single-use, so each exchange carries a fresh one.
+      const exchange = Effect.gen(function* () {
+        const credential = yield* issueFixtureGrant(AuthStandardClientScopes);
+        return yield* exchangeAccessToken(credential.credential, {
+          headers: { dpop: dpop.proof },
+          scope: "orchestration:read orchestration:operate terminal:operate review:write",
+        });
+      });
+
+      assert.equal((yield* exchange).response.status, 200);
+      assert.equal((yield* exchange).response.status, 401);
+      // Once the marker can be pruned, the proof is past its time window.
+      yield* TestClock.setTime(
+        acceptedAt.epochMilliseconds + Duration.toMillis(REPLAY_MARKER_MAX_AGE),
+      );
+      assert.equal((yield* exchange).response.status, 401);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("ignores forwarded host headers when validating token exchange DPoP URLs", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
@@ -3863,6 +3899,82 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(replayResponse.status, 409);
       assert.equal(replayBody._tag, "EnvironmentHttpConflictError");
       assert.equal(replayBody.message, "Cloud health request was already consumed.");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects cloud replays by time alone once their markers can be pruned", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const cloudKeyPair = NodeCrypto.generateKeyPairSync("ed25519", {
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      const ownerAuthorization = yield* getAuthenticatedAuthorizationHeader();
+      const relayConfigResponse = yield* fetchEffect(
+        yield* getHttpServerUrl("/api/connect/relay-config"),
+        {
+          method: "POST",
+          headers: { authorization: ownerAuthorization, "content-type": "application/json" },
+          body: jsonRequestBody({
+            relayUrl: "https://relay.example.test",
+            cloudUserId: "user_123",
+            environmentCredential: "t3env_test_credential",
+            cloudMintPublicKey: cloudKeyPair.publicKey,
+            endpointRuntime: null,
+          }),
+        },
+      );
+      assert.equal(relayConfigResponse.status, 200);
+
+      const acceptedAt = yield* DateTime.now;
+      // The longest-lived proofs: `iat` at the 60 s future skew the handlers
+      // allow, and the 5 minute maximum lifetime.
+      const issuedAt = DateTime.add(acceptedAt, { minutes: 1 });
+      const proofTimes = {
+        issuedAt: DateTime.formatIso(issuedAt),
+        expiresAt: DateTime.formatIso(DateTime.add(issuedAt, { minutes: 5 })),
+      };
+      const requests = [
+        [
+          "/api/t3-connect/health",
+          makeCloudEnvironmentHealthRequest({
+            privateKey: cloudKeyPair.privateKey,
+            environmentId: testEnvironmentDescriptor.environmentId,
+            nonce: "cloud-health-nonce-pruned",
+            ...proofTimes,
+          }),
+        ],
+        [
+          "/api/t3-connect/mint-credential",
+          makeCloudMintCredentialRequest({
+            privateKey: cloudKeyPair.privateKey,
+            environmentId: testEnvironmentDescriptor.environmentId,
+            clientProofKeyThumbprint: "client-proof-key-thumbprint",
+            nonce: "cloud-mint-nonce-pruned",
+            ...proofTimes,
+          }),
+        ],
+      ] as const;
+      const postAll = Effect.forEach(requests, ([pathname, request]) =>
+        Effect.gen(function* () {
+          const response = yield* fetchEffect(yield* getHttpServerUrl(pathname), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: jsonRequestBody(request),
+          });
+          return response.status;
+        }),
+      );
+
+      assert.deepStrictEqual(yield* postAll, [200, 200]);
+      // While the proofs are fresh, only the replay markers reject them (409).
+      assert.deepStrictEqual(yield* postAll, [409, 409]);
+      // Once the markers can be pruned, the time checks reject the proofs by themselves (401).
+      yield* TestClock.setTime(
+        acceptedAt.epochMilliseconds + Duration.toMillis(REPLAY_MARKER_MAX_AGE),
+      );
+      assert.deepStrictEqual(yield* postAll, [401, 401]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -7098,6 +7210,87 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             // identity updates. That hook runs after the done snapshot.
             yield* Deferred.await(metaUpdateDispatched);
             assert.deepEqual(dispatched, ["project.create", "project.meta.update"]);
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("finds a cloned project's icon once the clone lands", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-clone-favicon-" });
+      const destinationPath = path.join(parentDir, "app");
+      const projectId = ProjectId.make("project-clone-favicon");
+      const cloneGate = yield* Deferred.make<void>();
+      const metaUpdateDispatched = yield* Deferred.make<void>();
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              (command.type === "project.meta.update"
+                ? Deferred.succeed(metaUpdateDispatched, undefined)
+                : Effect.void
+              ).pipe(Effect.as({ sequence: 1 })),
+          },
+          projectionSnapshotQuery: {
+            getActiveProjectByWorkspaceRoot: (workspaceRoot) =>
+              Effect.succeed(
+                workspaceRoot === destinationPath
+                  ? Option.some({
+                      ...makeDefaultOrchestrationReadModel().projects[0]!,
+                      id: projectId,
+                      workspaceRoot,
+                    })
+                  : Option.none(),
+              ),
+          },
+          sourceControlRepositoryService: {
+            prepareClone: (input) =>
+              Effect.succeed({
+                destinationPath: input.destinationPath,
+                remoteUrl: input.remoteUrl ?? "",
+                cloneUrl: input.remoteUrl ?? "",
+                repository: null,
+              }),
+            cloneRepository: (input) =>
+              Deferred.await(cloneGate).pipe(
+                Effect.andThen(
+                  fs.writeFileString(path.join(input.destinationPath, "favicon.svg"), "<svg/>"),
+                ),
+                Effect.orDie,
+                Effect.as({
+                  cwd: input.destinationPath,
+                  remoteUrl: input.remoteUrl ?? "",
+                  repository: null,
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            yield* client[WS_METHODS.projectCloneStart]({
+              projectId,
+              title: "app",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              remoteUrl: "git@github.com:octocat/app.git",
+              destinationPath,
+            });
+            const resource = { _tag: "project-favicon" as const, cwd: destinationPath };
+            const duringClone = yield* client[WS_METHODS.assetsCreateUrl]({ resource });
+            assert.isTrue(duringClone.relativeUrl.endsWith("/project-favicon-missing"));
+
+            yield* Deferred.succeed(cloneGate, undefined);
+            yield* Deferred.await(metaUpdateDispatched);
+            // The lookup during the clone must not leave a cached miss behind.
+            const afterClone = yield* client[WS_METHODS.assetsCreateUrl]({ resource });
+            assert.equal(afterClone.sourcePath, "favicon.svg");
           }),
         ),
       );

@@ -71,6 +71,17 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).not.toContain("data-hq-trouble");
   });
 
+  it("reports a failed update separately from the serving HQ's health", () => {
+    const html = card({
+      update: {
+        kind: "read",
+        state: { kind: "failed", running: RUNS, carried: RUNS, reason: "Build failed." },
+      },
+    });
+    expect(html).toContain('data-hq-state="healthy"');
+    expect(html).toContain("HQ's last update failed: Build failed.");
+  });
+
   const parts = (more: object) =>
     ({
       standing: { kind: "healthy", build: RUNS, parts: { quarantined: [], ...more } },
@@ -112,16 +123,6 @@ describe("ZeropsHqCardView — its state", () => {
       "a service Zerops does not run",
       { services: [{ id: "s1", name: "db", status: "STOPPED" }] },
       "db isn't active in Zerops: Stopped.",
-    ],
-    [
-      "its last update failed",
-      {
-        update: {
-          kind: "read",
-          state: { kind: "failed", running: RUNS, carried: RUNS, reason: "Build failed." },
-        },
-      },
-      "HQ's last update failed: Build failed. HQ still runs Core 2026-10-03 08:05 UTC · ba9876543210.",
     ],
   ])("needs attention for %s, and says what in a line of its own", (_name, overrides, line) => {
     const html = card(overrides);

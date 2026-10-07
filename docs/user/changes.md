@@ -8,6 +8,8 @@ The projects page's **Overview**, its **Next steps**, and the sidebar include bo
 changes. If a Mate leaves the listing, its open changes remain under the application with its
 Mate identifier and **Review**.
 
+A collapsed project shows open changes and what its environments run. Expand it to read recipes, repositories and release history; closing it stops those detail reads. The compact fallback uses navigation facts, and can include merged work when its detail is already known.
+
 **Other containers** starts collapsed. A container the current HQ does not hold says **Not in this
 HQ**. **Set up Mate** is offered for development environments, declared Mates, and your own plain
 projects made before your organization's HQ — never for a project HQ holds any record of, one an

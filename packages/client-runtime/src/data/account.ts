@@ -95,7 +95,7 @@ export type CompareAsk = { readonly appId: string; readonly repo: string } & Com
 /**
  * The organization's HQ navigation over its wire: one socket, its scopes resumed from their
  * cursors across segments and attempts. A session HQ ended (`4401`) is forgotten by the wire, so
- * the repair is the next attempt's ticket, through HQ's door; a second such ending refuses.
+ * the next attempt's ticket enters HQ's door. Only an actual refusal stops recovery.
  */
 export function startHqNavigation(options: {
   readonly orgId: string;
@@ -207,6 +207,8 @@ export interface AccountObservation {
   readonly retryDetail: (demand: DetailDemand) => void;
   /** The person's "try now". */
   readonly retry: () => void;
+  /** Network or renderer returned: retry a recovering source without reviving refusals. */
+  readonly resume: () => void;
   /**
    * Renews each held member row no push keeps current (a project's own row, whose grants only it
    * names): an access round's renewal of what the account knows of everybody's grants.
@@ -409,6 +411,10 @@ export function observeAccount(options: {
     retry: () => {
       shown?.link.signal("manual-retry");
       hq?.link.signal("manual-retry");
+    },
+    resume: () => {
+      shown?.link.signal("resume");
+      hq?.link.signal("resume");
     },
     stop: () => {
       stopStanding?.();

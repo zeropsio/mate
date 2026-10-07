@@ -125,6 +125,24 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     observation.show(orgId);
   }, [observation, orgId]);
   useEffect(() => () => observation.stop(), [observation]);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const resume = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) observation.resume();
+    };
+    window.addEventListener("online", resume);
+    window.addEventListener("focus", resume);
+    window.addEventListener("pageshow", resume);
+    document.addEventListener("visibilitychange", resume);
+    document.addEventListener("resume", resume);
+    return () => {
+      window.removeEventListener("online", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("pageshow", resume);
+      document.removeEventListener("visibilitychange", resume);
+      document.removeEventListener("resume", resume);
+    };
+  }, [observation]);
   const value = useMemo(
     () => ({
       data: store.data,

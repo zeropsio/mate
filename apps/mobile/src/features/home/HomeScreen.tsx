@@ -12,8 +12,14 @@ import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LegendList } from "@legendapp/list/react-native";
-import { ActivityIndicator, Platform, Pressable, View } from "react-native";
+import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  View,
+  type GestureResponderEvent,
+} from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -54,6 +60,7 @@ import {
   sortHomeProjectScopes,
   type HomeProjectSortOrder,
 } from "./homeThreadList";
+import { createSwipeRowActivation } from "./swipe-row-activation";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "./thread-swipe-actions";
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
@@ -114,6 +121,10 @@ interface HomeScreenProps {
 // or above the item count for short lists instead of creating containers on
 // demand on every shelf expand.
 const ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT = 72;
+// Rows away from the viewport are cheap dormant frames (see
+// swipe-row-activation), so render further ahead: a fast fling then reaches
+// rows that are already built instead of rows still being rebuilt.
+const THREAD_LIST_V2_DRAW_DISTANCE = 1_000;
 const PRE_LIQUID_GLASS_BOTTOM_TOOLBAR_HEIGHT = 44;
 /**
  * Top spacing between the list and the Android custom header. The Android
@@ -249,7 +260,41 @@ export function HomeScreen(props: HomeScreenProps) {
   const handleScrollBeginDrag = useCallback(() => {
     openSwipeableRef.current?.close();
   }, []);
+  const listRef = useRef<LegendListRef>(null);
+  const swipeRowActivation = useMemo(() => createSwipeRowActivation(), []);
+  const activateVisibleRows = useCallback(
+    (rows: ReadonlyArray<ThreadListV2ListItem>) => {
+      const state = listRef.current?.getState();
+      if (state === undefined || !(state.end >= 0)) return;
+      swipeRowActivation.activate(
+        rows.slice(Math.max(0, state.start - 2), state.end + 3).map((row) => row.key),
+      );
+    },
+    [swipeRowActivation],
+  );
+  // Status-bar, accessibility and programmatic scrolls never arm the scroll
+  // gate, so every scroll also activates the visible rows once it settles.
+  const activationTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(activationTimerRef.current), []);
+  const handleListScroll = useCallback(() => {
+    clearTimeout(activationTimerRef.current);
+    activationTimerRef.current = setTimeout(
+      () => activateVisibleRows(listRef.current?.getState().data ?? []),
+      200,
+    );
+  }, [activateVisibleRows]);
+  const trackListTouches = useCallback(
+    (event: GestureResponderEvent, started: boolean) => {
+      const { changedTouches, touches } = event.nativeEvent;
+      swipeRowActivation.trackTouches(
+        started ? changedTouches.map((touch) => touch.identifier) : [],
+        touches.map((touch) => touch.identifier),
+      );
+    },
+    [swipeRowActivation],
+  );
   const { swipeEnabled, scrollGateHandlers } = useSwipeableScrollGate({
+    onScroll: handleListScroll,
     onScrollBeginDrag: handleScrollBeginDrag,
   });
 
@@ -636,6 +681,9 @@ export function HomeScreen(props: HomeScreenProps) {
   const resolveProviderInstance = useThreadRowProviderInstanceResolver(serverConfigs);
 
   useThreadJumpShortcuts(threadListV2Items, props.onSelectThread);
+  useEffect(() => {
+    if (swipeEnabled) activateVisibleRows(threadListV2Items);
+  }, [activateVisibleRows, swipeEnabled, threadListV2Items]);
 
   const renderV2Item = useCallback(
     ({ item }: { readonly item: ThreadListV2ListItem }) => {
@@ -741,6 +789,7 @@ export function HomeScreen(props: HomeScreenProps) {
           }
           onSwipeableClose={handleSwipeableClose}
           onSwipeableWillOpen={handleSwipeableWillOpen}
+          activationKey={item.key}
         />
       );
     },
@@ -895,15 +944,20 @@ export function HomeScreen(props: HomeScreenProps) {
         {/* A recycler: cells are reused across data rebuilds and `itemsAreEqual`
             keeps a minute tick (or an unrelated shell update) from re-rendering
             untouched rows. */}
-        <SwipeableScrollGateProvider enabled={swipeEnabled}>
+        <SwipeableScrollGateProvider enabled={swipeEnabled} activation={swipeRowActivation}>
           <LegendList
+            ref={listRef}
+            onLoad={() => activateVisibleRows(threadListV2Items)}
+            onTouchStart={(event) => trackListTouches(event, true)}
+            onTouchEnd={(event) => trackListTouches(event, false)}
+            onTouchCancel={(event) => trackListTouches(event, false)}
             data={threadListV2Items}
             renderItem={renderV2Item}
             keyExtractor={v2KeyExtractor}
             getItemType={(item) => item.type}
             itemsAreEqual={threadListV2ListItemsAreEqual}
             estimatedItemSize={ESTIMATED_THREAD_LIST_V2_ROW_HEIGHT}
-            drawDistance={500}
+            drawDistance={THREAD_LIST_V2_DRAW_DISTANCE}
             recycleItems
             extraData={v2ExtraData}
             ListHeaderComponent={listHeader}

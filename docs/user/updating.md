@@ -19,6 +19,8 @@ When HQ's Core is older than the navigation protocol the client needs, the Mate 
 facts HQ supplies; missing facts remain unknown. Organization owners and admins can choose
 **Update HQ** on that line to open the existing update dialog.
 
+The HQ card reports service health while closed. When HQ keeps serving during a rolling service upgrade, it says **Services upgrading**. Opening update history does not change that headline; a failed update remains visible separately from the health of the serving Core.
+
 ## Standalone Server
 
 For a server you installed yourself, download the newer `zerops-mate-<version>.tgz` and

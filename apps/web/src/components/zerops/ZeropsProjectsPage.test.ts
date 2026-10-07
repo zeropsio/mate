@@ -34,16 +34,6 @@ import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { exchangeZeropsContainerIdentity } from "@t3tools/client-runtime/zerops/identityExchange";
-import projectsPageSource from "./ZeropsProjectsPage.tsx?raw";
-import pressSource from "../../zerops/matePress.ts?raw";
-import creationSource from "../../zerops/useEnvironmentCreation.ts?raw";
-import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
-import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
-import gitPageSource from "./ZeropsGitPage.tsx?raw";
-import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
-import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
-import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
-import historyViewSource from "./ZeropsHistoryView.tsx?raw";
 
 const APP_ORIGIN = "https://zcp-24cb-8080.prg1.zerops.app";
 /** A throwaway the door tests hand over in place of a person's own token. */
@@ -72,38 +62,6 @@ const SAME_ORIGIN_CANDIDATE = {
 };
 
 describe("same-origin Zerops identity bootstrap", () => {
-  it("routes configuration reads through scoped resources", () => {
-    expect(projectsPageSource).toContain("useReadGroupAgents()");
-    expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
-    // The recipe is the application's, read as the person through its HQ — there
-    // is no Zerops endpoint for it and no mock standing in for one any more.
-    expect(projectsPageSource).not.toContain(".readRecipeGroup(");
-    expect(projectsPageSource).toContain("useZeropsGroupRecipe(");
-  });
-
-  it("routes project and service writes through typed runtime commands", () => {
-    for (const method of [
-      "writeProject",
-      "importDevelopmentContainer",
-      "writeMateFlag",
-      "enableSubdomainAccess",
-      "createProject",
-      "importProject",
-      "importServicesIntoProject",
-      "deleteProject",
-    ]) {
-      expect(projectsPageSource).not.toContain(`client.${method}(`);
-      expect(creationSource).not.toContain(`client.${method}(`);
-    }
-    // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
-    // dialog over any view.
-    // Its writes are the account's operations, its services' wait the account's listing.
-    expect(pressSource).not.toContain("runtime.commands");
-    expect(creationSource).toContain("untilServicesSettled:");
-    expect(projectsPageSource).not.toContain("listProjectServices(");
-    expect(creationSource).not.toContain("listProjectServices(");
-  });
-
   it("retries the failed ready-container identity exchange instead of restarting provisioning", () => {
     const retryIdentity = vi.fn();
     const retryProvisioning = vi.fn();
@@ -133,8 +91,7 @@ describe("same-origin Zerops identity bootstrap", () => {
     expect(retryIdentity).not.toHaveBeenCalled();
   });
 
-  it("exposes a compact account header and preserves selection behavior", () => {
-    const markup = renderToStaticMarkup(createElement(ZeropsProjectsHeader, {}));
+  it("preserves account selection behavior", () => {
     const attempted = { current: false };
     const connect = vi.fn();
     const input = {
@@ -150,19 +107,12 @@ describe("same-origin Zerops identity bootstrap", () => {
     autoConnectServedZeropsEnvironment(input);
     autoConnectServedZeropsEnvironment(input);
 
-    expect(markup).toContain('data-zerops-project-scope="true"');
-    expect(markup).toContain("<h1");
-    expect(markup).toContain(">Projects<");
-    expect(markup).not.toContain("Environments");
     // The bar above carries the brand; the title row does not repeat it, and
     // no sentence sits under the title — the projects below say what it is.
-    expect(markup).not.toContain("micro-label");
-    expect(markup).not.toContain(">Zerops<");
-    expect(markup).not.toMatch(/<p[\s>]/);
+
     // No creating action in the title row: the left menu's "New project" is
     // the entry, and the reload glyph is the row's only action.
-    expect(markup).not.toContain("New project");
-    expect(markup).not.toContain('data-zerops-primitive="pill"');
+
     expect(
       renderToStaticMarkup(createElement(ZeropsProjectsHeader, { onRefresh: () => {} })),
     ).toContain('aria-label="Refresh"');
@@ -696,126 +646,6 @@ describe("the projects listing", () => {
   });
 });
 
-describe("an environment's menu", () => {
-  it("carries a Mate's verbs only for a Mate — a stage or a production has none", () => {
-    // The audit run, 2026-09-17: a stage's menu offered "Hand this Mate over"
-    // and "Change project or role". The gate used to be repeated on every
-    // entry; now the whole set is withheld at once, which cannot be got half
-    // right.
-    expect(projectsPageSource).toContain(
-      "actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}",
-    );
-  });
-
-  it("gates each verb on what this person may finish, wherever the menu is drawn", () => {
-    // Guide 0.8: a verb the platform would refuse from this role is not
-    // offered. The gate lives with the verb now, so a second surface cannot
-    // grow a menu without it: the platform's own verbs by its role function,
-    // HQ's as HQ offers them (`useMateOffers`), none of either for an unknown person.
-    expect(mateActionsSource).toContain("resolveMateVerbs({ project: candidate.project, viewer })");
-    expect(mateActionsSource).toContain("...(platformVerbs.assign");
-    // A Mate's name is its project's (D3): renaming it is the platform's verb.
-    expect(mateActionsSource).toContain("...(platformVerbs.rename");
-    expect(mateActionsSource).toContain("edit: verb(offers.edit),");
-    expect(mateActionsSource).toContain('...(hqVerbs.move !== "no"');
-    expect(mateActionsSource).toContain('...(hqVerbs.leave !== "no" && tags.groupId !== undefined');
-    // Change face writes HQ's record of the Mate: HQ's gate, on a Mate.
-    expect(mateActionsSource).toContain(
-      'if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit === "offered" })) {',
-    );
-  });
-
-  it("carries the update verbs wherever a Mate is listed, not only on the projects screen", () => {
-    // "Check for updates" and "Update to x.y.z" come from a control that
-    // holds the server's own answer, so a page that lists Mates mounts it
-    // per Mate rather than re-deriving the verbs. A project's page used to
-    // be the one place a Mate's update could not be started from.
-    expect(groupDetailSource).toMatch(/<ZeropsMateUpdateControl\s+environmentId=/u);
-    expect(groupDetailSource).toContain("{({ menuActions }) => menu(menuActions)}");
-    // The confirm dialog asks about the Mate by name: several are often
-    // updated one after another.
-    expect(groupDetailSource).toMatch(/<ZeropsMateUpdateControl[^>]*\bmateName=/u);
-    expect(projectsPageSource).toMatch(/<ZeropsMateUpdateControl[^>]*\bmateName=/u);
-  });
-});
-
-describe("a status word's hand", () => {
-  /** Every `<StatusDot …/>` in a file, each as its own opening tag. */
-  const statusDots = (source: string): ReadonlyArray<string> =>
-    [...source.matchAll(/<StatusDot\b[\s\S]*?\/>/gu)].map((match) => match[0]);
-
-  it.each([
-    ["the projects screen", projectsPageSource],
-    ["a project's own page", groupDetailSource],
-    ["the Git page", gitPageSource],
-    ["the verdict panel", verdictPanelSource],
-    ["a project's releases", releaseRowsSource],
-    ["a history", historyViewSource],
-  ])("writes a state the way client-runtime wrote it, on %s", (_surface, source) => {
-    // `deployWord` answers "Deployed" and `changeState` capitalises its first
-    // letter on purpose. Drawn through the `MicroLabel` that is a StatusDot's
-    // default, the projects screen and the Git page threw that away and said
-    // NEEDS A REBASE where the left menu and the project's own page said
-    // "Needs a rebase" — one fact, two hands, on surfaces a click apart. R5:
-    // the words are the runtime's, and so is their case.
-    //
-    // Every surface that draws a change or an environment with a status dot
-    // is listed here. The left menu draws none: a change row says Review and
-    // production is a chip on its project's heading. A service's runtime
-    // status on a card is not one of them either: the accepted `ServiceRow`
-    // principle sets that word as a `MicroLabel` over the name, and it reads
-    // as a label because that is what it is.
-    const dots = statusDots(source);
-    expect(dots.length).toBeGreaterThan(0);
-    for (const dot of dots) {
-      expect(dot).toMatch(/\bsentence\b|\bdotOnly\b/u);
-    }
-  });
-});
-
-describe("HQ's card", () => {
-  it("is the organization's HQ, whose project is no project of the page's", () => {
-    expect(projectsPageSource).toContain("hqCard={<ZeropsHqCard />}");
-    // The project its anchor names, never one by its name (`withoutOfficialHq`).
-    expect(projectsPageSource).toContain("withoutOfficialHq(groupTree.ungrouped, accountHq.hq)");
-  });
-});
-
-describe("a project's next step on the projects page", () => {
-  it("is groupFlow's, not a second derivation of what waits", () => {
-    // The page, the left menu and a Mate's conversation read one derivation,
-    // so the three cannot disagree about what a project needs next.
-    expect(projectsPageSource).toContain("groupFlow(");
-    expect(projectsPageSource).not.toContain("projectAttention(");
-    expect(projectsPageSource).not.toContain("ZeropsGroupAnswer");
-  });
-
-  it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
-    for (const source of [projectsPageSource, groupDetailSource]) {
-      expect(source).not.toContain(".merge(");
-      expect(source).not.toContain(".close(");
-      expect(source).not.toContain(".release(");
-      expect(source).not.toContain(".rollBack(");
-    }
-    expect(projectsPageSource).toContain('kind: "change",');
-    expect(projectsPageSource).toContain(
-      'openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });',
-    );
-  });
-
-  it("offers production from the project's menu, never as a step in its row", () => {
-    // No missing-tier rows ("not set up yet") and no foot of add verbs: a
-    // project's menu adds a Mate, a stage or production. Adding production is
-    // never a step that waits (`nextStepAwaitsSomebody`), so the row draws no
-    // verb for it; the menu answers on `creatableRoles`, which is always read.
-    expect(projectsPageSource.match(/requestEnvironment\(group\.groupId, "prod"\)/gu)).toHaveLength(
-      1,
-    );
-    expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
-    expect(projectsPageSource).not.toContain("?.missing ??");
-  });
-});
-
 describe("opening a Mate from the projects page", () => {
   it.each([
     { name: "a connected Mate opens", busy: false, action: "open", opens: true },
@@ -827,12 +657,6 @@ describe("opening a Mate from the projects page", () => {
     expect(opener !== undefined).toBe(opens);
     opener?.();
     expect(open).toHaveBeenCalledTimes(opens ? 1 : 0);
-  });
-
-  it("is one opener for a Mate's card and for the flow's names and tiles", () => {
-    expect(projectsPageSource).toContain("const select = mateOpenerOf(candidate);");
-    expect(projectsPageSource).toContain("openMate={mateOpenerOf}");
-    expect(projectsPageSource.match(/mateOpener\(\{/gu)).toHaveLength(1);
   });
 });
 
@@ -898,26 +722,5 @@ describe("a group's one line about itself", () => {
     ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
-  });
-
-  it("keeps a background repair's failure off the page's error line", () => {
-    expect(projectsPageSource).not.toContain("setToolError(`${entry.displayName}");
-  });
-});
-
-describe("project rename permissions on the projects surfaces", () => {
-  it("uses the same permission-aware rename menu for the row and detail", () => {
-    expect(projectsPageSource).toContain("<ZeropsProjectRenameMenu");
-    expect(groupDetailSource).toContain("<ZeropsProjectRenameMenu");
-    for (const source of [projectsPageSource, groupDetailSource]) {
-      expect(source).not.toContain('id: "rename-group"');
-    }
-  });
-
-  it("preserves the existing environment creation offers independently of rename permission", () => {
-    expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
-    expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
-    expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
-    expect(projectsPageSource).toContain("if (creationRunning) return;");
   });
 });

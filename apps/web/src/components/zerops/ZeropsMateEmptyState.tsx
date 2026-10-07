@@ -37,7 +37,18 @@ import {
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { Fragment, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS, type MateMarkState } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
@@ -60,8 +71,12 @@ import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentPr
 import { useProjectServices } from "../../zerops/ZeropsAccountData";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
+import { useChangeCue } from "../../zerops/useMateMoments";
+import { standUpDoneCue } from "../../zerops/mateMoments.logic";
 import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
+import { restartLine } from "~/zerops/restartLine";
+
 import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
 import { MateFace } from "./primitives";
@@ -246,6 +261,8 @@ export interface MateEmptyComing {
   readonly severity?: "info" | "attention" | "danger" | undefined;
   /** A source-backed link state speaks as the Mate in the headline. */
   readonly headline?: string | undefined;
+  /** Its container is restarting: its face plays the restart while it lasts. */
+  readonly restarting?: boolean | undefined;
   readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** The sentence under the headline: how long is left, or why it stopped. */
@@ -335,7 +352,6 @@ export function MateEmptyStateView({
   readonly focusOnArrival?: boolean;
 }) {
   const mate = named ?? UNNAMED;
-  const sentenceId = useId();
   const headline = useRef<HTMLHeadingElement>(null);
   const arrived = useRef(false);
   useEffect(() => {
@@ -353,12 +369,23 @@ export function MateEmptyStateView({
   });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
+  // On its way to its conversation, a Mate whose link has no words of its own says it opens it.
+  const opening =
+    coming !== null &&
+    coming.over !== true &&
+    (coming.kind === "reaching" || coming.kind === "unreachable");
   const clauses =
-    coming?.headline === undefined ? arrivalHeadlineClauses(mate, kind) : [coming.headline];
+    coming?.headline !== undefined
+      ? [coming.headline]
+      : opening
+        ? [`${named?.name || "The Mate"} is opening the conversation.`]
+        : arrivalHeadlineClauses(mate, kind);
   const sentence =
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
-      : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
+      : opening
+        ? "Picking up where you left off."
+        : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
   const slot =
     standUpFailure === undefined
       ? arrivalSlot({ kind, coming, signIn, unknown, runtimes })
@@ -379,47 +406,113 @@ export function MateEmptyStateView({
           ),
         };
 
-  if (
-    coming !== null &&
-    coming.over !== true &&
-    (coming.kind === "reaching" || coming.kind === "unreachable")
-  ) {
-    return (
-      <MateConnectionState
-        mate={named}
-        face={coming.face ?? "sleep"}
-        severity={coming.severity}
-        headline={coming.headline ?? `${named?.name || "The Mate"} is opening the conversation.`}
-        secondary={coming.sentence ?? "Waiting for the conversation to be read."}
-        actions={coming.below}
-      />
-    );
-  }
-
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
+    <ArrivalComposition
+      clauses={clauses}
+      headline={headline}
+      kind={kind}
+      mate={named}
+      pressed={pressed}
+      restarting={coming?.restarting === true}
+      sentence={sentence}
+      severity={coming?.severity}
+      slot={slot}
+      state={
+        coming?.face ?? arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))
+      }
+      status={opening}
+    />
+  );
+}
+
+/**
+ * Every opening state's one composition: the face centred on top, the headline, the line under it
+ * and the slot under that, each place handing over in place (`ArrivalSwap`) — so a state changing
+ * keeps the face where it stands, its words cross-fade, and nothing is drawn anew.
+ */
+function ArrivalComposition({
+  kind,
+  mate,
+  state,
+  restarting,
+  severity,
+  clauses,
+  sentence,
+  slot,
+  pressed,
+  status,
+  headline,
+}: {
+  readonly kind: ArrivalKind;
+  /** Null while the directory has not named the Mate: its face's place held, empty. */
+  readonly mate: DrawnMate | null;
+  readonly state: MateMarkState;
+  readonly restarting: boolean;
+  readonly severity: MateEmptyComing["severity"];
+  readonly clauses: ReadonlyArray<string>;
+  readonly sentence: string;
+  readonly slot: { readonly id: string; readonly node: ReactNode };
+  readonly pressed: "" | undefined;
+  /** It speaks a wait or a refusal: the composition is the page's status. */
+  readonly status: boolean;
+  readonly headline?: RefObject<HTMLHeadingElement | null>;
+}) {
+  const sentenceId = useId();
+  // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
+  const pacing = kind === "standing-up" && slot.id !== "stand-up-failed";
+  const [headlineWords, setHeadlineWords] = useState<HTMLSpanElement | null>(null);
+  const [faceElement, setFaceElement] = useState<HTMLDivElement | null>(null);
+  const pace = useHeadlineReach(headlineWords, faceElement, pacing);
+  const [restart, setRestart] = useState({ active: restarting, cycle: 0 });
+  if (restart.active !== restarting) setRestart({ active: restarting, cycle: 0 });
+  const spokenSentence = restarting
+    ? restartLine(mate?.name ?? "The Mate", restart.cycle)
+    : sentence;
+  const stoodUp = useChangeCue<string>(
+    slot.id === "stand-up-failed" ? slot.id : kind,
+    () => undefined,
+    standUpDoneCue,
+  );
+  return (
     <div
-      className="flex h-full flex-col items-center px-5 sm:px-6"
+      className="flex h-full w-full min-w-0 flex-col items-center px-5 sm:px-6"
       data-arrival={kind}
       data-zerops-surface="mate-empty-state"
     >
       {/* The face's place, a third of the way down whatever is said under it:
           every Mate's opening, in every state, puts its face where the last did. */}
       <div aria-hidden="true" className="shrink-0 basis-1/3" />
-      <div className="flex w-full flex-col items-center" data-mate-empty-lead>
-        <MateFace
-          className={cn(MATE_EMPTY_FACE_CLASS, named === null && "invisible")}
-          data-mate-face-reserved={named === null ? "" : undefined}
-          size="lg"
-          shape={mate.shape}
-          state={
-            coming?.face ??
-            arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))
-          }
-          tint={mate.tint}
-        />
+      <div
+        className="flex w-full flex-col items-center"
+        data-mate-empty-lead
+        role={status ? "status" : undefined}
+      >
+        {/* Until the directory names the Mate, its face's place is held, empty: no guessed face. */}
+        {mate === null ? (
+          <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
+        ) : (
+          <div ref={setFaceElement}>
+            <MateFace
+              className={MATE_EMPTY_FACE_CLASS}
+              greets="detail"
+              onRestartCycle={() =>
+                setRestart((current) => ({ ...current, cycle: current.cycle + 1 }))
+              }
+              cues={stoodUp === undefined ? undefined : [stoodUp]}
+              paces={pacing}
+              restarting={restarting}
+              shape={mate.shape}
+              size="lg"
+              state={state}
+              style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
+              tint={mate.tint}
+              tracks
+            />
+          </div>
+        )}
         <ArrivalSwap
           className="mt-6 w-full max-w-2xl"
           data-arrival-headline=""
@@ -427,7 +520,7 @@ export function MateEmptyStateView({
           kind="words"
         >
           <h1
-            aria-describedby={sentence.length === 0 ? undefined : sentenceId}
+            aria-describedby={spokenSentence.length === 0 ? undefined : sentenceId}
             aria-live="polite"
             className={cn(MATE_EMPTY_HEADLINE_CLASS, "arrival-headline text-balance outline-none")}
             data-pressed={pressed}
@@ -435,7 +528,8 @@ export function MateEmptyStateView({
             tabIndex={-1}
           >
             {/* One run of words, set on the room's last lines where it holds more than it says. */}
-            <span>
+            <span ref={setHeadlineWords}>
+              <SeverityMark severity={severity} />
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
@@ -445,17 +539,17 @@ export function MateEmptyStateView({
             </span>
           </h1>
         </ArrivalSwap>
-        {sentence.length === 0 ? null : (
+        {spokenSentence.length === 0 ? null : (
           <ArrivalSwap
             className="mt-2 w-full max-w-2xl"
             data-arrival-sentence=""
             domId={sentenceId}
-            id={sentence}
+            id={spokenSentence}
             kind="words"
             live="polite"
           >
             <p className="arrival-sentence" data-pressed={pressed}>
-              {sentence}
+              {spokenSentence}
             </p>
           </ArrivalSwap>
         )}
@@ -470,6 +564,32 @@ export function MateEmptyStateView({
       </div>
     </div>
   );
+}
+
+/**
+ * How far either way of centre the face may pace under a headline: half its words' width, less
+ * half the face. Measured when the headline's layout changes, never per frame.
+ */
+function useHeadlineReach(
+  words: HTMLElement | null,
+  face: HTMLElement | null,
+  measuring: boolean,
+): number {
+  const [reach, setReach] = useState(0);
+  useLayoutEffect(() => {
+    if (!measuring || words === null || face === null) return;
+    const measure = () =>
+      setReach(
+        Math.max(0, (words.getBoundingClientRect().width - face.getBoundingClientRect().width) / 2),
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(words.parentElement ?? words);
+    observer.observe(face);
+    return () => observer.disconnect();
+  }, [words, face, measuring]);
+  return reach;
 }
 
 /** What stands in the slot under the sentence, and the name its hand-overs go by. */
@@ -526,7 +646,11 @@ function AgentAuthUnknown({ unknown }: { readonly unknown: KnownMessage }) {
   );
 }
 
-/** One composition for source-backed conversation waits and refusals. Unknown identity has no guessed face. */
+/**
+ * A source-backed wait or refusal over a conversation that cannot show yet: the same composition
+ * as every opening state — the face centred on top, the headline, the line under it, its actions
+ * — so a state changing in place keeps the face where it stands and only its words cross-fade.
+ */
 export function MateConnectionState({
   mate,
   face,
@@ -543,43 +667,30 @@ export function MateConnectionState({
   readonly actions: ReactNode;
 }) {
   return (
-    <div
-      className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 py-10"
-      data-zerops-surface="mate-connection-state"
-    >
-      <section className="flex min-h-48 w-full max-w-lg items-start gap-5" role="status">
-        {mate === null ? (
-          <div className="size-14 shrink-0" data-mate-face-reserved="" aria-hidden="true" />
-        ) : (
-          <MateFace
-            className="size-14 shrink-0"
-            size="lg"
-            shape={mate.shape}
-            tint={mate.tint}
-            state={face}
-          />
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-lg font-medium leading-snug text-foreground">
-            {severity === "info" ? null : severity === "danger" ? (
-              <CircleAlertIcon aria-hidden="true" className="size-4 shrink-0 text-error" />
-            ) : (
-              <CircleHelpIcon
-                aria-hidden="true"
-                className="size-4 shrink-0 text-status-attention"
-              />
-            )}
-            {headline}
-          </h1>
-          <p
-            data-arrival-secondary=""
-            className="mt-2 text-sm leading-relaxed text-muted-foreground"
-          >
-            {secondary}
-          </p>
-          <div className="mt-5 flex min-h-10 flex-col items-start gap-4">{actions}</div>
-        </div>
-      </section>
-    </div>
+    <ArrivalComposition
+      clauses={[headline]}
+      kind="reaching"
+      mate={mate}
+      pressed={undefined}
+      restarting={false}
+      sentence={secondary}
+      severity={severity}
+      slot={{ id: "reaching", node: actions }}
+      state={face}
+      status
+    />
+  );
+}
+
+/** What a wait that needs the person, or a refusal, wears before its headline. */
+function SeverityMark({ severity }: { readonly severity: MateEmptyComing["severity"] }) {
+  if (severity === undefined || severity === "info") return null;
+  return severity === "danger" ? (
+    <CircleAlertIcon aria-hidden="true" className="me-2 inline size-5 align-[-0.15em] text-error" />
+  ) : (
+    <CircleHelpIcon
+      aria-hidden="true"
+      className="me-2 inline size-5 align-[-0.15em] text-status-attention"
+    />
   );
 }

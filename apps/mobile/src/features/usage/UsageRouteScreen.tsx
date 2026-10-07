@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { isModelCostUnknown, type DailyTotals, type MergedUsage } from "@t3tools/shared/usageMerge";
+import type { DailyTotals, MergedUsage } from "@t3tools/shared/usageMerge";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -8,6 +8,7 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
+  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
@@ -24,6 +25,7 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import { UsageLimitsSection, useRefreshLimits } from "./UsageLimitsSection";
 import type { UsageChartMetric } from "./usageChartData";
+import { usageModelRows } from "./usageModelRows";
 import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
 
 type UsageTab = "usage" | "limits";
@@ -191,7 +193,7 @@ export function UsageRouteScreen() {
                 />
                 <ProviderSection merged={merged} metric={metric} />
                 <TotalsSection merged={merged} isPast24Hours={isPast24Hours} />
-                <ModelsSection merged={merged} />
+                <ModelsSection merged={merged} metric={metric} />
               </>
             )}
           </>
@@ -448,16 +450,16 @@ function MetricCell(props: {
   );
 }
 
-function ModelsSection(props: { readonly merged: MergedUsage }) {
-  const { merged } = props;
+function ModelsSection(props: { readonly merged: MergedUsage; readonly metric: UsageChartMetric }) {
+  const { merged, metric } = props;
   const colors = useProviderColors();
   if (merged.models.length === 0) return null;
 
   return (
     <SettingsSection title="By model" card>
-      {merged.models.map((model, index) => (
+      {usageModelRows(merged.models, metric).map((row, index) => (
         <View
-          key={`${model.provider}:${model.model}`}
+          key={row.key}
           className={
             index === 0
               ? "flex-row items-center gap-3 p-4"
@@ -466,21 +468,15 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
         >
           <View
             className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colors[model.provider] }}
+            style={{ backgroundColor: colors[row.provider] }}
           />
           <View className="min-w-0 flex-1 gap-0.5">
             <Text className="text-base text-foreground" numberOfLines={1}>
-              {model.model}
+              {row.name}
             </Text>
-            <Text className="text-sm text-foreground-muted">
-              {isModelCostUnknown(model)
-                ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
-                : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
-            </Text>
+            <Text className="text-sm text-foreground-muted">{row.detail}</Text>
           </View>
-          <Text className="text-base tabular-nums text-foreground">
-            {isModelCostUnknown(model) ? "Unpriced" : formatUsd(model.costUsd)}
-          </Text>
+          <Text className="text-base tabular-nums text-foreground">{row.value}</Text>
         </View>
       ))}
     </SettingsSection>
@@ -498,13 +494,17 @@ function UsageCoverageNotice(props: {
   readonly isPartial: boolean;
 }) {
   const failed = props.environments.filter((environment) => environment.error !== null);
-  const stale = props.environments.filter((environment) =>
-    props.merged.staleEnvironments.includes(environment.environmentId),
+  const mismatchByEnvironment = new Map(
+    props.merged.contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
   );
+  const incompatible = props.environments.flatMap((environment) => {
+    const mismatch = mismatchByEnvironment.get(environment.environmentId);
+    return mismatch === undefined ? [] : [{ environment, mismatch }];
+  });
   const duplicateSources = props.merged.duplicateSources;
   if (
     failed.length === 0 &&
-    stale.length === 0 &&
+    incompatible.length === 0 &&
     duplicateSources.length === 0 &&
     !props.isPartial
   ) {
@@ -523,9 +523,9 @@ function UsageCoverageNotice(props: {
           {environment.label} could not report usage.
         </Text>
       ))}
-      {stale.map((environment) => (
+      {incompatible.map(({ environment, mismatch }) => (
         <Text key={environment.environmentId} className="text-sm text-foreground-muted">
-          {environment.label} runs an older server version and is excluded from totals.
+          {formatUsageContractMismatch(environment.label, mismatch)}
         </Text>
       ))}
       {duplicateSources.length > 0 ? (

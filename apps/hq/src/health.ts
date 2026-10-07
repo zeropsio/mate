@@ -77,7 +77,8 @@ export const healthRoute = (build: string) =>
       const lockHeld = sql<{ readonly held: boolean }>`
         SELECT EXISTS (
           SELECT 1 FROM pg_locks
-          WHERE locktype = 'advisory' AND classid = 0 AND objid::bigint = ${LOCK_KEY}
+          WHERE database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            AND locktype = 'advisory' AND classid = 0 AND objid::bigint = ${LOCK_KEY}
             AND objsubid = 1 AND granted
         ) AS held`.pipe(
         Effect.timeout(PROBE_TIMEOUT),

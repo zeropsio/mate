@@ -4,9 +4,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeUtil from "node:util";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeNet from "node:net";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import { acquireProcessLock } from "../../../../../scripts/test-process-lock.ts";
 
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 
@@ -84,43 +83,6 @@ export async function bundleKey(root: string, env: NodeJS.ProcessEnv) {
   return hash.digest("hex");
 }
 
-// A Unix socket is an OS-owned lock: wait for the builder's connection to close, rather than
-// poll or guess how long builds take. A crashed builder leaves a refused socket, safe to unlink.
-async function acquireBuild(root: string, key: string): Promise<() => Promise<void>> {
-  const identity = NodeCrypto.createHash("sha256").update(root).update(key).digest("hex");
-  const socketPath = NodePath.join(NodeOS.tmpdir(), `mate-web-${identity.slice(0, 24)}.sock`);
-  for (;;) {
-    const clients = new Set<NodeNet.Socket>();
-    const server = NodeNet.createServer((socket) => {
-      clients.add(socket);
-      socket.on("error", () => {});
-      socket.once("close", () => clients.delete(socket));
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(socketPath, resolve);
-      });
-      return async () => {
-        for (const client of clients) client.destroy();
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
-      await new Promise<void>((resolve, reject) => {
-        const socket = NodeNet.connect(socketPath);
-        socket.once("close", resolve);
-        socket.once("error", (error: NodeJS.ErrnoException) => {
-          if (error.code === "ENOENT") resolve();
-          else if (error.code === "ECONNREFUSED")
-            void NodeFSP.rm(socketPath, { force: true }).then(resolve, reject);
-          else reject(error);
-        });
-      });
-    }
-  }
-}
-
 export async function cachedBundle(
   root: string,
   env: NodeJS.ProcessEnv,
@@ -139,7 +101,8 @@ export async function cachedBundle(
   };
   if (await ready()) return dist;
   await NodeFSP.mkdir(cache, { recursive: true });
-  const release = await acquireBuild(root, key);
+  // Keep the inode: unlinking a lock lets later builders bypass existing waiters.
+  const release = await acquireProcessLock(NodePath.join(cache, `${key}.lock`));
   let staging: string | undefined;
   try {
     if (await ready()) return dist;

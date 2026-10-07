@@ -1,3 +1,5 @@
+import { lastKnownMateWords } from "./lastKnownMate.logic";
+import { attentionActivity } from "./mateActivity";
 import { failedSetupProcess } from "@t3tools/client-runtime/data";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
@@ -14,7 +16,11 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/unstable/reactivity";
-import { hqMateOverviewAtom, hqMatePresenceAtom } from "@t3tools/client-runtime/data";
+import {
+  hqMateOverviewAtom,
+  hqMatePresenceAtom,
+  mateAttentionAtom,
+} from "@t3tools/client-runtime/data";
 import { useCallback, useMemo } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
@@ -85,10 +91,27 @@ const mateLinkedInHqAtom = Atom.family((projectId: string) =>
  */
 export function useToldActivity(projectId: string): ZeropsAgentActivity | undefined {
   const told = useAtomValue(hqMateOverviewAtom(projectId)) ?? undefined;
-  return useMemo(
-    () => (told === undefined ? undefined : overviewAgentActivity(told, false, {})),
-    [told],
-  );
+  const read = useAtomValue(mateAttentionAtom(projectId));
+  return useMemo(() => {
+    if (told === undefined) return undefined;
+    if (read.attention === null) return overviewAgentActivity(told, false, {});
+    return attentionActivity({
+      attention: read.attention,
+      live: false,
+      unseen: read.unseen,
+      environmentId: read.attention.source.environmentId,
+      overview: told,
+      shells: [],
+      lastVisitedAtById: {},
+    });
+  }, [told, read]);
+}
+
+export function useLastKnownMateWords(
+  projectId: string | null | undefined,
+  name: string,
+): string | undefined {
+  return lastKnownMateWords(useToldActivity(projectId ?? ""), name);
 }
 
 /**

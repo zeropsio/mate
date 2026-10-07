@@ -1,5 +1,7 @@
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import { recoveryNotice } from "./mateRecovery.logic";
+import { restartLine, RESTART_LINES } from "./restartLine";
+
 import {
   reachabilityPhrase,
   type MateVoice,
@@ -12,12 +14,21 @@ export type WebMateVoice =
       readonly face?: "idle" | "sleep" | "waking";
       readonly severity?: "info" | "attention" | "danger" | undefined;
       readonly headline?: string;
+      /** The source is still opening the conversation; its waiting pose follows readiness. */
+      readonly opening?: true;
       readonly secondary?: string;
+      /** Its container is restarting: its face plays the restart for as long as it lasts. */
+      readonly restarting?: true;
+      readonly restartLines?: ReadonlyArray<string>;
     });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
-  input: Omit<MateVoiceInput, "heldMs"> & { readonly recovery?: MateRecovery },
+  input: Omit<MateVoiceInput, "heldMs"> & {
+    readonly recovery?: MateRecovery;
+    readonly restartLine?: number | undefined;
+    readonly lastKnown?: string | undefined;
+  },
 ): WebMateVoice {
   const { reachability, conversationShown } = input;
   const name = input.mateName.trim() || "The Mate";
@@ -28,7 +39,7 @@ export function mateNoticeVoice(
     face: "idle" | "sleep" | "waking" = "sleep",
     actions: Exclude<MateVoice, { surface: "none" }>["actions"] = [],
     processes = false,
-  ): WebMateVoice => ({
+  ): Exclude<WebMateVoice, { readonly surface: "none" }> => ({
     surface,
     severity:
       reachability?.kind === "refused-configuration" ||
@@ -41,7 +52,7 @@ export function mateNoticeVoice(
           : "info",
     headline,
     secondary,
-    text: `${headline} ${secondary}`,
+    text: secondary.length === 0 ? headline : `${headline} ${secondary}`,
     face,
     actions,
     processes,
@@ -60,12 +71,28 @@ export function mateNoticeVoice(
           name,
         )
       : null);
+  const process = input.recovery?.process;
+  const recoveringRestart =
+    input.recovery?.standing.kind !== "denied" &&
+    input.recovery?.standing.kind !== "deleted" &&
+    (process?.status === "RUNNING" || process?.status === "PENDING") &&
+    process.actionName === "stack.restart";
   if (recovery !== null)
     return {
       surface,
-      text: recovery.text,
+      text: input.lastKnown === undefined ? recovery.text : `${recovery.text} ${input.lastKnown}`,
       headline: recovery.text,
-      secondary: "",
+      secondary: [recoveringRestart ? restartLine(name, 0) : "", input.lastKnown]
+        .filter(Boolean)
+        .join(" "),
+      ...(recoveringRestart
+        ? {
+            restarting: true as const,
+            restartLines: RESTART_LINES.map((line) =>
+              [line(name), input.lastKnown].filter(Boolean).join(" "),
+            ),
+          }
+        : {}),
       severity:
         recovery.tone === "error" ? "danger" : recovery.tone === "warning" ? "attention" : "info",
       actions: recovery.actions,
@@ -81,7 +108,11 @@ export function mateNoticeVoice(
   if (notice?.level === "restarting" || notice?.level === "updating") {
     if (!("overdue" in notice && notice.overdue)) {
       return notice.level === "restarting"
-        ? say(`${name} is restarting.`, "A little stretch, then back to work.", "waking")
+        ? {
+            ...say(`${name} is restarting.`, restartLine(name, input.restartLine ?? 0), "waking"),
+            restarting: true,
+            restartLines: RESTART_LINES.map((line) => line(name)),
+          }
         : say(
             `${name} is updating.`,
             "The conversation will open once the update finishes.",
@@ -96,13 +127,16 @@ export function mateNoticeVoice(
   ) {
     return conversationShown
       ? { surface: "none" }
-      : say(
-          `${name} is opening the conversation.`,
-          "Waiting for the conversation to be read.",
-          "idle",
-          [],
-          false,
-        );
+      : {
+          ...say(
+            `${name} is opening the conversation.`,
+            "Picking up where you left off.",
+            "sleep",
+            [],
+            false,
+          ),
+          opening: true,
+        };
   }
   if (reachability.kind === "ready" && reachability.notice === null) return { surface: "none" };
   const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });
@@ -180,17 +214,22 @@ export function mateNoticeVoice(
         actions,
       );
     case "not-answering":
-      return say(`${name} isn't answering.`, "Try the connection again.", "sleep", actions);
+      return say(`${name} isn't answering.`, input.lastKnown ?? "", "sleep", actions);
     case "reconnecting":
     case "retrying": {
       if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
         return say(
           `${name} is reconnecting.`,
-          "The conversation will open when the connection returns.",
+          input.lastKnown ?? "The conversation will open when the connection returns.",
           "sleep",
         );
       }
-      const secondary = phrase.text ?? "The conversation will open when the connection returns.";
+      const secondary = [
+        phrase.text ?? "The conversation will open when the connection returns.",
+        input.lastKnown,
+      ]
+        .filter(Boolean)
+        .join(" ");
       return say(
         `${name} is reconnecting.`,
         secondary.replaceAll("This Mate", name).replaceAll("this Mate", name),

@@ -1,3 +1,4 @@
+import { ConversationReadiness } from "./conversationReadiness";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -8,6 +9,7 @@ import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
 import {
+  use,
   useLayoutEffect,
   useMemo,
   useState,
@@ -23,6 +25,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { mateIdentityPose } from "~/zerops/mateIdentities";
+import { useMateHeaderCues } from "~/zerops/useMateMoments";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import {
@@ -223,9 +226,18 @@ function MatePill({
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
   const arrived = useArrival(subject !== null);
-  // The header's face is reused from one Mate to the next: it greets no arrival.
+  // The header's face is reused from one Mate to the next: it greets no change of pose, only the
+  // events its line names (`useMateHeaderCues`).
   const face = (
-    <MateFace className="size-6" shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
+    <MateFace
+      className="size-6"
+      cues={mate.cues}
+      restarting={mate.restarting}
+      shape={mate.shape}
+      size="sm"
+      state={mate.face}
+      tint={mate.tint}
+    />
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
@@ -719,6 +731,13 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
+  const conversationReady = use(ConversationReadiness);
+  const moments = useMateHeaderCues({
+    environmentId,
+    currentThreadId,
+    mate: mate ?? { connected: false },
+    chats,
+  });
   if (mate === null) return null;
 
   const crew = lineCrew({
@@ -765,6 +784,15 @@ export function ConversationStrip({
     }
   };
 
+  const shownMate = lineMate({
+    mate,
+    pose: mateIdentityPose(mate, nowMs),
+    chats,
+    currentThreadId,
+    crewChatOpen: crewChat !== null,
+    subject,
+    lastVisitedAtById,
+  });
   return (
     // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
     <ConversationStripView
@@ -782,15 +810,13 @@ export function ConversationStrip({
           />
         )
       }
-      mate={lineMate({
-        mate,
-        pose: mateIdentityPose(mate, nowMs),
-        chats,
-        currentThreadId,
-        crewChatOpen: crewChat !== null,
-        subject,
-        lastVisitedAtById,
-      })}
+      mate={{
+        ...shownMate,
+        face: conversationReady ? shownMate.face : "sleep",
+        // An opening's eyes follow the placed-list verdict, without a clock-driven peek.
+        cues: moments.cues.filter((cue) => cue.moment !== "peek"),
+        restarting: moments.restarting,
+      }}
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}

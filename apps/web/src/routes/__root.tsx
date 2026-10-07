@@ -1,3 +1,4 @@
+import { useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { recoveryNotice } from "../zerops/mateRecovery.logic";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
@@ -30,6 +31,7 @@ import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
+import { QueuedMessageSender } from "../components/QueuedMessageSender";
 import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
@@ -195,6 +197,13 @@ function SignedInRootRouteView() {
     recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
   const gatePhrase =
     recoveryPhrase ?? routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
+  const speakingMate = routeEnvironment === null ? draftMate : routeMate;
+  const speakingName = speakingMate.kind === "mate" ? speakingMate.mate.name : "The Mate";
+  const lastKnown = useLastKnownMateWords(
+    gateInputs.projectId ??
+      (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined),
+    speakingName,
+  );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
     speaksFor !== null &&
@@ -204,14 +213,10 @@ function SignedInRootRouteView() {
       ? mateNoticeVoice({
           reachability: linkReachability,
           recovery,
+          lastKnown,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
-          mateName:
-            (routeEnvironment === null
-              ? draftMate.kind === "mate"
-                ? draftMate.mate.name
-                : undefined
-              : routeMateName) ?? "The Mate",
+          mateName: speakingName,
         })
       : SILENT_VOICE;
   // The conversation the route names, for the stand-in its stage draws.
@@ -303,6 +308,7 @@ function SignedInRootRouteView() {
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <ThreadNotificationCoordinator />
+        <QueuedMessageSender />
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
         <SlowRpcRequestToastCoordinator />

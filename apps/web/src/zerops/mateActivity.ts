@@ -176,15 +176,20 @@ export function attentionActivity(input: {
     ...rest,
     kind,
     status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
-    face: mateMarkStateForThread(kind, read.pausedUntil !== undefined),
+    face: mateMarkStateForThread(
+      kind,
+      read.usageLimited === true || read.pausedUntil !== undefined,
+    ),
     unread,
     // The words only true of the kind the attention says.
     ...(UNDER_WAY.has(kind) && liveStep !== undefined ? { liveStep } : {}),
     ...(UNDER_WAY.has(kind) && waitsOnHelpers === true ? { waitsOnHelpers } : {}),
     ...(kind === "input" && asked !== undefined ? { question: asked } : {}),
-    ...(kind === "failed" && errorLine !== undefined ? { errorLine } : {}),
+    ...((kind === "failed" || read.usageLimited === true) && errorLine !== undefined
+      ? { errorLine }
+      : {}),
   };
-  return input.live ? activity : restingActivity(activity);
+  return input.live ? activity : restingActivity(activity, words.updatedAt);
 }
 
 /**

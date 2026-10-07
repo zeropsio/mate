@@ -1,4 +1,4 @@
-import type { ToolLifecycleItemType } from "@t3tools/contracts";
+import type { ToolLifecycleItemType, ToolPresentation } from "@t3tools/contracts";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -12,6 +12,24 @@ function asTrimmedString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * A skill call, whichever agent made it: the skill it loads and the arguments it passes, if any.
+ * Claude's `Skill` names it at `skill`; OpenCode's `skill` at `name`.
+ */
+export function skillInvocation(
+  toolName: string | null | undefined,
+  input: unknown,
+): { readonly name: string; readonly args: string | undefined } | undefined {
+  const record = asRecord(input);
+  const name =
+    toolName === "Skill"
+      ? asTrimmedString(record?.skill)
+      : toolName === "skill"
+        ? (asTrimmedString(record?.name) ?? asTrimmedString(record?.skill))
+        : undefined;
+  return name === undefined ? undefined : { name, args: asTrimmedString(record?.args) };
 }
 
 function normalizeCommandValue(value: unknown): string | undefined {
@@ -258,4 +276,90 @@ export function deriveToolActivityPresentation(
   return {
     summary: title ?? fallbackSummary,
   };
+}
+
+/** Agent-supplied words for display: one line, bounded, or nothing. */
+export function normalizeMcpText(value: unknown, maxLength = 160): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim().replace(/\s+/gu, " ");
+  return text.length > 0 && text.length <= maxLength ? text : undefined;
+}
+
+/** An agent-supplied address a client may load: http(s) only, bounded, or nothing. */
+export function normalizeMcpHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 4096) return undefined;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && url.href.length <= 4096
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * How an MCP call presents itself, whichever agent made it: its own title (the agent's, else its
+ * name in words) and the server it comes from, by the server's display name and icon. A call
+ * that names no server — `mcp__<server>__<tool>`, or a server given apart — is no MCP call and
+ * presents nothing.
+ */
+export function mcpToolPresentation(input: {
+  readonly toolName?: unknown;
+  readonly serverName?: unknown;
+  readonly title?: unknown;
+  readonly serverDisplayName?: unknown;
+  readonly iconUrl?: unknown;
+  readonly iconUrlDark?: unknown;
+}): ToolPresentation | undefined {
+  const qualified =
+    typeof input.toolName === "string" ? /^mcp__(.+?)__(.+)$/iu.exec(input.toolName) : null;
+  const server = normalizeMcpText(input.serverName ?? qualified?.[1]);
+  const tool = normalizeMcpText(qualified?.[2] ?? input.toolName);
+  if (server === undefined || tool === undefined) return undefined;
+  const title = normalizeMcpText(input.title) ?? normalizeMcpText(tool.replace(/[_-]+/gu, " "));
+  const iconUrl = normalizeMcpHttpUrl(input.iconUrl);
+  const iconUrlDark = normalizeMcpHttpUrl(input.iconUrlDark);
+  return {
+    ...(title === undefined ? {} : { title }),
+    source: {
+      key: `mcp:${server.toLowerCase()}`,
+      name: normalizeMcpText(input.serverDisplayName) ?? server,
+      ...(iconUrl === undefined ? {} : { iconUrl }),
+      ...(iconUrlDark === undefined ? {} : { iconUrlDark }),
+    },
+  };
+}
+
+/** What Claude Code says of one call: its own label, its server's name and icon. */
+export interface ClaudeToolUseMeta {
+  readonly title?: string;
+  readonly serverDisplayName?: string;
+  readonly iconUrl?: string;
+}
+
+/**
+ * Claude Code's `tool_use_meta` on an assistant frame, by call id: the label it shows for each
+ * call (an MCP tool's title, or its name in words) and the server's name and icon. The SDK's
+ * types do not declare it yet, so it is read as unknown.
+ */
+export function claudeToolUseMeta(message: unknown): ReadonlyMap<string, ClaudeToolUseMeta> {
+  const byId = new Map<string, ClaudeToolUseMeta>();
+  const frame = asRecord(message);
+  const entries = frame?.type === "assistant" ? frame.tool_use_meta : undefined;
+  if (!Array.isArray(entries)) return byId;
+  for (const value of entries) {
+    const entry = asRecord(value);
+    const id = normalizeMcpText(entry?.id, 512);
+    if (entry === undefined || id === undefined) continue;
+    const title = normalizeMcpText(entry.display_name);
+    const serverDisplayName = normalizeMcpText(entry.server_display_name);
+    const iconUrl = normalizeMcpHttpUrl(entry.icon_url);
+    byId.set(id, {
+      ...(title === undefined ? {} : { title }),
+      ...(serverDisplayName === undefined ? {} : { serverDisplayName }),
+      ...(iconUrl === undefined ? {} : { iconUrl }),
+    });
+  }
+  return byId;
 }

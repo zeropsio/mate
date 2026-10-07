@@ -4,8 +4,8 @@ import * as NodeURL from "node:url";
 export default defineConfig({
   root: NodeURL.fileURLToPath(new URL("../../", import.meta.url)),
   test: {
-    globalSetup: ["../../scripts/pg-test-lock.setup.ts"],
-    // Keep PostgreSQL fixture startups serial across both test projects.
+    globalSetup: ["../../scripts/test-postgres.setup.ts"],
+    // Bound browser work across both projects; PostgreSQL is shared across runs.
     maxWorkers: 1,
     projects: [
       {

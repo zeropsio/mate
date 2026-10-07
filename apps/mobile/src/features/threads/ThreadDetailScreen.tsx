@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   appendCodexArtifactTemplateUsePrompt,
@@ -76,6 +77,10 @@ import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { editPendingThreadMessage } from "../../state/edit-pending-thread-message";
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import {
+  clearThreadComposerError,
+  threadComposerErrorsAtom,
+} from "../../state/thread-composer-error";
 import { useDelayedStatus } from "../../lib/useDelayedStatus";
 import type {
   PendingApproval,
@@ -84,6 +89,7 @@ import type {
   ThreadFeedEntry,
 } from "../../lib/threadActivity";
 import { PendingApprovalCard } from "./PendingApprovalCard";
+import { ComposerErrorNotice } from "./ComposerErrorNotice";
 import { ComposerFeedback } from "./ComposerFeedback";
 import { ComposerUsageLimits } from "./ComposerUsageLimits";
 import { PendingUserInputCard } from "./PendingUserInputCard";
@@ -287,6 +293,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const navigationHeaderHeight = useContext(HeaderHeightContext) || insets.top + IOS_NAV_BAR_HEIGHT;
   const agentLabel = `${props.selectedThread.modelSelection.instanceId} agent`;
   const selectedThreadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  const composerError = useAtomValue(threadComposerErrorsAtom)[selectedThreadKey]?.message ?? null;
   const composerEditorRef = useRef<ComposerEditorHandle>(null);
   const draftMessageRef = useRef(props.draftMessage);
   draftMessageRef.current = props.draftMessage;
@@ -637,10 +644,12 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const isSplitLayout = layoutVariant === "split";
   const contentMaxWidth = isSplitLayout ? CHAT_CONTENT_MAX_WIDTH : undefined;
   const workspaceContentWidth = useWorkspaceContentWidth();
+  // Clearing animated width can retain the unfolded width after Android resumes folded.
+  // Assign both layouts explicitly so the dock always follows its current parent.
   const composerWidthStyle = useAnimatedStyle(() =>
     isSplitLayout && workspaceContentWidth !== null
-      ? { width: workspaceContentWidth.value, right: undefined }
-      : { width: undefined, right: 0 },
+      ? { width: workspaceContentWidth.value }
+      : { width: "100%" },
   );
   const selectedInstanceId = props.selectedThread.modelSelection.instanceId;
   useStreamingHaptics(props.selectedThread.id, props.selectedThreadFeed);
@@ -924,7 +933,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
           <Animated.View
             layout={COMPOSER_LAYOUT_TRANSITION}
             pointerEvents="box-none"
-            style={[{ position: "absolute", bottom: 0, left: 0, right: 0 }, composerWidthStyle]}
+            style={[{ position: "absolute", bottom: 0, left: 0 }, composerWidthStyle]}
           >
             {/* No paddingTop here: the overlay's measured height becomes the
                 list's bottom inset, so any padding above the pill/composer
@@ -937,6 +946,18 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                 onScrollToEnd={handleScrollToEnd}
               />
               <View className="w-full self-center" style={{ maxWidth: contentMaxWidth }}>
+                {composerError !== null ? (
+                  <Animated.View
+                    className="shrink-0"
+                    entering={FadeInDown.duration(180)}
+                    exiting={FadeOut.duration(120)}
+                  >
+                    <ComposerErrorNotice
+                      message={composerError}
+                      onDismiss={() => clearThreadComposerError(selectedThreadKey)}
+                    />
+                  </Animated.View>
+                ) : null}
                 {usageLimitsReport && activeUserInputRequestId === null ? (
                   <Animated.View
                     className="shrink-0 px-4 pb-3"

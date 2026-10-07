@@ -161,7 +161,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
-import { MateConnectionState, ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
+import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -180,7 +180,7 @@ import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
-import { handedOverRecently } from "../../zerops/mateHandOver";
+import { ConversationOpeningStage } from "./ConversationOpeningStage";
 import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
@@ -680,9 +680,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
-  // Handed over from its Mate's own view (`mateHandOver`): its Mate stays at
-  // work in the pane until the rows stand, and they take its place at once.
-  const [handedOver] = useState(() => handedOverRecently(routeThreadKey, Date.now()));
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -1314,14 +1311,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // changes them every frame, and a restore restarted on each change never
   // landed. It reads the rows as they are each frame and moves the page
   // itself, since the list holds an imperative scroll back while its data
-  // changes. Overdue after a while, it lands on the best anchor it has and
-  // shows; the list's own placing at the end, which starts over on each
-  // change, is ended the same way.
+  // changes. Loaded rows with a measured anchor show once that scroll is applied;
+  // the list's own placing at the end cannot hold them behind an elapsed-time guess.
   // The keeper hears when the open list stands where it stays, a conversation
   // on its way included: nothing warms while the pane is still switching.
   const standing = showsList ? listPlaced : !(hideEmptyPlaceholder && loading);
   const onStanding = kept?.onStanding;
-  useEffect(() => {
+  useLayoutEffect(() => {
     onStanding?.(routeThreadKey, standing);
   }, [onStanding, routeThreadKey, standing]);
   const rowsRef = useRef(rows);
@@ -1339,7 +1335,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let cancelled = false;
     let frame: number | null = null;
     let stableFrames = 0;
-    const startedAt = performance.now();
     const finish = () => {
       if (cancelled) return;
       cancelled = true;
@@ -1408,7 +1403,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const target = aim();
       const judged = judgeTimelinePlacing(
         {
-          elapsedMs: performance.now() - startedAt,
           listReady: listReadyRef.current,
           offBy: target === null ? null : viewport.scrollTop - target,
         },
@@ -1419,16 +1413,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         finish();
         return;
       }
-      if (judged.verdict === "overdue") {
-        // An imperative scroll supersedes the list's own placing at the end,
-        // which may never settle while its rows change; the list then shows
-        // its rows.
-        if (!listReadyRef.current) void list.scrollToEnd({ animated: false });
-        if (target !== null) viewport.scrollTop = target;
-        finish();
-        return;
+      if (judged.verdict === "correct" && target !== null) {
+        viewport.scrollTop = target;
+        // The loaded rows and this measured anchor are now placed. Streaming may move the end
+        // every frame, so verify the scroll we applied instead of waiting for silence.
+        if (Math.abs(viewport.scrollTop - target) <= 1) {
+          finish();
+          return;
+        }
       }
-      if (judged.verdict === "correct" && target !== null) viewport.scrollTop = target;
       frame = requestAnimationFrame(tick);
     };
     tick();
@@ -1451,18 +1444,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     restoringReadingPosition,
     showsList,
   ]);
-  if (!showsList) {
-    if (hideEmptyPlaceholder) {
-      return (
-        <TimelineLoadingPane
-          loading={loading}
-          openingName={openingName}
-          mate={mate ?? null}
-          routeThreadKey={routeThreadKey}
-        />
-      );
-    }
-    return crew === null ? (
+  const content = !showsList ? (
+    hideEmptyPlaceholder ? (
+      <div
+        className="relative h-full min-h-0"
+        data-timeline-loading="true"
+        data-timeline-thread={routeThreadKey}
+      />
+    ) : crew === null ? (
       <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
     ) : (
       <CrewmateEmptyState
@@ -1472,10 +1461,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         mateFace={mate ?? null}
         seams={rows.flatMap((row) => (row.kind === "crew-seam" ? [row] : []))}
       />
-    );
-  }
-
-  return (
+    )
+  ) : (
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
         <TimelineWorkingCtx value={working}>
@@ -1488,9 +1475,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
             data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
-            // Handed over from its Mate's own view, the rows take the place of
-            // its Mate at work as they stand, with no fade.
-            data-timeline-arrives={handedOver ? "at-once" : undefined}
+            // The placed rows take the opening stage's place in the readiness frame.
+            data-timeline-arrives="at-once"
             data-timeline-thread={routeThreadKey}
           >
             <LegendList<MessagesTimelineRow>
@@ -1563,59 +1549,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               }}
             />
           </TooltipScrollDismissArea>
-          {handedOver && !listPlaced ? (
-            // The line the pane on its way said, where it said it, until the
-            // rows stand where they stay.
-            <OpeningLine name={openingName} mate={mate ?? null} />
-          ) : null}
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
     </TimelineRowCtx>
   );
+  return (
+    <>
+      {content}
+      {kept?.shown === false ? null : (
+        <ConversationOpeningStage ready={standing} name={openingName} mate={mate ?? null} />
+      )}
+    </>
+  );
 });
-
-/** The source is reading the conversation; its opening composition stays until rows are placed. */
-function TimelineLoadingPane({
-  loading,
-  routeThreadKey,
-  openingName,
-  mate,
-}: {
-  readonly loading: boolean;
-  readonly routeThreadKey: string;
-  readonly openingName: string | undefined;
-  readonly mate: ZeropsMateIdentity | null;
-}) {
-  return (
-    <div
-      className="relative flex h-full min-h-0 items-center justify-center bg-background"
-      data-timeline-loading="true"
-      data-timeline-thread={routeThreadKey}
-    >
-      {loading ? <OpeningLine name={openingName} mate={mate} /> : null}
-    </div>
-  );
-}
-
-function OpeningLine({
-  name,
-  mate,
-}: {
-  readonly name: string | undefined;
-  readonly mate: ZeropsMateIdentity | null;
-}) {
-  return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex">
-      <MateConnectionState
-        mate={mate}
-        face="idle"
-        headline={`${name || "The Mate"} is opening the conversation.`}
-        secondary="Waiting for the conversation to be read."
-        actions={null}
-      />
-    </div>
-  );
-}
 
 function keyExtractor(item: MessagesTimelineRow) {
   return item.id;

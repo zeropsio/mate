@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import { mateNoticeVoice } from "../../zerops/mateNoticeVoice";
 import { MateLinkLineView } from "./MateLinkLine";
-import { MateConnectionState } from "./ZeropsMateEmptyState";
+import { MateConnectionState, MateEmptyStateView } from "./ZeropsMateEmptyState";
 
 it("keeps opening quiet through the attempt, then offers recovery only on a failure", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -57,22 +57,171 @@ it("keeps opening quiet through the attempt, then offers recovery only on a fail
       { kind: "connecting", waitingOn: "exchange" },
     ] satisfies Array<Reachability | null>) {
       await show(reachability);
-      expect(host.querySelector("h1")?.textContent).toBe("Rosa is opening the conversation.");
-      expect(host.textContent).toContain("Waiting for the conversation to be read.");
+      expect(
+        host.querySelector('[data-swap-layer]:not([data-swap-layer="leaving"]) h1')?.textContent,
+      ).toBe("Rosa is opening the conversation.");
+      expect(host.textContent).toContain("Picking up where you left off.");
       expect(host.querySelector("button")).toBeNull();
       expect(host.textContent).not.toContain("Project services");
     }
     await show({ kind: "not-answering", overdue: false });
-    expect(host.querySelector("h1")?.textContent).toBe("Rosa isn't answering.");
+    expect(
+      host.querySelector('[data-swap-layer]:not([data-swap-layer="leaving"]) h1')?.textContent,
+    ).toBe("Rosa isn't answering.");
     expect(host.querySelector("button")?.textContent).toBe("Try now");
     await act(() => host.querySelector<HTMLButtonElement>("button")!.click());
     expect(retry).toHaveBeenCalledOnce();
     await show({ kind: "connecting", waitingOn: "exchange" });
     expect(host.querySelector("button")).toBeNull();
-    expect(host.querySelector("h1")?.textContent).toBe("Rosa is opening the conversation.");
+    expect(
+      host.querySelector('[data-swap-layer]:not([data-swap-layer="leaving"]) h1')?.textContent,
+    ).toBe("Rosa is opening the conversation.");
   } finally {
     await act(() => root.unmount());
     host.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("draws the known restart immediately and rotates named words only as its animation repeats", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const show = (restarting: boolean) =>
+    root.render(
+      <MateEmptyStateView
+        mate={{
+          name: "Rosa",
+          tint: "slate",
+          shape: "squircle",
+          project: "Orchard",
+          connected: false,
+        }}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        coming={{
+          kind: "reaching",
+          face: restarting ? "waking" : "sleep",
+          headline: restarting ? "Rosa is restarting." : "Rosa isn't answering.",
+          sentence: "Try now.",
+          restarting,
+          below: null,
+        }}
+      />,
+    );
+  const words = () =>
+    host.querySelector("[data-arrival-sentence] [data-swap-layer]:not([aria-hidden])")?.textContent;
+  const cycle = async () => {
+    const event = new Event("animationiteration", { bubbles: true });
+    Object.assign(event, { animationName: "mate-face-restart-shake" });
+    await act(() => host.querySelector("[data-mate-face-moment-box]")!.dispatchEvent(event));
+  };
+  try {
+    await act(() => show(true));
+    expect(
+      host
+        .querySelector('[data-zerops-primitive="mate-face"]')
+        ?.getAttribute("data-mate-face-state"),
+    ).toBe("waking");
+    expect(host.textContent).toContain("Rosa is restarting.");
+    const first = words();
+    expect(first).toContain("Rosa");
+    await act(() => show(true));
+    expect(words()).toBe(first);
+    await cycle();
+    expect(words()).toContain("Rosa");
+    expect(words()).not.toBe(first);
+    await act(() => show(false));
+    await cycle();
+    expect(words()).toBe("Try now.");
+    await act(() => show(true));
+    expect(words()).toBe(first);
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("keeps a restarting Mate and its words still with reduced motion", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const media = window.matchMedia;
+  window.matchMedia = vi.fn((query: string) => ({
+    ...media.call(window, query),
+    matches: true,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+  }));
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(() =>
+      root.render(
+        <MateEmptyStateView
+          mate={{
+            name: "Rosa",
+            tint: "slate",
+            shape: "squircle",
+            project: "Orchard",
+            connected: false,
+          }}
+          phase={null}
+          signIn={null}
+          signInRequired={false}
+          unknown={null}
+          coming={{
+            kind: "reaching",
+            face: "waking",
+            headline: "Rosa is restarting.",
+            restarting: true,
+            below: null,
+          }}
+        />,
+      ),
+    );
+    const before = host.textContent;
+    const event = new Event("animationiteration", { bubbles: true });
+    Object.assign(event, { animationName: "mate-face-restart-shake" });
+    await act(() => host.querySelector("[data-mate-face-moment-box]")!.dispatchEvent(event));
+    expect(host.textContent).toBe(before);
+    expect(host.querySelector("[data-mate-face-moment]")).toBeNull();
+  } finally {
+    await act(() => root.unmount());
+    window.matchMedia = media;
+    vi.unstubAllGlobals();
+  }
+});
+
+it("a stand-up message that failed plays no success dance", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const show = (failed: boolean) =>
+    root.render(
+      <MateEmptyStateView
+        mate={{ name: "Rosa", tint: "rose", shape: "flower", project: "Orchard", connected: true }}
+        phase="standing-up"
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        standUpFailure={failed ? { retrying: false, retry: () => undefined } : undefined}
+      />,
+    );
+  try {
+    await act(() => show(false));
+    await act(() => show(true));
+    expect(host.textContent).toContain("The message to Rosa didn't go through.");
+    expect(host.querySelector('[data-mate-face-moment="dance"]')).toBeNull();
+  } finally {
+    await act(() => root.unmount());
     vi.unstubAllGlobals();
   }
 });

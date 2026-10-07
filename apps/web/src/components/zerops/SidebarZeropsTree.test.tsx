@@ -625,6 +625,15 @@ describe("SidebarZeropsTree", () => {
     expect(html.includes("<button")).toBe(again);
   });
 
+  it("the header shows HQ's refusal and next action instead of an unreachable status", () => {
+    const line = "HQ refused the renewed session. Try again, or sign in to Zerops again.";
+    const html = renderToStaticMarkup(
+      <SidebarHqStatus kind="refused" line={line} onAgain={() => {}} />,
+    );
+    expect(html).toContain(line);
+    expect(html).not.toContain("HQ is not reachable");
+  });
+
   // One band in the list lights the open Mate's row and slides to the next
   // one opened (M11): the row itself paints nothing for being open, and
   // lights only under the pointer.
@@ -2466,7 +2475,7 @@ describe("a project collapsed to its heading", () => {
         typeof node.type === "string" && node.props["data-zerops-primitive"] === "mate-face",
     );
     expect(face.props["data-mate-face-state"]).toBe("needs");
-    expect(face.props["data-mate-face-arrived"]).toBeUndefined();
+    expect(face.props["data-mate-face-moment"]).toBeUndefined();
     const dot = faces.find(
       (node) => typeof node.type === "string" && node.props.className === "zerops-heading-dot",
     );
@@ -2989,7 +2998,8 @@ describe("a Mate's row says more without words", () => {
         }),
     });
     expect(html).toContain(">Limit · until ");
-    expect(html).toContain("hit the Claude limit.");
+    expect(html).toContain("hit the Claude limit");
+    expect(html).toContain("can continue at");
     expect(html).toContain("Provider limit");
     expect(html).not.toContain("I've hit");
   });
