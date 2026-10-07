@@ -272,46 +272,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "LIVE_GRACE_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "LIVE_GRACE_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "graceOver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "graceOver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "graceOver",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
@@ -357,38 +317,6 @@
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
     "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "firstReleaseHandoff(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setHandoffTo",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setHandoffTo",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setHandoffTo",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -1048,43 +976,11 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/zerops/environments/gate.ts",
-    "kind": "retired-token",
-    "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/gate.ts",
-    "kind": "retired-token",
-    "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/gate.ts",
-    "kind": "retired-token",
-    "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
     "kind": "retired-token",
     "fingerprint": "selectCandidates(",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "Retained mobile candidate presentation: the unreleased mobile source keeps its separate candidate/absent-HQ path. Replacing this token requires migrating that navigation surface and preserving its setup/access behavior; the released web inventory projection does not delete mobile presentation APIs.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/release.ts",
-    "kind": "retired-token",
-    "fingerprint": "firstReleaseHandoff(",
-    "owner": "data-layer rewrite: releases/environments",
-    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   }
 ]

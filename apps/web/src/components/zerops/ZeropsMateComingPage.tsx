@@ -1,3 +1,7 @@
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import { mateArrival } from "@t3tools/client-runtime/data";
+import { environmentShell } from "~/state/shell";
 /**
  * A Mate's own view (`/mate/$projectId`): where Add lands, and where every door opens a Mate whose
  * conversation cannot be opened yet (`useOpenMate`).
@@ -61,7 +65,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
-import { useProjects, useThreadDetail, useThreadShells, useThreadStatus } from "~/state/entities";
+import { useThreadDetail, useThreadShells, useThreadStatus } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
@@ -171,8 +175,8 @@ const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 /** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
 const HAND_OVER_MS = 280;
 
-/** How long a connected Mate's conversation may take to be read live before it hands over anyway. */
-const LIVE_GRACE_MS = 3_000;
+const EMPTY_SHELL_STATUS =
+  Atom.make<import("@t3tools/client-runtime/state/shell").EnvironmentShellStatus>("empty");
 
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
   const navigate = useNavigate();
@@ -349,22 +353,21 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
   // The Mate on screen: its socket goes first, though this path names no environment.
   usePreferredConnection(environmentId);
-  // Its conversation read live and its agents' sign-in are what the conversation paints first; a
-  // few seconds without them and the view hands over anyway.
-  const [graceOver, setGraceOver] = useState(false);
-  useEffect(() => {
-    if (environmentId === null) return;
-    const timer = setTimeout(() => setGraceOver(true), LIVE_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [environmentId]);
-  // It hands over once its conversation can paint its first frame — read (live, or held already
-  // for a Mate that did not come up here) and its sign-in known — or a few seconds on: the page
-  // stands until then, never a blank between it and the conversation.
-  const detailHeld = useThreadDetail(threadRef) !== null;
-  const up =
-    environmentId !== null &&
-    threadRef !== null &&
-    ((empty.signInKnown && (status === "live" || (!cameUp && detailHeld))) || graceOver);
+  const shellStatus = useAtomValue(
+    environmentId === null
+      ? EMPTY_SHELL_STATUS
+      : Atom.map(environmentShell.stateValueAtom(environmentId), (state) => state.status),
+  );
+  const arrivalDecision = mateArrival({
+    connected: environmentId !== null && link.reachability?.kind === "ready",
+    shell: shellStatus,
+    hasConversation: threadRef !== null,
+    detail: status,
+    detailHeld: useThreadDetail(threadRef) !== null,
+    signInKnown: empty.signInKnown,
+    cameUp,
+  });
+  const up = arrivalDecision === "conversation";
 
   // The hand-over: a new Mate's words turn in place, then the conversation takes the route with
   // that frame; any other Mate's conversation takes it at once. What the door that opened it asked
@@ -401,10 +404,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // Its environment's conversations read, none of its own to hand over to (an older server):
   // opening it starts one, as its row would — once, telling what its door asked.
-  const projects = useProjects();
-  const environmentRead =
-    environmentId !== null && projects.some((entry) => entry.environmentId === environmentId);
-  const noConversation = environmentRead && primaryId === undefined && graceOver;
+  const noConversation = arrivalDecision === "create-conversation";
   const opened = useRef(false);
   useEffect(() => {
     if (!noConversation || candidate === undefined || opened.current) return;

@@ -1,3 +1,4 @@
+import { creationHandoff } from "@t3tools/client-runtime/data";
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
@@ -114,7 +115,6 @@ import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 import {
   changeKindTag,
   changeState,
-  firstReleaseHandoff,
   assignCandidateMateTints,
   buildZeropsGroupTree,
   mateShapeOf,
@@ -1604,8 +1604,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
-  // review, which then opens by itself (`firstReleaseHandoff`). Its release is compared meanwhile.
-  const [handoffTo, setHandoffTo] = useState<{
+  // review, which then opens by itself (`creationHandoff`). Its release is compared meanwhile.
+  const [handoffTo, rememberReleaseIntent] = useState<{
+    readonly orgId: string;
     readonly groupId: string;
     readonly projectId: string;
   } | null>(null);
@@ -1615,9 +1616,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   ).flows;
   useEffect(() => {
     if (handoffTo === null) return;
+    if (handoffTo.orgId !== activeOrganization?.id) {
+      rememberReleaseIntent(null);
+      return;
+    }
     const flow = handoffFlows.get(handoffTo.groupId);
     if (flow === undefined) return;
-    const verdict = firstReleaseHandoff({
+    const verdict = creationHandoff({
       // The project this press made, never another production that comes up later.
       hasProduction: flow.environments.some(
         (entry) => entry.tier === "production" && entry.projectId === handoffTo.projectId,
@@ -1625,9 +1630,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       gate: flow.release.gate,
     });
     if (verdict === "wait") return;
-    setHandoffTo(null);
+    rememberReleaseIntent(null);
     if (verdict === "open") openReview({ kind: "release", groupId: handoffTo.groupId });
-  }, [handoffFlows, handoffTo, openReview]);
+  }, [activeOrganization?.id, handoffFlows, handoffTo, openReview]);
 
   /**
    * The environment row of one Zerops project, when HQ records it as one of an
@@ -1891,7 +1896,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ? current
           : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
-      if (role === "prod") setHandoffTo({ groupId, projectId: outcome.projectId });
+      if (role === "prod")
+        rememberReleaseIntent({
+          orgId: activeOrganization.id,
+          groupId,
+          projectId: outcome.projectId,
+        });
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );

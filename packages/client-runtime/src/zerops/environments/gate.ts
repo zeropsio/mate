@@ -1,3 +1,4 @@
+import { conversationAccess } from "../../data/projections/conversationAccess.ts";
 /**
  * The route gate for `/$environmentId/$threadId` (DESIGN §4.8): what the route renders, from the
  * route target's reachability and whether its shell has content. A pure projection.
@@ -119,47 +120,22 @@ export function routeGatePhrase(
 
 // ── C1b: the conversation without verified access ─────────────────────────────────────────────
 
-/**
- * How long a conversation stays shown after its link dropped while its project's access is not
- * verified (DESIGN §9 C1b). While the link is connected, the Mate's own membership watch is the
- * authority; once it dropped, this bound replaces it.
- */
-export const CONVERSATION_UNVERIFIED_BOUND_MS = 10 * 60_000;
-
 /** The route project's access as its owner last answered, or its loss confirmed (G6). */
 export type ConversationAccess = ScopeAuthority | { readonly kind: "lost" };
 
 export type ConversationView =
-  /** `until`: the instant the bound ends it, to be judged again then; null while nothing does. */
+  /** Current authority has no client-invented expiry. */
   | { readonly kind: "shown"; readonly until: Instant | null }
   /** Its content and drafts are hidden, mounted, until the access is verified again. */
   | { readonly kind: "suppressed"; readonly reason: WithheldReason };
 
-/**
- * Whether the route's conversation shows (DESIGN §9 C1b): always under verified access; without
- * it, only while the target's link is connected or less than the bound after it dropped, on either
- * clock. A link that never connected, or no target at all, vouches for nothing; a confirmed loss
- * suppresses it at once.
- */
+/** Current authority alone decides whether retained conversation content may be shown. */
 export function selectConversation(input: {
   readonly access: ConversationAccess;
-  /** The route target's machine; undefined while no target names the route's environment. */
   readonly machine: Pick<EnvironmentMachine, "link" | "linkLostAt"> | undefined;
   readonly now: Instant;
 }): ConversationView {
-  const { access, machine, now } = input;
-  if (access.kind === "authorized") return { kind: "shown", until: null };
-  if (access.kind === "lost") return { kind: "suppressed", reason: "access-denied" };
-  if (machine?.link.phase === "connected") return { kind: "shown", until: null };
-  const lostAt = machine?.linkLostAt ?? null;
-  if (lostAt !== null) {
-    const until = {
-      wall: lostAt.wall + CONVERSATION_UNVERIFIED_BOUND_MS,
-      mono: lostAt.mono + CONVERSATION_UNVERIFIED_BOUND_MS,
-    };
-    if (now.wall < until.wall && now.mono < until.mono) return { kind: "shown", until };
-  }
-  return { kind: "suppressed", reason: access.reason };
+  return conversationAccess(input.access);
 }
 
 const CONVERSATION_SURFACE = {

@@ -366,3 +366,6 @@ export {
 export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
 
 export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";
+
+export { creationHandoff } from "./projections/creationHandoff.ts";
+export { mateArrival } from "./projections/mateArrival.ts";

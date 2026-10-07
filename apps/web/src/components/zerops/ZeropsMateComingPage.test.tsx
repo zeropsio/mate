@@ -1,3 +1,4 @@
+import { Atom } from "effect/unstable/reactivity";
 // @vitest-environment happy-dom
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -107,6 +108,9 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 vi.mock("~/routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ mateLink: () => app.link }),
+}));
+vi.mock("~/state/shell", () => ({
+  environmentShell: { stateValueAtom: () => Atom.make({ status: "live" }) },
 }));
 vi.mock("~/state/entities", () => ({
   // A conversation's shell once its environment's conversations are read.

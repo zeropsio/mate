@@ -11,7 +11,6 @@ import {
   type Presence,
 } from "./environmentMachine.ts";
 import {
-  CONVERSATION_UNVERIFIED_BOUND_MS,
   conversationPhrase,
   routeGatePhrase,
   selectConversation,
@@ -406,11 +405,7 @@ const linked = (link: Link, lostAgoMs: number | null) => ({
   linkLostAt: lostAgoMs === null ? null : at(NOW.wall - lostAgoMs),
 });
 
-/**
- * DESIGN §9 C1b: a Mate conversation stays shown while its project's access is not verified only
- * while its link is connected, or for at most 10 min after the link dropped; a confirmed loss
- * suppresses it at once.
- */
+/** Only current authority permits protected conversation content. */
 const CONVERSATION_ROWS: ReadonlyArray<{
   readonly name: string;
   readonly access: ConversationAccess;
@@ -425,25 +420,25 @@ const CONVERSATION_ROWS: ReadonlyArray<{
     view: { kind: "shown", until: null },
   },
   {
-    name: "a lapse over a connected link keeps it shown",
+    name: "a lapse suppresses content even with an open socket",
     access: LAPSED,
     machine: linked(CONNECTED, null),
-    view: { kind: "shown", until: null },
-  },
-  {
-    name: "a lapse keeps it shown 9 min after the link dropped, until the bound",
-    access: LAPSED,
-    machine: linked(DOWN, 9 * MINUTE_MS),
-    view: { kind: "shown", until: at(NOW.wall + MINUTE_MS) },
-  },
-  {
-    name: "a lapse suppresses it 10 min after the link dropped",
-    access: LAPSED,
-    machine: linked(DOWN, CONVERSATION_UNVERIFIED_BOUND_MS),
     view: { kind: "suppressed", reason: "access-lapsed" },
   },
   {
-    name: "an unverified project suppresses it past the bound",
+    name: "a lapse suppresses content immediately after disconnect",
+    access: LAPSED,
+    machine: linked(DOWN, 9 * MINUTE_MS),
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+  {
+    name: "a lapse remains suppressed however long the link has been down",
+    access: LAPSED,
+    machine: linked(DOWN, 10 * MINUTE_MS),
+    view: { kind: "suppressed", reason: "access-lapsed" },
+  },
+  {
+    name: "an unverified project suppresses content",
     access: UNVERIFIED,
     machine: linked({ phase: "offline" }, 11 * MINUTE_MS),
     view: { kind: "suppressed", reason: "access-unverified" },
@@ -461,10 +456,10 @@ const CONVERSATION_ROWS: ReadonlyArray<{
     view: { kind: "suppressed", reason: "access-lapsed" },
   },
   {
-    name: "a denial awaiting its confirming read keeps a connected link's conversation",
+    name: "a denial withholds content even with an open socket",
     access: DENIED,
     machine: linked(CONNECTED, null),
-    view: { kind: "shown", until: null },
+    view: { kind: "suppressed", reason: "access-denied" },
   },
   {
     name: "a confirmed loss suppresses it even over a connected link",
@@ -473,7 +468,7 @@ const CONVERSATION_ROWS: ReadonlyArray<{
     view: { kind: "suppressed", reason: "access-denied" },
   },
   {
-    name: "the bound holds on the monotonic clock when the wall clock is set back",
+    name: "changing clocks cannot restore lapsed authority",
     access: LAPSED,
     machine: linked(DOWN, 5 * MINUTE_MS),
     now: { wall: NOW.wall - 60 * MINUTE_MS, mono: NOW.mono + 6 * MINUTE_MS },
