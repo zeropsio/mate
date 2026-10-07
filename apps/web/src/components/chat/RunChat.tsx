@@ -1930,7 +1930,7 @@ function OperationLine({
       ) : (
         <div className={CALL_PAD}>{head}</div>
       )}
-      {opens && disclosure.open && lines !== 0 ? (
+      {opens && disclosure.open ? (
         <div
           className={cn(
             "px-3 pb-2",
@@ -1940,13 +1940,15 @@ function OperationLine({
           data-chat-detail
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
-          <OperationDetail
-            environmentId={ctx.activeThreadEnvironmentId}
-            operation={operation}
-            threadRef={ctx.threadRef}
-            turnRuns={turnRuns}
-            {...(regions === null ? {} : { regions })}
-          />
+          {lines !== 0 ? (
+            <OperationDetail
+              environmentId={ctx.activeThreadEnvironmentId}
+              operation={operation}
+              threadRef={ctx.threadRef}
+              turnRuns={turnRuns}
+              {...(regions === null ? {} : { regions })}
+            />
+          ) : null}
           {failed && !undone ? (
             <OperationFixAction
               environmentId={ctx.activeThreadEnvironmentId}
@@ -1973,7 +1975,7 @@ function OperationFixAction({
       problem={{
         what: operationLineWords(operation),
         at: operation.settledAt ?? operation.anchorAt,
-        error: operation.explanation?.reason,
+        error: operation.explanation?.reason ?? operation.closing,
         logLines: operation.explanation?.logTail,
         ask: "Find out why, fix it, and try again.",
       }}
