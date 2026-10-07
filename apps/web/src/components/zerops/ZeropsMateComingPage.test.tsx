@@ -169,6 +169,9 @@ vi.mock("~/zerops/zeropsContainers", () => ({
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountData: () => ({ orgId: "org-1" }),
+  useAccountDataOptional: () => null,
+  useAccountOrgId: () => "org-1",
+  useProjection: () => undefined,
   useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
 }));
 vi.mock("~/zerops/accountOperations", () => ({
@@ -1147,6 +1150,18 @@ describe("comingSentenceOf — the sentence over a stop", () => {
     press,
   });
 
+  it("keeps the failed process's explanation when the originating press also failed", () => {
+    const reason = "Nic couldn't be set up: the project can't reach the internet (DNS).";
+    expect(
+      comingSentenceOf({
+        coming: { kind: "failed", line: reason, verb: "try-again" },
+        failureReason: reason,
+        progress: progressOf([sub("setup", "failed", "CommandExec: init command failed.")]),
+        nowMs: 0,
+      }),
+    ).toBe(reason);
+  });
+
   it.each([
     {
       case: "a step this tab ran stopped it, certain: the step says why",
@@ -1285,4 +1300,77 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   expect(said()).toContain("You can see this project in Zerops but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
   expect(buttons()).not.toContain("Connect");
+});
+
+describe("failed setup recovery fixture", () => {
+  it("keeps a fixed failed duration and offers retry, removal and the raw details", () => {
+    const process = {
+      id: "process-dns",
+      projectId: PROJECT,
+      serviceStackIds: ["zcp"],
+      actionName: "stack.create",
+      status: "FAILED",
+      created: "2026-10-07T10:00:00Z",
+      started: "2026-10-07T10:00:02Z",
+      finished: "2026-10-07T10:01:12Z",
+    };
+    const retry = vi.fn();
+    const remove = vi.fn();
+    let rendered: ReactTestRenderer;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: {
+            kind: "failed",
+            line: "Nic couldn't be set up: the project can't reach the internet (DNS).",
+            verb: "try-again",
+          },
+          progress: {
+            steps: [
+              {
+                id: "container",
+                label: "Container",
+                state: "failed",
+                startedAt: process.started,
+                endedAt: process.finished,
+              },
+            ],
+            active: null,
+            failed: null,
+            doneCount: 0,
+            total: 1,
+            complete: false,
+          },
+          nowMs: Date.parse(process.finished) + 3_600_000,
+          mate: { name: "Nic", project: "nevim" },
+          you: null,
+          onTryAgain: retry,
+          onRemove: remove,
+          setupFailureDetails: {
+            process,
+            projectUrl: `https://app.zerops.io/project/${PROJECT}`,
+            details: "curl: (6) Could not resolve host: zerops.io\nzcp init: command not found",
+            status: "ended",
+            retrying: false,
+          },
+        }),
+      );
+    });
+    const said = JSON.stringify(rendered!.toJSON());
+    expect(said).toContain("Nic's workspace");
+    expect(said).toContain("1:10");
+    expect(said).not.toContain("61:10");
+    expect(rendered!.root.findByType("summary").children).toEqual(["Details"]);
+    expect(rendered!.root.findByType("pre").children.join("")).toContain("Could not resolve host");
+    const actions = rendered!.root.findAllByType("button");
+    expect(actions.map((button) => button.children.join(""))).toEqual(["Try again", "Remove"]);
+    act(() => actions[0]!.props.onClick());
+    act(() => actions[1]!.props.onClick());
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(rendered!.root.findByType("a").props.href).toBe(
+      `https://app.zerops.io/project/${PROJECT}`,
+    );
+    act(() => rendered!.unmount());
+  });
 });

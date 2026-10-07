@@ -100,6 +100,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
+  CircleAlertIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
@@ -3286,11 +3287,12 @@ function MateDot({
 }
 
 /** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
-const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
+const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
   muted: "text-muted-foreground",
   "ink-2": "menu-ink-2",
   ink: "text-sidebar-foreground",
   failed: "text-status-failed-text",
+  attention: "text-status-attention-text",
 };
 
 /**
@@ -3500,13 +3502,16 @@ function MateComingLine({ line }: { readonly line: MateBornLine }) {
     <span
       className={cn(
         "truncate text-line leading-4.5 tabular-nums",
-        line.tone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}
       data-zerops-coming-tone={line.tone}
       data-zerops-surface="sidebar-mate-coming-line"
       key={line.words}
     >
+      {line.tone === "attention" ? (
+        <CircleAlertIcon aria-hidden="true" className="mr-1 inline size-3" />
+      ) : null}
       {mateBornLineText(line, nowMs)}
     </span>
   );

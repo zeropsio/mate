@@ -697,7 +697,7 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       slot: { kind: "age" },
       dot: "failed",
       ask: undefined,
-      reply: { kind: "words", text: "Setting up stopped", tone: "failed" },
+      reply: { kind: "words", text: "Setting up stopped", tone: "attention" },
     },
     {
       case: "the stand-up asking the person: any Mate's question",
@@ -1045,10 +1045,10 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       dot: undefined,
     },
     {
-      case: "not created: asleep, the red dot of something broken",
+      case: "not created: asleep, the attention dot",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
       face: "sleep",
-      dot: "failed",
+      dot: "attention",
     },
   ] as const)("$case", ({ coming, face, dot }) => {
     expect(mateComingRowView(view, coming)).toMatchObject({
@@ -1171,21 +1171,21 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
       },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
     {
       case: "the platform refused it",
       coming: { kind: "failed", line: "Could not be created.", verb: "remove" },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
     {
       case: "a New project's step stopped before the platform took anything",
       coming: { kind: "failed", line: "Git hosting could not be set up.", verb: "try-again" },
       nowMs: SINCE,
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
   ] as const)("$case", ({ coming, nowMs, text, tone }) => {
     const line = mateBornLine(coming);
@@ -1215,7 +1215,7 @@ describe("pendingBornLine — a Mate the listing does not hold yet", () => {
       case: "stopped",
       member: { ...MEMBER, failed: true },
       text: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
     },
   ] as const)("$case", ({ member, text, tone }) => {
     const line = pendingBornLine(member);

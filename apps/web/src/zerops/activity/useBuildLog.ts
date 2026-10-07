@@ -121,17 +121,24 @@ export function useBuildLog(input: UseBuildLogInput): UseBuildLogResult {
   const buildServiceStackId = input.query?.buildServiceStackId;
   const appVersionId = input.query?.appVersionId;
   const fromIso = input.query?.fromIso;
+  const tillIso = input.query?.tillIso;
+  const processId = input.query?.processId;
   const active = useMemo<ActiveLog | null>(() => {
-    if (projectId === null || buildServiceStackId === undefined || appVersionId === undefined) {
+    if (
+      projectId === null ||
+      buildServiceStackId === undefined ||
+      (appVersionId === undefined && processId === undefined)
+    ) {
       return null;
     }
     const query: BuildLogQuery = {
       buildServiceStackId,
-      appVersionId,
+      ...(appVersionId !== undefined ? { appVersionId } : { processId: processId! }),
       ...(fromIso === undefined ? {} : { fromIso }),
+      ...(tillIso === undefined ? {} : { tillIso }),
     };
     return { key: buildLogSessionKeyOf(projectId, query), projectId, query };
-  }, [appVersionId, buildServiceStackId, fromIso, projectId]);
+  }, [appVersionId, buildServiceStackId, fromIso, tillIso, processId, projectId]);
   const store = useMemo(() => new BuildLogBindingStore(), []);
 
   // Bound as the card mounts; what the registry holds reaches the card on the

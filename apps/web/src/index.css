@@ -8170,12 +8170,12 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-glyph-fail-bg {
-  fill: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
+  fill: color-mix(in oklab, var(--zerops-status-attention) 20%, transparent);
 }
 
 .arrival-glyph-fail-ink {
   fill: none;
-  stroke: var(--zerops-status-failed-text);
+  stroke: var(--zerops-status-attention-text);
   stroke-width: 1.6;
   stroke-linecap: round;
 }
@@ -9780,3 +9780,23 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* ==== end of the Vault tab ==== */
+
+.arrival-failure-details {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.arrival-failure-details summary,
+.arrival-failure-details a {
+  cursor: pointer;
+  color: var(--zerops-status-attention-text);
+}
+
+.arrival-failure-details pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

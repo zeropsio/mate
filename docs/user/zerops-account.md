@@ -57,6 +57,12 @@ Cleanup progress and failures stay visible. Use **Clean up sign-in tokens** to f
 leftovers, or **Try again** after a cleanup failure. Reloading preserves a failed cleanup and
 still requires **Try again**.
 
+When a Mate's container setup fails, its view explains the cause from Zerops's process result
+and setup log. Step durations stop at the recorded process end; missing timestamps have no
+invented duration. **Details** shows the last log lines and a Zerops link identifies the process.
+**Try again** starts a new container setup attempt; **Remove** deletes the failed Mate's project.
+A DNS failure means the project cannot reach the internet: try later or contact Zerops support.
+
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
 Mate's access; you can revoke Mate's token in Zerops account settings.

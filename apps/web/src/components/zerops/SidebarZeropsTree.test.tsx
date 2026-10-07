@@ -1056,7 +1056,7 @@ describe("a creation under way in the menu", () => {
     const row = html.slice(html.lastIndexOf("<button", at), html.indexOf("</button>", at));
     expect(row).toContain('data-mate-face-state="sleep"');
     expect(row).toContain(">Setting up stopped<");
-    expect(row).toContain('data-zerops-coming-tone="failed"');
+    expect(row).toContain('data-zerops-coming-tone="attention"');
   });
 
   // The owner, 2026-09-29: "on the left it looks like its ready to be opened, but it's not" — and
@@ -1181,7 +1181,7 @@ describe("a listed Mate still coming up", () => {
       case: "not created",
       coming: FAILED,
       says: "Setting up stopped",
-      tone: "failed",
+      tone: "attention",
       face: "sleep",
     },
   ] as const)(

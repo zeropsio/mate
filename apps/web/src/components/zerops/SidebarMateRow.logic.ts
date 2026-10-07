@@ -319,7 +319,7 @@ export type MateRowReply =
       readonly kind: "words";
       readonly text: string;
       /** Muted at rest, the second ink unread, full ink as a question, red as an error. */
-      readonly tone: "muted" | "ink-2" | "ink" | "failed";
+      readonly tone: "muted" | "ink-2" | "ink" | "failed" | "attention";
     }
   | { readonly kind: "live"; readonly words: string }
   | { readonly kind: "pending" }
@@ -671,7 +671,7 @@ const SETTING_UP_STOPPED = "Setting up stopped";
 const SETTING_UP_STOPPED_REPLY = {
   kind: "words",
   text: SETTING_UP_STOPPED,
-  tone: "failed",
+  tone: "attention",
 } as const satisfies MateRowReply;
 
 /** A Mate being born, as its row's one line says it (`mateBornLine`). */
@@ -679,7 +679,7 @@ export interface MateBornLine {
   readonly words: string;
   /** When its clock started, wall ms: the line counts up from it. None where nothing is held. */
   readonly since: number | undefined;
-  readonly tone: "muted" | "failed";
+  readonly tone: "muted" | "attention";
 }
 
 /**
@@ -693,7 +693,11 @@ export function mateBornLine(coming: MateComing): MateBornLine {
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
-const BORN_STOPPED: MateBornLine = { words: SETTING_UP_STOPPED, since: undefined, tone: "failed" };
+const BORN_STOPPED: MateBornLine = {
+  words: SETTING_UP_STOPPED,
+  since: undefined,
+  tone: "attention",
+};
 
 /** On its way: the clock beside it says for how long. */
 const BORN_WORDS = "Coming up";
@@ -738,10 +742,10 @@ export function mateRowOffersMenu(input: {
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
   return {
     ...view,
-    state: coming.kind === "failed" ? "failed" : "idle",
+    state: coming.kind === "failed" ? "needs" : "idle",
     face: matePose(view.face, { life: mateLifeOf(coming) }),
     slot: { kind: "none" },
-    dot: coming.kind === "failed" ? "failed" : undefined,
+    dot: coming.kind === "failed" ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
