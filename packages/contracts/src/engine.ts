@@ -72,7 +72,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * A union discriminated by `key` whose member set grows: a known discriminator decodes strictly
  * (a damaged body fails), an unknown one decodes to the fallback member built by `toFallback`.
  */
-const forwardCompatibleUnion = <
+export const forwardCompatibleUnion = <
   const Members extends ReadonlyArray<Schema.Top>,
   Fallback extends Schema.Top,
 >(options: {
@@ -104,7 +104,7 @@ const forwardCompatibleUnion = <
  * A literal set that grows: a known literal decodes as itself, any other string as `"unknown"`;
  * encoding takes only the known literals (and `"unknown"`), so a writer never stores a stray one.
  */
-const forwardCompatibleLiterals = <const Literals extends ReadonlyArray<string>>(
+export const forwardCompatibleLiterals = <const Literals extends ReadonlyArray<string>>(
   literals: Literals,
 ) => {
   const known = new Set<string>(literals);
@@ -383,6 +383,11 @@ const itemBaseFields = {
   rev: Schema.Int,
   at: Millis,
   by: ItemActor,
+  /**
+   * The wire cut the item to its budget: which part, and how long it is whole (UTF-8 bytes). The
+   * whole part is read on demand; a stored item never carries it.
+   */
+  cut: Schema.optionalKey(Schema.Struct({ part: Schema.String, total: Schema.Int })),
 };
 
 /** An item of the conversation's record, flattened as the clients read it. */
@@ -424,6 +429,7 @@ export const Item = forwardCompatibleUnion({
     rev: raw.rev as number,
     at: raw.at as number,
     by: raw.by as ItemActor,
+    ...(isRecord(raw.cut) ? { cut: raw.cut as { part: string; total: number } } : {}),
     kind: "unknown" as const,
     type,
     summary: typeof raw.summary === "string" ? raw.summary : null,
