@@ -263,15 +263,21 @@ table keeps the decisions.
     named `t3code`, settling closes idle shells, passive rows stop retaining pollers (the web row
     flags wait for the entity store's key), stale action shortcuts, file preview read errors,
     composer suggestions for screen readers. **Dev fix:** the dev server loads jsonc-parser by name
-    again; only the bundle aliases its ES build. **Integration:** main's usage-coverage rewrite
+    again; only the bundle aliases its ES build. **Sweep (3 ports, hand-ported):** a link to the
+    project root opens the Files explorer; the `mate` CLI refuses an accidental launch (a bare word
+    that is no directory, `mate`/`mate start` over a live server; `serve`, zcp's supervised launch,
+    has no preflight) and gains `mate help`; `mate trace summary` (200,224 spans of a 100 MB trace
+    set in 724 ms). Skipped with measurements: `fffe6e6c8` (⌘K at 20–100 rows re-renders in
+    3.5–8.4 ms; virtualizing pays only near 1,000 rows), `f21d6da51` (the fork's diff arrives as
+    one patch, so per-patch header re-renders never happen), `3a7058da5` (draft and thread are
+    separate routes here, so `ChatView` remounts whatever the effect's deps). **Integration:** main's usage-coverage rewrite
     keeps its layout and shows the contract-mismatch lines; both queue senders record a send in
     the account's turn receipts through one helper. **Declined:** the two OTEL ports (`fd996d15e`,
     `74ee5153e`) — Zerops project variables reach the zcp service, so a person's
     `OTEL_EXPORTER_OTLP_ENDPOINT` for their own apps would make the Mate export to their collector;
     a Mate-specific variable if ever wanted. The Codex API-key warning fixes (`bf7121d7a`,
     `a8927712f`) — their code is the deleted telemetry. Legacy-sidebar items — that tree renders
-    only for environments that are not Zerops. `3a7058da5` (the route remounts here; its runtime
-    half is V2), `fffe6e6c8` (diverged palette, low value). The visible adoptions (mermaid, shell
+    only for environments that are not Zerops. The visible adoptions (mermaid, shell
     highlighting, usage anatomy) wait for the owner.
   - _Open security candidates:_ `rev-parse --verify <rev>` sites take no `--end-of-options` (git
     learned it there in 2.30); the dead desktop bootstrap grant (`PairingGrantStore.ts`, nothing
