@@ -1365,9 +1365,11 @@ re-checked against passes 27 and later, nor against the rebuild.
 - **Live checks.** Resources tagged `probe:<topic>-<date>`, listed, deleted, counts diffed;
   credentials from the environment only. Read sensitive service variables with an integration token:
   a person's session reads `REDACTED`.
-- **Where to write.** A decision → the spec and `design-decisions.md`. A measured fact → the ledger,
-  one writer. A screen note → the journal. A change of state → this page, in the same commit as the
-  change.
+- **Where to write.** Follow `CLAUDE.md`'s “What a doc may hold”. General rules → the design guide;
+  domain terms → one domain document; the zcp↔mate seam → the spec §2.8. Behaviour → a test whose
+  title is the product sentence; appearance → code; reasons and reversals → the commit message,
+  never the decision log. Platform facts our code relies on → a comment beside that code or a short
+  ledger entry with its verification command, one writer. Transient work stays local.
 
 41. **A deploy job that fails before it reaches the broker is invisible** (run 5, 2026-10-02).
     Closed in pass 35 (mate 0.11.88), measured in run 6 (the menu and the cell said it on the first

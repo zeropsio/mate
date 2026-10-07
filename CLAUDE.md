@@ -20,6 +20,18 @@ took 53 min, 218 calls, 83 M tokens and 9 commits — +44 lines of CSS, +1,136 l
 - **Pass** — the owner calls it a pass, or it redesigns several surfaces or lands a slice: the loop
   in `docs/internals/zerops/fork.md` §5.
 
+## What a doc may hold
+
+A line in `docs/` must hold for something that does not exist yet: a rule across surfaces, a term,
+the zcp↔mate seam, a platform fact our code relies on. Anything about one surface, flow or component
+is a test (behaviour: its title is the product sentence, plus a one-line why when the owner decided
+against the obvious) or the code itself (look). Reasons and reversals go in the commit message.
+
+A rewrite keeps every test sentence: it changes how a test arranges its input, never what its title
+says. Deleting a sentence removes the behaviour and needs the owner's word in the commit.
+A behaviour a person sees is tested against the surface's input (the record it reads → what it
+shows), so swapping the data source turns it red.
+
 ## Where knowledge lives
 
 This file is a MAP, not a knowledge store — it never caches a product fact that already lives in
@@ -34,9 +46,8 @@ the spec or the ledger. To answer a question, go to the home:
 | Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
 | Measured facts (dated, one writer)                                                                                       | the ledger: `docs/internals/zerops/{verified,questions,hacks,map,poc-findings}.md` |
 | Client design system — vocabulary, glossary, icon map, rules R1–R11 with their tests, exception ledgers                  | `docs/internals/zerops/design-system.md`                                           |
-| Design decisions taken inside the programme, dated                                                                       | `docs/internals/zerops/design-decisions.md`                                        |
 | Crew mode — levels, code map, switch, crew home, RPCs, seams                                                             | `docs/internals/zerops/crew.md`                                                    |
-| Behavior invariant                                                                                                       | a test                                                                             |
+| Behavior invariant                                                                                                       | a test whose title is the product sentence                                         |
 | Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                           |
 | Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                        |
 
@@ -103,5 +114,6 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 ## Maintenance
 
 CLAUDE.md earns a line only for a cross-cutting trap or a discipline that isn't test-/spec-shaped.
-A design decision belongs in `../zcp/docs/spec-mate.md`; a fork rule in `fork.md`; a measured fact
-in the ledger. When one of those already states it, delete the line here.
+Follow “What a doc may hold” when choosing a home. A fork rule belongs in `fork.md`; a platform
+fact our code relies on belongs beside that code or in a short ledger entry with its verification
+command. When a home already states it, delete the line here.

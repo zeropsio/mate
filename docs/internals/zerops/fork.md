@@ -177,10 +177,13 @@ a vendor, and `t3.json` is the project file's name.
 
 ## 5. How work is done — the zcp loop, transplanted
 
-- **Homes**: design → `../../../../zcp/docs/spec-mate.md`; measured facts → the ledger
-  (`verified.md`, `questions.md`, `hacks.md`, `map.md`, dated, with the command; answered
-  questions leave `questions.md`); behaviour → tests; the map → this fork's `CLAUDE.md`/
-  `AGENTS.md` (never caches product knowledge). Plans are transient.
+- **Homes**: general rules → the design guide; domain terms → one domain document; the zcp↔mate
+  seam → `../../../../zcp/docs/spec-mate.md` §2.8. Surface, flow and component behaviour → tests
+  whose titles are product sentences, with a one-line why for an owner's counterintuitive choice;
+  appearance → code. Reasons and reversals → commit messages, never the decision log. Platform
+  facts our code relies on → a comment beside that code or a short ledger entry with its verification
+  command (one writer). The map → `CLAUDE.md` / `AGENTS.md`; plans are transient. Follow
+  `CLAUDE.md`'s “What a doc may hold”; a rewrite keeps every test sentence.
 - **Loop per pass or slice** (a tweak or a one-surface change runs its own tier in `CLAUDE.md`,
   "Size the work first"): FRAME → PROVE (live on `z3-eval`) → SHAPE (plan + a `judge` pass; Codex only when the owner asks) →
   BUILD (one worktree per slice, RED → GREEN, Sonnet slices with self-contained briefs, atomic
