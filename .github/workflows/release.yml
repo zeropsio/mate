@@ -96,6 +96,10 @@ jobs:
           file "$out/pty.node"
           echo "dir=$out" >> "$GITHUB_OUTPUT"
 
+      - name: Build kernel health event helper
+        run: |
+          gcc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -Os -static -s native/health-events/main.c -o apps/server/dist/health-events
+
       - name: Pack bundle
         id: pack
         env:
@@ -133,6 +137,8 @@ jobs:
 
           installed_version="$(./node_modules/.bin/mate --version)"
           echo "Installed binary version: $installed_version"
+
+          test -x ./node_modules/zerops-mate/dist/health-events
 
           # The bundled node-pty must have satisfied npm without a compiler:
           # a build/ directory means node-gyp ran, which the container cannot.

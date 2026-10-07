@@ -7,8 +7,22 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
 } from "@t3tools/contracts";
+import { WS_METHODS } from "@t3tools/contracts";
+import type { EnvironmentRpcStreamValue } from "../../rpc/client.ts";
+import type { ServerConfigProjection } from "../../state/serverConfigProjection.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 export interface MateFeedValues {
+  readonly mateServerConfig: ServerConfigProjection;
+  readonly mateWelcome: import("@t3tools/contracts").ServerLifecycleWelcomePayload;
+  readonly mateProviderAuth: EnvironmentRpcStreamValue<typeof WS_METHODS.providerAuthSubscribe>;
+  readonly mateProviderInstall: EnvironmentRpcStreamValue<
+    typeof WS_METHODS.providerInstallSubscribe
+  >;
+  readonly mateResourceTelemetry: EnvironmentRpcStreamValue<
+    typeof WS_METHODS.subscribeResourceTelemetry
+  >;
+  readonly mateProjectClone: EnvironmentRpcStreamValue<typeof WS_METHODS.subscribeProjectClones>;
+  readonly mateClientSession: import("@t3tools/contracts").AuthSessionState;
   readonly mateLifecycle: ZeropsLifecycle;
   readonly mateAgentAuth: ZeropsAgentAuthSnapshot;
   readonly mateCrew: CrewSnapshot;
@@ -45,6 +59,13 @@ const spec = <F extends MateFeedFamily>(
   scope: { source: "mate", suffix: family, leaving: "removed", demand: "detail", mode },
 });
 export const MATE_FEED_FAMILIES = {
+  mateServerConfig: spec("mateServerConfig", "realtime"),
+  mateWelcome: spec("mateWelcome", "realtime"),
+  mateProviderAuth: spec("mateProviderAuth", "realtime"),
+  mateProviderInstall: spec("mateProviderInstall", "realtime"),
+  mateResourceTelemetry: spec("mateResourceTelemetry", "realtime"),
+  mateProjectClone: spec("mateProjectClone", "realtime"),
+  mateClientSession: spec("mateClientSession", "realtime"),
   mateLifecycle: spec("mateLifecycle", "realtime"),
   mateAgentAuth: spec("mateAgentAuth", "realtime"),
   mateCrew: spec("mateCrew", "realtime"),

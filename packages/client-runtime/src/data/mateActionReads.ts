@@ -70,3 +70,22 @@ export const mateActionsForEnvironmentAtom = Atom.family((environmentId: string)
     return host === null ? [] : get(host.data.project(mateActions, environmentId));
   }),
 );
+
+export function mateSetupRetryCommand<R, E>(runtime: Atom.AtomRuntime<R, E>) {
+  return createRuntimeCommand(runtime, {
+    label: "mate:setup:retry",
+    execute: (
+      target: {
+        readonly environmentId: EnvironmentId;
+        readonly input: { readonly orgId: string; readonly origin: string };
+      },
+      registry,
+    ) =>
+      Effect.gen(function* () {
+        const host = registry.get(mateActionsAtom);
+        if (host === null)
+          return yield* new MateActionUnavailable({ message: "The account is not ready." });
+        return yield* host.execute("standUpRetry", target.environmentId, {}, target.input);
+      }),
+  });
+}

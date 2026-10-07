@@ -16,6 +16,7 @@ import {
   hqChatMateApps,
   hqChatMateNames,
   reduceCommandPaletteUiState,
+  restartCodingAgentPlan,
   type CommandPaletteGroup,
   paletteNoMatchMessage,
   paletteListsRead,
@@ -808,4 +809,71 @@ describe("palette list settlement includes HQ and stays with its organization", 
       paletteListsRead(next, { ...input, organizationId: "org-b", hqMatesRead: true }).read,
     ).toBe(true);
   });
+});
+
+describe("restartCodingAgentPlan", () => {
+  const session = (status: "running" | "starting" | "idle" | "ready" | "stopped") => ({
+    threadId: ThreadId.make("thread-1"),
+    status,
+    providerName: "claudeAgent",
+    providerInstanceId: ProviderInstanceId.make("claude-work"),
+    runtimeMode: "full-access" as const,
+    activeTurnId: null,
+    lastError: null,
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  });
+  const rescan = (instanceId: string, cwd = "/workspace/project") => ({
+    instanceId,
+    cwd,
+    fresh: true,
+  });
+  it.each([
+    {
+      name: "an idle session stops, and its own coding agent rescans the Mate's copy",
+      thread: makeThread({ session: session("idle"), worktreePath: "/workspace/copy" }),
+      plan: {
+        available: true,
+        stop: true,
+        rescan: rescan("claude-work", "/workspace/copy"),
+      },
+    },
+    {
+      name: "a ready session stops: its process holds the old skills",
+      thread: makeThread({ session: session("ready") }),
+      plan: { available: true, stop: true, rescan: rescan("claude-work") },
+    },
+    {
+      name: "a stopped session is not stopped again",
+      thread: makeThread({ session: session("stopped") }),
+      plan: { available: true, stop: false, rescan: rescan("claude-work") },
+    },
+    {
+      name: "without a session the selected coding agent rescans",
+      thread: makeThread(),
+      plan: { available: true, stop: false, rescan: rescan("codex") },
+    },
+    {
+      name: "nothing is rescanned when the Mate's folder is unknown",
+      thread: makeThread(),
+      workspaceRoot: null,
+      plan: { available: true, stop: false, rescan: null },
+    },
+  ])(
+    "restarting the coding agent is offered while it is idle: $name",
+    ({ thread, plan, workspaceRoot }) => {
+      expect(
+        restartCodingAgentPlan(thread, workspaceRoot === null ? undefined : "/workspace/project"),
+      ).toEqual(plan);
+    },
+  );
+
+  // Stopping would end the run and cancel the messages still starting.
+  it.each(["running", "starting"] as const)(
+    "restarting the coding agent is unavailable while it works (%s), with the reason",
+    (status) => {
+      expect(
+        restartCodingAgentPlan(makeThread({ session: session(status) }), "/workspace/project"),
+      ).toEqual({ available: false, reason: "It is working. Stop the run first." });
+    },
+  );
 });

@@ -1,3 +1,6 @@
+import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { expiredAgentNotice } from "../zerops/mateRecovery.logic";
+import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
@@ -198,6 +201,7 @@ import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
+import { queuedSendAwaitsServer, turnSendAsk } from "./chat/queuedMessageSender.logic";
 import {
   crewMessagePlaceholder,
   crewRunsOnWord,
@@ -319,7 +323,10 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  beginQueuedSend,
+  drainGenerationOf,
   isQueuedMessageDue,
+  settleQueuedSend,
   queuedSendAttemptIds,
   latestCompletedToolActivityId,
   type QueuedComposerMessage,
@@ -444,6 +451,7 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
+  projectScriptKeybindingWrites,
   dismissBranchMismatchForSession,
   hasEnvironmentReconnectWarningGraceElapsed,
   latestTurnStartFailureId,
@@ -642,6 +650,17 @@ type EnvironmentUnavailableState = {
   readonly connection: EnvironmentConnectionPresentation;
 };
 
+/** The effort written into a prompt's text, for the agents that read it there; null where none is. */
+function outgoingPromptEffort(params: {
+  provider: ProviderDriverKind;
+  model: string | null;
+  models: ReadonlyArray<ServerProvider["models"][number]>;
+  effort: string | null;
+}): string | null {
+  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
+  return resolvePromptInjectedEffort(caps, params.effort) ?? null;
+}
+
 function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;
   model: string | null;
@@ -649,9 +668,7 @@ function formatOutgoingPrompt(params: {
   effort: string | null;
   text: string;
 }): string {
-  const caps = getProviderModelCapabilities(params.models, params.model, params.provider);
-  const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
-  return applyClaudePromptEffortPrefix(params.text, promptEffort);
+  return applyClaudePromptEffortPrefix(params.text, outgoingPromptEffort(params));
 }
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
@@ -1408,6 +1425,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    reportFailure: false,
+  });
+  const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
   });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
@@ -2443,11 +2463,29 @@ export default function ChatView(props: ChatViewProps) {
   const zeropsMates = useZeropsMateDirectory();
   // Who lives here as the directory reads it: the composer says nothing until it is known.
   const whoLivesHereKind = useZeropsMate(environmentId).kind;
+  const routeHealthMate = zeropsMateAt(zeropsMates, environmentId);
+  const healthRead = useAtomValue(
+    mateHealthAtom(routeHealthMate.kind === "mate" ? (routeHealthMate.mate.projectId ?? "") : ""),
+  );
+  const healthCopy =
+    routeHealthMate.kind === "mate" ? mateHealthCopy(routeHealthMate.mate.name, healthRead) : null;
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
+  const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
+  const mateRecoveryAction = useMateRecoveryAction(
+    recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? null) : null,
+  );
   const tryMateAgain = useTryMateAgain();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
+    if (healthCopy !== null)
+      items.push({
+        id: `health:${environmentId}`,
+        variant: healthCopy.severity === "critical" ? "error" : "warning",
+        icon: null,
+        title: healthCopy.title,
+        description: healthCopy.description,
+      });
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
     const environmentReconnecting =
       unavailableConnection !== null &&
@@ -2461,6 +2499,9 @@ export default function ChatView(props: ChatViewProps) {
       const banner = mateVoiceBannerItem({
         environmentId,
         voice: mateLinkVoice,
+        onContainerAction: mateRecoveryAction.act,
+        busy: mateRecoveryAction.busy,
+        projectUrl: routeMateAt.mate.projectUrl,
         // A container that failed is stopped and started; any other Mate is asked again, its
         // exchange as well as its link.
         onRetry: () => {
@@ -2484,9 +2525,12 @@ export default function ChatView(props: ChatViewProps) {
     }
     return items;
   }, [
+    healthCopy,
     activeEnvironmentUnavailableState,
     environmentId,
     mateLinkVoice,
+    mateRecoveryAction.act,
+    mateRecoveryAction.busy,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
     tryMateAgain,
@@ -2630,8 +2674,10 @@ export default function ChatView(props: ChatViewProps) {
         pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0
       ]?.id ?? null,
     supported:
-      supportsAttachmentUploads &&
-      attachmentEnvironmentConfig?.environment.capabilities.questionAttachments === true,
+      attachmentEnvironmentConfig === null
+        ? null
+        : supportsAttachmentUploads &&
+          attachmentEnvironmentConfig.environment.capabilities.questionAttachments === true,
     onError: (message) => {
       if (activeThreadId) setThreadError(activeThreadId, message);
     },
@@ -3703,18 +3749,44 @@ export default function ChatView(props: ChatViewProps) {
         command: input.keybindingCommand,
       });
 
-      if (isElectron && keybindingRule) {
-        return mapAtomCommandResult(
-          await upsertKeybinding({
-            environmentId,
-            input: keybindingRule,
-          }),
-          () => undefined,
-        );
+      if (!isElectron) return updateResult;
+      const scriptId =
+        input.keybindingCommand === null
+          ? null
+          : projectScriptIdFromCommand(input.keybindingCommand);
+      const writes = projectScriptKeybindingWrites({
+        rule: keybindingRule,
+        command: input.keybindingCommand,
+        bound: environmentById.get(environmentId)?.serverConfig?.keybindings ?? [],
+        retainedElsewhere:
+          scriptId !== null &&
+          allProjects.some(
+            (other) =>
+              other.environmentId === environmentId &&
+              other.id !== input.projectId &&
+              resolveProjectScripts(settings, other).some((script) => script.id === scriptId),
+          ),
+      });
+      for (const rule of writes.remove) {
+        const removed = await removeKeybinding({ environmentId, input: rule });
+        if (removed._tag === "Failure") return mapAtomCommandResult(removed, () => undefined);
       }
-      return updateResult;
+      return writes.upsert === null
+        ? updateResult
+        : mapAtomCommandResult(
+            await upsertKeybinding({ environmentId, input: writes.upsert }),
+            () => undefined,
+          );
     },
-    [environmentId, updateProjectScriptSettings, upsertKeybinding],
+    [
+      allProjects,
+      environmentById,
+      environmentId,
+      removeKeybinding,
+      settings,
+      updateProjectScriptSettings,
+      upsertKeybinding,
+    ],
   );
   const saveProjectScript = useCallback(
     async (input: NewProjectScriptInput): Promise<AtomCommandResult<void, unknown>> => {
@@ -5426,11 +5498,27 @@ export default function ChatView(props: ChatViewProps) {
     if (zeropsOwnedAgent === undefined) return null;
     // Said only on a known answer: "nobody can run it" is not what loading looks like.
     if (zeropsWriterKind === "unknown") return null;
-    // A token-authorized agent is nobody's personal login: an API key belongs
-    // to the project, so nothing is said about it.
-    if (zeropsOwnedAgent.flagToken) return null;
     // Someone else's agent says so in the footer that replaces the composer.
     if (zeropsReadOnly !== null) return null;
+    const expired = expiredAgentNotice(
+      zeropsOwnedAgent,
+      chromeMate?.kind === "mate" ? chromeMate.mate.name : "This Mate",
+      zeropsOwnedAgent.agentId === "codex" ? "Codex" : "Claude Code",
+    );
+    if (expired !== null)
+      return {
+        id: `agent-login:${zeropsOwnedAgent.agentId}`,
+        variant: "warning",
+        icon: <LockIcon />,
+        title: expired,
+        actions: (
+          <Button size="xs" onClick={openAgentAuthDialog}>
+            Sign in
+          </Button>
+        ),
+      };
+    // A working token belongs to the project and needs no ownership notice.
+    if (zeropsOwnedAgent.flagToken) return null;
     const notice = agentOwnershipComposerNotice(zeropsAgentOwnership);
     if (notice === undefined) return null;
     return {
@@ -5450,6 +5538,7 @@ export default function ChatView(props: ChatViewProps) {
     zeropsWriterKind,
     zeropsOwnedAgent,
     zeropsReadOnly,
+    chromeMate,
   ]);
 
   /**
@@ -6699,6 +6788,18 @@ export default function ChatView(props: ChatViewProps) {
         agentNotes: [...agentNotes],
         vaultChanges: [...turnContext.vaultChanges],
         submissionIntent,
+        // What it leaves with if its conversation is not on screen by then.
+        sendSettings: {
+          modelSelection: ctxSelectedModelSelection,
+          runtimeMode,
+          interactionMode: sendInteractionMode,
+          promptEffort: outgoingPromptEffort({
+            provider: ctxSelectedProvider,
+            model: ctxSelectedModel,
+            models: ctxSelectedProviderModels,
+            effort: ctxSelectedPromptEffort,
+          }),
+        },
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         createdAt: new Date().toISOString(),
       });
@@ -6785,14 +6886,13 @@ export default function ChatView(props: ChatViewProps) {
     // Every early return above leaves a queued message in the queue for a
     // later retry. From here on a failure hands it back held.
     if (queuedMessage) {
+      // Marked in flight for both senders: the next message waits for this one.
       const taken = activeThreadKey
-        ? useQueuedMessageStore
-            .getState()
-            .take(
-              activeThreadKey,
-              queuedMessage.id,
-              latestCompletedToolActivityId(threadActivities),
-            )
+        ? beginQueuedSend(
+            activeThreadKey,
+            queuedMessage.id,
+            latestCompletedToolActivityId(threadActivities),
+          )
         : null;
       if (!taken) {
         sendInFlightRef.current = false;
@@ -6802,7 +6902,7 @@ export default function ChatView(props: ChatViewProps) {
     // Stop drains the queue. A queued send whose upload was still running at
     // that moment must not start a turn afterwards; it checks this before
     // dispatch and hands the message back to the composer instead.
-    const drainGenerationAtTake = useQueuedMessageStore.getState().drainGeneration;
+    const drainGenerationAtTake = activeThreadKey ? drainGenerationOf(activeThreadKey) : 0;
     // A queued send always knows its ids: a retry after an interruption goes with the same ones.
     const attemptIds =
       queuedMessage === undefined
@@ -6822,6 +6922,7 @@ export default function ChatView(props: ChatViewProps) {
       message: QueuedComposerMessage | undefined = queuedMessage,
     ) => {
       if (!message || !activeThreadKey) return;
+      settleQueuedSend(activeThreadKey, null);
       const outcome = queuedSendOutcome(failure, message.retries ?? 0);
       const store = useQueuedMessageStore.getState();
       if (outcome.action === "requeue") {
@@ -6892,9 +6993,11 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (
       queuedMessage &&
-      useQueuedMessageStore.getState().drainGeneration !== drainGenerationAtTake
+      activeThreadKey &&
+      drainGenerationOf(activeThreadKey) !== drainGenerationAtTake
     ) {
       sendInFlightRef.current = false;
+      settleQueuedSend(activeThreadKey, null);
       restoreQueuedMessagesToComposer([queuedMessage]);
       return;
     }
@@ -6932,6 +7035,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
+        if (queuedMessage && activeThreadKey) settleQueuedSend(activeThreadKey, null);
         if (supportsAttachmentUploads) {
           releaseAttachmentUploads(composerImagesSnapshot);
           releaseAttachmentUploads(composerFilesSnapshot);
@@ -7069,16 +7173,16 @@ export default function ChatView(props: ChatViewProps) {
         }),
       );
     }
+    // The menu's row says what went until the conversation does (`sentAsk.ts`); a queued message
+    // records the same operation here as when the root sender sends it.
+    const sentAsk = turnSendAsk({
+      trimmedPrompt: trimmed,
+      messageId: messageIdForSend,
+      threadId: threadIdForSend,
+      at: messageCreatedAt,
+    });
+    if (sentAsk !== null) sendTurnReceipts?.requested(environmentId, sentAsk);
     if (!queuedMessage) {
-      // The menu's row says what went until the conversation does (`sentAsk.ts`).
-      if (trimmed.length > 0 && !isSlashCommand(trimmed)) {
-        sendTurnReceipts?.requested(environmentId, {
-          messageId: messageIdForSend,
-          threadId: threadIdForSend,
-          text: trimmed,
-          at: messageCreatedAt,
-        });
-      }
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -7200,6 +7304,9 @@ export default function ChatView(props: ChatViewProps) {
             : turnContext.vaultChanges
           : [];
       turnStartAttempted = true;
+      if (queuedMessage && activeThreadKey) {
+        settleQueuedSend(activeThreadKey, createLocalDispatchSnapshot(activeThread));
+      }
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -7355,6 +7462,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
     sendInFlightRef.current = false;
+    // A queued send that ended without its turn leaves nothing in flight for the next to wait on.
+    if (queuedMessage && activeThreadKey && !turnStartSucceeded) {
+      settleQueuedSend(activeThreadKey, null);
+    }
     if (!turnStartSucceeded) {
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -7378,11 +7489,28 @@ export default function ChatView(props: ChatViewProps) {
   // user resolves them.
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
+  // The open conversation sends its own queue; the root sender sends the others'
+  // (`QueuedMessageSender`). A send in flight from either is waited for here.
+  useEffect(
+    () =>
+      activeThreadKey ? useQueuedMessageStore.getState().holdOpen(activeThreadKey) : undefined,
+    [activeThreadKey],
+  );
+  const queuedSendInFlight = useQueuedMessageStore((state) =>
+    activeThreadKey ? state.queuedSendByThreadKey[activeThreadKey] : undefined,
+  );
+  const queuedSendInFlightAwaitsServer = queuedSendAwaitsServer({
+    send: queuedSendInFlight,
+    thread: activeThread ?? null,
+    phase,
+    pendingRequest: queueBlockedByPendingRequest,
+  });
   // onSend bails early on transient gates (environment offline, checkpoint
   // rewinding, messages loading, no provider yet, zerops D6 block) and
   // leaves the message queued. Re-run when any of them clear so a due
   // message does not wait for an unrelated phase change.
   const queueSendGate =
+    queuedSendInFlightAwaitsServer ||
     activeEnvironmentUnavailable ||
     isRevertingCheckpoint ||
     threadDetailLoading ||

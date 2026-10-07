@@ -16,7 +16,6 @@ import {
   moveMate,
   removeProject,
   denyProjectRead,
-  settleProjectRefusal,
   startStageBuild,
   stageService,
   holdDetails,
@@ -309,15 +308,6 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       ) => moveMate(s.drivers, name, app, kind),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
-      settlesRefusal: (name: string) =>
-        settleProjectRefusal(s.drivers, name, s.clock.advance, () =>
-          s.page.evaluate(
-            () =>
-              new Promise<void>((resolve) =>
-                requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-              ),
-          ),
-        ),
       builds: (name: string) => startStageBuild(s.drivers, name),
     },
   };

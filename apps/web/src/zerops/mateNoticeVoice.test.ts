@@ -92,8 +92,8 @@ describe("the web Mate's link notice", () => {
     expect(
       say({ kind: "container", container: { level: "inactive", status: "STOPPED" } }),
     ).toMatchObject({
-      text: "Rosa is stopped. Open projects to start the container.",
-      actions: ["try-now", "start"],
+      text: "Rosa's container is stopped. Start Rosa to reconnect.",
+      actions: ["start"],
     });
   });
   it("leaves a ready conversation quiet", () => {

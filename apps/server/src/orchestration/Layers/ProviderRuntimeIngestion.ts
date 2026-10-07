@@ -1083,6 +1083,7 @@ export function runtimeEventToActivities(
             ...(event.payload.parentToolUseId
               ? { parentToolUseId: event.payload.parentToolUseId }
               : {}),
+            ...(event.payload.presentation ? { presentation: event.payload.presentation } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,
@@ -1111,6 +1112,7 @@ export function runtimeEventToActivities(
             ...(event.payload.parentToolUseId
               ? { parentToolUseId: event.payload.parentToolUseId }
               : {}),
+            ...(event.payload.presentation ? { presentation: event.payload.presentation } : {}),
             ...(event.payload.unreturned === true ? { unreturned: true } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,
@@ -1140,6 +1142,7 @@ export function runtimeEventToActivities(
             ...(event.payload.parentToolUseId
               ? { parentToolUseId: event.payload.parentToolUseId }
               : {}),
+            ...(event.payload.presentation ? { presentation: event.payload.presentation } : {}),
             ...(event.payload.responseId ? { responseId: event.payload.responseId } : {}),
           },
           turnId: toTurnId(event.turnId) ?? null,

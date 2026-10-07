@@ -1,3 +1,7 @@
+import { mateAction } from "../mateActions.ts";
+import { readsOfState } from "../../store.ts";
+import { mateSetupOwner } from "../../families/mateSetup.ts";
+import { workspaceFailure } from "../../adapters/mateWorkspace.ts";
 /** The single Mate command I/O boundary. A lost answer stays uncertain and is never re-sent. */
 import {
   WS_METHODS,
@@ -28,7 +32,6 @@ import * as Clock from "effect/Clock";
 import { mateActionRequestId, mateActionRequestScope } from "../../families/mateActionRequest.ts";
 import { streamOf } from "../../reducer.ts";
 import type { AccountStore } from "../../store.ts";
-import { classifyMateFeedFailure } from "../../adapters/mateFeeds.ts";
 export class MateActionUnavailable extends Schema.TaggedError<MateActionUnavailable>()(
   "MateActionUnavailable",
   { message: Schema.String },
@@ -52,13 +55,38 @@ export function makeMateActions(options: {
   readonly makeId: () => string;
   readonly store: AccountStore;
   readonly registry: EnvironmentRegistry["Service"];
+  readonly setup?: ReturnType<typeof import("../../adapters/mateSetup.ts").makeMateSetupDemand>;
   readonly revalidate: (action: MateAction | "agentAuthCheck", environmentId: string) => void;
 }) {
   let closed = false;
+  const observing = new Map<string, () => void>();
+  const unlisten = options.store.subscribe(() => {
+    if (closed) return;
+    const read = readsOfState(options.store.state());
+    for (const [requestId, release] of [...observing]) {
+      const record = options.store.state().operations.get(requestId);
+      if (record?.intent.kind !== "mate-action" || record.receipt === null) continue;
+      const settled = mateAction.settledBy?.(read, record.intent, record.receipt);
+      if (settled == null) continue;
+      observing.delete(requestId);
+      options.store.dispatch({
+        kind: "operation-receipt",
+        receipt: {
+          ...record.receipt,
+          outcome:
+            settled.kind === "succeeded"
+              ? { kind: "succeeded", evidence: "The Mate's setup reported completion." }
+              : { kind: "failed", evidence: settled.reason },
+        },
+      });
+      release();
+    }
+  });
   const execute = <A extends MateAction>(
     action: A,
     environmentId: EnvironmentId,
     input: MateActionInput<A>,
+    setupContext?: { readonly orgId: string; readonly origin: string },
   ) =>
     Effect.gen(function* () {
       if (closed)
@@ -66,7 +94,24 @@ export function makeMateActions(options: {
           new MateActionUnavailable({ message: "This account has closed." }),
         );
       const requestId = options.makeId();
-      const intent = { environmentId, action, target: mateActionTarget(input) };
+      const setupOwner =
+        setupContext === undefined
+          ? undefined
+          : mateSetupOwner(setupContext.orgId, setupContext.origin);
+      const revision =
+        setupOwner === undefined
+          ? undefined
+          : options.store.state().facts.get(`mateSetup:${setupOwner}`)?.revision;
+      const target = {
+        ...mateActionTarget(input),
+        ...(setupOwner === undefined
+          ? {}
+          : {
+              setupOwner,
+              setupRevision: String(revision?.kind === "mate-link" ? revision.sequence : 0),
+            }),
+      };
+      const intent = { environmentId, action, target };
       const scope = mateActionRequestScope(environmentId);
       const now = yield* Clock.currentTimeMillis;
       Atom.batch(() => {
@@ -139,7 +184,7 @@ export function makeMateActions(options: {
                   ? sourceError.value.message
                   : String(sourceError.value),
             }
-          : classifyMateFeedFailure(answer.cause);
+          : workspaceFailure(Cause.squash(answer.cause));
         if (fault.outcome !== "definitive-refusal") {
           options.store.dispatch({ kind: "operation-uncertain", requestId, reason: fault.message });
           options.store.dispatch({
@@ -186,9 +231,22 @@ export function makeMateActions(options: {
             kind: "accepted",
             result: { value: value as MateActionResult<MateAction> },
           },
-          outcome: { kind: "succeeded", evidence: "The Mate answered this command." },
+          outcome:
+            action === "standUpRetry" && setupContext !== undefined && value === true
+              ? { kind: "pending" }
+              : { kind: "succeeded", evidence: "The Mate answered this command." },
         },
       });
+      if (
+        action === "standUpRetry" &&
+        setupContext !== undefined &&
+        value === true &&
+        options.setup !== undefined
+      ) {
+        const release = options.setup.demand(setupContext.orgId, setupContext.origin);
+        observing.set(requestId, release);
+        options.setup.refresh(setupContext.origin);
+      }
       options.revalidate(action, environmentId);
       return value;
     });
@@ -216,6 +274,9 @@ export function makeMateActions(options: {
       }),
     close: () => {
       closed = true;
+      unlisten();
+      for (const release of observing.values()) release();
+      observing.clear();
     },
   };
 }

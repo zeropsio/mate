@@ -38,7 +38,7 @@ import {
   type TimelineRowSharedState,
 } from "~/components/chat/timelineContext";
 import { Button } from "~/components/ui/button";
-import { Dialog } from "~/components/ui/dialog";
+import { Dialog, DialogTrigger } from "~/components/ui/dialog";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { MateFace } from "~/components/zerops/primitives";
 import {
@@ -711,7 +711,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-harness-pane>
       {state.conversation === true ? <Conversation /> : stage}
       {state.dialog === undefined ? null : (
-        <Dialog open>
+        <Dialog defaultOpen key={state.id}>
+          <div className="self-start p-4">
+            <DialogTrigger render={<Button size="sm" variant="outline" />}>
+              Sign {state.mate.name} in
+            </DialogTrigger>
+          </div>
           <ZeropsAgentSignInDialogPopup mateName={state.mate.name}>
             <FixtureSignIn
               fixed={state.dialog}

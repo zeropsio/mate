@@ -1,3 +1,4 @@
+import { MateHealth } from "./mateHealth.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -62,6 +63,7 @@ import {
   GitResolvePullRequestResult,
   GitRunStackedActionInput,
   VcsStatusInput,
+  VcsStatusSubscriptionInput,
   VcsStatusResult,
   VcsStatusStreamEvent,
 } from "./git.ts";
@@ -376,6 +378,7 @@ export const WS_METHODS = {
   subscribeResourceTelemetry: "subscribeResourceTelemetry",
   subscribeZeropsLifecycle: "subscribeZeropsLifecycle",
   subscribeZeropsAgentAuth: "subscribeZeropsAgentAuth",
+  subscribeZeropsHealth: "subscribeZeropsHealth",
   subscribeZeropsAttention: "subscribeZeropsAttention",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
@@ -422,6 +425,9 @@ const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProviders, 
      */
     instanceId: Schema.optional(ProviderInstanceId),
     cwd: Schema.optional(TrimmedNonEmptyString),
+    /** With `instanceId` and `cwd`: rescan the workspace's skills and slash
+     * commands even when a snapshot for that cwd already exists. */
+    fresh: Schema.optional(Schema.Boolean),
     /** Explicit user request: bypass T3-owned caches and rediscover models.
      * Background status refreshes must not open agent sessions. */
     refreshModels: Schema.optional(Schema.Boolean),
@@ -757,7 +763,7 @@ const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, 
 });
 
 const WsSubscribeVcsStatusRpc = Rpc.make(WS_METHODS.subscribeVcsStatus, {
-  payload: VcsStatusInput,
+  payload: VcsStatusSubscriptionInput,
   success: VcsStatusStreamEvent,
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
   stream: true,
@@ -1023,6 +1029,13 @@ const WsSubscribeZeropsAgentAuthRpc = Rpc.make(WS_METHODS.subscribeZeropsAgentAu
 });
 
 /** The Mate's attention (`MateAttention`) now, then each new revision. */
+const WsSubscribeZeropsHealthRpc = Rpc.make(WS_METHODS.subscribeZeropsHealth, {
+  payload: Schema.Struct({}),
+  success: MateHealth,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsSubscribeZeropsAttentionRpc = Rpc.make(WS_METHODS.subscribeZeropsAttention, {
   payload: Schema.Struct({}),
   success: MateAttention,
@@ -1312,6 +1325,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
+  WsSubscribeZeropsHealthRpc,
   WsSubscribeZeropsAttentionRpc,
   WsZeropsAgentLoginStartRpc,
   WsZeropsAgentAuthCheckRpc,

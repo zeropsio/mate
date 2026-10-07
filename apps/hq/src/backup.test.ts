@@ -37,6 +37,16 @@ const leading = (core: Effect.Success<ReturnType<typeof startCore>>) =>
     ),
   );
 
+// Snapshot transaction IDs belong to the cluster, including other test databases.
+// Hold one snapshot when checking backup reuse so those writers cannot change its position.
+const withSnapshot = <A, E, R>(
+  core: Effect.Success<ReturnType<typeof startCore>>,
+  effect: Effect.Effect<A, E, R>,
+) =>
+  core.sql.withTransaction(
+    Effect.andThen(core.sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`, effect),
+  );
+
 /** The bytes of every file under `dir`. */
 const bytesOf = (dir: string): number =>
   NodeFS.readdirSync(dir, { withFileTypes: true }).reduce((sum, entry) => {
@@ -315,14 +325,20 @@ describe("a backup set, taken", () => {
       }),
     );
 
-    it.effect("is taken again only once the database has moved", () =>
+    it.effect("reuses the same snapshot and takes another set after a database write", () =>
       Effect.gen(function* () {
         const a = yield* startCore(true);
         yield* leading(a);
         const sets = NodePath.join(a.storeDir, "sets");
-        const first = yield* a.backup.take;
-        assert.strictEqual((yield* a.backup.take).id, first.id);
-        assert.deepStrictEqual(NodeFS.readdirSync(sets), [first.id]);
+        const first = yield* withSnapshot(
+          a,
+          Effect.gen(function* () {
+            const first = yield* a.backup.take;
+            assert.strictEqual((yield* a.backup.take).id, first.id);
+            assert.deepStrictEqual(NodeFS.readdirSync(sets), [first.id]);
+            return first;
+          }),
+        );
 
         yield* sessionFor(a.call, "door-owner");
         const next = yield* a.backup.take;
@@ -416,9 +432,10 @@ describe("a backup set, taken", () => {
       Effect.gen(function* () {
         const a = yield* startCore(true);
         yield* leading(a);
-        const [one, two] = yield* Effect.all([a.backup.take, a.backup.take], {
-          concurrency: 2,
-        });
+        const [one, two] = yield* withSnapshot(
+          a,
+          Effect.all([a.backup.take, a.backup.take], { concurrency: 2 }),
+        );
         assert.strictEqual(two?.id, one?.id);
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")), [one?.id]);
       }),
@@ -430,10 +447,12 @@ describe("a backup set, taken", () => {
       Effect.gen(function* () {
         const a = yield* startCore(true, { officialRecheck: Duration.millis(50) });
         yield* leading(a);
-        const one = yield* a.backup.take;
+        // Row versions describe this database's writes; the cluster snapshot also sees other tests.
+        const leaderVersion = a.sql<{ readonly xmin: string }>`
+          SELECT xmin::text AS xmin FROM hq_leader WHERE id = 1`;
+        const before = yield* leaderVersion;
         yield* Effect.sleep("500 millis");
-        const two = yield* a.backup.take;
-        assert.strictEqual(two.id, one.id);
+        assert.deepStrictEqual(yield* leaderVersion, before);
       }),
     );
 

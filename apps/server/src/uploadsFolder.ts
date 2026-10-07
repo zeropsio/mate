@@ -34,7 +34,7 @@ const PARTIAL_PREFIX = ".partial-";
 // "txt.exe" into "exe.txt"), tag characters that hide words, and the brackets
 // that end or fake the agent's line.
 const UNSAFE_CHARACTERS =
-  // oxlint-disable-next-line no-control-regex
+  // oxlint-disable-next-line no-control-regex -- control characters are what it removes.
   /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\u{E0000}-\u{E007F}[\]]/gu;
 
 const byteLength = (text: string) => Buffer.byteLength(text, "utf8");

@@ -93,7 +93,7 @@ export function ZeropsRenameForm({
         >
           {refusal}
         </p>
-        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
+        <Button onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
         <Button aria-busy={pending || undefined} disabled={pending} type="submit">

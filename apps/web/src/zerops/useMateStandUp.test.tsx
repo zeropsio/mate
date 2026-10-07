@@ -17,9 +17,6 @@ const world = vi.hoisted(() => ({
   retry: vi.fn(async (_input: unknown) => ({ _tag: "Success", value: true })),
 }));
 
-vi.mock("./accountEnvironments", () => ({
-  useMateOfEnvironment: () => ({ origin: "https://mate.test" }),
-}));
 vi.mock("./useMateSetup", () => ({
   useMateSetup: () => ({
     setup: {
@@ -52,7 +49,12 @@ vi.mock("./useZeropsMates", () => ({
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () =>
-    world.viewer === undefined ? null : { user: { id: world.viewer } },
+    world.viewer === undefined
+      ? null
+      : { user: { id: world.viewer }, activeOrganization: { id: "org-acme" } },
+}));
+vi.mock("./accountEnvironments", () => ({
+  useMateOfEnvironment: () => ({ origin: "https://mate.test" }),
 }));
 vi.mock("../state/entities", () => ({
   useThreadShells: () => world.threads,
@@ -147,7 +149,10 @@ it("shows a failed send only for its asker in the empty main conversation", asyn
 it("Try again issues one explicit attempt to this Mate and no attempt on its own", async () => {
   world.failed = true;
   await holdsComposer(MAIN, 0, true);
-  expect(world.retry).toHaveBeenCalledExactlyOnceWith({ environmentId: ENVIRONMENT, input: {} });
+  expect(world.retry).toHaveBeenCalledExactlyOnceWith({
+    environmentId: ENVIRONMENT,
+    input: { orgId: "org-acme", origin: "https://mate.test" },
+  });
 });
 
 it("returns the composer after a failed send while the main conversation remains empty", async () => {

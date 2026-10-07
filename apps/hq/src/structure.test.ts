@@ -623,7 +623,8 @@ describe("structure", () => {
           );
           yield* sql<{ readonly waiting: number }>`
             SELECT count(*)::int AS waiting FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock' AND query LIKE '%INSERT INTO hq_mate%'`.pipe(
+            WHERE datname = current_database() AND wait_event_type = 'Lock'
+              AND query LIKE '%INSERT INTO hq_mate%'`.pipe(
             Effect.filterOrFail((rows) => (rows[0]?.waiting ?? 0) > 0),
             Effect.retry(Schedule.spaced(Duration.millis(20))),
             Effect.timeout(Duration.seconds(5)),

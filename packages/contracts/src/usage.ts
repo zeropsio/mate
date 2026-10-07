@@ -126,9 +126,10 @@ export const UsageBucket = Schema.Struct({
    * it is absent when nothing could be split or the server predates it.
    */
   categoryCostUsd: Schema.optional(UsageCategoryCost),
-  /** Cost of fast requests. Absent when zero; the rest is standard. */
+  /** Cost of fast and ultrafast requests. Absent when zero; the rest is standard. */
   fastCostUsd: Schema.optional(Schema.Number),
-  /** What fast requests cost above the standard rate. Absent when zero. */
+  ultrafastCostUsd: Schema.optional(Schema.Number),
+  /** What fast and ultrafast requests cost above the standard rate. Absent when zero. */
   speedPremiumUsd: Schema.optional(Schema.Number),
   costSource: UsageCostSource,
   /** Distinct assistant responses, after de-duplication. */

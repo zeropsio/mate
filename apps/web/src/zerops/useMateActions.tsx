@@ -290,7 +290,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   }, [candidates, listingComplete]);
   const [press, setPress] = useState<DialogPress>(UNPRESSED);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
-  const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
+  const [dialog, setDialog, captureDialogReply] = useProjectDialog(
+    (open: MateDialog) => open.candidate.project.id,
+  );
   const faceRequest = useAtomValue(
     dialog?.kind === "face" && activeOrganization !== null
       ? faceRequests(
@@ -401,6 +403,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const attempt = ++choiceRead.current.attempt;
       setPress(UNPRESSED);
       setDialog({ kind: "move", candidate, reading: true });
+      const replyToDialog = captureDialogReply();
       const settle = (
         answer: Pick<
           Extract<MateDialog, { kind: "move" }>,
@@ -408,7 +411,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         >,
       ) => {
         if (!isCurrent() || attempt !== choiceRead.current.attempt) return;
-        setDialog({ kind: "move", candidate, ...answer });
+        replyToDialog({ kind: "move", candidate, ...answer });
       };
       if (askMoveOffers === undefined) {
         settle({ readError: "HQ is not available to read destinations.", retryRead: true });
@@ -420,7 +423,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           settle({ readError: zeropsErrorMessage(fault), retryRead: !definitiveRefusal(fault) }),
       );
     },
-    [askMoveOffers, setDialog],
+    [askMoveOffers, setDialog, captureDialogReply],
   );
   /**
    * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
@@ -560,6 +563,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null || serviceId === undefined) return;
       setPress({ pending: true, error: null });
       const isCurrent = captureAccountLifetime();
+      const replyToDialog = captureDialogReply();
       // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
@@ -572,7 +576,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           })
             .then(() => {
               if (isCurrent()) {
-                setDialog(null);
+                replyToDialog(null);
                 setPress(UNPRESSED);
               }
             })
@@ -583,7 +587,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         refresh,
       );
     },
-    [activeOrganization, refresh, restartMate, setDialog, write],
+    [activeOrganization, refresh, restartMate, captureDialogReply, write],
   );
 
   /**
@@ -633,6 +637,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
+      const replyToDialog = captureDialogReply();
       if (!isCurrent() || writing.current.has(candidate.key)) return;
       writing.current.add(candidate.key);
       setBusyKey(candidate.key);
@@ -652,7 +657,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             if (progress.stage === "done" || progress.stage === "unresolved")
               invalidateZerops({ topic: "access", change: "grants-written" });
             if (trouble !== null) setPress({ pending: false, error: trouble });
-            else setDialog(null);
+            else replyToDialog(null);
           },
           (cause: unknown) => {
             if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
@@ -663,7 +668,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           if (isCurrent()) setBusyKey(null);
         });
     },
-    [activeOrganization, operations, setDialog],
+    [activeOrganization, operations, captureDialogReply],
   );
 
   /**
@@ -699,6 +704,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation, membership: MoveMembership) => {
       if (activeOrganization === null || writing.current.has(candidate.key)) return;
       const isCurrent = captureAccountLifetime();
+      const replyToDialog = captureDialogReply();
       setPress({ pending: true, error: null });
       const newApp =
         membership.kind === "none"
@@ -790,7 +796,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         },
         () => {
           setPress(UNPRESSED);
-          setDialog(null);
+          replyToDialog(null);
           refresh();
         },
         (reason) => {
@@ -802,7 +808,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           )
             moveAttempts.current.delete(candidate.project.id);
           // Placement already landed: Finish renaming owns the remainder, never another Move.
-          if (placed) setDialog(null);
+          if (placed) replyToDialog(null);
         },
       );
     },
@@ -812,7 +818,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       accountHq,
       operations,
       refresh,
-      setDialog,
+      captureDialogReply,
       settleRenames,
       write,
     ],
@@ -1085,6 +1091,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null) return;
       if (writing.current.has(candidate.key)) return;
       const isCurrent = captureAccountLifetime();
+      const replyToDialog = captureDialogReply();
       if (!isCurrent()) return;
       writing.current.add(candidate.key);
       setBusyKey(candidate.key);
@@ -1129,7 +1136,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           markMateDeleting(projectId);
           forgetPress(projectId);
           invalidateZerops({ topic: "inventory", organization });
-          setDialog({
+          replyToDialog({
             kind: "delete",
             candidate,
             cleanup: { preparedRequestId },
@@ -1153,7 +1160,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             },
           );
           if (!isCurrent()) return;
-          setDialog({
+          replyToDialog({
             kind: "delete",
             candidate,
             cleanup: { preparedRequestId },
@@ -1202,7 +1209,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           () => {
             if (!isCurrent()) return;
             setPress(UNPRESSED);
-            setDialog(null);
+            replyToDialog(null);
             leaveDeleted(candidate);
           },
           (cause: unknown) => {
@@ -1211,7 +1218,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
         );
     },
-    [activeOrganization, accountHq, operations, leaveDeleted, organizationRef, setDialog],
+    [activeOrganization, accountHq, operations, leaveDeleted, organizationRef, captureDialogReply],
   );
 
   /**
@@ -1221,6 +1228,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const saveFace = useCallback(
     (candidate: ZeropsCandidatePresentation, face: ZeropsMateFace) => {
       const isCurrent = captureAccountLifetime();
+      const replyToDialog = captureDialogReply();
       Promise.resolve()
         .then(() => {
           if (!isCurrent()) return;
@@ -1261,13 +1269,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           () => {
             if (!isCurrent()) return;
             // Still saying Saving… as it fades: the face it saved shows through it.
-            setDialog({ kind: "face", candidate, closing: true });
+            replyToDialog({ kind: "face", candidate, closing: true });
           },
           // The face projection retains HQ refusal or the uncertain request for this dialog.
           () => undefined,
         );
     },
-    [activeOrganization, atomRegistry, operations, setDialog],
+    [activeOrganization, atomRegistry, operations, captureDialogReply],
   );
 
   const changeFace = useCallback(

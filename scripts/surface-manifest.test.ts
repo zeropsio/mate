@@ -202,6 +202,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-quick-actions",
   "zerops-agent-auth-card",
   "zerops-lifecycle-strip",
+  "zerops-resource-health",
   "zerops-tool-card",
   "zerops-primitives",
   "zerops-landing",

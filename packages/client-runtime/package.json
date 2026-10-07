@@ -75,10 +75,6 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
-    "./state/auth": {
-      "types": "./src/state/auth.ts",
-      "default": "./src/state/auth.ts"
-    },
     "./state/assets": {
       "types": "./src/state/assets.ts",
       "default": "./src/state/assets.ts"
@@ -106,10 +102,6 @@
     "./state/filesystem": {
       "types": "./src/state/filesystem.ts",
       "default": "./src/state/filesystem.ts"
-    },
-    "./state/git": {
-      "types": "./src/state/git.ts",
-      "default": "./src/state/git.ts"
     },
     "./state/models": {
       "types": "./src/state/models.ts",

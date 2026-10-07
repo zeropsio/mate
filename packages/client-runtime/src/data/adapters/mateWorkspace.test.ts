@@ -435,3 +435,41 @@ it("an MCP action's owner answer clears the prior list refusal", async () => {
   reads.close();
   registry.dispose();
 });
+
+it("a Git probe retains the owner's negative, while a refused read never invents one", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const target = { environmentId: EnvironmentId.make("env"), input: { cwd: "/repo" } };
+  const read = () =>
+    workspaceReading("gitRemote").derive(readsOfState(store.state()), target).result;
+  let refused = false;
+  const reads = makeWorkspaceReads(store, {
+    read: () =>
+      refused
+        ? Effect.fail({ outcome: "definitive-refusal", message: "Probe unavailable." })
+        : Effect.succeed({
+            reachable: false,
+            remote: "origin",
+            refCount: 0,
+            detail: "Access refused.",
+          }),
+  } as WorkspaceWire);
+  const done = waitFor(store, () => read()._tag === "Success");
+  const release = reads.demand("gitRemote", target);
+  await done;
+  expect(read()).toMatchObject({ value: { reachable: false } });
+  release();
+  const again = reads.demand("gitRemote", target);
+  expect(read()).toMatchObject({ value: { reachable: false } });
+  refused = true;
+  const failed = waitFor(store, () => read()._tag === "Failure");
+  reads.again("gitRemote", target);
+  await failed;
+  expect(read()).toMatchObject({
+    _tag: "Failure",
+    previousSuccess: { value: { value: { reachable: false } } },
+  });
+  again();
+  reads.close();
+  registry.dispose();
+});

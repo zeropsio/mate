@@ -25,7 +25,7 @@ function renderStart(
   spendBlocker: string | null = null,
 ) {
   return renderToStaticMarkup(
-    <Dialog open>
+    <Dialog defaultOpen>
       <CrewStartBody
         canAct
         error={null}
@@ -42,7 +42,7 @@ function renderStart(
 
 function renderResume(run: CrewRun) {
   return renderToStaticMarkup(
-    <Dialog open>
+    <Dialog defaultOpen>
       <CrewResumeBody
         canAct
         error={null}

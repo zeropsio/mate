@@ -75,6 +75,7 @@ interface MutableBucket {
   cacheSavingsUsd: number;
   categoryCostUsd: UsageCategoryCost | null;
   fastCostUsd: number;
+  ultrafastCostUsd: number;
   speedPremiumUsd: number;
   records: number;
   unpricedRecords: number;
@@ -226,7 +227,8 @@ export class UsageAggregator {
               output: sum.output + add.output,
             };
     }
-    if (record.fast) bucket.fastCostUsd += priced.costUsd;
+    if (record.speed === "fast") bucket.fastCostUsd += priced.costUsd;
+    if (record.speed === "ultrafast") bucket.ultrafastCostUsd += priced.costUsd;
     bucket.speedPremiumUsd += priced.speedPremiumUsd;
     bucket.cacheSavingsUsd += cacheSavingsUsd(
       this.#options.rates,
@@ -283,6 +285,7 @@ export class UsageAggregator {
         cacheSavingsUsd: 0,
         categoryCostUsd: null,
         fastCostUsd: 0,
+        ultrafastCostUsd: 0,
         speedPremiumUsd: 0,
         records: 0,
         unpricedRecords: 0,
@@ -302,6 +305,7 @@ export class UsageAggregator {
         key.split("\u0000");
       const category = bucket.categoryCostUsd;
       const fastCostUsd = roundUsd(bucket.fastCostUsd);
+      const ultrafastCostUsd = roundUsd(bucket.ultrafastCostUsd);
       const speedPremiumUsd = roundUsd(bucket.speedPremiumUsd);
       buckets.push({
         day: day as UsageDay,
@@ -324,6 +328,7 @@ export class UsageAggregator {
               },
             }),
         ...(fastCostUsd === 0 ? {} : { fastCostUsd }),
+        ...(ultrafastCostUsd === 0 ? {} : { ultrafastCostUsd }),
         ...(speedPremiumUsd === 0 ? {} : { speedPremiumUsd }),
         costSource: resolveCostSource(bucket),
         records: bucket.records,

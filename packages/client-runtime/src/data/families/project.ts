@@ -91,6 +91,7 @@ const organization = (orgId: string) => [{ name: "clientId", operator: "eq", val
 
 export const projectFamily: FamilySpec<"project"> = {
   family: "project",
+  labelOf: (project) => project.name,
   authority: "zerops",
   scope: {
     source: "zerops",

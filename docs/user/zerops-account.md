@@ -80,6 +80,8 @@ history and agent work belong to the container; the browser cache is not a backu
 
 If an operation's response is lost, inspect the project and its services before starting it again.
 Mate reports uncertainty rather than assuming the operation failed or creating another project.
+When a setup write may have landed, Mate withholds its setup retry until you inspect the accepted
+project and operation.
 
 Creation progress and failures survive a reload of the same tab. A request interrupted before
 Mate heard its answer is shown as uncertain; check the projects before starting again.
@@ -87,7 +89,8 @@ Mate heard its answer is shown as uncertain; check the projects before starting 
 A Mate added from a recipe starts development after its asker signs an agent in. A Mate with no
 recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
 offers **Try again** and gives you the composer back so you can type instead. It never sends another
-attempt automatically.
+attempt automatically. A retry stays in progress until the Mate reports that the stand-up finished
+or stopped; accepting the retry alone does not mean setup is ready.
 
 If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
 to sign in again after the server can write its record. The login cannot start personal turns until
@@ -128,3 +131,12 @@ stream does not repeat your writes.
 Move places a Mate within the same organization and HQ. Its container, conversations and repository history stay in place. Cross-organization, cross-HQ and physical container migration are unsupported. HQ explains destination refusals in the Move dialog; changing between a Mate and a deploy environment is refused until its credential and job migration can be completed.
 
 If Move was accepted but Zerops still has its original name, **Finish renaming** completes that remainder. After a deleted Mate is gone, **Finish deleting Mate** on Projects completes its original HQ and exact-key cleanup. Reopening the account restores these actions from HQ; a lost answer does not start another Move or project deletion.
+
+If access to a Mate's project is removed, Mate names the project and asks you to contact its owner.
+A confirmed project deletion has a separate message and no link to the deleted project. An
+authoritative restoration of access lets the open route reconnect.
+
+A stopped container offers **Start**. A failed start or restart names the Mate and the startup
+failure, with **Retry restart** and **Open in Zerops** for the process details. During a lost
+connection, provider sign-in controls stay inactive until the Mate reconnects. Reported disk
+exhaustion asks you to free space; it does not claim that a conversation write failed.

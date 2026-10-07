@@ -142,7 +142,7 @@ export function budgets(s: Scenario) {
           ).length,
       mateRpcs: (name: string) => s.drivers.mates.get(name)!.requests.length,
     },
-    // oxlint-disable-next-line unicorn/no-thenable
+    // oxlint-disable-next-line unicorn/no-thenable -- `then` is the DSL's assertion step, never awaited.
     then: {
       unopenedMates: (names: string[]) =>
         Effect.sync(() => {

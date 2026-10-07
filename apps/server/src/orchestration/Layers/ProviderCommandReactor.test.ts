@@ -73,6 +73,7 @@ import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderCommandReactor } from "../Services/ProviderCommandReactor.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
+import { TerminalManager } from "../../terminal/Manager.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -112,6 +113,7 @@ describe("ProviderCommandReactor", () => {
     | OrchestrationEngineService
     | ProviderCommandReactor
     | ProjectionSnapshotQuery
+    | ThreadBackgroundLiveness.ThreadBackgroundLivenessService
     | SqlClient.SqlClient,
     unknown
   > | null = null;
@@ -318,6 +320,7 @@ describe("ProviderCommandReactor", () => {
       (input: { readonly refName: string; readonly path: string | null }) =>
         Effect.succeed({ worktree: { path: input.path ?? "", refName: input.refName } }),
     );
+    const closeIdleTerminals = vi.fn((_: { readonly threadId: string }) => Effect.void);
     const refreshStatus = vi.fn((_: string) =>
       Effect.succeed({
         isRepo: true,
@@ -512,7 +515,9 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
+      Layer.provideMerge(Layer.mock(TerminalManager)({ closeIdle: closeIdleTerminals })),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
@@ -522,6 +527,9 @@ describe("ProviderCommandReactor", () => {
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
+    const backgroundLiveness = await runtime.runPromise(
+      Effect.service(ThreadBackgroundLiveness.ThreadBackgroundLivenessService),
+    );
     const runEffect = <A, E>(effect: Effect.Effect<A, E>) => runtime!.runPromise(effect);
 
     await Effect.runPromise(
@@ -646,9 +654,11 @@ describe("ProviderCommandReactor", () => {
       pruneWorktrees,
       createWorktree,
       refreshStatus,
+      closeIdleTerminals,
       generateBranchName,
       generateThreadTitle,
       runtimeSessions,
+      backgroundLiveness,
       stateDir,
       drain,
       startReactor,
@@ -3972,6 +3982,142 @@ describe("ProviderCommandReactor", () => {
         resumeCursor: { opaque: "resume-1" },
         modelSelection: { options: [{ id: "fastMode", value: true }] },
       });
+    }),
+  );
+
+  // Background agents and watch loops run inside Claude's process: a new
+  // session would end them and lose their results. The person is told, never
+  // left believing the model changed when it did not.
+  for (const [work, taskType] of [
+    ["background agents work", "local_agent"],
+    ["only a watch loop runs", "monitor"],
+  ] as const) {
+    effectIt.effect(
+      `refuses a model change that needs a new Claude session while ${work}, and takes it once the work ends`,
+      () =>
+        Effect.gen(function* () {
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              threadModelSelection: {
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                model: "claude-sonnet-4-6",
+              },
+              inSessionModelOptions: ["effort"],
+            }),
+          );
+          const backgroundTask = (kind: "started" | "completed") =>
+            harness.backgroundLiveness.recordTaskLiveness({
+              threadId: "thread-1",
+              taskId: "task-1",
+              taskType,
+              status: kind === "started" ? "running" : "completed",
+              kind,
+            });
+
+          yield* harness.engine.dispatch(claudeTurnStart("a", [{ id: "fastMode", value: false }]));
+          yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+          backgroundTask("started");
+
+          yield* harness.engine.dispatch(claudeTurnStart("b", [{ id: "fastMode", value: true }]));
+          const refusals = () =>
+            Effect.promise(harness.readModel).pipe(
+              Effect.map(
+                (model) =>
+                  model.threads
+                    .find((thread) => thread.id === "thread-1")
+                    ?.activities.filter(
+                      (activity) => activity.kind === "provider.turn.start.failed",
+                    ) ?? [],
+              ),
+            );
+          yield* Effect.promise(() =>
+            waitFor(async () => (await Effect.runPromise(refusals())).length === 1),
+          );
+          expect((yield* refusals())[0]?.payload).toMatchObject({
+            detail:
+              "Claude is still running background work, and this model change needs a new session that would end it. Wait for it to finish or stop it, or keep the current model, then send the message again. (background-work)",
+          });
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          expect(harness.startSession).toHaveBeenCalledTimes(1);
+          expect(harness.stopSession).not.toHaveBeenCalled();
+
+          backgroundTask("completed");
+          yield* harness.engine.dispatch(claudeTurnStart("c", [{ id: "fastMode", value: true }]));
+          yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+          expect(harness.startSession).toHaveBeenCalledTimes(2);
+          expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+            resumeCursor: { opaque: "resume-1" },
+            modelSelection: { options: [{ id: "fastMode", value: true }] },
+          });
+        }),
+    );
+  }
+
+  // Idle shells hold the worktree; a terminal running a command stays for
+  // the person to close (TerminalManager.closeIdle decides which is which).
+  effectIt.effect("settling a thread closes its idle shells", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const terminalsClosed = yield* Deferred.make<void>();
+      harness.closeIdleTerminals.mockImplementation(() =>
+        Deferred.succeed(terminalsClosed, undefined).pipe(Effect.asVoid),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-closes-shells"),
+        threadId: ThreadId.make("thread-1"),
+      });
+      yield* Deferred.await(terminalsClosed);
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.closeIdleTerminals).toHaveBeenCalledWith({
+        threadId: ThreadId.make("thread-1"),
+      });
+      expect(harness.stopSession).not.toHaveBeenCalled();
+    }),
+  );
+
+  effectIt.effect("a thread un-settled before its settle is handled keeps its shells", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = ThreadId.make("thread-1");
+      const firstCloseStarted = yield* Deferred.make<void>();
+      const releaseFirstClose = yield* Deferred.make<void>();
+      harness.closeIdleTerminals.mockImplementationOnce(() =>
+        Deferred.succeed(firstCloseStarted, undefined).pipe(
+          Effect.andThen(Deferred.await(releaseFirstClose)),
+        ),
+      );
+
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-first"),
+        threadId,
+      });
+      // The reactor is busy with the first settle while the person changes their mind.
+      yield* Deferred.await(firstCloseStarted);
+      yield* harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unsettle-first"),
+        threadId,
+        reason: "user",
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-second"),
+        threadId,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unsettle-second"),
+        threadId,
+        reason: "user",
+      });
+      yield* Deferred.succeed(releaseFirstClose, undefined);
+      yield* Effect.promise(() => harness.drain());
+
+      expect(harness.closeIdleTerminals).toHaveBeenCalledTimes(1);
     }),
   );
 

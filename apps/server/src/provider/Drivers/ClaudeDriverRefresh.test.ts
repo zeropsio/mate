@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   type ClaudeSettings,
@@ -14,6 +15,7 @@ import * as Path from "effect/Path";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { claudeTestProcessSuite } from "../../testing/claudeTestProcess.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { makeProviderInstanceRegistry } from "../Layers/ProviderInstanceRegistryLive.ts";
@@ -21,6 +23,9 @@ import { NoOpProviderEventLoggers, ProviderEventLoggers } from "../Layers/Provid
 import * as ModelManifest from "../ModelManifest.ts";
 import * as ResetCreditCoordinator from "../Layers/resetCreditCoordinator.ts";
 import { ClaudeDriver } from "./ClaudeDriver.ts";
+
+vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
+const ownClaudeTestProcesses = claudeTestProcessSuite();
 
 const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "claude-driver-refresh-test",
@@ -98,6 +103,7 @@ const writeFakeClaude = Effect.fn("ClaudeDriverRefresh.test.writeFakeClaude")(fu
     ].join("\n"),
   );
   yield* fileSystem.chmod(binaryPath, 0o755);
+  yield* ownClaudeTestProcesses(binaryPath);
   return binaryPath;
 });
 

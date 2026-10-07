@@ -743,6 +743,50 @@
       "captures": ["web:lifecycle-active", "web:lifecycle-waiting"]
     },
     {
+      "id": "zerops-resource-health",
+      "title": "Mate resource health",
+      "components": ["apps/web/src/components/zerops/MateHealthNotice.tsx"],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ChatView composer"
+        },
+        {
+          "kind": "inline",
+          "value": "ZeropsMateComingPage"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile later: health presentation and direct subscription are deferred; shared contracts compile."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsHealth",
+        "@t3tools/client-runtime/data:mateHealth",
+        "@t3tools/contracts:MateHealth"
+      ],
+      "reverseStates": [
+        {
+          "action": "Read resource strain",
+          "reverse": "none: A newer measured sample clears strain; loss of connection labels retained evidence last-known."
+        }
+      ],
+      "docs": "docs/user/observing-environments.md",
+      "tests": [
+        "apps/server/src/zerops/mateResourceHealth.test.ts",
+        "apps/hq/src/mateOverviews.test.ts",
+        "packages/client-runtime/src/data/projections/mateHealth.test.ts",
+        "apps/web/src/components/zerops/MateHealthNotice.test.tsx"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-tool-card",
       "title": "Zerops operation card",
       "components": [

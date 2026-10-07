@@ -26,7 +26,7 @@ import {
 import type { CrewCommand, Crewmate, EnvironmentId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { ArrowUpIcon, LockIcon } from "lucide-react";
-import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { useTheme } from "~/hooks/useTheme";
 import { useComposerPathSearch } from "~/lib/composerPathSearchState";
@@ -82,6 +82,7 @@ export function CrewTellComposer({
 }) {
   const { resolvedTheme } = useTheme();
   const [text, setText] = useState("");
+  const menuListId = `${useId()}-suggestions`;
   const [picked, setPicked] = useState<ReadonlyArray<string>>([]);
   /** Where the caret is while the menu may show; `null` once it is dismissed. */
   const [caret, setCaret] = useState<number | null>(null);
@@ -207,6 +208,7 @@ export function CrewTellComposer({
       {menu === null || items.length === 0 ? null : (
         <div className="absolute inset-x-0 top-full z-10 mt-1">
           <ComposerCommandMenu
+            listId={menuListId}
             activeItemId={active?.id ?? null}
             isLoading={search.isPending}
             items={[...items]}

@@ -273,10 +273,18 @@ if (import.meta.main) {
     );
     for (const step of steps) {
       const started = Date.now();
+      // Lanes share the laptop. Standalone runs can opt into the same budget explicitly.
+      const env: typeof process.env = {
+        ...process.env,
+        MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+        PATH,
+      };
+      // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
+      if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
+        delete env.VITEST_MAX_WORKERS;
       const result = NodeChildProcess.spawnSync(step.command, step.args, {
         cwd: NodePath.join(root, step.cwd ?? "."),
-        // Lanes share the laptop. Standalone runs can opt into the same budget explicitly.
-        env: { ...process.env, MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8", PATH },
+        env,
         stdio: "inherit",
       });
       console.log(

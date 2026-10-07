@@ -78,11 +78,12 @@ export function tokenTypeSegments(
   ];
 }
 
-/** Speeds are ordered by price, so they brighten from standard to fast. */
+/** Speeds are ordered by price, so they brighten from standard to ultrafast. */
 export function speedCostSegments(cost: SpeedCost): readonly ShareSegment[] {
   return [
     { label: "Standard", value: cost.standard, color: ink(34) },
-    { label: "Fast", value: cost.fast, color: ink(100) },
+    { label: "Fast", value: cost.fast, color: ink(66) },
+    { label: "Ultrafast", value: cost.ultrafast, color: ink(100) },
   ];
 }
 
@@ -138,10 +139,11 @@ export function usageTotals(
       detail: `${formatPercent(input === 0 ? 0 : usage.cachedInputTokens / input)} cache hit`,
     },
   ];
-  if (usage.speedCost.fast > 0) {
+  const fastUsd = usage.speedCost.fast + usage.speedCost.ultrafast;
+  if (fastUsd > 0) {
     rows.push({
       label: "Fast mode",
-      value: formatUsd(usage.speedCost.fast),
+      value: formatUsd(fastUsd),
       detail: `${formatUsd(usage.speedCost.premium)} over standard`,
     });
   }

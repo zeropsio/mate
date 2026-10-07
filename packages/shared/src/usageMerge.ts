@@ -100,7 +100,8 @@ export interface CategoryCost {
 export interface SpeedCost {
   readonly standard: number;
   readonly fast: number;
-  /** What fast requests cost above the standard rate. */
+  readonly ultrafast: number;
+  /** What fast and ultrafast requests cost above the standard rate. */
   readonly premium: number;
 }
 
@@ -118,6 +119,12 @@ export interface EnvironmentTotals {
   readonly tokenShare: number;
   /** Providers with buckets in this environment, costliest first. */
   readonly providers: readonly UsageProviderKind[];
+}
+
+export interface UsageContractMismatch {
+  readonly environmentId: EnvironmentId;
+  readonly direction: "serverBehind" | "clientBehind";
+  readonly contractVersion: number;
 }
 
 export interface MergedUsage {
@@ -140,12 +147,12 @@ export interface MergedUsage {
   /** Environments whose data was dropped as a duplicate of another's. */
   readonly duplicateSources: readonly string[];
   readonly contributingEnvironments: readonly EnvironmentId[];
-  readonly staleEnvironments: readonly EnvironmentId[];
   /**
-   * Each contributing environment's own share, after de-duplication; stale and
+   * Each contributing environment's own share, after de-duplication; incompatible and
    * fully-duplicate environments are absent. Sorted by cost desc, then tokens desc.
    */
   readonly byEnvironment: readonly EnvironmentTotals[];
+  readonly contractMismatches: readonly UsageContractMismatch[];
 }
 
 /**
@@ -353,19 +360,19 @@ const EMPTY_MERGED: MergedUsage = {
     cacheSavingsUsd: 0,
   },
   categoryCost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, unsplit: 0 },
-  speedCost: { standard: 0, fast: 0, premium: 0 },
+  speedCost: { standard: 0, fast: 0, ultrafast: 0, premium: 0 },
   duplicateSources: [],
   contributingEnvironments: [],
-  staleEnvironments: [],
   byEnvironment: [],
+  contractMismatches: [],
 };
 
 /**
  * Merges every connected environment's summary.
  *
- * `expectedContractVersion` guards against an environment running older server
- * code: rather than blocking the page, incompatible data is excluded and its
- * id is reported so the UI can say coverage is partial. Versions in
+ * `expectedContractVersion` guards against incompatible server code: rather
+ * than blocking the page, its data is excluded and the mismatch direction is
+ * reported so the UI can identify which side needs updating. Versions in
  * [{@link USAGE_MERGE_COMPATIBLE_SINCE}, expected] still merge, so an additive
  * provider expansion does not drop Claude/Codex totals from older servers.
  *
@@ -381,12 +388,19 @@ export function mergeUsage(
   if (environments.length === 0) return EMPTY_MERGED;
 
   const current: EnvironmentUsage[] = [];
-  const staleEnvironments: EnvironmentId[] = [];
+  const contractMismatches: UsageContractMismatch[] = [];
   for (const environment of environments) {
     if (isCompatibleContractVersion(environment.summary.contractVersion, expectedContractVersion)) {
       current.push(environment);
     } else if (include(environment.environmentId)) {
-      staleEnvironments.push(environment.environmentId);
+      contractMismatches.push({
+        environmentId: environment.environmentId,
+        direction:
+          environment.summary.contractVersion < expectedContractVersion
+            ? "serverBehind"
+            : "clientBehind",
+        contractVersion: environment.summary.contractVersion,
+      });
     }
   }
 
@@ -409,7 +423,7 @@ export function mergeUsage(
   let providerReportedRecords = 0;
   let unpricedRecords = 0;
   const categoryCost = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
-  const speedCost = { fast: 0, premium: 0 };
+  const speedCost = { fast: 0, ultrafast: 0, premium: 0 };
 
   const providerAccumulator = new Map<
     UsageProviderKind,
@@ -512,6 +526,7 @@ export function mergeUsage(
         categoryCost.output += bucket.categoryCostUsd.output;
       }
       speedCost.fast += bucket.fastCostUsd ?? 0;
+      speedCost.ultrafast += bucket.ultrafastCostUsd ?? 0;
       speedCost.premium += bucket.speedPremiumUsd ?? 0;
 
       own.costUsd += bucket.costUsd;
@@ -699,11 +714,11 @@ export function mergeUsage(
     },
     speedCost: {
       ...speedCost,
-      standard: Math.max(0, costUsd - speedCost.fast),
+      standard: Math.max(0, costUsd - speedCost.fast - speedCost.ultrafast),
     },
     duplicateSources: duplicates,
     contributingEnvironments,
-    staleEnvironments,
     byEnvironment,
+    contractMismatches,
   };
 }

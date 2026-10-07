@@ -319,3 +319,33 @@ describe("nextMateEpoch", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 });
+
+it.effect("publishes health without waiting for conversation persistence", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const evidence = {
+        status: "unknown",
+        severity: "warning",
+        resources: [],
+        memory: null,
+        cpu: null,
+        io: null,
+        disk: null,
+        unavailable: ["cgroup-v2"],
+      } as const;
+      const mate = yield* makeZeropsMateAttention({
+        environmentId: EnvironmentId.make("env-1"),
+        epoch: 3,
+        incarnation: "run",
+        project: Effect.never,
+        threadsOf: () => Effect.never,
+        thread: () => Effect.never,
+        domainEvents: Stream.never,
+        health: Stream.make({ sampledAt: "2026-10-07T12:00:00Z", evidence }),
+      });
+      const values = yield* Stream.runCollect(mate.healthChanges.pipe(Stream.take(1)));
+      assert.strictEqual(values[0]?.source.epoch, 3);
+      assert.deepStrictEqual(values[0]?.evidence, evidence);
+    }),
+  ),
+);

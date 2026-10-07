@@ -101,7 +101,7 @@ describe("usageTotals", () => {
     totalTokens: 10_000,
     costQuality: { cacheSavingsUsd: 3 },
     categoryCost: { input: 2, cacheRead: 1, cacheWrite: 4, output: 9, unsplit: 4 },
-    speedCost: { standard: 20, fast: 0, premium: 0 },
+    speedCost: { standard: 20, fast: 0, ultrafast: 0, premium: 0 },
   };
   const row = (rows: ReturnType<typeof usageTotals>, label: string) =>
     rows.find((entry) => entry.label === label);
@@ -130,7 +130,7 @@ describe("usageTotals", () => {
     expect(row(usageTotals(totals, "cost"), "Fast mode")).toBeUndefined();
 
     const fast = usageTotals(
-      { ...totals, speedCost: { standard: 14, fast: 6, premium: 3 } },
+      { ...totals, speedCost: { standard: 14, fast: 4, ultrafast: 2, premium: 3 } },
       "cost",
     );
     expect(row(fast, "Fast mode")).toMatchObject({ value: "$6.00", detail: "$3.00 over standard" });
