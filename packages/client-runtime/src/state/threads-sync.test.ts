@@ -1137,6 +1137,48 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
+  // A newer Mate sends an event this build does not know: it is skipped, the
+  // cursor still moves past it, and the events after it apply.
+  it.effect("skips an unknown event from a newer Mate and resumes past it", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ cached: BASE_THREAD, completionMarker: true });
+      yield* Queue.offer(harness.inputs, {
+        kind: "unknown-event",
+        sequence: CACHED_SNAPSHOT_SEQUENCE + 1,
+        eventType: "thread.colour-changed",
+      });
+      yield* Queue.offer(harness.inputs, synchronized());
+      yield* awaitThreadState(harness.observed, (value) => value.status === "live");
+      yield* Queue.offer(harness.inputs, {
+        kind: "unknown-event",
+        sequence: CACHED_SNAPSHOT_SEQUENCE + 2,
+        eventType: "thread.colour-changed",
+      });
+      yield* Queue.offer(
+        harness.inputs,
+        titleUpdated("After the unknown one", CACHED_SNAPSHOT_SEQUENCE + 3),
+      );
+      yield* Queue.offer(harness.inputs, {
+        kind: "unknown-event",
+        sequence: CACHED_SNAPSHOT_SEQUENCE + 4,
+        eventType: "thread.colour-changed",
+      });
+      yield* awaitThreadState(
+        harness.observed,
+        (value) => Option.isSome(value.data) && value.data.value.title === "After the unknown one",
+      );
+      for (let attempt = 0; attempt < 20; attempt += 1) yield* Effect.yieldNow;
+
+      yield* harness.replaceSession;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) break;
+        yield* Effect.yieldNow;
+      }
+
+      expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE + 4);
+    }),
+  );
+
   // Run 12: a window regaining focus resubscribed a live thread twenty times;
   // each marked it synchronizing until the marker came back with nothing new,
   // which switched the run card's motion off. A resubscribe on the same
