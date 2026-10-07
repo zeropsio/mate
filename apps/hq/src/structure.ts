@@ -74,6 +74,7 @@ import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
 
 const encodeLifecycleIntent = Schema.encodeSync(Schema.fromJsonString(HqLifecycleIntent));
 const encodeLifecycleRecord = Schema.encodeSync(Schema.fromJsonString(HqLifecycleRecord));
+const decodeLifecycleRecord = Schema.decodeUnknownEffect(HqLifecycleRecord);
 
 export class StructureRefused extends Schema.TaggedError<StructureRefused>()("StructureRefused", {
   code: Schema.Literals([
@@ -299,6 +300,8 @@ export interface StructureSource {
 }
 
 export interface StructureRead {
+  /** This person's unfinished lifecycle requests, read in the same HQ snapshot. */
+  readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** What the reader may do with the organization's applications (`offers.ts`). */
   readonly can: HqOffersOf<OrgVerb>;
   /**
@@ -395,9 +398,7 @@ export class Structure extends Context.Service<
       userId: string,
       requestId: string,
     ) => Effect.Effect<HqLifecycleRecord | null, WriteError>;
-    readonly lifecycleRecords: (
-      userId: string,
-    ) => Effect.Effect<ReadonlyArray<HqLifecycleRecord>, WriteError>;
+
     readonly moveProject: (
       userId: string,
       projectId: string,
@@ -917,8 +918,29 @@ export const structureLayer = (options: {
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until
               FROM hq_press ORDER BY project_id`;
-              const tools = yield* sql<{ readonly projectId: string; readonly kind: "gitea" }>`
-              SELECT project_id AS "projectId", kind FROM hq_tool ORDER BY project_id`;
+              const [retained] = yield* sql<{
+                readonly tools: ReadonlyArray<{
+                  readonly projectId: string;
+                  readonly kind: "gitea";
+                }>;
+                readonly lifecycle: ReadonlyArray<{
+                  readonly userId: string;
+                  readonly record: unknown;
+                }>;
+              }>`SELECT
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('projectId', project_id, 'kind', kind) ORDER BY project_id) FROM hq_tool), '[]'::jsonb) AS tools,
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('userId', user_id, 'record', record) ORDER BY seq) FROM (
+                  SELECT DISTINCT ON (user_id, project_id, kind) user_id, record, seq FROM hq_lifecycle_receipt retained
+                  WHERE NOT EXISTS (SELECT 1 FROM hq_lifecycle_receipt finished WHERE finished.user_id = retained.user_id AND finished.project_id = retained.project_id AND finished.kind = 'complete-key-retirement')
+                  ORDER BY user_id, project_id, kind, seq DESC
+                ) remaining), '[]'::jsonb) AS lifecycle`;
+              const tools = retained!.tools;
+              const lifecycle = yield* Effect.forEach(retained!.lifecycle, (row) =>
+                decodeLifecycleRecord(row.record).pipe(
+                  Effect.orDie,
+                  Effect.map((record) => ({ userId: row.userId, record })),
+                ),
+              );
               const environmentSource = yield* readEnvironmentSource(sql);
               const names = new Map(view.projects.map((project) => [project.id, project.name]));
               const projects = new Map(view.projects.map((project) => [project.id, project]));
@@ -945,7 +967,13 @@ export const structureLayer = (options: {
                     ...rows.map((row) => row.project_id),
                     ...alone.map((row) => row.project_id),
                   ]);
+                  const remaining = view.members.some(
+                    (member) => member.userId === userId && member.status === "ACTIVE",
+                  )
+                    ? lifecycle.filter((row) => row.userId === userId).map((row) => row.record)
+                    : [];
                   return {
+                    ...(remaining.length === 0 ? {} : { lifecycle: remaining }),
                     can: orgOffers(userId, view),
                     unheld: Object.fromEntries(
                       view.projects
@@ -1058,9 +1086,7 @@ export const structureLayer = (options: {
           }>`SELECT record FROM hq_lifecycle_receipt WHERE request_id = ${requestId} AND user_id = ${userId}`;
           return rows[0] === undefined
             ? null
-            : yield* Schema.decodeUnknownEffect(HqLifecycleRecord)(rows[0].record).pipe(
-                Effect.orDie,
-              );
+            : yield* decodeLifecycleRecord(rows[0].record).pipe(Effect.orDie);
         });
       const structure: Structure["Service"] = Structure.of({
         lifecycleReceipt: fresh((userId, requestId) =>
@@ -1073,21 +1099,6 @@ export const structureLayer = (options: {
             return yield* readLifecycle(userId, requestId);
           }),
         ),
-        lifecycleRecords: (userId) =>
-          Effect.gen(function* () {
-            const view = yield* roles.view;
-            if (
-              !view.members.some((member) => member.userId === userId && member.status === "ACTIVE")
-            )
-              return yield* refuse("forbidden", "not_active_member");
-            // Only the latest Move per project can own a rename remainder. Deletion keeps its original pair.
-            const rows = yield* sql<{ readonly record: unknown }>`SELECT record FROM (
-            SELECT DISTINCT ON (project_id, kind) record, seq FROM hq_lifecycle_receipt retained WHERE user_id = ${userId} AND NOT EXISTS (SELECT 1 FROM hq_lifecycle_receipt finished WHERE finished.user_id = retained.user_id AND finished.project_id = retained.project_id AND finished.kind = 'complete-key-retirement') ORDER BY project_id, kind, seq DESC
-          ) retained ORDER BY seq`;
-            return yield* Effect.forEach(rows, (row) =>
-              Schema.decodeUnknownEffect(HqLifecycleRecord)(row.record).pipe(Effect.orDie),
-            );
-          }),
         lifecycleWrite: fresh((userId, requestId, intent) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;

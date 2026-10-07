@@ -8,3 +8,5 @@ CREATE TABLE hq_lifecycle_receipt (
   seq bigint GENERATED ALWAYS AS IDENTITY UNIQUE
 );
 CREATE INDEX hq_lifecycle_person ON hq_lifecycle_receipt (user_id, seq);
+
+CREATE INDEX hq_lifecycle_project_kind ON hq_lifecycle_receipt (user_id, project_id, kind, seq DESC);

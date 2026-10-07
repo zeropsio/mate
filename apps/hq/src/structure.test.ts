@@ -3112,7 +3112,7 @@ describe("original lifecycle receipts", () => {
               receipt,
             );
             assert.strictEqual(yield* structure.lifecycleReceipt("reader", "move-original"), null);
-            assert.deepStrictEqual(yield* structure.lifecycleRecords("owner"), [receipt]);
+            assert.deepStrictEqual((yield* structure.read("owner")).lifecycle, [receipt]);
             assert.strictEqual(
               yield* reasonOf(
                 structure.lifecycleWrite("owner", "move-original", {

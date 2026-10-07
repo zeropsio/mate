@@ -487,7 +487,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
-              for (const record of yield* structure.lifecycleRecords(entry.userId))
+              for (const record of view.lifecycle ?? [])
                 values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
             for (const app of view.apps) {
