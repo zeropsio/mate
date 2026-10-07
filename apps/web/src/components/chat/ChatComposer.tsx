@@ -62,6 +62,7 @@ import {
 import {
   deriveComposerSendState,
   getAntigravitySendBlockReason,
+  getProviderCatalogSendBlockReason,
   readFileAsDataUrl,
   readOncePerFile,
   resolveComposerInteractionMode,
@@ -953,10 +954,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     projectModelSelection: activeProjectDefaultModelSelection,
     settings,
   });
-  const providerSendBlockReason = getAntigravitySendBlockReason(
-    selectedProviderEntry?.snapshot,
-    selectedModel,
-  );
+  const providerSendBlockReason =
+    getAntigravitySendBlockReason(selectedProviderEntry?.snapshot, selectedModel) ??
+    getProviderCatalogSendBlockReason(selectedProviderEntry?.snapshot);
   const sendDisabledReason =
     externalSendDisabledReason ??
     (activePendingProgress
