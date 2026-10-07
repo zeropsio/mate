@@ -27,7 +27,6 @@ import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useAct
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { useProjectFilePickerQuery, useProjectFileQuery } from "../../files/projectFilesQueryState";
-import { InlineButton } from "../../ui/button";
 import { deployConfigPath, setupLine } from "./vaultGroups.logic";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
@@ -238,15 +237,15 @@ function DeployConfigLink({
   if (path === null) return null;
   const line = file.data === null ? null : setupLine(file.data.contents, hostname);
   return (
-    <span className="inline-flex items-center gap-1">
-      <FileCodeIcon aria-hidden="true" className="size-3" />
-      <InlineButton
-        onClick={() =>
-          useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
-        }
-      >
-        {path}
-      </InlineButton>
-    </span>
+    <button
+      className="vault-file-link inline-flex min-w-0 items-center gap-1 text-xs"
+      onClick={() =>
+        useRightPanelStore.getState().openFile(workspace.threadRef, path, line ?? undefined)
+      }
+      type="button"
+    >
+      <FileCodeIcon aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{path}</span>
+    </button>
   );
 }

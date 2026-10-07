@@ -9439,10 +9439,126 @@ button.rv-relrow:hover .rv-relrow-go {
    and an item travel with the content under them; reduced motion keeps only the end states. */
 .vault-panel {
   --vault-ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --vault-row-hover: color-mix(in oklab, var(--accent) 55%, var(--card));
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
   --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
   --vault-row-bg: var(--card);
+  --vault-canvas: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --vault-hairline: color-mix(in oklab, var(--border) 70%, transparent);
   container-type: inline-size;
+}
+
+.dark .vault-panel {
+  --vault-canvas: color-mix(in oklab, black 28%, var(--card));
+  --vault-row-hover: color-mix(in oklab, var(--foreground) 5%, var(--card));
+  --vault-row-open: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+}
+
+/* The page under the cards: a quiet grey, so each card reads as one thing. */
+.vault-canvas {
+  background: var(--vault-canvas);
+}
+
+/* One card: a group of values, an app list, what an app reads. */
+.vault-box {
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--vault-hairline),
+    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.vault-box-head + .vault-rows,
+.vault-rows > * + * {
+  border-top: 1px solid var(--vault-hairline);
+}
+
+/* Values / Apps: the two ways into the vault. */
+.vault-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--foreground) 6%, var(--card));
+}
+
+.vault-switch-item {
+  height: 26px;
+  padding-inline: 12px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color 0.16s,
+    color 0.16s,
+    box-shadow 0.16s;
+}
+
+.vault-switch-item:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.vault-switch-item[aria-selected="true"] {
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--foreground) 10%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.dark .vault-switch-item[aria-selected="true"] {
+  background: color-mix(in oklab, var(--foreground) 12%, var(--card));
+}
+
+/* What needs the person: a card with a toned icon, a title and its action. */
+.vault-callout {
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--vault-hairline),
+    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.vault-callout-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+.vault-callout[data-tone="attention"] .vault-callout-icon {
+  background: var(--warning-surface);
+  color: var(--warning-foreground);
+}
+
+.vault-callout[data-tone="advice"] .vault-callout-icon {
+  background: color-mix(in oklab, var(--primary) 12%, var(--card));
+  color: var(--primary);
+}
+
+.vault-file-link {
+  color: var(--muted-foreground);
+  text-underline-offset: 2px;
+}
+
+.vault-file-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+/* What needs the person sits apart from the values under it. */
+.vault-callout + .vault-box {
+  margin-top: 8px;
+}
+
+.vault-app-icon {
+  background: color-mix(in oklab, var(--foreground) 6%, var(--card));
+  color: var(--muted-foreground);
 }
 
 .vault-find {
@@ -9455,24 +9571,6 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .vault-find[data-open] {
   width: 188px;
-}
-
-/* One list in groups named for what the values are for: a heading hugs its rows, groups sit apart. */
-.vault-group {
-  margin-top: 18px;
-}
-
-.vault-group:first-child {
-  margin-top: 4px;
-}
-
-/* A page's sections (Apps, Values) sit further apart than the groups inside them. */
-.vault-section-title {
-  margin-top: 28px;
-}
-
-.vault-section-title + .vault-group {
-  margin-top: 6px;
 }
 
 /* A `${name}` inside a value, and the app a value belongs to: quiet chips in the line. */
@@ -9556,12 +9654,8 @@ button.rv-relrow:hover .rv-relrow-go {
 .vault-row {
   --vault-row-bg: var(--card);
   position: relative;
-  border-radius: var(--radius-lg);
   background: var(--vault-row-bg);
-  transition:
-    background-color 0.16s,
-    box-shadow 0.24s var(--vault-ease),
-    margin 0.24s var(--vault-ease);
+  transition: background-color 0.16s;
 }
 
 .vault-row:not([data-static]):not([data-open]):hover {
@@ -9569,10 +9663,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .vault-row[data-open] {
-  margin-block: 6px;
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
+  --vault-row-bg: var(--vault-row-open);
 }
 
 .vault-row[data-flash] {

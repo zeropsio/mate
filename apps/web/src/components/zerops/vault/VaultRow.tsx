@@ -1,7 +1,8 @@
 /**
- * One value of the vault as a one-line row that opens in place, a managed service folded to one
- * line, and the list of what a service reads. Drawn from props only; the panel (`VaultPanel.tsx`)
- * holds which row is open and what is in flight.
+ * The vault's pieces inside its cards: one value as a one-line row that opens in place, a card
+ * with its header, a service Zerops runs as read-only rows, and the list of what an app reads
+ * from its deploy config. Drawn from props only; the panel (`VaultPanel.tsx`) holds which row is
+ * open and what is in flight.
  */
 import type {
   VaultImpact,
@@ -19,6 +20,7 @@ import {
   LockIcon,
   RotateCwIcon,
   TriangleAlertIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -31,7 +33,6 @@ import { Spinner } from "../../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   generateVaultValue,
-  joinNames,
   readSource,
   referenceFor,
   removeGuardWords,
@@ -114,6 +115,31 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
   );
 }
 
+/**
+ * A card of the vault: its icon and title, an optional note or link at the right, and its rows
+ * with hairlines between them.
+ */
+export function VaultBox(props: {
+  readonly icon: LucideIcon;
+  readonly title: ReactNode;
+  readonly aside?: ReactNode;
+  readonly children: ReactNode;
+  readonly id?: string;
+}) {
+  const Icon = props.icon;
+  return (
+    <section className="vault-box" data-vault-group={props.id}>
+      <header className="vault-box-head flex min-h-10 items-center gap-2 px-3.5 py-2">
+        <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+        <h3 className="min-w-0 truncate font-semibold text-line text-foreground">{props.title}</h3>
+        <span className="grow" />
+        {props.aside}
+      </header>
+      <div className="vault-rows">{props.children}</div>
+    </section>
+  );
+}
+
 export interface VaultRowProps {
   readonly view: VaultView;
   readonly scope: VaultScope;
@@ -135,23 +161,23 @@ export interface VaultRowProps {
   readonly onRestart: (serviceId: string, hostname: string) => void;
 }
 
-/** One value on one line — its name in words, then the value or what stands for it; open, its verbs. */
+/** One value on one line: its name in words at the left, the value at the right; open, its verbs. */
 export function VaultRow(props: VaultRowProps) {
   const { value, open, activity } = props;
   return (
     <div
-      className="vault-row mx-2"
+      className="vault-row"
       data-flash={props.flash ? "" : undefined}
       data-open={open ? "" : undefined}
       data-vault-row={value.key}
     >
       <button
         aria-expanded={open}
-        className="grid h-9 w-full grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 rounded-lg px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex h-11 w-full items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         onClick={props.onToggle}
         type="button"
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 shrink items-center gap-2">
           <span className="truncate text-line text-foreground">{props.label}</span>
           {props.only === null ? null : (
             <span className="vault-only shrink-0 truncate text-2xs text-muted-foreground">
@@ -159,7 +185,7 @@ export function VaultRow(props: VaultRowProps) {
             </span>
           )}
         </span>
-        <span className="vault-row-value relative flex min-w-0 items-center gap-1.5 text-line text-muted-foreground">
+        <span className="vault-row-value ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1.5 text-line text-muted-foreground">
           {activity.kind === "busy" ? <Spinner size="sm" tone="muted" /> : null}
           {activity.kind === "settled" && activity.check ? (
             <span
@@ -185,7 +211,7 @@ export function VaultRow(props: VaultRowProps) {
       </button>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
-          className="px-2.5 pb-2 -mt-0.5 text-xs leading-4 text-muted-foreground"
+          className="px-3.5 pb-2.5 -mt-1 text-xs leading-4 text-muted-foreground"
           data-vault-impact
         >
           {activity.line}
@@ -273,7 +299,7 @@ function RowBody(props: VaultRowProps) {
   };
 
   return (
-    <div className="grid gap-2.5 px-2.5 pt-0.5 pb-3" data-vault-body={value.key}>
+    <div className="grid gap-2.5 px-3.5 pt-0.5 pb-3" data-vault-body={value.key}>
       <div className="flex items-center gap-1.5">
         <Input
           aria-label={props.label}
@@ -345,7 +371,7 @@ function RowBody(props: VaultRowProps) {
           {restarts.length > 0 ? (
             <span className="text-warning-foreground">
               {" "}
-              {joinNames(restarts.map((reader) => reader.hostname))}{" "}
+              {restarts.map((reader) => reader.hostname).join(", ")}{" "}
               {restarts.length === 1 ? "still runs" : "still run"} the old value
               {props.actor === "mate" && props.mateName !== null
                 ? ` — ${props.mateName} applies it with your next message.`
@@ -453,23 +479,21 @@ function RowBody(props: VaultRowProps) {
 }
 
 /** A service Zerops runs for the environment (a database): its values, read only. */
-export function VaultManagedValues({ scope }: { readonly scope: VaultScope }) {
+export function VaultManagedRows({ scope }: { readonly scope: VaultScope }) {
   return (
-    <div className="grid pt-1 pb-2" data-vault-managed={scope.id}>
-      <p className="px-4.5 pb-1.5 text-xs text-muted-foreground">
-        Made by Zerops, read only. An app uses one by the name beside it.
-      </p>
+    <>
       {scope.values.map((value) => {
         const reference = referenceFor(scope, value.key).own;
         return (
           <div
-            className="mx-2 grid h-9 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 px-2.5"
+            className="vault-row flex h-11 items-center gap-3 px-3.5"
+            data-static=""
             data-vault-row={value.key}
             key={value.id}
           >
-            <span className="truncate text-line text-foreground">{value.key}</span>
-            <span className="flex min-w-0 items-center gap-1 text-line text-muted-foreground">
-              <span className="min-w-0 grow truncate">
+            <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
+            <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
+              <span className="min-w-0 truncate">
                 {value.sensitive || looksSecret(value.key) ? (
                   <span className="vault-dots">{DOTS}</span>
                 ) : (
@@ -481,71 +505,61 @@ export function VaultManagedValues({ scope }: { readonly scope: VaultScope }) {
           </div>
         );
       })}
-    </div>
+    </>
   );
 }
 
-/**
- * What a runtime app reads from its deploy config: each key and where it comes from, under a
- * heading that links the config itself when the workspace holds it.
- */
-export function VaultReads({
+/** What a runtime app reads from its deploy config: each key, and where its value comes from. */
+export function VaultReadRows({
   view,
   scope,
-  config,
   onGoto,
 }: {
   readonly view: VaultView;
   readonly scope: VaultScope;
-  /** A link to the app's zerops.yaml, where one is found. */
-  readonly config?: ReactNode;
   readonly onGoto: (scopeId: string, key: string) => void;
 }) {
   const host = scopeName(scope);
+  if (scope.reads.length === 0) {
+    return <p className="px-3.5 py-3 text-line text-muted-foreground">Nothing deployed yet.</p>;
+  }
   return (
-    <section className="vault-group" data-vault-reads={host}>
-      <h3 className="flex flex-wrap items-center gap-x-1.5 px-4.5 pb-0.5 font-medium text-xs text-muted-foreground">
-        <span>What {host} reads from the deploy config</span>
-        {config}
-      </h3>
-      {scope.reads.length === 0 ? (
-        <p className="mx-4.5 mt-1 text-xs text-muted-foreground">Nothing deployed yet.</p>
-      ) : (
-        <div className="grid px-2 pt-0.5">
-          {scope.reads.map((read) => {
-            const source = readSource(view, scope, read);
-            const target = source.kind === "source" ? source.target : null;
-            const content = (
-              <>
-                <span className="min-w-0 truncate font-mono text-xs leading-5 text-foreground">
-                  {read.key}
-                </span>
-                <ReadSourceLabel host={host} source={source} />
-              </>
-            );
-            return target === null ? (
-              <div
-                className="grid h-8 grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 px-2.5"
-                data-vault-read={read.key}
-                key={read.key}
-              >
-                {content}
-              </div>
-            ) : (
-              <button
-                className="grid h-8 w-full grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-center gap-x-4 vault-read-link rounded-lg px-2.5 text-left"
-                data-vault-read={read.key}
-                key={read.key}
-                onClick={() => onGoto(target.scopeId, target.key)}
-                type="button"
-              >
-                {content}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
+    <>
+      {scope.reads.map((read) => {
+        const source = readSource(view, scope, read);
+        const target = source.kind === "source" ? source.target : null;
+        const content = (
+          <>
+            <span className="min-w-0 shrink truncate font-mono text-xs text-foreground">
+              {read.key}
+            </span>
+            <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end">
+              <ReadSourceLabel host={host} source={source} />
+            </span>
+          </>
+        );
+        return target === null ? (
+          <div
+            className="vault-row flex h-10 items-center gap-3 px-3.5"
+            data-static=""
+            data-vault-read={read.key}
+            key={read.key}
+          >
+            {content}
+          </div>
+        ) : (
+          <button
+            className="vault-row vault-read-link flex h-10 w-full items-center gap-3 px-3.5 text-left"
+            data-vault-read={read.key}
+            key={read.key}
+            onClick={() => onGoto(target.scopeId, target.key)}
+            type="button"
+          >
+            {content}
+          </button>
+        );
+      })}
+    </>
   );
 }
 

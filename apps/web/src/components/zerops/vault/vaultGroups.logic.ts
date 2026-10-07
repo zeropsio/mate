@@ -126,22 +126,62 @@ const ADDRESS_ENDS = new Set([
 ]);
 const SECURITY = new Set(["SECRET", "JWT", "COOKIE", "SESSION", "SALT", "ENCRYPTION", "SIGNING"]);
 
+/** What a group is about, for its icon. */
+export type VaultGroupKind =
+  | "admin"
+  | "email"
+  | "storage"
+  | "addresses"
+  | "data"
+  | "security"
+  | "payments"
+  | "ai"
+  | "search"
+  | "monitoring"
+  | "service"
+  | "app"
+  | "other";
+
 export interface VaultGroupRef {
   readonly id: string;
   readonly title: string;
   /** Where the group sits: what a person looks for first comes first, machines' keys last. */
   readonly order: number;
+  readonly kind: VaultGroupKind;
 }
 
 const GROUP = {
-  admin: { id: "admin", title: "Admin sign-in", order: 0 },
-  email: { id: "email", title: "Email", order: 2 },
-  storage: { id: "storage", title: "File storage", order: 3 },
-  addresses: { id: "addresses", title: "Addresses", order: 4 },
-  data: { id: "data", title: "Databases", order: 5 },
-  other: { id: "other", title: "Other settings", order: 7 },
-  security: { id: "security", title: "Security keys", order: 8 },
+  admin: { id: "admin", title: "Admin sign-in", order: 0, kind: "admin" },
+  email: { id: "email", title: "Email", order: 2, kind: "email" },
+  storage: { id: "storage", title: "File storage", order: 3, kind: "storage" },
+  addresses: { id: "addresses", title: "Addresses", order: 4, kind: "addresses" },
+  data: { id: "data", title: "Databases", order: 5, kind: "data" },
+  other: { id: "other", title: "Other settings", order: 7, kind: "other" },
+  security: { id: "security", title: "Security keys", order: 8, kind: "security" },
 } as const satisfies Record<string, VaultGroupRef>;
+
+/** What each known provider is about, for its group's icon. */
+const PROVIDER_KIND: Readonly<Record<string, VaultGroupKind>> = {
+  ADYEN: "payments",
+  BRAINTREE: "payments",
+  LEMONSQUEEZY: "payments",
+  MOLLIE: "payments",
+  PADDLE: "payments",
+  PAYPAL: "payments",
+  STRIPE: "payments",
+  ANTHROPIC: "ai",
+  OPENAI: "ai",
+  ALGOLIA: "search",
+  MEILI: "search",
+  MEILISEARCH: "search",
+  TYPESENSE: "search",
+  POSTHOG: "monitoring",
+  SENTRY: "monitoring",
+  MAILGUN: "email",
+  POSTMARK: "email",
+  RESEND: "email",
+  SENDGRID: "email",
+};
 
 interface Placement {
   readonly group: VaultGroupRef | null;
@@ -158,7 +198,15 @@ function place(key: string): Placement {
   if (words.some((word) => ADMIN.has(word))) return { group: GROUP.admin, label: label(words) };
   const provider = PROVIDERS[first];
   if (provider !== undefined) {
-    return { group: { id: `provider:${first}`, title: provider, order: 1 }, label: label(rest) };
+    return {
+      group: {
+        id: `provider:${first}`,
+        title: provider,
+        order: 1,
+        kind: PROVIDER_KIND[first] ?? "service",
+      },
+      label: label(rest),
+    };
   }
   if (EMAIL.has(first)) return { group: GROUP.email, label: label(rest) };
   if (STORAGE.has(first)) {
@@ -307,7 +355,7 @@ export function vaultGroups(
     if (item.scope.hostname !== null && filter.kind === "everything") {
       return {
         ...item,
-        group: { id: `app:${item.scope.id}`, title: item.scope.hostname, order: 6 },
+        group: { id: `app:${item.scope.id}`, title: item.scope.hostname, order: 6, kind: "app" },
         only: null,
       };
     }
@@ -316,7 +364,7 @@ export function vaultGroups(
     if ((firsts.get(first) ?? 0) >= 2 && words.length > 1) {
       return {
         ...item,
-        group: { id: `prefix:${first}`, title: labelOf([first]), order: 6 },
+        group: { id: `prefix:${first}`, title: labelOf([first]), order: 6, kind: "service" },
         label: labelOf(words.slice(1)),
         only,
       };
@@ -433,4 +481,65 @@ export function setupLine(content: string, hostname: string): number | null {
     if (at !== -1) return at + 1;
   }
   return null;
+}
+
+// ── services, in words ──────────────────────────────────────────────────────
+
+const RUNTIME_WORDS: Readonly<Record<string, string>> = {
+  alpine: "Container",
+  bun: "Bun app",
+  deno: "Deno app",
+  docker: "Docker container",
+  dotnet: ".NET app",
+  elixir: "Elixir app",
+  gleam: "Gleam app",
+  go: "Go app",
+  java: "Java app",
+  nginx: "Static site",
+  nodejs: "Node.js app",
+  php: "PHP app",
+  "php-apache": "PHP app",
+  "php-nginx": "PHP app",
+  python: "Python app",
+  ruby: "Ruby app",
+  rust: "Rust app",
+  static: "Static site",
+  ubuntu: "Container",
+};
+
+export type VaultServiceKind = "app" | "database" | "cache" | "search" | "storage" | "messaging";
+
+const MANAGED_WORDS: Readonly<
+  Record<string, { readonly kind: VaultServiceKind; readonly words: string }>
+> = {
+  clickhouse: { kind: "database", words: "Analytics database · ClickHouse" },
+  elasticsearch: { kind: "search", words: "Search · Elasticsearch" },
+  kafka: { kind: "messaging", words: "Messaging · Kafka" },
+  keydb: { kind: "cache", words: "Cache · KeyDB" },
+  mariadb: { kind: "database", words: "Database · MariaDB" },
+  meilisearch: { kind: "search", words: "Search · Meilisearch" },
+  mongodb: { kind: "database", words: "Database · MongoDB" },
+  mysql: { kind: "database", words: "Database · MySQL" },
+  nats: { kind: "messaging", words: "Messaging · NATS" },
+  "object-storage": { kind: "storage", words: "File storage" },
+  postgresql: { kind: "database", words: "Database · PostgreSQL" },
+  qdrant: { kind: "database", words: "Vector database · Qdrant" },
+  rabbitmq: { kind: "messaging", words: "Messaging · RabbitMQ" },
+  redis: { kind: "cache", words: "Cache · Redis" },
+  "shared-storage": { kind: "storage", words: "Shared disk" },
+  typesense: { kind: "search", words: "Search · Typesense" },
+  valkey: { kind: "cache", words: "Cache · Valkey" },
+};
+
+/** A service as a person reads it: what it is ("Node.js app", "Database · PostgreSQL"). */
+export function serviceWords(scope: VaultScope): {
+  readonly kind: VaultServiceKind;
+  readonly words: string | null;
+} {
+  const type = typeWord(scope.serviceType);
+  if (scope.kind === "managed") {
+    const known = type === null ? undefined : MANAGED_WORDS[type];
+    return known ?? { kind: "database", words: type };
+  }
+  return { kind: "app", words: type === null ? null : (RUNTIME_WORDS[type] ?? type) };
 }

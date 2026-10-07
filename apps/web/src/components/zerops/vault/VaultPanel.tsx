@@ -1,10 +1,11 @@
 /**
  * The Vault tab: one environment's values beside a Mate's conversation, for people as much as for
- * developers. The main page holds what needs the person on top (values not set, secrets anyone can
- * read, changes not live yet), the environment's apps, then the values every app gets in groups
- * named for what each is for (Admin sign-in, Stripe, Email, Addresses…), each on one line under
- * its name in words. An app opens its own page: its own values, and what it reads from its deploy
- * config, linked to the file. Edit as text sits behind the "⋯".
+ * developers. Two views, switched at the top. Values: what needs the person first (values not
+ * set, secrets anyone can read, changes not live yet), then the environment's values in cards
+ * named for what each is for (Admin sign-in, Stripe, Email, Addresses…), each value on one line
+ * under its name in words. Apps: the environment's apps, and the services Zerops runs for it, in
+ * words ("Node.js app", "Database · PostgreSQL"); each opens its own page — its own values and
+ * what it reads from its deploy config, linked to the file. Edit as text sits behind the "⋯".
  *
  * `VaultPanelBody` draws a view it is given and reports writes and restarts; the container
  * (`VaultPanelContainer.tsx`) feeds it from the account's `vault` projection and operations; the
@@ -20,16 +21,33 @@ import type {
 } from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
+  ActivityIcon,
+  ArchiveIcon,
   BoxIcon,
+  BoxesIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CreditCardIcon,
   DatabaseIcon,
   EllipsisIcon,
+  FileCodeIcon,
+  GlobeIcon,
+  HardDriveIcon,
   KeyRoundIcon,
   LockIcon,
+  MailIcon,
+  MessagesSquareIcon,
+  PlugIcon,
   PlusIcon,
   SearchIcon,
+  ShieldIcon,
+  SlidersHorizontalIcon,
+  SparklesIcon,
   TextIcon,
+  UserRoundIcon,
+  XIcon,
+  ZapIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -39,19 +57,28 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "../../ui/input-gro
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
 import { Spinner } from "../../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { impactLine, joinNames, notLiveTarget, refusalWords, vaultRowKey } from "./vault.logic";
 import { VaultAddCard, VaultReview, VaultTextEditor } from "./VaultEditors";
 import {
   looksSecret,
+  serviceWords,
   unsetTitle,
   vaultGroups,
   vaultNeeds,
-  typeWord,
   type VaultEntry,
   type VaultFilter,
+  type VaultGroupKind,
+  type VaultServiceKind,
 } from "./vaultGroups.logic";
 import { VaultNotLive } from "./VaultNotLive";
-import { VaultManagedValues, VaultReads, VaultRow, type VaultRowActivity } from "./VaultRow";
+import {
+  VaultBox,
+  VaultManagedRows,
+  VaultReadRows,
+  VaultRow,
+  type VaultRowActivity,
+} from "./VaultRow";
 import { diffVaultText, pasteIntoText, vaultToText, type VaultText } from "./vaultText.logic";
 
 /** What the account knows of one row's write: in flight, or refused with the platform's code. */
@@ -96,7 +123,35 @@ const FLASH_MS = 1500;
 const MAIN: VaultFilter = { kind: "all" };
 const EVERYTHING: VaultFilter = { kind: "everything" };
 
-type Page = { readonly kind: "all" } | { readonly kind: "app"; readonly id: string };
+const GROUP_ICON: Readonly<Record<VaultGroupKind, LucideIcon>> = {
+  admin: UserRoundIcon,
+  email: MailIcon,
+  storage: HardDriveIcon,
+  addresses: GlobeIcon,
+  data: DatabaseIcon,
+  security: ShieldIcon,
+  payments: CreditCardIcon,
+  ai: SparklesIcon,
+  search: SearchIcon,
+  monitoring: ActivityIcon,
+  service: PlugIcon,
+  app: BoxIcon,
+  other: SlidersHorizontalIcon,
+};
+
+const SERVICE_ICON: Readonly<Record<VaultServiceKind, LucideIcon>> = {
+  app: BoxIcon,
+  database: DatabaseIcon,
+  cache: ZapIcon,
+  search: SearchIcon,
+  storage: ArchiveIcon,
+  messaging: MessagesSquareIcon,
+};
+
+type Page =
+  | { readonly kind: "values" }
+  | { readonly kind: "apps" }
+  | { readonly kind: "app"; readonly id: string };
 
 type Mode =
   | { readonly kind: "list" }
@@ -122,8 +177,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const { view } = props;
   const [clock, setClock] = useState(() => Date.now());
   const nowMs = props.nowMs ?? clock;
-  const [page, setPage] = useState<Page>({ kind: "all" });
+  const [page, setPage] = useState<Page>({ kind: "values" });
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const [openRow, setOpenRow] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
@@ -131,6 +187,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const [local, setLocal] = useState<Local>(EMPTY_LOCAL);
   const [restartingLocal, setRestartingLocal] = useState<ReadonlySet<string>>(() => new Set());
   const scroller = useRef<HTMLDivElement>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   const [scrolled, setScrolled] = useState(false);
 
   const shared = view.scopes.find((candidate) => candidate.kind === "shared");
@@ -140,7 +197,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const target = app ?? shared;
   const mateName = props.who.kind === "mate" ? props.who.name : null;
   const restarting = new Set([...props.restarting, ...restartingLocal]);
-  const q = page.kind === "all" ? query.trim() : "";
+  const q = page.kind === "app" ? "" : query.trim();
 
   // A settled row's check and impact line go on their own.
   const settledCount = local.settled.size;
@@ -234,10 +291,11 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     scroller.current?.scrollTo({ top: 0 });
   };
 
-  /** Opens a value where it lives: the main page for the environment's, its app's page else. */
+  /** Opens a value where it lives: Values for the environment's, its app's page else. */
   const reveal = (scope: VaultScope, valueId: string, key: string) => {
-    go(scope.kind === "shared" ? { kind: "all" } : { kind: "app", id: scope.id });
+    go(scope.kind === "shared" ? { kind: "values" } : { kind: "app", id: scope.id });
     setQuery("");
+    setSearching(false);
     const rowKey = vaultRowKey(scope.id, valueId);
     if (scope.editable) setOpenRow(rowKey);
     setFlash(rowKey);
@@ -258,17 +316,42 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   };
 
   const editing = mode.kind === "text" || mode.kind === "review";
-  const canWrite = target !== undefined && target.editable && view.status !== "unread";
-  const apps = view.scopes.filter((scope) => scope.kind !== "shared");
+  const canWrite =
+    target !== undefined && target.editable && view.status !== "unread" && page.kind !== "apps";
+  const runtime = view.scopes.filter((scope) => scope.kind === "runtime");
+  const managed = view.scopes.filter((scope) => scope.kind === "managed");
 
   const actions = (
     <>
+      {page.kind === "app" ? null : (
+        <Tip tip={searching ? "Close search · Esc" : "Search"}>
+          <Button
+            aria-expanded={searching}
+            aria-label={searching ? "Close search" : "Search"}
+            disabled={view.status === "unread"}
+            onClick={() => {
+              if (searching) {
+                setQuery("");
+                setSearching(false);
+              } else {
+                setSearching(true);
+                requestAnimationFrame(() => searchInput.current?.focus());
+              }
+            }}
+            size="icon-xs"
+            variant="ghost-muted"
+          >
+            {searching ? <XIcon /> : <SearchIcon />}
+          </Button>
+        </Tip>
+      )}
       {canWrite ? (
         <Button
           disabled={editing}
           onClick={() => {
             setOpenRow(null);
             setQuery("");
+            setSearching(false);
             setMode({ kind: "add" });
           }}
           size="xs"
@@ -308,65 +391,93 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     </>
   );
 
-  const header =
-    app === undefined ? (
-      <div className="flex h-12 flex-none items-center gap-1.5 pr-2.5 pl-3" data-vault-header>
-        <InputGroup className="max-w-60 min-w-0 flex-1">
-          <InputGroupAddon>
-            <SearchIcon aria-hidden />
-          </InputGroupAddon>
-          <InputGroupInput
-            aria-label="Search"
-            autoComplete="off"
-            disabled={view.status === "unread"}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setQuery("");
-            }}
-            placeholder="Search"
-            size="sm"
-            spellCheck={false}
-            value={query}
-          />
-        </InputGroup>
-        <span className="grow" />
-        {actions}
-      </div>
-    ) : (
-      <div className="flex h-12 flex-none items-center gap-1 pr-2.5 pl-2" data-vault-header>
-        <Button
-          aria-label="Back to all values"
-          onClick={() => go({ kind: "all" })}
-          size="icon-xs"
-          variant="ghost-muted"
-        >
-          <ChevronLeftIcon />
-        </Button>
-        <span className="truncate font-medium text-line text-foreground">{app.hostname}</span>
-        {app.serviceType === null ? null : (
-          <span className="truncate text-xs text-muted-foreground">
-            {typeWord(app.serviceType)}
-          </span>
+  const header = (
+    <div className="flex-none" data-vault-header>
+      <div className="flex h-12 items-center gap-1.5 pr-2.5 pl-3">
+        {app === undefined ? (
+          <div aria-label="Show" className="vault-switch" role="tablist">
+            {(
+              [
+                ["values", "Values"],
+                ["apps", "Apps"],
+              ] as const
+            ).map(([kind, words]) => (
+              <button
+                aria-selected={page.kind === kind}
+                className="vault-switch-item"
+                data-vault-view={kind}
+                disabled={view.status === "unread"}
+                key={kind}
+                onClick={() => go({ kind })}
+                role="tab"
+                type="button"
+              >
+                {words}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            <Button
+              aria-label="Back to apps"
+              onClick={() => go({ kind: "apps" })}
+              size="icon-xs"
+              variant="ghost-muted"
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <span className="truncate font-semibold text-line text-foreground">{app.hostname}</span>
+            {serviceWords(app).words === null ? null : (
+              <span className="truncate text-xs text-muted-foreground">
+                {serviceWords(app).words}
+              </span>
+            )}
+          </>
         )}
         <span className="grow" />
         {actions}
       </div>
-    );
+      {searching && page.kind !== "app" ? (
+        <div className="px-3 pb-2.5">
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon aria-hidden />
+            </InputGroupAddon>
+            <InputGroupInput
+              aria-label="Search"
+              autoComplete="off"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setQuery("");
+                  setSearching(false);
+                }
+              }}
+              placeholder={page.kind === "apps" ? "Search apps" : "Search values"}
+              ref={searchInput}
+              size="sm"
+              spellCheck={false}
+              value={query}
+            />
+          </InputGroup>
+        </div>
+      ) : null}
+    </div>
+  );
 
   if (view.status === "unread" || target === undefined) {
     return (
       <div className="vault-panel flex h-full min-h-0 flex-col bg-card" data-vault-panel="unread">
         {header}
-        <div aria-busy="true" className="grid gap-0 pt-2" data-vault-skeleton>
-          {[0, 1, 2, 3, 4, 5].map((index) => (
-            <div
-              className="mx-2 grid h-9 grid-cols-[5fr_6fr] items-center gap-x-4 px-2.5"
-              key={index}
-            >
-              <Skeleton className="h-3.5 w-28" />
-              <Skeleton className="h-3.5 w-40" />
-            </div>
-          ))}
+        <div aria-busy="true" className="vault-canvas min-h-0 flex-1 p-3" data-vault-skeleton>
+          <div className="vault-box">
+            {[0, 1, 2, 3, 4].map((index) => (
+              <div className="flex h-11 items-center justify-between px-3.5" key={index}>
+                <Skeleton className="h-3.5 w-28" />
+                <Skeleton className="h-3.5 w-40" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -401,7 +512,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     );
   };
 
-  const groupsOf = (filter: VaultFilter, skip: ReadonlySet<string>) =>
+  const boxesOf = (filter: VaultFilter, skip: ReadonlySet<string>) =>
     vaultGroups(view, filter, q)
       .map((group) => ({
         ...group,
@@ -409,21 +520,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       }))
       .filter((group) => group.entries.length > 0)
       .map((group) => (
-        <section className="vault-group" data-vault-group={group.id} key={group.id}>
-          <h3 className="px-4.5 pb-0.5 font-medium text-xs text-muted-foreground">{group.title}</h3>
+        <VaultBox icon={GROUP_ICON[group.kind]} id={group.id} key={group.id} title={group.title}>
           {group.entries.map(rowOf)}
-        </section>
+        </VaultBox>
       ));
 
-  const mainPage = (): ReactNode => {
+  const valuesPage = (): ReactNode => {
     const needs = vaultNeeds(vaultGroups(view, EVERYTHING, ""));
     // A value the card on top takes a paste for is not listed again below it.
     const asked = new Set(q === "" ? needs.unset.map((entry) => entry.value.id) : []);
-    const groups = groupsOf(q === "" ? MAIN : EVERYTHING, asked);
-    const needle = q.toLowerCase();
-    const shownApps = apps.filter(
-      (scope) => q === "" || (scope.hostname ?? "").toLowerCase().includes(needle),
-    );
+    const boxes = boxesOf(q === "" ? MAIN : EVERYTHING, asked);
     return (
       <>
         {q === "" && mode.kind === "list" ? (
@@ -434,63 +540,109 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             onWrite={(entry, change) => write(entry.scope, change)}
           />
         ) : null}
-        {shownApps.length > 0 ? (
-          <section className="vault-group" data-vault-group="apps">
-            <h2 className="mx-4.5 pb-1 font-semibold text-line text-foreground">Apps</h2>
-            {shownApps.map((scope) => (
+        {boxes}
+        {boxes.length === 0 && q !== "" ? (
+          <p className="px-1 py-2 text-line text-muted-foreground">Nothing matches “{q}”.</p>
+        ) : boxes.length === 0 && mode.kind === "list" ? (
+          <p className="flex flex-wrap items-baseline gap-1.5 px-1 py-2 text-line text-muted-foreground">
+            <span>No values yet.</span>
+            <InlineButton onClick={() => setMode({ kind: "add" })}>Add one</InlineButton>
+          </p>
+        ) : null}
+      </>
+    );
+  };
+
+  const appsPage = (): ReactNode => {
+    const needle = q.toLowerCase();
+    const matches = (scope: VaultScope) =>
+      needle === "" ||
+      `${scope.hostname ?? ""} ${serviceWords(scope).words ?? ""}`.toLowerCase().includes(needle);
+    const apps = runtime.filter(matches);
+    const services = managed.filter(matches);
+    return (
+      <>
+        {apps.length > 0 ? (
+          <VaultBox icon={BoxesIcon} id="apps" title="Your apps">
+            {apps.map((scope) => (
               <VaultAppRow
                 key={scope.id}
                 onOpen={() => go({ kind: "app", id: scope.id })}
                 scope={scope}
-                stale={view.scopes.some((owner) =>
-                  owner.values.some((value) =>
-                    value.readers.some(
-                      (reader) => reader.serviceId === scope.id && reader.state === "restart",
-                    ),
-                  ),
-                )}
+                view={view}
               />
             ))}
-          </section>
+          </VaultBox>
         ) : null}
-        {groups.length > 0 && q === "" ? (
-          <h2 className="vault-section-title mx-4.5 font-semibold text-line text-foreground">
-            Values
-          </h2>
+        {services.length > 0 ? (
+          <VaultBox icon={DatabaseIcon} id="zerops" title="Run by Zerops">
+            {services.map((scope) => (
+              <VaultAppRow
+                key={scope.id}
+                onOpen={() => go({ kind: "app", id: scope.id })}
+                scope={scope}
+                view={view}
+              />
+            ))}
+          </VaultBox>
         ) : null}
-        {groups}
-        {groups.length === 0 && shownApps.length === 0 && q !== "" ? (
-          <p className="mx-4.5 my-3.5 text-line text-muted-foreground">Nothing matches “{q}”.</p>
+        {apps.length === 0 && services.length === 0 ? (
+          <p className="px-1 py-2 text-line text-muted-foreground">
+            {q === "" ? "No apps yet." : `No app matches “${q}”.`}
+          </p>
         ) : null}
       </>
     );
   };
 
   const appPage = (scope: VaultScope): ReactNode => {
-    if (scope.kind === "managed") return <VaultManagedValues scope={scope} />;
-    const groups = groupsOf({ kind: "app", id: scope.id }, new Set());
+    if (scope.kind === "managed") {
+      return (
+        <VaultBox
+          aside={<span className="text-xs text-muted-foreground">read only</span>}
+          icon={SERVICE_ICON[serviceWords(scope).kind]}
+          id="made"
+          title="Made by Zerops"
+        >
+          <VaultManagedRows scope={scope} />
+        </VaultBox>
+      );
+    }
+    const entries = vaultGroups(view, { kind: "app", id: scope.id }, "").flatMap(
+      (group) => group.entries,
+    );
+    const config = props.renderDeployConfig?.(scope.hostname ?? "");
     return (
       <>
-        {groups.length > 0 ? (
-          <h2 className="mx-4.5 mt-1 font-semibold text-line text-foreground">Its own values</h2>
-        ) : mode.kind === "list" ? (
-          <p className="mx-4.5 mt-2 flex flex-wrap items-baseline gap-1.5 text-line text-muted-foreground">
-            <span>{scope.hostname} has no values of its own.</span>
-            <InlineButton onClick={() => setMode({ kind: "add" })}>Add one</InlineButton>
-          </p>
-        ) : null}
-        {groups}
-        <VaultReads
-          config={props.renderDeployConfig?.(scope.hostname ?? "")}
-          onGoto={(scopeId, key) => {
-            const owner = view.scopes.find((candidate) => candidate.id === scopeId);
-            const value = owner?.values.find((candidate) => candidate.key === key);
-            if (owner === undefined || value === undefined) return;
-            reveal(owner, value.id, value.key);
-          }}
-          scope={scope}
-          view={view}
-        />
+        <VaultBox icon={KeyRoundIcon} id="own" title="Its own values">
+          {entries.length > 0 ? (
+            entries.map(rowOf)
+          ) : (
+            <p className="flex flex-wrap items-baseline gap-1.5 px-3.5 py-3 text-line text-muted-foreground">
+              <span>Nothing of its own yet.</span>
+              {mode.kind === "list" ? (
+                <InlineButton onClick={() => setMode({ kind: "add" })}>Add one</InlineButton>
+              ) : null}
+            </p>
+          )}
+        </VaultBox>
+        <VaultBox
+          aside={config}
+          icon={FileCodeIcon}
+          id="reads"
+          title="What it reads from the deploy config"
+        >
+          <VaultReadRows
+            onGoto={(scopeId, key) => {
+              const owner = view.scopes.find((candidate) => candidate.id === scopeId);
+              const value = owner?.values.find((candidate) => candidate.key === key);
+              if (owner === undefined || value === undefined) return;
+              reveal(owner, value.id, value.key);
+            }}
+            scope={scope}
+            view={view}
+          />
+        </VaultBox>
       </>
     );
   };
@@ -554,7 +706,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             scope={target}
           />
         ) : null}
-        {app === undefined ? mainPage() : appPage(app)}
+        {app !== undefined ? appPage(app) : page.kind === "apps" ? appsPage() : valuesPage()}
       </>
     );
   };
@@ -568,76 +720,92 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       <div
         className={
           scrolled
-            ? "min-h-0 flex-1 overflow-y-auto border-t border-border/60 pt-1 pb-11 [scrollbar-width:thin]"
-            : "min-h-0 flex-1 overflow-y-auto border-t border-transparent pt-1 pb-11 [scrollbar-width:thin]"
+            ? "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
+            : "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/40 [scrollbar-width:thin]"
         }
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         ref={scroller}
       >
-        {view.status === "failed" ? (
-          <p
-            className="mx-4.5 mb-2.5 text-line text-muted-foreground"
-            data-vault-failed
-            role="alert"
-          >
-            Couldn't read the vault
-          </p>
-        ) : null}
-        {app === undefined ? (
-          <VaultNotLive
-            actor={props.actor}
-            items={view.notLive.filter((item) => item.kind === "restart")}
-            mate={props.who.kind === "mate" ? props.who : null}
-            monograms={new Map()}
-            onOpen={openNotLive}
-            onRestart={(serviceId) => restart(serviceId)}
-            restarting={restarting}
-          />
-        ) : null}
-        <div data-vault-list={app === undefined ? "all" : app.id}>{list()}</div>
+        <div className="grid gap-3 px-3 pt-3 pb-12" data-vault-list={app?.id ?? page.kind}>
+          {view.status === "failed" ? (
+            <p className="px-1 text-line text-muted-foreground" data-vault-failed role="alert">
+              Couldn't read the vault
+            </p>
+          ) : null}
+          {page.kind === "values" ? (
+            <VaultNotLive
+              actor={props.actor}
+              items={view.notLive.filter((item) => item.kind === "restart")}
+              mate={props.who.kind === "mate" ? props.who : null}
+              monograms={new Map()}
+              onOpen={openNotLive}
+              onRestart={(serviceId) => restart(serviceId)}
+              restarting={restarting}
+            />
+          ) : null}
+          {list()}
+        </div>
       </div>
     </div>
   );
 }
 
-/** One app on the main page: its name and kind, what it has of its own; it opens the app's page. */
+function Tip({ tip, children }: { readonly tip: string; readonly children: React.ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipPopup>{tip}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** One app, or a service Zerops runs: its name, what it is in words, and what it has of its own. */
 function VaultAppRow(props: {
   readonly scope: VaultScope;
-  readonly stale: boolean;
+  readonly view: VaultView;
   readonly onOpen: () => void;
 }) {
   const { scope } = props;
-  const own = scope.values.length;
+  const { kind, words } = serviceWords(scope);
+  const Icon = SERVICE_ICON[kind];
+  const own = scope.kind === "managed" ? 0 : scope.values.length;
+  const stale = props.view.scopes.some((owner) =>
+    owner.values.some((value) =>
+      value.readers.some((reader) => reader.serviceId === scope.id && reader.state === "restart"),
+    ),
+  );
   return (
-    <div className="vault-row mx-2" data-vault-app={scope.hostname}>
+    <div className="vault-row" data-vault-app={scope.hostname}>
       <button
-        className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex h-12 w-full items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         onClick={props.onOpen}
         type="button"
       >
-        {scope.kind === "managed" ? (
-          <DatabaseIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        ) : (
-          <BoxIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        <span className="truncate text-line text-foreground">{scope.hostname}</span>
-        {scope.serviceType === null ? null : (
-          <span className="truncate text-xs text-muted-foreground">
-            {typeWord(scope.serviceType)}
-          </span>
-        )}
-        {props.stale ? (
-          <span
-            aria-label="Runs an old value"
-            className="size-1.5 shrink-0 rounded-full bg-warning"
-            role="img"
-          />
-        ) : null}
-        <span className="grow" />
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {scope.kind === "managed" ? "made by Zerops" : own === 0 ? "" : `${own} of its own`}
+        <span className="vault-app-icon grid size-7 shrink-0 place-items-center rounded-lg">
+          <Icon aria-hidden="true" className="size-3.5" />
         </span>
-        <ChevronRightIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="grid min-w-0 gap-px">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-line text-foreground">{scope.hostname}</span>
+            {stale ? (
+              <span
+                aria-label="Runs an old value"
+                className="size-1.5 shrink-0 rounded-full bg-warning"
+                role="img"
+              />
+            ) : null}
+          </span>
+          {words === null ? null : (
+            <span className="truncate text-xs text-muted-foreground">{words}</span>
+          )}
+        </span>
+        <span className="grow" />
+        {own > 0 ? (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {own} {own === 1 ? "value" : "values"}
+          </span>
+        ) : null}
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
       </button>
     </div>
   );
@@ -689,42 +857,40 @@ function VaultNeedsYou(props: {
   };
 
   return (
-    <div className="grid gap-2 px-3 pt-1 pb-2">
+    <>
       {unset.length > 0 ? (
-        <section
-          className="vault-card rounded-xl bg-card px-3.5 pt-3 pb-3"
-          data-vault-needs="unset"
-        >
-          <h3 className="flex items-center gap-1.5 font-medium text-line text-foreground">
-            <KeyRoundIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-            {unsetTitle(unset)}
-          </h3>
-          <p className="mt-0.5 text-xs leading-4.5 text-muted-foreground">
-            Paste {unset.length === 1 ? "it" : "them"} here.{" "}
-            {props.mateName === null
-              ? "Your apps get them after a restart."
-              : `${props.mateName} puts them to work with your next message.`}
-          </p>
-          <div className="mt-2.5 grid gap-1.5">
+        <section className="vault-callout" data-tone="attention" data-vault-needs="unset">
+          <div className="flex items-start gap-3">
+            <span className="vault-callout-icon">
+              <KeyRoundIcon aria-hidden="true" className="size-4" />
+            </span>
+            <div className="grid min-w-0 gap-0.5">
+              <h3 className="font-semibold text-line text-foreground">{unsetTitle(unset)}</h3>
+              <p className="text-xs leading-4.5 text-muted-foreground">
+                Paste {unset.length === 1 ? "it" : "them"} here.{" "}
+                {props.mateName === null
+                  ? "Your apps get them after a restart."
+                  : `${props.mateName} puts them to work with your next message.`}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2">
             {unset.map((entry) => {
               const secret = looksSecret(entry.value.key);
               return (
-                <label
-                  className="grid grid-cols-[minmax(0,4fr)_minmax(0,7fr)] items-center gap-x-3"
-                  key={entry.value.id}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5 text-line text-foreground">
+                <label className="grid gap-1" key={entry.value.id}>
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
                     <span className="truncate">{entry.label}</span>
                     {entry.only === null ? null : (
-                      <span className="vault-only shrink-0 truncate text-2xs text-muted-foreground">
+                      <span className="vault-only shrink-0 truncate font-normal text-muted-foreground">
                         only {entry.only}
                       </span>
                     )}
                     {secret ? (
-                      <LockIcon
-                        aria-label="Saved secret"
-                        className="size-3 shrink-0 text-muted-foreground"
-                      />
+                      <span className="flex shrink-0 items-center gap-1 font-normal text-muted-foreground">
+                        <LockIcon aria-hidden="true" className="size-3" />
+                        saved secret
+                      </span>
                     ) : null}
                   </span>
                   <Input
@@ -744,17 +910,11 @@ function VaultNeedsYou(props: {
               );
             })}
           </div>
-          <div className="mt-2.5 flex items-center justify-end gap-2">
-            {unset.some((entry) => looksSecret(entry.value.key)) ? (
-              <span className="mr-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LockIcon aria-hidden="true" className="size-3" />
-                Saved secret: nobody reads it back
-              </span>
-            ) : null}
+          <div className="mt-3 flex justify-end">
             <Button
               disabled={filled.length === 0 || saving || unset.some(props.busy)}
               onClick={() => void saveAll()}
-              size="xs"
+              size="sm"
             >
               {saving ? <Spinner size="xs" /> : null}
               {filled.length > 1 ? `Save ${filled.length}` : "Save"}
@@ -763,34 +923,36 @@ function VaultNeedsYou(props: {
         </section>
       ) : null}
       {readable.length > 0 ? (
-        <section
-          className="flex items-start gap-3 rounded-xl bg-muted/50 px-3.5 py-3"
-          data-vault-needs="readable"
-        >
-          <LockIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-          <div className="grid min-w-0 grow gap-0.5">
-            <p className="text-line text-foreground">
-              {joinNames(readable.map((entry) => entry.label))}{" "}
-              {readable.length === 1 ? "is" : "are"} readable by anyone who opens this environment
-            </p>
-            <p className="text-xs leading-4.5 text-muted-foreground">
-              Make {readable.length === 1 ? "it" : "them"} secret: nobody can read{" "}
-              {readable.length === 1 ? "it" : "them"} back, and your apps still get{" "}
-              {readable.length === 1 ? "it" : "them"}.
-            </p>
+        <section className="vault-callout" data-tone="advice" data-vault-needs="readable">
+          <div className="flex items-start gap-3">
+            <span className="vault-callout-icon">
+              <ShieldIcon aria-hidden="true" className="size-4" />
+            </span>
+            <div className="grid min-w-0 grow gap-0.5">
+              <h3 className="font-semibold text-line text-foreground">
+                {readable.length === 1
+                  ? "A secret isn't protected"
+                  : `${readable.length} secrets aren't protected`}
+              </h3>
+              <p className="text-xs leading-4.5 text-muted-foreground">
+                Anyone with access can read {joinNames(readable.map((entry) => entry.label))}. Make{" "}
+                {readable.length === 1 ? "it" : "them"} secret — your apps still get{" "}
+                {readable.length === 1 ? "it" : "them"}.
+              </p>
+            </div>
+            <Button
+              className="shrink-0"
+              disabled={locking || readable.some(props.busy)}
+              onClick={() => void lockAll()}
+              size="sm"
+              variant="outline"
+            >
+              {locking ? <Spinner size="xs" /> : <LockIcon />}
+              Make secret
+            </Button>
           </div>
-          <Button
-            className="shrink-0"
-            disabled={locking || readable.some(props.busy)}
-            onClick={() => void lockAll()}
-            size="xs"
-            variant="outline"
-          >
-            {locking ? <Spinner size="xs" /> : null}
-            Make secret
-          </Button>
         </section>
       ) : null}
-    </div>
+    </>
   );
 }
