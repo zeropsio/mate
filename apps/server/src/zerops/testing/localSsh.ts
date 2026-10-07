@@ -61,9 +61,35 @@ const pathWithTimeout = (): string => {
  * How long the far side's processes may take to stop when their session is ended, before they are
  * killed. A real service keeps running what a dropped ssh started, but there the repository outlives
  * the session; here a test removes it once its session ends, so nothing of the session may outlive
- * it: the spawner kills the whole group and waits until it is gone.
+ * it: the client ends the far side's group, and the spawner kills the client after this grace.
  */
-const FAR_SIDE_STOP_GRACE = "1 second";
+const FAR_SIDE_STOP_GRACE = "2 seconds";
+
+/**
+ * The ssh client, run here. sshd starts the far side in a session of its own, never in the
+ * client's process group, so a job the far side leaves running (a crewmate's app) outlives the
+ * client once it exits; Effect 4.0.1 ends a finished command's whole group, which would end that
+ * job with it. Ending the client early (an interrupt, a timeout) still ends the far side's group,
+ * killing it after a second, inside the spawner's own FAR_SIDE_STOP_GRACE.
+ */
+const SSH_CLIENT = `
+use POSIX ":sys_wait_h";
+my $remote = shift;
+my $pid = fork // die "fork: $!";
+if ($pid == 0) { setpgrp(0, 0); exec "/bin/sh", "-c", $remote or exit 127 }
+# The far side's leader may stop on TERM while a process it started ignores it: the group gets a
+# second to stop, then KILL, whoever is left.
+my $end = sub {
+  kill "-TERM", $pid;
+  for (1 .. 20) { last unless kill 0, -$pid; select undef, undef, undef, 0.05 }
+  kill "-KILL", $pid;
+  exit 143;
+};
+$SIG{$_} = $end for qw(TERM INT HUP);
+# Polled, so a signal reaches the handler while the far side runs.
+until (waitpid($pid, WNOHANG)) { select undef, undef, undef, 0.05 }
+exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
+`;
 
 /** Runs what ssh was asked to run on the far side, here instead. */
 export const localSshSpawner = (
@@ -78,7 +104,7 @@ export const localSshSpawner = (
     const path = pathWithTimeout();
     const remoteEnv = { PATH: path, ...env };
     return inner.spawn(
-      ChildProcess.make("/bin/sh", ["-c", remote], {
+      ChildProcess.make("perl", ["-e", SSH_CLIENT, remote], {
         ...command.options,
         forceKillAfter: FAR_SIDE_STOP_GRACE,
         ...(remoteEnv === undefined
