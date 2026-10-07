@@ -29,6 +29,7 @@ import {
   accountReadsAtom,
   inventory,
   inventoryPlacements,
+  inventoryPlacementStatus,
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqStatusAtom,
@@ -127,7 +128,7 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing
- * is known of its structure — its projects are then placed nowhere. A stage's or a production's
+ * is known of its structure — placement is unread, not ungrouped. A stage's or a production's
  * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
@@ -136,6 +137,14 @@ export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement
     ? null
     : get(account.data.project(inventoryPlacements, account.orgId));
 }).pipe(Atom.withLabel("zerops:hq-placements"));
+
+/** Coverage of HQ placement; an app baseline alone cannot prove an ungrouped row. */
+export const hqPlacementStatusAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
+    ? { complete: false, live: false, reconnecting: false }
+    : get(account.data.project(inventoryPlacementStatus, account.orgId));
+}).pipe(Atom.withLabel("zerops:hq-placement-status"));
 
 /**
  * The Mates the reader may observe, as HQ relays them (`hqMates`): each by its project, its

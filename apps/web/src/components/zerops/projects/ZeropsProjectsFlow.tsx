@@ -70,6 +70,8 @@ export interface ZeropsProjectsFlowProps<T> {
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
   /** The projects no group holds, with the one verb each row offers. */
+  /** Source coverage for rows whose HQ placement has not been read. */
+  readonly placementNotice?: string | undefined;
   readonly ungrouped: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>;
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
@@ -166,7 +168,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   // The organization's HQ is not a project, so an account holding nothing
   // but its HQ has still not started.
   const started = groups.length > 0 || ungrouped.length > 0;
-  const firstRun = onCreateProject !== undefined && !started;
+  const firstRun = onCreateProject !== undefined && !started && props.placementNotice === undefined;
 
   return (
     <div
@@ -177,6 +179,14 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       data-zerops-surface="projects-flow"
       role="region"
     >
+      {!started && props.placementNotice !== undefined ? (
+        <>
+          <p role="status" className="text-sm text-muted-foreground">
+            {props.placementNotice}
+          </p>
+          {props.hqCard}
+        </>
+      ) : null}
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       <ProjectList focusGroup={focusGroup} groups={groups} props={props} />
       <OtherContainers props={props} rows={ungrouped} />

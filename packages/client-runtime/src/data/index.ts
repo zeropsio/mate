@@ -269,6 +269,7 @@ export {
   inventoryCandidates,
   NOT_READ_INVENTORY,
   inventoryPlacements,
+  inventoryPlacementStatus,
   type InventoryKey,
   type InventoryRead,
 } from "./projections/inventory.ts";

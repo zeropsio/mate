@@ -255,6 +255,6 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     });
     const tree = await mount();
     await press(tree);
-    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused to say.");
+    expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops refused this read.");
   });
 });

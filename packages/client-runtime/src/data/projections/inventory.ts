@@ -14,6 +14,8 @@ import { platformInventory, type PlatformInventory } from "./platformInventory.t
 import { hqNavigation } from "./hqNavigation.ts";
 import { hqMates } from "./hqMates.ts";
 import { projectServices } from "./services.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
+import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
 import { sameValue } from "./equal.ts";
 
 export interface InventoryKey {
@@ -28,6 +30,14 @@ export interface InventoryRead extends Omit<PlatformInventory, "projects"> {
   readonly isLoading: boolean;
   readonly error: string | null;
 }
+
+/** Placement coverage is separate from the app listing and from retained placement values. */
+export const inventoryPlacementStatus: Projection<string, ScopeFreshness> = {
+  name: "inventoryPlacementStatus",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => scopeFreshness(read, placementsScope(orgId)),
+  equals: sameValue,
+};
 
 /** HQ's placement facts, with only the labels its Mate overview supplied. */
 export const inventoryPlacements: Projection<string, HqPlacements | null> = {

@@ -102,3 +102,48 @@ it("does not wait on HQ detail or inventory services to show a new platform proj
   );
   registry.dispose();
 });
+
+it("an app baseline cannot claim unread placement is ungrouped", async () => {
+  const { inventoryPlacementStatus } = await import("./inventory.ts");
+  const { placementsScope, hqAppsScope } = await import("../families/hqNavigation.ts");
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [project]);
+  const apps = hqAppsScope("org");
+  store.dispatch({ kind: "baseline-begin", scope: apps, generation: 0 });
+  store.dispatch({
+    kind: "baseline-commit",
+    scope: apps,
+    generation: 0,
+    via: "hq-stream",
+    members: [],
+    rows: [],
+  });
+  expect(readsOfState(store.state()).coverage(apps)).toBe("complete");
+  expect(inventoryPlacementStatus.derive(readsOfState(store.state()), "org").complete).toBe(false);
+  seedHqNavigation(store, "org", { structure: { apps: [], ungrouped: [] } });
+  expect(inventoryPlacementStatus.derive(readsOfState(store.state()), "org").complete).toBe(true);
+  store.dispatch({
+    kind: "stream",
+    key: placementsScope("org"),
+    now: 0,
+    event: { kind: "parent-lost" },
+  });
+  expect(inventoryPlacementStatus.derive(readsOfState(store.state()), "org")).toMatchObject({
+    complete: true,
+    live: false,
+  });
+  store.dispatch({
+    kind: "stream",
+    key: placementsScope("org"),
+    now: 0,
+    event: {
+      kind: "fault",
+      jitter: 0,
+      fault: { outcome: "authoritative-denial", message: "HTTP 403" },
+    },
+  });
+  expect(
+    inventoryPlacementStatus.derive(readsOfState(store.state()), "org").unavailableReason,
+  ).toBe("forbidden");
+  registry.dispose();
+});

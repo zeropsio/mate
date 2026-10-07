@@ -31,7 +31,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -923,6 +923,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(hqNavigationAtom);
+  const placementStatus = useAtomValue(hqPlacementStatusAtom);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
   const groupTree = buildZeropsGroupTree(candidates, {
@@ -2634,6 +2635,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           if (candidate === undefined) return null;
           return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
+        placementNotice={
+          placementStatus.complete && placementStatus.unavailableReason === undefined
+            ? undefined
+            : placementStatus.unavailableReason === "expired-session"
+              ? "Placement not read — sign in again"
+              : placementStatus.unavailableReason === "forbidden"
+                ? "Placement unavailable — access denied"
+                : placementStatus.unavailableReason === "refused"
+                  ? "Placement unavailable — HQ refused this read"
+                  : hqStructure.capped || placementStatus.reconnecting
+                    ? "Placement not read — HQ is unavailable"
+                    : "Reading HQ placement…"
+        }
         ungrouped={ungroupedRows}
       />
       {mateActions.dialogs}
