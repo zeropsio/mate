@@ -96,9 +96,6 @@ operations check the original session generation before subsequent writes.
 
 ## Access verification
 
-The rules in this section hold from slice 0.6 of the
-[client state model](client-state-model.md#status-by-phase).
-
 Access is verified by REST alone. A round reads `user/info` (or reuses its recent answer), then
 only projects demanded by a route, an explicit action or a drawn Mate through `GET /project/{id}`,
 four at a time.

@@ -4,8 +4,8 @@
 piece lives, what is built, what is proven on the platform, and what is open — slice by slice. It
 carries **state** and nothing else: design is the spec (`../../../../zcp/docs/spec-mate.md`), the
 decisions and their reasons are [`design-decisions.md`](design-decisions.md), measured facts are the
-ledger (`verified.md`), the client's state model — fact owners, machines, lifetimes — is
-[`client-state-model.md`](client-state-model.md), crew terms are defined below, and
+ledger (`verified.md`), shared data rules are
+[`data-layer.md`](data-layer.md), crew terms are defined below, and
 the owner's screen-by-screen notes are the journal in `../../../../zcp/plans/` (transient). A row
 here changes in the commit that changes the fact; the commit is the evidence.
 
@@ -352,16 +352,6 @@ still to come says so.
   - _State:_ live; the design pass **open** (§7)
   - _Built in:_ mate 0.11.2 `68634f145` `e090a363b` `7abefe78f` `938de7167`; 0.11.3 `682ce19ed`
   - _Proven by:_ ledger _A project creation that the platform failed after answering 200_
-- **—** — The client state model: fact owners, machines, lifetimes
-  - _State:_ superseded by the shipped account data layer in Mate 0.14.26. Its source adapters,
-    reducer, keyed store, projections and operations replace the old Zerops runtime, query cells,
-    grant driver, duplicate transport and browser-storage remote caches. The remaining presentation
-    and source-contract work is D03, D57 and D47, listed in [data-layer.md](data-layer.md).
-    [`client-state-model.md`](client-state-model.md#status-by-phase) records the earlier phases.
-  - _Built in:_ Mate 0.14.26, following the data-layer waves
-  - _Proven by:_ `packages/client-runtime/src/data` tests; hosted scenarios in
-    `apps/web/test/scenarios/areas/{a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget}`
-
 - **—** — Pass 16: the run's card — a quiet tray, the now line, the fold, a live result
   - _State:_ **live** in the conversation, 2026-09-29: the tray and its 30 px corners, 24 px ink to
     ink from the person's words to the card and from the card to the answer. The now line through a
