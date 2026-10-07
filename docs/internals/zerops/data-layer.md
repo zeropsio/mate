@@ -23,8 +23,8 @@ atomically, then admit newer input buffered while it was read. Fence obsolete at
 account lifetimes. Scope a damaged or refused read to the evidence it affects. Keep known values
 through transient failures; withhold protected values when access is unverified and purge them on
 an authoritative denial.
-Partial evidence cannot replace a complete record or prove its absence. Distinct read purposes
-keep distinct identities. Releasing a view releases its demand; ending the owning account closes
+Whole-value replacement requires complete evidence for that identity; partial input preserves
+unproven values. Replaceable observations keep distinct identities by owner and purpose. Releasing a view releases its demand; ending the owning account closes
 its observations before disposing their state.
 
 Share account-wide observations. Hold detail only while a consumer or an accepted operation

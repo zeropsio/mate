@@ -1,18 +1,8 @@
-# Design system — the working spec
+# Design guide
 
-Dated ledger file, one writer (the orchestrator of the UI foundations programme). It holds what
-a client slice needs and no spec section states yet: the component vocabulary (anatomy · states
-· phrase source), the copy glossary, the icon map, the machine-checked rules with their tests,
-and the exception ledgers. A decision promotes to `../../../../zcp/docs/spec-mate.md` ("client
-design system" section) when the programme lands; a measured fact goes to `verified.md`. This
-file is the step between; the dated decisions it took live in `design-decisions.md`.
+Shared principles and words for every client surface. Domain meanings live in [the primer](primer.md).
 
-Started 2026-08-30 (F0). Nothing visual is decided here — a surface's anatomy lands in its entry
-when the owner fixes its flow, through the surface-round loop. A field an entry leaves out is open.
-
-## 1. Vocabulary
-
-### Shared principles
+## 1. Shared principles
 
 - Content does not move by itself. Transient state stays in a fixed frame.
 - A list has an explicit order. Background arrivals do not rearrange the order the person chose.
@@ -25,77 +15,61 @@ when the owner fixes its flow, through the surface-round loop. A field an entry 
 - A view opens or changes place when the person asks; background work does not choose it.
 - Resolve a view's destination before painting it.
 
-### Vocabulary
+## 2. Copy glossary
 
-Fixed by the accepted principles (concept P1–P8): depth by tint, one `MicroLabel`, `StatusDot` +
-word (never a bare dot), pills and chips, blue acts / teal identifies, native containers on
-mobile. Everything else in a row is filled by the slice that builds it.
+Use short declarative sentences and second person; "developer-first" is the self-description. No hype. These are user-facing words;
+identifiers and comments keep their code names.
 
-## 2. Glossary — the words the UI uses
+| Source word                                    | Product word                                 |
+| ---------------------------------------------- | -------------------------------------------- |
+| environment                                    | **project**                                  |
+| application                                    | **project**                                  |
+| a Zerops project beside an application         | **its name**                                 |
+| pull request, PR                               | **change**                                   |
+| rebase                                         | **merge main into it**                       |
+| provider                                       | **coding agent**                             |
+| pairing                                        | **Sign in with Zerops**                      |
+| Connections                                    | **Devices**                                  |
+| worktree, Local checkout, lane                 | **its own copy of {Mate}'s code**            |
+| T3 Connect, Tailscale, T3 Code                 | **omit**                                     |
+| Open in editor                                 | **Cloud IDE**                                |
+| zcp                                            | **Zerops Control Plane**                     |
+| project-level variables                        | **Shared**                                   |
+| environment variables, secrets                 | **vault values; Plain or Sensitive**         |
+| control plane (product name)                   | **Zerops Mate**                              |
+| stage half of a dev/stage pair                 | **preview**                                  |
+| deploying a crewmate's work                    | **Deploy to {host}**                         |
+| group stage project                            | **stage**                                    |
+| agent on a crew                                | **crewmate**                                 |
+| orchestrator                                   | **lead**                                     |
+| crew intent, brief                             | **goal**                                     |
+| crewmate intent, role                          | **job**                                      |
+| assignment                                     | **task**                                     |
+| conversation tab                               | **chat**                                     |
+| land a crewmate's work                         | **add to {Mate}'s code; in {Mate}'s code**   |
+| your tree                                      | **{Mate}'s code**                            |
+| deliver                                        | **ship**                                     |
+| crew run                                       | **working on its own**                       |
+| budget                                         | **what it may spend**                        |
+| Start fresh                                    | **Clear its conversation**                   |
+| Discard                                        | **Drop it; Drop the plan**                   |
+| Allow                                          | **Let it; Not now**                          |
+| Back to my tree                                | **Back to {Mate}'s**                         |
+| parked                                         | **Stopped**                                  |
+| writer, reader, lead                           | **Builds, Reviews, Plans**                   |
+| backup set, backup store                       | **backup, backup bucket**                    |
+| git repositories                               | **repositories**                             |
+| environment deploy token, token-encryption key | **deploy tokens, key for its deploy tokens** |
+| connected presence                             | **online**                                   |
+| degraded                                       | **Needs attention**                          |
+| healthy                                        | **Running**                                  |
 
-T3 word → Zerops word. User-facing copy only (R4 guards the sinks); identifiers, imports and
-comments keep whatever name the code has. Crew mode's rows put the word its design used on the
-left.
+## 3. Visual grammar
 
-| T3 says                                                                                 | mate says                                                                                       |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| environment                                                                             | **project**                                                                                     |
-| HQ's application, the layer above Zerops projects (the code's _group_, _app_)           | **project** — "Move to project…", "New project", "No project"; never _group_, _application_     |
-| a Zerops project shown beside one (a Mate's, a stage's)                                 | **its name**; never _project_ in the same dialog                                                |
-| pull request, PR                                                                        | **change** — "Change #4 waits for your merge", "2 open changes"; HQ's word for a Mate's work    |
-| rebase (a change behind or in conflict with `main`)                                     | **merge `main` into it** — "Conflicts with main"; HQ takes a Mate's push only forward           |
-| provider                                                                                | **coding agent**                                                                                |
-| pairing, pairing code                                                                   | **Sign in with Zerops**; no pairing code or one-time link is offered                            |
-| Connections                                                                             | **Devices**                                                                                     |
-| worktree, Local checkout; a crewmate's worktree or lane                                 | gone — a crewmate's copy is "its own copy of Fen's code", in setup and under _Try its work_     |
-| T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                            |
-| Open in editor                                                                          | **Cloud IDE**                                                                                   |
-| the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                  |
-| project env, project-level variables                                                    | **Shared** — the project's vault; never _project variables_                                     |
-| env vars, environment variables, secrets                                                | **the vault**, its **values** — each _Plain_ or _Sensitive_                                     |
-| commit & push                                                                           | zcp's pipeline, never the client's                                                              |
-| "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                              |
-| stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before it is merged                     |
-| a crewmate's commit deployed to another service by `sha=` (the crew design's _preview_) | **Deploy to `<host>`** — never _preview_, which is only the stage half                          |
-| a group stage project                                                                   | **stage** — only that: optional, a side branch of `main`, never a gate                          |
-| agent (one of a crew)                                                                   | **crewmate** — mostly just its name and face; _agent_ stays the coding agent                    |
-| orchestrator                                                                            | **lead**                                                                                        |
-| intent (for the whole crew); the crew design's brief                                    | **goal** — _Change the goal_; its title heads the Crew tab                                      |
-| intent (for one crewmate), role                                                         | **job** — _role_ is the Zerops membership role                                                  |
-| assignment                                                                              | **task**                                                                                        |
-| tab (another conversation with the Mate)                                                | **chat** — "+ New chat"                                                                         |
-| merge (a crewmate's work into the Mate's tree); land, landed                            | **add to Fen's code** — the review's button; once in, **in Fen's code**; not a change's _Merge_ |
-| your tree (the Mate's working copy)                                                     | **Fen's code** — the Mate's name, never "your tree"                                             |
-| deliver; landed, not delivered                                                          | **ship** — "Fen hasn't shipped these yet · Ask Fen to ship them"                                |
-| run (the crew working within limits); pause, resume                                     | **working on its own** — _Let it work on its own…_, one _Stop_, _Keep going…_; no pause         |
-| budget                                                                                  | **what it may spend** — "up to $20"                                                             |
-| Start fresh                                                                             | **Clear its conversation** — "It keeps its job and its work."                                   |
-| Discard                                                                                 | **Drop it**; a plan's **Drop the plan**                                                         |
-| Allow (a crewmate showing its work at the Mate's dev address)                           | **Let it**, beside _Not now_                                                                    |
-| Back to my tree                                                                         | **Back to Fen's**                                                                               |
-| parked                                                                                  | **Stopped**                                                                                     |
-| writer, reader, lead (what a crewmate does)                                             | **Builds**, **Reviews**, **Plans**                                                              |
-| HQ's backup set (`apps/hq` _set_), its store                                            | **backup**, **backup bucket** — "Last backup today 14:00"; pending the owner's review           |
-| HQ's git repositories (_quarantined_ ones)                                              | **repositories** — "Repository Links/api is closed"; pending the owner's review                 |
-| an environment's deploy token, HQ's `HQ_KEY_SECRET`                                     | **deploy tokens**, **key for its deploy tokens**; pending the owner's review                    |
-| a Mate's link to HQ open (`presence.online`)                                            | **online** — "3 online" on HQ's card; pending the owner's review                                |
-| HQ serving with something wrong (degraded)                                              | **Needs attention** — an owner's or an admin's headline only; pending the owner's review        |
-| HQ serving, to a member who sees none of its parts                                      | **Running** — never _Healthy_, which claims more; pending the owner's review                    |
-
-Tone: short declarative sentences, second person, "developer-first" as the one self-descriptor,
-no hype. Colour grammar: **blue acts, teal identifies** — `messageAction` (`#0077cc`) for
-everything that does something; teal only as the mark, the identity pill tint, the `update`
-role and the connected/authorized dots.
-
-## 3. Icon map
-
-Placeholder until F4-FONTS/F5b fill it. Rules already fixed: lucide on web, Tabler on mobile; no
-Material Icons webfont; the mark as path data (`brand.ts`) rendered by `<svg>` /
-`react-native-svg`; provider marks as `currentColor` SVGs; the 87 service-type icons are **not**
-used in map rows (concept D7).
-
-| Glyph id | Meaning | lucide (web) | Tabler (mobile) |
-| -------- | ------- | ------------ | --------------- |
+Use tint to show depth. Blue acts; teal identifies. Palette and contrast come from shared tokens.
+A status mark carries its word or an accessible name. Use scalable vector icons rather than an icon
+font. Clients share meaning and copy while using their native containers.
+Nested rounded edges run parallel: the outer radius is the inner radius plus the space between them.
 
 ## 4. Rules — machine-checked
 
@@ -174,44 +148,6 @@ protected; their commands are the explicit allowed set.
 
 ## 5. Exceptions
 
-**Policy (DN10).** Every guard's exceptions are fingerprint entries, never files, never counts.
-CI fails on a **new** finding without an entry, a **dead** entry (its fingerprint matches nothing
-any more), a **changed** entry (the same path and kind still has a finding, but a different
-fingerprint — the code under the entry moved and needs re-review) and an **expired** entry (its
-`expires` phase is complete). The ledger only shrinks, except for entries with `expires: "never"`
-(technical literals that are correct by design — ANSI-16, Pierre, shiki — each with a reason).
-
-**Entry schema** (one JSON array per rule, in `oxlint-plugin-t3code/exceptions/<rule>.json`;
-completed phase ids in `oxlint-plugin-t3code/exceptions/phases.json`):
-
-```json
-{
-  "path": "<repo-relative path>",
-  "kind": "<AST node type | css-declaration>",
-  "fingerprint": "<normalized source of the node / declaration>",
-  "owner": "<name>",
-  "reason": "<why this is correct>",
-  "expires": "<phase id | surface:<manifest id> | never>"
-}
-```
-
-Normalization: whitespace collapsed to one space, trimmed; for a CSS declaration
-`<selector>{<property>:<value>}` with the same collapsing. The loader, the reconcile function and
-their tests are shared (`oxlint-plugin-t3code/exceptions.ts`, W1-EXC).
-
-**Ledger sizes** (updated at every wave end and every intake; the machine files are the truth — counted 2026-09-29, after pass 16):
-
-| Rule | File                                      |                Entries | `never` | Notes                                                                                                                                  |
-| ---- | ----------------------------------------- | ---------------------: | ------: | -------------------------------------------------------------------------------------------------------------------------------------- |
-| R3   | `exceptions/no-theme-escape-hatches.json` | 385 (358 ast + 27 css) |     230 | baseline = the violations outside the Zerops dirs; the vendor provider colours (Claude, Cursor, OpenCode, Antigravity) are `never`     |
-| R4   | `exceptions/no-legacy-vocabulary.json`    |                     55 |      50 | upstream surfaces' exact literals (the branch toolbar, settings panels, thread actions, mobile git sheets); 5 expire at F6             |
-| R6   | `exceptions/no-infinite-motion.json`      |    27 (18 ast + 9 css) |      27 | the known continuous uses; since 2026-09-29 a working Mate's face (its turn and glance), the composing dots and a running call's sweep |
-| R9   | `exceptions/no-restyle.json`              |                    306 |       0 | restyles that predate the ui-kit pass (65 in the Zerops dirs); all expire at F6                                                        |
-| R10  | `exceptions/no-unknown-classes.json`      |                      3 |       3 | the `MateMark.css` classes — `@shadcn/lint` reads only `index.css` and its imports                                                     |
-| R10  | `exceptions/require-static-classes.json`  |                      4 |       0 | runtime-built `className`s on ui exports (1 in the Zerops dirs); expire at F6                                                          |
-| R11  | `exceptions/no-arbitrary-values.json`     |                    206 |       0 | arbitrary values that predate the token pass (118 in the Zerops dirs; 2 are the usage breakdown's 8px avatar initials); expire at F6   |
-
-## 6. Decisions taken inside the programme
-
-The dated log lives in [`design-decisions.md`](design-decisions.md) — grep it by date or by a
-surface's name; never read it whole.
+A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
+remove a dead or expired exception. A permanent exception needs a reason why the finding is correct.
+The machine ledgers own the entries and fingerprints; do not copy their counts into documentation.
