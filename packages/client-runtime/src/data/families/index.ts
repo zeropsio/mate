@@ -27,6 +27,8 @@ import { versionFamily } from "./version.ts";
 import { publicRoutingFamily } from "./publicRouting.ts";
 import { serviceAgentsFamily } from "./serviceAgents.ts";
 import { mateVariablesFamily } from "./mateVariables.ts";
+import { projectVariablesFamily } from "./projectVariables.ts";
+import { serviceVariableFamily } from "./serviceVariables.ts";
 import { serviceFamily } from "./service.ts";
 import { usageFamily } from "./usage.ts";
 import { usageHistoryFamily } from "./usageHistory.ts";
@@ -76,6 +78,8 @@ export const FAMILIES = defineFamilies([
   hqVerdictFamily,
   mateVariablesFamily,
   mateLinkFamily,
+  projectVariablesFamily,
+  serviceVariableFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));

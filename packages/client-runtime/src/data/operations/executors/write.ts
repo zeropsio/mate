@@ -25,7 +25,11 @@ function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
   )
     return { outcome: "uncertain-acceptance", message };
   // What Zerops itself said, where it said anything; else the client's words for its status.
-  return { ...zeropsFault(cause), message: cause.detail ?? message };
+  return {
+    ...zeropsFault(cause),
+    message: cause.detail ?? message,
+    ...(cause.code === null ? {} : { code: cause.code }),
+  };
 }
 
 /** One Zerops write, its failure classified. */

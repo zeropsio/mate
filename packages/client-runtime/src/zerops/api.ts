@@ -396,6 +396,13 @@ function isManagedService(service: ZeropsService): boolean {
   return category !== undefined && category !== "USER";
 }
 
+/** One vault write's body: `sensitive` is always said (a write without it turns a value plain). */
+export interface ZeropsVariableWrite {
+  readonly key: string;
+  readonly content: string;
+  readonly sensitive: boolean;
+}
+
 /** One record from `GET /service-stack/{id}/env`. */
 export interface ZeropsServiceEnvVar {
   readonly id: string;
@@ -2600,6 +2607,84 @@ export class ZeropsApiClient {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
+  /**
+   * `POST /project/{id}/env` — a Shared value of the vault (`stack.updateProjectEnvs`). Answers
+   * the write's process id. A key Shared holds already (case-insensitive) is `400
+   * projectEnvDuplicateKey`; a key the platform does not take, `400 projectEnvKeyInvalid`.
+   */
+  async addProjectVariable(
+    projectId: string,
+    write: ZeropsVariableWrite,
+  ): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/project/${projectId}/env`, "POST", write);
+  }
+
+  /** `PUT /project-env/{id}` — a Shared value's new content; `sensitive` always sent. */
+  async updateProjectVariable(
+    id: string,
+    write: ZeropsVariableWrite,
+  ): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/project-env/${id}`, "PUT", write);
+  }
+
+  /** `DELETE /project-env/{id}` — a Shared value removed. */
+  async removeProjectVariable(id: string): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/project-env/${id}`, "DELETE", null);
+  }
+
+  /**
+   * `POST /service-stack/{id}/user-data` — a service's own value (`stack.updateUserData`). A key
+   * equal to one of its values or of its deployed zerops.yml entries (case-insensitive) is `400
+   * userDataDuplicateKey`.
+   */
+  async addServiceVariable(
+    serviceId: string,
+    write: ZeropsVariableWrite,
+  ): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/service-stack/${serviceId}/user-data`, "POST", write);
+  }
+
+  /** `PUT /user-data/{id}` — a service value's new content; `sensitive` always sent. */
+  async updateServiceVariable(
+    id: string,
+    write: ZeropsVariableWrite,
+  ): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/user-data/${id}`, "PUT", write);
+  }
+
+  /** `DELETE /user-data/{id}` — a service's value removed. */
+  async removeServiceVariable(id: string): Promise<{ readonly processId: string | undefined }> {
+    return this.#variableWrite(`/user-data/${id}`, "DELETE", null);
+  }
+
+  /**
+   * One vault write: `sensitive` is on the wire of every add and update, because a write that
+   * leaves it out turns a sensitive value plain (measured 2026-10-07). Answers its process id.
+   */
+  async #variableWrite(
+    path: string,
+    method: "POST" | "PUT" | "DELETE",
+    write: ZeropsVariableWrite | null,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      path,
+      {
+        method,
+        ...(write === null
+          ? {}
+          : {
+              body: JSON.stringify({
+                key: write.key,
+                content: write.content,
+                sensitive: write.sensitive,
+              }),
+            }),
+      },
+      { operationKind: "project-write" },
     );
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }

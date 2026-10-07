@@ -28,18 +28,20 @@ export function startServiceExecutor(platform: {
   return (requestId: string, intent: IntentOf<"start-service">) =>
     Effect.map(
       verb(() => platform.startService(intent.serviceId)),
-      ({ processId }) => processReceipt(requestId, intent.serviceId, processId),
+      ({ processId }) =>
+        processReceipt(requestId, { family: "service", id: intent.serviceId }, processId),
     );
 }
 
 /** The operation's receipt for the process a write answered with; with none, the answer ends it. */
-const processReceipt = (
+export const processReceipt = (
   requestId: string,
-  serviceId: string,
+  /** What the write changed: the receipt's id where Zerops names no process. */
+  target: Parameters<typeof answeredReceipt>[1],
   processId: string | undefined,
 ): OperationReceipt =>
   processId === undefined
-    ? answeredReceipt(requestId, { family: "service", id: serviceId })
+    ? answeredReceipt(requestId, target)
     : {
         requestId,
         operationId: processId,
@@ -65,7 +67,11 @@ export function enableZeropsMateExecutor(platform: {
       // Only a restart whose answer was lost stays uncertain.
       const restarted = yield* Effect.result(verb(() => platform.restartService(intent.serviceId)));
       if (Result.isSuccess(restarted))
-        return processReceipt(requestId, intent.serviceId, restarted.success.processId);
+        return processReceipt(
+          requestId,
+          { family: "service", id: intent.serviceId },
+          restarted.success.processId,
+        );
       if (restarted.failure.outcome === "uncertain-acceptance")
         return yield* Effect.fail(restarted.failure);
       return {
