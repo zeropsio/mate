@@ -467,7 +467,10 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
 
   if (view.status === "unread" || target === undefined) {
     return (
-      <div className="vault-panel flex h-full min-h-0 flex-col bg-card" data-vault-panel="unread">
+      <div
+        className="vault-panel flex h-full min-h-0 flex-col bg-background"
+        data-vault-panel="unread"
+      >
         {header}
         <div aria-busy="true" className="vault-canvas min-h-0 flex-1 p-3" data-vault-skeleton>
           <div className="vault-box">
@@ -713,7 +716,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
 
   return (
     <div
-      className="vault-panel flex h-full min-h-0 flex-col bg-card"
+      className="vault-panel flex h-full min-h-0 flex-col bg-background"
       data-vault-panel={view.status}
     >
       {header}
