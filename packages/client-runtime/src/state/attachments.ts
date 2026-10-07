@@ -50,8 +50,8 @@ export function isAssetAttachmentNotFoundFailure(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
-    "_tag" in error &&
-    error._tag === "AssetAttachmentNotFoundError"
+    (("_tag" in error && error._tag === "AssetAttachmentNotFoundError") ||
+      ("code" in error && error.code === "AssetAttachmentNotFoundError"))
   );
 }
 

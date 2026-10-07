@@ -331,5 +331,29 @@ export { makeMateImages, makeMateImageWire, classifyImageHttp } from "./adapters
 
 export { repositorySource } from "./projections/repositorySource.ts";
 export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
+
+export { workspaceReading } from "./projections/mateWorkspace.ts";
+export { makeWorkspaceReads, makeWorkspaceWire } from "./adapters/mateWorkspace.ts";
+export { WORKSPACE_READS } from "./families/mateWorkspace.ts";
+export type { WorkspaceRead, WorkspaceTarget, WorkspaceValue } from "./families/mateWorkspace.ts";
+
+export type { StreamFault } from "./streamMachine.ts";
+
+export { makeFileWriteExecutor, fileWriteWire } from "./operations/executors/mateWriteFile.ts";
+export { mateWriteFile } from "./operations/mateWriteFile.ts";
+
+export { makeFileWrites } from "./adapters/mateFiles.ts";
+
+export { makeWorkspaceActions } from "./adapters/mateWorkspaceActions.ts";
+export { makeWorkspaceMutationWire } from "./operations/executors/mateWorkspace.ts";
+export type {
+  WorkspaceMutation,
+  MutationTarget,
+  MutationValue,
+} from "./operations/mateWorkspace.ts";
+
 export { makeGitCredentials } from "./adapters/hqGitCredentials.ts";
 export { gitCredentials } from "./projections/gitCredentials.ts";
+
+export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
+export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";

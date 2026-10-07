@@ -72,13 +72,14 @@ function CheckoutProbe({
   const state = useMemo<GitCheckoutState>(
     () => ({
       repository: hostname,
+      read: data !== null,
       isRepo: data?.isRepo ?? false,
       hasRemote: data?.hasPrimaryRemote ?? false,
       headRef: data?.refName ?? null,
       aheadCount: data?.aheadCount ?? 0,
       behindCount: data?.behindCount ?? 0,
       hasUpstream: data?.hasUpstream ?? false,
-      changed: data?.workingTree.files ?? EMPTY_CHANGED,
+      changed: data === null ? EMPTY_CHANGED : data.workingTree.files,
     }),
     [data, hostname],
   );
@@ -167,6 +168,7 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
         gitBlock({
           checkout: checkouts.get(repository) ?? {
             repository,
+            read: false,
             isRepo: false,
             hasRemote: false,
             headRef: null,

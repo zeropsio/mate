@@ -341,3 +341,7 @@ export function createVcsEnvironmentAtoms<R, E>(
 export * from "./gitActions.ts";
 export * from "./vcsAction.ts";
 export * from "./vcsRef.ts";
+
+export { vcsCommandScheduler, vcsCommandConcurrency } from "./vcsCommandScheduler.ts";
+
+export { vcsRefsCacheStateAtom } from "./vcsRefInvalidation.ts";

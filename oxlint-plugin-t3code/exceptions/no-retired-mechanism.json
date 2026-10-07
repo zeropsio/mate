@@ -224,54 +224,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setProjectFileQueryData(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
-    "kind": "retired-token",
-    "fingerprint": "setProjectFileQueryData(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/files/projectFilesQueryState.ts",
-    "kind": "retired-token",
-    "fingerprint": "getProjectFileQueryAtom(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/files/projectFilesQueryState.ts",
-    "kind": "retired-token",
-    "fingerprint": "getProjectFileQueryAtom(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/files/projectFilesQueryState.ts",
-    "kind": "retired-token",
-    "fingerprint": "getProjectFileQueryAtom(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/files/projectFilesQueryState.ts",
-    "kind": "retired-token",
-    "fingerprint": "setProjectFileQueryData(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/usage/UsagePage.tsx",
     "kind": "retired-token",
     "fingerprint": "useUsage(",
@@ -512,14 +464,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/lib/t3ProjectFileDefaults.ts",
-    "kind": "retired-token",
-    "fingerprint": "getProjectFileQueryAtom(",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/routes/_chat.index.tsx",
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
@@ -528,22 +472,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/state/assets.ts",
-    "kind": "retired-token",
-    "fingerprint": "createAssetEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/assets.ts",
-    "kind": "retired-token",
-    "fingerprint": "createAssetEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/state/auth.ts",
     "kind": "retired-token",
     "fingerprint": "createAuthEnvironmentAtoms",
@@ -560,38 +488,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/state/filesystem.ts",
-    "kind": "retired-token",
-    "fingerprint": "createFilesystemEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/filesystem.ts",
-    "kind": "retired-token",
-    "fingerprint": "createFilesystemEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/git.ts",
-    "kind": "retired-token",
-    "fingerprint": "createGitEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/git.ts",
-    "kind": "retired-token",
-    "fingerprint": "createGitEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/state/queries.ts",
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
@@ -603,22 +499,6 @@
     "path": "apps/web/src/state/queries.ts",
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/review.ts",
-    "kind": "retired-token",
-    "fingerprint": "createReviewEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/review.ts",
-    "kind": "retired-token",
-    "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
@@ -692,22 +572,6 @@
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/vcs.ts",
-    "kind": "retired-token",
-    "fingerprint": "createVcsEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/vcs.ts",
-    "kind": "retired-token",
-    "fingerprint": "createVcsEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },

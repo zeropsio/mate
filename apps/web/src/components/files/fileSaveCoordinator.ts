@@ -11,6 +11,7 @@ export class FileSaveCoordinator<A = unknown, E = unknown> {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private latestContents = "";
   private latestRevision = 0;
+  private lastAttemptedRevision = 0;
   private lastChangeAt = 0;
   private saving = false;
   private disposed = false;
@@ -46,11 +47,17 @@ export class FileSaveCoordinator<A = unknown, E = unknown> {
   }
 
   private async persistLatest(): Promise<void> {
-    if (this.saving || this.latestRevision === 0) return;
+    if (
+      this.saving ||
+      this.latestRevision === 0 ||
+      this.latestRevision === this.lastAttemptedRevision
+    )
+      return;
 
     this.saving = true;
     const contents = this.latestContents;
     const revision = this.latestRevision;
+    this.lastAttemptedRevision = revision;
     const result = await this.options.persist(contents);
     const succeeded = result._tag === "Success";
     if (succeeded) {

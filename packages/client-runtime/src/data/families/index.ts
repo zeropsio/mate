@@ -1,5 +1,17 @@
-import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
+import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
+import { mateFilesystemFamily } from "./mateFilesystem.ts";
+import { matePullRequestFamily } from "./matePullRequest.ts";
+import { mateReviewFamily } from "./mateReview.ts";
+import { mateReviewFileFamily } from "./mateReviewFile.ts";
+import { mateWorkspaceFileFamily } from "./mateWorkspaceFile.ts";
+import { mateWorkspaceEntriesFamily } from "./mateWorkspaceEntries.ts";
+import { mateWorkspacePathsFamily } from "./mateWorkspacePaths.ts";
+import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
+import { mateMcpServersFamily } from "./mateMcpServers.ts";
+import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
+import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
@@ -65,9 +77,22 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
-  hqRepositorySourceFamily,
+  mateVcsFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,
+  mateAssetUrlFamily,
+  mateFilesystemFamily,
+  matePullRequestFamily,
+  mateReviewFamily,
+  mateReviewFileFamily,
+  mateWorkspaceFileFamily,
+  mateWorkspaceEntriesFamily,
+  mateWorkspacePathsFamily,
+  mateWorkspaceContentsFamily,
+  mateMcpServersFamily,
+  mateVcsRefsFamily,
+
+  hqRepositorySourceFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,

@@ -50,8 +50,8 @@ import { fileBreadcrumbs } from "./filePath";
 import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
 import { useFileSaveCoordinator } from "./useFileSaveCoordinator";
 import {
-  getOptimisticProjectFileQueryData,
-  setProjectFileQueryData,
+  getProjectFileDraft,
+  setProjectFileDraft,
   useProjectFileQuery,
 } from "./projectFilesQueryState";
 
@@ -435,7 +435,7 @@ function EditableFileSurface({
         persistState: true,
         persistStateStorage: "inMemory",
         onChange: (file, nextLineAnnotations) => {
-          setProjectFileQueryData(environmentId, cwd, relativePath, file.contents);
+          setProjectFileDraft(environmentId, cwd, relativePath, file.contents);
           saveCoordinator.change(file.contents);
           if (nextLineAnnotations) {
             const remapped = remapFileCommentAnnotations(
@@ -705,11 +705,10 @@ function RenderedMarkdownSurface({
         className="mx-auto max-w-4xl px-6 py-5"
         onTaskListChange={({ markerOffset, checked }) => {
           const currentContents =
-            getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
-            contents;
+            getProjectFileDraft(environmentId, cwd, relativePath)?.contents ?? contents;
           const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
           if (nextContents === currentContents) return;
-          setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
+          setProjectFileDraft(environmentId, cwd, relativePath, nextContents);
           saveCoordinator.change(nextContents);
         }}
       />

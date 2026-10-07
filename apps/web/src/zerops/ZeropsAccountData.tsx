@@ -30,6 +30,7 @@ import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { MateBrowserFrames } from "./browserStreamLinks";
+import { useAccountWorkspace } from "./accountWorkspace";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -89,6 +90,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const logs = useAccountBuildLogs(client, store);
   const reveal = useMemo(() => makeVaultReveal(client), [client]);
   const database = useAccountDatabase(store);
+  useAccountWorkspace(store);
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
   // disposes the registry right after: the account's data ends first, so what the unmounting

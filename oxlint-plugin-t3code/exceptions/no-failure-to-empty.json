@@ -2,14 +2,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
     "kind": "LogicalExpression",
-    "fingerprint": "data?.workingTree.files ?? EMPTY_CHANGED",
-    "owner": "state-model 4.5",
-    "reason": "an unread working-tree status reads as no changes; the Git tab takes Known inputs with the VCS invalidations",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
-    "kind": "LogicalExpression",
     "fingerprint": "topology.view?.services ?? []",
     "owner": "state-model 3.6",
     "reason": "an unread topology reads as no services; topology becomes a derived Known atom",

@@ -7,24 +7,15 @@
  * reopening the tab paints what it last knew while the header spins — never a
  * placeholder the answer then replaces.
  */
-import { RegistryContext } from "@effect/atom-react";
-import type {
-  EnvironmentId,
-  McpServerAddInput,
-  McpServersList,
-  ThreadId,
-} from "@t3tools/contracts";
-import {
-  runAtomCommand,
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "@t3tools/client-runtime/state/runtime";
-import { useCallback, useContext, useEffect, useReducer, useRef } from "react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import type { EnvironmentId, McpServerAddInput, ThreadId } from "@t3tools/contracts";
+import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import * as Option from "effect/Option";
+import { AsyncResult } from "effect/unstable/reactivity";
 
 import { mcpServersEnvironment } from "../../state/mcpServers";
-import { describeMcpFailure, mcpTabStart, mcpTabStep, type McpTabState } from "./McpServers.logic";
-
-const REMEMBERED = new Map<string, McpServersList>();
+import { describeMcpFailure, type McpTabState } from "./McpServers.logic";
 
 export type McpAction =
   | { readonly kind: "add"; readonly input: McpServerAddInput }
@@ -48,93 +39,83 @@ export function useMcpServers(input: {
 }): UseMcpServers {
   const { environmentId, threadId } = input;
   const registry = useContext(RegistryContext);
-  const key = `${environmentId}|${threadId ?? ""}`;
-  const [state, dispatch] = useReducer(mcpTabStep, null, () =>
-    mcpTabStart(REMEMBERED.get(key) ?? null),
+  const target = useMemo(
+    () => ({ environmentId, input: threadId === undefined ? {} : { threadId } }),
+    [environmentId, threadId],
   );
-  const seqRef = useRef(0);
-
-  const settle = useCallback(
-    (seq: number, result: AtomCommandResult<McpServersList, unknown>): McpActionResult => {
-      if (result._tag === "Success") {
-        REMEMBERED.set(key, result.value);
-        dispatch({ kind: "answered", seq, list: result.value });
-        return { ok: true };
-      }
-      const message = describeMcpFailure(squashAtomCommandFailure(result));
-      dispatch({ kind: "failed", seq, message });
-      return { ok: false, message };
-    },
-    [key],
-  );
-
-  const refresh = useCallback(() => {
-    const seq = ++seqRef.current;
-    dispatch({ kind: "asked", seq });
-    void runAtomCommand(
-      registry,
-      mcpServersEnvironment.list,
-      { environmentId, input: threadId === undefined ? {} : { threadId } },
-      { reportFailure: false },
-    ).then((result) => settle(seq, result));
-  }, [environmentId, registry, settle, threadId]);
-
+  const atom = mcpServersEnvironment.list(target);
+  const reading = useAtomValue(atom);
+  const refresh = useCallback(() => registry.refresh(atom), [registry, atom]);
+  const [pending, setPending] = useState(0);
   const act = useCallback(
     async (action: McpAction): Promise<McpActionResult> => {
-      const seq = ++seqRef.current;
-      dispatch({ kind: "asked", seq });
-      const target = threadId === undefined ? {} : { threadId };
-      const options = { reportFailure: false };
-      const result =
-        action.kind === "add"
-          ? await runAtomCommand(
-              registry,
-              mcpServersEnvironment.add,
-              { environmentId, input: { ...action.input, ...target } },
-              options,
-            )
-          : action.kind === "remove"
+      setPending((count) => count + 1);
+      try {
+        const scope = target.input;
+        const options = { reportFailure: false };
+        const result =
+          action.kind === "add"
             ? await runAtomCommand(
                 registry,
-                mcpServersEnvironment.remove,
-                { environmentId, input: { name: action.name, ...target } },
+                mcpServersEnvironment.add,
+                { environmentId, input: { ...action.input, ...scope } },
                 options,
               )
-            : action.kind === "reconnect"
+            : action.kind === "remove"
               ? await runAtomCommand(
                   registry,
-                  mcpServersEnvironment.reconnect,
-                  { environmentId, input: { name: action.name, ...target } },
+                  mcpServersEnvironment.remove,
+                  { environmentId, input: { name: action.name, ...scope } },
                   options,
                 )
-              : await runAtomCommand(
-                  registry,
-                  mcpServersEnvironment.setEnabled,
-                  {
-                    environmentId,
-                    input: { name: action.name, enabled: action.enabled, ...target },
-                  },
-                  options,
-                );
-      // A failed action is the action's to say, beside its control; the list it
-      // had still stands, so the failure does not become the tab's error. It is
-      // asked again: a change some agents took and one refused has landed in part.
-      if (result._tag !== "Success") {
-        dispatch({ kind: "dropped", seq });
+              : action.kind === "reconnect"
+                ? await runAtomCommand(
+                    registry,
+                    mcpServersEnvironment.reconnect,
+                    { environmentId, input: { name: action.name, ...scope } },
+                    options,
+                  )
+                : await runAtomCommand(
+                    registry,
+                    mcpServersEnvironment.setEnabled,
+                    {
+                      environmentId,
+                      input: { name: action.name, enabled: action.enabled, ...scope },
+                    },
+                    options,
+                  );
+        if (result._tag === "Success") return { ok: true };
         if (action.kind !== "reconnect") refresh();
         return { ok: false, message: describeMcpFailure(squashAtomCommandFailure(result)) };
+      } finally {
+        setPending((count) => count - 1);
       }
-      return settle(seq, result);
     },
-    [environmentId, refresh, registry, settle, threadId],
+    [environmentId, refresh, registry, target],
   );
-
   useEffect(() => {
-    refresh();
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);
-
-  return { state, refresh, act };
+  return {
+    state: {
+      list: Option.getOrNull(AsyncResult.value(reading)),
+      error:
+        reading._tag === "Failure"
+          ? reading.cause.reasons
+              .map((reason) =>
+                reason._tag === "Fail"
+                  ? reason.error.message
+                  : "The Mate could not read MCP servers.",
+              )
+              .join(" ")
+          : null,
+      busy: reading.waiting || pending > 0,
+      appliedSeq: 0,
+      inFlight: [],
+    },
+    refresh,
+    act,
+  };
 }
