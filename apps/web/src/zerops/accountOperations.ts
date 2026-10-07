@@ -32,7 +32,7 @@ import { createContext, useContext } from "react";
 import { randomUUID } from "~/lib/utils";
 
 import { readCarriedCore } from "./accountHq";
-import { hqWritesOf } from "./hqWrites";
+import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -99,7 +99,12 @@ export function accountOperations(
   const operations = makeOperations({
     store,
     executors: {
-      hq: makeHqExecutor({ apiOf: hqWritesOf, zerops: client }),
+      hq: makeHqExecutor({
+        apiOf: hqWritesOf,
+        zerops: client,
+        active: captureAccountLifetime(),
+        hqProjectIdOf,
+      }),
       zerops: makeZeropsExecutor({
         client,
         viewerOf: (orgId) => {

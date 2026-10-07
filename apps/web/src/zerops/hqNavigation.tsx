@@ -93,8 +93,10 @@ export function ZeropsHqNavigation(): null {
   // The account's operations write to the HQ it observes, and to none once it observes none.
   useEffect(
     () =>
-      organizationId === undefined || api === null ? undefined : holdHqWrites(organizationId, api),
-    [api, organizationId],
+      organizationId === undefined || api === null
+        ? undefined
+        : holdHqWrites(organizationId, api, hqProjectId ?? null),
+    [api, organizationId, hqProjectId],
   );
   // A new wire for the same organization's HQ moves the link to it; the link stops only once no
   // HQ is named, or with this mount. Without one, the account holds its verdict: none, the member

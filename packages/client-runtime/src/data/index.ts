@@ -247,6 +247,9 @@ export {
   changeReadScope,
 } from "./families/hqChangeRead.ts";
 
+export { moveRemainder, type MoveRemainder } from "./projections/moveRemainder.ts";
+export type { MoveProjectIntent } from "./operations/moveProject.ts";
+
 export { readsOfState } from "./store.ts";
 export { streamOf } from "./reducer.ts";
 export { classifyHqCall } from "./adapters/hqWire.ts";
