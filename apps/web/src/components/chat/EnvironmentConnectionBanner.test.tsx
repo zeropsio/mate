@@ -3,7 +3,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ComposerBannerStack } from "./ComposerBannerStack";
 import {
@@ -134,5 +134,49 @@ describe("Mate lifecycle recovery actions", () => {
     expect(html).toContain(label);
     expect(html).toContain("https://app.zerops.io/project/Wren");
     expect(html).not.toContain("Go to projects");
+  });
+});
+
+describe("a restart notice beside an open conversation", () => {
+  it("shows the named restart immediately and rotates its jokes without claiming readiness", async () => {
+    const { act } = await import("react");
+    const { create } = await import("react-test-renderer");
+    const { mateVoiceBannerItem } = await import("./EnvironmentConnectionBanner");
+    const { mateNoticeVoice } = await import("../../zerops/mateNoticeVoice");
+    let reduced = false;
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: reduced }) });
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const item = mateVoiceBannerItem({
+      environmentId: EnvironmentId.make("environment-1"),
+      voice: mateNoticeVoice({
+        reachability: { kind: "ready", notice: { level: "restarting", by: "you", overdue: false } },
+        conversationShown: true,
+        mateName: "Rosa",
+        nowMs: 0,
+      }),
+      onRetry: () => undefined,
+      projects: <a>Projects</a>,
+    });
+    expect(item?.title).toBe("Rosa is restarting.");
+    let rendered: ReturnType<typeof create> | undefined;
+    try {
+      act(() => {
+        rendered = create(<>{item?.description}</>);
+      });
+      const words = () => rendered!.root.findByType("span");
+      const first = words().children.join("");
+      expect(first).toContain("Rosa");
+      act(() => words().props.onAnimationIteration({ animationName: "mate-restart-words" }));
+      const second = words().children.join("");
+      expect(second).toContain("Rosa");
+      expect(second).not.toBe(first);
+      expect(item?.title).toBe("Rosa is restarting.");
+      reduced = true;
+      act(() => words().props.onAnimationIteration({ animationName: "mate-restart-words" }));
+      expect(words().children.join("")).toBe(second);
+    } finally {
+      act(() => rendered?.unmount());
+      vi.unstubAllGlobals();
+    }
   });
 });

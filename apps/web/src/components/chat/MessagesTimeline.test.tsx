@@ -11,7 +11,7 @@ import {
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { LegendListRef } from "@legendapp/list/react";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
@@ -262,7 +262,7 @@ describe("MessagesTimeline", () => {
     expect(loading).toContain('role="status"');
     expect(loading).not.toContain("data-mate-face-state");
     expect(loading).toContain("The Mate is opening the conversation.");
-    expect(loading).toContain("Waiting for the conversation to be read.");
+    expect(loading).toContain("Picking up where you left off.");
     expect(loading).not.toContain(">Try now<");
     const hero = renderToStaticMarkup(
       <MessagesTimeline {...buildProps()} hideEmptyPlaceholder timelineEntries={[]} />,
@@ -1998,12 +1998,16 @@ describe("MessagesTimeline — placing its rows", () => {
     for (const frame of frames.splice(0)) frame(0);
   };
   beforeEach(() => {
+    // Host load cannot turn a list-load test into the elapsed-time fallback test.
+    vi.spyOn(performance, "now").mockReturnValue(0);
     frames.length = 0;
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
       frames.push(callback),
     );
     vi.stubGlobal("cancelAnimationFrame", () => {});
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   const listRef = {
     current: {
@@ -2229,12 +2233,16 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
     for (const frame of frames.splice(0)) frame(0);
   };
   beforeEach(() => {
+    // Host load cannot turn a list-load test into the elapsed-time fallback test.
+    vi.spyOn(performance, "now").mockReturnValue(0);
     frames.length = 0;
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
       frames.push(callback),
     );
     vi.stubGlobal("cancelAnimationFrame", () => {});
   });
+  afterEach(() => vi.restoreAllMocks());
+
   const listRef = {
     current: {
       getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: true }),

@@ -5,8 +5,9 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { Browser, computeExecutablePath, install } from "@puppeteer/browsers";
 
-// Match puppeteer-core's supported Chrome revision. A host cache is shared by every worktree.
-const buildId = "148.0.7778.97";
+// The current Stable Chrome for Testing, so tests run the engine users run. A host cache is shared
+// by every worktree.
+const buildId = "155.0.8059.39";
 const cacheDir = NodePath.join(NodeOS.homedir(), ".cache", "mate-test-browser");
 
 export function testBrowserOptions(directory = cacheDir) {

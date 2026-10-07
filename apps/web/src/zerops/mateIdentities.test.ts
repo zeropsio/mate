@@ -1,4 +1,4 @@
-import { assignCandidateMateTints } from "@t3tools/client-runtime/zerops";
+import { assignCandidateMateTints, hasMate } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -11,8 +11,7 @@ import {
   mateStageAwake,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
-  zeropsMateDecisions,
-  zeropsMateIdentities,
+  zeropsMateIdentityOf,
   type ZeropsMateDirectory,
   type ZeropsMateIdentity,
 } from "./mateIdentities";
@@ -50,9 +49,21 @@ const FEN_DEV = candidate("acme-docs-dev", ["mate"], FEN, fen());
 const LOOSE = candidate("scratch", ["mate"], JUNO);
 const ACME_STAGE = candidate("acme-docs-stage", [], STAGE, acme("stage"));
 
-describe("zeropsMateIdentities", () => {
+/** Arrange explicit creation candidates; environment directory resolution is tested through HQ. */
+function creationIdentities(candidates: ReadonlyArray<ZeropsCandidate>) {
+  const tints = assignCandidateMateTints(candidates);
+  return new Map(
+    candidates.flatMap((row) =>
+      row.environmentId === undefined || !hasMate(row)
+        ? []
+        : [[row.environmentId, zeropsMateIdentityOf(row, tints)] as const],
+    ),
+  );
+}
+
+describe("creationIdentities", () => {
   it("names the Mate in each connected environment, with its colour and its project", () => {
-    const mates = zeropsMateIdentities([FEN_DEV, LOOSE, ACME_STAGE]);
+    const mates = creationIdentities([FEN_DEV, LOOSE, ACME_STAGE]);
     expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
     // The way into Zerops for this Mate: its project on the dashboard.
     expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
@@ -66,7 +77,7 @@ describe("zeropsMateIdentities", () => {
     { name: "is absent once it was sent", asker: null, by: undefined },
   ])("carries the stand-up ask HQ records: $name", ({ asker, by }) => {
     const placed = acme("mate", { face: "", standupRequestedBy: asker });
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
+    const mate = creationIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
 
@@ -75,7 +86,7 @@ describe("zeropsMateIdentities", () => {
     { name: "is absent on a Mate recorded before HQ kept it", maker: null, madeBy: undefined },
   ])("carries who made it, as HQ records it: $name", ({ maker, madeBy }) => {
     const placed = acme("mate", { face: "", madeBy: maker });
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
+    const mate = creationIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.madeBy).toBe(madeBy);
   });
 
@@ -107,7 +118,7 @@ describe("zeropsMateIdentities", () => {
       face: { tint: assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!, shape: "clover" },
     },
   ])("gives a Mate $case", ({ picked, face }) => {
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, fen(picked))]).get(
+    const mate = creationIdentities([candidate("acme-docs-dev", ["mate"], FEN, fen(picked))]).get(
       FEN,
     );
     const before = assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!;
@@ -123,46 +134,14 @@ describe("zeropsMateIdentities", () => {
       environmentId: JUNO,
       service: { id: "probe", name: "probe", status: "ACTIVE" },
     };
-    const mates = zeropsMateIdentities([FEN_DEV, second]);
+    const mates = creationIdentities([FEN_DEV, second]);
     expect(mates.get(FEN)?.serviceId).toBe("zcp");
     expect(mates.get(JUNO)?.serviceId).toBe("probe");
   });
 
   it("knows nobody in an environment without a Mate, or in no registered environment", () => {
-    const mates = zeropsMateIdentities([ACME_STAGE, candidate("dev", ["mate"])]);
+    const mates = creationIdentities([ACME_STAGE, candidate("dev", ["mate"])]);
     expect(mates.size).toBe(0);
-  });
-
-  it("knows a Mate from its container's origin before its socket is up", () => {
-    // The environment is registered (its origin is known) but not connected
-    // yet: the header and the composer must not wait seconds to learn this is
-    // Fen's conversation.
-    const ready: ZeropsCandidate = {
-      ...candidate("acme-docs-dev", ["mate"], undefined, fen()),
-      containerOrigin: "https://node-id-1.runtime.zcp.zerops.app",
-    };
-    const mates = zeropsMateIdentities(
-      [ready],
-      new Map([["https://node-id-1.runtime.zcp.zerops.app", FEN]]),
-    );
-    expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
-    // The way into Zerops for this Mate: its project on the dashboard.
-    expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
-  });
-});
-
-describe("zeropsMateDecisions", () => {
-  const known = (row: ZeropsCandidate) => ({ ...row, presence: "known" as const });
-
-  it("decides each environment a read row reaches: its Mate, or nobody", () => {
-    const decided = zeropsMateDecisions([known(FEN_DEV), known(ACME_STAGE)]);
-    expect(decided.get(FEN)).toMatchObject({ name: "Fen" });
-    expect(decided.get(STAGE)).toBeNull();
-  });
-
-  it("decides nothing for a row whose presence is not read", () => {
-    const decided = zeropsMateDecisions([{ ...ACME_STAGE, presence: "unknown" }]);
-    expect(decided.has(STAGE)).toBe(false);
   });
 });
 
@@ -299,7 +278,7 @@ describe("whether a Mate's opening wears it awake", () => {
     { case: "ready, its socket not up", group: "ready", running: true },
     { case: "stopped", group: "unavailable", running: false },
   ])("carries its project, and its container running when $case", ({ group, running }) => {
-    const mate = zeropsMateIdentities([{ ...FEN_DEV, group }]).get(FEN);
+    const mate = creationIdentities([{ ...FEN_DEV, group }]).get(FEN);
     expect(mate).toMatchObject({ projectId: "acme-docs-dev", running });
   });
 });

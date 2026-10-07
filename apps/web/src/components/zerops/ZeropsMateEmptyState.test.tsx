@@ -471,7 +471,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     });
     expect(stage(html)).toMatchObject({
       headline: "Fen is opening the conversation.",
-      sentence: "Waiting for the conversation to be read.",
+      sentence: "Picking up where you left off.",
       face: "sleep",
     });
     expect(html).toContain("data-opening");

@@ -1,42 +1,58 @@
-/**
- * Who lives in each environment (`mateIdentities.ts`), for the chat header,
- * the timeline, a draft's headline and the Zerops panel. Each answer is a
- * Mate, nobody, or unknown, and a surface renders the unknown one as a
- * placeholder, never as nobody (DESIGN M5).
- *
- * Derived from the candidate listing and the registered environments, with no
- * writer: an environment a known listing row reaches is decided by it; one
- * whose own server runs outside Zerops holds nobody without waiting on the
- * list (`withEnvironmentsOutsideZerops`); every other one — another
- * organization's, or one no row reaches yet — is unknown. It reads the
- * account's registry, which starts over when the account closes.
- */
+/** Route identities are HQ navigation joined to HQ overview, just as the menu names them. */
 import { useAtomValue } from "@effect/atom-react";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
+import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
+import { heldCandidateRowsAtom } from "./useZeropsCandidates";
 import { sameValue } from "../lib/sameValue";
 
 import { zeropsEnvironmentsAtom } from "../state/zerops";
-import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
-  zeropsMateDecisions,
   type ZeropsMateAt,
   type ZeropsMateDirectory,
   type ZeropsMateIdentity,
 } from "./mateIdentities";
-import { candidateListingAtom } from "./useZeropsCandidates";
 
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const environments = get(zeropsEnvironmentsAtom);
-  const rows = heldCandidates(get(candidateListingAtom)).rows;
-  return withEnvironmentsOutsideZerops(
-    zeropsMateDecisions(rows, registeredZeropsOrigins(environments)),
-    environments,
-  );
+  // Platform rows supply only the body, never the name, face, project or environment identity.
+  const rows = get(heldCandidateRowsAtom);
+  const bodies = new Map<string, Array<(typeof rows)[number]>>();
+  for (const row of rows) {
+    const held = bodies.get(row.project.id);
+    if (held === undefined) bodies.set(row.project.id, [row]);
+    else held.push(row);
+  }
+  const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
+  for (const mate of Object.values(get(shownHqMateIdentitiesAtom))) {
+    if (mate.environmentId !== undefined) {
+      const bodiesHere = bodies.get(mate.projectId) ?? [];
+      const body =
+        bodiesHere.find((row) => row.environmentId === mate.environmentId) ??
+        (bodiesHere.length === 1 ? bodiesHere[0] : undefined);
+      mates.set(mate.environmentId, {
+        ...mate,
+        ...(body === undefined
+          ? {}
+          : {
+              serviceId: body.service?.id,
+              running: candidateContainerRuns(body),
+              arrivingUntil: mateArrivingUntil(body),
+            }),
+        connected: environments.some(
+          (environment) =>
+            environment.environmentId === mate.environmentId &&
+            environment.connection.phase === "connected",
+        ),
+      });
+    }
+  }
+  return withEnvironmentsOutsideZerops(mates, environments);
 }).pipe(
   Atom.withEquality<ZeropsMateDirectory>((left, right) => sameValue([...left], [...right])),
   Atom.withLabel("zerops:mates"),

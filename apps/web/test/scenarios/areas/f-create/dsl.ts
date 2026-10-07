@@ -4,6 +4,7 @@ import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
+import { visibleText } from "../../harness/browser.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -141,6 +142,7 @@ export function creation(s: Scenario) {
       yield* Effect.promise(network.settled);
     }),
     text,
+    matePage: (name: string) => Effect.promise(() => visibleText(page, "mate-coming-page", name)),
     click,
     fill,
     newProject: Effect.gen(function* () {

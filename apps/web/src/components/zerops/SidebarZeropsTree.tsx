@@ -88,6 +88,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  shownHqMateIdentitiesAtom,
   shownHqPersonFactsAtom,
   hqMatePresenceAtom,
   shownAttentionProjectsAtom,
@@ -146,6 +147,7 @@ import {
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { HQ_LAST_KNOWN, type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "~/zerops/mateComing";
+import { mateRowCues } from "~/zerops/mateMoments.logic";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
@@ -599,6 +601,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(shownHqMenuNavigationAtom);
+  const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
   const carried = useCarriedCoreBuild();
@@ -903,6 +906,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const tints = assignCandidateMateTints(candidates);
   /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
   const faceOf = (project: ZeropsCandidate["project"]) => {
+    const identity = identities[project.id];
+    if (identity !== undefined) return { tint: identity.tint, shape: identity.shape };
     const tint = tints.get(project.id) ?? "slate";
     return { tint, shape: mateShapeOf(project, tint) };
   };
@@ -2925,7 +2930,15 @@ function MateRowView<T extends RosterCandidate>({
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
-            <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
+            <MateFace
+              cues={mateRowCues(activity)}
+              greets
+              known={known}
+              shape={shape}
+              size="md"
+              state={view.face}
+              tint={tint}
+            />
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>

@@ -1,22 +1,13 @@
-/**
- * The Zerops project's name per mate environment, read off the candidate
- * list — what a picker calls an environment when the workspace folder
- * ("www", the same in every container) says nothing. Pure: the candidate
- * list is the one source, and `zeropsEnvironmentNamesAtom` derives the result.
- */
-import { projectNameInApp } from "@t3tools/client-runtime/zerops";
+/** The names a picker reads from the route's Mate directory, never from candidate discovery. */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsMateDirectory } from "./mateIdentities";
 
 export function zeropsEnvironmentNames(
-  candidates: ReadonlyArray<ZeropsCandidate>,
+  directory: ZeropsMateDirectory,
 ): ReadonlyMap<EnvironmentId, string> {
-  const names = new Map<EnvironmentId, string>();
-  for (const candidate of candidates) {
-    const environmentId = candidate.environmentId;
-    if (environmentId === undefined || names.has(environmentId)) continue;
-    const name = projectNameInApp(candidate.project);
-    if (name.length > 0) names.set(environmentId, name);
-  }
-  return names;
+  return new Map(
+    [...directory].flatMap(([environmentId, mate]) =>
+      mate === null || mate.name.trim() === "" ? [] : [[environmentId, mate.name] as const],
+    ),
+  );
 }

@@ -3,17 +3,17 @@
 /**
  * CI's Check job, run locally: the same steps in the same order, read from
  * `.github/workflows/ci.yml` at run time, so the local run cannot drift from CI. One line per step,
- * the tail of each failure, exit 1 when any step failed.
+ * the first error and a short tail on failure, then stop with its exit code.
  *
  *   node scripts/ci-local.ts              every step of the Check job
  *   node scripts/ci-local.ts css guard    only the steps whose name holds one of the words
  *   node scripts/ci-local.ts --list       the steps, without running them
  */
-import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { parse } from "yaml";
+import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 
 export interface CheckStep {
   readonly name: string;
@@ -74,8 +74,6 @@ export function selectSteps(
   return steps.filter((step) => wanted.some((word) => step.name.toLowerCase().includes(word)));
 }
 
-const tail = (text: string, lines: number) => text.trimEnd().split("\n").slice(-lines).join("\n");
-
 if (import.meta.main) {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
@@ -92,27 +90,35 @@ if (import.meta.main) {
   const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
     NodePath.delimiter,
   );
-  let failed = 0;
-  for (const step of steps) {
+  const logs = gateLogDirectory("ci-local");
+  console.log(`Full logs: ${logs}`);
+  for (const [index, step] of steps.entries()) {
+    const logPath = NodePath.join(logs, `${index + 1}.log`);
     const started = Date.now();
-    const result = NodeChildProcess.spawnSync("bash", ["-eo", "pipefail", "-c", step.run], {
-      cwd: NodePath.join(root, step.workingDirectory ?? "."),
-      env: { ...process.env, ...step.env, CI: "true", PATH },
-      encoding: "utf8",
-      maxBuffer: 512 * 1024 * 1024,
-    });
+    const status = runLogged(
+      "bash",
+      ["-eo", "pipefail", "-c", step.run],
+      {
+        cwd: NodePath.join(root, step.workingDirectory ?? "."),
+        env: {
+          ...process.env,
+          ...step.env,
+          CI: "true",
+          MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+          PATH,
+        },
+      },
+      logPath,
+    );
     const seconds = ((Date.now() - started) / 1000).toFixed(1);
-    if (result.status === 0) {
+    if (status === 0) {
       console.log(`ok    ${step.name} (${seconds}s)`);
     } else {
-      failed += 1;
-      console.log(
-        `FAIL  ${step.name} (${seconds}s)\n${tail(`${result.stdout}${result.stderr}`, 40)}\n`,
+      console.error(
+        `FAIL  ${step.name} (${seconds}s)\n${failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath)}`,
       );
+      process.exit(status);
     }
   }
-  console.log(
-    failed === 0 ? `all ${steps.length} steps passed` : `${failed} of ${steps.length} steps failed`,
-  );
-  process.exit(failed === 0 ? 0 : 1);
+  console.log(`all ${steps.length} steps passed`);
 }

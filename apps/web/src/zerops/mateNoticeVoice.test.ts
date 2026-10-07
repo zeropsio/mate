@@ -19,7 +19,7 @@ describe("the web Mate's link notice", () => {
       face: "waking",
       text:
         level === "restarting"
-          ? "Rosa is restarting. A little stretch, then back to work."
+          ? "Rosa is restarting. Rosa is trying the classic off-and-on trick."
           : "Rosa is updating. The conversation will open once the update finishes.",
     });
   });
@@ -50,7 +50,7 @@ describe("the web Mate's link notice", () => {
   });
   it("an unread conversation has a visible opening state immediately", () => {
     expect(say(null)).toMatchObject({
-      text: "Rosa is opening the conversation. Waiting for the conversation to be read.",
+      text: "Rosa is opening the conversation. Picking up where you left off.",
       face: "idle",
     });
   });
@@ -99,4 +99,38 @@ describe("the web Mate's link notice", () => {
   it("leaves a ready conversation quiet", () => {
     expect(say({ kind: "ready", notice: null })).toEqual({ surface: "none" });
   });
+});
+
+it.each([
+  ["RUNNING", "unknown", true],
+  ["PENDING", "unknown", true],
+  ["FAILED", "unknown", false],
+  ["RUNNING", "denied", false],
+  ["RUNNING", "deleted", false],
+] as const)("restart moments follow the current process (%s, %s)", (status, kind, plays) => {
+  const voice = mateNoticeVoice({
+    mateName: "Rosa",
+    nowMs: 0,
+    conversationShown: false,
+    reachability: { kind: "not-answering", overdue: false },
+    recovery: {
+      standing: kind === "unknown" ? { kind } : { kind, name: "Rosa" },
+      status: status === "FAILED" ? "ACTION_FAILED" : "ACTIVE",
+      process: {
+        id: "restart",
+        actionName: "stack.restart",
+        status,
+        created: "2026-10-07",
+        projectId: "p",
+        serviceStackIds: ["s"],
+      },
+    },
+  });
+  expect(voice.surface).toBe("stage");
+  expect("restarting" in voice && voice.restarting === true).toBe(plays);
+  if (plays)
+    expect(voice).toMatchObject({
+      headline: "Rosa is restarting.",
+      secondary: expect.stringContaining("Rosa"),
+    });
 });
