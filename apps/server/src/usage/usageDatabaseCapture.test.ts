@@ -254,7 +254,7 @@ it.effect("an Antigravity generation keeps one fact as its identities arrive", (
                   reasoningTokens: 0,
                 },
                 reportedCostUsd: null,
-                fast: false,
+                speed: "standard",
                 dedupeKey: keys[0] ?? null,
               },
             }).facts[0]!;
