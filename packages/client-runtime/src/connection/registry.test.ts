@@ -1429,6 +1429,46 @@ describe("EnvironmentRegistry", () => {
     }),
   );
 
+  it.effect("keeps one session per environment across concurrent registrations and retries", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness([]);
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const registration = new PrimaryConnectionRegistration({ target: TARGET });
+        yield* Effect.all(
+          Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
+          { concurrency: "unbounded", discard: true },
+        );
+        yield* awaitConnectionState(
+          registry,
+          TARGET.environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        // Platform polls and explicit retries reach a healthy connection at once.
+        yield* Effect.all(
+          [
+            ...Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
+            ...Array.from({ length: 5 }, () => registry.retryNow(TARGET.environmentId)),
+            registry.reconcilePlatform([registration]),
+          ],
+          { concurrency: "unbounded", discard: true },
+        );
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          yield* Effect.yieldNow;
+        }
+
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
+        expect(yield* registry.state(TARGET.environmentId)).toMatchObject({
+          phase: "connected",
+          generation: 1,
+        });
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
   it.effect("a rejection of the old credential after rotation does not block the new one", () =>
     Effect.gen(function* () {
       // The server's answer to the revoked bearer is still in flight when the
@@ -1647,6 +1687,48 @@ describe("EnvironmentRegistry", () => {
           expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
         }).pipe(Effect.provide(harness.layer), Effect.scoped);
       }),
+  );
+
+  // A socket stays authorized as whoever opened it: after a rotation (a token
+  // refresh, or another person signing in on this device) the old socket would
+  // keep reading as the old identity, so it is replaced, never probed and kept.
+  it.effect("a rotation on a connected environment opens a new socket with the new bearer", () =>
+    Effect.gen(function* () {
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const presented = yield* Ref.make<ReadonlyArray<string | undefined>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+        {
+          authenticate: (_environmentId, credential) =>
+            Ref.update(presented, (tokens) => [...tokens, credential?.token]),
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start;
+        yield* registry.unpark(environmentId);
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        yield* registry.rotateCredential(environmentId, rotated);
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected" && state.generation === 2,
+        );
+
+        expect(yield* Ref.get(presented)).toEqual(["kept-token", rotated.token]);
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(2);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(1);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
   );
 
   it.effect("rotating an environment with no supervisor yet presents only the new bearer", () =>

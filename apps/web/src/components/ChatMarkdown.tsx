@@ -101,6 +101,7 @@ import {
 import { remarkNormalizeListItemIndentation } from "../markdown-list-indentation";
 import {
   extractMarkdownLinkHrefs,
+  isMarkdownFileLinkLabel,
   normalizeMarkdownLinkDestination,
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
@@ -2189,6 +2190,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       resolveThreadPullRequest,
       updateThreadPullRequestLink,
       fileLinkChip,
+      text,
     } = use(ChatMarkdownRendererContext);
     const { destination } = useLinkDestination(href);
     const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
@@ -2291,10 +2293,23 @@ const CHAT_MARKDOWN_COMPONENTS = {
       );
     }
 
-    return fileLinkChip(
-      fileLinkMeta,
-      `[${fileLinkMeta.basename}](${normalizedHref})`,
-      props.className,
+    // A label that only names the file is the chip's own; any other is the
+    // agent's prose, kept beside the chip, and a copy keeps the link as written.
+    const label = nodeToPlainText(children);
+    const start = node?.position?.start.offset;
+    const end = node?.position?.end.offset;
+    const source = start !== undefined && end !== undefined ? text.slice(start, end) : "";
+    const copyMarkdown =
+      source.startsWith("[") && source.includes("](")
+        ? source
+        : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
+    const chip = fileLinkChip(fileLinkMeta, copyMarkdown, props.className);
+    return isMarkdownFileLinkLabel(label, fileLinkMeta) ? (
+      chip
+    ) : (
+      <span data-markdown-copy={copyMarkdown}>
+        {children} {chip}
+      </span>
     );
   },
   code: function MarkdownCode({ node, children, className, ...props }) {

@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ImageOccurrence } from "./assetReference.ts";
+import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
@@ -14,6 +15,7 @@ import {
   EventId,
   ForwardCompatibleArray,
   ForwardCompatibleOptional,
+  hasUnknownUnionTag,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -700,7 +702,9 @@ export const OrchestrationThread = Schema.Struct({
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
-  activities: Schema.Array(OrchestrationThreadActivity),
+  // A newer Mate may send an activity this build cannot read (a new tone): it
+  // is dropped instead of failing the whole thread.
+  activities: ForwardCompatibleArray(OrchestrationThreadActivity),
   checkpoints: Schema.Array(OrchestrationCheckpointSummary),
   session: Schema.NullOr(OrchestrationSession),
   // Absent on a person's thread (see ThreadCrewOrigin).
@@ -926,15 +930,60 @@ export const OrchestrationShellStreamEvent = Schema.Union([
 ]);
 export type OrchestrationShellStreamEvent = typeof OrchestrationShellStreamEvent.Type;
 
+const OrchestrationShellSynchronizedItem = Schema.Struct({
+  kind: Schema.Literal("synchronized"),
+});
+const OrchestrationShellSnapshotItem = Schema.Struct({
+  kind: Schema.Literal("snapshot"),
+  snapshot: OrchestrationShellSnapshot,
+});
+const isUnknownShellItemKind = hasUnknownUnionTag(
+  [
+    OrchestrationShellSynchronizedItem,
+    OrchestrationShellSnapshotItem,
+    ...OrchestrationShellStreamEvent.members,
+  ],
+  "kind",
+);
+
+/**
+ * A shell item whose kind this build does not know. Newer Mates add kinds; an
+ * older client decodes them to this case and skips them, moving its cursor past
+ * one that carries a sequence, instead of failing the whole subscription. A
+ * known kind whose payload does not decode still fails. Decode-only: servers
+ * never send it.
+ */
+const OrchestrationUnknownShellStreamItem = Schema.Struct({
+  kind: Schema.String,
+  sequence: Schema.optionalKey(NonNegativeInt),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (item) => isUnknownShellItemKind(item) || "A known shell item kind must decode in full.",
+    ),
+  ),
+  Schema.decodeTo(
+    Schema.Struct({
+      kind: Schema.Literal("unknown-event"),
+      sequence: Schema.optionalKey(NonNegativeInt),
+    }),
+    {
+      decode: SchemaGetter.transform((item) =>
+        item.sequence === undefined
+          ? { kind: "unknown-event" as const }
+          : { kind: "unknown-event" as const, sequence: item.sequence },
+      ),
+      encode: SchemaGetter.forbidden(() => "Servers never send unknown shell items."),
+    },
+  ),
+);
+
 export const OrchestrationShellStreamItem = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("synchronized"),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("snapshot"),
-    snapshot: OrchestrationShellSnapshot,
-  }),
+  OrchestrationShellSynchronizedItem,
+  OrchestrationShellSnapshotItem,
   OrchestrationShellStreamEvent,
+  // After the known arms: union members are tried in order.
+  OrchestrationUnknownShellStreamItem,
 ]);
 export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.Type;
 
@@ -2090,6 +2139,54 @@ export const OrchestrationEvent = Schema.Union([
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;
 
+const isUnknownEventType = hasUnknownUnionTag(OrchestrationEvent.members, "type");
+const isUnknownActivityTone = (payload: unknown): boolean => {
+  const activity = (payload as { readonly activity?: unknown } | undefined)?.activity;
+  if (typeof activity !== "object" || activity === null || !("tone" in activity)) return false;
+  return !(OrchestrationThreadActivityTone.literals as ReadonlyArray<unknown>).includes(
+    activity.tone,
+  );
+};
+
+/**
+ * A thread event whose type this build does not know, or an appended activity
+ * whose tone it does not know. Newer Mates add both; an older client decodes
+ * them to this case and skips them, still advancing its resume cursor, instead
+ * of failing the whole subscription. A known event whose payload does not decode
+ * still fails. Decode-only: servers never send it.
+ */
+const OrchestrationUnknownThreadStreamEvent = Schema.Struct({
+  kind: Schema.Literal("event"),
+  event: Schema.Struct({
+    sequence: NonNegativeInt,
+    type: Schema.String,
+    payload: Schema.optional(Schema.Unknown),
+  }).check(
+    Schema.makeFilter(
+      (event) =>
+        isUnknownEventType(event) ||
+        (event.type === "thread.activity-appended" && isUnknownActivityTone(event.payload)) ||
+        "A known event type must decode in full.",
+    ),
+  ),
+}).pipe(
+  Schema.decodeTo(
+    Schema.Struct({
+      kind: Schema.Literal("unknown-event"),
+      sequence: NonNegativeInt,
+      eventType: Schema.String,
+    }),
+    {
+      decode: SchemaGetter.transform((item) => ({
+        kind: "unknown-event" as const,
+        sequence: item.event.sequence,
+        eventType: item.event.type,
+      })),
+      encode: SchemaGetter.forbidden(() => "Servers never send unknown thread events."),
+    },
+  ),
+);
+
 export const OrchestrationThreadStreamItem = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("synchronized"),
@@ -2102,6 +2199,8 @@ export const OrchestrationThreadStreamItem = Schema.Union([
     kind: Schema.Literal("event"),
     event: OrchestrationEvent,
   }),
+  // After the known arm: union members are tried in order.
+  OrchestrationUnknownThreadStreamEvent,
 ]);
 export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
 

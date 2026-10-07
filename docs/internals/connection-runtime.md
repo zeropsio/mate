@@ -44,13 +44,17 @@ loops, or RPC clients.
 The supervisor is the only retry owner.
 
 1. A persisted or platform registration marks an environment as desired.
-2. If the device is offline, the supervisor releases the active session and
-   waits for a signal without consuming retry attempts or running a timer.
+2. If the device is offline with no session, the supervisor waits for a signal
+   without consuming retry attempts or running a timer. A connected session
+   rides an offline spell out (the face shows offline) and is probed, with a
+   3 second deadline, when the network returns.
 3. When online, it asks the driver for one prepared connection and one RPC
    session.
-4. Transient failures retry forever with exponential backoff capped at 16
-   seconds (`RETRY_DELAYS_MS`). A connection stable for 30 seconds resets
-   accumulated backoff.
+4. Transient failures retry forever with jittered exponential backoff
+   (`retryDelayMs`): the ceiling doubles from 2 seconds to a 30 second cap, and
+   each delay is a random point in its upper half, so the clients of a restarted
+   Mate do not all reconnect in the same second. A connection stable for 30
+   seconds resets accumulated backoff.
 5. Authentication or configuration failures remain blocked until an external
    wakeup changes the relevant input.
 6. An involuntary session close keeps the registration and cache, then retries.
@@ -75,11 +79,16 @@ Wakeup handling differs by phase, in [supervisor.ts][supervisor]:
 - While waiting out backoff, application activation resets the retry ladder so a
   foregrounded app reconnects immediately instead of serving the remaining
   delay.
-- Once connected, `monitorConnectedLease` handles plain activation by probing
-  the existing session (`lease.session.probe`, with a shorter timeout for
-  mobile's `application-active-probe`) rather than reconnecting; a healthy
-  session survives foregrounding. `application-active-reconnect` skips the probe
-  and replaces the lease outright.
+- Once connected, `monitorConnectedLease` handles plain activation, an explicit
+  retry and the network's return by probing the existing session
+  (`lease.session.probe`; 15 seconds for desktop activation, 3 for mobile's
+  `application-active-probe`, a retry, or the network's return) rather than
+  reconnecting; a healthy session survives. A quicker signal shortens a running
+  probe. A probe that fails, times out, or sees the socket close reconnects at
+  once without a backoff rung. `application-active-reconnect` skips the probe
+  and replaces the lease outright, and that fresh attempt runs even while the
+  network reports offline. A credential rotation (`credentialRotated`) also replaces the
+  lease without a probe: a socket stays authorized as whoever opened it.
 
 The UI derives `available`, `offline`, `connecting`, `reconnecting`,
 `connected`, and `error` from supervisor state plus explicit data-sync state.

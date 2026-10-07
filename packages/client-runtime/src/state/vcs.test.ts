@@ -162,6 +162,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
 
@@ -296,6 +297,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
         const run: EnvironmentRegistry.EnvironmentRegistry["Service"]["run"] = (
@@ -396,6 +398,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
         const refs = yield* Stream.unwrap(
@@ -460,6 +463,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
         const refs = yield* Stream.unwrap(
@@ -499,6 +503,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
 
@@ -550,6 +555,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
 
@@ -596,6 +602,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
         const stream = Stream.unwrap(
@@ -633,6 +640,7 @@ describe("cached VCS refs", () => {
           connect: Effect.void,
           disconnect: Effect.void,
           retryNow: Effect.void,
+          credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
 

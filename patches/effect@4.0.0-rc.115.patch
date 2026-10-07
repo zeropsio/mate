@@ -194,7 +194,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
      });
    });
    const onStreamRequest = Effect.fnUntraced(function* (rpc, middleware, payload, headers, streamBufferSize, context) {
-@@ -143,11 +150,17 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -143,11 +150,18 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
      });
      const fiber = Fiber.getCurrent();
      const id = generateRequestId();
@@ -210,11 +210,12 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
 +      if (!entry) return Effect.void;
        entries.delete(id);
 -      return sendInterrupt(id, Exit.isFailure(exit) ? Array.from(Cause.interruptors(exit.cause)) : [], context);
-+      return sendInterrupt(id, Exit.isFailure(exit) ? Array.from(Cause.interruptors(exit.cause)) : [], context, entry.rpc._tag);
++      // Shutting down releases a socket reader blocked offering into this full buffer.
++      return Queue.shutdown(entry.queue).pipe(Effect.andThen(sendInterrupt(id, Exit.isFailure(exit) ? Array.from(Cause.interruptors(exit.cause)) : [], context, entry.rpc._tag)));
      });
      const queue = yield* Queue.bounded(streamBufferSize);
      entries.set(id, {
-@@ -155,9 +168,10 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -155,9 +169,10 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
        rpc,
        queue,
        scope,
@@ -227,7 +228,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
        message,
        context,
        discard: false
-@@ -172,7 +186,7 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -172,7 +187,7 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
          sampled: span.sampled
        } : {}),
        headers: Headers.merge(fiber.getRef(CurrentHeaders), headers)
@@ -236,7 +237,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
        captureStackTrace: false
      }) : identity, Effect.catchCause(error => Queue.failCause(queue, error)), Effect.interruptible, Effect.forkIn(scope, {
        startImmediately: true
-@@ -202,7 +216,10 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -202,7 +217,10 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
        });
      };
    };
@@ -248,7 +249,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
      const parentFiber = Fiber.getCurrent();
      const fiber = options.onFromClient({
        message: {
-@@ -216,7 +233,7 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -216,7 +234,7 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
      fiber.addObserver(() => {
        resume(Effect.void);
      });
@@ -257,7 +258,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
    const write = message => {
      switch (message._tag) {
        case "Chunk":
-@@ -224,7 +241,13 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -224,7 +242,13 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
            const requestId = message.requestId;
            const entry = entries.get(requestId);
            if (!entry || entry._tag !== "Queue") return Effect.void;
@@ -272,7 +273,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
              message: {
                _tag: "Ack",
                requestId: message.requestId
-@@ -239,11 +262,18 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
+@@ -239,11 +263,18 @@ export const makeNoSerialization = /*#__PURE__*/Effect.fnUntraced(function* (gro
            const entry = entries.get(requestId);
            if (!entry) return Effect.void;
            entries.delete(requestId);
@@ -294,7 +295,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
          }
        case "Defect":
          {
-@@ -598,7 +628,7 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+@@ -598,7 +629,7 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
    // `parser` is replaced on every connect, and a stateful serialization
    // encodes against the connection it is writing to, so the ping is encoded
    // when it is sent rather than once up front.
@@ -303,7 +304,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
    let currentError;
    const broadcast = response => Effect.forEach(clientIds, clientId => writeResponse(clientId, response));
    const broadcastError = error => {
-@@ -618,8 +648,7 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+@@ -618,8 +649,7 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
          body: () => {
            const response = responses[i++];
            if (response._tag === "Pong") {
@@ -313,7 +314,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
            }
            if (Object.hasOwn(response, "requestId")) {
              const requestId = response.requestId;
-@@ -664,12 +693,12 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+@@ -664,12 +694,12 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
            yield* processData(frames[i]);
          }
        }
@@ -328,7 +329,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
    }).pipe(Option.isSome(hooks) ? Effect.ensuring(hooks.value.onDisconnect) : identity, Effect.tapCause(cause => {
      const error = Cause.findError(cause);
      const hasError = Result.isSuccess(error);
-@@ -710,20 +739,28 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+@@ -710,20 +740,28 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
    };
  }));
  const defaultRetryPolicy = /*#__PURE__*/Schedule.min([/*#__PURE__*/Schedule.exponential(500, 1.5), /*#__PURE__*/Schedule.spaced(5000)]);
@@ -362,7 +363,7 @@ index c586c60856508c8ecc2e0476d56f748420fad53a..49886d805cb3f84f065d9b10ea8e6a4a
    }).pipe(Effect.delay("5 seconds"), Effect.ignore, Effect.forever, Effect.interruptible, Effect.forkScoped);
    return {
      timeout: latch.await,
-@@ -874,6 +911,11 @@ export const makeProtocolWorker = options => Protocol.make(Effect.fnUntraced(fun
+@@ -874,6 +912,11 @@ export const makeProtocolWorker = options => Protocol.make(Effect.fnUntraced(fun
   * @since 4.0.0
   */
  export const layerProtocolWorker = /*#__PURE__*/flow(makeProtocolWorker, /*#__PURE__*/Layer.effect(Protocol));

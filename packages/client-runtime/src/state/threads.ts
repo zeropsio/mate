@@ -483,6 +483,11 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
     }
 
     const sequence = yield* SubscriptionRef.get(lastSequence);
+    if (item.kind === "unknown-event") {
+      // A newer Mate's event this build cannot apply: skipped, the cursor moves past it.
+      if (item.sequence > sequence) yield* SubscriptionRef.set(lastSequence, item.sequence);
+      return;
+    }
     if (item.event.sequence <= sequence) {
       return;
     }
@@ -581,6 +586,8 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         for (const item of items) {
           if (item.kind === "synchronized") {
             synchronized = true;
+          } else if (item.kind === "unknown-event") {
+            sequence = Math.max(sequence, item.sequence);
           } else if (item.kind === "event" && item.event.sequence > sequence) {
             sequence = item.event.sequence;
             const result = applyThreadDetailEvent(thread, item.event);
