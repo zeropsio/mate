@@ -2,12 +2,13 @@ import { withRelayClientTracing } from "@t3tools/shared/relayTracing";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import type * as Duration from "effect/Duration";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -31,12 +32,19 @@ import * as RpcSession from "../rpc/session.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
 
-const RETRY_DELAYS_MS = [3_000, 4_000, 8_000, 16_000] as const;
+const RETRY_BASE_DELAY_MS = 1_000;
+/**
+ * A Mate restart or update is routine, and a person watching the screen should not wait long for
+ * it to come back, so the ladder tops out at 30 s.
+ */
+const RETRY_MAX_DELAY_MS = 30_000;
 const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
-const MOBILE_CONNECTION_PROBE_TIMEOUT = "3 seconds";
-/** How long a socket kept through an offline spell has to answer once the network is back. */
-const NETWORK_RETURN_PROBE_TIMEOUT = "3 seconds";
+/**
+ * Mobile resumes, explicit retries and the network's return after an offline spell want a fast
+ * answer: the person is waiting, or the socket may have died meanwhile.
+ */
+const QUICK_CONNECTION_PROBE_TIMEOUT = "3 seconds";
 const BACKOFF_RESET_AFTER_MS = 30_000;
 
 interface SupervisorIntent {
@@ -132,8 +140,17 @@ export interface EnvironmentSupervisorOptions {
   readonly credentialGeneration?: Effect.Effect<number>;
 }
 
-function retryDelayMs(failureCount: number): number {
-  return RETRY_DELAYS_MS[Math.min(failureCount, RETRY_DELAYS_MS.length - 1)] ?? 16_000;
+/**
+ * Delay before the next attempt after `failureCount` consecutive failures (0 for the first
+ * retry). The ceiling doubles from 2 s up to {@link RETRY_MAX_DELAY_MS}, and the delay is a random
+ * point in its upper half: never quicker than half the ceiling, and spread out so the clients that
+ * lost one Mate do not all come back in the same second. `random` is in [0, 1).
+ *
+ * Returning to the app, the network coming back and an explicit retry all skip the wait.
+ */
+export function retryDelayMs(failureCount: number, random: number): number {
+  const ceiling = Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** (failureCount + 1));
+  return Math.round(ceiling / 2 + (ceiling / 2) * random);
 }
 
 function annotateTarget(target: ConnectionTarget) {
@@ -269,10 +286,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const signals = yield* Queue.unbounded<SupervisorSignal>();
   const resetRetryState = yield* Ref.make(false);
   const credentialGeneration = options?.credentialGeneration ?? Effect.succeed(0);
-  // Set when a foreground wake probe fails or times out: the user is actively
-  // returning to the app on a dead transport, so the follow-up reconnect skips
-  // the first backoff rung instead of sleeping.
-  const wakeProbeFailed = yield* Ref.make(false);
+  // Set while a probe of the live session runs, and kept when it fails or times
+  // out: something asked whether the connection still works and it closed or
+  // failed before answering, so the follow-up reconnect skips the first backoff
+  // rung instead of sleeping.
+  const probeUnanswered = yield* Ref.make(false);
   const state = yield* SubscriptionRef.make<SupervisorConnectionState>(
     !initialIntent.desired
       ? availableState(initialIntent, 0)
@@ -500,104 +518,72 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     );
 
   /**
-   * Asks a connected lease whether its socket still answers. `null` keeps the lease; a boolean
-   * ends it as {@link monitorConnectedLease} does. A probe that fails or runs out of time is a
-   * dead transport: the lease fails, and the reconnect skips the first backoff rung.
+   * How long a signal gives the live session to answer a probe, or undefined when the signal does
+   * not question the connection. An offline report never probes: the lease rides the spell out,
+   * and the network's return probes it.
    */
-  const probeConnectedLease = Effect.fnUntraced(function* (
-    lease: ConnectionDriver.EnvironmentConnectionLease,
-    timeout: Duration.Input,
-  ) {
-    const probe = yield* lease.session.probe.pipe(
-      Effect.timeoutOrElse({
-        duration: timeout,
-        orElse: () =>
-          Effect.fail(
-            new ConnectionTransientError({
-              reason: "timeout",
-              detail: `${target.label} did not respond to a connection health check.`,
-            }),
-          ),
-      }),
-      Effect.forkChild,
-    );
-    for (;;) {
-      const probeEvent = yield* Effect.raceFirst(
-        Fiber.await(probe).pipe(Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit }))),
-        Queue.take(signals).pipe(Effect.map((signal) => ({ _tag: "Signal" as const, signal }))),
-      );
-      if (probeEvent._tag === "ProbeCompleted") {
-        if (Exit.isFailure(probeEvent.exit)) {
-          yield* Ref.set(wakeProbeFailed, true);
-        }
-        yield* probeEvent.exit;
-        return null;
-      }
-      switch (probeEvent.signal._tag) {
-        case "DisconnectRequested":
-        case "RetryRequested":
-          yield* Fiber.interrupt(probe);
-          return false;
-        case "NetworkChanged":
-          // A probe sent into an offline spell says nothing of the socket: the network's return
-          // sends another.
-          if (probeEvent.signal.network === "offline") {
-            yield* Fiber.interrupt(probe);
-            return null;
-          }
-          break;
-        case "StreamDefect":
-          if (probeEvent.signal.session === lease.session) {
-            yield* Fiber.interrupt(probe);
-            return yield* streamDefect();
-          }
-          break;
-        case "Wakeup":
-          if (probeEvent.signal.reason === "application-active-reconnect") {
-            yield* Fiber.interrupt(probe);
-            return true;
-          }
-          if (
-            probeEvent.signal.reason === "credentials-changed" &&
-            target._tag === "RelayConnectionTarget"
-          ) {
-            yield* Fiber.interrupt(probe);
-            return false;
-          }
-          break;
-        case "ConnectRequested":
-          break;
-      }
+  const probeTimeoutFor = (
+    next: SupervisorSignal,
+    coveringOfflineSpell: boolean,
+  ): Duration.Input | undefined => {
+    switch (next._tag) {
+      case "RetryRequested":
+        return QUICK_CONNECTION_PROBE_TIMEOUT;
+      case "NetworkChanged":
+        return next.network !== "offline" && coveringOfflineSpell
+          ? QUICK_CONNECTION_PROBE_TIMEOUT
+          : undefined;
+      case "Wakeup":
+        if (next.reason === "application-active") return CONNECTION_PROBE_TIMEOUT;
+        return next.reason === "application-active-probe"
+          ? QUICK_CONNECTION_PROBE_TIMEOUT
+          : undefined;
+      case "ConnectRequested":
+      case "DisconnectRequested":
+      case "StreamDefect":
+        return undefined;
     }
-  });
+  };
 
   /**
-   * Watches a connected lease until it must end. An offline spell keeps it: a socket a short drop
-   * left alive answers the probe the network's return sends, and the Mate is back without a new
-   * socket — each of which waits its turn for the browser's one connecting slot. A socket the
-   * drop killed closes by itself or fails that probe, and is replaced at once.
+   * Watches a connected lease until it must end, and returns whether to restart the retry
+   * ladder. Returning to the app, an explicit retry and the network's return after an offline
+   * spell probe the live session instead of replacing it, so a healthy socket is never torn down;
+   * a probe that fails or runs out of time is a dead transport, and the reconnect skips the first
+   * backoff rung. Only a long mobile resume replaces the session without a probe.
+   *
+   * An offline spell keeps the lease: a socket a short drop left alive answers the probe the
+   * network's return sends, and the Mate is back without a new socket — each of which waits its
+   * turn for the browser's one connecting slot. A socket the drop killed closes by itself or fails
+   * that probe, and is replaced at once.
    */
   const monitorConnectedLease = Effect.fnUntraced(function* (
     lease: ConnectionDriver.EnvironmentConnectionLease,
   ) {
     /** The live state an offline spell covered: the face shows offline, never a live link. */
-    let covered: SupervisorConnectionState | null = null;
-    for (;;) {
-      const next = yield* Queue.take(signals);
-      /** A probe's verdict; null when none ran or the socket answered it. */
-      let ended: boolean | null = null;
-      let probed = false;
+    const spell: { covered: SupervisorConnectionState | null } = { covered: null };
+    // A probe answers an explicit retry here, so the retry must not also reset
+    // the backoff of a later, unrelated failure.
+    const takeSignal = Queue.take(signals).pipe(
+      Effect.tap((next) =>
+        next._tag === "RetryRequested" ? Ref.set(resetRetryState, false) : Effect.void,
+      ),
+    );
+    /**
+     * Applies a signal whatever the socket's health: "reset" ends the lease and restarts the
+     * retry ladder, "end" ends it, undefined keeps it. An offline report covers the live face.
+     */
+    const settle = Effect.fnUntraced(function* (next: SupervisorSignal) {
       switch (next._tag) {
         case "DisconnectRequested":
-        case "RetryRequested":
-          return false;
+          return "end" as const;
         case "StreamDefect":
           if (next.session === lease.session) return yield* streamDefect();
-          break;
+          return undefined;
         case "NetworkChanged":
           if (next.network === "offline") {
             const current = yield* SubscriptionRef.get(state);
-            covered ??= current;
+            spell.covered ??= current;
             yield* setState({
               ...current,
               network: "offline",
@@ -605,41 +591,95 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
               stage: null,
               retryAt: null,
             });
-          } else if (covered !== null) {
-            probed = true;
-            ended = yield* probeConnectedLease(lease, NETWORK_RETURN_PROBE_TIMEOUT);
           }
-          break;
+          return undefined;
         case "Wakeup":
+          if (next.reason === "application-active-reconnect") {
+            // Mobile operating systems often kill a suspended socket without a
+            // close event. A probe would show a dead socket as live until it
+            // times out, so a long background resume replaces the session at once.
+            return "reset" as const;
+          }
           if (next.reason === "credentials-changed" && target._tag === "RelayConnectionTarget") {
             yield* logManagedRelayAccountChange;
-            return false;
+            return "end" as const;
           }
-          if (next.reason === "application-active-reconnect") {
-            // Mobile operating systems commonly suspend sockets without
-            // delivering a close event. A long background resume deliberately
-            // replaces that lease and starts a fresh attempt without backoff.
-            return true;
-          }
-          if (next.reason === "application-active" || next.reason === "application-active-probe") {
-            probed = true;
-            ended = yield* probeConnectedLease(
-              lease,
-              next.reason === "application-active-probe"
-                ? MOBILE_CONNECTION_PROBE_TIMEOUT
-                : CONNECTION_PROBE_TIMEOUT,
-            );
-          }
-          break;
+          return undefined;
         case "ConnectRequested":
-          break;
+        case "RetryRequested":
+          return undefined;
       }
-      if (ended !== null) return ended;
+    });
+
+    for (;;) {
+      const next = yield* takeSignal;
+      const end = yield* settle(next);
+      if (end !== undefined) return end === "reset";
+      const probeTimeout = probeTimeoutFor(next, spell.covered !== null);
+      if (probeTimeout === undefined) continue;
+
+      yield* Ref.set(probeUnanswered, true);
+      const probe = yield* Effect.forkChild(lease.session.probe);
+      // Monotonic nanoseconds, so a wall-clock correction cannot move the deadline.
+      let deadline = (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(probeTimeout);
+      let answered = false;
+      for (;;) {
+        const remaining = deadline - (yield* Clock.monotonicTimeNanos);
+        const probeEvent = yield* Effect.raceAllFirst([
+          Fiber.await(probe).pipe(
+            Effect.map((exit) => ({ _tag: "ProbeCompleted" as const, exit })),
+          ),
+          takeSignal.pipe(Effect.map((signal) => ({ _tag: "Signal" as const, signal }))),
+          Effect.sleep(Duration.nanos(remaining > 0n ? remaining : 0n)).pipe(
+            Effect.as({ _tag: "TimedOut" as const }),
+          ),
+        ]);
+        if (probeEvent._tag === "TimedOut") {
+          yield* Fiber.interrupt(probe);
+          return yield* new ConnectionTransientError({
+            reason: "timeout",
+            detail: `${target.label} did not respond to a connection health check.`,
+          });
+        }
+        if (probeEvent._tag === "ProbeCompleted") {
+          if (Exit.isSuccess(probeEvent.exit)) {
+            yield* Ref.set(probeUnanswered, false);
+          }
+          yield* probeEvent.exit;
+          answered = true;
+          break;
+        }
+        const endDuringProbe = yield* settle(probeEvent.signal).pipe(
+          Effect.tapCause(() => Fiber.interrupt(probe)),
+        );
+        if (endDuringProbe !== undefined) {
+          yield* Fiber.interrupt(probe);
+          return endDuringProbe === "reset";
+        }
+        if (
+          probeEvent.signal._tag === "NetworkChanged" &&
+          probeEvent.signal.network === "offline"
+        ) {
+          // A probe sent into an offline spell says nothing of the socket: the
+          // network's return sends another.
+          yield* Fiber.interrupt(probe);
+          yield* Ref.set(probeUnanswered, false);
+          break;
+        }
+        // A retry, or the network's return, during a slower probe wants its
+        // quicker answer, so it shortens the running probe.
+        const signalTimeout = probeTimeoutFor(probeEvent.signal, spell.covered !== null);
+        if (signalTimeout !== undefined) {
+          const signalDeadline =
+            (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(signalTimeout);
+          if (signalDeadline < deadline) deadline = signalDeadline;
+        }
+      }
       // The socket answered a probe with the network back: the face is live again at once.
       const network = (yield* Ref.get(intent)).network;
-      if (probed && covered !== null && network !== "offline") {
-        yield* setState({ ...covered, network });
-        covered = null;
+      if (answered && spell.covered !== null && network !== "offline") {
+        yield* setState({ ...spell.covered, network });
+        spell.covered = null;
       }
     }
   });
@@ -736,7 +776,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         });
       }
 
-      const retryDelay = retryDelayMs(failureCount);
+      const retryDelay = retryDelayMs(failureCount, yield* Random.next);
       failureCount += 1;
       yield* Effect.logWarning(
         "Could not prepare a replacement environment connection; keeping the active connection.",
@@ -785,6 +825,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     previousGeneration: number,
     lastFailure: ConnectionAttemptError | null,
     pendingRetry: Option.Option<PendingRetryTrace>,
+    ignoreOffline: boolean,
   ) {
     const initialGeneration = previousGeneration + 1;
     yield* SubscriptionRef.set(prepared, Option.none());
@@ -863,7 +904,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
 
     const currentIntent = yield* Ref.get(intent);
-    if (!currentIntent.desired || currentIntent.network === "offline") {
+    if (!currentIntent.desired || (currentIntent.network === "offline" && !ignoreOffline)) {
       return {
         _tag: "Interrupted",
         established: false,
@@ -946,6 +987,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         Effect.gen(function* () {
           active = candidate;
           activeGeneration += 1;
+          // A probe of the replaced lease asked nothing of this one.
+          yield* Ref.set(probeUnanswered, false);
           yield* SubscriptionRef.set(prepared, Option.some(active.lease.prepared));
           yield* SubscriptionRef.set(session, Option.some(active.lease.session));
           yield* setState({
@@ -1032,6 +1075,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       failureCount = 0;
       pendingRetry = Option.none();
     };
+    // Set after a long resume ends an attempt or a session. The fresh attempt
+    // runs even while the network reports offline: the report is often wrong,
+    // and the replaced session must not leave the client offline.
+    let replacing = false;
 
     for (;;) {
       if (yield* Ref.getAndSet(resetRetryState, false)) {
@@ -1048,7 +1095,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         yield* waitForSignal;
         continue;
       }
-      if (currentIntent.network === "offline") {
+      if (currentIntent.network === "offline" && !replacing) {
         yield* clearLease;
         yield* setState(offlineState(currentIntent, generation, failureCount + 1, latestFailure));
         const applicationActivated = yield* waitForSignal;
@@ -1061,11 +1108,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       const attempt = failureCount + 1;
       const attemptCredentialGeneration = yield* credentialGeneration;
       const outcome: AttemptOutcome = yield* Effect.scoped(
-        runAttempt(attempt, generation, latestFailure, pendingRetry),
+        runAttempt(attempt, generation, latestFailure, pendingRetry, replacing),
       );
+      replacing = false;
       // Consumed on every iteration so a stale marker can never leak into a
       // later, unrelated failure.
-      const failedWakeProbe = yield* Ref.getAndSet(wakeProbeFailed, false);
+      const failedProbe = yield* Ref.getAndSet(probeUnanswered, false);
       generation = outcome.generation;
       if (outcome.established) {
         if (outcome.stable) {
@@ -1076,6 +1124,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       if (outcome._tag === "Interrupted") {
         if (outcome.resetRetry) {
           resetRetryLadder();
+          replacing = true;
         }
         continue;
       }
@@ -1116,18 +1165,19 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         continue;
       }
 
-      if (failedWakeProbe) {
-        // The wake probe found a dead transport while the user is returning to
-        // the app, so reconnect immediately instead of sleeping the first
-        // backoff rung. Only this first attempt skips the ladder; if it fails
-        // too, normal backoff resumes.
+      if (failedProbe) {
+        // A probe found a dead transport, or the transport closed while a probe
+        // waited for an answer (the user returned to the app, asked to retry,
+        // or the network came back), so reconnect immediately instead of
+        // sleeping the first backoff rung. Only this first attempt skips the
+        // ladder; if it fails too, normal backoff resumes.
         resetRetryLadder();
         yield* setState(connectingState(yield* Ref.get(intent), generation, 1, error));
         continue;
       }
 
       failureCount += 1;
-      const delayMs = retryDelayMs(failureCount - 1);
+      const delayMs = retryDelayMs(failureCount - 1, yield* Random.next);
       pendingRetry = Option.map(attemptSpan, (previousAttempt) => ({
         previousAttempt,
         failureCount,
