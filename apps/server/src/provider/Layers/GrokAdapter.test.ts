@@ -25,6 +25,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 
 import { ServerConfig } from "../../config.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
@@ -379,10 +380,14 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       const adapter = yield* makeTestAdapter(wrapper);
       const exited =
         yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "session.exited" }>>();
+      const crashedTurn =
+        yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "turn.completed" }>>();
       const events = yield* Stream.runForEach(adapter.streamEvents, (event) =>
         event.type === "session.exited"
           ? Deferred.succeed(exited, event).pipe(Effect.asVoid)
-          : Effect.void,
+          : event.type === "turn.completed"
+            ? Deferred.succeed(crashedTurn, event).pipe(Effect.asVoid)
+            : Effect.void,
       ).pipe(Effect.forkChild);
       const input = {
         threadId,
@@ -401,6 +406,12 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       );
       assert.equal(retryDuringTeardown._tag, "ProviderAdapterSessionNotFoundError");
       assert.equal((yield* Deferred.await(exited)).payload.exitKind, "error");
+      // The person reads that it stopped, and the turn breaks off as a crash.
+      assert.deepStrictEqual((yield* Deferred.await(crashedTurn)).payload, {
+        state: "failed",
+        errorMessage: agentStoppedUnexpectedly("grok"),
+        terminalReason: "process_exit",
+      });
       assert.deepStrictEqual(yield* adapter.listSessions(), []);
       yield* Fiber.interrupt(events);
       yield* adapter.startSession({ ...input, resumeCursor: session.resumeCursor });

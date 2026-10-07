@@ -49,7 +49,10 @@ import {
   ProviderAdapterTurnEndedError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
+import {
+  ATTACHED_PICTURE_UNREADABLE,
+  agentStoppedUnexpectedly,
+} from "@t3tools/shared/threadStatus";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
@@ -1362,7 +1365,8 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                           ctx.activeTurnId,
                           ctx.acpSessionId,
                           {
-                            errorMessage: "Grok connection terminated.",
+                            errorMessage: agentStoppedUnexpectedly(PROVIDER),
+                            processExited: true,
                             settleAllPrompts: true,
                           },
                         );
