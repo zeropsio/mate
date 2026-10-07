@@ -14,6 +14,9 @@ import {
 } from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 
+/** Secret store name prefix of DPoP replay markers. The server prunes expired ones. */
+export const DPOP_REPLAY_MARKER_PREFIX = "dpop-proof-";
+
 export const mapDpopReplayStoreError = (
   error: ServerSecretStore.SecretStoreError,
 ): ServerAuthInvalidCredentialError | ServerAuthInternalError =>
@@ -68,7 +71,7 @@ export const verifyRequestDpopProof = (input: {
     );
     yield* secretStore
       .create(
-        `dpop-proof-${replayKey}`,
+        `${DPOP_REPLAY_MARKER_PREFIX}${replayKey}`,
         new TextEncoder().encode(
           [
             `thumbprint=${result.thumbprint}`,
