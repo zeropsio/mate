@@ -18,7 +18,14 @@ import { assert, describe, it } from "vite-plus/test";
 
 import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
-import { crashOncePath, recordAcp, recordClaude, recordCodex } from "../testing/bridge/record.ts";
+import { readGolden } from "../testing/bridge/goldens.ts";
+import {
+  commandLogAround,
+  crashOncePath,
+  recordAcp,
+  recordClaude,
+  recordCodex,
+} from "../testing/bridge/record.ts";
 import { integrityBreach, signalLines, textOf } from "../testing/bridge/signals.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -26,53 +33,6 @@ const fixturesRoot = NodePath.join(__dirname, "../../spi/fixtures");
 
 const S1 = "s1" as SessionId;
 const H1 = "h1" as TurnHandle;
-
-const readGolden = (driver: string, name: string): ReadonlyArray<SpiEvent> =>
-  JSON.parse(
-    NodeFS.readFileSync(NodePath.join(fixturesRoot, driver, `${name}.expected.json`), "utf8"),
-  ) as ReadonlyArray<SpiEvent>;
-
-/**
- * The commands the engine would have sent around a golden: the session opens
- * before the first turn-bound event, one message is sent, and its send returns
- * where the driver's returns — once the turn opens, or at its end (ACP). Each
- * resolved request is answered just before the driver says so.
- */
-function goldenLog(driver: BridgeDriver, events: ReadonlyArray<SpiEvent>): Array<BridgeInput> {
-  const holdsTurn = driver === "cursor" || driver === "grok" || driver === "antigravity";
-  const parent = String(events[0]!.threadId);
-  const log: Array<BridgeInput> = [{ kind: "start", session: S1, from: "fresh" }];
-  let opened = false;
-  let firstTurn: string | undefined;
-  let requests = 0;
-  for (const event of events) {
-    const turnBound =
-      event.type === "turn.started" ||
-      event.type === "content.delta" ||
-      event.type.startsWith("item.");
-    if (!opened && turnBound) {
-      log.push({ kind: "started" }, { kind: "send", turn: H1, mode: "new" });
-      opened = true;
-    }
-    if (event.type === "request.opened" || event.type === "user-input.requested") requests += 1;
-    if (event.type === "request.resolved" || event.type === "user-input.resolved") {
-      log.push({ kind: "respond", request: `${S1}.r${requests}` as RequestKey });
-    }
-    log.push({ kind: "event", event });
-    if (
-      event.type === "turn.started" &&
-      firstTurn === undefined &&
-      String(event.threadId) === parent
-    ) {
-      firstTurn = String(event.turnId);
-      if (!holdsTurn) log.push({ kind: "sent", turn: H1, nativeTurn: firstTurn });
-    }
-  }
-  if (holdsTurn && firstTurn !== undefined) {
-    log.push({ kind: "sent", turn: H1, nativeTurn: firstTurn });
-  }
-  return log;
-}
 
 const run = (driver: BridgeDriver, threadId: string, inputs: ReadonlyArray<BridgeInput>) => {
   const translator = makeTranslator({ driver, threadId });
@@ -197,13 +157,33 @@ const goldenCases: ReadonlyArray<GoldenCase> = [
     name: "multi-agent-wire",
     mark: "recorded",
     title:
-      "the parent turn spawns a helper and does not end inside the capture; child threads are not the session's",
+      "the parent turn runs a command and a Zerops call and answers; child threads are not the session's",
+    lines: [
+      "notice warning",
+      ...OPENS_H1,
+      "context usage",
+      "h1.i1 tool command_execution running",
+      "h1.i1 tool command_execution completed",
+      "context usage ×2",
+      "h1.i2 tool mcp_tool_call running",
+      "h1.i2 tool mcp_tool_call completed",
+      "context usage",
+      "h1.i3 text running",
+      "h1.i3 text completed",
+      "context usage",
+      "h1 ended completed — agent",
+    ],
+  },
+  {
+    driver: "codex",
+    dir: "codex",
+    name: "helper-wait",
+    mark: "recorded",
+    title: "the parent turn spawns a helper and does not end inside the capture",
     lines: [
       ...OPENS_H1,
-      "context usage ×2",
       "h1.i1 tool collab_agent_tool_call running",
       "h1.i1 tool collab_agent_tool_call completed",
-      "context usage",
     ],
   },
   ...(["cursor", "grok", "antigravity"] as const).map((driver): GoldenCase => ({
@@ -254,7 +234,7 @@ describe("the bridge over every SPI golden", () => {
       const { signals } = run(
         golden.driver,
         String(events[0]!.threadId),
-        goldenLog(golden.driver, events),
+        commandLogAround(golden.driver, events),
       );
       assert.isUndefined(integrityBreach(signals));
       assert.deepStrictEqual(signalLines(signals), golden.lines);
@@ -266,7 +246,7 @@ describe("the bridge over every SPI golden", () => {
     const { signals } = run(
       "claudeAgent",
       String(events[0]!.threadId),
-      goldenLog("claudeAgent", events),
+      commandLogAround("claudeAgent", events),
     );
     const streamed = events
       .flatMap((event) => (event.type === "content.delta" ? [event.payload.delta] : []))
@@ -277,16 +257,24 @@ describe("the bridge over every SPI golden", () => {
 
   it("codex/multi-agent-wire [recorded]: the child threads' turns are left out, not ended", () => {
     const events = readGolden("codex", "multi-agent-wire");
-    const { dropped } = run("codex", String(events[0]!.threadId), goldenLog("codex", events));
+    const { dropped } = run(
+      "codex",
+      String(events[0]!.threadId),
+      commandLogAround("codex", events),
+    );
     assert.deepStrictEqual(
       dropped.filter((input) => input.type.startsWith("turn.")).map((input) => input.reason),
-      ["other-thread", "other-thread", "other-thread"],
+      ["other-thread", "other-thread"],
     );
   });
 
   it("opencode/hello-baseline [mock]: text with no turn is dropped, never attached to a guess", () => {
     const events = readGolden("opencode", "hello-baseline");
-    const { dropped } = run("opencode", String(events[0]!.threadId), goldenLog("opencode", events));
+    const { dropped } = run(
+      "opencode",
+      String(events[0]!.threadId),
+      commandLogAround("opencode", events),
+    );
     assert.deepStrictEqual(
       dropped.map((input) => `${input.reason} ${input.type}`),
       ["no-turn content.delta", "no-turn content.delta", "no-turn item.completed"],

@@ -68,6 +68,7 @@ export function commandLogAround(
   events: ReadonlyArray<SpiEvent>,
 ): Array<BridgeInput> {
   const parent = String(events[0]!.threadId);
+  const startsTurn = events.some((event) => event.type === "turn.started");
   const log: Array<BridgeInput> = [{ kind: "start", session: S1, from: "fresh" }];
   let opened = false;
   let firstTurn: string | undefined;
@@ -80,6 +81,12 @@ export function commandLogAround(
     if (!opened && turnBound) {
       log.push({ kind: "started" }, { kind: "send", turn: H1, mode: "new" });
       opened = true;
+      // A capture cut after its turn started (an extract) still names the turn: the send returns
+      // with it, as a driver's send does.
+      if (!startsTurn && event.turnId !== undefined) {
+        firstTurn = String(event.turnId);
+        if (!holdsTurn(driver)) log.push({ kind: "sent", turn: H1, nativeTurn: firstTurn });
+      }
     }
     if (event.type === "request.opened" || event.type === "user-input.requested") requests += 1;
     if (event.type === "request.resolved" || event.type === "user-input.resolved") {

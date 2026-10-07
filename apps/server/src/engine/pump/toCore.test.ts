@@ -3,26 +3,15 @@
  * What the engine takes from a driver, pinned as sentences: the bridge's goldens through the
  * pump's mapping, and the mapping's own rules.
  */
-import * as NodeFS from "node:fs";
-import * as NodePath from "node:path";
-import * as NodeURL from "node:url";
 
-import type { SpiEvent } from "@t3tools/contracts";
 import { assert, describe, it } from "vite-plus/test";
 
 import type { BridgeDriver, DriverSignal, SessionId, TurnHandle } from "../bridge/spi3.ts";
 import { makeTranslator } from "../bridge/translate.ts";
+import { readGolden } from "../testing/bridge/goldens.ts";
 import { commandLogAround } from "../testing/bridge/record.ts";
 import { stepLines } from "../testing/pump/lines.ts";
 import { ACTIVITY_EVERY_MS, ITEM_TEXT_LIMIT, makeToCore } from "./toCore.ts";
-
-const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
-const fixturesRoot = NodePath.join(__dirname, "../../spi/fixtures");
-
-const readGolden = (dir: string, name: string): ReadonlyArray<SpiEvent> =>
-  JSON.parse(
-    NodeFS.readFileSync(NodePath.join(fixturesRoot, dir, `${name}.expected.json`), "utf8"),
-  ) as ReadonlyArray<SpiEvent>;
 
 const OPENS = ["h1 started by engine", "h1 taken: opened"];
 const HELLO = [
@@ -129,12 +118,29 @@ const goldens: ReadonlyArray<{
   {
     driver: "codex",
     dir: "codex",
-    name: "multi-agent-wire",
+    name: "helper-wait",
     title: "a helper's spawn is a helper call; the turn has not ended inside the capture",
     lines: [
       ...OPENS,
       "h1.i1 opened: call helper collab_agent_tool_call running",
       "h1.i1 closed: call helper collab_agent_tool_call done",
+    ],
+  },
+  {
+    driver: "codex",
+    dir: "codex",
+    name: "multi-agent-wire",
+    title: "a command, a Zerops call and the answer each close, and the turn ends completed",
+    lines: [
+      ...OPENS,
+      "h1.i1 opened: call command Ran command running",
+      "h1 alive",
+      "h1.i1 closed: call command Ran command done",
+      "h1.i2 opened: call tool zerops · zerops_discover running",
+      "h1.i2 closed: call tool zerops_discover done",
+      "h1.i3 opened: note",
+      'h1.i3 closed: note "trace-ok"',
+      "h1 ended completed — agent",
     ],
   },
   ...(["cursor", "grok", "antigravity"] as const).map((driver) => ({
