@@ -3,8 +3,11 @@
  * its project, in this Core's memory.
  *
  * - A link's first frame is the whole overview; each frame after it replaces the sections it names.
- *   Frames are taken from a Mate's newest link alone: a restarted server's old link, which HQ has
- *   not heard go yet, is passed by.
+ *   Frames are taken from the link HQ hears alone: the Mate's newest link that no later run
+ *   outranks. A link is of the run its attention names, and a run of an earlier epoch than the one
+ *   HQ holds — a restarted server's old link HQ has not heard go yet, or that run back from a
+ *   partition on a newer link — is passed by. A later run's attention is taken from whichever link
+ *   brings it.
  * - A Mate is online while one of its links is open.
  * - The store keeps a Mate's overview as it stands when a whole one arrives and when one of its
  *   chats changes kind — a state moving, never a live step — so a Mate that sleeps keeps its last
@@ -33,6 +36,12 @@ import { Leader } from "./leader.ts";
 
 /** A frame of a Mate's overview, as its link brings it. */
 const readAttention = Schema.decodeUnknownOption(HqAttentionValue);
+
+/** Whether two attention values are of one run of one Mate. */
+const sameRun = (left: HqAttentionValue, right: HqAttentionValue) =>
+  left.source.environmentId === right.source.environmentId &&
+  left.source.epoch === right.source.epoch &&
+  left.source.incarnation === right.source.incarnation;
 
 export type OverviewFrame = Extract<MateLinkUp, { readonly type: "overview" }>;
 
@@ -83,6 +92,9 @@ export class MateOverviews extends Context.Service<
   }
 >()("@t3tools/hq/mateOverviews") {}
 
+/** One run of a Mate, as its attention names it. */
+type Run = Omit<HqAttentionValue["source"], "revision">;
+
 interface Entry {
   readonly attentionOn: number | null;
   readonly attention: HqAttentionValue | null;
@@ -93,9 +105,22 @@ interface Entry {
   readonly overview: MateOverview | null;
   /** The link whose whole overview HQ holds; sections are taken from it alone. */
   readonly fullOn: number | null;
+  /** The run each open link's attention named; a link that said none yet has none. */
+  readonly runs: ReadonlyMap<number, Run>;
 }
 
-const newestOf = (entry: Entry) => entry.links.at(-1);
+/** Whether `run` is of an earlier run than `held` in the same environment: no later word. */
+const outranked = (run: Run, held: HqAttentionValue) =>
+  run.environmentId === held.source.environmentId &&
+  (run.epoch < held.source.epoch ||
+    (run.epoch === held.source.epoch && run.incarnation !== held.source.incarnation));
+
+/** The link HQ hears: the newest open one that no later run outranks. */
+const heardOf = (entry: Entry) =>
+  entry.links.findLast((link) => {
+    const run = entry.runs.get(link);
+    return run === undefined || entry.attention === null || !outranked(run, entry.attention);
+  });
 
 /** Each listed chat's kind: what moving says a state moved. */
 const kindsOf = (overview: MateOverview | null) =>
@@ -130,7 +155,7 @@ export const makeMateOverviews = (
         online,
         since: entry.since,
         overview: online
-          ? entry.fullOn !== null && entry.fullOn === newestOf(entry)
+          ? entry.fullOn !== null && entry.fullOn === heardOf(entry)
             ? "live"
             : "none"
           : entry.overview === null
@@ -147,6 +172,7 @@ export const makeMateOverviews = (
           fullOn: null,
           attention: null,
           attentionOn: null,
+          runs: new Map(),
         };
         entries.set(projectId, change(entry));
         yield* PubSub.publish(changed, projectId);
@@ -171,7 +197,9 @@ export const makeMateOverviews = (
               const at = yield* now;
               yield* update(projectId, (entry) => {
                 const links = entry.links.filter((open) => open !== link);
-                return { ...entry, links, since: links.length === 0 ? at : entry.since };
+                const runs = new Map(entry.runs);
+                runs.delete(link);
+                return { ...entry, links, runs, since: links.length === 0 ? at : entry.since };
               });
               // Its last link gone: offline from now, as it stands now.
               if (entries.get(projectId)?.links.length === 0) {
@@ -182,7 +210,7 @@ export const makeMateOverviews = (
       report: (projectId, link, frame) =>
         Effect.gen(function* () {
           const entry = entries.get(projectId);
-          if (entry === undefined || link !== newestOf(entry)) return;
+          if (entry === undefined || link !== heardOf(entry)) return;
           const overview = frame.full
             ? frame.overview
             : entry.fullOn === link && entry.overview !== null
@@ -196,29 +224,40 @@ export const makeMateOverviews = (
         }),
       reportAttention: (projectId, link, value) =>
         Effect.gen(function* () {
-          const entry = entries.get(projectId);
-          if (entry === undefined || link !== newestOf(entry)) return;
+          const known = entries.get(projectId);
+          if (known === undefined || !known.links.includes(link)) return;
           const read = readAttention(value);
           if (Option.isNone(read)) return;
-          const next = read.value;
+          const { environmentId, epoch, incarnation } = read.value.source;
+          const named = known.runs.get(link);
+          // The link is of the run it names, before anything else is weighed.
+          const entry =
+            named?.environmentId === environmentId &&
+            named.epoch === epoch &&
+            named.incarnation === incarnation
+              ? known
+              : {
+                  ...known,
+                  runs: new Map(known.runs).set(link, { environmentId, epoch, incarnation }),
+                };
+          /** Only the run the link named, where that is news: which link HQ hears may move. */
+          const noted = entry === known ? Effect.void : update(projectId, () => entry);
           const prior = entry.attention;
-          if (
-            prior !== null &&
-            prior.source.incarnation === next.source.incarnation &&
-            prior.source.environmentId === next.source.environmentId &&
-            prior.source.revision > next.source.revision
-          )
-            return;
-          const attention = acceptAttention(prior, next);
-          if (
-            entry.attentionOn === link &&
-            prior !== null &&
-            attention !== null &&
-            (attention.source.incarnation !== prior.source.incarnation ||
-              attention.source.environmentId !== prior.source.environmentId)
-          )
-            return;
-          if (attention === prior && entry.attentionOn === link) return;
+          const live = link === heardOf(entry);
+          const attention = acceptAttention(prior, read.value, live);
+          if (attention === prior) {
+            // Nothing newer: only the same run's word on the link HQ hears makes it live again.
+            if (
+              entry.attentionOn === link ||
+              prior === null ||
+              !live ||
+              !sameRun(prior, read.value)
+            )
+              return yield* noted;
+          } else if (entry.attentionOn === link && prior !== null && !sameRun(prior, read.value)) {
+            // One link carries one run.
+            return yield* noted;
+          }
           yield* update(projectId, () => ({ ...entry, attention, attentionOn: link }));
         }),
       restore: Effect.gen(function* () {
@@ -232,6 +271,7 @@ export const makeMateOverviews = (
             fullOn: null,
             attention: null,
             attentionOn: null,
+            runs: new Map(),
           });
           yield* PubSub.publish(changed, row.projectId);
         }
@@ -258,7 +298,7 @@ export const makeMateOverviews = (
                 attentionState:
                   entry.attention === null
                     ? "none"
-                    : entry.attentionOn === newestOf(entry) && entry.links.length > 0
+                    : entry.attentionOn === heardOf(entry) && entry.links.length > 0
                       ? "live"
                       : "stored",
               },

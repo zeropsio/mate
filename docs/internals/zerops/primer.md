@@ -800,10 +800,10 @@ still to come says so.
     conversation, the commits — nothing wider than its column; _Try it_ removed (nothing records
     which version a stage runs). A change has no checks in HQ, so that section is gone. A
     description's pictures are HQ's: zcp attaches them to the Mate's open change, and the review
-    reads them as the person (`useChangePicture.ts`)
+    reads them as the person (`useProjectedHqPicture.ts`)
   - _Built in:_ mate 0.11.64; HQ, T7a and T7c
   - _Proven by:_ `ZeropsReview.logic.test.ts`, `useZeropsChangeDetail.test.ts`,
-    `useZeropsChangeComments.test.ts`, `useChangePicture.test.ts`; the harness
+    `useZeropsChangeComments.test.ts`, `data/adapters/hqPictures.test.ts`, `data/projections/hqPicture.test.ts`; the harness
     `/design-change.html`
 - **—** — Pass 16's feedback: the menu's details
   - _State:_ **live**, 2026-09-29: _New project_ at the menu's foot; folded projects 40 px apart

@@ -1,4 +1,5 @@
-import type { MateAttention } from "@t3tools/contracts";
+import { MateAttention } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { attention } from "../__fixtures__/mateAttention.ts";
@@ -14,6 +15,7 @@ import { matesAttention } from "./mateAttention.ts";
 const ORG = "org";
 const P = "ada";
 const hqRevision = (revision: number) => ({ kind: "hq", incarnation: "a1", revision }) as const;
+const decodeAttention = Schema.decodeSync(MateAttention);
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((next, input) => reduceAccount(next, input).state, state);
@@ -53,6 +55,8 @@ const direct = (value: MateAttention): ReadonlyArray<AccountInput> => [
         value,
         revision: {
           kind: "mate-attention",
+          environmentId: value.source.environmentId,
+          epoch: value.source.epoch,
           incarnation: value.source.incarnation,
           revision: value.source.revision,
           live: true,
@@ -95,6 +99,8 @@ const relay = (
         id: P,
         revision: {
           kind: "mate-attention",
+          environmentId: value.source.environmentId,
+          epoch: value.source.epoch,
           incarnation: value.source.incarnation,
           revision: value.source.revision,
           live: state === "live",
@@ -149,6 +155,80 @@ const read = (inputs: ReadonlyArray<AccountInput>) =>
 describe("matesAttention", () => {
   it.each([
     {
+      name: "uncounted baseline",
+      firstEpoch: undefined,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+    {
+      name: "counted replaces uncounted",
+      firstEpoch: undefined,
+      nextEpoch: 1,
+      firstRevision: 9,
+      nextRevision: 0,
+      expectedEpoch: 1,
+      expectedRevision: 0,
+    },
+    {
+      name: "uncounted cannot replace counted",
+      firstEpoch: 1,
+      nextEpoch: undefined,
+      firstRevision: 0,
+      nextRevision: 9,
+      expectedEpoch: 1,
+      expectedRevision: 0,
+    },
+    {
+      name: "explicit zero shares uncounted ordering",
+      firstEpoch: 0,
+      nextEpoch: undefined,
+      firstRevision: 1,
+      nextRevision: 2,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+    {
+      name: "older uncounted revision is ignored",
+      firstEpoch: undefined,
+      nextEpoch: 0,
+      firstRevision: 2,
+      nextRevision: 1,
+      expectedEpoch: 0,
+      expectedRevision: 2,
+    },
+  ])(
+    "reduces and projects missing epochs as zero: $name",
+    ({ firstEpoch, nextEpoch, firstRevision, nextRevision, expectedEpoch, expectedRevision }) => {
+      const decoded = (epoch: number | undefined, revision: number) =>
+        decodeAttention({
+          ...attention("m1", revision),
+          source: {
+            environmentId: "env",
+            incarnation: "m1",
+            revision,
+            ...(epoch === undefined ? {} : { epoch }),
+          },
+        });
+      for (const firstPath of [direct, relay]) {
+        const next = direct(decoded(nextEpoch, nextRevision));
+        const inputs = [
+          ...firstPath(decoded(firstEpoch, firstRevision)),
+          ...(firstPath === direct ? next.slice(-1) : next),
+        ];
+        expect(read(inputs)?.attention?.source).toEqual({
+          environmentId: "env",
+          incarnation: "m1",
+          epoch: expectedEpoch,
+          revision: expectedRevision,
+        });
+      }
+    },
+  );
+  it.each([
+    {
       name: "nothing said of a Mate yet",
       inputs: [],
       expected: { attention: null, live: false, unseen: null },
@@ -195,6 +275,48 @@ describe("matesAttention", () => {
       name: "what HQ counts the person has not seen",
       inputs: [...placed(2), ...relay(attention("m1", 3))],
       expected: { attention: attention("m1", 3), live: true, unseen: 2 },
+    },
+    {
+      name: "a later epoch stored by HQ while the earlier direct run is live",
+      inputs: [...direct(attention("m1", 9, 1)), ...relay(attention("m2", 0, 0, 2), "stored")],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
+    },
+    {
+      name: "a later epoch relayed live while the earlier direct run is live",
+      inputs: [...direct(attention("m1", 9, 1)), ...relay(attention("m2", 0, 0, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "the earlier direct run speaks after the later epoch's relay goes down",
+      inputs: [
+        ...relay(attention("m2", 0, 0, 2)),
+        fault(linkKeys.hq(ORG)),
+        ...direct(attention("m1", 10, 1)),
+      ],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
+    },
+    {
+      name: "the direct source confirms the very revision HQ stored",
+      inputs: [...relay(attention("m2", 0, 0, 2), "stored"), ...direct(attention("m2", 0, 0, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "a direct confirmation cannot change the held revision's value",
+      inputs: [...relay(attention("m2", 0, 0, 2), "stored"), ...direct(attention("m2", 0, 9, 2))],
+      expected: { attention: attention("m2", 0, 0, 2), live: true, unseen: null },
+    },
+    {
+      name: "a later direct epoch remains when that source refuses the read",
+      inputs: [
+        ...direct(attention("m2", 0, 0, 2)),
+        stream(linkKeys.mate(P), {
+          kind: "fault",
+          fault: { outcome: "definitive-refusal", message: "Access refused." },
+          jitter: 0,
+        }),
+        ...relay(attention("m1", 10, 1)),
+      ],
+      expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },
     },
   ])("$name", ({ inputs, expected }) => {
     expect(read(inputs)).toEqual(expected);

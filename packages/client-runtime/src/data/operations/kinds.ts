@@ -6,10 +6,19 @@
  */
 import type { OperationIntent } from "../model.ts";
 import { assignMateOwner } from "./assignMateOwner.ts";
+import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
+import { hardenProject } from "./hardenProject.ts";
+import { HQ_BIRTH_KINDS } from "./hqBirth.ts";
+import { hqUpdate } from "./hqUpdate.ts";
+import { HQ_WRITE_KINDS } from "./hqWrites.ts";
+import { importContainer } from "./importContainer.ts";
+import { importProject } from "./importProject.ts";
+import { importServices } from "./importServices.ts";
+import { renameApp, deleteApp } from "./hqAppWrites.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
@@ -44,7 +53,17 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   assignMateOwner,
+  createProject,
+  importProject,
+  importServices,
+  importContainer,
+  hardenProject,
+  hqUpdate,
+  ...HQ_WRITE_KINDS,
+  ...HQ_BIRTH_KINDS,
   changeComment,
+  renameApp,
+  deleteApp,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,

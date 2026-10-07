@@ -7,6 +7,8 @@ export class CreationFake {
   readonly accepted: { id: string; name: string }[] = [];
   outcome: "accepted" | "refused" | "lost" = "accepted";
   creationStatus: "FINISHED" | "FAILED" = "FINISHED";
+  /** Somebody else creates a project of the same name as this one is accepted. */
+  twin = false;
   readonly zerops: ZeropsFake;
   constructor(zerops: ZeropsFake) {
     this.zerops = zerops;
@@ -56,6 +58,19 @@ export class CreationFake {
         },
         "entity-first",
       );
+      if (this.twin)
+        this.zerops.put(
+          "project",
+          {
+            id: `twin-of-${id}`,
+            name,
+            clientId: orgId,
+            status: "ACTIVE",
+            tagList: [],
+            userRoles: projectRoles(this.zerops.world, `twin-of-${id}`, orgId),
+          },
+          "entity-first",
+        );
       return { body: this.zerops.rows("project").find((row) => row.id === id) };
     }
     const container = path.match(

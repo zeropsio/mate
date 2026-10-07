@@ -10,7 +10,8 @@ import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import type { DetailDemand } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
-import { mateVariables, type MateVariables } from "./projections/mateVariables.ts";
+import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
+import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
@@ -222,6 +223,8 @@ export function holdProjectHistory(
 }
 
 export const NOT_READ_HQ: HqNavigationRead = {
+  updateRequired: false,
+  coreBuild: undefined,
   structure: null,
   organization: null,
   presses: {},
@@ -330,17 +333,6 @@ export const shownHqAppChangesAtom = Atom.make(
     return get(account.data.project(hqAppChanges, account.orgId));
   },
 ).pipe(Atom.withLabel("data:shown-hq-app-changes"));
-export const NOT_READ_MATE_VARIABLES: MateVariables = { flag: "unread", marker: "unread" };
-
-/** A Mate's container's variables as the mounted account last read them (`mateVariables`). */
-export const mateVariablesAtom = Atom.family((serviceId: string) =>
-  Atom.make((get): MateVariables => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return NOT_READ_MATE_VARIABLES;
-    return get(account.data.project(mateVariables, { orgId: account.orgId, serviceId }));
-  }).pipe(Atom.withLabel(`data:mate-variables:${serviceId}`)),
-);
-
 /**
  * Holds one Mate's container's variables from outside React, through whichever account is mounted
  * in `registry`: read now, again each sampled interval while held, let go on release.
@@ -366,15 +358,14 @@ export function holdMateVariables(
 }
 
 /** Where a read of one of a Mate's container's variables stands for one that asks now. */
-const variableNow = Atom.family((key: string) =>
+const variableNow = Atom.family((serviceId: string) =>
   Atom.make((get): boolean | "unknown" | "waiting" => {
-    const [which, serviceId = ""] = key.split(":") as ["flag" | "marker", string];
     const account = get(accountReadsAtom);
     if (account === null || account.orgId === null) return "unknown";
     const stream = get(account.data.stream(mateVariablesScope(account.orgId, serviceId)));
     if (stream.phase === "live") {
       const read = get(account.data.project(mateVariables, { orgId: account.orgId, serviceId }));
-      const value = read[which];
+      const value = read.flag;
       return typeof value === "boolean" ? value : "unknown";
     }
     // Waits only for a read the live link will make; a link down or refused is no answer.
@@ -394,10 +385,9 @@ const variableNow = Atom.family((key: string) =>
  * last within its freshness. A read that did not succeed or could not say is `"unknown"`, never
  * `false`. Each step of the read has its own deadline in the stream machine.
  */
-function readMateVariable(
+export function readMateFlag(
   registry: AtomRegistry.AtomRegistry,
   serviceId: string,
-  which: "flag" | "marker",
 ): Promise<boolean | "unknown"> {
   const release = holdMateVariables(registry, serviceId);
   return new Promise((resolve) => {
@@ -410,17 +400,18 @@ function readMateVariable(
       release();
       resolve(now);
     };
-    unsubscribe = registry.subscribe(variableNow(`${which}:${serviceId}`), answer, {
+    unsubscribe = registry.subscribe(variableNow(serviceId), answer, {
       immediate: true,
     });
     if (settled) unsubscribe();
   });
 }
 
-/** `ZCP_MATE_ENABLED` on one service — off is a fact a row offers Enable on. */
-export const readMateFlag = (registry: AtomRegistry.AtomRegistry, serviceId: string) =>
-  readMateVariable(registry, serviceId, "flag");
-
-/** Whether one Mate's container carries the press's marker (`MATE_SETUP_RUNTIMES`). */
-export const readMateMarker = (registry: AtomRegistry.AtomRegistry, serviceId: string) =>
-  readMateVariable(registry, serviceId, "marker");
+/** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
+export const hqMateSetupAtom = Atom.family((projectId: string) =>
+  Atom.make((get): HqMateSetup => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
+    return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
+  }),
+);

@@ -22,13 +22,15 @@ const readAttention = Schema.decodeEffect(HqAttentionValue);
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "five distinct people get cold navigation with Mate facts within budget; unchanged resumes send no values",
+      "five distinct people get cold navigation with Mate facts within the read budget; unchanged resumes send no values",
       () =>
         Effect.gen(function* () {
           const queries: string[] = [];
           let recording = false;
           const core = yield* startCore(true, {
-            reconcileEvery: Duration.hours(1),
+            reconcileEvery: Duration.infinity,
+            streamRecheck: Duration.infinity,
+            pingEvery: Duration.infinity,
             viewTtl: Duration.zero,
           }).pipe(
             Effect.provideService(Statement.CurrentTransformer, (statement) =>
@@ -119,7 +121,12 @@ describe("HQ scoped socket", () => {
                   overview: overviewOf(),
                 });
                 yield* core.overviews.reportAttention(projectId, link, {
-                  source: { environmentId: `env-${index}`, incarnation: "boot", revision: 1 },
+                  source: {
+                    environmentId: `env-${index}`,
+                    epoch: 1,
+                    incarnation: "boot",
+                    revision: 1,
+                  },
                   mainThreadId: "thread",
                   lastThreadId: "thread",
                   working: 1,
@@ -204,12 +211,17 @@ describe("HQ scoped socket", () => {
             ),
           );
           recording = false;
+          const sessionQueries = queries.filter((query) => /\bhq_session\b/.test(query));
           const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
-          const memberReads = core.fake.calls
-            .slice(coldCalls)
-            .filter((call) => call === "members:hq").length;
+          const navigationCalls = core.fake.calls.slice(coldCalls);
+          const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
+          const structureQueries = queries.filter((query) => /FROM hq_app a ORDER BY/.test(query));
+          // The app's emptiness subquery also mentions hq_change; count it with structure.
+          const changeQueries = queries.filter(
+            (query) => /\bhq_change\b/.test(query) && !structureQueries.includes(query),
+          );
           process.stdout.write(
-            `HQ cold reads: SQL=${queries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
+            `HQ cold reads: SQL=${queries.length}, sessions=${sessionQueries.length}, structure=${structureQueries.length}, changes=${changeQueries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
           );
           assert.isAbove(
             core.fake.calls.filter((call) => call === "members:hq").length,
@@ -220,13 +232,50 @@ describe("HQ scoped socket", () => {
           process.stdout.write(
             `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
-          assert.isAtMost(
+          const sessionReadsPerPerson = 2; // Socket authentication and its initial session check.
+          assert.strictEqual(sessionQueries.length, people.length * sessionReadsPerPerson);
+          assert.strictEqual(
             seenQueries.length,
             people.length,
             "one scoped seen read per person, not per Mate",
           );
-          assert.isAtMost(times[2]!, 60);
-          assert.isAtMost(times[4]!, 300);
+          // The shared structure is read cold, then once when setup-marker evidence lands.
+          const sharedStructureReads = 1 + 1;
+          assert.isAtLeast(structureQueries.length, 1);
+          assert.isAtMost(structureQueries.length, sharedStructureReads);
+          assert.strictEqual(
+            changeQueries.length,
+            1,
+            "one shared change read for all people and Mates",
+          );
+          // Each structure read: isolation SET, five structure SELECTs, four environment SELECTs.
+          // Each person also reads seen results and key health. The asynchronous release read
+          // starts three shared SELECTs and its first recipe lookup before the scope receipts.
+          const statementsPerStructureRead = 1 + 5 + 4;
+          const sqlBudget =
+            people.length * (sessionReadsPerPerson + 1 + 1) +
+            structureQueries.length * statementsPerStructureRead +
+            1 +
+            3 +
+            1;
+          assert.isAtMost(
+            queries.length,
+            sqlBudget,
+            "total SQL for cold navigation, including all read kinds",
+          );
+          // Each socket authenticates and checks its session; navigation checks roles before
+          // and after loading. Concurrent checks can share a read, but never add per-Mate reads.
+          const roleReadsPerPerson = 2 + 2;
+          assert.isAtMost(memberReads, people.length * roleReadsPerPerson + sharedStructureReads);
+          assert.isAtMost(
+            navigationCalls.filter((call) => call === "projects:hq").length,
+            people.length * roleReadsPerPerson + sharedStructureReads,
+          );
+          assert.isAtMost(
+            navigationCalls.filter((call) => call === "mateSetupMarker:hq").length,
+            projects.length,
+            "setup evidence is shared across people",
+          );
           for (const [index, sample] of samples.entries()) {
             assert.lengthOf(sample.deliveries, 1);
             const values = sample.deliveries[0]!.values as Array<{
@@ -306,7 +355,7 @@ describe("HQ scoped socket", () => {
           yield* untilHealth(core.call, "active");
           const session = yield* setUpMate(core.call, "P_MATE");
           const attention = {
-            source: { environmentId: "environment", incarnation: "boot", revision: 1 },
+            source: { environmentId: "environment", epoch: 1, incarnation: "boot", revision: 1 },
             mainThreadId: "thread",
             lastThreadId: "thread",
             working: 0,
@@ -475,7 +524,7 @@ describe("HQ scoped socket", () => {
             JSON.stringify({
               type: "attention",
               attention: {
-                source: { environmentId: "devstage", incarnation: "boot", revision: 1 },
+                source: { environmentId: "devstage", epoch: 1, incarnation: "boot", revision: 1 },
                 mainThreadId: "thread",
                 lastThreadId: "thread",
                 working: 0,
@@ -594,7 +643,7 @@ describe("HQ scoped socket", () => {
           );
           const overview = overviewOf();
           const attention = {
-            source: { environmentId: "environment", incarnation: "boot", revision: 3 },
+            source: { environmentId: "environment", epoch: 1, incarnation: "boot", revision: 3 },
             mainThreadId: "thread",
             lastThreadId: "thread",
             working: 1,

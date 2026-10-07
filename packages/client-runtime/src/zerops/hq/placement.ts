@@ -25,9 +25,9 @@ export type HqPlacement =
   | {
       readonly appId: string;
       readonly appName: string;
-      readonly kind: RoleProjectKind;
+      readonly kind: RoleProjectKind | "unknown";
       /** A Mate's face as HQ records it (`readMateFace`). */
-      readonly mate: HqMate | null;
+      readonly mate: HqMate | null | undefined;
       /**
        * Placed by its press's record alone (`hq_press`): a stage's or a production's press that
        * Zerops took and that never registered it — HQ holds it nowhere yet. Its setup is finished
@@ -92,12 +92,12 @@ export function placementsOf(
   for (const app of structure.apps) {
     for (const project of app.projects) {
       const { kind } = project;
-      if (!isRoleProjectKind(kind)) continue;
+      if (!isRoleProjectKind(kind) && kind !== "unknown") continue;
       placements.set(project.projectId, {
         appId: app.id,
         appName: app.name,
         kind,
-        mate: project.mate === null ? null : withLogins(project.projectId, project.mate),
+        mate: project.mate == null ? project.mate : withLogins(project.projectId, project.mate),
       });
     }
   }
@@ -132,7 +132,7 @@ export function placementsOf(
  */
 export function heldOf(project: {
   readonly hq?: HqPlacement | undefined;
-}): RoleProjectKind | "none" {
+}): RoleProjectKind | "none" | "unknown" {
   const placed = project.hq;
   if (placed === undefined || ("unregistered" in placed && placed.unregistered === true))
     return "none";

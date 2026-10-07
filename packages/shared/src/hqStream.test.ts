@@ -8,6 +8,7 @@ import {
   HqStreamMessage,
   HqNavigationStatus,
   HqNavigationApp,
+  HqNavigationMate,
   HqNavigationPress,
   HqPersonFacts,
   HqNavigationPerson,
@@ -28,6 +29,7 @@ it.each([
 const read = Schema.decodeUnknownSync(HqZeropsRefusedResponse);
 const readRequest = Schema.decodeUnknownSync(HqStreamRequest);
 const readApp = Schema.decodeUnknownSync(HqNavigationApp);
+const readMate = Schema.decodeSync(HqNavigationMate);
 const readPress = Schema.decodeUnknownSync(HqNavigationPress);
 const readStatus = Schema.decodeUnknownSync(HqNavigationStatus);
 const readWire = Schema.decodeUnknownSync(Schema.fromJsonString(HqStreamMessage));
@@ -64,6 +66,7 @@ it("navigation preserves production release standing and deploy evidence", () =>
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
+    releaseOffer: null,
     changes: [
       {
         repo: "appdev",
@@ -141,6 +144,18 @@ it("navigation preserves production release standing and deploy evidence", () =>
     importProcessId: "import",
   };
   expect(readPress(press)).toEqual(press);
+});
+
+it.each([true, false, null])("navigation carries setup marker evidence %s", (setupMarker) => {
+  const value = {
+    face: "",
+    madeBy: null,
+    standupRequestedBy: null,
+    closedOff: false,
+    setupMarker,
+    keyWider: false,
+  };
+  expect(readMate(value)).toEqual(value);
 });
 
 it.each(["forbidden", "zerops_refused", "scope_not_found"])(

@@ -18,10 +18,7 @@ const SERVICE = "zcp";
 const DEMAND = { family: "mateVariables", ownerId: SERVICE } as const;
 const SCOPE = mateVariablesScope(ORG, SERVICE);
 const PRESENT = {
-  items: [
-    { key: "ZCP_MATE_ENABLED", content: "1" },
-    { key: "MATE_SETUP_RUNTIMES", content: "import-document" },
-  ],
+  items: [{ key: "ZCP_MATE_ENABLED", content: "1" }],
 };
 
 const setup = Effect.fnUntraced(function* () {
@@ -62,14 +59,14 @@ describe("Mate variables through the sampled Zerops adapter", () => {
       expect(reads()[0]?.body?.search).toEqual([
         { name: "clientId", operator: "eq", value: ORG },
         { name: "serviceStackId", operator: "eq", value: SERVICE },
-        { name: "key", operator: "in", value: ["ZCP_MATE_ENABLED", "MATE_SETUP_RUNTIMES"] },
+        { name: "key", operator: "in", value: ["ZCP_MATE_ENABLED"] },
       ]);
-      expect(projection()).toEqual({ flag: true, marker: true });
+      expect(projection()).toEqual({ flag: true });
       answer.body = { items: [{ key: "ZCP_MATE_ENABLED", content: "0" }] };
       link.revalidate(DEMAND);
       yield* settle;
       expect(reads()).toHaveLength(2);
-      expect(projection()).toEqual({ flag: false, marker: false });
+      expect(projection()).toEqual({ flag: false });
       release();
       releaseSecond();
       yield* settle;
@@ -92,7 +89,7 @@ describe("Mate variables through the sampled Zerops adapter", () => {
       Object.assign(answer, failure);
       link.revalidate(DEMAND);
       yield* settle;
-      expect(projection()).toEqual({ flag: true, marker: true });
+      expect(projection()).toEqual({ flag: true });
       expect(store.state().streams.get(SCOPE)?.phase).toBe("recovering");
       expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
@@ -128,17 +125,17 @@ describe("Mate variables through the sampled Zerops adapter", () => {
       yield* settle;
       yield* fixture.drop({ outcome: "transient", message: "socket closed" });
       yield* settle;
-      expect(projection()).toEqual({ flag: true, marker: true });
+      expect(projection()).toEqual({ flag: true });
       answer.body = { items: [{ key: "ZCP_MATE_ENABLED", content: "0" }] };
       const down = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(down?.next.kind === "retry" ? down.next.at : 0);
       yield* settle;
       expect(fixture.opens()).toBe(2);
-      expect(projection()).toEqual({ flag: true, marker: true });
+      expect(projection()).toEqual({ flag: true });
       yield* TestClock.adjust(STREAM_POLICY.sampledIntervalMs);
       yield* settle;
       expect(reads()).toHaveLength(2);
-      expect(projection()).toEqual({ flag: false, marker: false });
+      expect(projection()).toEqual({ flag: false });
       yield* Fiber.interrupt(fiber);
     }),
   );

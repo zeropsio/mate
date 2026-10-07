@@ -14,7 +14,6 @@ const apply = (inputs: ReadonlyArray<AccountInput>): AccountState =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, emptyAccount);
 
 const flag = (on: boolean): Partial<MateVariablesValue> => ({ flag: on });
-const MARKER: Partial<MateVariablesValue> = { marker: true };
 
 /** The organization's services (the Mate's container `zcp`, as `status`; a later Mate's `fresh`) and `zcp`'s read demanded. */
 const demanded = (status = "ACTIVE") => [
@@ -28,7 +27,7 @@ const demanded = (status = "ACTIVE") => [
   { kind: "baseline-begin", scope: SCOPE, generation: 1 } as AccountInput,
 ];
 
-/** `zcp`'s search answered with these of its two variables. */
+/** `zcp`'s search answered with these of its enable flag. */
 const answered = (
   rows: ReadonlyArray<Partial<MateVariablesValue>>,
   status?: string,
@@ -45,7 +44,7 @@ const answered = (
         {
           family: "mateVariables",
           id: "zcp",
-          value: Object.assign({ flag: null, marker: false }, ...rows),
+          value: Object.assign({ flag: null }, ...rows),
           revision: { kind: "zerops", version: null },
         },
       ],
@@ -62,7 +61,7 @@ describe("mateVariables", () => {
     {
       name: "not read yet: unread, never off",
       state: () => apply(demanded()),
-      expected: { flag: "unread", marker: "unread" },
+      expected: { flag: "unread" },
     },
     {
       name: "the read failed: unknown, never off",
@@ -75,67 +74,45 @@ describe("mateVariables", () => {
             jitter: 0,
           }),
         ]),
-      expected: { flag: "unknown", marker: "unknown" },
+      expected: { flag: "unknown" },
     },
     {
-      name: "its flag on and the press's marker present",
-      state: () => answered([flag(true), MARKER]),
-      expected: { flag: true, marker: true },
-    },
-    {
-      name: "its flag beside no marker: a container made before the press, never marked",
+      name: "its flag on",
       state: () => answered([flag(true)]),
-      expected: { flag: true, marker: false },
+      expected: { flag: true },
     },
     {
       name: "a flag turned off reads off",
       state: () => answered([flag(false)]),
-      expected: { flag: false, marker: false },
+      expected: { flag: false },
     },
     {
-      name: "a redacted flag stays unknown while the marker's presence is known",
-      state: () => answered([{ flag: "unknown" }, MARKER]),
-      expected: { flag: "unknown", marker: true },
+      name: "a redacted flag stays unknown",
+      state: () => answered([{ flag: "unknown" }]),
+      expected: { flag: "unknown" },
     },
     {
-      name: "neither, on a container still being made: its variables may be on their way",
-      state: () => answered([], "CREATING"),
-      expected: { flag: false, marker: "unread" },
-    },
-    {
-      name: "neither, on a container only just asked for (NEW): its variables may be on their way",
-      state: () => answered([], "NEW"),
-      expected: { flag: false, marker: "unread" },
-    },
-    {
-      name: "neither, on a container made and waiting for its code: no press imported it",
-      state: () => answered([], "READY_TO_DEPLOY"),
-      expected: { flag: false, marker: false },
-    },
-    {
-      name: "neither, on a container long made: none",
+      name: "an absent flag reads off",
       state: () => answered([], "ACTIVE"),
-      expected: { flag: false, marker: false },
+      expected: { flag: false },
     },
     {
       name: "a re-read under way keeps what the last answer said",
       state: () => {
-        const read = answered([flag(true), MARKER]);
+        const read = answered([flag(true)]);
         return [
           event(SCOPE, { kind: "attempt" }),
           { kind: "baseline-begin", scope: SCOPE, generation: 2 } as AccountInput,
         ].reduce((current, input) => reduceAccount(current, input).state, read);
       },
-      expected: { flag: true, marker: true },
+      expected: { flag: true },
     },
     {
       name: "let go: what the last answer said stands",
       state: () =>
-        reduceAccount(
-          answered([flag(true), MARKER]),
-          event(SCOPE, { kind: "demand", demanded: false }),
-        ).state,
-      expected: { flag: true, marker: true },
+        reduceAccount(answered([flag(true)]), event(SCOPE, { kind: "demand", demanded: false }))
+          .state,
+      expected: { flag: true },
     },
     {
       name: "an outage after the answer keeps what it said",
@@ -148,7 +125,7 @@ describe("mateVariables", () => {
             jitter: 0,
           }),
         ).state,
-      expected: { flag: true, marker: false },
+      expected: { flag: true },
     },
   ])("$name", ({ state, expected }) => {
     expect(mateVariables.derive(readsOfState(state()), { orgId: ORG, serviceId: "zcp" })).toEqual(
@@ -161,6 +138,5 @@ it("another Mate's container is unread until its own answer, never off", () => {
   const state = answered([flag(true)]);
   expect(mateVariables.derive(readsOfState(state), { orgId: ORG, serviceId: "fresh" })).toEqual({
     flag: "unread",
-    marker: "unread",
   });
 });

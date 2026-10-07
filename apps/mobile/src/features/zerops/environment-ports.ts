@@ -280,7 +280,7 @@ export async function mobileAccountPorts(input: {
       catalog: catalogPort,
       // The Mate whose screen is open as the stage starts: its target is wanted first.
       route: openMateRoute,
-      // No HQ word on the phone: a Mate is held only on what its open read here (`close-off.ts`).
+      // The open action reports holds from HQ navigation setup evidence (`close-off.ts`).
       closeOffPending: closeOffFacts,
       ...hqAbsent(),
     },

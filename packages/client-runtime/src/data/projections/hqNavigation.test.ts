@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { hqMateScope } from "../families/hqMate.ts";
 import {
+  hqAppFamily,
+  placementFamily,
   hqAppsScope,
   hqOrganizationScope,
   hqPeopleScope,
@@ -64,6 +66,7 @@ const mate = {
   madeBy: null,
   standupRequestedBy: null,
   closedOff: false,
+  setupMarker: null,
   keyWider: false,
 };
 const rows: ReadonlyArray<Row> = [
@@ -232,6 +235,66 @@ describe("hqNavigation", () => {
     },
   ])("$name", ({ state, expected }) => {
     expect(navigation(state)).toMatchObject(expected);
+  });
+
+  it.each([
+    ["live", read],
+    ["outage", down],
+    ["refusal", refused],
+    ["partial", demanded],
+  ] as const)("preserves grouping with an unknown offer during %s", (_name, state) => {
+    const raw = {
+      id: "shop",
+      name: "Shop",
+      can: {},
+      contents: { empty: false, deletingProjectIds: [] },
+      environments: [],
+      changes: [],
+      projectIds: ["ada", "stage"],
+      births: [],
+    };
+    const app = hqAppFamily.hq!.decode(raw, "app:shop")!;
+    const next = apply(state, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: true,
+        rows: [
+          ...rows.filter((row) => row.family !== "hqApp"),
+          { family: "hqApp", id: "shop", value: app, revision: { ...revision, revision: 2 } },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(next).structure?.apps[0]?.projects.map(({ name }) => name)).toEqual([
+      "Ada",
+      "Stage",
+    ]);
+    expect(hqAppReleaseOffers.derive(readsOfState(next), ORG).shop).toBeUndefined();
+  });
+
+  it("keeps the placement when Mate metadata is unknown without claiming there is no Mate", () => {
+    const placed = placementFamily.hq!.decode(
+      { projectId: "ada", appId: "shop", name: "Ada", kind: "mate", mate: 42 },
+      "project:ada",
+    )!;
+    const next = apply(read, [
+      {
+        kind: "hq-delivery",
+        scopes: generations,
+        reset: false,
+        rows: [
+          { family: "placement", id: "ada", value: placed, revision: { ...revision, revision: 2 } },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(next).structure?.apps[0]?.projects[0]).toMatchObject({
+      projectId: "ada",
+      name: "Ada",
+      kind: "mate",
+    });
+    expect(navigation(next).structure?.apps[0]?.projects[0]?.mate).toBeUndefined();
   });
 
   it("places each project in its application, and HQ's Mates in none apart", () => {

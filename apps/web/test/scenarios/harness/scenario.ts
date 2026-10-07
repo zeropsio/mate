@@ -82,6 +82,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
   const drivers = {
+    hq,
     owner,
     appIds,
     zerops,

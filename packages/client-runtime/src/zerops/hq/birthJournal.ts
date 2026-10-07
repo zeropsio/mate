@@ -1,12 +1,19 @@
 /**
- * Create-once project env slots are the birth's journal and arbiter. Tags cannot arbitrate: their
- * PUT replaces the entire list. Read the direct env file, never the lagging project search.
- * No credential value is admitted to a record or an action's receipt.
+ * HQ's setup journal: create-once slots in its new project's env, the birth's record in Zerops
+ * rather than in any browser. It is what lets a birth stopped in one browser go on in another and
+ * never send one of its writes twice: each write's intent wins a unique slot before it is sent, its
+ * receipt keeps its handles after. Tags cannot arbitrate — their PUT replaces the whole list.
+ *
+ * The journal reads through an executor-side read of the env file (`executors/hqBirthReads.ts`)
+ * and writes each slot as an `hq-birth-note` operation run to its end. A claim is a lease on who
+ * goes on: renewed at each step, never waited out — a live claim of another browser stops this one
+ * at once. No credential value is admitted to a record or a receipt.
  */
 import * as Schema from "effect/Schema";
 
+import { HQ_BIRTH_SLOT_TAKEN } from "../../data/operations/hqBirth.ts";
 import { ZeropsApiError } from "../api.ts";
-import type { HqBirthDeps, HqBirthRecord } from "./birth.ts";
+import type { HqBirthRecord } from "./birth.ts";
 
 export const HQ_BIRTH_RECORD_KEY = "MATE_HQ_BIRTH_RECORD_0";
 export const HQ_BIRTH_CLAIM_MS = 90_000;
@@ -37,17 +44,11 @@ const Record = Schema.Struct({
   projectId: Schema.NullOr(Schema.String),
   serviceId: Schema.NullOr(Schema.String),
   address: Schema.NullOr(Schema.String),
-  appVersionId: Schema.NullOr(Schema.String),
   deployProcessId: Schema.NullOr(Schema.String),
   serviceIds: Schema.optionalKey(Handles),
-  importProcessId: Schema.optionalKey(Schema.String),
-  importProcesses: Schema.optionalKey(Handles),
   orgTokenId: Schema.optionalKey(Schema.String),
   anchorTokenId: Schema.optionalKey(Schema.String),
-  routingId: Schema.optionalKey(Schema.String),
   syncProcessId: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  archiveUploaded: Schema.optionalKey(Schema.Boolean),
-  coreYaml: Schema.optionalKey(Schema.String),
   attempt: Schema.optionalKey(Schema.Number),
   stopped: Schema.optionalKey(Schema.NullOr(Stop)),
 });
@@ -64,15 +65,10 @@ const decodeRefusal = Schema.decodeSync(
 );
 const encodeSnapshot = Schema.encodeSync(Snapshot);
 const ACTION_WORDS: Readonly<Record<string, string>> = {
-  token: "access token creation",
-  regenerate: "access token regeneration",
-  org_secret: "access write",
+  org_token: "access token",
   key_secret: "key write",
-  version: "app version creation",
-  upload: "archive upload",
   deploy: "deploy",
-  routing: "address creation",
-  routing_sync: "address sync",
+  routing: "address",
   anchor: "official HQ mark",
 };
 
@@ -111,104 +107,76 @@ export class HqBirthClaimLost extends Error {
 }
 export class HqBirthUncertain extends Error {}
 
+/** What the journal reads and writes through. */
+export interface HqBirthJournalPorts {
+  /** The env file's journal slots, read straight from it, never the lagging project search. */
+  readonly read: (projectId: string) => Promise<ReadonlyMap<string, string>>;
+  /** One slot written, its env process ended: the `hq-birth-note` operation run to its end. */
+  readonly append: (projectId: string, key: string, content: string) => Promise<void>;
+  /** The claim's lease alone. */
+  readonly now: () => number;
+  readonly newId: () => string;
+}
+
 export class HqBirthJournal {
   private claimIndex = -1;
   private recordIndex = -1;
   private readonly owner: string;
   private readonly projectId: string;
-  private readonly deps: HqBirthDeps;
-  constructor(projectId: string, deps: HqBirthDeps) {
+  private readonly ports: HqBirthJournalPorts;
+  constructor(projectId: string, ports: HqBirthJournalPorts) {
     this.projectId = projectId;
-    this.deps = deps;
-    this.owner = deps.newBirthId();
+    this.ports = ports;
+    this.owner = ports.newId();
   }
 
-  /** A live holder is observed. An expired/released claim is replaced by one atomic unique key. */
+  /** Taken where nobody holds it, or its holder's lease ran out; a live holder stops this one. */
   async acquire(moved: (record: HqBirthRecord) => void): Promise<HqBirthRecord> {
-    const started = this.deps.now();
-    for (;;) {
-      const env = await this.deps.platform.readProjectBirthEnv(this.projectId);
-      const record = readBirthRecord(env);
-      if (record === undefined) {
-        if (
-          this.deps.now() - started >=
-          Math.min(this.deps.waits?.servicesCapMs ?? 90_000, 90_000)
-        ) {
-          throw new Error(
-            "HQ's project has no setup record. Ask an organization admin to inspect it in Zerops.",
-          );
-        }
-        await this.deps.sleep(this.deps.waits?.pollMs ?? 3_000);
-        continue;
-      }
-      moved(record);
-      const slot = lastSlot(env, "CLAIM");
-      const claim = slot === undefined ? undefined : decodeClaim(slot.content);
-      if (claim === undefined || claim.until <= this.deps.now()) {
-        const index = (slot?.index ?? -1) + 1;
-        try {
-          await this.claim(index);
-          this.recordIndex = lastSlot(env, "RECORD")!.index;
-          // A previous holder may have saved progress between the read and our claim.
-          const current = await this.deps.platform.readProjectBirthEnv(this.projectId);
-          this.recordIndex = lastSlot(current, "RECORD")!.index;
-          return readBirthRecord(current)!;
-        } catch (cause) {
-          // A collision is ownership contention, not a retried side effect. Every other error stops.
-          if (!duplicateSlot(cause)) throw cause;
-        }
-      }
-      if (this.deps.now() - started >= (this.deps.waits?.deployCapMs ?? 15 * 60_000)) {
-        throw new Error("Another browser is setting up HQ. Press Again to read its progress.");
-      }
-      await this.deps.sleep(this.deps.waits?.pollMs ?? 3_000);
-    }
-  }
-
-  private async append(key: string, content: string): Promise<void> {
-    const { processId } = await this.deps.platform.createProjectEnv(this.projectId, key, content);
-    if (!processId)
-      throw new HqBirthUncertain(
-        "Zerops accepted HQ's setup record but returned no process to follow. Press Again to read its recorded progress.",
+    const env = await this.ports.read(this.projectId);
+    const record = readBirthRecord(env);
+    if (record === undefined)
+      throw new Error(
+        "HQ's project has no setup record. Ask an organization admin to inspect it in Zerops.",
       );
-    const started = this.deps.now();
-    for (;;) {
-      const status = await this.deps.platform.readProcessStatus(processId);
-      if (status === "FINISHED") return;
-      if (status === "FAILED" || status === "CANCELED")
-        throw new Error(
-          `Zerops could not save HQ's setup record (${status}). Inspect its env process in Zerops, then press Again.`,
-        );
-      if (this.deps.now() - started >= HQ_BIRTH_CLAIM_MS)
-        throw new HqBirthUncertain(
-          "Saving HQ's setup record took too long. Press Again to follow its recorded progress.",
-        );
-      await this.deps.sleep(this.deps.waits?.pollMs ?? 3_000);
+    moved(record);
+    const slot = lastSlot(env, "CLAIM");
+    const claim = slot === undefined ? undefined : decodeClaim(slot.content);
+    if (claim !== undefined && claim.until > this.ports.now()) throw new HqBirthClaimLost();
+    await this.claim((slot?.index ?? -1) + 1);
+    // A previous holder may have saved progress between the read and our claim.
+    const current = await this.ports.read(this.projectId);
+    this.recordIndex = lastSlot(current, "RECORD")!.index;
+    return readBirthRecord(current)!;
+  }
+
+  /** One slot, its taker first: a slot another write took first is ownership lost. */
+  private async append(key: string, content: string): Promise<void> {
+    try {
+      await this.ports.append(this.projectId, key, content);
+    } catch (cause) {
+      if (cause instanceof Error && cause.message === HQ_BIRTH_SLOT_TAKEN)
+        throw new HqBirthClaimLost();
+      throw cause;
     }
   }
 
-  private async claim(index: number, until = this.deps.now() + HQ_BIRTH_CLAIM_MS) {
+  private async claim(index: number, until = this.ports.now() + HQ_BIRTH_CLAIM_MS) {
     await this.append(`${PREFIX}CLAIM_${index}`, JSON.stringify({ owner: this.owner, until }));
     this.claimIndex = index;
   }
 
   async assertOwned(): Promise<void> {
-    const slot = lastSlot(await this.deps.platform.readProjectBirthEnv(this.projectId), "CLAIM");
+    const slot = lastSlot(await this.ports.read(this.projectId), "CLAIM");
     if (slot === undefined || slot.index !== this.claimIndex) throw new HqBirthClaimLost();
     const claim = decodeClaim(slot.content);
-    if (claim.owner !== this.owner || claim.until <= this.deps.now()) throw new HqBirthClaimLost();
-    if (claim.until - this.deps.now() < HQ_BIRTH_CLAIM_MS / 2) await this.claim(slot.index + 1);
+    if (claim.owner !== this.owner || claim.until <= this.ports.now()) throw new HqBirthClaimLost();
+    if (claim.until - this.ports.now() < HQ_BIRTH_CLAIM_MS / 2) await this.claim(slot.index + 1);
   }
 
   async save(record: HqBirthRecord): Promise<void> {
     await this.assertOwned();
     const index = this.recordIndex + 1;
-    try {
-      await this.append(`${PREFIX}RECORD_${index}`, birthSnapshot(record));
-    } catch (cause) {
-      if (duplicateSlot(cause)) throw new HqBirthClaimLost();
-      throw cause;
-    }
+    await this.append(`${PREFIX}RECORD_${index}`, birthSnapshot(record));
     this.recordIndex = index;
   }
 
@@ -218,10 +186,11 @@ export class HqBirthJournal {
   }
 
   /**
-   * Intent wins a unique slot before a side effect; a receipt retains only handles afterwards.
-   * A suspended old holder and a new holder cannot both send the same action, even across expiry.
-   * A receipt may be saved after losing ownership: it describes a write already sent, never a new
-   * one. A missing receipt stops; neither a stale claim nor Again authorizes replaying it.
+   * Intent wins a unique slot before a write; a receipt retains only handles afterwards. A
+   * suspended old holder and a new holder cannot both send the same write, even across expiry. An
+   * intent without its receipt is never waited on and never sent again: it stops uncertain, and
+   * neither a stale claim nor Again replays it. A definite refusal is recorded, and Again goes on
+   * under a new attempt.
    */
   async perform(
     action: string,
@@ -231,50 +200,34 @@ export class HqBirthJournal {
   ): Promise<Readonly<Record<string, string>>> {
     const key = `${PREFIX}ACTION_${action}_${attempt}`;
     const doing = ACTION_WORDS[action] ?? "setup";
-    let env = await this.deps.platform.readProjectBirthEnv(this.projectId);
-    const started = this.deps.now();
-    while (env.has(key)) {
+    const env = await this.ports.read(this.projectId);
+    if (env.has(key)) {
       const receipt = env.get(`${key}_result`);
       if (receipt !== undefined) return decodeReceipt(receipt).handles;
       const refusal = env.get(`${key}_refusal`);
-      if (refusal !== undefined) {
-        const reason = decodeRefusal(refusal).reason;
-        throw new Error(reason);
-      }
-      if (this.deps.now() - started >= 120_000) {
-        throw new HqBirthUncertain(
-          `Zerops has not confirmed HQ's ${doing} step. Its recorded handles are in the project's env. Press Again to check for its receipt; inspect the operation in Zerops before taking further action.`,
-        );
-      }
-      await this.assertOwned();
-      await this.deps.sleep(this.deps.waits?.pollMs ?? 3_000);
-      env = await this.deps.platform.readProjectBirthEnv(this.projectId);
+      if (refusal !== undefined) throw new Error(decodeRefusal(refusal).reason);
+      throw new HqBirthUncertain(
+        `Zerops has not confirmed HQ's ${doing} step. Its recorded handles are in the project's env. Press Again to check for its receipt; inspect the operation in Zerops before taking further action.`,
+      );
     }
     await this.assertOwned();
-    try {
-      await this.append(key, JSON.stringify({ state: "started", handles }));
-    } catch (cause) {
-      if (duplicateSlot(cause)) throw new HqBirthClaimLost();
-      throw cause;
-    }
+    await this.append(key, JSON.stringify({ state: "started", handles }));
     let result: Readonly<Record<string, string>>;
     try {
       // Check again after the intent write: a paused tab does not act with an expired claim.
       await this.assertOwned();
       result = await call();
     } catch (cause) {
-      // Intents are never removed. A definite refusal is recorded and a manual Again uses a new
-      // attempt; an uncertain outcome must be followed by its own receipt.
-      if (
-        cause instanceof ZeropsApiError &&
-        ["invalid-input", "forbidden", "not-found"].includes(cause.kind)
-      ) {
-        await this.append(`${key}_refusal`, JSON.stringify({ reason: cause.message }));
-        throw cause;
-      }
-      throw new HqBirthUncertain(
-        cause instanceof Error ? cause.message : "Zerops did not confirm this setup step.",
+      // Intents are never removed. An outcome Zerops may have carried out is followed by its own
+      // receipt; any other stop is recorded, for Again to go on under a new attempt.
+      if (cause instanceof HqBirthClaimLost) throw cause;
+      if (cause instanceof ZeropsApiError && cause.kind === "uncertain")
+        throw new HqBirthUncertain(cause.message);
+      await this.append(
+        `${key}_refusal`,
+        JSON.stringify({ reason: cause instanceof Error ? cause.message : String(cause) }),
       );
+      throw cause;
     }
     try {
       await this.append(`${key}_result`, JSON.stringify({ handles: result }));
@@ -285,13 +238,4 @@ export class HqBirthJournal {
     }
     return result;
   }
-}
-
-/** The platform's unique-key refusal; no arbitrary 400 is considered a claim collision. */
-function duplicateSlot(cause: unknown): boolean {
-  return (
-    cause instanceof ZeropsApiError &&
-    cause.kind === "invalid-input" &&
-    /not unique/iu.test(cause.message)
-  );
 }

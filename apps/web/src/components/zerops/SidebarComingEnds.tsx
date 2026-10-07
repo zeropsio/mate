@@ -7,13 +7,8 @@
 import { MoreHorizontalIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import {
-  creationEnds,
-  dismissNewProjectBirth,
-  startAddOver,
-  useNewProjectBirths,
-  type NewProjectBirth,
-} from "~/zerops/newProjectBirth";
+import { dismissCreation, startAddOver, useCreation } from "~/zerops/creations";
+import { creationEnds, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 
@@ -35,10 +30,10 @@ export function comingEndsEntries(birth: NewProjectBirth): ReadonlyArray<{
           {
             id: "start-over" as const,
             label: "Start over",
-            onSelect: () => startAddOver(birth.birthId),
+            onSelect: () => startAddOver(birth),
           },
         ]),
-    { id: "dismiss", label: "Dismiss", onSelect: () => dismissNewProjectBirth(birth.birthId) },
+    { id: "dismiss", label: "Dismiss", onSelect: () => dismissCreation(birth.birthId) },
   ];
 }
 
@@ -53,7 +48,7 @@ export function SidebarComingEnds({
   /** The row itself. */
   readonly children: ReactNode;
 }) {
-  const made = useNewProjectBirths((state) => state.births[birthId]);
+  const made = useCreation(birthId);
   const entries = made === undefined ? [] : comingEndsEntries(made);
   if (entries.length === 0) return children;
   return (

@@ -14,7 +14,7 @@ const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 /** Every value here must be one the link and the client stream can send. */
 const decodeAttention = Schema.decodeUnknownSync(MateAttention);
 
-const SOURCE = { environmentId: EnvironmentId.make("env-1"), incarnation: "boot-1" };
+const SOURCE = { environmentId: EnvironmentId.make("env-1"), epoch: 1, incarnation: "boot-1" };
 
 const shell = (id: string, extra: object = {}) =>
   decodeShell({

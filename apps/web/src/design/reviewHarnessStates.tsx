@@ -23,7 +23,7 @@ import type {
 import { useEffect, useState, type ReactNode } from "react";
 
 import {
-  ChangeReviewView,
+  ChangeReviewView as ProjectedChangeReviewView,
   type ChangeReviewViewProps,
 } from "~/components/zerops/review/ZeropsChangeReview";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
@@ -44,7 +44,21 @@ import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
-import { HARNESS_HQ, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
+import { RegistryContext } from "@effect/atom-react";
+import {
+  HARNESS_HQ,
+  HARNESS_PICTURES,
+  HARNESS_PICTURE_REGISTRY,
+  harnessDescription,
+} from "./reviewHarnessPictures";
+
+function ChangeReviewView(props: ChangeReviewViewProps) {
+  return (
+    <RegistryContext value={HARNESS_PICTURE_REGISTRY}>
+      <ProjectedChangeReviewView {...props} />
+    </RegistryContext>
+  );
+}
 
 const NOW = Date.now();
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();

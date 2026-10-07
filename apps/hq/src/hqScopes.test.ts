@@ -253,6 +253,7 @@ const fixture = Effect.gen(function* () {
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
+                      setupMarker: null,
                       keyWider: false,
                     },
                     can,
@@ -1093,14 +1094,14 @@ describe("revisioned HQ values", () => {
       ),
   );
   it.effect(
-    "a new Mate attention incarnation replaces revision seven with an atomic baseline",
+    "a restarted Mate's attention, its next epoch, replaces revision seven with an atomic baseline",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
           const f = yield* fixture;
           const oldLink = yield* f.overviews.connect("P");
           const value = {
-            source: { environmentId: "env", incarnation: "first", revision: 7 },
+            source: { environmentId: "env", epoch: 1, incarnation: "first", revision: 7 },
             mainThreadId: null,
             lastThreadId: null,
             working: 1,
@@ -1117,7 +1118,7 @@ describe("revisioned HQ values", () => {
           const newLink = yield* f.overviews.connect("P");
           const restarted = {
             ...value,
-            source: { ...value.source, incarnation: "second", revision: 0 },
+            source: { ...value.source, epoch: 2, incarnation: "second", revision: 0 },
             working: 0,
           };
           yield* f.overviews.reportAttention("P", newLink, restarted);
@@ -1126,7 +1127,7 @@ describe("revisioned HQ values", () => {
             next = resetOf(yield* client.take);
           assert.strictEqual(next.type, "scope-reset");
           assert.notStrictEqual(next.incarnation, first.incarnation);
-          assert.include(json(next.values), '"incarnation":"second","revision":0');
+          assert.include(json(next.values), '"epoch":2,"incarnation":"second","revision":0');
           yield* client.subscribe([
             {
               scope: attention,
@@ -1352,7 +1353,7 @@ describe("revisioned HQ values", () => {
         const f = yield* fixture;
         const link = yield* f.overviews.connect("P");
         const value = {
-          source: { environmentId: "env", incarnation: "boot", revision: 1 },
+          source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 1 },
           mainThreadId: "thread",
           lastThreadId: "thread",
           working: 0,
@@ -2064,7 +2065,7 @@ describe("revisioned HQ values", () => {
         });
         const link = yield* f.overviews.connect("P");
         yield* f.overviews.reportAttention("P", link, {
-          source: { environmentId: "env", incarnation: "boot", revision: 1 },
+          source: { environmentId: "env", epoch: 1, incarnation: "boot", revision: 1 },
           mainThreadId: "main",
           lastThreadId: "main",
           working: 0,

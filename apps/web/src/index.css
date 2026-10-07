@@ -5233,6 +5233,33 @@ button.run-bar:focus-visible {
   pointer-events: none;
   transition: box-shadow 150ms ease;
 }
+/* Failed bytes and failed signing hold the picture's reserved room. */
+.asset-image-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 40px;
+  padding: 6px;
+  color: var(--color-muted-foreground);
+  background: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+}
+.asset-image-unavailable small {
+  font-size: inherit;
+}
+.run-result-tile .asset-image-unavailable {
+  width: 100%;
+  height: 100%;
+}
+.run-result-tile[data-result-picture="unavailable"] .run-result-more {
+  inset: auto 4px 4px auto;
+  border-radius: 4px;
+  padding: 0 4px;
+}
 .run-result-tile img {
   display: block;
   width: 100%;

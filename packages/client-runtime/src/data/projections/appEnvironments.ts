@@ -24,6 +24,7 @@ function environmentsRead(read: ProjectionReads, appId: string): AppEnvironments
   const fact = read.fact("hqApp", appId);
   if (fact.kind !== "known") return UNTOLD;
   const { environments } = fact.value;
+  if (environments === undefined) return UNTOLD;
   if ("refused" in environments) return { environments: undefined, refused: environments.refused };
   return { environments: environmentsOf(environments), refused: null };
 }

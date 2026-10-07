@@ -267,10 +267,10 @@ describe("ZeropsInventoryProvider grants", () => {
         const { useAtomValue } = await import("@effect/atom-react");
         const { shownHqProjectPeopleAtom } = await import("@t3tools/client-runtime/data");
         const { seedHqNavigation } = await import("@t3tools/client-runtime/data/fixtures");
-        const { useMatesInventory } = await import("./useMatesInventory");
+        const { useVisibleProjectAccess } = await import("./useVisibleProjectAccess");
         const { useAccountOperations } = await import("./accountOperations");
         function Owner() {
-          useMatesInventory(["p1"]);
+          useVisibleProjectAccess(["p1"]);
           const operations = useAccountOperations();
           handOver = () =>
             operations.submit({

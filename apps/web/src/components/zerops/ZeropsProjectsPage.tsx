@@ -81,7 +81,8 @@ import {
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
-import { useNewProjectBirths } from "~/zerops/newProjectBirth";
+import { useCreations } from "~/zerops/creations";
+import { placedNewProjects } from "~/zerops/newProjectBirth";
 import {
   useTakenBotNames,
   useZeropsCandidates,
@@ -93,7 +94,7 @@ import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
-import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory";
+import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -801,9 +802,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     organizationStatus,
     selectOrganization,
     status,
-    user,
   } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
@@ -828,7 +828,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     finishBirth,
   } = useZeropsProjectConnection();
   // The New projects this tab is making: drawn from the press, as the left menu draws them.
-  const made = useNewProjectBirths((state) => state.births);
+  const made = useCreations();
   const birthProjectIds = useMemo(
     () => new Set(presses.map((press) => press.projectId)),
     [presses],
@@ -840,9 +840,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const creationVerdicts = useProjectCreations(observedCandidates);
   // A first build whose process failed reads as the platform leaves it, with what removes it.
   const firstBuilds = useZeropsFirstBuilds(observedCandidates);
-  // Each Mate the page draws has its project read: its container is what Restart and the
-  // application's Add Mate and Add stage stand on.
-  useMatesInventory(useMemo(() => drawnMateProjects(observedCandidates), [observedCandidates]));
+  // Each drawn Mate holds only the project detail that decides the viewer’s access.
+  useVisibleProjectAccess(
+    useMemo(() => drawnMateProjects(observedCandidates), [observedCandidates]),
+  );
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
@@ -926,7 +927,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
-    births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),
+    births: placedPressesIn(
+      presses,
+      activeOrganization?.id,
+      placedNewProjects(made, activeOrganization?.id),
+    ),
     apps: emptyApplications(hqStructure, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -992,9 +997,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         hq: accountHq.hq,
         local: [
           ...presses.map((press) => press.projectId),
-          ...Object.values(made).flatMap((birth) =>
-            birth.projectId === null ? [] : [birth.projectId],
-          ),
+          ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
         ],
       }),
     [accountHq.hq, hqKnown, hqPresses, knownStructure, made, presses],
@@ -1079,11 +1082,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
-          inputs: {
-            client,
-            data: { runtime, organizationRef, projectRef },
-            organizationId: activeOrganization.id,
-          },
+          inputs: { client, operations, organizationId: activeOrganization.id },
           projectId,
           projectName: candidate.project.name,
           container: { agents },
@@ -1120,13 +1119,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       hqKnown,
       hqStructure,
       operations,
-      organizationRef,
-      projectRef,
       orgOffer,
       readGroupAgents,
       setConnectError,
       settingUpKey,
-      runtime,
     ],
   );
 
@@ -1980,7 +1976,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       placement: null,
     });
     void finishMateSetup({
-      inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId: claimIn },
+      inputs: { client, operations, organizationId: claimIn },
       projectId: claimed.id,
       projectName: claimed.name,
       // The pool made its container.
@@ -1991,16 +1987,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
     });
-  }, [
-    accountHq,
-    clearLastRegistration,
-    client,
-    inventory.projects,
-    lastRegistration,
-    organizationRef,
-    projectRef,
-    runtime,
-  ]);
+  }, [accountHq, clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
   // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
   if (status === "loading") return null;
@@ -2732,10 +2719,10 @@ export function ZeropsProjectsPage() {
   // invitation and no title row over it — a "Projects" heading with a reload
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
-  const made = useNewProjectBirths((state) => state.births);
+  const made = useCreations();
   const firstRun = hasNoZeropsProject({
     listing,
-    creationPending: [...presses, ...Object.values(made)].some(
+    creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
   });

@@ -1,4 +1,4 @@
-import type { Page } from "puppeteer-core";
+import type { CDPSession, Page } from "puppeteer-core";
 import { completedHttp } from "./completedHttp.ts";
 
 export interface SteppedAdvanceOptions {
@@ -16,6 +16,7 @@ export interface ScenarioWallClock {
 export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
   const settleHttp = completedHttp(page);
   let installed = false;
+  let frozenSession: CDPSession | undefined;
   let refreshEpoch = async () => {};
   const install = async () => {
     if (installed) return;
@@ -200,15 +201,19 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
       const cdp = await page.createCDPSession();
       try {
         await cdp.send("Page.setWebLifecycleState", { state: "frozen" });
-      } finally {
+        // A new session can wait on the frozen renderer; resume through the one that froze it.
+        frozenSession = cdp;
+      } catch (error) {
         await cdp.detach();
+        throw error;
       }
     },
     async wake(elapsedMs: number) {
-      const cdp = await page.createCDPSession();
+      const cdp = frozenSession ?? (await page.createCDPSession());
       try {
         await cdp.send("Page.setWebLifecycleState", { state: "active" });
       } finally {
+        frozenSession = undefined;
         await cdp.detach();
       }
       await advance(elapsedMs, true);

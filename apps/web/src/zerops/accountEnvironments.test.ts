@@ -11,6 +11,7 @@ import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowled
 import type { AtomCommand } from "@t3tools/client-runtime/state/runtime";
 import {
   initialEnvironment,
+  initialContainer,
   type EnvironmentMachine,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -357,7 +358,7 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
       organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
-    mountHqNavigation(atoms, "org-acme", {
+    const { store } = mountHqNavigation(atoms, "org-acme", {
       structure: {
         apps: [],
         ungrouped: [{ projectId: "project-1", name: "Mate", mate: { face: "" } }],
@@ -384,6 +385,32 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
     expect(sent.log).toEqual(["hold env-1"]);
 
     stage.connect();
+    // The Mate adapter publishes connection evidence to the account store.
+    const [key, environment] = [...stage.environments.machines()][0]!;
+    store.dispatch({
+      kind: "rows",
+      scope: "mate:project-1:link",
+      generation: 0,
+      method: "read",
+      via: "mate-direct",
+      rows: [
+        {
+          family: "mateLink",
+          id: key,
+          revision: { kind: "mate-link", sequence: 1 },
+          value: {
+            key,
+            projectId: "project-1",
+            orgId: "org-acme",
+            origin: null,
+            shown: true,
+            watched: true,
+            environment,
+            container: initialContainer(),
+          },
+        },
+      ],
+    });
 
     expect(await answered).toBe("answered");
     expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);

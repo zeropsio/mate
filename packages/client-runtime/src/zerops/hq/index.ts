@@ -9,21 +9,17 @@ export {
   HQ_BIRTH_DOING,
   HQ_BIRTH_START,
   HQ_BIRTH_STEPS,
-  HQ_BIRTH_WAITS,
   HQ_PROJECT_NAME,
   HQ_SERVICE,
   hqImportYaml,
   runHqBirth,
   type HqBirthDeps,
   type HqBirthOutcome,
-  type HqBirthPlatform,
   type HqBirthRecord,
   type HqBirthStep,
-  type HqBirthWaits,
   type HqCoreArtifact,
 } from "./birth.ts";
 export {
-  attachToApp,
   HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
@@ -53,15 +49,7 @@ export {
   type DeployAnswerSaid,
 } from "./deployAnswer.ts";
 export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deployLog.ts";
-export {
-  hqUpdateOffered,
-  hqUpdateState,
-  readHqUpdate,
-  runHqUpdate,
-  type HqUpdateOutcome,
-  type HqUpdatePlatform,
-  type HqUpdateState,
-} from "./update.ts";
+export { hqUpdateOffered, hqUpdateState, type HqUpdateState } from "./update.ts";
 export {
   birthIntentOf,
   heldOf,

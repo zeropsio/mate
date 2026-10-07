@@ -193,7 +193,7 @@ describe("watchMates", () => {
 describe("watchMates — a Mate that publishes its attention", () => {
   const said = (over: Partial<MateAttention>): MateAttention =>
     ({
-      source: { environmentId: "env-ada", incarnation: "m1", revision: 1 },
+      source: { environmentId: "env-ada", epoch: 1, incarnation: "m1", revision: 1 },
       mainThreadId: "t1",
       lastThreadId: "t1",
       working: 0,

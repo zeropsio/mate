@@ -487,12 +487,14 @@ describe("reduceAccount", () => {
       incarnation,
       revision,
     });
-    const mate = (incarnation: string, revision: number, live = true): Revision => ({
-      kind: "mate-attention",
-      incarnation,
-      revision,
-      live,
-    });
+    /** A Mate's attention revision: `epoch` and `incarnation` name the run, of `env-a` unless said. */
+    const mate = (
+      epoch: number,
+      incarnation: string,
+      revision: number,
+      live = true,
+      environmentId = "env-a",
+    ): Revision => ({ kind: "mate-attention", environmentId, epoch, incarnation, revision, live });
     const link = (sequence: number): Revision => ({ kind: "mate-link", sequence });
 
     it.each([
@@ -520,26 +522,47 @@ describe("reduceAccount", () => {
         incoming: hq("b", 1),
         push: false,
       },
-      { name: "newer mate revision", current: mate("a", 5), incoming: mate("a", 6), push: true },
-      { name: "older mate revision", current: mate("a", 6), incoming: mate("a", 5), push: false },
+      {
+        name: "newer mate revision",
+        current: mate(1, "a", 5),
+        incoming: mate(1, "a", 6),
+        push: true,
+      },
+      {
+        name: "older mate revision",
+        current: mate(1, "a", 6),
+        incoming: mate(1, "a", 5),
+        push: false,
+      },
       {
         name: "newer mate revision HQ stored",
-        current: mate("a", 5),
-        incoming: mate("a", 6, false),
+        current: mate(1, "a", 5),
+        incoming: mate(1, "a", 6, false),
         push: true,
       },
       {
         name: "hq relay over mate's own",
-        current: mate("a", 1),
+        current: mate(1, "a", 1),
         incoming: hq("a", 9),
         push: false,
       },
-      { name: "mate's own over hq relay", current: hq("a", 9), incoming: mate("a", 1), push: true },
       {
-        name: "another incarnation, live, pushed",
-        current: mate("a", 9),
-        incoming: mate("b", 1),
+        name: "mate's own over hq relay",
+        current: hq("a", 9),
+        incoming: mate(1, "a", 1),
         push: true,
+      },
+      {
+        name: "another environment's run, live",
+        current: mate(7, "a", 9),
+        incoming: mate(1, "b", 0, true, "env-b"),
+        push: true,
+      },
+      {
+        name: "another environment's run, stored",
+        current: mate(7, "a", 9),
+        incoming: mate(1, "b", 0, false, "env-b"),
+        push: false,
       },
       { name: "zerops against hq", current: zerops(1), incoming: hq("a", 1), push: false },
       { name: "a later Mate link reading", current: link(3), incoming: link(4), push: true },
@@ -558,12 +581,48 @@ describe("reduceAccount", () => {
       expect(supersedes(hq("a", 9), hq("b", 1), "baseline")).toBe(true);
     });
 
-    it.each(["baseline", "push"] as const)(
-      "lets another Mate incarnation in by being live, never by being stored: %s",
-      (method) => {
-        expect(supersedes(mate("a", 9), mate("b", 1), method)).toBe(true);
-        expect(supersedes(mate("a", 9), mate("b", 1, false), method)).toBe(false);
-        expect(supersedes(mate("a", 9, false), mate("b", 1, false), method)).toBe(false);
+    it.each(
+      (["baseline", "push"] as const).flatMap((method) => [
+        {
+          method,
+          name: "a later run, live",
+          current: mate(1, "a", 9),
+          incoming: mate(2, "b", 0),
+          supersedes: true,
+        },
+        {
+          method,
+          name: "a later run, as HQ stored it",
+          current: mate(1, "a", 9),
+          incoming: mate(2, "b", 0, false),
+          supersedes: true,
+        },
+        {
+          method,
+          name: "an earlier run, live, after the later one",
+          current: mate(2, "b", 0),
+          incoming: mate(1, "a", 9),
+          supersedes: false,
+        },
+        {
+          method,
+          name: "an earlier run, as HQ stored it",
+          current: mate(2, "b", 0, false),
+          incoming: mate(1, "a", 9, false),
+          supersedes: false,
+        },
+        {
+          method,
+          name: "another incarnation in the same epoch",
+          current: mate(2, "a", 0),
+          incoming: mate(2, "b", 9),
+          supersedes: false,
+        },
+      ]),
+    )(
+      "orders a Mate's runs by epoch first, whatever is live: $name, $method",
+      ({ method, current, incoming, supersedes: expected }) => {
+        expect(supersedes(current, incoming, method)).toBe(expected);
       },
     );
   });

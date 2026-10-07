@@ -1147,11 +1147,15 @@ const CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME = cn(
   "my-1 block! rounded-lg border border-border/40",
 );
 
-function ChatMarkdownImageFallback(props: { readonly alt: string }) {
+function ChatMarkdownImageFallback(props: {
+  readonly alt: string;
+  readonly reason?: string | undefined;
+}) {
   return (
     <span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
       <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
       {props.alt.length > 0 ? `Image unavailable · ${props.alt}` : "Image unavailable"}
+      {props.reason ? ` · ${props.reason}` : null}
     </span>
   );
 }
@@ -1272,7 +1276,12 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   }, [failedTimes]);
 
   if (assetUrl._tag === "Failure" || failedTimes > IMAGE_RETRY_DELAYS_MS.length) {
-    return <ChatMarkdownImageFallback alt={props.alt} />;
+    return (
+      <ChatMarkdownImageFallback
+        alt={props.alt}
+        reason={assetUrl._tag === "Failure" ? assetUrl.reason : undefined}
+      />
+    );
   }
   if (assetUrl._tag !== "Success") {
     // While its address is signed it holds the room it will stand in: its
@@ -1298,6 +1307,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
       <AssetImage
         // Asked for again, it is a new picture: the page fetches it anew.
         key={asking}
+        retrying={failedTimes <= IMAGE_RETRY_DELAYS_MS.length}
         src={assetUrl.url}
         alt={props.alt}
         loading="lazy"

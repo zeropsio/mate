@@ -195,6 +195,7 @@ import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
@@ -1428,7 +1429,7 @@ const buildAppUnderTest = (options?: {
         };
       }),
       Layer.provideMerge(makeAuthTestLayer()),
-      Layer.provideMerge(ServerSecretStore.layer),
+      Layer.provideMerge(AssetSigningKey.layer.pipe(Layer.provideMerge(ServerSecretStore.layer))),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(layerConfig),

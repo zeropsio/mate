@@ -152,12 +152,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "a hook polls creation verdicts itself; the operations adapter owns the read",
   },
   {
-    token: "client.readProjectCreation(",
-    family: "projects",
-    reason: "a hook polls creation verdicts itself; the operations adapter owns the read",
-    paths: ["apps/web/src/zerops/matePress.ts", "apps/web/src/zerops/useZeropsCreationVerdicts.ts"],
-  },
-  {
     token: "ZeropsDataProvider(",
     family: "projects",
     reason: "the app's data provider wires I/O in the view tree; adapters own I/O",
@@ -723,18 +717,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
   },
   {
-    token: "useFinishGroupEnvironment",
-    family: "operations",
-    reason:
-      "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
-  },
-  {
     token: "useNewProjectBirths",
-    family: "operations",
-    reason: "births are tracked by app hooks; the operations adapter feeds the store",
-  },
-  {
-    token: "useHqBirths",
     family: "operations",
     reason: "births are tracked by app hooks; the operations adapter feeds the store",
   },
@@ -749,7 +732,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "apps/web/src/zerops/newMate.ts",
       "apps/web/src/zerops/newProjectBirth.ts",
       "apps/web/src/zerops/useMenuMateReadings.ts",
-      "apps/web/src/zerops/useNewProjectBirthPorts.ts",
       "apps/web/src/zerops/useOpenMate.ts",
     ],
   },

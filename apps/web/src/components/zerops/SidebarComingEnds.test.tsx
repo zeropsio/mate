@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
-import { act, createElement as h } from "react";
+import { act, createElement as h, useEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
-import { useNewMate } from "~/zerops/newMate";
-import { useNewProjectBirths, type NewProjectBirth } from "~/zerops/newProjectBirth";
+import { beginCreation, useCreations } from "~/zerops/creations";
+import { useNewMateDialog } from "~/zerops/newMate";
+import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { comingEndsEntries, SidebarComingEnds } from "./SidebarComingEnds";
 
@@ -26,7 +27,37 @@ const IDA: NewProjectBirth = {
   step: "create",
   failed: null,
   projectId: null,
-  progress: null,
+};
+
+/** How each creation the row stands for reads, as its operations would say. */
+const shown = new Map<string, NewProjectBirth>();
+vi.mock("~/zerops/creations", async (actual) => ({
+  ...(await actual<typeof import("~/zerops/creations")>()),
+  useCreation: (birthId: string) => shown.get(birthId),
+}));
+
+/** The creations this tab holds, read through the real hook. */
+let held: ReadonlyArray<string> = [];
+function Held() {
+  const creations = useCreations();
+  useEffect(() => {
+    held = creations.map((creation) => creation.birthId);
+  }, [creations]);
+  return null;
+}
+
+/** Ida's Add, held from the press. */
+const pressIda = () => {
+  const { birthId, organizationId, name, botName, face, locationId, agents, adds } = IDA;
+  beginCreation({
+    ask: { birthId, organizationId, name, botName, face, locationId, agents, adds },
+    hq: IDA.hq,
+    now: 0,
+    run: () => undefined,
+  });
+  act(() => {
+    tree = create(h(Held));
+  });
 };
 const REFUSED = { ...IDA, failed: { reason: "No room.", uncertain: false } };
 const LOST = { ...IDA, failed: { reason: "Lost.", uncertain: true } };
@@ -35,18 +66,19 @@ let tree: ReactTestRenderer | undefined;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   openAccountLifetime("u-ada");
-  useNewMate.setState({ asked: null });
+  useNewMateDialog.setState({ asked: null });
 });
 afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;
   closeAccountLifetime();
-  useNewMate.setState({ asked: null });
+  shown.clear();
+  useNewMateDialog.setState({ asked: null });
   vi.unstubAllGlobals();
 });
 
 const render = (made: NewProjectBirth) => {
-  useNewProjectBirths.setState({ births: { [made.birthId]: made } });
+  shown.set(made.birthId, made);
   act(() => {
     tree = create(
       h(SidebarComingEnds, {
@@ -85,19 +117,20 @@ describe("a coming Mate's ⋯ in the menu", () => {
   });
 
   it("Start over takes the row out and opens Add over its project, its name there to change", () => {
-    useNewProjectBirths.setState({ births: { "add-1": REFUSED } });
+    pressIda();
     act(() => comingEndsEntries(REFUSED)[0]!.onSelect());
-    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
-    expect(useNewMate.getState().asked).toMatchObject({
+    expect(held).toEqual([]);
+    expect(useNewMateDialog.getState().asked).toMatchObject({
       groupId: "g-acme",
       again: { botName: "Ida" },
     });
   });
 
   it("Dismiss takes the row out and asks for nothing", () => {
-    useNewProjectBirths.setState({ births: { "add-1": LOST } });
+    pressIda();
+    expect(held).toEqual(["add-1"]);
     act(() => comingEndsEntries(LOST)[0]!.onSelect());
-    expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
-    expect(useNewMate.getState().asked).toBeNull();
+    expect(held).toEqual([]);
+    expect(useNewMateDialog.getState().asked).toBeNull();
   });
 });

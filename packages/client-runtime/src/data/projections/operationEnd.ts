@@ -9,7 +9,7 @@
  * @module data/projections/operationEnd
  */
 import { detailScopeOf } from "../demand.ts";
-import { linkKeys, type Authority, type LinkKey } from "../model.ts";
+import { linkKeys, type Authority, type LinkKey, type OperationRecord } from "../model.ts";
 import { OPERATION_KINDS, operationKind } from "../operations/kinds.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
@@ -74,3 +74,37 @@ export const operationEnd: Projection<
     }
   },
 };
+
+/** What stopped an operation, as its step says it (`operationStop`). */
+export interface OperationStop {
+  /** The owner's or the door's words; `null` where only the step can say it lost sight of it. */
+  readonly reason: string | null;
+  /** It may have landed: asked again, it could be done twice. */
+  readonly uncertain: boolean;
+}
+
+/**
+ * What an ended operation stopped on, in the words its owner, the door before it or its facts
+ * gave: `null` for one done and succeeded.
+ */
+export function operationStop(
+  end: NonNullable<OperationEnd>,
+  record: Pick<OperationRecord, "unsentBecause" | "uncertainBecause"> | undefined,
+): OperationStop | null {
+  const said = record?.unsentBecause ?? record?.uncertainBecause ?? null;
+  switch (end.stage) {
+    case "done":
+      return end.outcome === "succeeded"
+        ? null
+        : { reason: end.reason ?? `Zerops reported it ${end.outcome}.`, uncertain: false };
+    case "refused":
+      return { reason: end.reason, uncertain: false };
+    case "unsent":
+      return { reason: said, uncertain: false };
+    case "unresolved":
+      return { reason: end.nextAction ?? `${end.nextActor} must act next.`, uncertain: true };
+    default:
+      // Its answer lost, or its end out of sight: it may have landed.
+      return { reason: end.stage === "uncertain" ? said : null, uncertain: true };
+  }
+}

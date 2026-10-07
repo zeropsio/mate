@@ -6,9 +6,14 @@ Run from the repository root:
 vp test run --config apps/web/test/scenarios/vitest.config.ts
 ```
 
-The independent `scenarios` and `scenario-drivers` Vitest projects are separate from `unit` and
-are not wired into CI. One invocation builds the actual hosted production bundle in a temporary
-directory, launches headless Chrome, and starts real HQ Core with disposable Postgres/git roots
+The independent `scenarios` and `scenario-drivers` Vitest projects are separate from `unit`.
+The hosted production bundle is cached at `node_modules/.cache/mate-scenario-web/<input hash>`
+within this worktree. Git discovers tracked and new non-ignored source files, including Tailwind's
+`design*.html` inputs. Ignored build environment files and the public build environment also join
+the key. This conservative source set can invalidate on unrelated edits; vendored reference
+repositories and generated routes are excluded. Concurrent runs await the builder, failed builds
+never publish, and unchanged invocations reuse the bundle.
+Each run launches headless Chrome and starts real HQ Core with disposable Postgres/git roots
 through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
 its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
 Core's established test infrastructure remains reusable by its own tests.

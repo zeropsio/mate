@@ -1,3 +1,4 @@
+import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -7,13 +8,13 @@ import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import {
   accountReadsAtom,
+  hqMateSetupAtom,
   holdProjectHistory,
   holdServiceRead,
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
   readMateFlag,
-  readMateMarker,
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
@@ -263,7 +264,7 @@ describe("readMateFlag", () => {
           {
             family: "mateVariables",
             id: "zcp",
-            value: { flag: content === undefined ? null : content === "1", marker: false },
+            value: { flag: content === undefined ? null : content === "1" },
             revision: { kind: "zerops", version: null },
           },
         ],
@@ -354,48 +355,35 @@ describe("readMateFlag", () => {
   });
 });
 
-describe("readMateMarker", () => {
-  it("reads whether a container carries the press's marker for the asking", async () => {
+describe("hqMateSetupAtom", () => {
+  it("reads navigation evidence without demanding variables or any other detail", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
-    registry.set(accountReadsAtom, {
-      renewHeld: () => {},
-      data: store.data,
-      orgId: ORG,
-      demandDetail: (demand) => {
-        const scope = detailScopeOf(ORG, demand);
-        for (const event of [
-          { kind: "demand", demanded: true },
-          { kind: "attempt" },
-          { kind: "handshake" },
-        ] as const)
-          store.dispatch({ kind: "stream", key: scope, now: 0, event });
-        store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
-        store.dispatch({
-          kind: "baseline-commit",
-          scope,
-          generation: 1,
-          via: "zerops-read",
-          members: [demand.ownerId],
-          rows: [
-            {
-              family: "mateVariables",
-              id: demand.ownerId,
-              value: { flag: true, marker: true },
-              revision: { kind: "zerops", version: null },
-            },
-          ],
-        });
-        store.dispatch({
-          kind: "stream",
-          key: scope,
-          now: 0,
-          event: { kind: "baseline-committed" },
-        });
-        return () => undefined;
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [],
+        ungrouped: [
+          { projectId: "p1", name: "Ada", mate: { face: "", closedOff: false, setupMarker: true } },
+        ],
       },
     });
-    expect(await readMateMarker(registry, "zcp")).toBe(true);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => {
+        throw new Error("Navigation must never demand detail");
+      },
+      renewHeld: () => {},
+    });
+    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({ closedOff: false, marker: true });
+    expect(registry.get(hqMateSetupAtom("not-known"))).toEqual({
+      closedOff: "unknown",
+      marker: "unknown",
+    });
+    registry.set(accountReadsAtom, null);
+    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({
+      closedOff: "unknown",
+      marker: "unknown",
+    });
   });
 });

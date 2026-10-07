@@ -28,7 +28,8 @@ import {
   type HqScopeDelivery,
   type HqStreamRequest,
 } from "@t3tools/shared/hqStream";
-import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
+import { makeHqPictureReads } from "./hqPictures.ts";
+import type { AttachmentLink, CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -41,11 +42,19 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { detailScopeOf, makeDetailDemands, type DetailDemand } from "../demand.ts";
+import { decodeHqProtocol, hqProtocolScope } from "../families/hqProtocol.ts";
 import { FAMILIES, scopeSpec } from "../families/index.ts";
 import { hqMateFamily } from "../families/hqMate.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "../families/spec.ts";
-import { factKey, linkKeys, type LinkKey, type Revision, type ScopeKey } from "../model.ts";
+import {
+  factKey,
+  linkKeys,
+  type FamilyValues,
+  type LinkKey,
+  type Revision,
+  type ScopeKey,
+} from "../model.ts";
 import { streamOf, type HqDeliveryScope, type HqRemovalInput, type Row } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -64,6 +73,7 @@ export interface HqSegment {
 /** Today's HQ transport behind the adapter — a ticket, then the socket — or a fixture. */
 export interface HqWire {
   readonly open: Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
+  readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
 /** How an HQ socket's ending classifies, its planned segment end aside. */
@@ -92,6 +102,7 @@ export const HQ_SILENCE_MS = 60_000;
 /** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
 export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
 
+const protocolIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 
 /** The families each scope kind feeds. */
@@ -142,7 +153,7 @@ export function hqNavigationLink(options: {
     owner: { orgId, ownerId: null },
     families: familiesOf("navigation").map((spec) => ({ spec, scope: scopeOf(spec, orgId) })),
   };
-  const scopes = nav.families.map(({ scope }) => scope);
+  const scopes = [...nav.families.map(({ scope }) => scope), hqProtocolScope(orgId)];
   const demands = makeDetailDemands({
     // A demanded scope's riders are demanded with it: their records come on its wire.
     demanded: (scope, demanded) =>
@@ -205,7 +216,7 @@ export function hqNavigationLink(options: {
         .ids.filter((id) => {
           const fact = store.state().facts.get(factKey("placement", id));
           return (
-            fact?.content.kind === "value" && (fact.content.value as PlacementValue).mate !== null
+            fact?.content.kind === "value" && (fact.content.value as PlacementValue).mate != null
           );
         }),
     );
@@ -298,7 +309,10 @@ export function hqNavigationLink(options: {
       const register = (registered: Registered) =>
         Effect.gen(function* () {
           const generations: HqDeliveryScope[] = [];
-          for (const { scope } of registered.families) {
+          for (const scope of [
+            ...registered.families.map(({ scope }) => scope),
+            ...(registered.wire.kind === "navigation" ? [hqProtocolScope(orgId)] : []),
+          ]) {
             yield* signal(scope, { kind: "attempt" });
             yield* signal(scope, { kind: "handshake" });
             generations.push({ scope, generation: streamOf(store.state(), scope).generation });
@@ -415,6 +429,36 @@ export function hqNavigationLink(options: {
                 incarnation: message.incarnation,
                 revision: message.revision,
               });
+              if (message.scope.kind === "navigation") {
+                const scope = hqProtocolScope(orgId);
+                const core: FamilyValues["hqProtocol"] = Option.getOrElse(
+                  decodeHqProtocol(message.core),
+                  () => ({}),
+                );
+                store.dispatch({
+                  kind: "hq-delivery",
+                  scopes: entry.generations.filter((entry) => entry.scope === scope),
+                  reset: true,
+                  rows: [
+                    {
+                      family: "hqProtocol",
+                      id: orgId,
+                      value: core,
+                      revision: {
+                        kind: "hq",
+                        // A Core declaration can change without a navigation revision moving.
+                        incarnation: protocolIdentity([
+                          message.incarnation,
+                          core.build ?? null,
+                          core.protocol ?? null,
+                        ]),
+                        revision: message.revision,
+                      },
+                    },
+                  ],
+                  removals: [],
+                });
+              }
               store.dispatch({ kind: "hq-ready", scopes: entry.generations });
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "baseline-committed" });
@@ -482,7 +526,7 @@ export function hqNavigationLink(options: {
           yield* open.send({ type: "unsubscribe", scopes: [entry.registered.wire] });
         }
         const fresh: Registered[] = [];
-        let wakeAt = Number.POSITIVE_INFINITY;
+        let wakeAt = yield* pictures(demands.scopes());
         for (const registered of wanted) {
           const stream = streamOf(store.state(), registered.families[0]!.scope);
           if (stream.phase === "refused") continue;
@@ -507,6 +551,18 @@ export function hqNavigationLink(options: {
       const wake = () => Queue.offerUnsafe(wakes, undefined);
       const stopListening = demands.onChange(wake);
       wakeAttempt = wake;
+      const pictures = yield* makeHqPictureReads({
+        orgId,
+        store,
+        signal,
+        wake,
+        read: (link) =>
+          wire.picture?.(link) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot read change pictures.",
+          }),
+      });
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
           stopListening();

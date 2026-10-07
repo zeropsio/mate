@@ -7,9 +7,12 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
+import * as Schema from "effect/Schema";
 
 import type { ZeropsError } from "./api.ts";
 import { makeZeropsApiHttp, makeZeropsDeployHttp } from "./http.ts";
+
+const readRequestBody = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const MEMBERS = {
   clientUserList: [
@@ -296,4 +299,85 @@ describe("makeZeropsDeployHttp", () => {
       assert.strictEqual(api.heard.length, 1);
     }),
   );
+});
+
+describe("HQ's setup marker search", () => {
+  for (const serviceId of ["zcp", null]) {
+    it.live(
+      `asks only for the setup key ${serviceId === null ? "in its project" : "on its container"}`,
+      () =>
+        Effect.gen(function* () {
+          const source = yield* recording(() => [200, { items: [], totalHits: 0 }]);
+          const client = yield* Layer.build(NodeHttpClient.layerNodeHttp);
+          const api = yield* makeZeropsApiHttp(source.url).pipe(Effect.provide(client));
+          yield* api.mateSetupMarker("ORG", "Ada", serviceId)(Redacted.make("token"));
+          assert.strictEqual(source.heard.length, 1);
+          const request = source.heard[0]!;
+          assert.strictEqual(request.method, "POST");
+          assert.strictEqual(request.path, "/user-data/search");
+          assert.deepStrictEqual(readRequestBody(request.body), {
+            search: [
+              { name: "clientId", operator: "eq", value: "ORG" },
+              { name: "projectId", operator: "eq", value: "Ada" },
+              ...(serviceId === null
+                ? []
+                : [{ name: "serviceStackId", operator: "eq", value: serviceId }]),
+              { name: "key", operator: "eq", value: "MATE_SETUP_RUNTIMES" },
+            ],
+            sort: [],
+            limit: 1,
+          });
+        }),
+    );
+  }
+  for (const [name, body, serviceId, want] of [
+    [
+      "present (content never decoded)",
+      { items: [{ key: "MATE_SETUP_RUNTIMES", content: { secret: "ignored" } }], totalHits: 1 },
+      "zcp",
+      true,
+    ],
+    ["absent on a bound container", { items: [], totalHits: 0 }, "zcp", false],
+    ["complete absence on an unbound legacy record", { items: [], totalHits: 0 }, null, false],
+    ["partial coverage", { items: [], totalHits: 1 }, "zcp", null],
+    ["corrupt answer", { items: [] }, "zcp", "ZeropsUnavailable"],
+  ] as const) {
+    it.live(name, () =>
+      Effect.gen(function* () {
+        const source = yield* stub(0, 200, "", body);
+        const client = yield* Layer.build(NodeHttpClient.layerNodeHttp);
+        const api = yield* makeZeropsApiHttp(source.url).pipe(Effect.provide(client));
+        const value = yield* api
+          .mateSetupMarker(
+            "ORG",
+            "Ada",
+            serviceId,
+          )(Redacted.make("token"))
+          .pipe(Effect.catch((error) => Effect.succeed(error._tag)));
+        assert.strictEqual(value, want);
+        assert.strictEqual(source.requests(), 1);
+      }),
+    );
+  }
+  for (const [status, want] of [
+    [403, "ZeropsRefused"],
+    [503, "ZeropsUnavailable"],
+  ] as const) {
+    it.live(`classifies ${String(status)} without retrying`, () =>
+      Effect.gen(function* () {
+        const source = yield* stub(1, status, "insufficientPermissions");
+        const client = yield* Layer.build(NodeHttpClient.layerNodeHttp);
+        const api = yield* makeZeropsApiHttp(source.url).pipe(Effect.provide(client));
+        const value = yield* api
+          .mateSetupMarker(
+            "ORG",
+            "Ada",
+            "zcp",
+          )(Redacted.make("token"))
+          .pipe(Effect.catch((error) => Effect.succeed(error._tag)));
+        assert.strictEqual(value, want);
+        assert.strictEqual(source.requests(), 1);
+      }),
+    );
+  }
 });

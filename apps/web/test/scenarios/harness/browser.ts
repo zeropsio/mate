@@ -77,6 +77,9 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    // Use the owned child's pipe and create only the routed page the driver needs.
+    pipe: true,
+    waitForInitialPage: false,
     args: [
       "--disable-background-networking",
       "--disable-component-update",

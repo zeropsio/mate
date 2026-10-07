@@ -16,13 +16,15 @@ import {
   HqNavigationPress,
   HqNavigationStatus,
   type HqOfficialVerdict,
-  type HqPersonFacts,
+  HqPersonFacts as HqPersonFactsSchema,
+  HqNavigationMate,
 } from "@t3tools/shared/hqStream";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { readHqParts, type HqBirth, type HqParts } from "../../zerops/hq/client.ts";
+import { readHqParts, type HqParts } from "../../zerops/hq/client.ts";
 import type { ScopeKey } from "../model.ts";
+import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /** The organization's own record: its offers, its tools, and the Core its HQ runs. */
@@ -42,15 +44,25 @@ export interface HqStatusValue {
   readonly parts: HqParts;
 }
 
-export type HqAppValue = Omit<HqNavigationApp, "births"> & {
-  /** The Mates on their way into it whose attach has not landed. */
-  readonly births: ReadonlyArray<HqBirth>;
-};
+const Birth = Schema.Struct({
+  id: Schema.String,
+  face: Schema.String,
+  projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+const App = navigationRecord({ ...HqNavigationApp.fields, births: Schema.Array(Birth) });
+const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
+const Mate = navigationRecord(HqNavigationMate.fields);
+const Project = navigationRecord({
+  ...HqNavigationProject.fields,
+  mate: Schema.NullOr(Mate),
+  person: PersonFacts,
+});
+const Person = navigationRecord(HqNavigationPerson.fields);
 
-export type PlacementValue = HqNavigationProject;
-export type { HqPersonFacts };
-
-export type HqPersonValue = HqNavigationPerson;
+export type HqAppValue = typeof App.Type;
+export type PlacementValue = typeof Project.Type;
+export type HqPersonFacts = typeof PersonFacts.Type;
+export type HqPersonValue = typeof Person.Type;
 
 /**
  * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and how
@@ -75,18 +87,12 @@ const Organization = Schema.Struct({
   tools: Schema.Array(Schema.Struct({ projectId: Schema.String, kind: Schema.Literal("gitea") })),
   build: Schema.String,
 });
-const Birth = Schema.Struct({
-  id: Schema.String,
-  face: Schema.String,
-  projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
-});
 
 const decodeOrganization = Schema.decodeUnknownOption(Organization);
 const decodeStatus = Schema.decodeUnknownOption(HqNavigationStatus);
-const decodeApp = Schema.decodeUnknownOption(HqNavigationApp);
-const decodeBirth = Schema.decodeUnknownOption(Birth);
-const decodeProject = Schema.decodeUnknownOption(HqNavigationProject);
-const decodePerson = Schema.decodeUnknownOption(HqNavigationPerson);
+const decodeApp = Schema.decodeUnknownOption(App);
+const decodeProject = Schema.decodeUnknownOption(Project);
+const decodePerson = Schema.decodeUnknownOption(Person);
 const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
 
 /** The id a `<prefix>:<id>` key names; `null` for another prefix. */
@@ -137,14 +143,7 @@ export const hqAppFamily: FamilySpec<"hqApp"> = {
   hq: {
     scope: "navigation",
     ...prefixed("app"),
-    decode: (raw) =>
-      Option.getOrNull(
-        Option.map(decodeApp(raw), (app) => ({
-          ...app,
-          // A birth this build cannot read is none of the application's.
-          births: app.births.flatMap((birth) => Option.toArray(decodeBirth(birth))),
-        })),
-      ),
+    decode: (raw) => Option.getOrNull(decodeApp(raw)),
   },
 };
 
@@ -152,6 +151,18 @@ export const placementFamily: FamilySpec<"placement"> = {
   family: "placement",
   authority: "hq",
   scope: navigation("hq-placements"),
+  // A partial navigation record cannot erase setup evidence HQ previously proved.
+  keepUnsaid: (held, row) => {
+    if (held?.mate == null || row.mate == null) return row;
+    return {
+      ...row,
+      mate: {
+        ...row.mate,
+        closedOff: row.mate.closedOff ?? held.mate.closedOff,
+        setupMarker: row.mate.setupMarker ?? held.mate.setupMarker,
+      },
+    };
+  },
   hq: {
     scope: "navigation",
     ...prefixed("project"),

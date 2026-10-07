@@ -65,7 +65,9 @@ const record = (sha: string, state: HqJob["state"], at: string): HqJob => ({
 });
 
 function join(input: {
-  readonly navigationOffers?: Readonly<Record<string, HqNavigationApp["releaseOffer"]>> | undefined;
+  readonly navigationOffers?:
+    | Readonly<Record<string, HqNavigationApp["releaseOffer"] | undefined>>
+    | undefined;
   readonly review?: boolean;
   readonly stops?: ReadonlyMap<string, GroupStops>;
   readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
@@ -108,6 +110,14 @@ function join(input: {
 }
 
 describe("joinProjectFlows", () => {
+  it("shows an omitted navigation release offer as unknown", () => {
+    const flow = join({
+      navigationOffers: { g1: undefined },
+      review: false,
+      stops: new Map([["g1", stopsOf()]]),
+    }).get("g1");
+    expect(flow?.release?.gate).toEqual({ allowed: false, reason: "Release offer is unknown." });
+  });
   it("G2 resolving leaves G1's flow", () => {
     const g1Stops = stopsOf();
     const g1Releases = [FIRST];

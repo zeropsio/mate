@@ -118,11 +118,6 @@ import {
 import { finishSetupContainer } from "./finishSetup.logic";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import {
-  refinishNewProjectBirth,
-  registrationUnfinished,
-  useNewProjectBirths,
-} from "./newProjectBirth";
-import {
   beginPress,
   finishSetupRunning,
   finishMateSetup,
@@ -255,7 +250,7 @@ const writes = (createApp: HqOfferState): boolean | undefined =>
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client, user } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -286,8 +281,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
-  // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
-  const births = useNewProjectBirths((state) => state.births);
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
   const interrupted = useInterruptedPresses(candidates);
@@ -699,10 +692,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             pressedElsewhere(candidate.project.id),
           ),
         closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
-        // A press this tab saw stop, or saw end with its registration refused: no press
-        // elsewhere is still at it.
-        pressStopped:
-          press?.state.kind === "failed" || registrationUnfinished(births, candidate.project.id),
+        // A press this tab saw stop: no press elsewhere is still at it.
+        pressStopped: press?.state.kind === "failed",
         pressedElsewhere: pressedElsewhere(candidate.project.id),
         viewerIsAdder: mateAddedBy(
           candidate.project,
@@ -718,7 +709,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       });
     },
     [
-      births,
       groupTree.groups,
       interrupted,
       mayCreateRecord,
@@ -790,7 +780,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         candidate.key,
         async () => {
           const finished = await finishMateSetup({
-            inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
+            inputs: { client, operations, organizationId },
             projectId,
             projectName: candidate.project.name,
             container,
@@ -799,8 +789,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             registration,
             hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
-            // A Mate this tab made: its registration's own step follows this one.
-            onProgress: (progress) => refinishNewProjectBirth(projectId, progress),
           });
           if (!finished.ok) throw new Error(finished.error);
         },
@@ -817,13 +805,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       interrupted,
       mayCreateRecord,
       mayEditRecord,
-      organizationRef,
-      projectRef,
+      operations,
       orgOffer,
       pressedElsewhere,
       recordMissing,
       refresh,
-      runtime,
       write,
     ],
   );

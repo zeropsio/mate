@@ -35,12 +35,15 @@ export type Revision =
   /** An HQ scope's revision, inside one incarnation of that scope (`@t3tools/shared/hqStream`). */
   | { readonly kind: "hq"; readonly incarnation: string; readonly revision: number }
   /**
-   * A Mate's own attention revision, inside one incarnation of its store; `live` while that
-   * incarnation is the one running (straight from the Mate, or HQ relaying it live), not when HQ
-   * hands back what it stored of a Mate it does not hear.
+   * A Mate's own attention revision: inside one environment its runs order by the epoch the Mate
+   * counts at each start, and a run's values by their revision. `live` while its run is the one
+   * running (straight from the Mate, or HQ relaying it live), not when HQ hands back what it stored
+   * of a Mate it does not hear — the only word between two environments, which have no order.
    */
   | {
       readonly kind: "mate-attention";
+      readonly environmentId: string;
+      readonly epoch: number;
       readonly incarnation: string;
       readonly revision: number;
       readonly live: boolean;
@@ -200,6 +203,8 @@ export interface OperationRecord {
   readonly unresolved: Unobservable | null;
   /** Why it was not taken, where its owner or the door before it said: its words, shown as is. */
   readonly unsentBecause?: string;
+  /** What the send said where its answer was lost: shown beside asking the owner again. */
+  readonly uncertainBecause?: string;
 }
 
 /** The result an accepted operation of `kind` was answered with; `undefined` before or without one. */

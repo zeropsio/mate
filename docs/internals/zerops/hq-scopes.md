@@ -27,7 +27,15 @@ key; remove only keys listed in `removals`, whose reason is `deleted` or `no-acc
 corrupt values preserve previous facts, including during a reset. Do not infer deletion from
 socket closure, silence, an error or a missing key. After a reset accept its incarnation/revision;
 after a delta require the same incarnation and the next revision. `scope-ready` marks the end of
-catchup and carries the resulting cursor; it carries no facts.
+catchup and carries the resulting cursor and `core: { protocol, build? }`. The protocol number
+states which navigation facts Core supports; the build identifies the serving Core. The client
+compares the declared protocol with its required `HQ_NAVIGATION_PROTOCOL`. An absent, unreadable
+or older declaration shows a navigation update notice while retaining readable values.
+
+Navigation app, project, person and nested Mate/person records decode each independent field.
+Missing or unreadable fields are unknown (`undefined`), never fabricated defaults or proof of an
+empty list. The record's other fields remain usable. A wholly unreadable record preserves its
+previous value; explicit removals still govern access and deletion.
 
 A `scope-error` affects only its named scope. `refused` ends the attempt: timers and a same-session
 reconnect do not retry it. A roles or record change clears the refusal and re-evaluates current
@@ -107,6 +115,21 @@ Navigation never subscribes to or hydrates application detail to obtain these ro
 `until`, kind, optional appId and importProcessId. The client can present elapsed time from the
 received duration; a clock or transport silence never decides whether the press succeeded or ended.
 
+Each project’s `mate` includes `closedOff` and nullable `setupMarker`, the setup press marker’s
+presence. HQ reads only `MATE_SETUP_RUNTIMES`, once for a Mate record/service/import input, sharing
+the evidence across recipients and filtering with the other Mate records. Reads run outside the
+navigation baseline. Until a read answers, the marker remains unknown (`null`); partial, corrupt,
+unavailable or refused reads prove no absence. A complete search with no marker is `false`,
+including legacy records with no service binding. Record replacement fences old replies; an
+import or service binding change allows another read and retains prior usable evidence if the
+new read cannot answer. Unchanged
+input, reconnect and elapsed time repeat no read, including a definitive refusal. Unknown evidence
+can be resolved by the existing Finish setup action or a changed record/import input. Setup facts
+travel only in navigation; clients never demand variables for menu rows, Finish setup or the
+web connection gate. Container flag/variable surfaces keep their own declared detail demand.
+The unreleased native client has no HQ navigation link yet; its explicit on-open close-off check
+retains the existing sampled marker read until that client observes HQ. It performs no menu demand.
+
 Project `person` facts are already computed for the recipient: role, mayWrite, mine, ownerUserId,
 waitsOnViewer and unseen. `ownerUserId` resolves the project's OWNER to a person; when there is no OWNER grant, it uses the
 current or last Claude signer, then Codex; null when none can be resolved. `mine` compares that
@@ -158,9 +181,10 @@ and `transient` for outages. `code` and nullable `reason` retain the server's ex
 Replies go only to the requesting connection. The HTTP
 `GET /api/apps/:appId/repos/:repo/compare` route is removed; clients use this socket request.
 
-An accepted attention report from a restarted Mate's newest link, with a new source environment
-or incarnation, rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
-The baseline carries the new source revision (including 0 after 7); subsequent updates are deltas.
+An accepted attention report of a restarted Mate, with a new source environment or epoch,
+rotates only that Mate's attention scope journal and sends an atomic `scope-reset`.
+The baseline carries the new source epoch and revision (including 0 after 7); subsequent updates
+are deltas.
 A cursor for the retired scope incarnation gets the current baseline, never retired source history.
 The first attention source also establishes a baseline. Older links and stale revisions remain
 fenced by ingestion. Navigation receives its separate targeted person/attention fact update.
@@ -188,8 +212,15 @@ independent of host scheduling, so a per-project query loop cannot hide behind a
 
 Today's overview frames continue to ingest. New Mate frames use
 `MateLinkUp` attention frames, with the canonical `MateAttention` from
-`packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest fences the current link and source
-incarnation/revision; corrupt or older frames preserve prior values. `attentionState` distinguishes
+`packages/contracts/src/zeropsAttention.ts` (also re-exported as `HqAttentionValue`). Ingest orders by source:
+inside one environment a higher epoch (the Mate's start count, saved beside its environment id)
+always wins, from whichever link brings it, and a lower one never does. An absent epoch decodes
+to zero, the lowest, for containers whose Mate has not counted its starts yet; an equal epoch orders by
+incarnation and revision, from the link HQ hears. HQ hears a Mate's newest link that no later run
+outranks: once a later epoch is held, a link of an earlier run — still open, or reconnected after a
+partition — is passed by for attention and overview alike. Between two environments there is no
+order, and only the link HQ hears replaces the value. Corrupt or older frames preserve prior values.
+`attentionState` distinguishes
 live, stored and absent evidence. Overview persists as before; source attention must be republished
 after Core restart. The link reader and scope value share that schema; there is no parallel
 structural attention codec.

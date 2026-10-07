@@ -28,7 +28,8 @@ import {
   type MateComing,
 } from "./mateComing";
 import { useWakeAt } from "./useNowMs";
-import { useNewMate } from "./newMate";
+import { useCreations } from "./creations";
+import { madeOf } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
 import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
@@ -138,7 +139,7 @@ export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
   const presses = useMatePresses();
-  const creations = useNewMate((state) => state.creations);
+  const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
   const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
@@ -148,6 +149,9 @@ export function useMateComingOf(
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
+      // Made here, and not connected since.
+      const created =
+        candidate.group !== "connected" && madeOf(creations, candidate.project.id) !== undefined;
       return mateComing({
         press,
         // A row says only the hold it offers Finish setup for; the others, its own view.
@@ -159,15 +163,12 @@ export function useMateComingOf(
           ? "open"
           : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
+        setUpFailed,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
-        created: creations[candidate.project.id] !== undefined,
-        linkHolds:
-          creations[candidate.project.id] === undefined
-            ? undefined
-            : arrivalLinkHolds(mateLink(candidate)),
+        created,
+        linkHolds: created ? arrivalLinkHolds(mateLink(candidate)) : undefined,
         answerAwaited:
           candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
         firstBuild: firstBuilds.get(candidate.key),

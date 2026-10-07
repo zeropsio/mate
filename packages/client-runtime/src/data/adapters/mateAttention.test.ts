@@ -108,12 +108,12 @@ describe("mateAttentionLink", () => {
       const { fiber } = yield* run(store, mate);
       yield* mate.send({ kind: "session" });
       yield* mate.send({ kind: "value", value: attention("i1", 9) });
-      // The Mate restarted: a new incarnation, its revision from 0.
+      // The Mate restarted: its next epoch, a new incarnation, its revision from 0.
       yield* mate.send({ kind: "session" });
-      yield* mate.send({ kind: "value", value: attention("i2", 0, 1) });
+      yield* mate.send({ kind: "value", value: attention("i2", 0, 1, 2) });
       yield* settle;
       expect(held(store)).toMatchObject({
-        content: { value: attention("i2", 0, 1) },
+        content: { value: attention("i2", 0, 1, 2) },
         method: "baseline",
       });
       expect(phase(store, mateAttentionScope(PROJECT))).toBe("live");

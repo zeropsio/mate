@@ -141,6 +141,14 @@ export {
 export type { UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export {
+  creationStepId,
+  creationSteps,
+  creationsSteps,
+  type CreationRead,
+  type CreationStep,
+  type CreationStepRead,
+} from "./projections/creationSteps.ts";
+export {
   organizationLocations,
   organizationMembers,
   servicesAgents,
@@ -149,11 +157,16 @@ export {
   type SampledRead,
 } from "./projections/sampled.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
-export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
+export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
+export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export {
+  recordedEnvironment,
+  type RecordedEnvironment,
+} from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
 export { SWEEP_FAILED_REASON } from "./operations/executors/throwawaySweep.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
@@ -162,8 +175,7 @@ export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
-  mateVariablesAtom,
-  readMateMarker,
+  hqMateSetupAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
@@ -188,6 +200,17 @@ export {
   shownMateLinksAtom,
   type AccountReads,
 } from "./reads.ts";
+
+export {
+  hqBirthProgress,
+  hqBirthRequestId,
+  type HqBirthProgress,
+} from "./projections/hqBirthProgress.ts";
+export {
+  mateRegistration,
+  registrationRequestId,
+  type MateRegistration,
+} from "./projections/mateRegistration.ts";
 export { shownHqProjectPeopleAtom } from "./personReads.ts";
 export {
   hqProjectPeople,
@@ -197,3 +220,13 @@ export {
 export type { HqVerdict } from "./families/hqVerdict.ts";
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
+
+export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";
+export { hqPicture, type HqPictureRead } from "./projections/hqPicture.ts";
+export {
+  pictureOwner,
+  pictureId,
+  pictureScope,
+  pictureLink,
+  type HqPictureKey,
+} from "./families/hqPicture.ts";

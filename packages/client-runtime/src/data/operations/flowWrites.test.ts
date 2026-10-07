@@ -137,6 +137,15 @@ function hqOf(answer: () => Promise<unknown>) {
     };
   const writes = {
     commentOnChange: call("commentOnChange"),
+    createApp: call("createApp"),
+    recordBirth: call("recordBirth"),
+    bindBirth: call("bindBirth"),
+    attachProject: call("attachProject"),
+    createMate: call("createMate"),
+    recordClosedOff: call("recordClosedOff"),
+    keepDeployToken: call("keepDeployToken"),
+    renameApp: call("renameApp"),
+    deleteApp: call("deleteApp"),
     release: call("release"),
     rollback: call("rollback"),
     redeploy: call("redeploy"),
@@ -151,7 +160,15 @@ function operationsOf(store: AccountStore, answer: () => Promise<unknown>) {
   const { writes, calls } = hqOf(answer);
   const operations = makeOperations({
     store,
-    executors: { hq: makeHqExecutor({ apiOf: (orgId) => (orgId === ORG ? writes : null) }) },
+    executors: {
+      hq: makeHqExecutor({
+        apiOf: (orgId) => (orgId === ORG ? writes : null),
+        zerops: {
+          mintIntegrationToken: () => Promise.reject(new Error("Unexpected token mint")),
+          deleteIntegrationToken: () => Promise.reject(new Error("Unexpected token deletion")),
+        },
+      }),
+    },
     makeId: () => "r1",
   });
   return { operations, calls };

@@ -37,10 +37,8 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapters/mate.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
-  holdMateVariables,
   holdProjectHistory,
   holdServiceRead,
-  mateVariablesAtom,
   projectProcessesAtom,
   readMateFlag,
 } from "../../data/reads.ts";
@@ -385,37 +383,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const drawnLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
   let detailProjects: ReadonlySet<string> = new Set();
-  /**
-   * The press's marker on each listed Mate's container whose project HQ says is not closed off,
-   * by service id, as its own variables' read says it: followed only while such a Mate is listed.
-   */
-  const markers = new Map<
-    string,
-    { marker: boolean | "unknown" | "unread"; readonly stop: () => void }
-  >();
   let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
-  /** The read of each followed Mate's container's variables its undecided marker holds. */
-  const markerReads = new Map<string, () => void>();
-  let markerSyncQueued = false;
-  /**
-   * A followed Mate's container's variables are read while its marker is undecided, one read per
-   * container. Run after the gate's pass, never inside it: holding a read may answer at once, and
-   * the answer runs the gate again.
-   */
-  const syncMarkerReads = () => {
-    markerSyncQueued = false;
-    if (closed) return;
-    for (const [serviceId, release] of markerReads) {
-      const followed = markers.get(serviceId);
-      // Still followed and undecided: the read stays.
-      if (followed !== undefined && typeof followed.marker !== "boolean") continue;
-      markerReads.delete(serviceId);
-      release();
-    }
-    for (const [serviceId, { marker }] of markers)
-      if (typeof marker !== "boolean" && !markerReads.has(serviceId))
-        markerReads.set(serviceId, holdMateVariables(atomRegistry, serviceId));
-  };
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   const organizationRef = (organizationId: string): OrganizationRef => ({
@@ -840,29 +808,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
-  /** One Mate's container's marker, followed from now until the gate lets it go. */
-  const followMarker = (serviceId: string) => {
-    const known = markers.get(serviceId);
-    if (known !== undefined) return known;
-    let ready = false;
-    const held: { marker: boolean | "unknown" | "unread"; stop: () => void } = {
-      marker: "unread",
-      stop: () => undefined,
-    };
-    held.stop = atomRegistry.subscribe(
-      mateVariablesAtom(serviceId),
-      ({ marker }) => {
-        if (held.marker === marker) return;
-        held.marker = marker;
-        if (ready) updateCloseOff();
-      },
-      { immediate: true },
-    );
-    ready = true;
-    markers.set(serviceId, held);
-    return held;
-  };
-
   /**
    * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
    * demand (`ExchangeDriver.setCloseOffHeld`).
@@ -871,7 +816,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (adapter === null || closed) return;
     const word = ports.closeOff.read();
     const pending = ports.closeOffPending.read();
-    const followed = new Set<string>();
     const holds = new Map<string, CloseOffHold>();
     for (const row of rows) {
       if (row.service === undefined) continue;
@@ -879,27 +823,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       if (project === undefined) continue;
       const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
       if (closedOff === true) continue;
-      // The marker decides only where HQ says the project is not closed off (`closeOffGate`); one
-      // followed stays while HQ's word lapses, so HQ's return finds it decided.
-      const entry =
-        closedOff === false || markers.has(row.service.id) ? followMarker(row.service.id) : null;
-      if (entry !== null) followed.add(row.service.id);
       const gate = closeOffGate({
-        marker: entry?.marker ?? "unread",
+        marker:
+          word?.organizationId === project.organization.organizationId
+            ? (word.markers.get(row.project.id) ?? "unknown")
+            : "unknown",
         closedOff,
         pendingHere: pending.has(row.project.id),
       });
       if (gate === "connect") continue;
       if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
-    }
-    for (const [serviceId, entry] of markers) {
-      if (followed.has(serviceId)) continue;
-      entry.stop();
-      markers.delete(serviceId);
-    }
-    if (!markerSyncQueued) {
-      markerSyncQueued = true;
-      queueMicrotask(syncMarkerReads);
     }
     const moved =
       holds.size !== closeOffHolds.size ||
@@ -1196,10 +1129,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
-        for (const entry of markers.values()) entry.stop();
-        markers.clear();
-        for (const release of markerReads.values()) release();
-        markerReads.clear();
         recent?.disarm();
         actions.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));

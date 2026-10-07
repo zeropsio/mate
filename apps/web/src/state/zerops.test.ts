@@ -39,6 +39,7 @@ const HQ_MATE = {
   madeBy: null,
   standupRequestedBy: null,
   closedOff: false,
+  setupMarker: null,
   keyWider: false,
 };
 

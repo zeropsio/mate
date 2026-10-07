@@ -2001,21 +2001,16 @@ describe("ZeropsApiClient.listIntegrationTokens", () => {
   });
 });
 
-describe("ZeropsApiClient.stopService and readProcessStatus", () => {
-  it("stops a service and answers the stop's process, then reads where it stands", async () => {
-    const stub = recordingFetch((request) =>
-      request.url.endsWith("/stop")
-        ? jsonResponse(200, { id: "process-stop", status: "PENDING" })
-        : jsonResponse(200, { id: "process-stop", status: "FINISHED" }),
-    );
+describe("ZeropsApiClient.stopService", () => {
+  it("stops a service and answers the stop's process", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "process-stop", status: "PENDING" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
     expect(await client.stopService("svc-1")).toEqual({ processId: "process-stop" });
-    expect(await client.readProcessStatus("process-stop")).toBe("FINISHED");
     expect(
       stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
-    ).toEqual(["PUT /service-stack/svc-1/stop", "GET /process/process-stop"]);
+    ).toEqual(["PUT /service-stack/svc-1/stop"]);
   });
 });
 
@@ -2550,68 +2545,6 @@ describe("ZeropsApiClient — a project's public HTTP routing", () => {
   });
 });
 
-describe("ZeropsApiClient.readProjectCreation", () => {
-  it("searches the project's processes and answers its newest project.create", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        items: [
-          {
-            id: "j2cJQm8VSTSyMQEZvm4e9g",
-            actionName: "project.create",
-            status: "FAILED",
-            created: "2026-09-16T20:21:18.151Z",
-            projectId: "txRlx5AcRbexBQEkAUIDLg",
-            clientId: "org-1",
-            error: { code: "internalServerError", message: "unexpected internal server error" },
-          },
-          {
-            id: "l5mjyAAIRfiGsiHlLX1t9A",
-            actionName: "stack.build",
-            status: "FAILED",
-            created: "2026-09-16T20:21:19.000Z",
-            projectId: "txRlx5AcRbexBQEkAUIDLg",
-            clientId: "org-1",
-            error: { code: "pipelineFailed", message: "pipeline failed" },
-          },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await expect(
-      client.readProjectCreation({ clientId: "org-1", projectId: "txRlx5AcRbexBQEkAUIDLg" }),
-    ).resolves.toEqual({
-      processId: "j2cJQm8VSTSyMQEZvm4e9g",
-      status: "FAILED",
-      error: { code: "internalServerError", message: "unexpected internal server error" },
-    });
-    expect(stub.requests).toHaveLength(1);
-    expect(stub.requests[0]).toMatchObject({
-      method: "POST",
-      url: expect.stringMatching(/\/process\/search$/),
-      authorization: "Bearer access-1",
-    });
-    expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
-      search: [
-        { name: "clientId", operator: "eq", value: "org-1" },
-        { name: "projectId", operator: "eq", value: "txRlx5AcRbexBQEkAUIDLg" },
-      ],
-      sort: [{ name: "created", ascending: false }],
-      limit: 20,
-    });
-  });
-
-  it("answers nothing while the process has not appeared", async () => {
-    const stub = recordingFetch(() => jsonResponse(200, { items: [] }));
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    await expect(
-      client.readProjectCreation({ clientId: "org-1", projectId: "proj-1" }),
-    ).resolves.toBeUndefined();
-  });
-});
-
 describe("ZeropsApiClient.deleteProject", () => {
   it("deletes the project as a project write", async () => {
     const stub = recordingFetch(() =>
@@ -2722,6 +2655,36 @@ describe("HQ birth project env", () => {
       method: "POST",
       body: JSON.stringify({ key: "MATE_HQ_BIRTH_CLAIM_0", content: "claim", sensitive: false }),
     });
+  });
+});
+
+describe("ZeropsApiClient.hasServiceVariable", () => {
+  it("asks for the one key on the one service, never the service's every variable", async () => {
+    for (const [items, has] of [
+      [[{ key: "HQ_ORG_TOKEN", content: "REDACTED" }], true],
+      [[], false],
+    ] as const) {
+      const stub = recordingFetch(() => jsonResponse(200, { items }));
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+      await expect(
+        client.hasServiceVariable({ clientId: "org-1", serviceId: "svc-hq", key: "HQ_ORG_TOKEN" }),
+      ).resolves.toBe(has);
+      expect(stub.requests).toHaveLength(1);
+      expect(stub.requests[0]).toMatchObject({
+        method: "POST",
+        url: expect.stringMatching(/\/user-data\/search$/),
+      });
+      expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
+        search: [
+          { name: "clientId", operator: "eq", value: "org-1" },
+          { name: "serviceStackId", operator: "eq", value: "svc-hq" },
+          { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
+        ],
+        sort: [],
+        limit: 1,
+      });
+    }
   });
 });
 

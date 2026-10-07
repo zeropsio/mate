@@ -123,7 +123,7 @@ export function zeropsMateOwnerOf(
   return {
     name: owner.name,
     initials: zeropsInitials(owner.name),
-    avatarUrl: owner.avatarUrl,
+    avatarUrl: owner.avatarUrl ?? null,
     isViewer: viewerUserId !== undefined && viewerUserId !== null && owner.userId === viewerUserId,
   };
 }

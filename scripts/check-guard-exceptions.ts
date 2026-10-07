@@ -143,9 +143,17 @@ const discoverRuleNames = (directory: string): ReadonlyArray<string> => {
     .toSorted();
 };
 
-const makeLintRequest = (cwd: string, ruleName: string): GuardLintRequest => ({
+const makeLintRequest = (cwd: string, ruleNames: ReadonlyArray<string>): GuardLintRequest => ({
   cwd,
-  args: ["lint", "-f", "json", "-A", "all", "-D", `t3code/${ruleName}`, ...GUARD_SCOPE_PATHS],
+  args: [
+    "lint",
+    "-f",
+    "json",
+    "-A",
+    "all",
+    ...ruleNames.flatMap((ruleName) => ["-D", `t3code/${ruleName}`]),
+    ...GUARD_SCOPE_PATHS,
+  ],
   env: { T3CODE_GUARD_REPORT_LEDGERED: "1" },
 });
 
@@ -190,7 +198,7 @@ const parseFindings = (
     });
 };
 
-/** Runs isolated oxlint scans and reconciles their AST findings against the selected ledgers. */
+/** One AST scan for the selected rules, then reconcile each ledger independently. */
 export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E, R>) =>
   Effect.gen(function* () {
     const ruleNames = [
@@ -212,11 +220,11 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
     const reports: Array<string> = [];
     let problemCount = 0;
 
+    const output = yield* options.runLint(makeLintRequest(options.cwd, ruleNames));
     for (const ruleName of ruleNames) {
       const ledger = yield* tryDriverOperation(ruleName, "failed to load exception ledger", () =>
         loadExceptionLedger(ruleName, options.directory),
       );
-      const output = yield* options.runLint(makeLintRequest(options.cwd, ruleName));
       const findings = yield* tryDriverOperation(ruleName, "failed to parse oxlint findings", () =>
         parseFindings(ruleName, options.cwd, output),
       );

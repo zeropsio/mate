@@ -153,7 +153,17 @@ export const HqScopeFailure = Schema.Struct({
   disposition: Schema.Literals(["refused", "transient", "corrupt"]),
 });
 export type HqScopeFailure = typeof HqScopeFailure.Type;
+/** Raised when the client requires new navigation facts; independent of the build label. */
+export const HQ_NAVIGATION_PROTOCOL = 1;
+export const HqCoreProtocol = Schema.Struct({
+  protocol: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  build: Schema.optionalKey(Schema.String),
+});
+export type HqCoreProtocol = typeof HqCoreProtocol.Type;
+
 export const HqScopeReady = Schema.Struct({
+  /** Absent from a Core predating protocol negotiation; support remains unknown. */
+  core: Schema.optionalKey(Schema.Unknown),
   type: Schema.Literal("scope-ready"),
   scope: HqScope,
   ...HqCursor.fields,
@@ -260,6 +270,8 @@ export const HqNavigationMate = Schema.Struct({
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
   closedOff: Schema.Boolean,
+  /** Presence of the setup press marker; null until HQ has usable evidence. */
+  setupMarker: Schema.NullOr(Schema.Boolean),
   keyWider: Schema.Boolean,
   birthId: Schema.optionalKey(Schema.String),
 });

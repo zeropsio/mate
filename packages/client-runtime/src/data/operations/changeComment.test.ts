@@ -55,6 +55,10 @@ function operationsOf(store: AccountStore, post: () => Promise<HqChangeComment>)
     store,
     executors: {
       hq: makeHqExecutor({
+        zerops: {
+          mintIntegrationToken: () => Promise.reject(new Error("Unexpected token mint")),
+          deleteIntegrationToken: () => Promise.reject(new Error("Unexpected token deletion")),
+        },
         apiOf: (orgId) =>
           orgId === ORG
             ? ({

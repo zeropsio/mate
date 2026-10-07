@@ -8,7 +8,10 @@ On servers that support direct uploads, images upload as soon as you add them. T
 becomes available after every upload finishes. Failed uploads can be retried or removed.
 
 Conversation pictures load as you scroll near them. Their reserved space keeps messages in place
-while the images arrive.
+while the images arrive. If a picture cannot load, it shows “Image unavailable”, with the reason
+when known. Missing source files do not retry; temporary connection failures use a bounded retry
+schedule. A run's unavailable thumbnail keeps its place, and its “+N” tile still opens any later
+available pictures.
 
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.

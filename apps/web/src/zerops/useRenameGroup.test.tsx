@@ -15,12 +15,31 @@ const mock = vi.hoisted(() => ({
   renameApp: vi.fn(),
   renameProjects: vi.fn(),
   shown: [] as ReadonlyArray<unknown>,
+  answerLost: false,
 }));
 
-vi.mock("./accountHq", () => ({
-  officialHq: () => ({ kind: "official" }),
-  useAccountHq: () => ({ status: "ready" }),
-  accountHqApi: () => ({ renameApp: mock.renameApp }),
+vi.mock("./accountOperations", () => ({
+  useAccountOperations: () => ({
+    submit: async (intent: { readonly appId: string; readonly name: string }) => {
+      try {
+        await mock.renameApp(intent.appId, intent.name);
+        if (mock.answerLost)
+          return {
+            progress: { stage: "uncertain", next: "ask-owner-again" },
+            evidence: null,
+          };
+        return { progress: { stage: "done", outcome: "succeeded" }, evidence: null };
+      } catch (cause) {
+        return {
+          progress: {
+            stage: "refused",
+            reason: cause instanceof Error ? cause.message : String(cause),
+          },
+          evidence: null,
+        };
+      }
+    },
+  }),
 }));
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: { id: "org-1" }, client: {} }),
@@ -45,6 +64,7 @@ afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
   mock.renameApp.mockReset();
   mock.renameProjects.mockReset();
+  mock.answerLost = false;
 });
 
 function hook(held: ReadonlyArray<ZeropsProject>): () => GroupRenaming {
@@ -90,5 +110,21 @@ describe("useRenameGroup", () => {
     });
 
     expect(mock.renameProjects).not.toHaveBeenCalled();
+  });
+
+  it("asks the person to check a lost HQ answer and leaves the project's names alone", async () => {
+    mock.shown = [];
+    mock.renameApp.mockResolvedValue(undefined);
+    mock.answerLost = true;
+    const renaming = hook([inApp("p1", "SPN - Rune")]);
+
+    await act(async () => {
+      await expect(renaming().rename(GROUP, "Shop")).rejects.toThrow(
+        "HQ may have accepted this change, but its answer was lost. Check the project before trying again.",
+      );
+    });
+
+    expect(mock.renameProjects).not.toHaveBeenCalled();
+    expect(mock.renameApp).toHaveBeenCalledTimes(1);
   });
 });

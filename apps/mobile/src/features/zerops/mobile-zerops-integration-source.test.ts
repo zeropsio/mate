@@ -36,6 +36,9 @@ describe("mobile Zerops integration", () => {
 
     expect(provider).toContain("makeAccountRuntime(");
     expect(connectRoute).toContain("connectMate(environments, candidate.key, closeOff)");
+    expect(connectRoute).toContain("hqMateSetupAtom(candidate.project.id)");
+    expect(connectRoute).not.toContain("readMateMarker");
+    expect(connectRoute).not.toContain("readProjectEnv");
     expect(connectRoute).not.toContain("exchangeZeropsContainerIdentity");
     expect(connectRoute).not.toContain("connectZeropsIdentity");
   });

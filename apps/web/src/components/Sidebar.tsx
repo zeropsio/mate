@@ -223,7 +223,8 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrom
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
-import { newProjectView, useNewProjectBirths } from "../zerops/newProjectBirth";
+import { useCreations } from "../zerops/creations";
+import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
 import {
   useMateComingOf,
   useMateConversationsRead,
@@ -1809,13 +1810,13 @@ export default function Sidebar() {
   const zeropsPresses = useMatePresses();
   // A press ends once its Mate connects: nothing of it is left to say.
   useForgetConnectedPresses(zeropsCandidates);
-  const zeropsMade = useNewProjectBirths((state) => state.births);
+  const zeropsMade = useCreations();
   const zeropsPlacedBirths = useMemo(
     () =>
       placedPressesIn(
         zeropsPresses,
         zeropsSession.activeOrganization?.id,
-        Object.values(zeropsMade),
+        placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
       ),
     [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
@@ -2317,7 +2318,7 @@ export default function Sidebar() {
   const openComingMate = useCallback(
     (projectId: string) => {
       if (isMobile) setOpenMobile(false);
-      const made = zeropsMade[projectId];
+      const made = zeropsMade.find((creation) => creation.birthId === projectId);
       if (made !== undefined && made.projectId === null) {
         void router.navigate(newProjectView(projectId));
         return;

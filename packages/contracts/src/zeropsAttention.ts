@@ -5,9 +5,11 @@
  * reducer, where a value replaces another only by its revision (never by a clock, never by which
  * transport is live).
  *
- * - **Source:** the Mate's environment, the incarnation of its attention (a new one each time the
- *   server starts, its revision starting again at 0) and the revision inside it, raised whenever
- *   anything else in the value changes — a new chat raises it even when no count moves.
+ * - **Source:** the Mate's environment, its start epoch (counted and saved by the Mate, one more at
+ *   each start), the incarnation of its attention (a new one each time the server starts, its
+ *   revision starting again at 0) and the revision inside it, raised whenever anything else in the
+ *   value changes — a new chat raises it even when no count moves. Inside one environment values
+ *   order by epoch first, then by revision.
  * - **Counts** are whole; the id lists are cut at {@link MATE_ATTENTION_IDS_MAX} each, newest
  *   first, and `truncated` says that a list was.
  * - **Results** are ids only: whether a person has seen one is HQ's to compute from that person's
@@ -16,6 +18,7 @@
  * @module zeropsAttention
  */
 import * as Schema from "effect/Schema";
+import * as Effect from "effect/Effect";
 
 import {
   EnvironmentId,
@@ -31,6 +34,12 @@ export const MATE_ATTENTION_IDS_MAX = 50;
 
 export const MateAttentionSource = Schema.Struct({
   environmentId: EnvironmentId,
+  /**
+   * The Mate's start count inside its environment, saved beside the environment id and raised by
+   * one at every start: a higher epoch is a later run, whatever reached a reader first. A Mate
+   * that has not counted its starts yet supplies no epoch and decodes to the lowest, zero.
+   */
+  epoch: NonNegativeInt.pipe(Schema.withDecodingDefaultKey(Effect.succeed(0))),
   /** One run of the Mate's server: revisions order values only inside the same incarnation. */
   incarnation: TrimmedNonEmptyString,
   revision: NonNegativeInt,

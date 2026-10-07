@@ -8,13 +8,14 @@
  * that holds no labels (an older one, one from a phone) keeps its pictures
  * above its words as before.
  */
-import { AssetImage } from "~/assets/AssetImage";
+import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import { useAtomValue } from "@effect/atom-react";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { Fragment, useMemo, type ReactNode } from "react";
 
 import { assetEnvironment } from "~/state/assets";
+import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
 import { formatPictureBytes } from "./ComposerPictureView";
 import { MessageFile } from "./MessageFiles";
@@ -50,6 +51,7 @@ export function useMessagePictureDimensions(
 export function MessagePictureBody(props: {
   readonly segments: ReadonlyArray<MessagePictureSegment>;
   readonly dimensions: ReadonlyMap<string, PictureSize>;
+  readonly states?: ReadonlyMap<string, AssetUrlState> | undefined;
   readonly onOpen: (image: ChatImageAttachment) => void;
   /** Each placed file's address, by its id, once the server gives one. */
   readonly fileUrls?: ReadonlyMap<string, string> | undefined;
@@ -74,6 +76,7 @@ export function MessagePictureBody(props: {
                   key={`picture:${segment.n}`}
                   segment={segment}
                   dimensions={props.dimensions.get(segment.image.id)}
+                  state={props.states?.get(segment.image.id)}
                   maxHeight={gallery ? GALLERY_PICTURE_MAX_HEIGHT : undefined}
                   onOpen={props.onOpen}
                 />
@@ -95,6 +98,7 @@ export function MessagePictureBody(props: {
 function MessagePicture(props: {
   readonly segment: Extract<MessagePictureSegment, { kind: "picture" }>;
   readonly dimensions: PictureSize | undefined;
+  readonly state: AssetUrlState | undefined;
   readonly maxHeight: number | undefined;
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
@@ -114,7 +118,9 @@ function MessagePicture(props: {
       : Math.round(Math.min(size.width, (maxHeight * size.width) / size.height));
   return (
     <figure className="message-picture" style={{ width: reservedWidth, maxWidth: "100%" }}>
-      {segment.image.previewUrl ? (
+      {props.state?._tag === "Failure" ? (
+        <ImageUnavailable className="message-picture-img" reason={props.state.reason} style={box} />
+      ) : segment.image.previewUrl ? (
         <button
           type="button"
           className="message-picture-open"

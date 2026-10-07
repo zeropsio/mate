@@ -96,9 +96,9 @@ describe("ChatMarkdown workspace images", () => {
         path: "\\\\server\\share\\workspace-image.svg",
       },
     ]);
-    expect(html.match(/https:\/\/signed\.test\/workspace-image\.svg/g)).toHaveLength(4);
-    expect(html.match(/max-w-\[min\(100%,30rem\)\]/g)).toHaveLength(4);
-    expect(html.match(/max-h-\[30rem\]/g)).toHaveLength(4);
+    expect(
+      html.match(/<img\b[^>]*\bsrc="https:\/\/signed\.test\/workspace-image\.svg"/g),
+    ).toHaveLength(4);
     expect(html).not.toContain("Image unavailable");
   });
 

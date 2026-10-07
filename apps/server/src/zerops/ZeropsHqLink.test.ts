@@ -99,6 +99,7 @@ const overview = (title: string): MateOverview => ({
 const attentionAt = (revision: number): MateAttention => ({
   source: {
     environmentId: "env-1" as MateAttention["source"]["environmentId"],
+    epoch: 1,
     incarnation: "boot-1",
     revision,
   },

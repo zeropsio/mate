@@ -1685,16 +1685,6 @@ describe("the post-grant stage's Mate environments", () => {
   // The close-off gate (restores 0.12.3's closeOffGate inside the lease model): a Mate whose
   // container carries the press's marker is let in only once HQ says its project is closed off.
   describe("the close-off gate", () => {
-    /** The press's marker on Mate A's container, as the organization's Mate variables say it. */
-    const MARKER = [
-      {
-        id: "variable-marker",
-        serviceStackId: A_MATE.service.id,
-        projectId: A_MATE.projectId,
-        key: "MATE_SETUP_RUNTIMES",
-        content: "services: []",
-      },
-    ];
     /** HQ's close-off word, as a test moves it. */
     const hqWord = (initial: CloseOffWord | null) => {
       let word = initial;
@@ -1717,6 +1707,7 @@ describe("the post-grant stage's Mate environments", () => {
     const said = (closed: ReadonlyArray<string>, current = true): CloseOffWord => ({
       organizationId: organization.organizationId,
       current,
+      markers: new Map([[A_MATE.projectId, true]]),
       closed: new Set(closed),
       open: new Set(closed.includes(A_MATE.projectId) ? [] : [A_MATE.projectId]),
     });
@@ -1747,7 +1738,6 @@ describe("the post-grant stage's Mate environments", () => {
               { closeOff: word.port },
               false,
               false,
-              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -1764,10 +1754,10 @@ describe("the post-grant stage's Mate environments", () => {
         ),
     );
 
-    it.effect("lets in a Mate whose container carries no press marker", () =>
+    it.effect("lets in a Mate whose navigation says no press marker", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const word = hqWord(said([]));
+          const word = hqWord({ ...said([]), markers: new Map([[A_MATE.projectId, false]]) });
           const { rig, environments } = yield* granted(
             [],
             [A_MATE],
@@ -1801,7 +1791,6 @@ describe("the post-grant stage's Mate environments", () => {
               { closeOff: hqWord(null).port },
               false,
               false,
-              MARKER,
             );
             unheld.environments.setOnScreen(fresh.projectId);
             yield* settle;
@@ -1824,7 +1813,6 @@ describe("the post-grant stage's Mate environments", () => {
               { closeOff: hqWord(null).port, closeOffPending: pendingHere([A_MATE.projectId]) },
               false,
               false,
-              MARKER,
             );
             environments.setOnScreen(A_MATE.projectId);
             yield* settle;
@@ -1834,9 +1822,9 @@ describe("the post-grant stage's Mate environments", () => {
         ),
     );
 
-    // The marker decides only where HQ says a project is not closed off: listing Mates HQ says
-    // are closed off, or says nothing of, reads no container's variables.
+    // Every setup state is navigation evidence; no listed Mate demands variables.
     it.effect.each([
+      { name: "not closed off", word: () => said([]) },
       { name: "closed off", word: () => said([A_MATE.projectId]) },
       { name: "said nothing of", word: () => null },
       { name: "not current", word: () => said([], false) },
@@ -1851,7 +1839,6 @@ describe("the post-grant stage's Mate environments", () => {
             { closeOff: hqWord(word()).port },
             false,
             false,
-            MARKER,
           );
           environments.setOnScreen(A_MATE.projectId);
           yield* settle;
@@ -1871,7 +1858,7 @@ describe("the post-grant stage's Mate environments", () => {
             [old],
             platformAdapter([old]),
             [old],
-            { closeOff: hqWord(said([])).port },
+            { closeOff: hqWord({ ...said([]), markers: new Map() }).port },
             false,
             false,
             "never",
@@ -1900,7 +1887,6 @@ describe("the post-grant stage's Mate environments", () => {
             { closeOff: hqWord(said([])).port },
             false,
             false,
-            MARKER,
           );
           environments.setOnScreen(tagged.projectId);
           yield* settle;

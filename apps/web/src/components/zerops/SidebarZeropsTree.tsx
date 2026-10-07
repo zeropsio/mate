@@ -150,6 +150,9 @@ import { useSentAsks } from "~/zerops/sentAsk";
 import { hqDown, hqMatesAtom, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
+import { mayBearHq } from "@t3tools/shared/zeropsRoles";
+import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
+import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import {
@@ -526,6 +529,8 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
 /** What a change row acts with: the project's flow. */
 type ChangeRows = Pick<SidebarProjectFlow, "onOpenChange">;
 
+const ignoreUpdateState = (_state: boolean) => {};
+
 /**
  * Memoised: the menu above it redraws on every event of a streaming Mate's chat, and its props —
  * the Mates, their activity, the verbs — stand while what they say does.
@@ -560,6 +565,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(hqNavigationAtom);
+  const session = useZeropsSessionOptional();
+  const accountHq = useAccountHq(structureView.orgId ?? undefined);
+  const carried = useCarriedCoreBuild();
+  const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
@@ -1652,6 +1661,25 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
+      {structureView.updateRequired || followingHqUpdate ? (
+        <div className="px-4 pb-3 text-xs text-sidebar-muted-foreground" role="status">
+          {structureView.updateRequired ? "HQ needs an update to show all navigation facts." : null}
+          {session !== null &&
+          session !== undefined &&
+          mayBearHq(session.activeOrganization ?? undefined) &&
+          accountHq.hq.kind === "official" &&
+          carried !== undefined ? (
+            <ZeropsHqUpdate
+              projectId={accountHq.hq.projectId}
+              carried={carried}
+              answering={structureView.coreBuild}
+              trigger="Update HQ"
+              onBusy={ignoreUpdateState}
+              onFollowing={setFollowingHqUpdate}
+            />
+          ) : null}
+        </div>
+      ) : null}
       <SidebarSelectedBand current={activeProjectId} />
       {groupSections}
       {ungroupedSection}
@@ -2560,7 +2588,7 @@ function MateRowView<T extends RosterCandidate>({
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
   const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
-  // Its container is read while the row is drawn with its menu (`useDrawnMates`).
+  // Its project access detail is held while the row is drawn with its menu (`useDrawnProjectAccess`).
   const drawn = actions?.drawn;
   useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off

@@ -18,6 +18,8 @@ export interface CloseOffWord {
   readonly closed: ReadonlySet<string>;
   /** The Mates whose record says their project is not closed off. */
   readonly open: ReadonlySet<string>;
+  /** Setup marker evidence delivered with each Mate’s navigation record. */
+  readonly markers: ReadonlyMap<string, boolean>;
 }
 
 /** The close-off word of an HQ structure, current or as last known. */
@@ -28,13 +30,15 @@ export function closeOffWordOf(
 ): CloseOffWord {
   const closed = new Set<string>();
   const open = new Set<string>();
+  const markers = new Map<string, boolean>();
   const mates = [...structure.ungrouped, ...structure.apps.flatMap((app) => app.projects)];
   for (const { projectId, mate } of mates) {
-    if (mate === null) continue;
+    if (mate == null) continue;
+    if (typeof mate.setupMarker === "boolean") markers.set(projectId, mate.setupMarker);
     if (mate.closedOff === true) closed.add(projectId);
     else if (mate.closedOff === false) open.add(projectId);
   }
-  return { organizationId, current, closed, open };
+  return { organizationId, current, closed, open, markers };
 }
 
 /**

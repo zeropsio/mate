@@ -1,9 +1,7 @@
 /**
- * The two variables only a Mate's container carries, read by key (`POST /user-data/search`) —
- * never a service's whole set, which carries every secret it holds: `ZCP_MATE_ENABLED`, whether
- * zcp serves Zerops Mate on it, and the press's marker `MATE_SETUP_RUNTIMES`, whose presence alone
- * is kept (its value, the tier's import document, is not). One read per service a screen or a flow
- * asks about, sampled while it stays asked; nothing the platform pushes of them is relied on.
+ * A Mate's enable flag, read by key (`POST /user-data/search`) rather than its secrets.
+ * One read per service a screen or flow asks about, sampled while demanded. Setup marker
+ * evidence is owned by HQ navigation and is never sampled here.
  *
  * What a service runs needs none of these: it rides the service's own row
  * (`projections/serviceRuns`).
@@ -19,13 +17,11 @@ import { STREAM_POLICY } from "../streamMachine.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 export const MATE_ENABLED = "ZCP_MATE_ENABLED";
-export const SETUP_MARKER = "MATE_SETUP_RUNTIMES";
-const KEYS: ReadonlyArray<string> = [MATE_ENABLED, SETUP_MARKER];
+const KEYS: ReadonlyArray<string> = [MATE_ENABLED];
 
-/** One container's two variables as its search answered: the flag `null` where it has no row. */
+/** One container's flag as its search answered: `null` where it has no row. */
 export interface MateVariablesValue {
   readonly flag: boolean | "unknown" | null;
-  readonly marker: boolean;
 }
 
 declare module "../model.ts" {
@@ -76,7 +72,6 @@ export const mateVariablesFamily: FamilySpec<"mateVariables"> = {
         onSome: ({ items, totalHits }) => {
           if (totalHits !== undefined && totalHits > items.length) return null;
           let flag: MateVariablesValue["flag"] = null;
-          let marker = false;
           const seen = new Set<string>();
           for (const raw of items) {
             const variable = Option.getOrUndefined(decodeVariable(raw));
@@ -88,9 +83,8 @@ export const mateVariablesFamily: FamilySpec<"mateVariables"> = {
               if (variable.content === undefined && variable.sensitive !== true) return null;
               flag = flagOn(variable);
             }
-            if (variable.key === SETUP_MARKER) marker = true;
           }
-          return { flag, marker };
+          return { flag };
         },
       }),
     freshMs: STREAM_POLICY.sampledIntervalMs,

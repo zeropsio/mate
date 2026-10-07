@@ -1,4 +1,4 @@
-import type { HalfMadeGroupEnvironment, ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import type { HalfMadeGroupEnvironment } from "@t3tools/client-runtime/zerops";
 import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -32,18 +32,17 @@ vi.mock("./addGroupEnvironment", () => ({
     } satisfies AddGroupEnvironmentOutcome;
   },
 }));
-vi.mock("./accountHq", () => ({ accountHqApi: () => ({}) }));
 
 const STAGE: HalfMadeGroupEnvironment = { groupId: "g1", projectId: "p-stage", tier: "stage" };
 const HQ = { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" } as const;
+/** The account's operations: `addGroupEnvironment` stands in for their use here. */
+const OPERATIONS = { run: vi.fn(), untilEnvironment: vi.fn() };
 
 /** The hook as the projects page holds it, its every answer kept, the latest last. */
 async function mounted() {
   const seen: Array<FinishGroupEnvironment> = [];
   function Probe() {
-    seen.push(
-      useFinishGroupEnvironment({ client: {} as ZeropsApiClient, clientId: "org-1", hq: HQ }),
-    );
+    seen.push(useFinishGroupEnvironment({ operations: OPERATIONS, clientId: "org-1", hq: HQ }));
     return null;
   }
   let root: ReturnType<typeof create> | undefined;

@@ -180,7 +180,9 @@ const joinedFlows = new WeakMap<
 export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string }>;
   readonly review?: boolean | undefined;
-  readonly navigationOffers?: Readonly<Record<string, HqNavigationApp["releaseOffer"]>> | undefined;
+  readonly navigationOffers?:
+    | Readonly<Record<string, HqNavigationApp["releaseOffer"] | undefined>>
+    | undefined;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
@@ -372,19 +374,21 @@ function projectFlow(
             allowed: false,
             reason: `Can't check what can be released: ${live.moved.reason.replace(/\.$/u, "")}.`,
           }
-        : navigation == null
-          ? { allowed: false, reason: "Checking what can be released…" }
-          : "refused" in navigation
-            ? {
-                allowed: false,
-                reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
-                refusedBy: "hq",
-              }
-            : navigation.gate.allow
-              ? { allowed: true }
-              : permission?.allowed === false
-                ? permission
-                : { allowed: false, reason: navigation.gate.reason };
+        : navigation === undefined
+          ? { allowed: false, reason: "Release offer is unknown." }
+          : navigation === null
+            ? { allowed: false, reason: "Checking what can be released…" }
+            : "refused" in navigation
+              ? {
+                  allowed: false,
+                  reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
+                  refusedBy: "hq",
+                }
+              : navigation.gate.allow
+                ? { allowed: true }
+                : permission?.allowed === false
+                  ? permission
+                  : { allowed: false, reason: navigation.gate.reason };
   return {
     groupId: group.groupId,
     declarations: stops?.declarations ?? [],
