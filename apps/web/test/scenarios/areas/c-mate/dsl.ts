@@ -504,6 +504,25 @@ export function mateChat(
             ),
           ).toBe(true);
         }),
+      enabledControl: (name: string) =>
+        Effect.promise(async () => {
+          const control = await page
+            .locator(`::-p-aria([name="${name}"][role="button"])`)
+            .setTimeout(8000)
+            .waitHandle();
+          try {
+            await page.waitForFunction(
+              (element) =>
+                element instanceof HTMLButtonElement &&
+                !element.disabled &&
+                element.getBoundingClientRect().height > 0,
+              { timeout: 8000, polling: "raf" },
+              control,
+            );
+          } finally {
+            await control.dispose();
+          }
+        }),
       sent: (message: string) =>
         Effect.gen(function* () {
           yield* text(message);

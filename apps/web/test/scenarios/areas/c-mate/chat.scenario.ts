@@ -145,6 +145,7 @@ describe("C: opening a Mate and chat", () => {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
         yield* chat.when.open();
+        yield* chat.then.enabledControl("GPT-5.4");
         chat.fixture().question();
         yield* chat.then.text("Which environment should I inspect?");
         yield* chat.when.click("Staging");
