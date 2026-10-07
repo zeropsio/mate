@@ -5,7 +5,9 @@
  * and writes nothing), append the events with a gapless per-conversation `seq`, update the
  * projections (`engine_run`, `engine_item`, `engine_request`, `engine_session`), insert outbox rows
  * `ON CONFLICT DO NOTHING`, arm, fire or cancel wakes, settle the receipt, and snapshot the state
- * every K events. A rejected command is committed too (its receipt only), so a retry of it returns
+ * every K events. Every event is encoded with the contracts before it is written, and a step one
+ * of whose events does not encode is refused (`invalid-signal`): the store never writes what it
+ * could not read back. A rejected command is committed too (its receipt only), so a retry of it returns
  * the same answer. `load` is the latest snapshot plus a fold of the events after it.
  *
  * @module engine/store/EngineStore
@@ -19,9 +21,9 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   CommandResult,
   EngineEvent,
+  KnownEngineEvent,
   type ConversationId,
   type ItemId,
-  type KnownEngineEvent,
   type RunId,
 } from "@t3tools/contracts";
 
@@ -101,6 +103,7 @@ interface EventRow {
 }
 
 const decodeEvent = Schema.decodeUnknownEffect(EngineEvent);
+const encodeEvent = Schema.encodeUnknownEffect(KnownEngineEvent);
 const decodeResultJson = Schema.decodeUnknownEffect(Schema.fromJsonString(CommandResult));
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -131,7 +134,7 @@ const jsonText = (value: unknown): string => JSON.stringify(value);
 
 const isStoreError = Schema.is(EngineStoreError);
 
-const effectState = { ok: "done", failed: "failed", cut: "cut" } as const;
+const effectState = { ok: "done", failed: "failed", cut: "cut", unknown: "failed" } as const;
 
 export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
   options: EngineStoreOptions = {},
@@ -339,6 +342,19 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
 
     const step = decision.step;
     const events = stampEvents(head, envelope, step.events, now);
+    // What the store writes, it must read back: a step whose event this build cannot encode (a
+    // driver's body passed through unchecked) is refused whole, before anything is written.
+    const unreadable = yield* Effect.exit(
+      Effect.forEach(events, (event) => encodeEvent(event), { discard: true }),
+    );
+    if (unreadable._tag === "Failure") {
+      const result: CommandResult = {
+        _tag: "Rejected",
+        rejection: { reason: "invalid-signal", detail: String(unreadable.cause).slice(0, 500) },
+      };
+      yield* settleReceipt(input, result);
+      return unchanged(result, false);
+    }
     for (const event of events) {
       yield* sql`
         INSERT INTO engine_event (conversation_id, seq, type, v, at, command_id, run_id, payload_json)

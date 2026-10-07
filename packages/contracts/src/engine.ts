@@ -98,36 +98,68 @@ const forwardCompatibleUnion = <
   );
 };
 
+/**
+ * A literal set that grows: a known literal decodes as itself, any other string as `"unknown"`;
+ * encoding takes only the known literals (and `"unknown"`), so a writer never stores a stray one.
+ */
+const forwardCompatibleLiterals = <const Literals extends ReadonlyArray<string>>(
+  literals: Literals,
+) => {
+  const known = new Set<string>(literals);
+  const schema = Schema.Literals([...literals, "unknown"] as readonly [...Literals, "unknown"]);
+  type Known = Literals[number] | "unknown";
+  const transformation = SchemaTransformation.transform<Known, unknown>({
+    decode: (raw) => (typeof raw === "string" && !known.has(raw) ? "unknown" : (raw as Known)),
+    encode: (value) => value,
+  });
+  // The generic literal set hides the transformation's exact types from the checker.
+  return Schema.Unknown.pipe(Schema.decodeTo(schema, transformation as never));
+};
+
+/** The member a newer build's union member decodes to: its kind kept as `type`. */
+const unknownKind = Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String });
+const toUnknownKind = (_raw: Record<string, unknown>, type: string) => ({
+  kind: "unknown" as const,
+  type,
+});
+
 // ── principals and actors ───────────────────────────────────────────────────────────────────
 
 /** Whose authority a run or an answer carries (D6). */
-export const Principal = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("person"), subject: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("standup"), startedBy: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("engine") }),
-]);
+export const Principal = forwardCompatibleUnion({
+  key: "kind",
+  known: ["person", "crew", "standup", "engine", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("person"), subject: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("crew"), startedBy: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("standup"), startedBy: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("engine") }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
 export type Principal = typeof Principal.Type;
 
 /** Who made an item. */
-export const ItemActor = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("mate") }),
-  Schema.Struct({ kind: Schema.Literal("helper"), helperId: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("person"), principal: Principal }),
-  Schema.Struct({ kind: Schema.Literal("engine") }),
-]);
+export const ItemActor = forwardCompatibleUnion({
+  key: "kind",
+  known: ["mate", "helper", "person", "engine", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("mate") }),
+    Schema.Struct({ kind: Schema.Literal("helper"), helperId: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("person"), principal: Principal }),
+    Schema.Struct({ kind: Schema.Literal("engine") }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
 export type ItemActor = typeof ItemActor.Type;
 
 // ── runs ────────────────────────────────────────────────────────────────────────────────────
 
-export const RunState = Schema.Literals([
-  "queued",
-  "admitted",
-  "sending",
-  "running",
-  "waiting",
-  "ended",
-]);
+const RUN_STATES = ["queued", "admitted", "sending", "running", "waiting", "ended"] as const;
+/** A run's state as this build's rules know it. */
+export const RunState = Schema.Literals(RUN_STATES);
 export type RunState = typeof RunState.Type;
 
 /** What ended a run. */
@@ -173,14 +205,14 @@ export const TURN_END_SOURCES = [
   "inferred-from-close",
   "inferred-from-next-turn",
 ] as const;
-export const TurnEndSource = Schema.Literals(TURN_END_SOURCES);
+export const TurnEndSource = forwardCompatibleLiterals(TURN_END_SOURCES);
 export type TurnEndSource = typeof TurnEndSource.Type;
 
 /**
  * Who said the run ended: the bridge's word for its turn, or the engine inferring it from a
  * restart or from an effect that failed for good.
  */
-export const RunEndSource = Schema.Literals([
+export const RunEndSource = forwardCompatibleLiterals([
   ...TURN_END_SOURCES,
   "inferred-from-restart",
   "inferred-from-effect",
@@ -188,14 +220,20 @@ export const RunEndSource = Schema.Literals([
 export type RunEndSource = typeof RunEndSource.Type;
 
 /** Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn). */
-export const RunTrigger = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("person"), itemId: ItemId }),
-  Schema.Struct({
-    kind: Schema.Literal("wake"),
-    cause: Schema.String,
-    wakeId: Schema.NullOr(WakeId),
-  }),
-]);
+export const RunTrigger = forwardCompatibleUnion({
+  key: "kind",
+  known: ["person", "wake", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("person"), itemId: ItemId }),
+    Schema.Struct({
+      kind: Schema.Literal("wake"),
+      cause: Schema.String,
+      wakeId: Schema.NullOr(WakeId),
+    }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
 export type RunTrigger = typeof RunTrigger.Type;
 
 /** A run as the engine projects it. */
@@ -209,7 +247,7 @@ export const Run = Schema.Struct({
   /** The run this one continues: a wake folds into the run it reports on, by fact. */
   joins: Schema.NullOr(RunId),
   principal: Principal,
-  state: RunState,
+  state: forwardCompatibleLiterals(RUN_STATES),
   /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
   maintenance: Schema.Boolean,
   waitingOn: Schema.NullOr(
@@ -237,7 +275,8 @@ const itemBodyFields = {
     attachments: Schema.Array(Schema.String),
     sendId: CommandId,
     delivery: Schema.Struct({
-      state: Schema.Literals(["queued", "delivered", "steered", "refused"]),
+      /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */
+      state: forwardCompatibleLiterals(["queued", "delivered", "steered", "refused", "unknown"]),
       at: Schema.NullOr(Millis),
     }),
   },
@@ -247,7 +286,14 @@ const itemBodyFields = {
     step: Schema.String,
     tool: Schema.Struct({ name: Schema.String, server: Schema.optionalKey(Schema.String) }),
     words: Schema.NullOr(Schema.String),
-    state: Schema.Literals(["running", "done", "failed", "declined", "stopped", "unreturned"]),
+    state: forwardCompatibleLiterals([
+      "running",
+      "done",
+      "failed",
+      "declined",
+      "stopped",
+      "unreturned",
+    ]),
     endedAt: Schema.NullOr(Millis),
   },
   request: { requestId: RequestId },
@@ -375,14 +421,12 @@ export const RequestAsk = forwardCompatibleUnion({
 });
 export type RequestAsk = typeof RequestAsk.Type;
 
-export const RequestState = Schema.Literals([
-  "open",
-  "answered",
-  "declined",
-  "dismissed",
-  "lapsed",
-]);
+const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed"] as const;
+/** A request's state as this build's rules know it. */
+export const RequestState = Schema.Literals(REQUEST_STATES);
 export type RequestState = typeof RequestState.Type;
+/** A request's state as stored and sent: a newer build's state reads `unknown`. */
+const StoredRequestState = forwardCompatibleLiterals(REQUEST_STATES);
 
 export const Request = Schema.Struct({
   id: RequestId,
@@ -392,7 +436,7 @@ export const Request = Schema.Struct({
   rev: Schema.Int,
   at: Millis,
   ask: RequestAsk,
-  state: RequestState,
+  state: StoredRequestState,
   /** False once the session that owned the callback is gone. */
   answerable: Schema.Boolean,
   answer: Schema.optionalKey(Schema.Struct({ by: Principal, at: Millis, summary: Schema.String })),
@@ -448,7 +492,12 @@ export type ConversationRow = typeof ConversationRow.Type;
 
 // ── sessions, effects, wakes ────────────────────────────────────────────────────────────────
 
-export const SessionCloseReason = Schema.Literals(["model", "exited", "restart", "closed"]);
+export const SessionCloseReason = forwardCompatibleLiterals([
+  "model",
+  "exited",
+  "restart",
+  "closed",
+]);
 export type SessionCloseReason = typeof SessionCloseReason.Type;
 
 export const SessionCapabilities = Schema.Struct({
@@ -458,11 +507,17 @@ export const SessionCapabilities = Schema.Struct({
 export type SessionCapabilities = typeof SessionCapabilities.Type;
 
 /** What an effect came to: done, failed for good, or cut by a restart before it finished. */
-export const EffectOutcome = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("ok"), value: Schema.optionalKey(Schema.Unknown) }),
-  Schema.Struct({ kind: Schema.Literal("failed"), reason: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
-]);
+export const EffectOutcome = forwardCompatibleUnion({
+  key: "kind",
+  known: ["ok", "failed", "cut", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("ok"), value: Schema.optionalKey(Schema.Unknown) }),
+    Schema.Struct({ kind: Schema.Literal("failed"), reason: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
 export type EffectOutcome = typeof EffectOutcome.Type;
 
 // ── events ──────────────────────────────────────────────────────────────────────────────────
@@ -558,7 +613,7 @@ export const RequestAnswered = event("RequestAnswered", {
 export const RequestClosed = event("RequestClosed", {
   runId: RunId,
   requestId: RequestId,
-  state: RequestState,
+  state: StoredRequestState,
 });
 export const SessionOpened = event("SessionOpened", {
   sessionId: SessionId,
@@ -675,6 +730,7 @@ const rejectionReasons = [
   "unknown-effect",
   "wake-not-armed",
   "invalid-wake",
+  "invalid-signal",
   "unknown",
 ] as const;
 const knownRejectionReasons = new Set<string>(rejectionReasons);

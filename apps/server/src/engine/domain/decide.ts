@@ -597,7 +597,12 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     admitNext(b);
     return;
   }
-  const failure = outcome.kind === "ok" ? null : outcome.reason;
+  const failure =
+    outcome.kind === "ok"
+      ? null
+      : outcome.kind === "unknown"
+        ? `an outcome this build does not know (${outcome.type})`
+        : outcome.reason;
   switch (effect.kind) {
     case "session.open":
       if (failure !== null) {

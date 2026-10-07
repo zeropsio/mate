@@ -198,7 +198,7 @@ describe("WakeScheduler: one wake never holds another", () => {
           env({ _tag: "ArmWake", kind: "standup", key: "k", dueAt: 2_000 }, healthy),
         );
         // A stored event this build cannot decode.
-        const payload = '{"sessionId":"s","reason":"idle"}';
+        const payload = '{"sessionId":"s"}'; // a known event with its body damaged
         yield* sql`INSERT INTO engine_event (conversation_id, seq, type, v, at, command_id, run_id, payload_json)
           VALUES (${broken}, 2, 'SessionClosed', 1, 0, 'x', NULL, ${payload})`;
         yield* sql`UPDATE engine_conversation SET head_seq = 2 WHERE conversation_id = ${broken}`;

@@ -60,7 +60,7 @@ const header = {
 
 describe("EngineEvent decoding", () => {
   it("decodes a known event strictly and encodes it back unchanged", () => {
-    const raw = { ...header, _tag: "RunStarted", runId: run, providerTurnId: "turn-9" };
+    const raw = { ...header, _tag: "RunStarted", runId: run, providerTurnId: "turn-9", turn: run };
     const event = decodeEvent(raw);
     expect(event._tag).toBe("RunStarted");
     expect(encodeEvent(event)).toEqual(raw);
