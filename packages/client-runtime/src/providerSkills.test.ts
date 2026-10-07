@@ -2,6 +2,7 @@ import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  workspaceSnapshotRetryDelayMs,
   dedupeProviderSkillsByName,
   formatProviderSkillDisplayName,
   getProviderSlashCommandsForSlashMenu,
@@ -273,5 +274,19 @@ describe("workspace provider snapshots", () => {
     expect(hasCompleteProviderWorkspaceSnapshot(provider, "/workspace/project-b")).toBe(false);
     expect(hasCompleteProviderWorkspaceSnapshot(undefined, "/workspace/project-a")).toBe(false);
     expect(hasCompleteProviderWorkspaceSnapshot(provider, null)).toBe(false);
+  });
+});
+
+// Each retry spawns a coding-agent process in the workspace, so a probe that
+// keeps failing is asked less and less often.
+describe("workspaceSnapshotRetryDelayMs", () => {
+  it.each([
+    [1, 10_000],
+    [2, 30_000],
+    [3, 60_000],
+    [4, 300_000],
+    [12, 300_000],
+  ])("a workspace scan that failed %i time(s) is retried after %i ms", (failures, delay) => {
+    expect(workspaceSnapshotRetryDelayMs(failures)).toBe(delay);
   });
 });

@@ -16,6 +16,7 @@ import {
   getProviderSkillsForSlashMenu,
   isProviderSkillUserInvocable,
   hasCompleteProviderWorkspaceSnapshot,
+  workspaceSnapshotRetryDelayMs,
   resolveProviderSkillsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,8 +27,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useComposerPathSearch } from "../../state/queries";
 import type { ComposerCommandItem } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
-
-const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 function composerSelectionAtEnd(draftMessage: string): ComposerEditorSelection {
   return { start: draftMessage.length, end: draftMessage.length };
@@ -209,6 +208,9 @@ export function useComposerCommandMenu({
     projectCwd,
   );
   const workspaceRefreshKeyRef = useRef<string | null>(null);
+  // Scans in a row that came back without the workspace's commands; the wait
+  // before the next one grows with it (workspaceSnapshotRetryDelayMs).
+  const workspaceRefreshFailuresRef = useRef<{ key: string; failures: number } | null>(null);
   const [workspaceRefreshRetry, setWorkspaceRefreshRetry] = useState<{
     key: string;
     notBefore: number;
@@ -240,6 +242,7 @@ export function useComposerCommandMenu({
   useEffect(() => {
     if (hadWorkspaceSnapshotRef.current && !hasWorkspaceSnapshot) {
       workspaceRefreshKeyRef.current = null;
+      workspaceRefreshFailuresRef.current = null;
       setWorkspaceRefreshRetry(null);
     }
     hadWorkspaceSnapshotRef.current = hasWorkspaceSnapshot;
@@ -250,6 +253,7 @@ export function useComposerCommandMenu({
     if (workspaceRefreshKeyRef.current === key) return;
     if (hasWorkspaceSnapshot) {
       workspaceRefreshKeyRef.current = key;
+      workspaceRefreshFailuresRef.current = null;
       setWorkspaceRefreshRetry(null);
       return;
     }
@@ -259,9 +263,12 @@ export function useComposerCommandMenu({
     const retryLater = () => {
       if (workspaceRefreshKeyRef.current !== key) return;
       workspaceRefreshKeyRef.current = null;
+      const previous = workspaceRefreshFailuresRef.current;
+      const failures = previous?.key === key ? previous.failures + 1 : 1;
+      workspaceRefreshFailuresRef.current = { key, failures };
       setWorkspaceRefreshRetry({
         key,
-        notBefore: Date.now() + WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS,
+        notBefore: Date.now() + workspaceSnapshotRetryDelayMs(failures),
       });
     };
     void refreshProviders({

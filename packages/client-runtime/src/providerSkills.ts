@@ -119,6 +119,19 @@ export function hasCompleteProviderWorkspaceSnapshot(
   return Boolean(snapshot && !snapshot.slashCommandsPending);
 }
 
+const WORKSPACE_SNAPSHOT_RETRY_DELAYS_MS = [10_000, 30_000, 60_000, 300_000] as const;
+
+/**
+ * How long a composer waits before asking again for a workspace snapshot
+ * whose commands are still missing, after `failures` scans in a row came back
+ * without them. Each scan spawns the coding agent in that folder, so the wait
+ * grows to a five-minute cap; a complete snapshot resets the count.
+ */
+export function workspaceSnapshotRetryDelayMs(failures: number): number {
+  const index = Math.min(Math.max(failures, 1), WORKSPACE_SNAPSHOT_RETRY_DELAYS_MS.length) - 1;
+  return WORKSPACE_SNAPSHOT_RETRY_DELAYS_MS[index]!;
+}
+
 export function resolveProviderSkillsForCwd(
   provider: ServerProvider,
   cwd: string | null | undefined,

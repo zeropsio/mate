@@ -314,6 +314,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
   getProviderSkillsForSlashMenu,
   hasCompleteProviderWorkspaceSnapshot,
+  workspaceSnapshotRetryDelayMs,
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
@@ -322,8 +323,6 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
-
-const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 /** Stable empty skills and commands while no provider is selected, so the menu items keep their identity. */
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -977,6 +976,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reportFailure: false,
   });
   const workspaceRefreshKeyRef = useRef<string | null>(null);
+  // Scans in a row that came back without the workspace's commands; the wait
+  // before the next one grows with it (workspaceSnapshotRetryDelayMs).
+  const workspaceRefreshFailuresRef = useRef<{ key: string; failures: number } | null>(null);
   const [workspaceRefreshRetry, setWorkspaceRefreshRetry] = useState<{
     key: string;
     notBefore: number;
@@ -1012,6 +1014,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
     if (hadWorkspaceSnapshotRef.current && !hasWorkspaceSnapshot) {
       workspaceRefreshKeyRef.current = null;
+      workspaceRefreshFailuresRef.current = null;
       setWorkspaceRefreshRetry(null);
     }
     hadWorkspaceSnapshotRef.current = hasWorkspaceSnapshot;
@@ -1026,6 +1029,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (workspaceRefreshKeyRef.current === key) return;
     if (hasWorkspaceSnapshot) {
       workspaceRefreshKeyRef.current = key;
+      workspaceRefreshFailuresRef.current = null;
       setWorkspaceRefreshRetry(null);
       return;
     }
@@ -1035,9 +1039,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const retryLater = () => {
       if (workspaceRefreshKeyRef.current !== key) return;
       workspaceRefreshKeyRef.current = null;
+      const previous = workspaceRefreshFailuresRef.current;
+      const failures = previous?.key === key ? previous.failures + 1 : 1;
+      workspaceRefreshFailuresRef.current = { key, failures };
       setWorkspaceRefreshRetry({
         key,
-        notBefore: Date.now() + WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS,
+        notBefore: Date.now() + workspaceSnapshotRetryDelayMs(failures),
       });
     };
     void refreshProviders({
