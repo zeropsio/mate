@@ -16,10 +16,6 @@
  *   Claude API key, which crosses the wire only here — or signs one out and
  *   forgets it.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
- * - `mateUpdate` — server scope `exec:operate`; offered only where the
- *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
- * - `mateCheckUpdate` — server scope: read; re-reads the manifest on demand
- *   (spec-mate.md §2.9 step 2), gated by the same `capabilities.mateUpdate`.
  * - `gitProbeRemote` — server scope: `AuthOrchestrationReadScope`; a read, and
  *   the only party that can answer whether a checkout's remote actually
  *   answers (guide 4.5). The Git tab asks it on open and after each action,
@@ -79,14 +75,6 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsBrowserInput,
   });
 
-  const mateUpdate = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:mate:update",
-    tag: WS_METHODS.zeropsMateUpdate,
-  });
-  const mateCheckUpdate = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:mate:checkUpdate",
-    tag: WS_METHODS.zeropsMateCheckUpdate,
-  });
   const gitProbeRemote = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:git:probeRemote",
     tag: WS_METHODS.zeropsGitProbeRemote,
@@ -102,8 +90,6 @@ export function createZeropsCommandAtoms<R, E>(
     loginAdd,
     loginRemove,
     browserInput,
-    mateUpdate,
-    mateCheckUpdate,
     gitProbeRemote,
   };
 }

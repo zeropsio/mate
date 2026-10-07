@@ -5,7 +5,7 @@
  * per candidate. Reads the live descriptor off `useEnvironment` — the same
  * subscription `serverConfig` already rides — never a version comparison
  * of its own (MU-1). What an update came to is read off the same descriptor:
- * its version and its boot (`useZeropsMateUpdate`).
+ * its version and its boot (`useMateUpdate`).
  *
  * A hook cannot live inside a plain menu-building function, so the same
  * update state that draws the line also supplies the Mate menus' *Check for
@@ -26,7 +26,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useEnvironment } from "../../state/environments";
 import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "../../zerops/mateUpdate";
-import { useZeropsMateUpdate } from "../../zerops/useZeropsMateUpdate";
+import { useMateUpdate } from "../../zerops/useMateUpdate";
 import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
@@ -49,7 +49,7 @@ export function ZeropsMateUpdateControl({
   readonly children: (view: ZeropsMateUpdateView) => ReactNode;
 }) {
   const environment = useEnvironment(environmentId)?.serverConfig?.environment;
-  const mateUpdate = useZeropsMateUpdate(environmentId, environment ?? null);
+  const mateUpdate = useMateUpdate(environmentId, environment ?? null);
   const { check, update } = mateUpdate;
   const capable = environment?.capabilities.mateUpdate === true;
 
@@ -71,8 +71,9 @@ export function ZeropsMateUpdateControl({
   // The RPC's on-demand answer, once one has run; otherwise the descriptor's
   // own field. Either way this is the server's answer, relayed as-is — MU-1:
   // nothing here compares versions.
-  const effectiveUpdate = mateUpdate.checked ?? environment.update;
-  const line = mateUpdateLine(effectiveUpdate, environment.serverVersion);
+  const effectiveUpdate =
+    mateUpdate.checked === undefined ? environment.update : mateUpdate.checked;
+  const line = mateUpdateLine(effectiveUpdate ?? undefined, environment.serverVersion);
   const { state } = mateUpdate;
   const running = state.phase === "checking" || state.phase === "updating";
 
@@ -114,6 +115,7 @@ export function ZeropsMateUpdateControl({
     line: (
       <>
         <MateUpdateLine line={line} verb={verb} />
+        {mateUpdate.notice ? <span>{mateUpdate.notice}</span> : null}
         {state.phase === "failed" ? (
           <span
             className="text-[var(--zerops-status-failed-text,var(--foreground))]"

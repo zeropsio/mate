@@ -1,3 +1,4 @@
+import { mateUpdate } from "./mateUpdate.ts";
 /**
  * The operation kinds this account submits. A new kind is one module beside these and one line
  * here.
@@ -47,6 +48,7 @@ export function defineOperationKinds(
 export const OPERATION_KINDS = defineOperationKinds([
   throwawaySweep,
   mateRestart,
+  mateUpdate,
   deleteProject,
   enableSubdomainAccess,
   startService,

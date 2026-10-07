@@ -98,7 +98,7 @@ import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
-import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
+import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { submitZeropsWrite } from "~/zerops/zeropsWrite";
@@ -938,7 +938,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());
-  const updates = useZeropsMateUpdateStates();
+  const updates = useMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.

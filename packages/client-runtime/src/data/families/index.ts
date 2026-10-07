@@ -1,3 +1,4 @@
+import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 /**
  * The fact families this account holds. A new family is one module beside these and one line
@@ -93,6 +94,8 @@ export const FAMILIES = defineFamilies([
   databaseFamily,
   databaseSessionFamily,
   mateBrowserFrameFamily,
+  mateUpdateAvailabilityFamily,
+  mateUpdateRequestFamily,
 ]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));

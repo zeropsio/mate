@@ -82,8 +82,8 @@ vi.mock("~/state/environments", () => ({
   }),
 }));
 
-vi.mock("../../zerops/useZeropsMateUpdate", () => ({
-  useZeropsMateUpdate: () => ({
+vi.mock("../../zerops/useMateUpdate", () => ({
+  useMateUpdate: () => ({
     state: { phase: "idle" },
     request: () => {},
     confirm: () => {},

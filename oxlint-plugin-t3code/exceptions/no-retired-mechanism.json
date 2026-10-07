@@ -224,78 +224,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ProviderModelPicker.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/composerControlMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:composer-control:v1",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/composerControlMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/composerControlMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerControl",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
     "kind": "retired-token",
     "fingerprint": "setProjectFileQueryData(",
@@ -392,14 +320,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained separate surface boundary: a Mate update settles to idle after a timer; only the source settles an operation. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
     "kind": "retired-token",
     "fingerprint": "LIVE_GRACE_MS",
@@ -437,30 +357,6 @@
     "fingerprint": "graceOver",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -541,14 +437,6 @@
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
     "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained separate surface boundary: a Mate update settles to idle after a timer; only the source settles an operation. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -1069,14 +957,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateUpdate.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsMateUpdate",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
