@@ -59,6 +59,13 @@ export function ZeropsAssignMateForm({
 }) {
   const id = useId();
   const [selected, setSelected] = useState("");
+  const candidate = candidates.find((person) => person.clientUserId === selected);
+  const canSubmit =
+    !pending &&
+    readingOrganization === undefined &&
+    readFailed === undefined &&
+    readRefused === undefined &&
+    candidate !== undefined;
 
   return (
     <form
@@ -66,15 +73,16 @@ export function ZeropsAssignMateForm({
       data-zerops-surface="assign-mate"
       onSubmit={(event) => {
         event.preventDefault();
-        if (pending || selected.length === 0) return;
+        if (!canSubmit) return;
         onSubmit(selected);
       }}
     >
       <DialogHeader>
         <DialogTitle>Hand {projectName} over</DialogTitle>
         <DialogDescription>
-          Whoever you pick owns this Mate: they open it, rename it and move it. Everyone else in the
-          organization keeps seeing it in the list.
+          Whoever you pick becomes this Mate's single owner. Previous owner grants are removed;
+          everyone else's access follows their organization and project permissions. Personal agent
+          logins stay with their signer: the new owner must use their own account to run an agent.
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -84,12 +92,17 @@ export function ZeropsAssignMateForm({
             aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-            disabled={readingOrganization !== undefined}
+            disabled={
+              pending ||
+              readingOrganization !== undefined ||
+              readFailed !== undefined ||
+              readRefused !== undefined
+            }
             id={`${id}-member`}
             onChange={(event) => {
               setSelected(event.target.value);
             }}
-            value={selected}
+            value={candidate === undefined ? "" : selected}
           >
             <option disabled value="">
               {readingOrganization === undefined
@@ -129,11 +142,7 @@ export function ZeropsAssignMateForm({
         <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button
-          aria-busy={pending || undefined}
-          disabled={pending || selected.length === 0}
-          type="submit"
-        >
+        <Button aria-busy={pending || undefined} disabled={!canSubmit} type="submit">
           Hand it over
         </Button>
       </DialogFooter>

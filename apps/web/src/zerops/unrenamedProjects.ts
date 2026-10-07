@@ -5,6 +5,7 @@
  * move, and none offers it once the entry is gone.
  */
 import { create } from "zustand";
+import { onAccountLifetimeClose } from "./accountLifetime";
 
 import type { ProjectRename } from "./projectRenames.logic";
 
@@ -36,3 +37,5 @@ export const useUnrenamedProjects = create<UnrenamedProjects>((set) => ({
       return { left: next };
     }),
 }));
+
+onAccountLifetimeClose(() => useUnrenamedProjects.setState({ left: new Map() }));

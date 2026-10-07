@@ -59,6 +59,7 @@ const OWNER_OFFERS: HqMateOfferStates = {
 const mock = vi.hoisted(() => ({
   /** Where HQ answers a Mate may go, as its move opens (`move-offers`). */
   moveTo: {} as Readonly<Record<string, ReadonlyArray<string>>>,
+  moveAnswer: null as (() => Promise<Readonly<Record<string, ReadonlyArray<string>>>>) | null,
   /** HQ's registry as the page hands it to the hook; empty by default. */
   registry: { groups: [] } as {
     groups: ReadonlyArray<{
@@ -95,6 +96,7 @@ const mock = vi.hoisted(() => ({
   /** *Finish setup*'s steps, as the hook hands them over. */
   finishMateSetup: vi.fn(),
   roleCode: "OWNER",
+  organizationId: "org-acme",
   /** Who the session says is signed in; null where it names nobody. */
   user: { id: "user-ada" } as { readonly id: string } | null,
   listing: { current: undefined as unknown },
@@ -117,6 +119,7 @@ const mock = vi.hoisted(() => ({
   keyReads: 0,
   /** The id of the key a Mate named to HQ; none where it named none. */
   mateKey: null as string | null,
+  keyAnswer: null as (() => Promise<string | null>) | null,
   /** The delete dialog as the hook mounts it. */
   deleteDialog: {
     current: null as {
@@ -145,6 +148,11 @@ const mock = vi.hoisted(() => ({
         readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
       };
       readonly onSubmit: (membership: unknown) => void;
+      readonly reading?: boolean;
+      readonly readError?: string;
+      readonly onReadAgain?: () => void;
+      readonly pending?: boolean;
+      readonly error?: string | null;
     } | null,
   },
 }));
@@ -163,7 +171,7 @@ vi.mock("./ZeropsAccountData", () => ({
     mock.noAccountData
       ? null
       : {
-          moveOffers: () => Promise.resolve(mock.moveTo),
+          moveOffers: () => mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo),
           handoverCandidates: (projectId: string) => {
             mock.handoverAsked.push(projectId);
             return mock.handoverAnswer();
@@ -200,7 +208,7 @@ vi.mock("./accountInvalidations", () => ({
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
     activeOrganization: {
-      id: "org-acme",
+      id: mock.organizationId,
       membershipId: "member-ada",
       name: "Acme",
       roleCode: mock.roleCode,
@@ -236,7 +244,10 @@ vi.mock("./accountOperations", () => ({
       }
     },
     // A press's writes: none is answered here.
-    run: async () => undefined,
+    run: async (intent: { readonly kind: string; readonly name?: string }) => {
+      if (intent.kind === "create-app") return { appId: (await mock.createApp(intent.name)).id };
+      return undefined;
+    },
   }),
 }));
 // The account's runtime: no platform command is answered here.
@@ -304,6 +315,7 @@ vi.mock("./accountHq", async (original) => ({
     completeProjectDeletion: mock.completeProjectDeletion,
     mateKey: async () => {
       mock.keyReads++;
+      if (mock.keyAnswer !== null) return mock.keyAnswer();
       if (mock.mateKeyFailure) throw new Error("HQ is unavailable");
       return mock.mateKey;
     },
@@ -394,8 +406,10 @@ beforeEach(() => {
   mock.threads = [];
   mock.restartDialog.current = null;
   mock.roleCode = "OWNER";
+  mock.organizationId = "org-acme";
   mock.mateOffers = () => OWNER_OFFERS;
   mock.moveTo = { acme: KINDS, new: KINDS };
+  mock.moveAnswer = null;
   mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.pressElsewhere = () => "stopped";
@@ -417,6 +431,7 @@ beforeEach(() => {
   mock.noAccountData = false;
   mock.reread.mockReset();
   mock.mateKey = null;
+  mock.keyAnswer = null;
   mock.deleteDialog.current = null;
   mock.moveDialog.current = null;
   mock.updateMate.mockReset();
@@ -1496,9 +1511,122 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     });
     expect(verbs(named).map((verb) => verb.id)).not.toContain("finish-rename");
   });
+
+  it("offers no previous account's rename recovery to the next account", async () => {
+    mock.renameProject.mockRejectedValueOnce(new Error("No access."));
+    await pressMove(SHOP);
+    expect(verbs(named).map((verb) => verb.id)).toContain("finish-rename");
+    act(() => {
+      closeAccountLifetime();
+      openAccountLifetime("user-eva");
+    });
+    expect(verbs(named).map((verb) => verb.id)).not.toContain("finish-rename");
+  });
+
+  it("sends one Move and keeps its failure in the review", async () => {
+    let refuse!: (cause: Error) => void;
+    mock.moveProject.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    mount();
+    await act(async () =>
+      verbs(named)
+        .find((verb) => verb.id === "move")!
+        .onSelect(),
+    );
+    await act(async () => {
+      const submit = mock.moveDialog.current!.onSubmit;
+      submit({ kind: "group", appId: "acme", role: "dev" });
+      submit({ kind: "group", appId: "acme", role: "dev" });
+    });
+    expect(mock.moveProject).toHaveBeenCalledTimes(1);
+    expect(mock.moveDialog.current?.pending).toBe(true);
+    await act(async () =>
+      refuse(new Error("The held environment changed. Read its placement again.")),
+    );
+    expect(mock.moveDialog.current?.pending).toBe(false);
+    expect(mock.moveDialog.current?.error).toContain("held environment changed");
+    expect(mock.renameProject).not.toHaveBeenCalled();
+  });
+
+  it("does not move or rename after a new-project answer reaches a later account", async () => {
+    let answer!: (app: { id: string }) => void;
+    mock.createApp.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    mount();
+    await act(async () =>
+      verbs(named)
+        .find((verb) => verb.id === "move")!
+        .onSelect(),
+    );
+    await act(async () => mock.moveDialog.current!.onSubmit(SHOP));
+    await act(async () => {
+      closeAccountLifetime();
+      openAccountLifetime("user-eva");
+      answer({ id: "app-shop" });
+    });
+    expect(mock.moveProject).not.toHaveBeenCalled();
+    expect(mock.renameProject).not.toHaveBeenCalled();
+  });
 });
 
 describe("useMateActions — Move, for the person who made the Mate", () => {
+  it.each([false, true])(
+    "shows a failed destination read, with retry only for a transient failure (%s)",
+    async (refused) => {
+      mock.moveAnswer = () =>
+        Promise.reject({
+          outcome: refused ? "definitive-refusal" : "transient",
+          message: "HQ cannot list destinations",
+        });
+      mount();
+      await act(async () =>
+        verbs(FEN)
+          .find((verb) => verb.id === "move")!
+          .onSelect(),
+      );
+      expect(mock.moveDialog.current?.readError).toContain("HQ cannot list destinations");
+      expect(mock.moveDialog.current?.choices.apps).toEqual([]);
+      expect(typeof mock.moveDialog.current?.onReadAgain).toBe(refused ? "undefined" : "function");
+    },
+  );
+
+  it.each(["account", "organization"] as const)(
+    "does not open old destination choices after changing %s",
+    async (changed) => {
+      let answer!: (choices: typeof mock.moveTo) => void;
+      mock.moveAnswer = () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        });
+      mount();
+      await act(async () =>
+        verbs(FEN)
+          .find((verb) => verb.id === "move")!
+          .onSelect(),
+      );
+      await act(async () => {
+        if (changed === "account") {
+          closeAccountLifetime();
+          openAccountLifetime("user-eva");
+        } else {
+          mock.organizationId = "org-eva";
+          mounted.at(-1)!.update(<Probe />);
+        }
+      });
+      await act(async () => {
+        answer(mock.moveTo);
+      });
+      expect(mock.moveDialog.current?.choices.apps).toEqual([]);
+    },
+  );
   it("offers Change project or role to a member with no org access who owns the Mate's project", () => {
     mock.roleCode = "NO_ACCESS";
     // HQ lets its maker keep it a Mate in its application, and nothing more.
@@ -1761,6 +1889,25 @@ describe("useMateActions — deletion failures finish visibly", () => {
         .onSelect();
     });
   };
+
+  it("sends no deletion preparation or destructive write after the account changes during key lookup", async () => {
+    let answer!: (key: string) => void;
+    mock.keyAnswer = () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    openDelete();
+    await confirm();
+    await act(async () => {
+      closeAccountLifetime();
+      openAccountLifetime("user-eva");
+      answer("tok-fen");
+    });
+    expect(mock.prepareProjectDeletion).not.toHaveBeenCalled();
+    expect(mock.deleteProject).not.toHaveBeenCalled();
+    expect(mock.completeProjectDeletion).not.toHaveBeenCalled();
+    expect(mock.deletedTokens).toEqual([]);
+  });
 
   it("removes connection demand before the delete runs and keeps it off through cleanup", async () => {
     let finish!: () => void;

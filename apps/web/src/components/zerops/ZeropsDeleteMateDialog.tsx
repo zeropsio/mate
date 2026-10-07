@@ -98,16 +98,31 @@ export function ZeropsDeleteMateForm({
           {cleanup ? "Close" : "Cancel"}
         </Button>
         <Button
+          aria-label={
+            pending
+              ? cleanup
+                ? "Finishing deletion…"
+                : words.pending
+              : cleanup
+                ? "Try again"
+                : words.submit
+          }
           aria-busy={pending || undefined}
           disabled={!confirmed || pending}
           type="submit"
           variant="destructive"
         >
           <span className="grid">
-            <span className={cn("col-start-1 row-start-1", pending && "invisible")}>
+            <span
+              aria-hidden={pending}
+              className={cn("col-start-1 row-start-1", pending && "invisible")}
+            >
               {cleanup ? "Try again" : words.submit}
             </span>
-            <span className={cn("col-start-1 row-start-1", !pending && "invisible")}>
+            <span
+              aria-hidden={!pending}
+              className={cn("col-start-1 row-start-1", !pending && "invisible")}
+            >
               {cleanup ? "Finishing deletion…" : words.pending}
             </span>
           </span>

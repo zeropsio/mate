@@ -2,9 +2,10 @@
  * Handing a Mate over (E2E F8): the list is the people HQ answers, and nobody is picked until the
  * person picks — pressing *Hand it over* without looking once handed a Mate to a token.
  */
-import type { ReactElement } from "react";
+import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { create } from "react-test-renderer";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
 import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
@@ -83,5 +84,34 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);
     expect(html).not.toMatch(/<option(?=[^>]*selected="")[^>]*value="cu-/u);
     expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Hand it over/u);
+  });
+
+  it("withholds a selected person when HQ no longer offers them", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const onSubmit = vi.fn();
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(form({ onSubmit }));
+    });
+    try {
+      act(() =>
+        tree.root.findByType("select").props.onChange({ target: { value: EVA.clientUserId } }),
+      );
+      act(() => tree.update(form({ onSubmit, candidates: [ADA] })));
+      act(() => tree.root.findByType("form").props.onSubmit({ preventDefault: () => {} }));
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(tree.root.findByType("select").props.value).toBe("");
+    } finally {
+      act(() => tree.unmount());
+    }
+  });
+
+  it("explains that transfer removes old owner grants and does not transfer personal agent sign-in", () => {
+    const html = renderToStaticMarkup(form({ pending: true }));
+    expect(html).toContain("single owner");
+    expect(html).toContain("Previous owner grants are removed");
+    expect(html).toContain("Personal agent");
+    expect(html).toContain("logins stay with their signer");
+    expect(html).toMatch(/<select[^>]*disabled=""/u);
   });
 });
