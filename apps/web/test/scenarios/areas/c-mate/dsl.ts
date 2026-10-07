@@ -1,4 +1,5 @@
 import type { KeyInput } from "puppeteer-core";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
@@ -6,6 +7,7 @@ import { visibleText } from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
+const modifier = HostProcessPlatform.defaultValue() === "darwin" ? "Meta" : "Control";
 
 export function mateChat(
   s: Pick<Scenario, "page" | "drivers" | "web"> & { when: Pick<Scenario["when"], "conversation"> },
@@ -177,9 +179,9 @@ export function mateChat(
         }),
       shortcut: (key: KeyInput) =>
         Effect.promise(async () => {
-          await page.keyboard.down("Meta");
+          await page.keyboard.down(modifier);
           await page.keyboard.press(key);
-          await page.keyboard.up("Meta");
+          await page.keyboard.up(modifier);
         }),
       key: (key: KeyInput) => Effect.promise(() => page.keyboard.press(key)),
       mention: (token: string) =>
@@ -315,10 +317,16 @@ export function mateChat(
         Effect.promise(async () => {
           const input = page.locator(composer).setTimeout(8000);
           await (await input.waitHandle()).focus();
-          await page.keyboard.down("a", { commands: ["selectAll"] });
-          await page.keyboard.up("a");
+          await page.keyboard.down(modifier);
+          await page.keyboard.press("a");
+          await page.keyboard.up(modifier);
           await page.keyboard.press("Backspace");
           await page.keyboard.type(message);
+          await page.waitForFunction(
+            (message) => document.activeElement?.textContent === message,
+            { timeout: 8000, polling: "raf" },
+            message,
+          );
           await page.keyboard.press("Enter");
         }),
     },
