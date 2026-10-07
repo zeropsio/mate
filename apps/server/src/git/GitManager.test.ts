@@ -2119,6 +2119,49 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
+  it.effect.each([
+    { setting: "none" as const, option: undefined, checkedOut: false },
+    { setting: "recursive" as const, option: undefined, checkedOut: true },
+    { setting: "none" as const, option: "recursive" as const, checkedOut: true },
+  ])(
+    "a new worktree follows the environment's submodule setting unless the caller names one ($setting, option $option)",
+    ({ setting, option, checkedOut }) =>
+      Effect.gen(function* () {
+        // Git refuses `file:` submodule transports by default; a local fixture
+        // needs the env allowance.
+        const previousAllowedProtocol = process.env.GIT_ALLOW_PROTOCOL;
+        process.env.GIT_ALLOW_PROTOCOL = "file";
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            if (previousAllowedProtocol === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+            else process.env.GIT_ALLOW_PROTOCOL = previousAllowedProtocol;
+          }),
+        );
+        const sharedDir = yield* makeTempDir("t3code-git-manager-submodule-");
+        yield* initRepo(sharedDir);
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        yield* runGit(repoDir, ["submodule", "add", sharedDir, "shared"]);
+        yield* runGit(repoDir, ["commit", "-m", "add submodule"]);
+        const worktreePath = NodePath.join(
+          yield* makeTempDir("t3code-git-manager-worktrees-"),
+          "wt",
+        );
+
+        const { manager } = yield* makeManager({
+          serverSettings: { worktreeSubmodules: setting },
+        });
+        yield* manager.createWorktree(
+          { cwd: repoDir, refName: "main", newRefName: "feature/submodules", path: worktreePath },
+          option === undefined ? undefined : { submodules: option },
+        );
+
+        expect(NodeFS.existsSync(NodePath.join(worktreePath, "shared", "README.md"))).toBe(
+          checkedOut,
+        );
+      }),
+  );
+
   it.effect.each([undefined, ["README.md"]])(
     "a failed generation preserves staging changed while generating (paths: %s)",
     (filePaths) =>
