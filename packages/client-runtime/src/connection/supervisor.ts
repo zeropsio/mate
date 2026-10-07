@@ -86,6 +86,11 @@ type AttemptOutcome =
       readonly generation: number;
       readonly stable: boolean;
       readonly resetRetry: boolean;
+      /**
+       * A long mobile resume ended it. Only that reconnects through an offline report; a relay
+       * token running out also resets the ladder, but waits for the network like any other.
+       */
+      readonly longResume?: boolean;
     }
   | {
       readonly _tag: "Failure";
@@ -877,6 +882,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         generation: previousGeneration,
         stable: false,
         resetRetry: establishment.resetRetry,
+        longResume: establishment.resetRetry,
       } satisfies AttemptOutcome;
     }
     if (establishment._tag === "TimedOut") {
@@ -956,6 +962,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             generation: activeGeneration,
             stable,
             resetRetry: connectedEvent.exit.value,
+            longResume: connectedEvent.exit.value,
           } satisfies AttemptOutcome;
         }
         return yield* recordConnectionLost(
@@ -1089,7 +1096,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     };
     // Set after a long resume ends an attempt or a session. The fresh attempt
     // runs even while the network reports offline: the report is often wrong,
-    // and the replaced session must not leave the client offline.
+    // and the replaced session must not leave the client offline. A relay token
+    // running out also restarts the ladder but is no resume: it waits for the network.
     let replacing = false;
 
     for (;;) {
@@ -1136,7 +1144,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       if (outcome._tag === "Interrupted") {
         if (outcome.resetRetry) {
           resetRetryLadder();
-          replacing = true;
+          replacing = outcome.longResume === true;
         }
         continue;
       }

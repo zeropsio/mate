@@ -1725,6 +1725,47 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  // Only a long resume reconnects through an offline report; a relay token
+  // running out while offline leaves the face offline, with no attempt made.
+  it.effect("a relay token expiring while offline stays offline without a new attempt", () =>
+    Effect.gen(function* () {
+      const tokenLifetimeMs = DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS * 2;
+      const harness = yield* makeHarness({
+        prepare: (attempt) =>
+          attempt === 1
+            ? Effect.succeed({
+                ...PREPARED_CONNECTION,
+                target: RELAY_TARGET,
+                httpAuthorization: {
+                  _tag: "Dpop",
+                  accessToken: "access-token-1",
+                  expiresAtEpochMs: tokenLifetimeMs,
+                },
+              })
+            : Effect.fail(transient("Authorization refresh failed.")),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.setNetworkStatus("offline");
+      yield* awaitState(supervisor.state, (state) => state.phase === "offline");
+      yield* TestClock.adjust(tokenLifetimeMs - 1);
+      yield* Effect.yieldNow;
+      const preparedBeforeExpiry = yield* Ref.get(harness.prepareCount);
+
+      yield* TestClock.adjust(1);
+      for (let attempt = 0; attempt < 20; attempt += 1) yield* Effect.yieldNow;
+      yield* TestClock.adjust("15 seconds");
+      for (let attempt = 0; attempt < 20; attempt += 1) yield* Effect.yieldNow;
+
+      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+      expect(yield* Ref.get(harness.prepareCount)).toBe(preparedBeforeExpiry);
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("offline");
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("interrupts relay setup when credentials change", () =>
     Effect.gen(function* () {
       const firstAttemptStarted = yield* Deferred.make<void>();
