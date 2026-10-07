@@ -273,7 +273,12 @@ const admitNext = (b: StepBuilder): void => {
   const run = b.run(next);
   if (needsPrepare(run) && run.prepare === "none") {
     // The workspace is captured before the agent starts work (D7): the send waits on it.
-    b.effect("run.prepare", run.id, 1, run.id, { runId: run.id });
+    b.effect("run.prepare", run.id, 1, run.id, {
+      runId: run.id,
+      instanceId: b.state.agent?.instanceId ?? null,
+      principal: run.principal,
+      trigger: run.trigger,
+    });
     return;
   }
   dispatch(b, run);
@@ -407,6 +412,7 @@ const endRun = (
     b.effect("workspace.finish", run.id, 1, run.id, {
       runId: run.id,
       started: run.startedAt !== null,
+      providerTurnId: b.run(run.id).providerTurnId,
     });
   }
 };

@@ -197,7 +197,13 @@ const transitions: ReadonlyArray<Row> = [
     events: ["RunQueued", "ItemOpened", "RunAdmitted", "EffectRequested"],
     effects: ["run.prepare"],
     run: { n: 1, state: "admitted", principal: ana },
-    also: (scene) => expect(scene.effects[0]).toMatchObject({ lane: "side", class: "replay-safe" }),
+    also: (scene) =>
+      expect(scene.effects[0]).toMatchObject({
+        lane: "side",
+        class: "replay-safe",
+        // Admission is asked at the capture, for whom the run acts and why it runs.
+        payload: { runId: r(1), principal: ana, trigger: { kind: "person" } },
+      }),
   },
   {
     name: "a captured run asks for a session when none is open",
@@ -253,7 +259,10 @@ const transitions: ReadonlyArray<Row> = [
     when: turnEnded,
     effects: ["workspace.finish"],
     also: (scene) =>
-      expect(scene.effects[0]).toMatchObject({ payload: { runId: r(1), started: true } }),
+      expect(scene.effects[0]).toMatchObject({
+        // The release finds the capture by the turn the run's message went into.
+        payload: { runId: r(1), started: true, providerTurnId: null },
+      }),
   },
   {
     name: "an opened session sends the admitted run",
