@@ -464,31 +464,6 @@ mobile. Everything else in a row is filled by the slice that builds it.
   - _Phrase source:_ `fixRequest.ts` (`useAskMateToFix`, `fixRequestPrompt`); `fixMates.ts`
     (`fixMatesOf`); `useAskMate.ts`
   - _Lands:_ landed 2026-09-29 (pass 16)
-- **HQ card** — web
-  - _Anatomy (fixed part):_ the organization's HQ as the projects page's quiet end, a `FlatCard`
-    in place of the old Tools line. Its header line: _HQ_ (for an owner or an admin a button with
-    a chevron that opens the card), its state as a `StatusDot` in sentence form, then in the second
-    ink, for an owner or an admin, the day of the Core it runs ("Core 2026-10-04") and its last
-    backup ("Last backup today 14:00", "No backup yet"), then for everybody what HQ holds ("4
-    projects · 9 Mates · 3 online", _online_ only while HQ's view of the Mates is live), then for
-    an owner or an admin the update's offer (_Update available_ · _Up to date_, `ZeropsHqUpdate`).
-    Under it, for an owner or an admin, what is wrong — a line each in the attention ink: its
-    database, repositories it withholds, its backup, its key for deploy tokens, a service Zerops
-    does not run, a failed update. Opened: `MicroLabel` rows _Core_ (the Core it runs whole, and
-    where an update stands) and _Services_ (each of HQ's services as `StatusDot` + "hq · Active"),
-    then _Open in Zerops_. Every fact comes from a read already made — HQ's structure stream, which
-    says where HQ stands, the Core it runs and how its parts stand (an older Core's health read once
-    per stream) — but HQ's services and builds, read from Zerops once each time the card is
-    opened, as HQ's update reads them: the projects page draws none of HQ's stops, so its inventory
-    holds none of HQ's services. A read that failed says so, and nothing is read again on its own
-  - _States:_ unknown (_HQ_ alone, before its health is read) · healthy (_Healthy_ to an owner or
-    an admin, _Running_ to anybody else) · degraded (_Needs attention_, or _Can't check Zerops
-    right now_; an owner's or an admin's only) · down (_Unavailable since 14:02_) · updating
-    (_Updating_, the stepped pulse; an owner's or an admin's only)
-  - _Phrase source:_ `ZeropsHqCard.logic.ts` (`hqCardView`); `ZeropsHqUpdate.logic.ts`
-    (`coreLabel`, `coreDayLabel`, `hqUpdateWords`, `hqUpdateTrigger`)
-  - _Lands:_ landed 2026-10-04; its Core and backup on the header line, HQ's services read when
-    opened 2026-10-04
 
 ## 2. Glossary — the words the UI uses
 
