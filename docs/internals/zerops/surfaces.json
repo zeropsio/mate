@@ -316,12 +316,17 @@
         "apps/web/src/components/zerops/vault/VaultNotLive.tsx",
         "apps/web/src/components/zerops/vault/VaultPanel.tsx",
         "apps/web/src/components/zerops/vault/VaultPanelContainer.tsx",
-        "apps/web/src/components/zerops/vault/VaultRow.tsx"
+        "apps/web/src/components/zerops/vault/VaultRow.tsx",
+        "apps/web/src/components/zerops/vault/StopVault.tsx"
       ],
       "entryPoints": [
         {
           "kind": "right-panel-tab",
           "value": "Vault (shortcut E)"
+        },
+        {
+          "kind": "inline",
+          "value": "Vault beside a stage or production page (its header's Vault toggle)"
         }
       ],
       "clients": {
@@ -364,7 +369,8 @@
         "apps/web/src/components/zerops/vault/VaultPanel.test.tsx",
         "apps/web/src/components/zerops/vault/vault.logic.test.ts",
         "apps/web/src/components/zerops/vault/vaultText.logic.test.ts",
-        "apps/web/src/components/zerops/vault/vaultOutcome.logic.test.ts"
+        "apps/web/src/components/zerops/vault/vaultOutcome.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx"
       ],
       "captures": []
     },
