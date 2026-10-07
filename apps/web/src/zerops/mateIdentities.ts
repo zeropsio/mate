@@ -1,23 +1,5 @@
-/**
- * Who lives in each environment, for the surfaces that show one conversation
- * rather than the account: the Mate's name, its face (a colour and a shape),
- * and the project it belongs to, keyed by the environment the conversation
- * runs in.
- *
- * Read off the candidate list — the one source for names, tags and faces
- * (`hasMate`, its project's name, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
- * `zeropsMatesAtom` (`useZeropsMates.ts`), so the chat header, an empty
- * conversation and a draft's headline never load anything themselves and can
- * never disagree with the left menu about who a Mate is.
- *
- * Who lives where is known from the project's tags and the container's
- * origin, not from its socket: `registeredOrigins` maps every registered
- * environment's origin to its id, so a Mate is known the moment the project
- * list is read, seconds before its socket is up.
- */
+/** Web presentation helpers for HQ identities and a Mate's explicit creation record. */
 import {
-  assignCandidateMateTints,
-  hasMate,
   mateArriving,
   mateArrivingUntil,
   mateShapeOf,
@@ -29,13 +11,11 @@ import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import type { ZeropsEnvironmentEntry } from "../state/zerops";
-import { rowEnvironment } from "./environmentOrigins";
 
 export interface ZeropsMateIdentity {
   /** The exact container behind this environment; absent for a row that names no service. */
@@ -51,10 +31,8 @@ export interface ZeropsMateIdentity {
   /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
   readonly projectUrl: string;
   /**
-   * Whether the Mate's container is connected right now. A Mate is known from
-   * its project's tags and its container's origin — seconds before its socket
-   * is up — so a surface that draws its face must ask this rather than assume
-   * it is awake.
+   * Whether this tab is connected to the Mate. HQ names it before that link opens,
+   * so its name and face never imply a connected socket.
    */
   readonly connected: boolean;
   /** Whether the listing has its container running, independently of this tab's socket. */
@@ -80,27 +58,7 @@ export function mateIdentityPose(
   return { arriving: mateArriving(mate.arrivingUntil, nowMs) };
 }
 
-const NO_ORIGINS: ReadonlyMap<string, EnvironmentId> = new Map();
-
-export function zeropsMateIdentities(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-  registeredOrigins: ReadonlyMap<string, EnvironmentId> = NO_ORIGINS,
-): ReadonlyMap<EnvironmentId, ZeropsMateIdentity> {
-  const tints = assignCandidateMateTints(candidates);
-  const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
-  for (const candidate of candidates) {
-    const environmentId = rowEnvironment(candidate, registeredOrigins);
-    if (environmentId === undefined || mates.has(environmentId) || !hasMate(candidate)) continue;
-    mates.set(environmentId, zeropsMateIdentityOf(candidate, tints));
-  }
-  return mates;
-}
-
-/**
- * One Mate as its candidate says it, in the tint the account deals it (`assignCandidateMateTints`
- * over every candidate): what `zeropsMateIdentities` keys by environment, for a surface that has
- * the Mate before its environment — its own view while it comes up.
- */
+/** A creation page's candidate before HQ registers it; route identities come from HQ. */
 export function zeropsMateIdentityOf(
   candidate: ZeropsCandidate,
   tints: ReadonlyMap<string, MateTintId>,
@@ -178,7 +136,7 @@ export function zeropsMateAt(
  * The directory with every environment whose own server says it runs outside
  * Zerops (its descriptor carries no `zerops`) decided: no Mate lives there,
  * whether or not the candidate list has been read. A Zerops environment, or
- * one whose server has not answered yet, waits on a list that reaches it.
+ * one whose server has not answered yet, waits for HQ to name its Mate.
  */
 export function withEnvironmentsOutsideZerops(
   directory: ZeropsMateDirectory,
@@ -191,27 +149,6 @@ export function withEnvironmentsOutsideZerops(
   if (outside.length === 0) return directory;
   const decided = new Map(directory);
   for (const { environmentId } of outside) decided.set(environmentId, null);
-  return decided;
-}
-
-/**
- * The environments these rows decide: each Mate `zeropsMateIdentities` finds,
- * and nobody in every other environment a row whose presence is read reaches.
- * A row whose presence is not read decides nothing.
- */
-export function zeropsMateDecisions(
-  rows: ReadonlyArray<CandidateRow>,
-  registeredOrigins: ReadonlyMap<string, EnvironmentId> = NO_ORIGINS,
-): ReadonlyMap<EnvironmentId, ZeropsMateIdentity | null> {
-  const decided = new Map<EnvironmentId, ZeropsMateIdentity | null>(
-    zeropsMateIdentities(rows, registeredOrigins),
-  );
-  for (const row of rows) {
-    if (row.presence !== "known") continue;
-    const environmentId = rowEnvironment(row, registeredOrigins);
-    if (environmentId !== undefined && !decided.has(environmentId))
-      decided.set(environmentId, null);
-  }
   return decided;
 }
 

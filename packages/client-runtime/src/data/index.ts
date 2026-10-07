@@ -468,3 +468,6 @@ export { mateHealthAtom } from "./reads.ts";
 
 export { makeMateHealthWire } from "./adapters/mateHealth.ts";
 export { startMateHealth } from "./account.ts";
+
+export { hqMateIdentities, type HqMateIdentity } from "./projections/hqMateIdentity.ts";
+export { shownHqMateIdentitiesAtom } from "./reads.ts";

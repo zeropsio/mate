@@ -1,3 +1,4 @@
+import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { projectsScope } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
@@ -69,7 +70,7 @@ function registered(input: {
  */
 
 /** What the account's product publishes once its inventory is granted; its store's roster. */
-function publishAccount(registry: AtomRegistry.AtomRegistry) {
+function publishAccount(registry: AtomRegistry.AtomRegistry, withHq = true) {
   const store = mountRoster(registry, organization.organizationId, [PROJECT], {
     services: [{ ...ZCP, projectId: PROJECT.id }],
   });
@@ -78,7 +79,23 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
     organizationStatus: "selected",
     activeOrganization: organization,
   });
+  if (withHq) seedMate(store, PROJECT.name);
   return store;
+}
+
+function seedMate(store: ReturnType<typeof mountRoster>, name: string) {
+  seedHqNavigation(store, organization.organizationId, {
+    structure: {
+      apps: [],
+      ungrouped: [{ projectId: PROJECT.id, name, mate: { face: "sky:seal" } }],
+    },
+    mates: {
+      [PROJECT.id]: {
+        presence: { online: true, since: "2026-10-07T00:00:00Z", overview: "live" },
+        identity: { environmentId: FEN, serverVersion: "0.14.43", update: null },
+      },
+    },
+  });
 }
 
 const whoLivesAt = (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
@@ -181,6 +198,8 @@ describe("who lives in each environment, derived", () => {
         },
       ],
     });
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe(PROJECT.name);
+    seedMate(store, "renamed");
     expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe("renamed");
     expect(renders).toBe(1);
     expect(contentRenders).toBe(2);
@@ -193,10 +212,18 @@ describe("who lives in each environment, derived", () => {
     publishAccount(appAtomRegistry);
 
     expect(whoLivesAt(appAtomRegistry, FEN)).toBe("mate");
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.serviceId).toBe(ZCP.id);
     // Another organization's Mate: its list has not been read.
     expect(whoLivesAt(appAtomRegistry, ELSEWHERE)).toBe("unknown");
     // A server that says it runs outside Zerops holds nobody without any list.
     expect(whoLivesAt(appAtomRegistry, OUTSIDE)).toBe("nobody");
+  });
+
+  it("a listed and connected container stays unknown until HQ names its Mate", () => {
+    openAccount("user-a");
+    publishAccount(appAtomRegistry, false);
+    expect(appAtomRegistry.get(heldCandidateRowsAtom).length).toBeGreaterThan(0);
+    expect(whoLivesAt(appAtomRegistry, FEN)).toBe("unknown");
   });
 
   it("a new sign-in never sees the previous account's names or Mates", () => {
