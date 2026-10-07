@@ -4,6 +4,8 @@ import * as NodeURL from "node:url";
 export default defineConfig({
   root: NodeURL.fileURLToPath(new URL("../../", import.meta.url)),
   test: {
+    // Keep PostgreSQL fixture startups serial across both test projects.
+    maxWorkers: 1,
     projects: [
       {
         test: {
