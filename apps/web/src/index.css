@@ -5184,6 +5184,26 @@ button.run-bar:focus-visible {
   transition: box-shadow 150ms ease;
 }
 /* Failed bytes and failed signing hold the picture's reserved room. */
+/* A quiet frame survives fetching and decoding; the image keeps its reserved size. */
+.asset-image-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: 10px;
+}
+.asset-image-frame[data-image-pending] {
+  background: var(--color-muted);
+}
+.asset-image-frame > img {
+  transition: opacity 140ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-image-frame > img {
+    transition: none;
+  }
+}
+
 .asset-image-unavailable {
   display: flex;
   flex-direction: column;
