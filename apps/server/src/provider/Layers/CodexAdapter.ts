@@ -1903,7 +1903,11 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               );
               // The failed `turn/completed` repeats this sentence and is answered
               // below; relaying both would show the limit twice.
-              if (errorPayload?.error.codexErrorInfo === "usageLimitExceeded") return;
+              if (
+                errorPayload?.error.codexErrorInfo === "usageLimitExceeded" ||
+                errorPayload?.error.codexErrorInfo === "rateLimitExceeded"
+              )
+                return;
             }
 
             let usageLimitError: ProviderRuntimeEvent | undefined;
@@ -1918,7 +1922,10 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 completedPayload?.turn.status === "failed"
                   ? completedPayload.turn.error
                   : undefined;
-              if (turnError?.codexErrorInfo === "usageLimitExceeded") {
+              if (
+                turnError?.codexErrorInfo === "usageLimitExceeded" ||
+                turnError?.codexErrorInfo === "rateLimitExceeded"
+              ) {
                 usageLimitMessage = codexUsageLimitMessage(rateLimits, event.createdAt);
                 const blocked = codexUsageLimitBlock(rateLimits, event.createdAt);
                 if (blocked)

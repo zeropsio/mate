@@ -2411,7 +2411,11 @@ function codexRateLimitsNotification(input: {
   };
 }
 
-function codexUsageLimitTurnFailed(id: string, turnId = "turn-limit"): ProviderEvent {
+function codexUsageLimitTurnFailed(
+  id: string,
+  turnId = "turn-limit",
+  codexErrorInfo: "usageLimitExceeded" | "rateLimitExceeded" = "usageLimitExceeded",
+): ProviderEvent {
   return {
     id: asEventId(id),
     kind: "notification",
@@ -2426,7 +2430,7 @@ function codexUsageLimitTurnFailed(id: string, turnId = "turn-limit"): ProviderE
         id: turnId,
         items: [],
         status: "failed",
-        error: { message: CODEX_OUT_OF_CREDITS, codexErrorInfo: "usageLimitExceeded" },
+        error: { message: CODEX_OUT_OF_CREDITS, codexErrorInfo },
       },
     },
   };
@@ -2600,6 +2604,39 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
       NodeAssert.equal(runtimeError?.payload.message, expected);
       const completed = events.find((event) => event.type === "turn.completed");
       NodeAssert.equal(completed?.payload.errorMessage, expected);
+    }),
+  );
+
+  it.effect("a Codex rate refusal names the provider without inventing a reset", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startUsageLimitRuntime();
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* runtime.emit(
+        codexErrorNotification({
+          id: "evt-rate-refusal",
+          message: "Rate limit exceeded",
+          codexErrorInfo: "rateLimitExceeded",
+        }),
+      );
+      yield* runtime.emit(
+        codexUsageLimitTurnFailed("evt-rate-refused-turn", "turn-limit", "rateLimitExceeded"),
+      );
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      NodeAssert.deepStrictEqual(
+        events.map((event) => event.type),
+        ["runtime.error", "turn.completed"],
+      );
+      const runtimeError = events.find((event) => event.type === "runtime.error");
+      NodeAssert.equal(
+        runtimeError?.payload.message,
+        "Codex usage limit reached. Send the message again once the limit resets.",
+      );
+      const completed = events.find((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed?.payload.errorMessage, runtimeError?.payload.message);
     }),
   );
 
