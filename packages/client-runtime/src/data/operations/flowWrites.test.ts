@@ -400,6 +400,22 @@ describe("a flow's writes, executed by HQ", () => {
     }),
   );
 
+  it.effect("a colleague's merge ends a pending Close without claiming it was closed", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      detail(store, "changes", [change("open")]);
+      const { operations } = operationsOf(store, async () => change("closed"));
+      yield* operations.submit(CLOSE);
+      detail(store, "changes", [change("merged")]);
+      expect(progress(store)).toEqual({
+        stage: "done",
+        operationId: "web#7",
+        outcome: "failed",
+        reason: "The change was merged instead of closed.",
+      });
+    }),
+  );
+
   it.effect("after a lost answer adopts a merge HQ shows landed", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

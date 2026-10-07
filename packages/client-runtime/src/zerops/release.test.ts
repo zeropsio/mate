@@ -9,17 +9,13 @@ import {
   releaseRunBy,
   nameStopByRelease,
   releaseEntries,
-  releaseGate,
   releaseCandidate,
   releaseInFlight,
-  releaseInFlightReason,
   releaseUncheckedReason,
-  releaseOffer,
   releaseRow,
   releaseStalled,
   releaseWord,
   RELEASE_CHECKING,
-  RELEASE_NO_PRODUCTION,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
   shortCommit,
@@ -27,12 +23,9 @@ import {
   type FlowReleaseRow,
 } from "./release.ts";
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
-import type { MovedCommits } from "./releaseCompare.ts";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
-/** What goes live, compared: nothing beyond what each case's own entries say. */
-const COMPARED: MovedCommits = { state: "known", moved: [] };
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
 
@@ -48,7 +41,7 @@ describe("a release's name", () => {
 });
 
 describe("what Release shows before it is pressed", () => {
-  it("says, per service, what the stage runs against what production runs", () => {
+  it("says, per service, what main holds against what production runs", () => {
     expect(
       compareForRelease({
         candidate: new Map([
@@ -66,13 +59,13 @@ describe("what Release shows before it is pressed", () => {
     ]);
   });
 
-  it("names a service production has but the stage has not deployed to", () => {
+  it("names a service production runs but main has no commit for", () => {
     expect(
       compareForRelease({ candidate: new Map(), production: new Map([["api", API]]) }),
     ).toEqual([{ service: "api", candidate: undefined, production: "3f9c1b2", changed: false }]);
   });
 
-  it("lists every service the stage has a commit for, changed or not", () => {
+  it("lists every service main has a commit for, changed or not", () => {
     expect(
       releaseEntries(
         new Map([
@@ -89,247 +82,7 @@ describe("what Release shows before it is pressed", () => {
 });
 
 /** HQ's rule, in its words (`releasePermission`, `hqRefusalWords`). */
-const RELEASER = { allowed: true } as const;
 const NOT_RELEASER = { allowed: false, reason: "Only somebody with Basic user can." } as const;
-
-describe("the gate HQ's rule decides", () => {
-  const entries = [{ service: "api", commit: API }];
-
-  it.each([
-    { name: "a releaser with something to release", permission: RELEASER, entries, allowed: true },
-    {
-      name: "somebody HQ's rule refuses, in its words",
-      permission: NOT_RELEASER,
-      entries,
-      allowed: false,
-      reason: NOT_RELEASER.reason,
-    },
-    {
-      name: "somebody HQ's rule cannot be asked about yet",
-      permission: undefined,
-      entries,
-      allowed: false,
-      reason: RELEASE_CHECKING,
-    },
-    {
-      name: "a releaser with nothing merged",
-      permission: RELEASER,
-      entries: [],
-      allowed: false,
-      reason: RELEASE_NOTHING_MERGED,
-    },
-    {
-      name: "a releaser of an application with no production",
-      permission: RELEASER,
-      entries,
-      hasProduction: false,
-      allowed: false,
-      reason: RELEASE_NO_PRODUCTION,
-    },
-    {
-      name: "a releaser of an application whose production is there",
-      permission: RELEASER,
-      entries,
-      hasProduction: true,
-      allowed: true,
-    },
-  ])("for $name", ({ permission, entries: list, allowed, reason, hasProduction }) => {
-    const gate = releaseGate({ permission, entries: list, hasProduction });
-    expect(gate.allowed).toBe(allowed);
-    if (!gate.allowed) expect(gate.reason).toBe(reason);
-  });
-
-  // What goes live is what the review shows before the press (main C05): a release is not offered
-  // over a list still being read, nor over one HQ could not compare.
-  it.each([
-    { name: "still being read", live: { state: "reading" } as const, reason: RELEASE_CHECKING },
-    {
-      name: "not compared, in HQ's words",
-      live: { state: "failed", reason: "HQ has no such commit." } as const,
-      reason: "Can't check what can be released: HQ has no such commit.",
-    },
-  ])("holds a releaser back while what goes live is $name", ({ live, reason }) => {
-    expect(releaseGate({ permission: RELEASER, entries, live })).toEqual({
-      allowed: false,
-      reason,
-    });
-  });
-});
-
-describe("what Release offers, from what the environments run", () => {
-  const stage = new Map([
-    ["api", API],
-    ["web", WEB],
-  ]);
-
-  it("compares the stage against production, per service, and offers the next patch", () => {
-    const offer = releaseOffer({
-      live: COMPARED,
-      permission: RELEASER,
-      candidate: stage,
-      production: new Map([
-        ["api", OLD],
-        ["web", WEB],
-      ]),
-      tags: ["v1.2.0"],
-    });
-    expect(offer.gate.allowed).toBe(true);
-    expect(offer.suggestion).toBe("v1.2.1");
-    expect(offer.comparison).toEqual([
-      { service: "api", candidate: "3f9c1b2", production: "1111111", changed: true },
-      { service: "web", candidate: "77ab0e1", production: "77ab0e1", changed: false },
-    ]);
-  });
-
-  it("carries what HQ compared it would put live once known, and holds Release until then", () => {
-    const moved = {
-      repository: "apidev",
-      services: ["api"],
-      commits: [
-        {
-          sha: API,
-          subject: "Quicker gallery",
-          authorName: "Ada",
-          at: "2026-10-02T10:00:00.000Z",
-          change: null,
-        },
-      ],
-      total: 1,
-      truncated: false,
-    };
-    const offer = (live: MovedCommits) =>
-      releaseOffer({
-        permission: RELEASER,
-        candidate: stage,
-        production: new Map([["api", OLD]]),
-        tags: ["v1.2.0"],
-        live,
-      });
-    expect(offer({ state: "known", moved: [moved] })).toMatchObject({
-      gate: { allowed: true },
-      contents: [moved],
-    });
-    expect(offer({ state: "reading" })).toMatchObject({
-      gate: { allowed: false, reason: RELEASE_CHECKING },
-      contents: [],
-    });
-  });
-
-  it.each([
-    {
-      name: "a stage two services ahead of production",
-      permission: RELEASER,
-      stage,
-      production: new Map([["api", OLD]]),
-      allowed: true,
-    },
-    {
-      name: "a production already running everything main holds",
-      permission: RELEASER,
-      stage,
-      production: new Map(stage),
-      allowed: false,
-      reason: RELEASE_NOTHING_NEW_ON_MAIN,
-    },
-    {
-      name: "repositories with nothing merged",
-      permission: RELEASER,
-      stage: new Map<string, string>(),
-      production: new Map([["api", OLD]]),
-      allowed: false,
-      reason: RELEASE_NOTHING_MERGED,
-    },
-    {
-      name: "somebody who is not a releaser",
-      permission: NOT_RELEASER,
-      stage,
-      production: new Map<string, string>(),
-      allowed: false,
-      reason: NOT_RELEASER.reason,
-    },
-  ])("answers, for $name", ({ permission, stage: stageCommits, production, allowed, reason }) => {
-    const gate = releaseOffer({
-      live: COMPARED,
-      permission,
-      candidate: stageCommits,
-      production,
-      tags: [],
-    }).gate;
-    expect(gate.allowed).toBe(allowed);
-    if (!gate.allowed) expect(gate.reason).toBe(reason);
-  });
-
-  it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
-    const offer = releaseOffer({
-      live: COMPARED,
-      permission: RELEASER,
-      candidate: new Map([
-        ["api", API.toUpperCase()],
-        ["web", "hotfix"],
-      ]),
-      production: new Map(),
-      tags: [],
-    });
-    expect(offer.entries).toEqual([{ service: "api", commit: API }]);
-  });
-});
-
-/**
- * A release lists what is merged, whether or not the group has a stage (D28).
- * The owner, 2026-09-18, on a project whose stage was mid-deploy: "I hope that
- * even with stage prod release is not tied to stage in any way."
- */
-describe("a release lists what is merged", () => {
-  const main = new Map([["app", API]]);
-
-  it.each([
-    {
-      name: "a production that has never deployed",
-      candidate: main,
-      production: new Map<string, string>(),
-      allowed: true,
-    },
-    {
-      name: "a production behind main",
-      candidate: main,
-      production: new Map([["app", OLD]]),
-      allowed: true,
-    },
-    {
-      name: "a production already running main",
-      candidate: main,
-      production: new Map(main),
-      allowed: false,
-      reason: RELEASE_NOTHING_NEW_ON_MAIN,
-    },
-    {
-      name: "repositories with nothing merged",
-      candidate: new Map<string, string>(),
-      production: new Map<string, string>(),
-      allowed: false,
-      reason: RELEASE_NOTHING_MERGED,
-    },
-  ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
-    const offer = releaseOffer({
-      live: COMPARED,
-      permission: RELEASER,
-      candidate,
-      production,
-      tags: [],
-    });
-    expect(offer.gate.allowed).toBe(allowed);
-    if (!offer.gate.allowed) expect(offer.gate.reason).toBe(reason);
-    expect(offer.entries).toEqual(
-      [...candidate.entries()].map(([service, commit]) => ({ service, commit })),
-    );
-  });
-
-  it("never says a sentence about a stage, which a release does not depend on", () => {
-    for (const reason of [RELEASE_NOTHING_MERGED, RELEASE_NOTHING_NEW_ON_MAIN]) {
-      expect(reason).not.toMatch(/stage/iu);
-    }
-  });
-});
 
 describe("what a release lists, from HQ's repositories", () => {
   const repos = [
@@ -854,18 +607,6 @@ describe("a release in flight", () => {
     expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
     expect(releaseStalled({ newest: release, rollouts })).toBe(stalled);
   });
-
-  it("keeps Release from being offered, and says which tag is on its way", () => {
-    const gate = releaseOffer({
-      live: COMPARED,
-      permission: RELEASER,
-      candidate: new Map([["api", API]]),
-      production: new Map([["api", OLD]]),
-      inFlight: "v0.1.3",
-      tags: ["v0.1.3"],
-    }).gate;
-    expect(gate).toEqual({ allowed: false, reason: releaseInFlightReason("v0.1.3") });
-  });
 });
 
 describe("a production whose version names spell short shas", () => {
@@ -890,7 +631,7 @@ describe("a production whose version names spell short shas", () => {
     taggedAt: TAGGED,
   });
 
-  it("compares the stage's commit against it as the same commit", () => {
+  it("compares main's commit against it as the same commit", () => {
     expect(
       compareForRelease({ candidate: new Map([["api", API]]), production: RUNS }).find(
         (row) => row.service === "api",

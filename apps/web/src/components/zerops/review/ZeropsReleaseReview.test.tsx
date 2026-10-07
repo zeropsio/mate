@@ -241,7 +241,6 @@ describe("a review's deploy answer belongs to its service in Where", () => {
       document.body.innerHTML = markup;
       const job = document.querySelector('[data-zerops-job-state="building"]');
       expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
-      expect(job?.closest("section")?.parentElement?.classList.contains("rv-body")).toBe(true);
       expect(document.body.textContent.match(/96e2309/g)).toHaveLength(1);
       expect(document.body.textContent).not.toContain("app is deploying");
       expect(document.body.textContent).not.toContain("Can't tell what app runs");

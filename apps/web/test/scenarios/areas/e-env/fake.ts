@@ -14,6 +14,7 @@ export const installArea: ScenarioExtension = ({ zerops }) => installBuildProtoc
 
 export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
   options: ScenarioOptions = {},
+  shape: { readonly stage?: boolean } = {},
 ) {
   const s = yield* createScenario([installArea], options);
   s.given.person("colleague", {
@@ -30,7 +31,9 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
   });
   const colleague = yield* sessionFor(core.call, "door-colleague");
   const appId = s.appIds.get("Shop")!;
-  for (const tier of ["stage", "production"] as const) {
+  const tiers =
+    shape.stage === false ? (["production"] as const) : (["stage", "production"] as const);
+  for (const tier of tiers) {
     const projectId = `Shop-${tier}`;
     yield* s.given.project(projectId, { app: "Shop", kind: tier, environmentName: tier });
     zerops.put("service-stack", {
@@ -138,7 +141,39 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     });
     expect(answer.status).toBe(201);
   });
-  return { s, merge, release, appId };
+  const removeService = (tier: "stage" | "production") => {
+    const id = `web-${tier}`;
+    zerops.remove("service-stack", id);
+    const index = zerops.world.services.findIndex((service) => service.id === id);
+    if (index !== -1) zerops.world.services.splice(index, 1);
+  };
+  const unansweredBuilds = () => {
+    let held = true;
+    zerops.handlers.unshift(async (request) =>
+      held &&
+      request.method === "PUT" &&
+      /\/app-version\/[^/]+\/build-and-deploy$/u.test(request.url.pathname)
+        ? { status: 503, body: { message: "Submission did not answer" } }
+        : undefined,
+    );
+    return () => {
+      held = false;
+    };
+  };
+  const loseObservation = () => {
+    zerops.handlers.unshift(async (request) =>
+      request.headers.authorization === "Bearer hq" &&
+      request.url.pathname.endsWith("/process/search")
+        ? { status: 403, body: { message: "Observation no longer authorized" } }
+        : undefined,
+    );
+    const follow = [...zerops.subscriptions.values()].find(
+      (r) => r.apiToken === "hq" && r.kind === "app-version",
+    );
+    expect(follow).toBeDefined();
+    zerops.sockets.get(follow!.receiver)!.close();
+  };
+  return { s, merge, release, appId, removeService, unansweredBuilds, loseObservation };
 });
 
 export const environmentFixture = environmentFixtureWith();

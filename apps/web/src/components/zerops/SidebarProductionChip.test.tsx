@@ -261,6 +261,20 @@ describe("a chip on the project's heading", () => {
 });
 
 describe("production's menu", () => {
+  it("opens the offered release review from the chip without opening the stop", () => {
+    const review = vi.fn();
+    const openStop = vi.fn();
+    const tree = mount(menu(HEALTHY, { onReviewRelease: review, onOpenStop: () => openStop }));
+    expect(surface(tree, "sidebar-production-review").children).toEqual(["Review release"]);
+    press(tree, "sidebar-production-review");
+    expect(review).toHaveBeenCalledOnce();
+    expect(openStop).not.toHaveBeenCalled();
+  });
+
+  it("shows no release verb when HQ has not offered it", () => {
+    expect(renderToStaticMarkup(menu(HEALTHY))).not.toContain("Review release");
+  });
+
   it("says the project, production, what it serves, and its state", () => {
     const html = renderToStaticMarkup(menu(FAILED));
     expect(html).toContain(">Beviro</h5>");
