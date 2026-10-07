@@ -17,9 +17,11 @@ import * as NetService from "@t3tools/shared/Net";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { assert, it } from "@effect/vitest";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as HttpRouter from "effect/unstable/http/HttpRouter";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 import * as HttpApi from "effect/unstable/httpapi/HttpApi";
@@ -38,6 +40,7 @@ import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import {
+  PersistedServerRuntimeState,
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
@@ -621,6 +624,72 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
         assert.fail(`Expected UnrecognizedOption, got ${String(optionError?._tag)}`);
       }
       assert.equal(optionError.option, "--dev-url");
+    }),
+  );
+});
+
+const encodeRuntimeState = Schema.encodeEffect(Schema.fromJsonString(PersistedServerRuntimeState));
+const pathExists = (path: string) => Effect.sync(() => NodeFS.existsSync(path));
+
+it.layer(NodeServices.layer)("mate server command safety", (it) => {
+  it.effect("rejects unknown command words without creating a home or project", () =>
+    Effect.gen(function* () {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-unknown-"));
+      const baseDir = NodePath.join(root, "home");
+      for (const word of ["projcet", "triag", "servce", "package.json", "C:new-project"]) {
+        const error = yield* runCliWithRuntime([word, "--base-dir", baseDir]).pipe(Effect.flip);
+        assert.include(String(error), `Unknown command "${word}"`);
+        assert.equal(yield* pathExists(word), word === "package.json");
+        assert.isFalse(yield* pathExists(baseDir));
+      }
+    }),
+  );
+
+  it.effect("shows help without creating state", () =>
+    Effect.gen(function* () {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-help-"));
+      const baseDir = NodePath.join(root, "home");
+      const help = yield* runCliWithRuntime(["help"]).pipe(
+        Effect.provide(
+          ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_HOME: baseDir } })),
+        ),
+        Effect.flip,
+      );
+      assert.deepInclude(help, { _tag: "ShowHelp", commandPath: ["mate"], errors: [] });
+      assert.isFalse(yield* pathExists(baseDir));
+    }),
+  );
+
+  it.effect("refuses a manual start over a live server before creating directories", () =>
+    Effect.gen(function* () {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-running-"));
+      const baseDir = NodePath.join(root, "home");
+      const stateDir = NodePath.join(baseDir, "userdata");
+      const statePath = NodePath.join(stateDir, "server-runtime.json");
+      const record = yield* encodeRuntimeState({
+        version: 1,
+        pid: process.pid,
+        port: 3773,
+        origin: "http://127.0.0.1:3773",
+        startedAt: "2026-10-01T00:00:00.000Z",
+      });
+      NodeFS.mkdirSync(stateDir, { recursive: true });
+      NodeFS.writeFileSync(statePath, record);
+      const newDirectory = NodePath.join(root, "new-project");
+      for (const args of [
+        [],
+        ["start"],
+        ["."],
+        ["node_modules"],
+        [newDirectory],
+        ["start", newDirectory],
+      ]) {
+        const error = yield* runCliWithRuntime([...args, "--base-dir", baseDir]).pipe(Effect.flip);
+        assert.include(String(error), "A Zerops Mate server is already running");
+        assert.equal(NodeFS.readFileSync(statePath, "utf8"), record);
+        assert.isFalse(yield* pathExists(newDirectory));
+        assert.deepEqual(NodeFS.readdirSync(stateDir), ["server-runtime.json"]);
+      }
     }),
   );
 });
