@@ -203,7 +203,7 @@ function NewProjectDialog() {
   }
 
   const createProject = ({ name, botName, face }: NewProjectChoice) => {
-    if (creating) return;
+    if (creating || !canCreate) return;
     setCreating(true);
     const organizationId = activeOrganization.id;
     const ask: NewProjectAsk = {

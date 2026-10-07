@@ -19,6 +19,7 @@ const ORGANIZATION = {
 };
 
 const app = vi.hoisted(() => ({
+  allowed: true,
   navigate: vi.fn(async (_to: unknown) => undefined),
   // Never answers: what comes after the press is the creation's, not the dialog's.
   pending: vi.fn(() => new Promise(() => undefined)),
@@ -26,6 +27,11 @@ const app = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => app.navigate }));
+vi.mock("~/zerops/useHqOffers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/zerops/useHqOffers")>()),
+  useOrgOffers: () => () =>
+    app.allowed ? { kind: "allowed" } : { kind: "refused", reason: "not_org_admin" },
+}));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
     status: "signed-in",
@@ -101,6 +107,8 @@ function Held() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   openAccountLifetime("u-ada");
+  app.allowed = true;
+  app.pending.mockClear();
   app.navigate.mockClear();
   app.dialog = undefined;
   act(() => useNewProjectAsk.getState().ask());
@@ -121,6 +129,21 @@ const dialogShown = () =>
 // Run 6 (the owner, 2026-10-03: "why are these two screens separate?"): Create closes the dialog
 // and lands on the first Mate's page at once; the creation runs on without the dialog.
 describe("New project's Create", () => {
+  it("a withdrawn source offer blocks the direct handler before recording a creation", () => {
+    app.allowed = false;
+    act(() => tree?.update(h("div", null, h(ZeropsNewProjectHost), h(Held))));
+    act(() =>
+      app.dialog?.onCreate({
+        name: "Refused",
+        botName: "Ada",
+        face: { tint: "rose", shape: "seal" },
+      } as NewProjectChoice),
+    );
+    expect(app.pending).not.toHaveBeenCalled();
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(births).toHaveLength(0);
+    expect(dialogShown()).toBe(true);
+  });
   it("closes the dialog and lands on its first Mate's page, the creation held and running", () => {
     expect(dialogShown()).toBe(true);
     act(() => {
