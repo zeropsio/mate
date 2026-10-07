@@ -173,6 +173,8 @@ export {
   projectServicesAtom,
   projectsServicesAtom,
   projectUsageAtom,
+  NOT_READ_VAULT,
+  vaultAtom,
   shownProjectsAtom,
   NOT_READ_HQ,
   shownHqMatesAtom,
