@@ -11,6 +11,7 @@ export async function hqConnection(coreOrigin: string) {
   let mapFrame = (frame: string) => frame;
   let received = false;
   const links = new Map<WebSocket, WebSocket>();
+  const framedSockets = new WeakSet<WebSocket>();
   const events = new NodeEvents.EventEmitter();
   const counters = {
     httpRequests: 0,
@@ -79,7 +80,11 @@ export async function hqConnection(coreOrigin: string) {
         const frame = isBinary ? bytesOf(data) : Buffer.from(mapFrame(bytesOf(data).toString()));
         counters.wsDownFrames++;
         counters.wsDownBytes += frame.length;
-        if (client.readyState === WebSocket.OPEN) client.send(frame, { binary: isBinary });
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(frame, { binary: isBinary });
+          framedSockets.add(client);
+          events.emit("socket-frame");
+        }
         ready();
       });
       upstream.on("close", (code) => {
@@ -107,6 +112,18 @@ export async function hqConnection(coreOrigin: string) {
       await deadline(
         new Promise<void>((resolve) => events.once("ready", resolve)),
         "HQ transport response or first frame",
+      );
+    },
+    async socketReady() {
+      if (
+        [...links.keys()].some(
+          (socket) => socket.readyState === WebSocket.OPEN && framedSockets.has(socket),
+        )
+      )
+        return;
+      await deadline(
+        new Promise<void>((resolve) => events.once("socket-frame", resolve)),
+        "HQ socket's first forwarded frame",
       );
     },
     drops() {
