@@ -78,6 +78,7 @@ const configLayer = (overrides: Partial<ServerConfig.ServerConfig["Service"]>) =
         zeropsFixtures: undefined,
         zerops: undefined,
         zeropsCrew: false,
+        mateEngine: "v1",
         noBrowser: false,
         startupPresentation: "browser",
         ...overrides,

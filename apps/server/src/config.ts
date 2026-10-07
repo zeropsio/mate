@@ -29,6 +29,21 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const StartupPresentation = Schema.Literals(["browser", "headless"]);
 export type StartupPresentation = typeof StartupPresentation.Type;
 
+export type MateEngineMode = "v1" | "mate";
+
+/**
+ * Reads `T3CODE_MATE_ENGINE` leniently: trimmed and case-blind, absent or
+ * empty is `v1`, and a name it does not know is `v1` flagged `unknown` so the
+ * caller warns instead of crash-looping the unit.
+ */
+export const readMateEngine = (
+  raw: string | undefined,
+): { readonly engine: MateEngineMode; readonly unknown: boolean } => {
+  const name = raw?.trim().toLowerCase() ?? "";
+  if (name === "mate") return { engine: "mate", unknown: false };
+  return { engine: "v1", unknown: name !== "" && name !== "v1" };
+};
+
 /**
  * ServerDerivedPaths - Derived paths from the base directory.
  */
@@ -117,6 +132,12 @@ export class ServerConfig extends Context.Service<
      * project, and with no crew applied a Mate stays byte-identical.
      */
     readonly zeropsCrew: boolean;
+    /**
+     * Which engine owns this Mate's conversation (`T3CODE_MATE_ENGINE`): `v1`
+     * unless `mate`. An env variable, never a `serve` flag, valid everywhere
+     * and not only in Zerops; an unknown value runs V1 (see `readMateEngine`).
+     */
+    readonly mateEngine: MateEngineMode;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
     readonly desktopBootstrapToken: string | undefined;
@@ -275,6 +296,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     zeropsFixtures: undefined,
     zerops: undefined,
     zeropsCrew: true,
+    mateEngine: "v1",
     noBrowser: false,
     startupPresentation: "browser",
   });

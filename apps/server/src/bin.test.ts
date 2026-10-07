@@ -95,6 +95,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       zeropsFixtures: undefined,
       zerops: undefined,
       zeropsCrew: false,
+      mateEngine: "v1",
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: undefined,

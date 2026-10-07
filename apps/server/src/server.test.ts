@@ -669,6 +669,7 @@ const buildAppUnderTest = (options?: {
       zerops: undefined,
       zeropsFixtures: undefined,
       zeropsCrew: false,
+      mateEngine: "v1",
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
