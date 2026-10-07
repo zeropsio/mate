@@ -1,6 +1,5 @@
 import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
 import { describe, it, expect } from "@effect/vitest";
-import { afterAll } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -8,7 +7,7 @@ import { installSignIn, slowMemberList } from "./fake.ts";
 import {
   account,
   organizations,
-  renewHq,
+  retryHq,
   sessionEnds,
   signInOrganization,
   unchangedHandovers,
@@ -23,47 +22,6 @@ const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = f
   );
   return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
 });
-const disposalMessage = `Error: Cannot access Atom {
-  "_id": "Atom",
-  "keepAlive": true,
-  "lazy": true,
-  "label": undefined
-}: registry is disposed`;
-const logoutDiagnostics: { name: string; raw: string[]; maximum: number }[] = [];
-function accountForLogoutError(
-  s: Effect.Success<ReturnType<typeof accountScenario>>,
-  name: string,
-  maximum: number,
-) {
-  return Effect.sync(() => {
-    if (expectedTargets.get(name) !== true) return;
-    const raw: string[] = [];
-    for (let index = s.web.pageErrors.length - 1; index >= 0; index--) {
-      if (s.web.pageErrors[index] === disposalMessage)
-        raw.push(...s.web.pageErrors.splice(index, 1));
-    }
-    // The shared guard still sees every unmatched error; web.errors keeps the original log.
-    logoutDiagnostics.push({ name, raw, maximum });
-  });
-}
-const expectedTargets = new Map<string, boolean>();
-function startExpectedFailure(name: string) {
-  expectedTargets.set(name, false);
-  return () => expectedTargets.set(name, true);
-}
-// afterAll runs outside Vitest's inversion of an expected failure and its afterEach hooks.
-afterAll(() => {
-  for (const { name, raw, maximum } of logoutDiagnostics) {
-    expect(
-      raw.every((error) => error === disposalMessage),
-      `${name}: unexpected diagnostic`,
-    ).toBe(true);
-    expect(raw.length, `${name}: extra disposal errors`).toBeLessThanOrEqual(maximum);
-  }
-  for (const [name, reached] of expectedTargets)
-    expect(reached, `${name}: expected failure did not reach its visible assertion`).toBe(true);
-});
-
 describe("A: sign-in, session and organizations", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Catches a successful Zerops hand-over leaving the user at the door or without their menu, or
@@ -219,17 +177,17 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
-    // Catches an expired HQ session trapping an otherwise signed-in user even after Try again.
-    it.effect("Try again renews an expired HQ session without account sign-in", () =>
+    // Catches a definitive HQ refusal trapping a signed-in user after an explicit Try again.
+    it.effect("Try again retries a refused HQ connection without account sign-in", () =>
       Effect.gen(function* () {
         const s = yield* accountScenario(true);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
         const retainedAuthorization = yield* unchangedHandovers(s);
-        yield* sessionEnds(s, "expiry");
+        yield* sessionEnds(s, "refusal");
         yield* s.when.hq.colleague.renamesProject("Shop", "Renewed");
-        yield* renewHq(s, "Renewed");
+        yield* retryHq(s);
         yield* s.then.menu.row("Renewed").appears();
         yield* account(s.page).showsPerson("owner");
         yield* retainedAuthorization();
@@ -258,28 +216,18 @@ describe("A: sign-in, session and organizations", () => {
     // Catches sign-out raising "registry is disposed" after clearing the account UI.
     it.effect("sign-out clears the account without registry disposal", () =>
       Effect.gen(function* () {
-        const name = "sign-out clears the account without registry disposal";
-        const reachedVisible = startExpectedFailure(name);
         const s = yield* accountScenario();
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
-        yield* Effect.gen(function* () {
-          yield* account(s.page).signOut;
-          yield* account(s.page).signedOut;
-          yield* account(s.page).reload;
-          yield* account(s.page).signedOut;
-          reachedVisible();
-          // Copy diagnostics so the failure report survives exact-error accounting in finally.
-          yield* Effect.sync(() =>
-            expect([...s.web.pageErrors], "Sign-out must not raise registry is disposed").toEqual(
-              [],
-            ),
-          );
-          yield* s.then.noExternalNetwork;
-        }).pipe(Effect.ensuring(accountForLogoutError(s, name, 1)));
+        yield* account(s.page).signOut;
+        yield* account(s.page).signedOut;
+        yield* account(s.page).reload;
+        yield* account(s.page).signedOut;
+        expect([...s.web.pageErrors], "Sign-out must not raise registry is disposed").toEqual([]);
+        yield* s.then.noExternalNetwork;
       }),
     );
 

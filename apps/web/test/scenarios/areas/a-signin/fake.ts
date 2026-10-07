@@ -26,7 +26,7 @@ export function secondOrganization(drivers: ScenarioDrivers) {
 export async function endSessionCheck(
   drivers: ScenarioDrivers,
   sockets: WebSocket[],
-  fault: "outage" | "expiry",
+  fault: "outage" | "expiry" | "refusal",
 ) {
   const database = signInFaults(drivers);
   if (fault === "outage") {
@@ -44,8 +44,13 @@ export async function endSessionCheck(
       (socket) => new Promise<number>((resolve) => socket.once("close", (code) => resolve(code))),
     ),
   );
-  await database.expires();
-  expect(await deadline(closed, "Core expired-session close")).toContain(4401);
+  if (fault === "refusal") {
+    for (const socket of sockets) socket.close(4403, "scenario source refusal");
+    expect(await deadline(closed, "HQ refused-source close")).toContain(4403);
+  } else {
+    await database.expires();
+    expect(await deadline(closed, "Core expired-session close")).toContain(4401);
+  }
 }
 
 export const handoverCount = (drivers: ScenarioDrivers) =>
