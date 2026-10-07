@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
-import { mateChat } from "./dsl.ts";
+import { mateChat, projectAccessRevoked } from "./dsl.ts";
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
@@ -149,6 +149,46 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.noText("Which environment should I inspect?");
         expect(chat.fixture().receivedStagingAnswer()).toBe(true);
         expect(chat.fixture().responseCount()).toBe(1);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a removed signer's login leaving Send enabled in an open chat.
+    it.effect("offboarding the signer blocks new turns without losing history", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        chat.fixture().ownership = "owner";
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        const sent = chat.fixture().sentTurnCount();
+        chat.fixture().offboardSigner();
+        yield* chat.then.signInRequired;
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.when.send("Do not start a turn on the removed login");
+        yield* chat.then.noText("Do not start a turn on the removed login");
+        expect(chat.fixture().sentTurnCount()).toBe(sent);
+        expect(chat.fixture().responseCount()).toBe(0);
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a still-ponging platform receiver keeping a revoked conversation or write controls.
+    it.effect("project revocation withdraws the open Mate while its receiver still pongs", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.project("Bea", { mate: true });
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.then.text("The existing conversation is still here");
+        const sent = chat.fixture().sentTurnCount();
+        yield* projectAccessRevoked(s, "Ada");
+        yield* chat.then.noText("The existing conversation is still here");
+        yield* chat.then.noComposer;
+        yield* s.then.menu.row("Bea").appears();
+        expect(chat.fixture().sentTurnCount()).toBe(sent);
+        yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
     );

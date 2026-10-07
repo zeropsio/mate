@@ -11,7 +11,9 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type { MateFake } from "../../fakes/mate.ts";
-import type { ScenarioExtension } from "../../harness/scenario.ts";
+import { definePerson } from "../../fakes/zeropsWorld.ts";
+import { deadline } from "../../harness/http.ts";
+import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 
 const decodeAuth = Schema.decodeUnknownSync(ZeropsAgentAuthSnapshot);
 const decodeActivity = Schema.decodeUnknownSync(OrchestrationThreadActivity);
@@ -28,8 +30,9 @@ const encodeAuth = Schema.encodeSync(ZeropsAgentAuthSnapshot);
 export class ChatDriver {
   readonly http: string[] = [];
   readonly responses: OrchestrationCommand[] = [];
-  ownership: "project-token" | "colleague" | "unrecorded" = "project-token";
+  ownership: "project-token" | "owner" | "colleague" | "unrecorded" = "project-token";
   acceptResponses = true;
+  signerOffboarded = false;
   readonly mate: MateFake;
   constructor(mate: MateFake) {
     this.mate = mate;
@@ -40,6 +43,7 @@ export class ChatDriver {
     };
     mate.rpcHandlers.push((request, socket) => {
       if (request.tag === WS_METHODS.subscribeZeropsAgentAuth) {
+        mate.subscriptions.get(socket)!.set(request.id, request);
         mate.chunk(socket, request.id, [encodeAuth(this.auth())]);
         return true;
       }
@@ -103,7 +107,30 @@ export class ChatDriver {
     return this.responses.length;
   }
 
+  offboardSigner() {
+    this.signerOffboarded = true;
+    for (const [socket, subscriptions] of this.mate.subscriptions)
+      for (const [id, request] of subscriptions)
+        if (request.tag === WS_METHODS.subscribeZeropsAgentAuth)
+          this.mate.chunk(socket, id, [encodeAuth(this.auth())]);
+  }
+
   auth(): ZeropsAgentAuthSnapshot {
+    if (this.signerOffboarded)
+      return decodeAuth({
+        available: true,
+        agents: [
+          {
+            agentId: "codex",
+            credPresent: false,
+            flagOAuth: false,
+            flagToken: false,
+            providerAuth: "unauthenticated",
+            state: "not-authorized",
+            authorizedBy: { subject: "owner" },
+          },
+        ],
+      });
     return decodeAuth({
       available: true,
       agents: [
@@ -235,4 +262,60 @@ export function chatFor(mate: MateFake) {
   const chat = chats.get(mate);
   if (!chat) throw new Error("Install c-mate before creating projects");
   return chat;
+}
+
+/** A project grant disappears while its existing platform receiver keeps answering heartbeats. */
+export async function revokeProjectAccess(drivers: ScenarioDrivers, name: string) {
+  await drivers.zerops.waitForRegistration("project");
+  const registration = [...drivers.zerops.subscriptions.values()].find(
+    (entry) =>
+      entry.kind === "project" && entry.output === "listStream" && entry.apiToken === "personal",
+  );
+  const socket = registration?.socket;
+  if (socket === undefined || socket.readyState !== 1)
+    throw new Error("A live personal receiver is required");
+  let release = () => {};
+  let received = () => {};
+  let heartbeat = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const read = new Promise<void>((resolve) => {
+    received = resolve;
+  });
+  const ping = new Promise<void>((resolve) => {
+    heartbeat = resolve;
+  });
+  const onMessage = (raw: import("ws").RawData) => {
+    if ((JSON.parse(String(raw)) as { type?: string }).type === "ping") heartbeat();
+  };
+  socket.on("message", onMessage);
+  drivers.cleanup.push(async () => {
+    release();
+    socket.off("message", onMessage);
+  });
+  drivers.zerops.handlers.push(async (request) => {
+    if (
+      request.method !== "GET" ||
+      request.url.pathname !== `/api/rest/public/project/${name}` ||
+      request.headers.authorization !== "Bearer personal"
+    )
+      return undefined;
+    received();
+    await held;
+    return drivers.zerops.error(403, "insufficientPermissions", "Project access was revoked.");
+  });
+  definePerson(drivers.zerops.world, "owner", { role: "NO_ACCESS", grants: { Bea: "BASIC_USER" } });
+  const project = drivers.zerops.entities.get("project")?.get(name);
+  if (project === undefined) throw new Error(`No project ${name}`);
+  drivers.zerops.put("project", { ...project, userRoles: [] });
+  await deadline(read, "read revoked project access");
+  return {
+    heartbeat: async () => {
+      await deadline(ping, "existing platform receiver answered heartbeat");
+      if (socket.readyState !== 1)
+        throw new Error("Revocation closed the receiver before its REST verdict");
+    },
+    release,
+  };
 }

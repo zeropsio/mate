@@ -2,7 +2,7 @@ import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
 import { visibleText } from "../../harness/browser.ts";
-import { chatFor } from "./fake.ts";
+import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -180,6 +180,23 @@ export function mateChat(s: Scenario) {
             ),
           ).toBe(false);
         }),
+      signInRequired: Effect.promise(async () => {
+        try {
+          await page.waitForFunction(
+            () =>
+              [...document.querySelectorAll<HTMLButtonElement>('button[type="submit"]')].some(
+                (button) =>
+                  button.disabled && /sign.*in/iu.test(button.getAttribute("aria-label") ?? ""),
+              ),
+            { timeout: 8000, polling: "raf" },
+          );
+        } catch (cause) {
+          throw new Error(
+            `Agent sign-in requirement missing:\n${await page.evaluate(() => document.body.innerText)}`,
+            { cause },
+          );
+        }
+      }),
       sendDisabled: Effect.promise(async () => {
         await page.waitForFunction(
           () =>
@@ -195,3 +212,13 @@ export function mateChat(s: Scenario) {
     },
   };
 }
+
+export const projectAccessRevoked = Effect.fn("chat.projectAccessRevoked")(function* (
+  s: Scenario,
+  name: string,
+) {
+  const read = yield* Effect.promise(() => revokeProjectAccess(s.drivers, name));
+  yield* Effect.promise(() => s.clock.advance(15_000));
+  yield* Effect.promise(read.heartbeat);
+  yield* Effect.sync(read.release);
+});
