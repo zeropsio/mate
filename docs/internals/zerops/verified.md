@@ -7725,3 +7725,14 @@ editable, sensitive, created, lastUpdate`.
   same container) applies it. A service's `lastUpdate` moves on variable writes too, so only its
   newest finished `stack.build` / `stack.deploy` / `stack.restart` / `stack.start` says when it
   started.
+
+- **An import's `vault:` items keep their own flag, and the preprocessor reaches inside them**
+  (probe `vault-probe-flow-1007`, imported through `POST /client/{clientId}/project/import`, read
+  back through `POST /user-data/search` and the project search, then deleted):
+  - a service's own `{value, sensitive: true}` is stored sensitive (`REDACTED` on read), and so is
+    the project's;
+  - under `#zeropsPreprocessor=on`, `<@generateRandomString(<40>)>` expands inside a flow item,
+    `{value: <@…>, sensitive: false}` (40 characters), and so does a single-quoted one with a
+    prefix, `'admin:<@generateRandomString(<16>)>'` (22 characters);
+  - a plain `KEY: value` item with no flag is stored plain whatever its name: `S_FLAGLESS_SECRET`
+    read back `sensitive: false`, so a writer that means secret says `sensitive: true`.
