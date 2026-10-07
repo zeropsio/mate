@@ -766,6 +766,8 @@ export function makeHqApi(input: {
    * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
    */
   readonly beforeWrite?: () => Promise<void>;
+  /** Captured account and HQ; checked immediately before each protected fetch. */
+  readonly isCurrent?: () => boolean;
   readonly kept?: {
     /** The kept session's token; null when none is kept, or it ends too soon to present. */
     readonly read: () => string | null;
@@ -834,6 +836,12 @@ export function makeHqApi(input: {
     for (;;) {
       const held = session ?? restore() ?? enter();
       const token = await held;
+      if (write && input.isCurrent?.() === false)
+        throw new HqError({
+          kind: "refused",
+          code: "account_changed",
+          message: "This Zerops sign-in or its HQ has changed.",
+        });
       try {
         const response = await send(
           input.fetch,

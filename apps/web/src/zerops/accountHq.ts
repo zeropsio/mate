@@ -1,3 +1,4 @@
+import { captureAccountLifetime } from "./accountLifetime";
 /**
  * The organization's HQ, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
@@ -320,6 +321,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     debt: accountThrowawayDebt(client),
   });
   const keptKey = keptHqKey(clientId, hq);
+  const active = captureAccountLifetime();
   const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
@@ -340,6 +342,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       forget: (token) => forgetKeptHqSession(keptKey, token),
     },
     beforeWrite: () => writeChecked(clientId, hq),
+    isCurrent: () => active() && verdictNames(clientId, hq) === true,
     throughDoor: (use) =>
       doorChecked(clientId, hq).then(() =>
         connectThroughThrowaway({

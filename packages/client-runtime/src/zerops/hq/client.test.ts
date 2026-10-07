@@ -1772,3 +1772,44 @@ describe("makeHqApi — explicit deletion completion", () => {
     expect(hq.seen.filter((seen) => seen.path.endsWith("/deleted"))).toHaveLength(2);
   });
 });
+
+describe("HQ's final account fence", () => {
+  it.each(["door", "repair"] as const)(
+    "sends no protected write after account closure during %s",
+    async (phase) => {
+      let active = true;
+      let kept: string | null = "expired";
+      const hq = fakeHq((seen) =>
+        seen.path === "/api/apps" && phase === "repair"
+          ? json(401, { code: "session_required" })
+          : undefined,
+      );
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        openSocket: NO_SOCKET,
+        ...(phase === "repair"
+          ? {
+              kept: {
+                read: () => kept,
+                keep: () => {},
+                forget: () => {
+                  kept = null;
+                },
+              },
+            }
+          : {}),
+        throughDoor: async (use) => {
+          const answer = await use("door");
+          active = false;
+          return answer;
+        },
+        isCurrent: () => active,
+      });
+      await expect(api.createApp("Acme")).rejects.toMatchObject({ code: "account_changed" });
+      expect(hq.seen.filter((seen) => seen.path === "/api/apps")).toHaveLength(
+        phase === "repair" ? 1 : 0,
+      );
+    },
+  );
+});
