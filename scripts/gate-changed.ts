@@ -3,6 +3,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { selectsChatGate } from "./chat-gate.ts";
 
 export const scenarioAreas = [
   "a-signin",
@@ -30,7 +31,9 @@ const areaPaths: ReadonlyArray<readonly [string, RegExp]> = [
 
 export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
   const selected = new Set<string>();
+  if (selectsChatGate(paths)) selected.add("c-mate");
   for (const path of paths) {
+    if (path.endsWith(".md")) continue;
     const own = /^apps\/web\/test\/scenarios\/(?:areas|fakes)\/([^/]+)\//u.exec(path)?.[1];
     if (own && scenarioAreas.some((area) => area === own)) {
       selected.add(own);
@@ -149,6 +152,7 @@ if (import.meta.main) {
   const comparison = comparisonBase(root, base);
   const paths = changedPaths(root, comparison);
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
+  const chatGate = selectsChatGate(paths);
   const packages = touchedPackages(paths, workspacePackages(root));
   const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
   steps.push({
@@ -162,14 +166,27 @@ if (import.meta.main) {
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  for (const pkg of packages.filter((pkg) => pkg.typecheck))
+  if (chatGate)
+    steps.push({
+      name: "chat contract gate (A + B + typecheck)",
+      command: "node",
+      args: ["scripts/chat-gate.ts"],
+    });
+  for (const pkg of packages.filter(
+    (pkg) =>
+      pkg.typecheck &&
+      (!chatGate ||
+        !["apps/server", "apps/web", "packages/contracts", "packages/client-runtime"].includes(
+          pkg.directory,
+        )),
+  ))
     steps.push({
       name: `typecheck ${pkg.name}`,
       command: "vp",
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (!chatGate && paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
@@ -225,6 +242,7 @@ if (import.meta.main) {
       command: "vp",
       args: ["test", "run", "scripts/surface-manifest.test.ts"],
     });
+  // C journeys already ran in the boundary gate; retain C driver tests here.
   const areas = selectScenarioAreas(paths);
   if (areas.length)
     steps.push({
@@ -235,6 +253,7 @@ if (import.meta.main) {
         "run",
         "--config",
         "apps/web/test/scenarios/vitest.config.ts",
+        ...(chatGate ? ["--exclude", "test/scenarios/areas/c-mate/**"] : []),
         ...(areas.length === scenarioAreas.length
           ? []
           : areas.flatMap((area) => [`areas/${area}/`, `fakes/${area}/`])),

@@ -43,12 +43,13 @@ it("shared data, harness and unclassified shell changes cover every area", () =>
   ])
     expect(selectScenarioAreas([path])).toEqual(scenarioAreas);
 });
-it("does not run scenarios for docs, scripts or a server-only implementation", () => {
+it("does not run scenarios for docs, unrelated scripts or server tooling", () => {
   expect(
     selectScenarioAreas([
       "CLAUDE.md",
+      "apps/web/test/scenarios/README.md",
       "scripts/ci-local.ts",
-      "apps/server/src/provider/ClaudeAdapter.ts",
+      "apps/server/scripts/migrate-dev-db.ts",
     ]),
   ).toEqual([]);
 });
@@ -91,4 +92,13 @@ it("includes committed, staged, dirty, untracked and removed paths without follo
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
+});
+
+it.each([
+  "apps/server/src/provider/Layers/ClaudeAdapter.ts",
+  "apps/server/src/spi/toolCall.ts",
+  "apps/server/src/orchestration/decider.ts",
+  "apps/server/src/server.ts",
+])("server chat boundary change %s selects all C journeys", (path) => {
+  expect(selectScenarioAreas([path])).toContain("c-mate");
 });

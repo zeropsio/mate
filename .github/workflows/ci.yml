@@ -185,6 +185,31 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  chat_gate:
+    name: Chat Contract (A + B + Typecheck)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Provider goldens, client wire journeys and typecheck
+        run: node scripts/chat-gate.ts
+
   # Everything except `t3` (apps/server), `@t3tools/web` and `@t3tools/mobile`,
   # which have runners of their own. `--parallel` drops the package dependency ordering that
   # `vp run` applies by default: these `test` tasks declare no `dependsOn` and
@@ -362,7 +387,7 @@ jobs:
   # does not ship, so a pull request pays for their jobs only when it touches
   # them or what they build on. A push to main runs them all. The mobile native
   # lint needs a macOS runner, which bills ~6.7x a Linux minute, so it stays
-  # gated on its own sources on main too. Detection is API-only (no checkout)
+  # gated on its own sources on main too. Diff detection is API-only
   # and fails open: if the diff cannot be resolved, every gated job runs.
   changes:
     name: Changes
@@ -372,11 +397,25 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      chat: ${{ steps.detect.outputs.chat }}
       desktop: ${{ steps.detect.outputs.desktop }}
       mobile: ${{ steps.detect.outputs.mobile }}
       resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
       mobile_native: ${{ steps.detect.outputs.mobile_native }}
     steps:
+      - name: Checkout gate selector
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /package.json
+            /scripts/chat-gate.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
       - name: Detect changed areas
         id: detect
         env:
@@ -386,7 +425,7 @@ jobs:
         run: |
           set -uo pipefail
 
-          areas=(desktop mobile resource_monitor mobile_native)
+          areas=(chat desktop mobile resource_monitor mobile_native)
 
           fail_open() {
             echo "$* Running every gated job."
@@ -428,6 +467,10 @@ jobs:
           fi
 
           paths=$(tr '\t' '\n' <<< "$rows")
+
+          chat=$(printf '%s\n' "$paths" | node scripts/chat-gate.ts --select) \
+            || fail_open "Could not select the chat contract gate."
+          echo "chat=${chat}" >> "$GITHUB_OUTPUT"
 
           gate() {
             local area="$1" pattern="$2"

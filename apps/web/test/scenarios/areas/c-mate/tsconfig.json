@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": [
+    "**/*.ts",
+    "../../fakes/c-mate/**/*.ts",
+    "../../harness/**/*.ts",
+    "../../vitest.config.ts"
+  ]
+}
