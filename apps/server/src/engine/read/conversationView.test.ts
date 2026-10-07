@@ -237,6 +237,27 @@ describe("a call's progress", () => {
   );
 });
 
+describe("a call's progress, once the call ended", () => {
+  it.effect("is cleared from the live plane: a later subscriber is not handed it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Stand up" });
+        yield* w.agent((agent, thread) => agent.call(thread));
+        const engine = yield* w.engine;
+        yield* engine.callProgress(w.thread, "Command run", { phase: "deploy" });
+        // The record closes the call before the relay's last word reaches the engine.
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* engine.callProgress(w.thread, "Command run", null);
+        const live = yield* w.live;
+        const [open] = yield* Stream.runCollect(Stream.take(yield* live.subscribe(mate), 1));
+        assert.isUndefined((open as { readonly progress?: unknown }).progress);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
 describe("a completed call's own record", () => {
   it.effect("is kept beside its item, for what a file write wrote", () =>
     Effect.scoped(

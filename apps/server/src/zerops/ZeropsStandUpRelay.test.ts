@@ -445,61 +445,69 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
 });
 
 describe("ZeropsStandUpRelay on the Mate engine", () => {
-  it.live("relays each change of the call's section live onto the call, sending V1 nothing", () =>
-    Effect.gen(function* () {
-      const events = yield* Queue.unbounded<SpiEvent>();
-      const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
-      const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
-      const shown = yield* Ref.make<ReadonlyArray<readonly [string, string, unknown]>>([]);
-      const layer = relayLayer.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(ProviderRuntimeEventBus, {
-              version: PROVIDER_RUNTIME_SPI_VERSION,
-              events: Stream.fromQueue(events),
-              enrichmentFailures: Stream.empty,
-            }),
-            Layer.mock(ZeropsSetup)({
-              status: Ref.get(status),
-              standUpGone: () => Effect.succeed(false),
-              noteStandUpCall: () => Effect.void,
-            }),
-            Layer.succeed(MateEngine, {
-              ...inertMateEngine,
-              live: true,
-              callProgress: (thread, tool, progress) =>
-                Ref.update(shown, (all) => [...all, [thread, tool, progress] as const]),
-            }),
-            Layer.mock(OrchestrationEngineService)({
-              dispatch: (command) =>
-                Ref.update(dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
-              streamDomainEvents: Stream.never,
-            }),
-            NodeServices.layer,
+  it.live(
+    "relays each change of the call's section live onto the call, sending V1 nothing, and clears it at the call's end",
+    () =>
+      Effect.gen(function* () {
+        const events = yield* Queue.unbounded<SpiEvent>();
+        const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
+        const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
+        const shown = yield* Ref.make<ReadonlyArray<readonly [string, string, unknown]>>([]);
+        const layer = relayLayer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderRuntimeEventBus, {
+                version: PROVIDER_RUNTIME_SPI_VERSION,
+                events: Stream.fromQueue(events),
+                enrichmentFailures: Stream.empty,
+              }),
+              Layer.mock(ZeropsSetup)({
+                status: Ref.get(status),
+                standUpGone: () => Effect.succeed(false),
+                noteStandUpCall: () => Effect.void,
+              }),
+              Layer.succeed(MateEngine, {
+                ...inertMateEngine,
+                live: true,
+                callProgress: (thread, tool, progress) =>
+                  Ref.update(shown, (all) => [...all, [thread, tool, progress] as const]),
+              }),
+              Layer.mock(OrchestrationEngineService)({
+                dispatch: (command) =>
+                  Ref.update(dispatched, (all) => [...all, command]).pipe(
+                    Effect.as({ sequence: 1 }),
+                  ),
+                streamDomainEvents: Stream.never,
+              }),
+              NodeServices.layer,
+            ),
           ),
-        ),
-      );
-      yield* Effect.gen(function* () {
-        yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
-        yield* Ref.set(status, section());
-        yield* Effect.sleep(Duration.seconds(3));
-        yield* Ref.set(status, section({ state: "done" }));
-        yield* Queue.offer(events, standUpEvent("item.completed", "2026-10-01T10:05:00.000Z"));
-        yield* Effect.sleep(Duration.millis(200));
-        const all = yield* Ref.get(shown);
-        assert.deepStrictEqual(
-          all.map(([thread, tool, progress]) => [
-            thread,
-            tool,
-            (progress as { readonly state: string }).state,
-          ]),
-          [
-            ["thread-main", "zerops_standup", "running"],
-            ["thread-main", "zerops_standup", "done"],
-          ],
         );
-        assert.deepStrictEqual(yield* Ref.get(dispatched), []);
-      }).pipe(Effect.provide(layer), Effect.scoped);
-    }),
+        yield* Effect.gen(function* () {
+          yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
+          yield* Ref.set(status, section());
+          yield* Effect.sleep(Duration.seconds(3));
+          yield* Ref.set(status, section({ state: "done" }));
+          yield* Queue.offer(events, standUpEvent("item.completed", "2026-10-01T10:05:00.000Z"));
+          yield* Effect.sleep(Duration.millis(200));
+          const all = yield* Ref.get(shown);
+          // The call's end clears its progress: the record holds its result now.
+          assert.deepStrictEqual(all.at(-1), ["thread-main", "zerops_standup", null]);
+          assert.deepStrictEqual(
+            all
+              .slice(0, -1)
+              .map(([thread, tool, progress]) => [
+                thread,
+                tool,
+                (progress as { readonly state: string }).state,
+              ]),
+            [
+              ["thread-main", "zerops_standup", "running"],
+              ["thread-main", "zerops_standup", "done"],
+            ],
+          );
+          assert.deepStrictEqual(yield* Ref.get(dispatched), []);
+        }).pipe(Effect.provide(layer), Effect.scoped);
+      }),
   );
 });

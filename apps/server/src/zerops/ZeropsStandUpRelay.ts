@@ -256,6 +256,8 @@ export const make = Effect.gen(function* () {
         yield* unfollow(event.threadId);
         // The call's end: what the file says of it last, once more.
         yield* relayOnce(event, followed);
+        // Its result is in the record now: what was live of it goes.
+        if (engine.live) yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, null);
       }
     });
 

@@ -207,9 +207,12 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       Effect.gen(function* () {
         const conversation = TurnPumpModule.conversationOfThread(providerThread);
         if (conversation === undefined) return;
+        // Progress goes onto the call while it runs; it is cleared (`null`) from the latest such
+        // call whatever its state, since the record may have closed it first.
         const [call] = yield* sql<{ readonly item_id: string }>`
           SELECT item_id FROM engine_item
-          WHERE conversation_id = ${conversation} AND kind = 'call' AND state = 'open'
+          WHERE conversation_id = ${conversation} AND kind = 'call'
+            ${progress === null ? sql`` : sql`AND state = 'open'`}
             AND json_extract(body_json, '$.tool.name') = ${toolName}
           ORDER BY opened_seq DESC LIMIT 1
         `;
