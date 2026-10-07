@@ -1,6 +1,7 @@
 import { createRouter, RouterHistory } from "@tanstack/react-router";
 
 import { appBasePathHref } from "./basePath.ts";
+import { SurfaceLoading } from "./components/SurfaceLoading";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter(history: RouterHistory) {
@@ -11,6 +12,9 @@ export function getRouter(history: RouterHistory) {
     // under <prefix>/ misses and the app renders its not-found page.
     basepath: appBasePathHref(),
     context: {},
+    defaultPendingComponent: SurfaceLoading,
+    defaultPendingMs: 0,
+    defaultPendingMinMs: 0,
   });
 }
 

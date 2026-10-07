@@ -172,3 +172,54 @@ it("clicking visible text reacquires a row replaced during the browser's clickab
     await NodeFSP.rm(dist, { recursive: true, force: true });
   }
 });
+
+it.each(["fetch", "file upload"] as const)(
+  "forwards %s bytes without decoding them as text",
+  async (mode) => {
+    const { serve } = await import("../harness/http.ts");
+    const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-upload-"));
+    await NodeFSP.writeFile(
+      NodePath.join(dist, "index.html"),
+      "<!doctype html><title>Upload</title>",
+    );
+    const api = await serve((request) =>
+      request.method === "POST"
+        ? { body: { bytes: [...(request.rawBody ?? [])] } }
+        : { status: 204 },
+    );
+    const web = await openBrowser(dist, { "https://upload.example.test": api.origin });
+    try {
+      await web.page.goto(web.origin);
+      const bytes = [0, 255, 128, 240, 159, 146, 169, 13, 10];
+      const result = await web.page.evaluate(
+        async (bytes, mode) => {
+          if (mode === "file upload")
+            return new Promise<{ bytes: number[] }>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open("POST", "https://upload.example.test/file");
+              xhr.setRequestHeader("Content-Type", "application/octet-stream");
+              xhr.onload = () => resolve(JSON.parse(xhr.responseText));
+              xhr.onerror = reject;
+              xhr.send(
+                new File([new Uint8Array(bytes)], "file.bin", { type: "application/octet-stream" }),
+              );
+            });
+          const response = await fetch("https://upload.example.test/file", {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: new Uint8Array(bytes),
+          });
+          return response.json() as Promise<{ bytes: number[] }>;
+        },
+        bytes,
+        mode,
+      );
+      expect(result.bytes).toEqual(bytes);
+      expect(web.pageErrors).toEqual([]);
+    } finally {
+      await web.close();
+      await api.close();
+      await NodeFSP.rm(dist, { recursive: true, force: true });
+    }
+  },
+);

@@ -1,3 +1,4 @@
+import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
@@ -81,6 +82,7 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  mateArchiveFamily,
   mateVcsFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,

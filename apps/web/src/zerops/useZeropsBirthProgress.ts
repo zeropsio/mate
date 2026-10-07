@@ -7,8 +7,8 @@
  * derived into a `BirthProgress` (`@t3tools/client-runtime/zerops/birthProgress`).
  *
  * The only state this hook owns is a 1-second clock for the elapsed label
- * and the active build substep's live duration — it ticks only while there
- * is a birth to show and that birth is not yet complete.
+ * and the active build substep's live duration — it ticks only while a known
+ * started step has no end and the birth has not failed.
  */
 import { useEffect, useMemo, useState } from "react";
 
@@ -40,12 +40,18 @@ export function useZeropsBirthProgress(
   }, [input, processes, nowMs]);
 
   const hidden = input === null;
-  const complete = progress?.complete ?? true;
+  const ticking =
+    progress !== null &&
+    progress.failed === null &&
+    progress.steps.some(
+      (step) =>
+        step.state === "active" && step.startedAt !== undefined && step.endedAt === undefined,
+    );
   useEffect(() => {
-    if (hidden || complete) return;
+    if (hidden || !ticking) return;
     const id = setInterval(() => setNowMs(Date.now()), 1_000);
     return () => clearInterval(id);
-  }, [hidden, complete]);
+  }, [hidden, ticking]);
 
   return progress === null ? null : { progress, nowMs };
 }

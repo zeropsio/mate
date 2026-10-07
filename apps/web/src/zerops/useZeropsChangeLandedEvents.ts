@@ -28,7 +28,7 @@ import { useMemo } from "react";
 
 import { useAppsChanges, useHqAddress } from "./projectFlows";
 import { useHqAppDetailHold } from "./useHqAppDetail";
-import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsCandidates } from "./useZeropsCandidates";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
 
@@ -66,13 +66,12 @@ export function changeLandedEventsFor(
  * drawn: its landings are that detail's, and nothing else holds it for a conversation.
  */
 export function useZeropsMateAppDetailHold(environmentId: string | null | undefined): void {
-  const { listing } = useZeropsCandidates();
+  const rows = useHeldZeropsCandidates();
   const mate =
     environmentId === null || environmentId === undefined
       ? undefined
-      : findCandidate(listing, (candidate) => String(candidate.environmentId) === environmentId);
-  const groupId =
-    mate?.kind === "found" ? readZeropsMembership(mate.row.project).groupId : undefined;
+      : rows.find((candidate) => String(candidate.environmentId) === environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   useHqAppDetailHold(groupId === undefined || groupId === null ? [] : [groupId]);
 }
 
@@ -81,16 +80,20 @@ const NO_APPS: ReadonlyArray<string> = [];
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const { listing } = useZeropsCandidates();
-  const mate = environmentId == null ? undefined : mateIn(listing, String(environmentId));
+  const rows = useHeldZeropsCandidates();
+  const mate = rows.find((row) => String(row.environmentId) === environmentId);
   // Only the Mate's own application's changes are read, while its conversation is drawn.
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
   const { changes } = useAppsChanges(appIds);
   return useMemo(() => {
-    if (environmentId === null || environmentId === undefined) return NONE;
-    return changeLandedEventsFor(listing, String(environmentId), changes);
-  }, [changes, environmentId, listing]);
+    if (mate === undefined) return NONE;
+    const events = changeLandedEvents(
+      [...changes.values()].flatMap((app) => [...app.merged]),
+      mate.project.id,
+    );
+    return events.length === 0 ? NONE : events;
+  }, [changes, mate]);
 }
 
 type SaidMessage = { readonly text: string; readonly createdAt: string };

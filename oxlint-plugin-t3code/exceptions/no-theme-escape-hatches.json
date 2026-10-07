@@ -2632,14 +2632,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/ui/alert.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"bg-transparent dark:bg-input/32 [&_svg]:text-muted-foreground\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in alert awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/ui/autocomplete.tsx",
     "kind": "Literal",
     "fingerprint": "\"relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",

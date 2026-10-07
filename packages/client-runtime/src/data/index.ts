@@ -286,6 +286,7 @@ export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
 
 export {
   inventory,
+  inventoryContents,
   inventoryCandidates,
   NOT_READ_INVENTORY,
   inventoryPlacements,
@@ -318,6 +319,7 @@ export {
 } from "./families/mateBrowserFrame.ts";
 export {
   mateBrowserFrame,
+  mateBrowserFrames,
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,
@@ -433,3 +435,12 @@ export * from "./mateActionReads.ts";
 export * from "./adapters/mateTerminal.ts";
 export * from "./operations/executors/mateTerminal.ts";
 export * from "./projections/mateActions.ts";
+export { makeArchiveReads, makeArchiveWire } from "./adapters/mateArchive.ts";
+export { mateArchive, type ArchiveReading } from "./projections/mateArchive.ts";
+
+export {
+  setupFailure,
+  failedSetupProcess,
+  setupFailureLogQuery,
+  setupFailureReason,
+} from "./projections/setupFailure.ts";

@@ -1,10 +1,10 @@
 import {
   conversationPhrase,
-  type MateVoice,
   type ConversationView,
   type RouteGate,
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
+import type { WebMateVoice as MateVoice } from "../zerops/mateNoticeVoice";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -74,7 +74,7 @@ export function RouteGateView({
       // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.
       return stage;
     case "unavailable":
-      return <RouteGateWords phrase={phrase} projectId={projectId} />;
+      return stage ?? <RouteGateWords phrase={phrase} projectId={projectId} />;
   }
 }
 

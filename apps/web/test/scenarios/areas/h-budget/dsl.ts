@@ -1,5 +1,10 @@
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { HqNavigationApp } from "@t3tools/shared/hqStream";
+import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 import { percentile, observeTabConnections } from "../../fakes/h-budget/traffic.ts";
 import type { Page } from "puppeteer-core";
@@ -14,6 +19,23 @@ export function budgets(s: Scenario) {
       mates: Effect.fn("budgets.given.mates")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name, { mate: true, app: "Shop" });
       }),
+      /** Finish the initial git-derived navigation read before measuring unchanged facts. */
+      releaseRead: (name: string) =>
+        Effect.gen(function* () {
+          const appId = s.appIds.get(name);
+          if (appId === undefined) throw new Error(`No application fixture ${name}`);
+          const ticket = yield* ticketFor(s.drivers.core.call, s.owner);
+          yield* openScenarioNavigation(s.drivers.core.origin, ticket, (message) => {
+            if (message.type !== "scope-reset" && message.type !== "scope-values") return false;
+            return message.values.some((row) => {
+              if (row.key !== `app:${appId}`) return false;
+              const app = Schema.decodeUnknownOption(HqNavigationApp)(row.value);
+              if (Option.isNone(app)) return false;
+              const offer = app.value.releaseOffer;
+              return offer !== null && "head" in offer && offer.head !== null;
+            });
+          });
+        }).pipe(Effect.scoped),
       /** The Mates' containers ACTIVE with their address not turned on. */
       addressesOff: Effect.sync(() => {
         for (const row of s.drivers.zerops.rows("service-stack"))

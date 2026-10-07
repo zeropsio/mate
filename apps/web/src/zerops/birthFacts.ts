@@ -70,10 +70,7 @@ function toBirthProcessFact(process: ActivityProcess): BirthProcessFact {
     finishedAt: process.finished ?? null,
     serviceIds: process.serviceStackIds,
     appVersion,
-    // The platform's process read carries no failure-reason field
-    // (`activity/dto.ts`'s `ActivityProcess` has none) — `birthProgress.ts`'s
-    // own fallback text ("Could not be created.") stands in its place.
-    failReason: undefined,
+    failReason: process.failReason,
   };
 }
 

@@ -1,6 +1,8 @@
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
+import * as NodeOS from "node:os";
+import { testWorkerBudget } from "./scripts/lib/test-worker-budget.ts";
 
 /** Import restrictions every file keeps. */
 const RESTRICTED_IMPORT_PATHS = [
@@ -38,6 +40,7 @@ export default defineConfig({
     },
   },
   test: {
+    maxWorkers: testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism()),
     environment: "node",
     exclude: [
       "**/.repos/**",
@@ -50,6 +53,7 @@ export default defineConfig({
       // so a run from the root collected each test twice and failed the copy
       // on an import it could not resolve.
       "**/.claude/worktrees/**",
+      "**/.plans/**",
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,

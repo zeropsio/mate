@@ -41,7 +41,6 @@ import {
   type FlowPullRequest,
   type MatePoseFacts,
   type MateRunFacts,
-  mateErrorWords,
 } from "@t3tools/client-runtime/zerops";
 import type {
   EnvironmentId,
@@ -62,6 +61,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import { usageLimitProvider } from "./noticeWords";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**
@@ -161,6 +161,8 @@ export interface ZeropsAgentActivity {
   readonly unread: boolean;
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
+  /** A provider refusal can prove a limit without knowing its reset. */
+  readonly usageLimited?: boolean;
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
   /**
@@ -289,6 +291,7 @@ export function mateFaceOf(input: {
   readonly activity:
     | (Pick<ZeropsAgentActivity, "face" | "remembered"> & {
         readonly pausedUntil?: string | undefined;
+        readonly usageLimited?: boolean;
       })
     | undefined;
   readonly reviewWaits: boolean;
@@ -301,7 +304,7 @@ export function mateFaceOf(input: {
   return mateFaceAwaitingReview(
     mateFaceFor(input.connected || live !== undefined, live, input.pose),
     input.reviewWaits,
-    live?.pausedUntil !== undefined,
+    live?.usageLimited === true || live?.pausedUntil !== undefined,
     input.mine,
   );
 }
@@ -408,17 +411,21 @@ function readThreadAgentActivity(
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
   const resolved = resolveThreadStatus({ ...thread, ...visited });
   const pause = thread.usagePause ?? undefined;
+  const usageLimited =
+    pause !== undefined ||
+    (resolved.kind === "failed" && usageLimitProvider(thread.session?.lastError) !== null);
   return {
     threadId: thread.id,
     kind: resolved.kind,
     status: threadStatusPill(resolved),
-    face: mateMarkStateForThread(resolved.kind, pause !== undefined),
+    face: mateMarkStateForThread(resolved.kind, usageLimited),
     subject: agentActivitySubject(thread, resolved.kind),
     at: agentActivityAt(thread),
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
     pausedUntil: pause?.resetsAt,
+    usageLimited,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
     ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
@@ -489,7 +496,8 @@ export function agentActivityErrorLine(
     ?.split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  return first === undefined ? {} : { errorLine: maskSecrets(mateErrorWords(first, undefined)) };
+  if (first === undefined) return {};
+  return { errorLine: maskSecrets(first) };
 }
 
 export function deriveZeropsAgentActivity(
@@ -531,6 +539,7 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
     status: null,
     face: "idle",
     pausedUntil: undefined,
+    usageLimited: false,
     remembered: true,
   };
 }

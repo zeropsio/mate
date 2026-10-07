@@ -24,6 +24,8 @@ import type {
 } from "@t3tools/contracts";
 import { ArrowUpRightIcon, CheckIcon, CopyIcon, RotateCcwIcon } from "lucide-react";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -34,7 +36,7 @@ import {
 } from "react";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
-import { TerminalViewport } from "~/components/ThreadTerminalDrawer";
+import { SurfaceLoading } from "../SurfaceLoading";
 import { Button } from "~/components/ui/button";
 import {
   Dialog,
@@ -74,6 +76,12 @@ import {
   USUAL_AGENT_WORD,
   type AgentSignInSteps,
 } from "./ZeropsAgentSignIn.logic";
+
+const TerminalViewport = lazy(() =>
+  import("~/components/ThreadTerminalDrawer").then((module) => ({
+    default: module.TerminalViewport,
+  })),
+);
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
 
@@ -785,23 +793,31 @@ function SignInTerminal({
 }) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   return (
-    <TerminalViewport
-      advancedTypography={false}
-      autoFocus={false}
-      cwd="/var/www"
-      drawerHeight={128}
-      focusRequestId={0}
-      key={attempt.terminalId}
-      keybindings={keybindings}
-      onAddTerminalContext={NOOP}
-      onSessionExited={NOOP}
-      resizeEpoch={0}
-      terminalId={attempt.terminalId}
-      terminalLabel={`${AGENT_SIGN_IN_CARDS[agentId].name} sign-in`}
-      threadId={threadRef.threadId}
-      threadRef={threadRef}
-      visible
-    />
+    <Suspense
+      fallback={
+        <div className="h-32">
+          <SurfaceLoading />
+        </div>
+      }
+    >
+      <TerminalViewport
+        advancedTypography={false}
+        autoFocus={false}
+        cwd="/var/www"
+        drawerHeight={128}
+        focusRequestId={0}
+        key={attempt.terminalId}
+        keybindings={keybindings}
+        onAddTerminalContext={NOOP}
+        onSessionExited={NOOP}
+        resizeEpoch={0}
+        terminalId={attempt.terminalId}
+        terminalLabel={`${AGENT_SIGN_IN_CARDS[agentId].name} sign-in`}
+        threadId={threadRef.threadId}
+        threadRef={threadRef}
+        visible
+      />
+    </Suspense>
   );
 }
 

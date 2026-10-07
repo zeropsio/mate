@@ -1,5 +1,6 @@
 import type { ModelSelection, ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
 import { create } from "zustand";
+import type { VaultChange } from "@t3tools/client-runtime/data";
 
 import type { LocalDispatchSnapshot } from "./components/ChatView.logic";
 import type { ComposerSubmissionIntent } from "./composer-logic";
@@ -46,6 +47,9 @@ export interface QueuedComposerMessage {
   files?: ComposerFileAttachment[];
   terminalContexts: TerminalContextDraft[];
   reviewComments: ReviewCommentContext[];
+  /** Context selected when the person queued; later changes belong to their next message. */
+  agentNotes?: ReadonlyArray<string>;
+  vaultChanges?: ReadonlyArray<VaultChange>;
   submissionIntent: ComposerSubmissionIntent;
   /**
    * What it goes with when it leaves while its conversation is not on screen. Absent on the

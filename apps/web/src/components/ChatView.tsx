@@ -1,3 +1,7 @@
+import { useQuestionAttachments } from "./chat/useQuestionAttachments";
+import { vaultNote } from "@t3tools/client-runtime/data";
+import { SurfaceLoading } from "./SurfaceLoading";
+import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -16,6 +20,7 @@ import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
+  AgentTurnNotes,
   type ApprovalRequestId,
   DEFAULT_MODEL,
   type EnvironmentId,
@@ -171,15 +176,8 @@ import {
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
-import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
-import { ZeropsBrowserSurface } from "./zerops/ZeropsBrowserSurface";
 import { useMateAddresses } from "../zerops/useMateAddresses";
-import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
-import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
-import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
-import { CrewPanel } from "./zerops/crew/CrewPanel";
-import { McpPanel } from "./mcp/McpPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
@@ -189,8 +187,6 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
-import { ZeropsPanel } from "./zerops/ZeropsPanel";
-import { VaultPanelContainer } from "./zerops/vault/VaultPanelContainer";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
@@ -222,7 +218,12 @@ import {
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
-import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import {
+  agentLastSpokeAt,
+  agentNotesFor,
+  agentTurnNotes,
+  agentNeedsSignIn,
+} from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -239,7 +240,7 @@ import {
   nextTimelineFollow,
   type TimelineScrollDirection,
 } from "@t3tools/client-runtime/zerops/timelineFollow";
-import { useProjectTopology } from "../zerops/useProjectTopology";
+import { useZeropsTopology } from "../zerops/useZeropsFeeds";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -605,6 +606,39 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }
+const AgentsPanel = lazy(() =>
+  import("./AgentsPanel").then((module) => ({ default: module.AgentsPanel })),
+);
+const ZeropsBrowserSurface = lazy(() =>
+  import("./zerops/ZeropsBrowserSurface").then((module) => ({
+    default: module.ZeropsBrowserSurface,
+  })),
+);
+const ZeropsGitSurface = lazy(() =>
+  import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
+);
+const ZeropsDataPanel = lazy(() =>
+  import("./zerops/ZeropsDataPanel").then((module) => ({ default: module.ZeropsDataPanel })),
+);
+const ZeropsChangeDetailPage = lazy(() =>
+  import("./zerops/ZeropsGroupDetail").then((module) => ({
+    default: module.ZeropsChangeDetailPage,
+  })),
+);
+const CrewPanel = lazy(() =>
+  import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
+);
+const McpPanel = lazy(() =>
+  import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel })),
+);
+const ZeropsPanel = lazy(() =>
+  import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
+);
+const VaultPanelContainer = lazy(() =>
+  import("./zerops/vault/VaultPanelContainer").then((module) => ({
+    default: module.VaultPanelContainer,
+  })),
+);
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
@@ -674,6 +708,8 @@ interface TerminalLaunchContext {
 }
 
 type PersistentTerminalLaunchContext = Pick<TerminalLaunchContext, "cwd" | "worktreePath">;
+
+const isAgentTurnNotes = Schema.is(AgentTurnNotes);
 
 function useLocalDispatchState(input: {
   activeThread: Thread | undefined;
@@ -1819,13 +1855,34 @@ export default function ChatView(props: ChatViewProps) {
   // just fall through to the persisted one. Mask the current error until a
   // different error arrives, mirroring the provider status banner.
   const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
-  const visibleThreadError = shouldShowThreadErrorBanner(
-    routeThreadKey,
-    threadError,
-    isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
-  )
-    ? threadError
-    : null;
+  // A persisted runtime failure already has its place in the conversation.
+  // Keep command refusals in the banner; they have no durable timeline entry.
+  const threadErrorInTimeline =
+    localServerError == null &&
+    !agentNeedsSignIn(threadError ?? "", activeServerThread?.session?.providerName) &&
+    activeServerThread?.activities.some(
+      (activity) =>
+        activity.kind === "runtime.error" &&
+        typeof activity.payload === "object" &&
+        activity.payload !== null &&
+        "turnEnd" in activity.payload &&
+        (activity.payload.turnEnd === "crash" || activity.payload.turnEnd === "failed") &&
+        activity.turnId === activeServerThread.latestTurn?.turnId &&
+        (activity.summary === threadError ||
+          (typeof activity.payload === "object" &&
+            activity.payload !== null &&
+            "message" in activity.payload &&
+            activity.payload.message === threadError)),
+    );
+  const visibleThreadError =
+    !threadErrorInTimeline &&
+    shouldShowThreadErrorBanner(
+      routeThreadKey,
+      threadError,
+      isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
+    )
+      ? threadError
+      : null;
   // Dismissing only mutates the session-scoped mask set, which does not
   // trigger a render on its own; setThreadError(null) can also bail when the
   // local shadow is already empty and the banner is driven purely by
@@ -2472,10 +2529,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The environment, not the thread: a draft has one before it has the other,
-  // and the header names the project either way. This host demands the
-  // project's topology (`useProjectTopology`) — the panel demands the same
-  // ref-counted interest, so opening it costs nothing extra.
-  const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
+  // and the header names the project either way. It draws topology contents,
+  // independently of the listing's transport freshness.
+  const zeropsTopology = useZeropsTopology(activeThreadEnvironmentId);
   // The one sign-in dialog, shared with the model picker's per-agent panels
   // and the Crew tab — see `useZeropsAgentSignInDialog`.
   const zeropsSignInDialog = useZeropsAgentSignInDialog(activeThreadEnvironmentId, activeThreadRef);
@@ -2583,13 +2639,44 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
+  const questionAttachments = useQuestionAttachments({
+    scope: activePendingUserInput ? `${activeThreadKey}:${activePendingUserInput.requestId}` : null,
+    environmentId,
+    questionId:
+      activePendingUserInput?.questions[
+        pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0
+      ]?.id ?? null,
+    supported:
+      supportsAttachmentUploads &&
+      attachmentEnvironmentConfig?.environment.capabilities.questionAttachments === true,
+    onError: (message) => {
+      if (activeThreadId) setThreadError(activeThreadId, message);
+    },
+  });
   const activePendingDraftAnswers = useMemo(
     () =>
       activePendingUserInput
-        ? (pendingUserInputAnswersByRequestId[activePendingUserInput.requestId] ??
-          EMPTY_PENDING_USER_INPUT_ANSWERS)
+        ? Object.fromEntries(
+            activePendingUserInput.questions.map((question) => [
+              question.id,
+              {
+                ...pendingUserInputAnswersByRequestId[activePendingUserInput.requestId]?.[
+                  question.id
+                ],
+                attachmentCount: questionAttachments.entries.filter(
+                  (entry) => entry.questionId === question.id,
+                ).length,
+                attachmentsBlocked: questionAttachments.blocked,
+              },
+            ]),
+          )
         : EMPTY_PENDING_USER_INPUT_ANSWERS,
-    [activePendingUserInput, pendingUserInputAnswersByRequestId],
+    [
+      activePendingUserInput,
+      pendingUserInputAnswersByRequestId,
+      questionAttachments.entries,
+      questionAttachments.blocked,
+    ],
   );
   const activePendingQuestionIndex = activePendingUserInput
     ? (pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0)
@@ -2972,13 +3059,19 @@ export default function ChatView(props: ChatViewProps) {
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   // What the Mate hears of its vault: the person's changes since it last spoke, as chips and a note.
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
-  const agentNotes = useMemo(
-    () => [
-      ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
-    ],
-    [agentSpokeAt, changeLandedEvents, vaultTurn.note],
-  );
+  const turnContext = useMemo(() => {
+    const notes = [...agentTurnNotes(changeLandedEvents, agentSpokeAt)];
+    const vaultChanges: (typeof vaultTurn.changes)[number][] = [];
+    for (const change of vaultTurn.changes) {
+      const note = vaultNote([change]);
+      if (note !== null && isAgentTurnNotes([...notes, note])) {
+        notes.push(note);
+        vaultChanges.push(change);
+      }
+    }
+    return { notes, vaultChanges };
+  }, [agentSpokeAt, changeLandedEvents, vaultTurn.changes]);
+  const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
@@ -6409,6 +6502,7 @@ export default function ChatView(props: ChatViewProps) {
     // Typed out in full rather than picked from the menu. Attachments or contexts
     // mean the user is sending a prompt, so those go through as usual.
     if (
+      !queuedMessage &&
       usageLimitsOffered &&
       usageLimitsKey !== null &&
       !composerHasNonPromptContent &&
@@ -6645,6 +6739,8 @@ export default function ChatView(props: ChatViewProps) {
         files: [...composerFiles],
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
+        agentNotes: [...agentNotes],
+        vaultChanges: [...turnContext.vaultChanges],
         submissionIntent,
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
@@ -7151,9 +7247,16 @@ export default function ChatView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
-      const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
+      const turnAgentNotes = agentNotesFor(
+        outgoingMessageText,
+        queuedMessage ? (queuedMessage.agentNotes ?? []) : agentNotes,
+      );
       const toldVault =
-        vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
+        turnAgentNotes.length > 0
+          ? queuedMessage
+            ? (queuedMessage.vaultChanges ?? [])
+            : turnContext.vaultChanges
+          : [];
       turnStartAttempted = true;
       if (queuedMessage && activeThreadKey) {
         settleQueuedSend(activeThreadKey, createLocalDispatchSnapshot(activeThread));
@@ -7467,6 +7570,8 @@ export default function ChatView(props: ChatViewProps) {
     async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
       if (!activeThreadId) return;
 
+      const attachmentsByQuestionId = questionAttachments.forResponse();
+      if (attachmentsByQuestionId === null) return;
       setRespondingUserInputRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
@@ -7476,8 +7581,10 @@ export default function ChatView(props: ChatViewProps) {
           threadId: activeThreadId,
           requestId,
           answers,
+          attachmentsByQuestionId,
         },
       });
+      if (result._tag === "Success") questionAttachments.clear();
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -7488,7 +7595,7 @@ export default function ChatView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError],
+    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError, questionAttachments],
   );
 
   // Closes an async question without messaging the agent. The server records
@@ -7504,6 +7611,7 @@ export default function ChatView(props: ChatViewProps) {
         environmentId,
         input: { threadId: activeThreadId, requestId },
       });
+      if (result._tag === "Success") questionAttachments.clear();
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -7514,7 +7622,7 @@ export default function ChatView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, dismissThreadUserInput, environmentId, setThreadError],
+    [activeThreadId, dismissThreadUserInput, environmentId, setThreadError, questionAttachments],
   );
 
   const setActivePendingUserInputQuestionIndex = useCallback(
@@ -8207,8 +8315,9 @@ export default function ChatView(props: ChatViewProps) {
     kind satisfies never;
   };
   const rightPanelContent =
-    activeThreadRef && activeRightPanelSurface
-      ? (() => {
+    activeThreadRef && activeRightPanelSurface ? (
+      <Suspense fallback={<SurfaceLoading />}>
+        {(() => {
           switch (activeRightPanelSurface.kind) {
             case "terminal":
               return (
@@ -8233,7 +8342,7 @@ export default function ChatView(props: ChatViewProps) {
               );
             case "diff":
               return (
-                <Suspense fallback={null}>
+                <Suspense fallback={<SurfaceLoading />}>
                   <DiffPanel
                     key={activeThreadKey}
                     mode="embedded"
@@ -8335,7 +8444,7 @@ export default function ChatView(props: ChatViewProps) {
             case "file":
               if (!activeProject || !activeWorkspaceRoot) return null;
               return (
-                <Suspense fallback={null}>
+                <Suspense fallback={<SurfaceLoading />}>
                   <FilePreviewPanel
                     key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
                     environmentId={activeProject.environmentId}
@@ -8360,8 +8469,9 @@ export default function ChatView(props: ChatViewProps) {
           }
           const exhaustiveSurface: never = activeRightPanelSurface;
           return exhaustiveSurface;
-        })()
-      : null;
+        })()}
+      </Suspense>
+    ) : null;
 
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,
@@ -8454,14 +8564,18 @@ export default function ChatView(props: ChatViewProps) {
         {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
+          mateName={(() => {
+            const at = zeropsMateAt(zeropsMates, environmentId);
+            return at.kind === "mate" ? at.mate.name : undefined;
+          })()}
           driver={activeServerThread?.session?.providerName ?? null}
           error={visibleThreadError}
-          mate={(() => {
-            const mateAt = zeropsMateAt(zeropsMates, environmentId);
-            return mateAt.kind === "mate" ? mateAt.mate.name : undefined;
-          })()}
-          // An agent that is not signed in is signed in here, not through a
-          // shell on a container nobody has one on.
+          usageLimitShown={conversationEntries.some(
+            (entry) =>
+              isUsageLimitError(entry) &&
+              timelineEntryTurnId(entry) === activeThread.latestTurn?.turnId,
+          )}
+          // Sign-in opens this Mate's coding-agent dialog.
           onAuthorize={
             activeThreadRef === null
               ? undefined
@@ -8574,6 +8688,25 @@ export default function ChatView(props: ChatViewProps) {
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   onUsageAutoResumeChange,
+                  onUsageContinue:
+                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                      ? null
+                      : () => {
+                          if (activeThreadKey === null) return;
+                          const message = useQueuedMessageStore
+                            .getState()
+                            .enqueue(activeThreadKey, {
+                              prompt: "Continue the work that was paused.",
+                              images: [],
+                              terminalContexts: [],
+                              reviewComments: [],
+                              submissionIntent: "foreground",
+                              queuedAfterToolActivityId: null,
+                              createdAt: new Date().toISOString(),
+                              holdUntilUserAction: true,
+                            });
+                          void onSend(undefined, "foreground", message);
+                        },
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
@@ -8799,6 +8932,7 @@ export default function ChatView(props: ChatViewProps) {
                               activePendingResolvedAnswers={activePendingResolvedAnswers}
                               activePendingIsResponding={activePendingIsResponding}
                               activePendingDraftAnswers={activePendingDraftAnswers}
+                              questionAttachments={questionAttachments}
                               activePendingQuestionIndex={activePendingQuestionIndex}
                               respondingRequestIds={respondingRequestIds}
                               showPlanFollowUpPrompt={showPlanFollowUpPrompt}

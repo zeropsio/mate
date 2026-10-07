@@ -1275,6 +1275,7 @@ function OpenableMarkdownImage({
         className,
       )}
       data-markdown-image-opener
+      data-markdown-image-block={block || undefined}
       onClick={(event) => openMarkdownImage(event.currentTarget, open)}
       type="button"
     >

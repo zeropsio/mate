@@ -609,6 +609,15 @@ export function resolveComposerInteractionMode(input: {
   };
 }
 
+/** A configured provider without model evidence cannot accept a model-backed turn. */
+export function getProviderCatalogSendBlockReason(
+  provider: Pick<ServerProvider, "models" | "message"> | null | undefined,
+): string | null {
+  return provider !== null && provider !== undefined && provider.models.length === 0
+    ? (provider.message ?? "No models are available for this provider.")
+    : null;
+}
+
 export function getAntigravitySendBlockReason(
   provider:
     | Pick<ServerProvider, "driver" | "installed" | "auth" | "models" | "status">

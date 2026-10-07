@@ -16,6 +16,8 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
 
+import { sameValue } from "../lib/sameValue";
+
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
@@ -35,7 +37,10 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
     zeropsMateDecisions(rows, registeredZeropsOrigins(environments)),
     environments,
   );
-}).pipe(Atom.withLabel("zerops:mates"));
+}).pipe(
+  Atom.withEquality<ZeropsMateDirectory>((left, right) => sameValue([...left], [...right])),
+  Atom.withLabel("zerops:mates"),
+);
 
 /** Every environment's answer, for a surface that names several (a picker). */
 export function useZeropsMateDirectory(): ZeropsMateDirectory {

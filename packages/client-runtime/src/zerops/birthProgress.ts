@@ -175,12 +175,6 @@ function newestByCreatedAt(
   return [...processes].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
 }
 
-function oldestByCreatedAt(
-  processes: ReadonlyArray<BirthProcessFact>,
-): BirthProcessFact | undefined {
-  return [...processes].sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0];
-}
-
 function findNewest(
   processes: ReadonlyArray<BirthProcessFact>,
   actionName: string,
@@ -247,6 +241,7 @@ const CONTAINER_ACTIONS: ReadonlySet<string> = new Set([
   "stack.create",
   "stack.build",
   "stack.start",
+  "stack.restart",
   "stack.deploy",
 ]);
 
@@ -255,6 +250,7 @@ const CONTAINER_ACTION_DETAIL: Readonly<Record<string, string>> = {
   "stack.build": "Building the container",
   "stack.deploy": "Deploying the container",
   "stack.start": "Starting the container",
+  "stack.restart": "Restarting the container",
 };
 
 /**
@@ -286,32 +282,38 @@ function containerRelevantProcesses(facts: BirthFacts): ReadonlyArray<BirthProce
 
 function deriveContainerStep(facts: BirthFacts, projectDone: boolean, nowMs: number): StepDraft {
   const relevant = containerRelevantProcesses(facts);
-  const firstCreate = oldestByCreatedAt(
-    relevant.filter((process) => process.actionName === "stack.create"),
-  );
-  const timestamps = tsOf(firstCreate);
+  const current = newestByCreatedAt(relevant);
+  const timestamps = tsOf(current);
+  const terminal =
+    current !== undefined && (isFinished(current.status) || isFailedOrCanceled(current.status));
+  // A terminal process cannot keep a stale pipeline slot running. Completed slots remain facts;
+  // a slot with no terminal evidence is omitted rather than assigned an invented outcome.
+  const substeps =
+    current?.appVersion === undefined
+      ? undefined
+      : observedSteps(current.appVersion, nowMs).filter(
+          (step) => !terminal || step.state !== "running",
+        );
+  const substepsField = substeps !== undefined && substeps.length > 0 ? { substeps } : {};
 
-  const failedProcess = relevant.find((process) => isFailedOrCanceled(process.status));
+  const failedProcess =
+    current !== undefined &&
+    (isFailedOrCanceled(current.status) || substeps?.some((step) => step.state === "failed"))
+      ? current
+      : undefined;
   const serviceFailed =
     facts.container !== undefined && CONTAINER_FAILED_STATUSES.has(facts.container.status);
-  if (failedProcess !== undefined || serviceFailed) {
+  if (
+    failedProcess !== undefined ||
+    (serviceFailed && (current === undefined || !isPendingOrRunning(current.status)))
+  ) {
     return {
       state: "failed",
       detail: failedProcess?.failReason ?? "Could not be created.",
       ...timestamps,
+      ...substepsField,
     };
   }
-
-  const newestBuild = newestByCreatedAt(
-    relevant.filter(
-      (process) => process.actionName === "stack.build" && process.appVersion !== undefined,
-    ),
-  );
-  const substeps =
-    newestBuild?.appVersion !== undefined
-      ? observedSteps(newestBuild.appVersion, nowMs)
-      : undefined;
-  const substepsField = substeps !== undefined && substeps.length > 0 ? { substeps } : {};
 
   const running = relevant.filter((process) => isPendingOrRunning(process.status));
   if (facts.container?.status === "ACTIVE" && running.length === 0) {
@@ -320,6 +322,10 @@ function deriveContainerStep(facts: BirthFacts, projectDone: boolean, nowMs: num
 
   if (!projectDone) {
     return { state: "waiting" };
+  }
+
+  if (current !== undefined && isFinished(current.status)) {
+    return { state: "waiting", ...timestamps, ...substepsField };
   }
 
   const newestRunning = newestByCreatedAt(running);

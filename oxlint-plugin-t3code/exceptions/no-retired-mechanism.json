@@ -232,22 +232,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/lib/archivedThreadsState.ts",
-    "kind": "retired-token",
-    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/lib/archivedThreadsState.ts",
-    "kind": "retired-token",
-    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/state/auth.ts",
     "kind": "retired-token",
     "fingerprint": "createAuthEnvironmentAtoms",

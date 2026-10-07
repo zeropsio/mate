@@ -1,3 +1,5 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { MateStatusMarker } from "./MateStatusMarker";
 /**
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
@@ -100,6 +102,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
+  CircleAlertIcon,
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
@@ -868,7 +871,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
+        <span className="text-xs text-sidebar-muted-foreground">No Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
           onClick={onBrowseProjects}
@@ -1244,6 +1247,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
+              name: projectNameInApp(item.project),
               connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
@@ -1791,7 +1795,7 @@ export function SidebarAccountLine({
 }) {
   return (
     <div
-      className="animate-zerops-appear flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      className="flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
@@ -2627,6 +2631,7 @@ function MateRowView<T extends RosterCandidate>({
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const read = mateRowReading({
+    name: projectNameInApp(candidate.project),
     connected: up,
     activity,
     reviewWaits,
@@ -2672,7 +2677,14 @@ function MateRowView<T extends RosterCandidate>({
     outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
+  const status =
+    deleting || view.coming !== undefined ? null : mateStatus(activity, signIn !== undefined);
+  const dot =
+    (status?.severity === "attention" &&
+    (status.kind === "limit" ||
+      (status.kind === "sign-in" ? seated.waitsOnViewer : hqPeople?.waitsOnViewer === true))
+      ? "attention"
+      : view.dot) ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge =
     outsideHq || (containerless && seated.seat.kind === "nobody")
@@ -2840,6 +2852,11 @@ function MateRowView<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
+        aria-label={
+          dot === undefined
+            ? undefined
+            : `${name}, ${status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)}`
+        }
         aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
@@ -2985,7 +3002,14 @@ function MateRowView<T extends RosterCandidate>({
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {outsideHq || view.reply === undefined ? null : (
+          {outsideHq ? null : status !== null ? (
+            <span className="flex min-w-0 items-center gap-2">
+              <MateStatusMarker mateName={name} status={status} timestampFormat={timestampFormat} />
+              {status.kind === "limit" || view.reply === undefined ? null : (
+                <MateReply known={known} reply={view.reply} />
+              )}
+            </span>
+          ) : view.reply === undefined ? null : (
             <MateReply known={known} reply={view.reply} />
           )}
           {deleting ? <MateDeletingLine /> : null}
@@ -3207,9 +3231,9 @@ function MateSlot({
               <PauseIcon aria-hidden="true" className="size-2.5" />
               {formatShortTimestamp(slot.until, timestampFormat)}
             </span>
-            <span className="sr-only">{`Paused at a usage limit, picks up ${upcoming}`}</span>
+            <span className="sr-only">{`Paused at a usage limit, available again ${upcoming}`}</span>
           </TooltipTrigger>
-          <TooltipPopup side="right">{`Paused at a usage limit. Picks up ${upcoming}.`}</TooltipPopup>
+          <TooltipPopup side="right">{`Paused at a usage limit. Available again ${upcoming}.`}</TooltipPopup>
         </Tooltip>
       );
     }
@@ -3255,6 +3279,13 @@ function MateWorkingTime({
  * (T6); what the menu opened onto, or what this browser remembered, is
  * simply there.
  */
+const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
+  tone === "unread"
+    ? "Unseen reply"
+    : tone === "failed"
+      ? "Stopped on an error"
+      : "Waiting for you";
+
 function MateDot({
   tone,
   known,
@@ -3278,11 +3309,12 @@ function MateDot({
 }
 
 /** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
-const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed", string> = {
+const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
   muted: "text-muted-foreground",
   "ink-2": "menu-ink-2",
   ink: "text-sidebar-foreground",
   failed: "text-status-failed-text",
+  attention: "text-status-attention-text",
 };
 
 /**
@@ -3492,13 +3524,16 @@ function MateComingLine({ line }: { readonly line: MateBornLine }) {
     <span
       className={cn(
         "truncate text-line leading-4.5 tabular-nums",
-        line.tone === "failed" ? "text-status-failed-text" : "text-muted-foreground",
+        line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}
       data-zerops-coming-tone={line.tone}
       data-zerops-surface="sidebar-mate-coming-line"
       key={line.words}
     >
+      {line.tone === "attention" ? (
+        <CircleAlertIcon aria-hidden="true" className="mr-1 inline size-3" />
+      ) : null}
       {mateBornLineText(line, nowMs)}
     </span>
   );

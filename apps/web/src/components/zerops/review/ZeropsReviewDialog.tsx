@@ -28,8 +28,7 @@ import {
 
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-import { keyStaysInReview, pressesPrimary, reviewOrigin } from "./ZeropsReview.logic";
-import { isField } from "./ZeropsReviewSurface";
+import { isField, keyStaysInReview, pressesPrimary, reviewOrigin } from "./ZeropsReview.logic";
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
 

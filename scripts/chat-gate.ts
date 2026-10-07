@@ -48,18 +48,18 @@ export const chatGateStages = [
     name: "B: client wire journeys (C)",
     commands: [
       {
-        cwd: ".",
+        cwd: "apps/web",
         args: [
           "test",
           "run",
           "--config",
-          "apps/web/test/scenarios/vitest.config.ts",
+          "test/scenarios/vitest.config.ts",
           "--project",
           "scenarios",
           "test/scenarios/areas/c-mate",
           "--allowOnly=false",
           "--reporter=default",
-          "--reporter=./scripts/chat-gate-reporter.ts",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
         ],
       },
     ],

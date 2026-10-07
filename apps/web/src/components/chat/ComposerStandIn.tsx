@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from "react";
 
-import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "../ComposerPromptEditor";
+import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { heldDraftRuns } from "./ComposerRoom.logic";
 
 /**

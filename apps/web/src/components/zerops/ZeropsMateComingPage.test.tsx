@@ -1,5 +1,7 @@
-import { Atom } from "effect/unstable/reactivity";
 // @vitest-environment happy-dom
+import { Atom } from "effect/unstable/reactivity";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
@@ -137,6 +139,8 @@ const environments = { setOnScreen: (projectId: string | null) => app.onScreen(p
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
+  useHeldZeropsCandidates: () =>
+    heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
   useZeropsCandidates: () => ({
     listing: app.listing,
     wholeForPerson: app.wholeForPerson,
@@ -165,6 +169,9 @@ vi.mock("~/zerops/zeropsContainers", () => ({
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountData: () => ({ orgId: "org-1" }),
+  useAccountDataOptional: () => null,
+  useAccountOrgId: () => "org-1",
+  useProjection: () => undefined,
   useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
 }));
 vi.mock("~/zerops/accountOperations", () => ({
@@ -223,13 +230,20 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     standUpFailure,
   }: {
     readonly standUpFailure?: { retry: () => void };
-    readonly coming: { readonly kind: string; readonly below: ReactNode };
+    readonly coming: {
+      readonly kind: string;
+      readonly below: ReactNode;
+      readonly headline?: string;
+      readonly sentence?: string;
+    };
     readonly mate: { readonly name: string };
   }) =>
     h(
       "section",
       { "data-kind": coming.kind },
       mate.name,
+      coming.headline,
+      coming.sentence,
       coming.below,
       standUpFailure === undefined
         ? null
@@ -244,7 +258,7 @@ vi.mock("../chat/ConversationStrip", () => ({
     readonly mate: { readonly tooltip: string | null; readonly face: string };
   }) => h("span", { "data-header-face": mate.face }, mate.tooltip),
 }));
-vi.mock("../chat/ChatHeader", () => ({ ZeropsProjectLink: () => null }));
+vi.mock("./ZeropsProjectLink", () => ({ ZeropsProjectLink: () => null }));
 vi.mock("../chat/PanelLayoutControls", () => ({ PanelLayoutControls: () => null }));
 vi.mock("../ui/sidebar", () => ({
   SidebarInset: ({ children }: { readonly children?: ReactNode }) => h("main", null, children),
@@ -266,7 +280,9 @@ vi.mock("../ui/button", () => ({
     readonly disabled?: boolean;
   }) => h("button", { onClick, inert, disabled }, children),
 }));
-vi.mock("./ZeropsProjectsPage", () => ({ removeFailedZeropsProject: async () => ({ ok: true }) }));
+vi.mock("./removeFailedZeropsProject", () => ({
+  removeFailedZeropsProject: async () => ({ ok: true }),
+}));
 
 let tree: ReactTestRenderer | undefined;
 
@@ -340,12 +356,8 @@ describe("a Mate's own view while its link is made", () => {
     openView();
     act(() => vi.advanceTimersByTime(10_000));
     openView();
-    // A blip says nothing; a link lost for longer says so in the Mate's name (`mateVoice`).
-    expect(said()).not.toContain("Reconnecting");
-    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
-
     expect(said()).toContain("Quinn");
-    expect(said()).toContain("Reconnecting to Quinn…");
+    expect(said()).toContain("Quinn is reconnecting.");
     expect(app.connect).toHaveBeenCalledWith({ key: KEY });
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -362,7 +374,7 @@ describe("a Mate's own view while its link is made", () => {
       },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("This Mate isn't answering. Trying again in 5 s.");
+    expect(said()).toContain("Quinn is reconnecting.");
     expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
     act(() =>
@@ -383,7 +395,7 @@ describe("a Mate's own view while its link is made", () => {
       reachability: { kind: "refused-credential" },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("This Mate didn't accept the sign-in.");
+    expect(said()).toContain("Quinn couldn't accept your sign-in.");
     expect(buttons()).toEqual(["Try again"]);
     app.connect.mockClear();
     act(() =>
@@ -408,8 +420,7 @@ describe("a Mate's own view while its link is made", () => {
   it("waits for a machine to name it before connecting: a Connect before the stage holds it ends unheard", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: null } satisfies MateLink;
     openView();
-    act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS));
-    expect(said()).toContain("Opening Quinn…");
+    expect(said()).toContain("Quinn is opening the conversation.");
     expect(app.connect).not.toHaveBeenCalled();
     expect(app.navigate).not.toHaveBeenCalled();
   });
@@ -423,7 +434,8 @@ describe("a Mate's own view while its link is made", () => {
         reachability: { kind: "gone", because: "direct-not-found" },
       } satisfies MateLink,
       listing: listingOf([QUINN]),
-      words: "This project is no longer available. It was deleted, or you no longer have access.",
+      words:
+        "Quinn's project is no longer available. It was deleted, or you no longer have access.",
       name: "Quinn",
     },
     {
@@ -1141,6 +1153,18 @@ describe("comingSentenceOf — the sentence over a stop", () => {
     press,
   });
 
+  it("keeps the failed process's explanation when the originating press also failed", () => {
+    const reason = "Nic couldn't be set up: the project can't reach the internet (DNS).";
+    expect(
+      comingSentenceOf({
+        coming: { kind: "failed", line: reason, verb: "try-again" },
+        failureReason: reason,
+        progress: progressOf([sub("setup", "failed", "CommandExec: init command failed.")]),
+        nowMs: 0,
+      }),
+    ).toBe(reason);
+  });
+
   it.each([
     {
       case: "a step this tab ran stopped it, certain: the step says why",
@@ -1276,7 +1300,80 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   act(() => {
     tree = create(h(ZeropsMateComingPage, { projectId: PROJECT }));
   });
-  expect(said()).toContain("You can see this project in Zerops but can't operate its Mate.");
+  expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
   expect(buttons()).not.toContain("Connect");
+});
+
+describe("failed setup recovery fixture", () => {
+  it("keeps a fixed failed duration and offers retry, removal and the raw details", () => {
+    const process = {
+      id: "process-dns",
+      projectId: PROJECT,
+      serviceStackIds: ["zcp"],
+      actionName: "stack.create",
+      status: "FAILED",
+      created: "2026-10-07T10:00:00Z",
+      started: "2026-10-07T10:00:02Z",
+      finished: "2026-10-07T10:01:12Z",
+    };
+    const retry = vi.fn();
+    const remove = vi.fn();
+    let rendered: ReactTestRenderer;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: {
+            kind: "failed",
+            line: "Nic couldn't be set up: the project can't reach the internet (DNS).",
+            verb: "try-again",
+          },
+          progress: {
+            steps: [
+              {
+                id: "container",
+                label: "Container",
+                state: "failed",
+                startedAt: process.started,
+                endedAt: process.finished,
+              },
+            ],
+            active: null,
+            failed: null,
+            doneCount: 0,
+            total: 1,
+            complete: false,
+          },
+          nowMs: Date.parse(process.finished) + 3_600_000,
+          mate: { name: "Nic", project: "nevim" },
+          you: null,
+          onTryAgain: retry,
+          onRemove: remove,
+          setupFailureDetails: {
+            process,
+            projectUrl: `https://app.zerops.io/project/${PROJECT}`,
+            details: "curl: (6) Could not resolve host: zerops.io\nzcp init: command not found",
+            status: "ended",
+            retrying: false,
+          },
+        }),
+      );
+    });
+    const said = JSON.stringify(rendered!.toJSON());
+    expect(said).toContain("Nic's workspace");
+    expect(said).toContain("1:10");
+    expect(said).not.toContain("61:10");
+    expect(rendered!.root.findByType("summary").children).toEqual(["Details"]);
+    expect(rendered!.root.findByType("pre").children.join("")).toContain("Could not resolve host");
+    const actions = rendered!.root.findAllByType("button");
+    expect(actions.map((button) => button.children.join(""))).toEqual(["Try again", "Remove"]);
+    act(() => actions[0]!.props.onClick());
+    act(() => actions[1]!.props.onClick());
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(rendered!.root.findByType("a").props.href).toBe(
+      `https://app.zerops.io/project/${PROJECT}`,
+    );
+    act(() => rendered!.unmount());
+  });
 });

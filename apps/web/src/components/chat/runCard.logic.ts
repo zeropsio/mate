@@ -386,7 +386,7 @@ export function workedWords(speaker: string, status: RunStatus): string {
   if (status.face === "interrupted") {
     return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
   }
-  if (status.face === "paused") return `${speaker} stopped at the usage limit after ${took}`;
+  if (status.face === "paused") return `${speaker} paused at the limit · ${took}`;
   return `${speaker} ${status.worked ? "worked" : "thought"} ${took}`;
 }
 
