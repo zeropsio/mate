@@ -4171,3 +4171,17 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     write through a shared mapping, a FUSE mount, a timing slack or another clock each put other
     content under the written name. The agent's own calls already reach every reader of the thread;
     showing those, and only those, discloses nothing new.
+- **2026-10-07** — **A project's variables are its vault: Shared plus one per service, plain or
+  sensitive, and who reads each is worked out from what is deployed** (the owner: "a single `vault`
+  on both project and service level, with two sections … single add / edit, as well as multi edit
+  … some clever way to then let mate know"; round 3 of the "Mate Vault Prototype", Quiet look and
+  tools in the right panel taken as recommended). The Vault tab sits beside a Mate's conversation
+  and a Vault column beside a stage or production page. Sensitive is write-only; a write always
+  carries `sensitive`. Readers come from the deployed run entries (a deploy activates references, a
+  restart values); a value nothing references reads "nothing reads it yet". The Mate hears the
+  person's changes with the next message as a note of keys and what each needs, never a value; the
+  composer shows a chip per change. Edit as text applies one write per value after a review.
+  - _Why:_ "you need deploy to activate the zerops.yml reference / when the vault value changes,
+    you need to restart the services … but you don't really know which reference it" — the
+    platform does not know who reads a value, so Mate reads it off each service's deployed entries;
+    and a value typed into the chat would reach the model, so a value goes only to the vault.
