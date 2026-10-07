@@ -27,6 +27,7 @@ import {
   type StepFailure,
 } from "./ConversationActor.ts";
 import type { Envelope } from "./domain/command.ts";
+import type { ConversationState } from "./domain/state.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { EngineStore, type EngineStoreError } from "./store/EngineStore.ts";
 
@@ -39,6 +40,10 @@ export interface ConversationsShape {
   readonly tell: (
     envelope: Envelope,
   ) => Effect.Effect<CommandResult, StepFailure | EngineStoreError>;
+  /** The conversation's state as its actor holds it: what a view reads besides the record. */
+  readonly state: (
+    conversation: ConversationId,
+  ) => Effect.Effect<ConversationState, EngineStoreError>;
   /** The durable events after a cursor, then each new one as it commits. */
   readonly subscribe: (
     conversation: ConversationId,
@@ -97,6 +102,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
   return Conversations.of({
     ask: (envelope) => withActor(envelope.conversationId, (actor) => actor.ask(envelope)),
     tell: (envelope) => withActor(envelope.conversationId, (actor) => actor.tell(envelope)),
+    state: (conversation) => withActor(conversation, (actor) => actor.state),
     subscribe: (conversation, afterSeq) =>
       Stream.unwrap(
         Effect.gen(function* () {

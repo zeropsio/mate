@@ -135,6 +135,7 @@ describe("Conversations", () => {
         const signals = {
           effects: yield* EngineSignals.makeDoorbell,
           wakes: yield* EngineSignals.makeDoorbell,
+          commits: yield* EngineSignals.makeCommits,
         };
         const c = ConversationId.make("narrow");
         const actor = yield* makeConversationActor(c, gated, signals, { mailboxCapacity: 2 });

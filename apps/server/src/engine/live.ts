@@ -5,8 +5,8 @@
  * `start` boots it in the startup's reactor scope (`EngineBoot`). Sign-out closes the sessions of
  * every conversation whose agent runs on a signed-out instance (`CloseSession{signed-out}`); a
  * wake is the conversation's `ArmWake`, for the principal it names; a woken run's outcome is
- * read from the run the wake started. The view and its changes are the grafts' (the conversation
- * row and its revision come with the wire).
+ * read from the run the wake started. A conversation's view is read from its record and its
+ * actor; its changes are its commits.
  *
  * @module engine/live
  */
@@ -34,6 +34,7 @@ import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import { MateEngine, WakeRefused, type MateEngineService } from "./MateEngine.ts";
+import { readConversationView, readConversationViews } from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
@@ -54,6 +55,7 @@ export interface LiveEngineOptions {
 export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations;
+    const signals = yield* EngineSignalsModule.EngineSignals;
     const sql = yield* SqlClient.SqlClient;
     const context = yield* Effect.context<
       | TurnPumpModule.TurnPump
@@ -171,8 +173,24 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     return MateEngine.of({
       live: true,
       start,
-      view: Effect.succeed(undefined),
-      changes: Stream.empty,
+      conversations: readConversationViews.pipe(
+        Effect.provideService(Conversations, conversations),
+        Effect.provideService(SqlClient.SqlClient, sql),
+        Effect.tapCause((cause) =>
+          Effect.logWarning("Mate engine: a view could not be read", cause),
+        ),
+        Effect.orElseSucceed(() => []),
+      ),
+      conversation: (id) =>
+        readConversationView(id).pipe(
+          Effect.provideService(Conversations, conversations),
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.tapCause((cause) =>
+            Effect.logWarning("Mate engine: a view could not be read", cause),
+          ),
+          Effect.orElseSucceed(() => undefined),
+        ),
+      changes: Stream.fromPubSub(signals.commits),
       stopSessionsOn,
       wake,
       runOutcome,

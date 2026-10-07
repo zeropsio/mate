@@ -9,7 +9,7 @@
  *
  * The domain, the store and the runtime behind the live form are built
  * beside this file; until they land the live form starts nothing and serves
- * no conversation. What the Zerops grafts call (`view`, `changes`,
+ * no conversation. What the Zerops grafts call (`conversations`, `changes`,
  * `stopSessionsOn`, `wake`, `runOutcome`) speaks engine types only.
  *
  * @module engine/MateEngine
@@ -22,7 +22,6 @@ import * as Stream from "effect/Stream";
 
 import type {
   ConversationId,
-  ConversationRow,
   Principal,
   RunEnd,
   RunEndSource,
@@ -32,6 +31,9 @@ import type {
 
 import type { Command } from "./domain/command.ts";
 import type { WakeKind } from "./ports.ts";
+import type { ConversationView } from "./read/conversationView.ts";
+
+export type { ConversationView, ViewCall, ViewRequest, ViewRun } from "./read/conversationView.ts";
 
 /** What a V1 door answers once the Mate engine owns the conversation. */
 export const ENGINE_MOVED =
@@ -77,10 +79,12 @@ export interface MateEngineService {
   readonly live: boolean;
   /** Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. */
   readonly start: () => Effect.Effect<void, never, Scope.Scope>;
-  /** The conversation as the grafts read it (HQ overview, attention): its menu row. */
-  readonly view: Effect.Effect<ConversationRow | undefined>;
-  /** Emits once whenever the view may have changed. */
-  readonly changes: Stream.Stream<void>;
+  /** Every conversation as the grafts read it (HQ overview, attention, the menu row). */
+  readonly conversations: Effect.Effect<ReadonlyArray<ConversationView>>;
+  /** One conversation as the grafts read it; none when the engine holds no record of it. */
+  readonly conversation: (id: ConversationId) => Effect.Effect<ConversationView | undefined>;
+  /** The conversation whose record moved, each time it does: its view may have changed. */
+  readonly changes: Stream.Stream<ConversationId>;
   /** Stops every live session on these instances (a sign-out); best-effort, never fails. */
   readonly stopSessionsOn: (
     instanceIds: ReadonlyArray<string>,
@@ -101,7 +105,8 @@ const notRunning = () =>
 export const inertMateEngine: MateEngineService = {
   live: false,
   start: () => Effect.void,
-  view: Effect.succeed(undefined),
+  conversations: Effect.succeed([]),
+  conversation: () => Effect.succeed(undefined),
   changes: Stream.empty,
   stopSessionsOn: () => Effect.void,
   wake: notRunning,

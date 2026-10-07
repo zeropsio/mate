@@ -9,6 +9,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import type { ConversationId } from "@t3tools/contracts";
 
 export interface Doorbell {
   /** Tell the consumer there is something new. */
@@ -33,13 +35,18 @@ export interface EngineSignalsShape {
   readonly effects: Doorbell;
   /** A wake was armed, fired or cancelled. */
   readonly wakes: Doorbell;
+  /** A conversation committed events: its view may have changed (the grafts' `changes`). */
+  readonly commits: PubSub.PubSub<ConversationId>;
 }
 
 export class EngineSignals extends Context.Service<EngineSignals, EngineSignalsShape>()(
   "t3/engine/EngineSignals",
 ) {}
 
+/** A conversation's commits, for whoever reads views: it never holds a writer back. */
+export const makeCommits = PubSub.sliding<ConversationId>(256);
+
 export const layer = Layer.effect(
   EngineSignals,
-  Effect.all({ effects: makeDoorbell, wakes: makeDoorbell }),
+  Effect.all({ effects: makeDoorbell, wakes: makeDoorbell, commits: makeCommits }),
 );

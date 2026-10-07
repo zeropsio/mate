@@ -99,7 +99,10 @@ export const makeConversationActor = Effect.fn("makeConversationActor")(function
         ),
       );
     yield* Ref.set(state, committed.state);
-    if (committed.events.length > 0) yield* PubSub.publishAll(published, committed.events);
+    if (committed.events.length > 0) {
+      yield* PubSub.publishAll(published, committed.events);
+      yield* PubSub.publish(signals.commits, conversationId);
+    }
     if (committed.enqueued) yield* signals.effects.ring;
     if (committed.wakesChanged) yield* signals.wakes.ring;
     return committed.result;
