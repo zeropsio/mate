@@ -32,12 +32,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   constant and favicons stay F6.
   - _Why:_ the descriptor is not a door input yet; desktop would crash on a descriptor fetch before
     the short-circuit; R4 owns the copy module
-- **2026-08-30** — `ZeropsChatChrome.panel` (available/unavailable/unknown) is produced by the chat
-  chrome resolver for W3-F5c-PANEL's launcher adapter (`zeropsPanel` input); until PANEL lands its
-  only reader is `launcher`. Declared, not orphaned.
-- **2026-08-30** — The chat chrome hands the Zerops panel the agent-auth SNAPSHOT it owns
-  (`agentAuthCard: snapshot | null`), never a boolean: ownership of the card is unforgeable — a
-  surface renders only what the resolver produced.
 - **2026-08-30** — Timeline folds: a settled Zerops milestone escapes every collapse path — turn
   fold, partitioned tool summary, overflow, AND the active-turn `work-live` group (a research gap:
   the inventory said three). Membership is by entry identity, never by id (duplicate ids exist). An
@@ -48,10 +42,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   second call), matrix expectations are hand-written literals, an empty bootstrap-method set is a
   phrased state without a form, `/usage` is gated like every other app route, `AuthGateState` lives
   with the producer.
-- **2026-08-30** — A slice that moves a decision must keep HEAD's default until a phrase exists for
-  the new state: the right-panel adapter is tri-state, but Diff stays optimistic while the git
-  answer is in flight; only Zerops — whose answer arrives late over a subscription — reaches
-  `unknown` in production. Copy that moves modules must move the R4 registration with it.
 - **2026-09-03** — Chat output: a recognized Zerops call is one anchor row in the transcript (its
   `tool.started` row's id/time, never merged away) and one card per **operation** reduced from the
   call stream (`client-runtime/zerops/model`, domain keys `op:<toolCallId>` per call /
@@ -175,22 +165,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   draft. The composer's project question stays for environments that really hold several projects.
   - _Why:_ a persisted draft came back from a reload pointing at a project that did not exist, and
     the page asked a question the product has no business asking
-- **2026-09-06** — The service map is the Zerops dashboard's service card compressed for a side
-  panel — and compressed means two lines. On the surface only what a glance needs: name + port, the
-  public route as a glyph (the one thing reached for without hovering), the status word, and the
-  three resources as figure + inline graph of the last day's use (`POST
-/stats-history/group-by-search`, 24 hourly buckets, the dashboard's own default range). Everything
-  the dashboard card shows around those waits in a hover pop: the dashboard-page link, what the
-  service is and how it was deployed, the routes as hosts, used / allocated with a fill. The graph
-  is scaled to use, never to the allocation — the figure already says the allocation, and against it
-  an idle service's line is a sliver and the ceiling an artifact. Nothing boxed inside a card; the
-  platform's status token is a word; a settled-but-not-running state takes the off tone; a service
-  holding nothing is one line.
-  - _Why:_ three passes were rejected in a row: boxed tiles of the autoscaling envelope ("heavy,
-    junior"), a strip of live figures with hairlines ("almost none of this needs to be visible … the
-    card shows history"), figure-over-graph columns ("unnecessarily huge"). The Zerops card is graph
-    and chips; Mate's side panel has a third of its width, so the chips go behind hover and the
-    graph goes inline
 - **2026-09-06** — **A Mate's subject is the last task as the person put it, never the first.** With
   one conversation per environment the conversation's title names the first task forever, so the
   row's second line and the header's crumb after the Mate read the shell's **preview of the person's
@@ -245,28 +219,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   composer target), as it was into a fresh draft.
   - _Why:_ the owner: "the functionality should be that it will send the message to the existing
     thread as if it was written there + redirect to the thread"
-- **2026-09-06** — **The control plane's card is the Mate's home, and the coding agents grow out of
-  it.** Under the zcp card's resources: the Mate's 20 px face in its colour wearing the
-  conversation's state and `Fen lives here` — the same identity and face the header reads
-  (`useZeropsMates`, `useZeropsAgentActivity`), handed to the map as `mate` (R2: the map renders
-  what the panel resolved). The coding agents' card is handed to the map too (`agents`) and is
-  slotted into the mint panel's bottom edge — pulled 12 px up over the mint, inset 12 px — so it
-  reads as growing out of the container it signs in to; the hover pop's trigger is the mint's text
-  alone, so a hand on the agents card opens nothing. The _Coding agents_ section of its own remains
-  only while the map has no control plane to hang it from.
-  - _Why:_ the owner: "this should say 'Fen lives here' in the card somewhere somehow and imo the
-    agents card should be visually connected with it, like it's growing out of the zcp card"
-- **2026-09-06** — **The card reads as the dashboard's, and the pop states the envelope.** The
-  status word sits above the name (the dashboard's own order), the name line says what the service
-  is beside the port (`db :5432, :6432 PostgreSQL 16` — the platform's name and the major version,
-  the exact version stays in the pop), and a public route is a real button at the card's right, one
-  per route, never a glyph in the text. The pop's figures each carry the effective autoscaling range
-  at the right (`currentAutoscaling` from the service-stack read — the profile resolved, not the
-  overrides), the cores' with the CPU mode; a service holding nothing yet shows the envelope alone.
-  - _Why:_ the owner: "this has space so it should show the autoscaling configuration range as
-    well + the row should have hostname port + type", "I'd add state like this [the dashboard's ●
-    ACTIVE over the name] … and use the right position for the external link, as button, better
-    clickable"
 - **2026-09-06** — **The wordmark reads smaller and closer** — this supersedes the proportion in the
   2026-09-05 lockup row. `MATE_WORDMARK` is the same shaping (Sora SemiBold, −0.015 em, outlined) at
   x-height 0.35 of the mark's height (18.2 of 52, baseline 35.1) with the first stem's ink two
@@ -274,16 +226,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   baseline at that stem, which is the layout `scripts/brand/wordmark.py` re-derives from its
   constants. The lockup's box follows the ink: `0 0 148 52`, the word's `44 0 104 52`.
   - _Why:_ the owner: "can we make the 'mate' a little smaller and little close to the logo?"
-- **2026-09-06** — **A Mate's conversation opens in Zerops, not in an editor.** Where a Mate lives,
-  the header's editor picker is gone (`shouldShowOpenInPicker`, `mateLivesHere`): a zcp container is
-  nobody's SSH host, so the picker either sat disabled or handed the OS a
-  `vscode://vscode-remote/ssh-remote+…` deep link to a machine the person cannot reach. Its place is
-  taken by one outline button of the same size, the Zerops loop (`ZeropsMark`) with `Open in Zerops`
-  beside it — the label from `@3xl/header-actions` up, the mark alone below, as the row's other
-  actions collapse — linking to the Mate's project on the dashboard in a new tab
-  (`zeropsProjectUrl`, the one place that URL is shaped, riding on `ZeropsMateIdentity.projectUrl`).
-  - _Why:_ the owner, on the VS Code split button: "this should basically be open in zerops",
-    "zerops logo instead of the cloud lol"
 - **2026-09-06** — **A Mate sleeps until its container is connected, on every surface.**
   `mateFaceFor(connected, activity)` is the one rule — asleep when the container is not connected,
   the conversation's face when it is, idle as that rule's floor — and the roster, the projects
@@ -292,14 +234,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   (`registeredOrigins`), which is why `ZeropsMateIdentity` carries `connected`.
   - _Why:_ the owner: "are these at all occurrences reflecting the eye state properly? think about
     it"
-- **2026-09-07** — **Both halves of a dev/stage pair are services, and read alike.** The folded
-  stage carries its own status word above its name, its `:port`, its route buttons and its own three
-  resources with graphs (`stageMetrics`, `stageTrends`, `stagePortLabel`); one `ServiceHeader`
-  renders the dev half and the stage half so they cannot drift apart again.
-  - _Why:_ as a bare status line the stage rendered identically to a service holding nothing — the
-    card's other one-line state — so a running stage read as never deployed; the owner: "why is the
-    pair without its graphs?", then "why is the active on different place and there is no link to
-    the appstage?"
 - **2026-09-07** — **A created environment opens on its job, and that one prompt mate sends
   itself.** A creation writes down what the environment is, where its application came from and
   which services the clone could not build (`creationHandoff.ts`), keyed on the project; the connect
@@ -310,26 +244,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ "Introduce yourself, tell me what is running here" asks a Mate that was created for a
     reason to guess what that reason was, and leaves the person who waited two minutes for the
     environment to work out the next step themselves
-- **2026-09-09** — **The version-skew banner is gone; one quiet line and one verb replace it.** The
-  upstream "Server versions differ" banner, `versionSkew.ts` and its localStorage dismissals encoded
-  "client and server ship in one box", which this product does not — the client compares versions in
-  exactly one place, the sign-in floor. Everywhere else, `mateUpdateLine` reads the descriptor's
-  `update` field only: the installed version alone, or "0.8.0 · 0.8.1 available" with the glossary's
-  update role (`--zerops-update-role`, teal) on the "· x.y.z available" clause alone, never the
-  whole line. `ZeropsMateUpdateControl` renders the line and, only with `capabilities.mateUpdate`
-  and `update.available` both true, the Update verb: idle → confirm ("Running threads stop. Update
-  now?") → updating → updated/already-current, settling to idle on its own; a failure shows inline,
-  never a toast. Same control on the Mate card and the thread header, next to "Open in Zerops"
-  (spec-mate.md §2.9, MU-1/MU-2/MU-3).
-  - _Why:_ spec-mate.md §2.9; superseded the S1-era restart banner once `zerops.mate.update` existed
-    to do the same job without a container restart
-- **2026-09-10** — **A Zerops RPC is sent only where the descriptor advertises it; a Mate that lacks
-  the feature says so, with the update line beside it.** `capabilities.dataConsole` gates the Data
-  surface: absent, the panel renders one muted line ("This Mate doesn't include the data console
-  yet.") and `ZeropsMateUpdateControl`'s line and verb, and never issues `zerops.dataConsole.call` —
-  never a generic "Something went wrong." from an older server's unknown request tag.
-  - _Why:_ spec-mate.md §2.9 steps 5–6; a release stayed invisible for up to two hours behind two
-    caches, and an older server answered the Data panel with a defect
 - **2026-09-24** — **An empty conversation opens on an empty composer.** Nothing writes into a
   Zerops environment's composer on its own: a creation leaves no opening job on its birth
   (`birthStore.ts` keeps births only, and reads an older build's `handoff` and `jobs` as nothing),
@@ -381,9 +295,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
 - **2026-09-26** — No "Done" on the work line: the face carries the state (✓ · ! · ⏸ · ■), the line
   keeps the last note the person saw.
   - _Why:_ "Done" covered a success, an abort and a usage limit alike
-- **2026-09-26** — The server version and its Update leave the conversation header; they live in the
-  right panel's Zerops view, beside the Mate's body.
-  - _Why:_ the header is the Mate — face, name, the last task as the person put it
 - **2026-09-26** — A dock above the composer holds what changes size while the Mate works: running
   pipelines, helpers, the task list, a pause countdown.
   - _Why:_ a helper starting or a deploy stepping on must never move a message; the task list had no
@@ -877,15 +788,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   error, the usage pause, background work and the older work rows keep a 20 px mark column and start
   their words 20 px past the prose edge; the person's bubble keeps the chat's 14 px padding.
   - _Why:_ their words started 22, 24 and 26 px in, a callout's 14
-- **2026-09-29** — **The preview says once that sign-ins and carts need a new tab.** One muted line
-  under the address, its cookie glyph in the globe's column so its words start where the address
-  does, and one verb, _Got it_, that hides it for this browser (`useLocalStorage`,
-  `mate:zerops:preview-cookie-note-read`). It names the header's _Open in new tab_ rather than
-  repeating the control.
-  - _Why:_ Unlike the removed "Page not showing?" footer, which was wrong almost every time it
-    showed, this is true of every preview: a framed `*.zerops.app` page is cross-site wherever Mate
-    runs, and browsers keep out the cookies it sets without `SameSite=None` (verified.md,
-    2026-09-29)
 - **2026-09-29** — **Each Mate wears its own shape as well as its colour.** Eight silhouettes
   (`MATE_SHAPES`: squircle, gem, hexagon, pentagon, clover, flower, seal, pick), each the same area
   of its box, each holding every eye pose and the mouth, one per tint (`MATE_SHAPE_OF_TINT`), so the
@@ -1542,11 +1444,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   that fills on hover; a service the side panel opens leads with the panel's own globe, nothing
   fetched; nothing stands between a link's words and its full stop. External links drop their ↗.
   - _Why:_ a blurry fetched favicon, saturated blue and a glyph glued before the full stop
-- **2026-09-30** — **The preview loads exactly the address it shows.** No cache-key query; a new
-  deploy or Reload remounts the frame. A static page may show its previous copy after a deploy
-  until the browser lets go of it; zcp tells static apps to send HTML with `Cache-Control:
-no-cache`.
-  - _Why:_ an app that routes on the exact address answered "Not found" to `/?_mate_preview=…`
 - **2026-09-30** — **The Mate being opened connects first, and paints before its socket.** Other
   Mates' sockets wait until the route's is open (5 s at most); the Mate's descriptor names what
   the thread's snapshot needs, so the conversation paints over HTTP while the socket connects and
@@ -1869,16 +1766,6 @@ no-cache`.
   - _Why:_ the owner: "when you go to mate.zerops.io it first redirect you to this page briefly for
     whatever reason then redirecting you elsewhere". A cold load painted the projects page from
     1.3 s to 2.7 s; it now never does.
-- **2026-10-04** — **A site opens only when the person asks.**
-  - Picking Browser lists the Mate's sites (dev, stage, production, by role) above the agent's own
-    browser.
-  - The conversation's top bar lists them under _Sites_. A click opens a panel tab; the arrow, a
-    middle click or a new-tab gesture opens a browser tab.
-  - Diff opens on a Mate whose workspace is not one repository and shows its turns.
-  - A snapshot skips untracked dependency trees (`node_modules`, `vendor`, `target`, virtualenvs).
-  - _Why:_ the owner: "browser automatically opens all tabs, imo it shouldnt", "the diff tab hasn't
-    been working / doing anything for ages". `node_modules` without a `.gitignore` blew the
-    snapshot's path budget, so no turn was ever recorded.
 - **2026-10-04** — **A helper is a run of its own.**
   - Each helper's calls reach the thread tagged with it: Claude's from its subagent snapshots,
     Codex's from a child's items. Other drivers keep the single row.

@@ -441,9 +441,6 @@ still to come says so.
     every hold says why on the Mate's own view
   - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`,
     `closeOff.test.ts`, `accountRuntime.test.ts` ("the close-off gate")
-- **0.6** — The _Update_ verb's scope
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `2ff377304`
 - **0.8** — One admission rule at a Mate's door, verbs by role, _Assign_
   - _State:_ live
   - _Built in:_ mate 0.11.0 `949693a1c`, `6f662df6c`
