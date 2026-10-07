@@ -57,10 +57,6 @@ export function moveChoices(input: {
   };
 }
 
-/** Whether the project may go anywhere it is not: an application, or a new one. */
-export const movesAnywhere = (choices: MoveChoices): boolean =>
-  choices.apps.length > 0 || choices.newApp.length > 0;
-
 export interface MoveForm {
   /** An existing group id, `"new"`, or `"none"`. */
   readonly target: string;
@@ -127,9 +123,19 @@ export function validateMoveForm(form: MoveForm): MoveFormErrors {
   return errors;
 }
 
-export function resolveMoveMembership(form: MoveForm): MoveMembership | undefined {
+export function resolveMoveMembership(
+  form: MoveForm,
+  choices?: MoveChoices,
+): MoveMembership | undefined {
   const errors = validateMoveForm(form);
   if (errors.newGroupName !== undefined || errors.role !== undefined) return undefined;
+  if (
+    choices !== undefined &&
+    (form.target === "none"
+      ? !choices.none
+      : form.role === "" || !moveRolesFor(choices, form.target).includes(form.role))
+  )
+    return undefined;
   if (form.target === "none" || form.role === "") return { kind: "none" };
   if (form.target === "new") {
     return { kind: "new", name: form.newGroupName.trim(), role: form.role };

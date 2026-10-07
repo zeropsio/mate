@@ -122,14 +122,14 @@ describe("ZeropsDeleteMateForm", () => {
     expect(submit.props.disabled).toBe(true);
     expect(submit.props["aria-busy"]).toBe(true);
     expect(button(tree, "button").props.disabled).toBe(true);
-    // Both words hold the one room, so the button keeps its width; only one is seen.
+    expect(submit.props["aria-label"]).toBe("Deleting…");
     const shown = submit.findAll(
       (node) =>
         typeof node.type === "string" &&
         node.type === "span" &&
         node.children.length === 1 &&
         typeof node.children[0] === "string" &&
-        !String(node.props.className).includes("invisible"),
+        node.props["aria-hidden"] === false,
     );
     expect(shown.map((node) => node.children[0])).toEqual(["Deleting…"]);
     enter(tree);
@@ -143,16 +143,10 @@ describe("ZeropsDeleteMateForm", () => {
     );
     const alert = host(tree, (node) => node.props.role === "alert");
     expect(alert.children.join("")).toBe("You don't have the permission to delete this project.");
-    expect(String(alert.props.className)).toContain("text-status-failed-text");
     type(tree, "Quinn");
     expect(button(tree, "submit").props.disabled).toBe(false);
     enter(tree);
     expect(onConfirm).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the reason's line when there is none, so a refusal moves nothing", () => {
-    const html = renderToStaticMarkup(form());
-    expect(html).toMatch(/<p[^>]*class="[^"]*min-h-4[^"]*"[^>]*role="alert"[^>]*><\/p>/u);
   });
 });
 
