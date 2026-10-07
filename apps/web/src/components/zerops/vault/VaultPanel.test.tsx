@@ -1,5 +1,10 @@
 // @vitest-environment happy-dom
-import type { VaultScopeRef, VaultView, VaultWrite } from "@t3tools/client-runtime/data";
+import type {
+  VaultScopeRef,
+  VaultValue,
+  VaultView,
+  VaultWrite,
+} from "@t3tools/client-runtime/data";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -20,7 +25,6 @@ interface Mounted {
   readonly container: HTMLElement;
   readonly writes: Array<{ scope: VaultScopeRef; write: VaultWrite }>;
   readonly restarts: Array<string>;
-  readonly rerender: (over: Partial<VaultPanelBodyProps>) => Promise<void>;
 }
 
 async function mount(over: Partial<VaultPanelBodyProps> = {}): Promise<Mounted> {
@@ -30,13 +34,14 @@ async function mount(over: Partial<VaultPanelBodyProps> = {}): Promise<Mounted> 
   const container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
-  let props: VaultPanelBodyProps = {
-    view: VAULT_FIXTURE,
+  const view = over.view ?? VAULT_FIXTURE;
+  const props: VaultPanelBodyProps = {
+    view,
     actor: "mate",
     who: { kind: "mate", name: "Fen", tint: "olive" },
     pending: new Map(),
     restarting: new Set(),
-    impactOf: (scope, write) => vaultFixtureImpact(VAULT_FIXTURE, scope, write),
+    impactOf: (scope, write) => vaultFixtureImpact(view, scope, write),
     onWrite: async (scope, write) => {
       writes.push({ scope, write });
       return { ok: true };
@@ -48,22 +53,38 @@ async function mount(over: Partial<VaultPanelBodyProps> = {}): Promise<Mounted> 
     ...over,
   };
   await act(async () => root!.render(<VaultPanelBody {...props} />));
-  return {
-    container,
-    writes,
-    restarts,
-    rerender: async (next) => {
-      props = { ...props, ...next };
-      await act(async () => root!.render(<VaultPanelBody {...props} />));
-    },
-  };
+  return { container, writes, restarts };
 }
+
+/** The environment's values with more of its own, as a view of the fixture. */
+const withShared = (...values: ReadonlyArray<VaultValue>): VaultView => ({
+  ...VAULT_FIXTURE,
+  notLive: [],
+  scopes: VAULT_FIXTURE.scopes.map((scope) =>
+    scope.kind === "shared" ? { ...scope, values: [...scope.values, ...values] } : scope,
+  ),
+});
+
+const plain = (id: string, key: string, value: string): VaultValue => ({
+  id,
+  key,
+  sensitive: false,
+  value,
+  createdAt: "2026-10-01T12:00:00.000Z",
+  changedAt: "2026-10-01T12:00:00.000Z",
+  madeByZerops: false,
+  readers: [],
+});
 
 const q = <T extends Element = HTMLElement>(container: Element, selector: string) =>
   container.querySelector(selector) as T | null;
-const rowKeys = (container: Element, section: string) =>
-  [...container.querySelectorAll(`[data-vault-section="${section}"] [data-vault-row]`)].map((row) =>
-    row.getAttribute("data-vault-row"),
+/** Each card of values: its title, then its rows' keys. */
+const cards = (container: Element) =>
+  [...container.querySelectorAll("[data-vault-group]")].map(
+    (card) =>
+      `${card.querySelector("h3")?.textContent}: ${[...card.querySelectorAll("[data-vault-row]")]
+        .map((row) => row.getAttribute("data-vault-row"))
+        .join(",")}`,
   );
 const button = (container: Element, words: string) => {
   const found = [...container.querySelectorAll("button")].find(
@@ -72,6 +93,10 @@ const button = (container: Element, words: string) => {
   if (found === undefined) throw new Error(`No button "${words}"`);
   return found as HTMLButtonElement;
 };
+const hasButton = (container: Element, words: string) =>
+  [...container.querySelectorAll("button")].some(
+    (candidate) => candidate.textContent?.trim() === words,
+  );
 const click = (element: Element | null) =>
   act(async () => {
     (element as HTMLElement).click();
@@ -92,44 +117,53 @@ const typeInto = (element: Element | null, value: string) =>
   });
 const openRow = (container: Element, key: string) =>
   click(q(container, `[data-vault-row="${key}"] > button`));
+const openApp = async (container: Element, hostname: string) => {
+  await click(q(container, '[data-vault-view="apps"]'));
+  await click(q(container, `[data-vault-app="${hostname}"] button`));
+};
+/** Opens the "⋯" menu and picks an item from it. */
+const fromMenu = async (container: Element, words: string) => {
+  const trigger = q(container, 'button[aria-label="More"]')!;
+  await act(async () => {
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    trigger.click();
+  });
+  const item = [...document.querySelectorAll("[role=menuitem]")].find(
+    (candidate) => candidate.textContent?.trim() === words,
+  );
+  if (item === undefined) throw new Error(`No menu item "${words}"`);
+  await click(item);
+};
 
 describe("VaultPanelBody — what the Vault tab shows", () => {
-  it("draws the Mate, the scopes with their counts, and Shared's values plain then sensitive", async () => {
+  it("draws the environment's values in cards named for what each is for, each on one line under its name in words", async () => {
     const { container } = await mount();
-    expect(q(container, "[data-vault-header]")?.textContent).toContain("Fen");
-    expect([...container.querySelectorAll("[role=tab]")].map((tab) => tab.textContent)).toEqual([
-      "Shared5",
-      "appdev1",
-      "appstage",
-      "db",
+    expect(q(container, '[data-vault-view="values"]')?.getAttribute("aria-selected")).toBe("true");
+    expect(cards(container)).toEqual([
+      "Stripe: STRIPE_SECRET_KEY",
+      "Addresses: API_URL",
+      "Other settings: LEGACY_TOKEN,LOG_LEVEL",
+      "Security keys: SESSION_SECRET",
     ]);
-    expect(q(container, "[role=tab][aria-selected=true]")?.textContent).toBe("Shared5");
-    expect(rowKeys(container, "plain")).toEqual(["API_URL", "LOG_LEVEL"]);
-    expect(rowKeys(container, "sensitive")).toEqual([
-      "LEGACY_TOKEN",
-      "SESSION_SECRET",
-      "STRIPE_SECRET_KEY",
-    ]);
-    expect(q(container, '[data-vault-row="API_URL"]')?.textContent).toContain(
-      "https://api.acme.dev",
+    expect(q(container, '[data-vault-row="API_URL"] > button')?.textContent).toBe(
+      "API URLhttps://api.acme.dev",
     );
-    expect(q(container, '[data-vault-row="SESSION_SECRET"]')?.textContent).toContain(
-      "Sensitive · set 2 days ago",
-    );
-    expect(q(container, '[data-vault-row="STRIPE_SECRET_KEY"]')?.textContent).toContain(
-      "Added just now · nothing reads it yet",
+    expect(q(container, '[data-vault-row="STRIPE_SECRET_KEY"] > button')?.textContent).toBe(
+      "Secret key●●●●●●●●",
     );
   });
 
-  it("marks who reads a value, and which of them runs the previous one", async () => {
+  it("an open row names the apps whose deploy config uses it, and which of them still run the old value", async () => {
     const { container } = await mount();
-    const marks = (key: string) =>
-      [
-        ...container.querySelectorAll(`[data-vault-row="${key}"] [data-vault-marks] .vault-mark`),
-      ].map((mark) => `${mark.textContent}${mark.hasAttribute("data-restart") ? "!" : ""}`);
-    expect(marks("API_URL")).toEqual(["D", "S"]);
-    expect(marks("LOG_LEVEL")).toEqual(["D!"]);
-    expect(marks("STRIPE_SECRET_KEY")).toEqual([]);
+    await openRow(container, "LOG_LEVEL");
+    expect(q(container, '[data-vault-body="LOG_LEVEL"] [data-vault-readers]')?.textContent).toBe(
+      "Used by appdev. appdev still runs the old value — Fen applies it with your next message.",
+    );
+    await openRow(container, "STRIPE_SECRET_KEY");
+    expect(
+      q(container, '[data-vault-body="STRIPE_SECRET_KEY"] [data-vault-readers]')?.textContent,
+    ).toContain("No app uses it yet: an app's deploy config has to name it.");
   });
 
   it("says what is not live yet, and beside a Mate who makes it live", async () => {
@@ -137,13 +171,8 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
     const block = q(container, "[data-vault-notlive]");
     expect(
       [...block!.querySelectorAll("[data-vault-notlive-item]")].map((item) => item.textContent),
-    ).toEqual([
-      "appdev started before LOG_LEVEL changed — a restart applies it",
-      "Nothing reads STRIPE_SECRET_KEY yet — it needs a reference in zerops.yml and a deploy",
-      "appdev reads ${NOPE}, which nothing has — the app gets that literal text",
-      "appdev's zerops.yml sets DB_PASSWORD to ${DB_PASSWORD} — the app gets that literal text",
-    ]);
-    expect(block?.textContent).toContain("Fen does these with your next message");
+    ).toEqual(["appdev started before LOG_LEVEL changed — a restart applies it"]);
+    expect(block?.textContent).toContain("Fen does it with your next message");
     expect(block?.textContent).not.toContain("Restart appdev");
   });
 
@@ -152,15 +181,12 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
     expect(q(container, "[data-vault-notlive]")).toBeNull();
   });
 
-  it("opens the row an item names, and a service's yaml item shows its scope", async () => {
+  it("opens the row an item names", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-notlive-item="unread:shared:STRIPE_SECRET_KEY"]'));
+    await click(q(container, '[data-vault-notlive-item="restart:svc-appdev"]'));
     expect(
-      q(container, '[data-vault-row="STRIPE_SECRET_KEY"] > button')?.getAttribute("aria-expanded"),
+      q(container, '[data-vault-row="LOG_LEVEL"] > button')?.getAttribute("aria-expanded"),
     ).toBe("true");
-    await click(q(container, '[data-vault-notlive-item="missing:svc-appdev:SEARCH_URL"]'));
-    expect(q(container, "[role=tab][aria-selected=true]")?.textContent).toBe("appdev1");
-    expect(q(container, '[data-vault-reads="appdev"]')).not.toBeNull();
   });
 
   it("without a Mate, restarts a service once the person confirms", async () => {
@@ -184,9 +210,11 @@ describe("VaultPanelBody — a row opens in place", () => {
     const { container, writes } = await mount();
     await openRow(container, "API_URL");
     const body = q(container, '[data-vault-body="API_URL"]')!;
-    expect(body.textContent).toContain("Read by");
-    expect(body.textContent).toContain("Used as ${API_URL}");
-    await typeInto(body.querySelector('input[aria-label="API_URL"]'), "https://api.acme.shop");
+    expect(body.textContent).toContain("Used by appdev and appstage.");
+    expect(body.querySelector("[data-vault-copy]")?.getAttribute("data-vault-copy")).toBe(
+      "${API_URL}",
+    );
+    await typeInto(body.querySelector('input[aria-label="API URL"]'), "https://api.acme.shop");
     await click(button(body, "Save"));
     expect(writes).toEqual([
       {
@@ -208,15 +236,13 @@ describe("VaultPanelBody — a row opens in place", () => {
   it("never shows a sensitive value: its field starts empty and replaces it", async () => {
     const { container, writes } = await mount();
     await openRow(container, "SESSION_SECRET");
-    const field = q<HTMLInputElement>(
-      container,
-      '[data-vault-body="SESSION_SECRET"] input[aria-label="SESSION_SECRET"]',
-    )!;
+    const body = q(container, '[data-vault-body="SESSION_SECRET"]')!;
+    const field = body.querySelector<HTMLInputElement>('input[aria-label="Session secret"]')!;
     expect(field.value).toBe("");
     expect(field.type).toBe("password");
-    expect(container.textContent).not.toContain("Make sensitive");
+    expect(hasButton(body, "Make secret")).toBe(false);
     await typeInto(field, "s3cret");
-    await click(button(q(container, '[data-vault-body="SESSION_SECRET"]')!, "Save"));
+    await click(button(body, "Save"));
     expect(writes[0]?.write).toEqual({
       kind: "update",
       id: "v-session",
@@ -226,15 +252,26 @@ describe("VaultPanelBody — a row opens in place", () => {
     });
   });
 
-  it("makes a plain value sensitive with the same value", async () => {
-    const { container, writes } = await mount();
-    await openRow(container, "LOG_LEVEL");
-    await click(button(container, "Make sensitive"));
+  it("makes a readable secret secret with the same value, once the person confirms", async () => {
+    const { container, writes } = await mount({
+      view: withShared(plain("v-cookie", "COOKIE_SECRET", "cookie-value")),
+    });
+    expect(q(container, '[data-vault-row="COOKIE_SECRET"] > button')?.textContent).toBe(
+      "Cookie secret●●●●●●●●",
+    );
+    await openRow(container, "COOKIE_SECRET");
+    const body = q(container, '[data-vault-body="COOKIE_SECRET"]')!;
+    await click(button(body, "Make secret"));
+    expect(writes).toEqual([]);
+    expect(body.querySelector("[role=alertdialog]")?.textContent).toContain(
+      "Once it's secret, nobody can read it back",
+    );
+    await click(button(body, "Make it secret"));
     expect(writes[0]?.write).toEqual({
       kind: "update",
-      id: "v-log",
-      key: "LOG_LEVEL",
-      value: "debug",
+      id: "v-cookie",
+      key: "COOKIE_SECRET",
+      value: "cookie-value",
       sensitive: true,
     });
   });
@@ -267,31 +304,80 @@ describe("VaultPanelBody — a row opens in place", () => {
       onWrite: async () => ({ ok: false, code: "projectEnvKeyInvalid", message: null }),
     });
     await openRow(container, "LOG_LEVEL");
-    await click(button(container, "Make sensitive"));
+    const body = q(container, '[data-vault-body="LOG_LEVEL"]')!;
+    await typeInto(body.querySelector('input[aria-label="Log level"]'), "info");
+    await click(button(body, "Save"));
     expect(q(container, '[data-vault-row="LOG_LEVEL"] [role=alert]')?.textContent).toBe(
       "Letters, digits and _ only, not starting with a digit",
     );
   });
 
-  it("shows a spinner where the marks are while the account writes a row", async () => {
+  it("shows a spinner on a row while the account writes it", async () => {
     const pending = new Map<string, VaultPending>([["shared:API_URL", { kind: "saving" }]]);
     const { container } = await mount({ pending });
-    const row = q(container, '[data-vault-row="API_URL"]')!;
-    expect(row.querySelector("[role=status]")).not.toBeNull();
-    expect(row.querySelector("[data-vault-marks]")).toBeNull();
+    expect(q(container, '[data-vault-row="API_URL"] [role=status]')).not.toBeNull();
+  });
+});
+
+describe("VaultPanelBody — what needs the person", () => {
+  it("takes a paste for each value not set, and saves a secret-shaped name secret", async () => {
+    const { container, writes } = await mount({
+      view: withShared(
+        plain("v-sak", "STRIPE_API_KEY", ""),
+        plain("v-spk", "STRIPE_PUBLISHABLE_KEY", ""),
+      ),
+    });
+    const card = q(container, '[data-vault-needs="unset"]')!;
+    expect(card.querySelector("h3")?.textContent).toBe("Stripe isn't set up yet");
+    expect(cards(container)[0]).toBe("Stripe: STRIPE_SECRET_KEY");
+    await typeInto(card.querySelector('input[aria-label="API key"]'), "stripe-api-1");
+    await typeInto(card.querySelector('input[aria-label="Publishable key"]'), "stripe-pub-1");
+    await click(button(card, "Save 2"));
+    expect(writes.map(({ write }) => write)).toEqual([
+      {
+        kind: "update",
+        id: "v-sak",
+        key: "STRIPE_API_KEY",
+        value: "stripe-api-1",
+        sensitive: true,
+      },
+      {
+        kind: "update",
+        id: "v-spk",
+        key: "STRIPE_PUBLISHABLE_KEY",
+        value: "stripe-pub-1",
+        sensitive: false,
+      },
+    ]);
+  });
+
+  it("offers to make every readable secret secret at once, and leaves a sign-in password readable", async () => {
+    const { container, writes } = await mount({
+      view: withShared(
+        plain("v-cookie", "COOKIE_SECRET", "cookie-value"),
+        plain("v-jwt", "JWT_SECRET", "jwt-value"),
+        plain("v-admin", "SUPERADMIN_PASSWORD", "admin-value"),
+      ),
+    });
+    const card = q(container, '[data-vault-needs="readable"]')!;
+    expect(card.querySelector("h3")?.textContent).toBe("2 secrets aren't protected");
+    await click(button(card, "Make secret"));
+    expect(
+      writes.map(({ write }) => `${write.key} ${write.kind === "update" && write.sensitive}`),
+    ).toEqual(["COOKIE_SECRET true", "JWT_SECRET true"]);
   });
 });
 
 describe("VaultPanelBody — adding", () => {
-  it("turns Sensitive on for a secret-sounding name, and adds", async () => {
+  it("turns Secret on for a secret-sounding name, and adds", async () => {
     const { container, writes } = await mount();
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
-    expect(add.textContent).toContain("New value in Shared");
+    expect(add.textContent).toContain("New value for every app");
     await typeInto(add.querySelector('input[aria-label="Key"]'), "GITHUB_TOKEN");
     expect(add.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
     expect(add.querySelector("[data-vault-add-auto]")?.textContent).toBe(
-      "on because the name holds TOKEN",
+      "the name says secret — nobody reads it back once saved",
     );
     await typeInto(add.querySelector('input[aria-label="Value"]'), "ghp_x");
     await click(button(add, "Save"));
@@ -302,12 +388,12 @@ describe("VaultPanelBody — adding", () => {
   });
 
   it.each([
-    ["shared", "api_url", "API_URL is already in Shared"],
-    ["shared", "bad-key!", "Letters, digits and _ only, not starting with a digit"],
-    ["svc-appdev", "NODE_ENV", "appdev's zerops.yml already sets NODE_ENV"],
-  ])("in %s refuses %s inline", async (scopeId, key, words) => {
+    [null, "api_url", "API_URL already exists"],
+    [null, "bad-key!", "Letters, digits and _ only, not starting with a digit"],
+    ["appdev", "NODE_ENV", "appdev's zerops.yml already sets NODE_ENV"],
+  ])("in %s refuses %s inline", async (app, key, words) => {
     const { container, writes } = await mount();
-    await click(q(container, `[data-vault-scope="${scopeId}"]`));
+    if (app !== null) await openApp(container, app);
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
     await typeInto(add.querySelector('input[aria-label="Key"]'), key);
@@ -317,27 +403,50 @@ describe("VaultPanelBody — adding", () => {
   });
 });
 
-describe("VaultPanelBody — scopes", () => {
-  it("shows what a service reads and where each comes from", async () => {
+describe("VaultPanelBody — apps", () => {
+  it("lists each app and each service Zerops runs, in words", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-scope="svc-appdev"]'));
-    const reads = q(container, '[data-vault-reads="appdev"]')!;
+    await click(q(container, '[data-vault-view="apps"]'));
+    expect(cards(container).map((card) => card.split(":")[0])).toEqual([
+      "Your apps",
+      "Run by Zerops",
+    ]);
+    const app = (host: string) => q(container, `[data-vault-app="${host}"]`)?.textContent;
+    expect(app("appdev")).toBe("appdevNode.js app1 value");
+    expect(app("appstage")).toBe("appstageNode.js app");
+    expect(app("db")).toBe("dbDatabase · PostgreSQL");
+  });
+
+  it("shows what an app reads from its deploy config and where each comes from", async () => {
+    const { container } = await mount();
+    await openApp(container, "appdev");
+    const reads = q(container, '[data-vault-group="reads"]')!;
+    expect(reads.querySelector("h3")?.textContent).toBe("What it reads from the deploy config");
     const line = (key: string) => reads.querySelector(`[data-vault-read="${key}"]`)?.textContent;
     expect(line("NODE_ENV")).toBe("NODE_ENV= development");
-    expect(line("API_URL")).toBe("API_URL← Shared");
-    expect(line("FEATURE_FLAGS")).toBe("FEATURE_FLAGS← own");
-    expect(line("DATABASE_URL")).toBe("DATABASE_URL← db");
-    expect(line("PUBLIC_HOST")).toBe("PUBLIC_HOST← platform");
+    expect(line("API_URL")).toBe("API_URLAPI_URL· vault");
+    expect(line("FEATURE_FLAGS")).toBe("FEATURE_FLAGSFEATURE_FLAGS· its own");
+    expect(line("DATABASE_URL")).toBe("DATABASE_URLconnectionString· db");
+    expect(line("PUBLIC_HOST")).toBe("PUBLIC_HOSTfrom Zerops");
     expect(line("SEARCH_URL")).toBe("SEARCH_URLmissing");
     expect(line("DB_PASSWORD")).toBe("DB_PASSWORDself");
-    expect(reads.textContent).toContain("From the deployed zerops.yml");
+  });
+
+  it("links an app's deploy config where the workspace has it", async () => {
+    const { container } = await mount({
+      renderDeployConfig: (hostname) => <span data-config>{`${hostname}/zerops.yaml`}</span>,
+    });
+    await openApp(container, "appdev");
+    expect(q(container, '[data-vault-group="reads"] [data-config]')?.textContent).toBe(
+      "appdev/zerops.yaml",
+    );
   });
 
   it("goes to the value a read comes from", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-scope="svc-appdev"]'));
+    await openApp(container, "appdev");
     await click(q(container, '[data-vault-read="LOG_LEVEL"]'));
-    expect(q(container, "[role=tab][aria-selected=true]")?.textContent).toBe("Shared5");
+    expect(q(container, '[data-vault-view="values"]')?.getAttribute("aria-selected")).toBe("true");
     expect(
       q(container, '[data-vault-row="LOG_LEVEL"] > button')?.getAttribute("aria-expanded"),
     ).toBe("true");
@@ -345,12 +454,9 @@ describe("VaultPanelBody — scopes", () => {
 
   it("draws a managed service's values read only, each with its reference", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-scope="svc-db"]'));
-    expect(button(container, "Add").disabled).toBe(true);
-    expect(button(container, "Edit as text").disabled).toBe(true);
-    expect(q(container, '[data-vault-row="password"]')?.textContent).toContain(
-      "Sensitive · made by Zerops",
-    );
+    await openApp(container, "db");
+    expect(hasButton(container, "Add")).toBe(false);
+    expect(q(container, '[data-vault-row="password"]')?.textContent).toContain("●●●●●●●●");
     expect(
       q(container, '[data-vault-row="password"] [data-vault-copy]')?.getAttribute(
         "data-vault-copy",
@@ -359,26 +465,26 @@ describe("VaultPanelBody — scopes", () => {
     expect(q(container, '[data-vault-row="password"] > button')).toBeNull();
   });
 
-  it("says a scope has nothing yet, with Add", async () => {
+  it("says an app has nothing of its own yet, with Add", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-scope="svc-appstage"]'));
-    expect(container.textContent).toContain("Nothing in appstage yet.");
+    await openApp(container, "appstage");
+    expect(container.textContent).toContain("Nothing of its own yet.");
     await click(button(container, "Add one"));
-    expect(q(container, "[data-vault-add]")?.textContent).toContain("New value in appstage");
+    expect(q(container, "[data-vault-add]")?.textContent).toContain("New value for appstage only");
   });
+});
 
-  it("filters by key and plain value, and counts the matches per scope", async () => {
+describe("VaultPanelBody — search", () => {
+  it("finds values by their name, key or value across every app", async () => {
     const { container } = await mount();
     await click(q(container, 'button[aria-label="Search"]'));
-    await typeInto(q(container, 'input[aria-label="Search keys and values"]'), "secret");
-    expect(rowKeys(container, "plain")).toEqual([]);
-    expect(rowKeys(container, "sensitive")).toEqual(["SESSION_SECRET", "STRIPE_SECRET_KEY"]);
-    expect([...container.querySelectorAll("[role=tab]")].map((tab) => tab.textContent)).toEqual([
-      "Shared2",
-      "appdev",
-      "appstage",
-      "db",
+    await typeInto(q(container, 'input[aria-label="Search"]'), "secret");
+    expect(cards(container)).toEqual([
+      "Stripe: STRIPE_SECRET_KEY",
+      "Security keys: SESSION_SECRET",
     ]);
+    await typeInto(q(container, 'input[aria-label="Search"]'), "cart-vat");
+    expect(cards(container)).toEqual(["appdev: FEATURE_FLAGS"]);
   });
 });
 
@@ -388,28 +494,31 @@ describe("VaultPanelBody — states", () => {
     const { container } = await mount({ view: unread });
     expect(q(container, "[data-vault-skeleton]")).not.toBeNull();
     expect(container.querySelectorAll("[data-vault-row]")).toHaveLength(0);
-    expect(button(container, "Add").disabled).toBe(true);
+    expect(hasButton(container, "Add")).toBe(false);
   });
 
   it("says it couldn't read the vault above what it kept", async () => {
     const { container } = await mount({ view: { ...VAULT_FIXTURE, status: "failed" } });
     expect(q(container, "[data-vault-failed]")?.textContent).toBe("Couldn't read the vault");
-    expect(rowKeys(container, "plain")).toEqual(["API_URL", "LOG_LEVEL"]);
+    expect(cards(container)).toContain("Addresses: API_URL");
   });
 });
 
 describe("VaultPanelBody — edit as text", () => {
   it("reviews each change with what it means and applies them one write each", async () => {
     const { container, writes } = await mount();
-    await click(button(container, "Edit as text"));
-    const [plain, sensitive] = [
+    await fromMenu(container, "Edit as text");
+    const [plainText, sensitive] = [
       ...container.querySelectorAll<HTMLTextAreaElement>("[data-vault-text] textarea"),
     ];
-    expect(plain?.value).toBe("API_URL=https://api.acme.dev\nLOG_LEVEL=debug");
+    expect(plainText?.value).toBe("API_URL=https://api.acme.dev\nLOG_LEVEL=debug");
     expect(sensitive?.value).toBe(
       "LEGACY_TOKEN=••••••••\nSESSION_SECRET=••••••••\nSTRIPE_SECRET_KEY=••••••••",
     );
-    await typeInto(plain!, "API_URL=https://api.acme.shop\nLOG_LEVEL=debug\nCDN_URL=https://cdn");
+    await typeInto(
+      plainText!,
+      "API_URL=https://api.acme.shop\nLOG_LEVEL=debug\nCDN_URL=https://cdn",
+    );
     await typeInto(sensitive!, "SESSION_SECRET=••••••••\nSTRIPE_SECRET_KEY=••••••••");
     await click(button(container, "Review 3 changes"));
     const lines = [...container.querySelectorAll("[data-vault-review-line]")].map(
@@ -429,7 +538,7 @@ describe("VaultPanelBody — edit as text", () => {
 
   it("applies a guarded removal once the person says remove anyway", async () => {
     const { container, writes } = await mount();
-    await click(button(container, "Edit as text"));
+    await fromMenu(container, "Edit as text");
     const sensitive = container.querySelectorAll<HTMLTextAreaElement>(
       "[data-vault-text] textarea",
     )[1];
@@ -454,10 +563,10 @@ describe("VaultPanelBody — edit as text", () => {
       });
       key.dispatchEvent(event);
     });
-    const [plain, sensitive] = [
+    const [plainText, sensitive] = [
       ...container.querySelectorAll<HTMLTextAreaElement>("[data-vault-text] textarea"),
     ];
-    expect(plain?.value.split("\n").at(-1)).toBe("CDN_URL=https://cdn");
+    expect(plainText?.value.split("\n").at(-1)).toBe("CDN_URL=https://cdn");
     expect(sensitive?.value.split("\n").at(-1)).toBe("GITHUB_TOKEN=ghp");
   });
 });

@@ -151,9 +151,7 @@ describe("diffVaultText", () => {
 
   it("refuses a key held in another case", () => {
     const diff = diffVaultText(SHARED, { ...START, plain: "LOG_LEVEL=debug\napi_url=x" });
-    expect(diff.problems.map((problem) => problem.message)).toEqual([
-      "API_URL is already in Shared",
-    ]);
+    expect(diff.problems.map((problem) => problem.message)).toEqual(["API_URL already exists"]);
   });
 
   it("marks a key on two lines", () => {

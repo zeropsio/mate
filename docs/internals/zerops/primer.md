@@ -1102,10 +1102,12 @@ still to come says so.
     record at HQ (`ZeropsProjectRow.logic.ts`, `plainZeropsProject`); it registers the Mate in HQ
 - **7** — zcp's delegated launch and the GitHub `prodCd` track for group Mates
   - _State:_ **open** — `launch_delegation.go` and the build-integration track remain in zcp
-- **8** — The vault: a project's variables (Shared plus one per service), who reads each, what is
+- **8** — The vault: an environment's values (its own plus each app's), who reads each, what is
   not live, and the Mate told of the person's changes
-  - _State:_ built, not released — the Vault tab beside a Mate's conversation and beside a stage or
-    production page; reads are live queries; writes, restarts and edit as text; the composer's
+  - _State:_ released (0.14.27; the approachable panel after it) — the Vault tab beside a Mate's
+    conversation and beside a stage or production page: Values in cards named for what each is
+    for, Apps in words, each app's page with what it reads from its deploy config; reads are live
+    queries; writes, restarts and edit as text; the composer's
     chips and the `<zerops-update>` note; zcp acts strict (readers-only restarts, a preflight that
     fails an unresolved reference, sensitive values masked in every tool output). Open: who reads a
     value at build (exposed nowhere), the release gate (a release naming what production's vault
@@ -1114,7 +1116,7 @@ still to come says so.
   - _Built in:_ branches `vault/base` (mate) and `vault/strict` (zcp), 2026-10-07
   - _Proven by:_ `vaultReferences.test.ts`, `vault.test.ts`, `vaultChanges.test.ts`,
     `vaultWrite.test.ts`, `projectVariables.test.ts`, `vault.logic.test.ts`,
-    `vaultTurnNotes.logic.test.ts`, `VaultPanel.test.tsx`; ledger _The vault's platform, measured_;
+    `vaultTurnNotes.logic.test.ts`, `vaultGroups.logic.test.ts`, `VaultPanel.test.tsx`; ledger _The vault's platform, measured_;
     a live look on Rhea's and xyz's projects (2026-10-07)
 
 ## 6. Decisions behind it

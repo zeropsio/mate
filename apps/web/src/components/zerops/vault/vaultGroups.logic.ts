@@ -123,6 +123,7 @@ const ADDRESS_ENDS = new Set([
   "ENDPOINT",
   "PORT",
   "ADDRESS",
+  "ADDR",
 ]);
 const SECURITY = new Set(["SECRET", "JWT", "COOKIE", "SESSION", "SALT", "ENCRYPTION", "SIGNING"]);
 

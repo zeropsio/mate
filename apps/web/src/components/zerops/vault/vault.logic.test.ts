@@ -61,9 +61,9 @@ describe("keyProblem", () => {
     ["bad-key!", SHARED, "Letters, digits and _ only, not starting with a digit"],
     ["1ST", SHARED, "Letters, digits and _ only, not starting with a digit"],
     ["WITH SPACE", SHARED, "Letters, digits and _ only, not starting with a digit"],
-    ["session_secret", SHARED, "SESSION_SECRET is already in Shared"],
-    ["API_URL", SHARED, "API_URL is already in Shared"],
-    ["feature_flags", APPDEV, "FEATURE_FLAGS is already in appdev"],
+    ["session_secret", SHARED, "SESSION_SECRET already exists"],
+    ["API_URL", SHARED, "API_URL already exists"],
+    ["feature_flags", APPDEV, "FEATURE_FLAGS already exists"],
     ["NODE_ENV", APPDEV, "appdev's zerops.yml already sets NODE_ENV"],
     ["node_env", APPDEV, "appdev's zerops.yml already sets NODE_ENV"],
     ["NODE_ENV", SHARED, null],
@@ -118,8 +118,8 @@ describe("agoWords", () => {
 });
 
 describe("names and references", () => {
-  it("names Shared and a service by its hostname", () => {
-    expect(scopeName(SHARED)).toBe("Shared");
+  it("names the environment's own values All apps, and a service by its hostname", () => {
+    expect(scopeName(SHARED)).toBe("All apps");
     expect(scopeName(APPDEV)).toBe("appdev");
   });
 
@@ -412,16 +412,16 @@ describe("readSource", () => {
   };
   it.each([
     ["NODE_ENV", { kind: "literal", text: "= development" }],
-    ["API_URL", { kind: "source", text: "Shared", target: { scopeId: "shared", key: "API_URL" } }],
+    ["API_URL", { kind: "source", text: "vault", target: { scopeId: "shared", key: "API_URL" } }],
     [
       "FEATURE_FLAGS",
-      { kind: "source", text: "own", target: { scopeId: "svc-appdev", key: "FEATURE_FLAGS" } },
+      { kind: "source", text: "its own", target: { scopeId: "svc-appdev", key: "FEATURE_FLAGS" } },
     ],
     [
       "DATABASE_URL",
       { kind: "source", text: "db", target: { scopeId: "svc-db", key: "connectionString" } },
     ],
-    ["PUBLIC_HOST", { kind: "source", text: "platform", target: null }],
+    ["PUBLIC_HOST", { kind: "source", text: "Zerops", target: null }],
     ["SEARCH_URL", { kind: "bad", text: "missing", name: "NOPE" }],
     ["DB_PASSWORD", { kind: "bad", text: "self", name: "DB_PASSWORD" }],
   ] as const)("%s", (key, source) => {
@@ -431,7 +431,7 @@ describe("readSource", () => {
 
 describe("refusalWords", () => {
   it.each([
-    ["projectEnvDuplicateKey", SHARED, "API_URL", "API_URL is already in Shared"],
+    ["projectEnvDuplicateKey", SHARED, "API_URL", "API_URL already exists"],
     [
       "userDataDuplicateKey",
       APPDEV,
