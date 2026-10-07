@@ -97,7 +97,9 @@ export function mateVoiceBannerItem(input: {
               voice.secondary
             ),
         }),
-    ...(askAgain !== null || toProjects || openInZerops ||
+    ...(askAgain !== null ||
+    toProjects ||
+    openInZerops ||
     (containerAction !== null && input.onContainerAction !== undefined)
       ? {
           actions: (

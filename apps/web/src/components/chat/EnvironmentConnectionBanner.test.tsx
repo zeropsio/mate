@@ -178,6 +178,5 @@ describe("a restart notice beside an open conversation", () => {
       act(() => rendered?.unmount());
       vi.unstubAllGlobals();
     }
-
   });
 });

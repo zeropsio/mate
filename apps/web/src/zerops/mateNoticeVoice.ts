@@ -68,12 +68,21 @@ export function mateNoticeVoice(
           name,
         )
       : null);
+  const process = input.recovery?.process;
+  const recoveringRestart =
+    input.recovery?.standing.kind !== "denied" &&
+    input.recovery?.standing.kind !== "deleted" &&
+    (process?.status === "RUNNING" || process?.status === "PENDING") &&
+    process.actionName === "stack.restart";
   if (recovery !== null)
     return {
       surface,
       text: recovery.text,
       headline: recovery.text,
-      secondary: "",
+      secondary: recoveringRestart ? restartLine(name, 0) : "",
+      ...(recoveringRestart
+        ? { restarting: true as const, restartLines: RESTART_LINES.map((line) => line(name)) }
+        : {}),
       severity:
         recovery.tone === "error" ? "danger" : recovery.tone === "warning" ? "attention" : "info",
       actions: recovery.actions,
