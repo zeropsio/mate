@@ -31,7 +31,7 @@ stale-while-revalidate layer or TTL-based freshness contract. In-memory projecti
 state is necessary for rendering; retention does not make old observations current.
 A disconnected model is explicitly unsynchronized. A platform value whose push source
 is paused reaches a view as `known` with `paused` freshness and renders as paused,
-never as current ([the knowledge type](client-state-model.md#the-knowledge-type)).
+never as current.
 A value shown while it is read again, and an "as of" time, belong only to pull-only
 sources (the resource broker, HQ's releases) and to a T3 stream that resubscribes.
 
@@ -99,8 +99,7 @@ lease holds it — the route, the Mate on screen, the one left last, an action, 
 Usage page while it stands —
 and is parked with none: its socket closed, its registration, kept session and cached data
 kept (step A, A9). What draws a Mate this tab has not opened reads HQ's overview of it.
-One [environment machine](client-state-model.md#mate-environment-one-per-target-key)
-per Mate target, in the account runtime's post-grant stage, decides when an identity
+One environment machine per Mate target, in the account runtime's post-grant stage, decides when an identity
 exchange runs: restore, repair and the leases are demand on the same driver, single flight
 per origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
 Existing registrations are reused, and a newly published catalog entry is retained
@@ -273,7 +272,7 @@ Start with explicit domain modules and named selectors. Avoid a generic query
 language, dynamic plugin registry, universal change bus or configurable merge
 framework. The one invalidation bus is a closed, typed union of revalidation requests
 that carries no data; only owners of pull-based facts subscribe, and platform records
-never travel on it ([data flow and invalidation](client-state-model.md#data-flow-and-invalidation)).
+never travel on it.
 New panels compose existing data; new domains add a source policy and reducer. The
 central runtime composes them rather than containing their logic.
 

@@ -4,7 +4,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.localStorage.getItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "reason": "Retained debt: the provider/model selector still restores its copied label across page loads. Removing this storage without migrating the picker to the provider-catalog projection would change selection display; that migration is separate from database mention reads.",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.localStorage.setItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "reason": "Retained debt: the provider/model selector still restores its copied label across page loads. Removing this storage without migrating the picker to the provider-catalog projection would change selection display; that migration is separate from database mention reads.",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "Retained debt: the composer still restores its copied change strip across page loads. Removing this storage requires migrating composer change-strip selection to the change projection; database mentions and browser result frames do not replace that surface.",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "Retained debt: the composer still restores its copied change strip across page loads. Removing this storage requires migrating composer change-strip selection to the change projection; database mentions and browser result frames do not replace that surface.",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "Retained debt: the composer still restores its copied change strip across page loads. Removing this storage requires migrating composer change-strip selection to the change projection; database mentions and browser result frames do not replace that surface.",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.getItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "Retained local tab intent bookkeeping: moving container intents to their declared allowlisted home needs the environment-creation lifecycle, independently of inventory, database reads and browser call frames. This entry permits intents, not remote verdicts.",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.removeItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "Retained local tab intent bookkeeping: moving container intents to their declared allowlisted home needs the environment-creation lifecycle, independently of inventory, database reads and browser call frames. This entry permits intents, not remote verdicts.",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.setItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "Retained local tab intent bookkeeping: moving container intents to their declared allowlisted home needs the environment-creation lifecycle, independently of inventory, database reads and browser call frames. This entry permits intents, not remote verdicts.",
     "expires": "never"
   }
 ]

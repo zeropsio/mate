@@ -185,6 +185,12 @@ export function supersedes(
   method: "baseline" | "push" | "read",
 ): boolean {
   switch (incoming.kind) {
+    case "mate-browser-frame":
+      return (
+        current.kind === "mate-browser-frame" &&
+        current.callId === incoming.callId &&
+        incoming.revision > current.revision
+      );
     case "zerops":
       if (current.kind !== "zerops") return false;
       if (incoming.version === null) return current.version === null;

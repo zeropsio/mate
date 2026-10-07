@@ -8,7 +8,7 @@
  * what went missing meanwhile is not invented.
  *
  * The credential is proven by answers, never by the socket: a socket outlives a revoked token and
- * its pongs go on (`zivost/probe-scoped`). A read the attempt makes that answers 401 ends the
+ * its pongs go on. A read the attempt makes that answers 401 ends the
  * attempt, and the supervisor repairs the session; a project taken from the viewer ends it too,
  * for the other scopes never say what it took away: the next attempt registers every scope again
  * and its answers are the truth.

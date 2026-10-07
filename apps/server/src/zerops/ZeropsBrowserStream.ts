@@ -79,6 +79,8 @@
 import * as NodeOS from "node:os";
 
 import type {
+  ZeropsBrowserCallResult,
+  SpiEvent,
   ZeropsBrowserFrame,
   ZeropsBrowserInput,
   ZeropsBrowserStateEvent,
@@ -101,6 +103,9 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+
+import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
+import { makeBrowserCallFrames } from "./ZeropsBrowserCallFrames.ts";
 
 /**
  * The subset of the browser (and Node's native) `WebSocket` API this module
@@ -161,6 +166,7 @@ type SocketEvent =
  */
 type InternalEvent =
   | { readonly kind: "state"; readonly event: ZeropsBrowserStateEvent }
+  | { readonly kind: "callResult"; readonly event: ZeropsBrowserCallResult }
   | { readonly kind: "frameChanged" };
 
 /** One shared instance — the marker carries no per-publish data, so every publish reuses the same reference instead of allocating a fresh object per backlog entry. */
@@ -210,6 +216,18 @@ const parseAgentBrowserMessage = (raw: string): DaemonMessage => {
       seq,
       frame: {
         type: "frame",
+        // The daemon must name the source call itself; an active SPI call never labels a viewport.
+        ...(readString(parsed.callId) === undefined ? {} : { callId: readString(parsed.callId) }),
+        ...(readString(parsed.threadId) === undefined
+          ? {}
+          : { threadId: readString(parsed.threadId) }),
+        ...(readString(parsed.turnId) === undefined ? {} : { turnId: readString(parsed.turnId) }),
+        ...(Number.isInteger(parsed.revision) && Number(parsed.revision) >= 0
+          ? { revision: Number(parsed.revision) }
+          : {}),
+        ...(parsed.completeness === "complete" || parsed.completeness === "partial"
+          ? { completeness: parsed.completeness }
+          : {}),
         data,
         width,
         height,
@@ -292,6 +310,13 @@ const toDaemonInputMessage = (input: ZeropsBrowserInput): string =>
 export const make = (options: ZeropsBrowserStreamOptions) =>
   Effect.gen(function* () {
     const events = yield* PubSub.unbounded<InternalEvent>();
+    const callFrames = makeBrowserCallFrames();
+    const ingestCall = (event: SpiEvent): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const result = callFrames.ingest(event);
+        if (result !== undefined)
+          yield* PubSub.publish(events, { kind: "callResult", event: result });
+      });
     const subscriberCount = yield* Ref.make(0);
     const connectionFiber = yield* Ref.make<Fiber.Fiber<void, never> | undefined>(undefined);
     // Serializes every subscribe-start (0→1: fork) and subscribe-end (1→0:
@@ -369,7 +394,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
     const publishFrame = (frame: ZeropsBrowserFrame, seq: number) =>
       Effect.gen(function* () {
-        yield* Ref.set(latestFrame, { seq, frame });
+        yield* Ref.set(latestFrame, { seq, frame: callFrames.frame(frame) });
         yield* PubSub.publish(events, FRAME_CHANGED_EVENT);
       });
 
@@ -551,7 +576,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
       return rawStream.pipe(
         Stream.mapEffect((internal): Effect.Effect<ZeropsBrowserStreamEvent | undefined> => {
-          if (internal.kind === "state") {
+          if (internal.kind === "state" || internal.kind === "callResult") {
             return Effect.succeed(internal.event);
           }
           return Effect.gen(function* () {
@@ -583,7 +608,9 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         yield* sendQuietly(socket, toDaemonInputMessage(input));
       });
 
-    return { subscribe, sendInput } satisfies ZeropsBrowserStream["Service"];
+    return { subscribe, sendInput, ingestCall } satisfies ZeropsBrowserStream["Service"] & {
+      readonly ingestCall: (event: SpiEvent) => Effect.Effect<void>;
+    };
   });
 
 const STREAM_PORT_FILE_SEGMENTS = [".agent-browser", "default.stream"] as const;
@@ -611,9 +638,12 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    return yield* make({
+    const bus = yield* ProviderRuntimeEventBus;
+    const service = yield* make({
       readStreamPort: readStreamPortFromFile(fs, path, NodeOS.homedir()),
       connect: connectReal,
     });
+    yield* Stream.runForEach(bus.events, service.ingestCall).pipe(Effect.forkScoped);
+    return service;
   }),
 );

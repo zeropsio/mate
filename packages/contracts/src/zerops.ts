@@ -658,7 +658,16 @@ export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
  */
 export const ZeropsBrowserFrame = Schema.Struct({
   type: Schema.Literal("frame"),
-  /** Base64 JPEG, relayed as received. */
+  /** Identity supplied with the daemon frame or the SPI call's own result image. */
+  callId: Schema.optional(Schema.String),
+  threadId: Schema.optional(Schema.String),
+  turnId: Schema.optional(Schema.String),
+  /** Monotonically increasing within this call, retained across relay reconnects. */
+  revision: Schema.optional(Schema.Int),
+  completeness: Schema.optional(Schema.Literals(["complete", "partial"])),
+  /** The daemon uses JPEG; an identified tool result can carry another image format. */
+  mimeType: Schema.optional(Schema.String),
+  /** Base64 image, relayed as received. */
   data: Schema.String,
   width: Schema.Number,
   height: Schema.Number,
@@ -682,8 +691,24 @@ export const ZeropsBrowserStateEvent = Schema.Struct({
 });
 export type ZeropsBrowserStateEvent = typeof ZeropsBrowserStateEvent.Type;
 
-/** The one stream `subscribeZeropsBrowserStream` publishes: state transitions interleaved with frames. */
-export const ZeropsBrowserStreamEvent = Schema.Union([ZeropsBrowserFrame, ZeropsBrowserStateEvent]);
+/** A call's final image slot. Only complete evidence replaces it; null proves that slot empty. */
+export const ZeropsBrowserCallResult = Schema.Struct({
+  type: Schema.Literal("call-result"),
+  callId: Schema.String,
+  threadId: Schema.String,
+  turnId: Schema.String,
+  revision: Schema.Int,
+  completeness: Schema.Literals(["complete", "partial"]),
+  frame: Schema.optional(Schema.NullOr(ZeropsBrowserFrame)),
+});
+export type ZeropsBrowserCallResult = typeof ZeropsBrowserCallResult.Type;
+
+/** State transitions, live frames and source-proven call results share one subscription. */
+export const ZeropsBrowserStreamEvent = Schema.Union([
+  ZeropsBrowserFrame,
+  ZeropsBrowserStateEvent,
+  ZeropsBrowserCallResult,
+]);
 export type ZeropsBrowserStreamEvent = typeof ZeropsBrowserStreamEvent.Type;
 
 /**

@@ -5,8 +5,6 @@
  * services while that project is open). Each observed scope is a pair: a membership `listStream`,
  * whose answer is the scope's baseline, and an `updateStream` of whole rows.
  *
- * Request shapes as measured: `klient/probe-org-data/20261005T184903Z-registration-formats.jsonl`.
- *
  * @module data/demand
  */
 import { FAMILIES, familySpec } from "./families/index.ts";

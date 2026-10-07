@@ -233,12 +233,18 @@ Steps (agent tasks):
    lock from the scratch clone's tree OIDs and prove it with `imported-lock.ts --check`). The
    import is formatted with whatever vite-plus upstream used; when upstream moved the catalog, the bump rides in
    the same commit — neither half is green alone (row 3: 0.2.2 → 0.3.0).
-3. **Port** the provider commits behind the SPI: fixtures replayed, matrix row added, live canary
-   (§7) green on `z3-eval`. A port that lands a client test runs that package's whole test suite
-   (`vp run --filter @t3tools/web test`, mobile likewise), not only the touched file: the fork's
-   components and test mocks diverge from upstream's, and CI's Test job is where that surfaces (row 3
-   landed red on three such tests). A port that needs an orchestration/contract change carries it in the
-   same slice with a spec note.
+3. **Port** the provider commits behind the SPI: matrix row added and
+   `node scripts/chat-gate.ts` green. The chat contract gate runs all provider SPI goldens (A),
+   all hosted C wire journeys (B), and server/contracts/client-runtime/web plus scenario
+   typechecks. It reports each stage's result and duration separately. A proves event translation;
+   B proves the built client's response to source evidence, not production server execution.
+   Implementation unit tests may be kept, replaced or removed as the implementation changes;
+   they do not require restoring obsolete internals or add a third contract boundary. A changed
+   public SPI expectation requires an explicit contract/version review, not silent golden regeneration.
+   Shared imports/types still require checks of affected desktop/mobile consumers; hosted B proves
+   no native-mobile behavior. A port that needs an orchestration/contract change carries it in the
+   same slice with a spec note. Live disposable-container vendor validation is optional evidence
+   when replay cannot settle a CLI behavior; the gate does not require a paid canary.
 4. **Cherry-picks** — each its own slice through the normal loop.
 5. Move the last-reviewed SHA.
 

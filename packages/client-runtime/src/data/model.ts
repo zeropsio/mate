@@ -30,6 +30,7 @@ export const linkKeys = {
 
 /** An owner's ordering of its own values. Revisions of different kinds never compare. */
 export type Revision =
+  | { readonly kind: "mate-browser-frame"; readonly callId: string; readonly revision: number }
   /** A Zerops entity row's `_version`; `null` where the row carried none. */
   | { readonly kind: "zerops"; readonly version: number | null }
   /** An HQ scope's revision, inside one incarnation of that scope (`@t3tools/shared/hqStream`). */

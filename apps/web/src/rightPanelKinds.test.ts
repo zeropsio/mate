@@ -110,7 +110,7 @@ describe("right panel kinds", () => {
       {
         kind: "vault",
         label: "Vault",
-        description: "See and change the project's variables.",
+        description: "Settings and secrets your apps use.",
         shortcut: "E",
         unavailableHint: "Available in a Zerops project.",
       },

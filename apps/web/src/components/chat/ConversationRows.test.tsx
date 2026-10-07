@@ -1,3 +1,6 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -82,6 +85,62 @@ describe("the usage-limit pause", () => {
     expect(block).toContain("border-x-0");
     expect(block.some((name) => /^(px|ps)-/.test(name))).toBe(false);
   });
+});
+
+describe("the pause's automatic-resume choice", () => {
+  let root: Root | undefined;
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+  });
+  afterEach(async () => {
+    await act(() => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { autoResume: true, next: "off" },
+    { autoResume: false, next: "on" },
+  ])(
+    "the pause shows the thread's automatic-resume choice and lets the person turn it $next",
+    async ({ autoResume }) => {
+      const changed = vi.fn<(enabled: boolean) => void>();
+      const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
+      const show = (choice: boolean) =>
+        act(() => {
+          root!.render(
+            <PauseBlock
+              nowMs={NOW_MS}
+              onAutoResumeChange={changed}
+              row={{
+                kind: "pause",
+                id: "pause:choice",
+                createdAt: at(600),
+                resetsAt,
+                resumedAt: null,
+                held: 0,
+              }}
+              serverPause={{ resetsAt, autoResume: choice }}
+              speaker={NOVA}
+              timestampFormat="24-hour"
+            />,
+          );
+        });
+
+      await show(autoResume);
+      const toggle = document.querySelector<HTMLButtonElement>('[role="switch"]');
+      if (toggle === null) throw new Error("The pause has no automatic-resume choice.");
+      expect(toggle.getAttribute("aria-checked")).toBe(String(autoResume));
+      expect(toggle.closest("label")?.textContent).toContain("Resume by itself at the reset");
+
+      await act(() => toggle.click());
+      expect(changed).toHaveBeenCalledWith(!autoResume);
+      await show(!autoResume);
+      expect(toggle.getAttribute("aria-checked")).toBe(String(!autoResume));
+    },
+  );
 });
 
 describe("a slash command's line", () => {

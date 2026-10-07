@@ -1,0 +1,546 @@
+/**
+ * The vault as a person reads it: every value in a group named for what it is for (Admin sign-in,
+ * Stripe, Email, Addresses…), each under a label in words ("From name" for `SMTP_FROM_NAME`),
+ * and what needs the person — values not set, secrets anyone can read — drawn on top.
+ */
+import type { VaultScope, VaultValue, VaultView } from "@t3tools/client-runtime/data";
+
+import { joinNames } from "./vault.logic";
+
+const ACRONYMS = new Set([
+  "AI",
+  "API",
+  "AWS",
+  "CDN",
+  "CORS",
+  "CPU",
+  "CSRF",
+  "DB",
+  "DNS",
+  "DSN",
+  "GCP",
+  "HMAC",
+  "HTTP",
+  "HTTPS",
+  "ID",
+  "IP",
+  "JWT",
+  "OAUTH",
+  "OIDC",
+  "RAM",
+  "S3",
+  "SDK",
+  "SMS",
+  "SMTP",
+  "SSL",
+  "SSO",
+  "TLS",
+  "TTL",
+  "UI",
+  "URI",
+  "URL",
+]);
+
+/** A key's words, upper-case: `SMTP_FROM_NAME` → SMTP, FROM, NAME; `apiKey` → API, KEY. */
+export function keyWords(key: string): ReadonlyArray<string> {
+  return key
+    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .toUpperCase()
+    .split(/[_\-.]+/u)
+    .filter((word) => word !== "");
+}
+
+/** Words as a sentence-case label, acronyms kept: API, KEY → "API key". */
+export function labelOf(words: ReadonlyArray<string>): string {
+  return words
+    .map((word, index) => {
+      if (ACRONYMS.has(word)) return word;
+      const lower = word.toLowerCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(" ");
+}
+
+const PROVIDERS: Readonly<Record<string, string>> = {
+  ADYEN: "Adyen",
+  ALGOLIA: "Algolia",
+  ANTHROPIC: "Anthropic",
+  AUTH0: "Auth0",
+  BRAINTREE: "Braintree",
+  CLERK: "Clerk",
+  CLOUDINARY: "Cloudinary",
+  FIREBASE: "Firebase",
+  GITHUB: "GitHub",
+  GOOGLE: "Google",
+  LEMONSQUEEZY: "Lemon Squeezy",
+  MAILGUN: "Mailgun",
+  MEILI: "Meilisearch",
+  MEILISEARCH: "Meilisearch",
+  MOLLIE: "Mollie",
+  OPENAI: "OpenAI",
+  PADDLE: "Paddle",
+  PAYPAL: "PayPal",
+  POSTHOG: "PostHog",
+  POSTMARK: "Postmark",
+  RESEND: "Resend",
+  SENDGRID: "SendGrid",
+  SENTRY: "Sentry",
+  SHOPIFY: "Shopify",
+  SLACK: "Slack",
+  STRIPE: "Stripe",
+  SUPABASE: "Supabase",
+  TWILIO: "Twilio",
+  TYPESENSE: "Typesense",
+};
+const ADMIN = new Set(["ADMIN", "SUPERADMIN"]);
+const EMAIL = new Set(["SMTP", "MAIL", "MAILER", "EMAIL", "IMAP"]);
+const STORAGE = new Set(["S3", "STORAGE", "BUCKET", "R2", "MINIO", "AWS"]);
+const DATA = new Set([
+  "DB",
+  "DATABASE",
+  "POSTGRES",
+  "POSTGRESQL",
+  "PG",
+  "MYSQL",
+  "MARIADB",
+  "MONGO",
+  "MONGODB",
+  "REDIS",
+  "VALKEY",
+  "KEYDB",
+  "ELASTICSEARCH",
+  "NATS",
+  "RABBITMQ",
+  "KAFKA",
+]);
+const ADDRESS_ENDS = new Set([
+  "URL",
+  "URI",
+  "HOST",
+  "HOSTNAME",
+  "DOMAIN",
+  "ORIGIN",
+  "ENDPOINT",
+  "PORT",
+  "ADDRESS",
+  "ADDR",
+]);
+const SECURITY = new Set(["SECRET", "JWT", "COOKIE", "SESSION", "SALT", "ENCRYPTION", "SIGNING"]);
+
+/** What a group is about, for its icon. */
+export type VaultGroupKind =
+  | "admin"
+  | "email"
+  | "storage"
+  | "addresses"
+  | "data"
+  | "security"
+  | "payments"
+  | "ai"
+  | "search"
+  | "monitoring"
+  | "service"
+  | "app"
+  | "other";
+
+export interface VaultGroupRef {
+  readonly id: string;
+  readonly title: string;
+  /** Where the group sits: what a person looks for first comes first, machines' keys last. */
+  readonly order: number;
+  readonly kind: VaultGroupKind;
+}
+
+const GROUP = {
+  admin: { id: "admin", title: "Admin sign-in", order: 0, kind: "admin" },
+  email: { id: "email", title: "Email", order: 2, kind: "email" },
+  storage: { id: "storage", title: "File storage", order: 3, kind: "storage" },
+  addresses: { id: "addresses", title: "Addresses", order: 4, kind: "addresses" },
+  data: { id: "data", title: "Databases", order: 5, kind: "data" },
+  other: { id: "other", title: "Other settings", order: 7, kind: "other" },
+  security: { id: "security", title: "Security keys", order: 8, kind: "security" },
+} as const satisfies Record<string, VaultGroupRef>;
+
+/** What each known provider is about, for its group's icon. */
+const PROVIDER_KIND: Readonly<Record<string, VaultGroupKind>> = {
+  ADYEN: "payments",
+  BRAINTREE: "payments",
+  LEMONSQUEEZY: "payments",
+  MOLLIE: "payments",
+  PADDLE: "payments",
+  PAYPAL: "payments",
+  STRIPE: "payments",
+  ANTHROPIC: "ai",
+  OPENAI: "ai",
+  ALGOLIA: "search",
+  MEILI: "search",
+  MEILISEARCH: "search",
+  TYPESENSE: "search",
+  POSTHOG: "monitoring",
+  SENTRY: "monitoring",
+  MAILGUN: "email",
+  POSTMARK: "email",
+  RESEND: "email",
+  SENDGRID: "email",
+};
+
+interface Placement {
+  readonly group: VaultGroupRef | null;
+  readonly label: string;
+}
+
+/** Where a key goes by its words alone, and its label there (the group's own word dropped). */
+function place(key: string): Placement {
+  const words = keyWords(key);
+  const first = words[0] ?? "";
+  const rest = words.slice(1);
+  const label = (parts: ReadonlyArray<string>) => labelOf(parts.length === 0 ? words : parts);
+  if (ADMIN.has(first)) return { group: GROUP.admin, label: label(rest) };
+  if (words.some((word) => ADMIN.has(word))) return { group: GROUP.admin, label: label(words) };
+  const provider = PROVIDERS[first];
+  if (provider !== undefined) {
+    return {
+      group: {
+        id: `provider:${first}`,
+        title: provider,
+        order: 1,
+        kind: PROVIDER_KIND[first] ?? "service",
+      },
+      label: label(rest),
+    };
+  }
+  if (EMAIL.has(first)) return { group: GROUP.email, label: label(rest) };
+  if (STORAGE.has(first)) {
+    return { group: GROUP.storage, label: label(first === "AWS" ? words : rest) };
+  }
+  if (DATA.has(first)) return { group: GROUP.data, label: label(words) };
+  if (ADDRESS_ENDS.has(words.at(-1) ?? "")) return { group: GROUP.addresses, label: label(words) };
+  if (words.some((word) => SECURITY.has(word)) || words.join("_") === "APP_KEY") {
+    return { group: GROUP.security, label: label(words) };
+  }
+  return { group: null, label: label(words) };
+}
+
+// ── secrets ─────────────────────────────────────────────────────────────────
+
+const SECRET_WORDS = new Set([
+  "SECRET",
+  "TOKEN",
+  "PASSWORD",
+  "PASS",
+  "KEY",
+  "DSN",
+  "PRIVATE",
+  "CREDENTIAL",
+]);
+const SECRET_ENDS = ["SECRET", "TOKEN", "PASSWORD", "KEY", "CREDENTIALS"];
+const PUBLIC_WORDS = new Set(["PUBLIC", "PUBLISHABLE"]);
+const PRIVATE_WORDS = new Set(["SECRET", "PASSWORD", "PRIVATE"]);
+
+/**
+ * A name that says secret: a word of it (or a word's end, APIKEY) is a secret's. A name public by
+ * design — PUBLIC or PUBLISHABLE, and nothing private beside it — is not: a browser ships it.
+ */
+export function looksSecret(key: string): boolean {
+  const words = keyWords(key);
+  if (words.some((word) => PUBLIC_WORDS.has(word)) && !words.some((w) => PRIVATE_WORDS.has(w))) {
+    return false;
+  }
+  return words.some(
+    (word) => SECRET_WORDS.has(word) || SECRET_ENDS.some((end) => word.endsWith(end)),
+  );
+}
+
+/** A password a person signs in with: it stays readable to them, hidden on screen. */
+export function isSignInPassword(key: string): boolean {
+  const words = keyWords(key);
+  return (
+    words.some((word) => ADMIN.has(word)) &&
+    words.some((word) => word === "PASSWORD" || word === "PASS")
+  );
+}
+
+/** How a closed row shows a value. */
+export type VaultShow =
+  /** Written secret: nobody reads it back. */
+  | { readonly kind: "secret" }
+  /** Readable, but its name says secret: dots until the row opens. */
+  | { readonly kind: "masked"; readonly value: string }
+  | { readonly kind: "unset" }
+  | {
+      readonly kind: "text";
+      /** The value, each `${name}` in it a part of its own. */
+      readonly parts: ReadonlyArray<{ readonly ref: boolean; readonly text: string }>;
+    };
+
+export function showOf(value: VaultValue): VaultShow {
+  if (value.sensitive) return { kind: "secret" };
+  const text = value.value ?? "";
+  if (text === "") return { kind: "unset" };
+  if (looksSecret(value.key)) return { kind: "masked", value: text };
+  const parts: Array<{ readonly ref: boolean; readonly text: string }> = [];
+  let at = 0;
+  for (const match of text.matchAll(/\$\{([^}]+)\}/gu)) {
+    if (match.index > at) parts.push({ ref: false, text: text.slice(at, match.index) });
+    parts.push({ ref: true, text: match[1] ?? "" });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) parts.push({ ref: false, text: text.slice(at) });
+  return { kind: "text", parts };
+}
+
+// ── the list ────────────────────────────────────────────────────────────────
+
+export interface VaultEntry {
+  readonly scope: VaultScope;
+  readonly value: VaultValue;
+  readonly label: string;
+  /** The one app that has it, when it is that app's own and the list shows every app. */
+  readonly only: string | null;
+  readonly group: VaultGroupRef;
+}
+
+export interface VaultGroup extends VaultGroupRef {
+  readonly entries: ReadonlyArray<VaultEntry>;
+}
+
+/**
+ * Which values a list shows: the environment's (`all`, the main page), one app's own (`app`), or
+ * both together (`everything`: a search, and what needs the person).
+ */
+export type VaultFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "everything" }
+  | { readonly kind: "app"; readonly id: string };
+
+const entryMatches = (entry: VaultEntry, query: string) => {
+  if (query === "") return true;
+  const needle = query.toLowerCase();
+  return [
+    entry.value.key,
+    entry.label,
+    entry.group.title,
+    entry.only ?? "",
+    entry.value.value ?? "",
+  ].some((text) => text.toLowerCase().includes(needle));
+};
+
+/** Every value the filter shows, in its group: the groups in order, a group's values by label. */
+export function vaultGroups(
+  view: VaultView,
+  filter: VaultFilter,
+  query: string,
+): ReadonlyArray<VaultGroup> {
+  const scopes = view.scopes.filter((scope) =>
+    filter.kind === "all"
+      ? scope.kind === "shared"
+      : filter.kind === "everything"
+        ? scope.kind !== "managed"
+        : scope.id === filter.id,
+  );
+  const placed = scopes.flatMap((scope) =>
+    scope.values.map((value) => ({ scope, value, ...place(value.key) })),
+  );
+  // A name no rule knows joins others that start the same way, else Other settings.
+  const firsts = new Map<string, number>();
+  for (const item of placed) {
+    if (item.group !== null || item.scope.hostname !== null) continue;
+    const first = keyWords(item.value.key)[0] ?? "";
+    firsts.set(first, (firsts.get(first) ?? 0) + 1);
+  }
+  const entries = placed.map((item): VaultEntry => {
+    const only =
+      filter.kind === "everything" && item.scope.hostname !== null ? item.scope.hostname : null;
+    if (item.group !== null) return { ...item, group: item.group, only };
+    // An app's own value no rule knows sits under the app's name, not under a prefix.
+    if (item.scope.hostname !== null && filter.kind === "everything") {
+      return {
+        ...item,
+        group: { id: `app:${item.scope.id}`, title: item.scope.hostname, order: 6, kind: "app" },
+        only: null,
+      };
+    }
+    const words = keyWords(item.value.key);
+    const first = words[0] ?? "";
+    if ((firsts.get(first) ?? 0) >= 2 && words.length > 1) {
+      return {
+        ...item,
+        group: { id: `prefix:${first}`, title: labelOf([first]), order: 6, kind: "service" },
+        label: labelOf(words.slice(1)),
+        only,
+      };
+    }
+    return { ...item, group: GROUP.other, only };
+  });
+  const groups = new Map<string, { ref: VaultGroupRef; entries: VaultEntry[] }>();
+  for (const entry of entries) {
+    if (!entryMatches(entry, query)) continue;
+    const held = groups.get(entry.group.id);
+    if (held === undefined) groups.set(entry.group.id, { ref: entry.group, entries: [entry] });
+    else held.entries.push(entry);
+  }
+  return [...groups.values()]
+    .map(({ ref, entries: list }) => ({
+      ...ref,
+      entries: list.toSorted(
+        (a, b) => a.label.localeCompare(b.label) || (a.only ?? "").localeCompare(b.only ?? ""),
+      ),
+    }))
+    .toSorted((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+}
+
+// ── what needs the person ───────────────────────────────────────────────────
+
+export interface VaultNeeds {
+  /** Values that are empty: an app reads nothing there. */
+  readonly unset: ReadonlyArray<VaultEntry>;
+  /** Values whose name says secret, written readable: anyone with access reads them. */
+  readonly readable: ReadonlyArray<VaultEntry>;
+}
+
+export function vaultNeeds(groups: ReadonlyArray<VaultGroup>): VaultNeeds {
+  const entries = groups.flatMap((group) => group.entries).filter((e) => e.scope.editable);
+  return {
+    unset: entries.filter((entry) => showOf(entry.value).kind === "unset"),
+    readable: entries.filter(
+      (entry) => showOf(entry.value).kind === "masked" && !isSignInPassword(entry.value.key),
+    ),
+  };
+}
+
+/** The unset card's title: the one group they share ("Stripe isn't set up yet"), else a count. */
+export function unsetTitle(unset: ReadonlyArray<VaultEntry>): string {
+  const groups = new Set(unset.map((entry) => entry.group.id));
+  const only = unset[0]?.group;
+  if (groups.size === 1 && only !== undefined && only.id !== "other") {
+    return `${only.title} isn't set up yet`;
+  }
+  return unset.length === 1 ? "1 value isn't set yet" : `${unset.length} values aren't set yet`;
+}
+
+/**
+ * Who uses a value, in words: the apps whose deploy config names it. An app's zerops.yml
+ * `run.envVariables` is the list of what it reads; Zerops still hands it the rest until strict
+ * isolation lands, but nothing should rely on that (spec-mate §5.8).
+ */
+export function usedByWords(value: VaultValue): string {
+  if (value.readers.length === 0)
+    return "No app uses it yet: an app's deploy config has to name it.";
+  return `Used by ${joinNames(value.readers.map((reader) => reader.hostname))}.`;
+}
+
+/** A service type for people: `postgresql@17` → postgresql, `valkey:single` → valkey. */
+export function typeWord(serviceType: string | null): string | null {
+  return serviceType === null ? null : (serviceType.split(/[@:]/u)[0] ?? null);
+}
+
+// ── the deploy config ───────────────────────────────────────────────────────
+
+const DEPLOY_CONFIG = /(^|\/)zerops\.ya?ml$/u;
+const PAIR_SUFFIX = /(dev|stage|prod|production)$/u;
+
+/**
+ * The workspace file an app's deploy config lives in: its own folder's zerops.yaml (a dev app is
+ * mounted at its hostname), else its dev sibling's (a stage app deploys from it: medusastage from
+ * medusadev), else the one at the workspace root; null where none is found.
+ */
+export function deployConfigPath(hostname: string, paths: ReadonlyArray<string>): string | null {
+  const configs = paths.filter((path) => DEPLOY_CONFIG.test(path));
+  const inFolder = (folder: string) =>
+    configs.find((path) => path === `${folder}/zerops.yaml` || path === `${folder}/zerops.yml`);
+  const own = inFolder(hostname);
+  if (own !== undefined) return own;
+  const base = hostname.replace(PAIR_SUFFIX, "");
+  if (base !== "" && base !== hostname) {
+    for (const suffix of ["dev", "", "stage"]) {
+      const sibling = inFolder(`${base}${suffix}`);
+      if (sibling !== undefined) return sibling;
+    }
+  }
+  const root = configs.filter((path) => !path.includes("/"));
+  return root.length === 1 ? (root[0] ?? null) : null;
+}
+
+/**
+ * The line an app's `setup:` starts on in a deploy config (1-based), or null: the setup named
+ * after the app, else the one its role names — a stage app builds with `prod` (or `stage`), a
+ * dev app with `dev`.
+ */
+export function setupLine(content: string, hostname: string): number | null {
+  const lines = content.split("\n");
+  const role = PAIR_SUFFIX.exec(hostname)?.[1] ?? null;
+  const names = [
+    hostname,
+    ...(role === "dev" ? ["dev", "development"] : []),
+    ...(role === "stage" ? ["prod", "production", "stage"] : []),
+    ...(role === "prod" || role === "production" ? ["prod", "production"] : []),
+  ];
+  for (const name of names) {
+    const at = lines.findIndex((line) =>
+      new RegExp(`^\\s*-?\\s*setup:\\s*["']?${name}["']?\\s*(#.*)?$`, "u").test(line),
+    );
+    if (at !== -1) return at + 1;
+  }
+  return null;
+}
+
+// ── services, in words ──────────────────────────────────────────────────────
+
+const RUNTIME_WORDS: Readonly<Record<string, string>> = {
+  alpine: "Container",
+  bun: "Bun app",
+  deno: "Deno app",
+  docker: "Docker container",
+  dotnet: ".NET app",
+  elixir: "Elixir app",
+  gleam: "Gleam app",
+  go: "Go app",
+  java: "Java app",
+  nginx: "Static site",
+  nodejs: "Node.js app",
+  php: "PHP app",
+  "php-apache": "PHP app",
+  "php-nginx": "PHP app",
+  python: "Python app",
+  ruby: "Ruby app",
+  rust: "Rust app",
+  static: "Static site",
+  ubuntu: "Container",
+};
+
+export type VaultServiceKind = "app" | "database" | "cache" | "search" | "storage" | "messaging";
+
+const MANAGED_WORDS: Readonly<
+  Record<string, { readonly kind: VaultServiceKind; readonly words: string }>
+> = {
+  clickhouse: { kind: "database", words: "Analytics database · ClickHouse" },
+  elasticsearch: { kind: "search", words: "Search · Elasticsearch" },
+  kafka: { kind: "messaging", words: "Messaging · Kafka" },
+  keydb: { kind: "cache", words: "Cache · KeyDB" },
+  mariadb: { kind: "database", words: "Database · MariaDB" },
+  meilisearch: { kind: "search", words: "Search · Meilisearch" },
+  mongodb: { kind: "database", words: "Database · MongoDB" },
+  mysql: { kind: "database", words: "Database · MySQL" },
+  nats: { kind: "messaging", words: "Messaging · NATS" },
+  "object-storage": { kind: "storage", words: "File storage" },
+  postgresql: { kind: "database", words: "Database · PostgreSQL" },
+  qdrant: { kind: "database", words: "Vector database · Qdrant" },
+  rabbitmq: { kind: "messaging", words: "Messaging · RabbitMQ" },
+  redis: { kind: "cache", words: "Cache · Redis" },
+  "shared-storage": { kind: "storage", words: "Shared disk" },
+  typesense: { kind: "search", words: "Search · Typesense" },
+  valkey: { kind: "cache", words: "Cache · Valkey" },
+};
+
+/** A service as a person reads it: what it is ("Node.js app", "Database · PostgreSQL"). */
+export function serviceWords(scope: VaultScope): {
+  readonly kind: VaultServiceKind;
+  readonly words: string | null;
+} {
+  const type = typeWord(scope.serviceType);
+  if (scope.kind === "managed") {
+    const known = type === null ? undefined : MANAGED_WORDS[type];
+    return known ?? { kind: "database", words: type };
+  }
+  return { kind: "app", words: type === null ? null : (RUNTIME_WORDS[type] ?? type) };
+}

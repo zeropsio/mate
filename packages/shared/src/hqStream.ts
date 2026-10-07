@@ -401,7 +401,7 @@ export const HqNavigationProject = Schema.Struct({
   everSignedIn: Schema.Record(Schema.String, Schema.String),
 });
 export type HqNavigationProject = typeof HqNavigationProject.Type;
-/** Independent app-detail record values, keyed as documented in hq-scopes.md. */
+/** Independent app-detail record values keyed by the fields below. */
 export const HqAppDetailFields = {
   releases: AppReadValue.fields.releases,
   repos: AppReadValue.fields.repos,

@@ -413,8 +413,8 @@ const CALL_TIMEOUT_MS = 20_000;
 const WRITE_TIMEOUT_MS = 45_000;
 
 /**
- * What a write whose answer was lost says, when HQ holds nothing of it either: main's words for an
- * attempt that may have landed (`docs/internals/zerops/client-state-model.md`, command attempts).
+ * A lost answer can mean the write landed. Keep an uncertain receipt rather than repeat it
+ * without checking what HQ accepted.
  */
 export const HQ_WRITE_UNCERTAIN =
   "HQ could not confirm whether this finished. Check the project before trying again.";

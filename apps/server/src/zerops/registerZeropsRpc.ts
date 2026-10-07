@@ -385,10 +385,12 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       observeRpcStream(WS_METHODS.subscribeZeropsAttention, zeropsMateAttention.changes, {
         "rpc.aggregate": "zerops",
       }),
-    [WS_METHODS.subscribeZeropsBrowserStream]: (_input) =>
+    [WS_METHODS.subscribeZeropsBrowserStream]: (input) =>
       observeRpcStream(
         WS_METHODS.subscribeZeropsBrowserStream,
-        Stream.unwrap(zeropsBrowserStream.subscribe),
+        Stream.unwrap(zeropsBrowserStream.subscribe).pipe(
+          Stream.filter((event) => input.callFrames === true || event.type !== "call-result"),
+        ),
         {
           "rpc.aggregate": "zerops",
         },

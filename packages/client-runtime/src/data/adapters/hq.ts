@@ -1,6 +1,6 @@
 import { lifecycleReceipt } from "../families/hqLifecycle.ts";
 /**
- * HQ, our own source (`@t3tools/shared/hqStream`, `docs/internals/zerops/hq-scopes.md`): one socket
+ * HQ, our own source (`@t3tools/shared/hqStream`): one socket
  * per account, organization and renderer, carrying the scopes this renderer demands. The
  * organization's `navigation` scope is always demanded; it feeds every family whose records it
  * holds, one delivery committed together. Each Mate HQ places is observed through its own

@@ -6,6 +6,20 @@ Run from the repository root:
 vp test run --config apps/web/test/scenarios/vitest.config.ts
 ```
 
+For chat/provider ports, run the named two-boundary gate from the root:
+
+```sh
+node scripts/chat-gate.ts
+```
+
+It runs all provider SPI goldens (A), every C client wire journey (B), and wire-consumer plus
+scenario typechecks concurrently, reporting their results and durations separately. `--list`
+shows its commands. `scripts/gate-changed.ts` and CI use the same selector, including server-only
+provider, SPI and orchestration changes. The C driver tests remain implementation tests; they
+cannot substitute for B. No expected-failure case belongs in C. Provider goldens compare canonical
+SPI output, while C uses reported wire facts and proves client behavior, not real provider/git
+execution. Desktop shares this web surface; native mobile remains outside this gate.
+
 The independent `scenarios` and `scenario-drivers` Vitest projects are separate from `unit`.
 The hosted production bundle is cached at `node_modules/.cache/mate-scenario-web/<input hash>`
 within this worktree. Git discovers tracked and new non-ignored source files, including Tailwind's

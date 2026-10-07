@@ -35,21 +35,20 @@ shows), so swapping the data source turns it red.
 ## Where knowledge lives
 
 This file is a MAP, not a knowledge store — it never caches a product fact that already lives in
-the spec or the ledger. To answer a question, go to the home:
+code, tests or another document. To answer a question, go to the home:
 
-| Knowledge                                                                                                                | Home                                                                               |
-| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Design / workflow decision                                                                                               | `../zcp/docs/spec-mate.md`                                                         |
-| Where the whole stands — the parts, who holds what, the run as measured, every slice's state, what is open               | `docs/internals/zerops/primer.md`                                                  |
-| Fork rules — zones, freeze, keep/delete, work loop, intake                                                               | `docs/internals/zerops/fork.md`                                                    |
-| Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                                     |
-| Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                                  |
-| Measured facts (dated, one writer)                                                                                       | the ledger: `docs/internals/zerops/{verified,questions,hacks,map,poc-findings}.md` |
-| Client design system — vocabulary, glossary, icon map, rules R1–R11 with their tests, exception ledgers                  | `docs/internals/zerops/design-system.md`                                           |
-| Crew mode — levels, code map, switch, crew home, RPCs, seams                                                             | `docs/internals/zerops/crew.md`                                                    |
-| Behavior invariant                                                                                                       | a test whose title is the product sentence                                         |
-| Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                           |
-| Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                        |
+| Knowledge                                                                                                                | Home                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| The zcp↔mate seam                                                                                                        | `../zcp/docs/spec-mate.md` §2.8                                            |
+| Domain terms — Mate, HQ, application, environments, release and crew                                                     | `docs/internals/zerops/primer.md`                                          |
+| Fork rules — zones, freeze, keep/delete, work loop, intake                                                               | `docs/internals/zerops/fork.md`                                            |
+| Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                             |
+| Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                          |
+| Platform assumptions our code relies on                                                                                  | `docs/internals/zerops/verified.md` or a comment beside the dependent code |
+| Shared UI principles, copy glossary, tokens, guard rules and exception policy                                            | `docs/internals/zerops/design-system.md`                                   |
+| Behavior invariant                                                                                                       | a test whose title is the product sentence                                 |
+| Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                   |
+| Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                |
 
 ## Zones
 
@@ -91,8 +90,7 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
   read-only) for an independent review. Max effort stays with the lead.
 - Hot files run 2–9k lines (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`,
   `MessagesTimeline*`, `RunChat.tsx`): grep the symbol, read the range.
-- The ledger, `primer.md`, `design-system.md` and `design-decisions.md` are grepped, never read
-  whole.
+- Grep large reference files for the question before reading the relevant range.
 - Command output shows failures only (`… 2>&1 | tail -40`); a screenshot is cropped to the surface,
   one per question.
 - A paragraph-sized doc entry is a list item, never a table row: the formatter pads every row to its
@@ -108,8 +106,6 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 - Ported-zone edits stay minimal; a diverged port is an expensive port next time.
 - The ledger has one writer — subagents report facts as text, never edit `verified.md` /
   `questions.md` / `hacks.md` / `map.md` / `poc-findings.md` directly.
-- Raw WebSocket probes (`subscribe*`) send `Ack` after every `Chunk` — an idle connection dies at
-  the Zerops L7 after 60s.
 
 ## Maintenance
 

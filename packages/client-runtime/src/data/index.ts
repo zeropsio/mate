@@ -262,3 +262,53 @@ export {
   type LifecycleRemainders,
 } from "./projections/lifecycleRemainders.ts";
 export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
+
+export {
+  inventory,
+  inventoryCandidates,
+  NOT_READ_INVENTORY,
+  inventoryPlacements,
+  type InventoryKey,
+  type InventoryRead,
+} from "./projections/inventory.ts";
+
+export {
+  makeDatabaseReads,
+  makeDatabaseWire,
+  type DatabaseReads,
+  type DatabaseReadIntent,
+} from "./adapters/database.ts";
+export {
+  databasePanel,
+  databaseSession,
+  databaseServices,
+  databaseCatalog,
+  databaseMentionContext,
+  type DatabasePanelRead,
+  type DatabaseCatalogRead,
+} from "./projections/database.ts";
+export { emptyDatabasePanel, databaseTreeTarget } from "./families/database.ts";
+export {
+  mateBrowserFrameFamily,
+  mateBrowserFrameScope,
+  mateBrowserFrameId,
+  mateBrowserStreamId,
+} from "./families/mateBrowserFrame.ts";
+export {
+  mateBrowserFrame,
+  mateBrowserStream,
+  UNKNOWN_BROWSER_FRAME,
+  type MateBrowserFrameRead,
+} from "./projections/mateBrowserFrame.ts";
+export {
+  makeMateBrowserFrameWire,
+  startMateBrowserFrames,
+  makeMateBrowserFrameSink,
+} from "./adapters/mateBrowserFrame.ts";
+
+export {
+  inventoryTopology,
+  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  type ProjectTopologySnapshot,
+  type ProjectTopologyLiveness,
+} from "./projections/inventoryTopology.ts";

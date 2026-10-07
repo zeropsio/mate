@@ -1,0 +1,137 @@
+/** The inventory's presentation join: platform access, HQ placement and Mate labels. */
+import type { ZeropsOrganization, ZeropsProject } from "../../zerops/api.ts";
+import {
+  projectKeyOf,
+  ZeropsProjectId,
+  type OrganizationRef,
+  type ProjectRef,
+  type ScopeAuthority,
+} from "../../zerops/data/index.ts";
+import { deriveZeropsCandidates, type ZeropsCandidate } from "../../zerops/candidates.ts";
+import { placeProjects, placementsOf, type HqPlacements } from "../../zerops/hq/placement.ts";
+import type { Projection } from "../store.ts";
+import { platformInventory, type PlatformInventory } from "./platformInventory.ts";
+import { hqNavigation } from "./hqNavigation.ts";
+import { hqMates } from "./hqMates.ts";
+import { projectServices } from "./services.ts";
+import { sameValue } from "./equal.ts";
+
+export interface InventoryKey {
+  readonly organization: OrganizationRef;
+  readonly viewer: ZeropsOrganization | undefined;
+}
+export interface InventoryRead extends Omit<PlatformInventory, "projects"> {
+  readonly projects: ReadonlyArray<ZeropsProject>;
+  readonly projectRefs: ReadonlyMap<string, ProjectRef>;
+  readonly authority: ReadonlyMap<string, ScopeAuthority>;
+  readonly lost: ReadonlySet<string>;
+  readonly isLoading: boolean;
+  readonly error: string | null;
+}
+
+/** HQ's placement facts, with only the labels its Mate overview supplied. */
+export const inventoryPlacements: Projection<string, HqPlacements | null> = {
+  name: "inventoryPlacements",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const navigation = hqNavigation.derive(read, orgId);
+    if (navigation.structure === null) return null;
+    const mates = hqMates.derive(read, orgId).mates;
+    return placementsOf(
+      navigation.structure,
+      new Map(
+        Object.entries(mates).flatMap(([id, mate]) =>
+          mate.logins === undefined ? [] : [[id, mate.logins] as const],
+        ),
+      ),
+      new Map(
+        Object.entries(mates).flatMap(([id, mate]) =>
+          mate.identity?.runsWithoutSignIn === undefined
+            ? []
+            : [[id, mate.identity.runsWithoutSignIn] as const],
+        ),
+      ),
+      navigation.presses,
+    );
+  },
+  equals: (a, b) =>
+    a === b ||
+    (a !== null &&
+      b !== null &&
+      sameValue([...a], [...b]) &&
+      sameValue([...(a.tools ?? [])], [...(b.tools ?? [])])),
+};
+
+export const inventory: Projection<InventoryKey, InventoryRead> = {
+  name: "inventory",
+  keyOf: (key) => JSON.stringify(key),
+  derive: (read, { organization, viewer }) => {
+    const orgId = organization.organizationId;
+    const platform = platformInventory.derive(read, { orgId, viewer });
+    const placements = inventoryPlacements.derive(read, orgId);
+    const projects =
+      placements === null ? platform.projects : placeProjects(platform.projects, placements);
+    const projectRefs = new Map<string, ProjectRef>();
+    const authority = new Map<string, ScopeAuthority>();
+    for (const id of [...projects.map(({ id }) => id), ...platform.denied]) {
+      const ref: ProjectRef = {
+        kind: "project",
+        organization,
+        projectId: ZeropsProjectId.make(id),
+      };
+      const key = projectKeyOf(ref);
+      projectRefs.set(key, ref);
+      authority.set(
+        key,
+        platform.denied.includes(id)
+          ? { kind: "withheld", reason: "access-denied", cause: null }
+          : { kind: "authorized" },
+      );
+    }
+    return {
+      ...platform,
+      projects,
+      projectRefs,
+      authority,
+      lost: new Set(platform.denied),
+      isLoading: platform.read !== "read",
+      error: platform.failure,
+    };
+  },
+  equals: (a, b) =>
+    sameValue(
+      { ...a, projectRefs: [...a.projectRefs], authority: [...a.authority], lost: [...a.lost] },
+      { ...b, projectRefs: [...b.projectRefs], authority: [...b.authority], lost: [...b.lost] },
+    ),
+};
+
+/** The candidates needed by a connection host; service pushes do not rerender the inventory. */
+export const inventoryCandidates: Projection<InventoryKey, ReadonlyArray<ZeropsCandidate>> = {
+  name: "inventoryCandidates",
+  keyOf: inventory.keyOf,
+  derive: (read, key) =>
+    inventory.derive(read, key).projects.flatMap((project) =>
+      deriveZeropsCandidates(
+        project,
+        projectServices.derive(read, {
+          orgId: key.organization.organizationId,
+          projectId: project.id,
+        }).services ?? null,
+        new Map(),
+      ),
+    ),
+  equals: sameValue,
+};
+export const NOT_READ_INVENTORY: InventoryRead = {
+  projects: [],
+  denied: [],
+  projectRefs: new Map(),
+  authority: new Map(),
+  lost: new Set(),
+  read: "unread",
+  live: false,
+  failure: null,
+  trouble: null,
+  isLoading: true,
+  error: null,
+};

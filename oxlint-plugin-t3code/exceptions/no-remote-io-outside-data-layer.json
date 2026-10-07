@@ -4,7 +4,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "Identifier",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -68,7 +68,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -76,7 +76,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -84,7 +84,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -92,7 +92,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -100,7 +100,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -108,7 +108,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -116,7 +116,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -124,7 +124,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -132,7 +132,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -140,7 +140,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -148,7 +148,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -156,7 +156,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcQueryAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -180,7 +180,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -188,7 +188,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -196,7 +196,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -220,7 +220,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -228,7 +228,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -236,7 +236,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -244,7 +244,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -252,7 +252,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -260,7 +260,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -268,7 +268,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -276,7 +276,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -284,7 +284,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -292,7 +292,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -300,15 +300,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -316,7 +308,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -324,7 +316,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -332,23 +324,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/feeds.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/feeds.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
     "expires": "never"
   },
   {
@@ -356,7 +332,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
     "expires": "never"
   },
   {
@@ -364,7 +340,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -372,7 +348,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -380,7 +356,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.endPress",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -388,7 +364,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.holdPress",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -396,7 +372,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.inputs.client.listProjectServices",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -404,7 +380,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.gitCredentials",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained repository/credential boundary: this call reads or mutates repository source or Git credentials. The database catalog and browser call-result families have different owners and cannot replace its authenticated read/write contract.",
     "expires": "never"
   },
   {
@@ -412,7 +388,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.issueGitCredential",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained repository/credential boundary: this call reads or mutates repository source or Git credentials. The database catalog and browser call-result families have different owners and cannot replace its authenticated read/write contract.",
     "expires": "never"
   },
   {
@@ -420,7 +396,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.revokeGitCredential",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained repository/credential boundary: this call reads or mutates repository source or Git credentials. The database catalog and browser call-result families have different owners and cannot replace its authenticated read/write contract.",
     "expires": "never"
   },
   {
@@ -428,7 +404,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi().updateMate",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },
   {
@@ -436,7 +412,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.repositorySource",
     "owner": "data-layer rewrite: HQ",
-    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "Retained repository/credential boundary: this call reads or mutates repository source or Git credentials. The database catalog and browser call-result families have different owners and cannot replace its authenticated read/write contract.",
     "expires": "never"
   },
   {
@@ -444,7 +420,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
     "expires": "never"
   },
   {
@@ -452,7 +428,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.deleteThrowaway",
     "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -460,7 +436,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.mintThrowaway",
     "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -468,7 +444,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
     "expires": "never"
   },
   {
@@ -476,7 +452,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.register",
     "owner": "data-layer rewrite: operations",
-    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   }
 ]
