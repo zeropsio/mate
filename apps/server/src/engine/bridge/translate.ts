@@ -761,7 +761,11 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         emit(owner, { type: "usage.context", usage: event.payload.usage });
         return;
       case "account.rate-limits.updated": {
-        const blocked = event.payload.blocked;
+        // A refused window with no believable reset parks the turn all the same: until unknown.
+        const refused = event.payload.refused;
+        const blocked =
+          event.payload.blocked ??
+          (refused === undefined ? undefined : { window: refused.window, resetsAt: "unknown" });
         if (blocked === undefined) return;
         owner.lastBlocked = blocked;
         const turn = owner.open;

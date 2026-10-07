@@ -1344,7 +1344,7 @@ describe("real adapters, driven by a mock or an authored wire", () => {
     );
   });
 
-  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with only a warning, which the bridge cannot read as a limit", async () => {
+  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with a limit whose reset is unknown", async () => {
     const pastReset = {
       type: "rate_limit_event",
       rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
@@ -1358,6 +1358,7 @@ describe("real adapters, driven by a mock or an authored wire", () => {
         "h1.i1 text running",
         "h1.i1 text completed",
         "context usage",
+        "usage limit parks-turn h1 until unknown",
         "notice warning",
       ],
     );
