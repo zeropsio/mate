@@ -22,6 +22,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.finish("production");
           yield* a.then.text("Released");
           yield* a.when.click("Close");
+          yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.0", "Live");
           if (stage === "building") yield* a.then.running("stage");
           yield* f.s.then.noExternalNetwork;
