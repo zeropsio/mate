@@ -2,8 +2,10 @@
 
 Capture protocol 1 and report protocol 1 are independent additive capabilities. HQ advertises
 capture, the HQ-issued Mate registration lifetime (`usage.mateId`) and its org (`usage.orgId`) on
-the existing link's `state` frame, re-sent on every new link; a link whose lane cannot open closes
-with 1013 so the next one retries, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
+the existing link's `state` frame, re-sent on every new link. The lane opens beside the link (the
+first state waits for it at most 250 ms, then is re-sent once it opens) with the last known org,
+never a fresh Zerops read; a lane that cannot open leaves that link without capture, the next link
+retries it, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
 An answered older declaration without the field means unsupported; an unanswered declaration
 means unknown. Clients must negotiate before sending the `agentUsage` scope. Old overview,
 attention and opened-Mate Limits remain independent. Mobile reporting is deferred.

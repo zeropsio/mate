@@ -415,10 +415,13 @@ export const makeZeropsHqLink = (
           const enrollment = yield* options.readEnrollment;
           // A link that failed, whatever failed in it, is tried again after a growing wait: the loop
           // never ends.
+          const began = yield* Clock.currentTimeMillis;
           const opened = Option.isSome(enrollment)
             ? yield* runOnce(enrollment.value).pipe(Effect.catchCause(() => Effect.succeed(false)))
             : false;
-          attempt = opened ? 0 : attempt + 1;
+          // Only a link that stayed up resets the wait; one HQ closes at once is a failure too.
+          const lived = (yield* Clock.currentTimeMillis) - began;
+          attempt = opened && lived >= LINK_STABLE_MS ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
@@ -436,6 +439,9 @@ export const makeZeropsHqLink = (
       }),
     });
   });
+
+/** How long a link must stay up before the next reconnect starts from the shortest wait. */
+const LINK_STABLE_MS = 30_000;
 
 const EnrollmentFile = Schema.fromJsonString(
   Schema.Struct({ hq: Schema.String, credential: Schema.String }),

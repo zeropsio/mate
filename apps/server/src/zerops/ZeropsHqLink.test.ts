@@ -141,6 +141,7 @@ const rig = (
     readonly attention?: Stream.Stream<MateAttention>;
     readonly health?: Stream.Stream<MateHealth>;
     readonly overview?: Effect.Effect<Option.Option<MateOverview>>;
+    readonly reconnectDelaysMs?: ReadonlyArray<number>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -197,7 +198,7 @@ const rig = (
         Effect.sync(() => {
           relayed.push(access);
         }),
-      reconnectDelaysMs: [20],
+      reconnectDelaysMs: options.reconnectDelaysMs ?? [20],
       ...(options.everyMs === undefined ? {} : { overviewEveryMs: options.everyMs }),
     }).pipe(Effect.provideService(HttpClient.HttpClient, http));
     /** Waits until `found` answers. */
@@ -385,6 +386,24 @@ describe("ZeropsHqLink", () => {
       yield* TestClock.adjust(Duration.zero);
       return socket;
     });
+
+  it.effect("waits longer each time a link closes right after it opened", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ enrolled: true, reconnectDelaysMs: [100, 1_000, 10_000] });
+        const first = yield* opened(sockets, 0);
+        first.emit("close");
+        yield* TestClock.adjust(Duration.millis(130));
+        const second = yield* opened(sockets, 1);
+        second.emit("close");
+        // A link that lived no time does not reset the wait: the next one is 1 s away, not 100 ms.
+        yield* TestClock.adjust(Duration.millis(130));
+        assert.lengthOf(sockets, 2);
+        yield* TestClock.adjust(Duration.millis(1_200));
+        assert.lengthOf(sockets, 3);
+      }),
+    ),
+  );
 
   it.effect("sends the whole overview first on every link it opens", () =>
     Effect.scoped(

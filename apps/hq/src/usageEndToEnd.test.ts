@@ -79,7 +79,11 @@ const world = Effect.gen(function* () {
       headers: { authorization: `Mate ${credential}` },
     })).body as { readonly ticket: string };
     const socket = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
-    const state = yield* socket.next("state");
+    // The capture lane opens after the link's first state; HQ re-sends it with the offer.
+    const state = yield* socket.takeWhere(
+      "a state offering capture",
+      (message) => message.type === "state" && message["usage"] !== undefined,
+    );
     const usage = state["usage"] as { mateId: string; orgId: string };
     const binding: UsageBinding = { orgId: usage.orgId, projectId: PROJECT, mateId: usage.mateId };
     return { socket, binding };

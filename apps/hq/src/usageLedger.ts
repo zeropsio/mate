@@ -102,19 +102,18 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   readOrg: Effect.Effect<string, ZeropsError>,
 ) {
   const processId = NodeCrypto.randomUUID();
-  // HQ serves one org: once read, it is offered to Mates while Zerops does not answer, so a Zerops
-  // outage never closes Mate links at accept.
+  // HQ serves one org. Once known (read, or recorded with any producer) it is offered to Mates
+  // without asking Zerops again, so a slow or absent Zerops never holds a link's capture lane.
   let knownOrg: string | undefined;
-  const offeredOrg = readOrg.pipe(
-    Effect.tap((org) =>
-      Effect.sync(() => {
-        knownOrg = org;
-      }),
-    ),
-    Effect.catch((error) =>
-      knownOrg === undefined ? Effect.fail(error) : Effect.succeed(knownOrg),
-    ),
-  );
+  const offeredOrg = Effect.gen(function* () {
+    if (knownOrg !== undefined) return knownOrg;
+    const [recorded] = yield* sql<{
+      readonly org_id: string;
+    }>`SELECT org_id FROM hq_usage_producer LIMIT 1`;
+    const org = recorded?.org_id ?? (yield* readOrg);
+    knownOrg = org;
+    return org;
+  });
   const changed = yield* PubSub.unbounded<void>();
   const fail = (code: string) => new UsageRefused({ code });
   const credentialHash = (credential: string) =>
@@ -256,7 +255,8 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   const receive = Effect.fnUntraced(function* (sender: UsageSender, message: UsageLinkUp) {
     if (new TextEncoder().encode(json(message)).byteLength > AGENT_USAGE_BATCH_BYTES)
       return yield* fail("usage_frame_too_big");
-    const orgId = yield* readOrg;
+    // The org this lane was opened with: no Zerops read per frame.
+    const orgId = sender.orgId;
     const answer = yield* leader.write(
       Effect.gen(function* () {
         yield* authorize(sender);

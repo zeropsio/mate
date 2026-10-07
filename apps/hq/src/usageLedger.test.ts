@@ -876,22 +876,23 @@ describe("HQ usage ledger boundaries", () => {
           }),
         ),
     );
-    it.effect("a Mate is offered capture with HQ's org while Zerops does not answer", () =>
-      database(
-        Effect.gen(function* () {
-          const { sql, leader } = yield* setup;
-          let answering = true;
-          const readOrg = Effect.suspend(() =>
-            answering
-              ? Effect.succeed("ORG")
-              : Effect.fail(new ZeropsUnavailable({ operation: "org", message: "down" })),
-          );
-          const ledger = yield* makeUsageLedger(sql, leader, readOrg);
-          assert.strictEqual((yield* ledger.open("P", "test-credential")).orgId, "ORG");
-          answering = false;
-          assert.strictEqual((yield* ledger.open("P", "test-credential")).orgId, "ORG");
-        }),
-      ),
+    it.effect(
+      "a Mate is offered capture with HQ's last known org while Zerops is slow or down",
+      () =>
+        database(
+          Effect.gen(function* () {
+            // `setup` registered a producer under ORG; a fresh process finds it there.
+            const { sql, leader } = yield* setup;
+            const down = Effect.fail(new ZeropsUnavailable({ operation: "org", message: "down" }));
+            const fresh = yield* makeUsageLedger(sql, leader, down);
+            assert.strictEqual((yield* fresh.open("P", "test-credential")).orgId, "ORG");
+            const slow = yield* makeUsageLedger(sql, leader, Effect.never);
+            const opened = yield* slow
+              .open("P", "test-credential")
+              .pipe(Effect.timeoutOption("2 seconds"));
+            assert.strictEqual(opened._tag === "Some" ? opened.value.orgId : "", "ORG");
+          }),
+        ),
     );
     it.effect("39,000 real-schema facts keep summary and keyset detail bounded", () =>
       database(
