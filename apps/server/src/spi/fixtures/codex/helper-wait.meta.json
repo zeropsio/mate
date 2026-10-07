@@ -1,0 +1,5 @@
+{
+  "driver": "codex",
+  "synthetic": true,
+  "notes": "Two wait-call lifecycle shapes extracted from the former 0.145.0 multi-agent recording. Retained protocol coverage when the fresh trace uses subAgentActivity instead of collabAgentToolCall; this is not a new live capture."
+}

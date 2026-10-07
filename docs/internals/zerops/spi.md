@@ -301,13 +301,13 @@ them with the comparing host's cwd/home/tmpdir made the result depend on where t
 deep-equal the recorded one, or the replay stops naming the line. Hooks exist only under a profile,
 so a fixture with hook lines replays with a `ClaudeReplayPolicy` (`replay/crewReplayPolicy.ts`).
 
-Current set: 4 Claude fixtures (real recordings, SDK 0.3.250 / CLI 2.1.251 / `claude-opus-5[1m]`),
-1 synthetic Claude crew fixture (`crew-hooks`: a gate allow and deny, a first-prompt session start, a
-`terminal_reason`), 1 Codex fixture (`multi-agent-wire`, converted once from the upstream
-ported-zone test fixture `testFixtures/codexMultiAgentWire.json`, `synthetic: false`) and 4 live
-baselines (cursor, grok, antigravity, opencode, each `synthetic: true`) and 1 synthetic Cursor MCP
-fixture (`mcp-calls`) = 11 goldens total. The
-no-crew goldens (`fixtures/claude-options/no-crew.expected.json`,
+Fixture provenance lives in each `fixtures/<driver>/*.meta.json`: it names the captured CLI/SDK,
+model, origin and any anonymization, or marks authored evidence `synthetic: true`. The current
+Codex recording includes native output, a read-only Zerops result and a helper finishing before
+its parent. `replayCodex` pins the adapter mapper at each notification's own thread/turn identity;
+it does not certify the session runtime's child-registration or synthesized helper events.
+Historical wait-call shapes remain in the synthetic `helper-wait` fixture. The no-crew option
+snapshots (`fixtures/claude-options/no-crew.expected.json`,
 `fixtures/codex-options/no-crew.expected.json`, §1a) are not replay goldens.
 
 ## 8. Porting checklist

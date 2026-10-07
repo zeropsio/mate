@@ -110,6 +110,23 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
     output regenerated (see notes)
   - _Notes:_ See below
 
+- **9** — 2026-10-08
+  - _Ported upstream SHA:_ unchanged from row 8; recording refresh only, no import or port
+  - _Claude CLI / SDK:_ recordings unchanged from row 5; a fresh signed-in Claude capture is unverified
+  - _Codex CLI:_ `0.160.0`, live app-server turn on a disposable KRLS e2e rig, model `gpt-6-luna`
+  - _Effect:_ `4.0.0-rc.115`; _SPI:_ `2.8`, unchanged
+  - _Fixture set:_ `codex/multi-agent-wire` replaces the 0.145.0 capture with current native command,
+    read-only Zerops discovery and helper/parent completions; consistent anonymization of project,
+    service and URL values only. `codex/helper-wait` retains the old wait shapes as synthetic evidence.
+  - _Goldens/driver:_ claude 5, codex 2, cursor 2, grok 1, opencode 1, antigravity 1 (12 total)
+  - _Boundary proof:_ A preserves native output, canonical Zerops result and distinct child/parent
+    answer and terminal identities. B's J11 keeps the parent's Stop control and draft after a helper
+    returns, then retains the answer, helper name and command output after reload. A does not replay
+    the session-runtime helper synthesis; B supplies reported wire facts, not a live backend.
+  - _Gate:_ 15 provider assertions, 30 hosted journeys and wire-consumer typechecks passed. Measured
+    stage durations: A 6.76 s, B 157.81 s including its cold bundle, typecheck 21.38 s; these are
+    diagnostics, not correctness thresholds.
+
 ## Row 0 notes
 
 - **Claude**: all 4 fixtures are real recordings from `z3-eval`'s `zcp` service, captured
