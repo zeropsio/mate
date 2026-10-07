@@ -628,6 +628,7 @@ function makeManager(input?: {
   textGeneration?: Partial<FakeGitTextGeneration>;
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
+  gitConfigReads?: string[];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -637,7 +638,24 @@ function makeManager(input?: {
 
   const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest(input?.serverSettings);
 
-  const vcsDriverLayer = GitVcsDriver.layer.pipe(
+  const vcsDriverLayer = (
+    input?.gitConfigReads
+      ? Layer.effect(
+          GitVcsDriver.GitVcsDriver,
+          GitVcsDriver.make.pipe(
+            Effect.map((service) =>
+              GitVcsDriver.GitVcsDriver.of({
+                ...service,
+                readConfigValue: (cwd, key) =>
+                  Effect.sync(() => input.gitConfigReads?.push(key)).pipe(
+                    Effect.andThen(service.readConfigValue(cwd, key)),
+                  ),
+              }),
+            ),
+          ),
+        )
+      : GitVcsDriver.layer
+  ).pipe(
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(serverConfigLayer),
@@ -961,6 +979,46 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       expect(first.pr?.number).toBe(113);
       expect(second.pr?.number).toBe(113);
       expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
+    }),
+  );
+
+  it.effect("a branch tracking origin reads origin's URL once in the PR lookup", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      yield* initRepo(repoDir);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/origin-once"]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/origin-once"]);
+
+      const gitConfigReads: string[] = [];
+      const { manager, ghCalls } = yield* makeManager({
+        gitConfigReads,
+        ghScenario: {
+          prListByHeadSelector: {
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            "feature/origin-once": JSON.stringify([
+              {
+                number: 217,
+                title: "Origin once PR",
+                url: "https://github.com/pingdotgg/codething-mvp/pull/217",
+                baseRefName: "main",
+                headRefName: "feature/origin-once",
+                state: "OPEN",
+                updatedAt: "2026-04-03T15:00:00Z",
+              },
+            ]),
+          },
+        },
+      });
+
+      const status = yield* manager.status({ cwd: repoDir });
+
+      expect(status.pr?.number).toBe(217);
+      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(true);
+      // One read picks the hosting provider; the PR lookup reads origin once
+      // for both the head and the target remote, since the branch tracks origin.
+      expect(gitConfigReads.filter((key) => key === "remote.origin.url")).toHaveLength(2);
     }),
   );
 
