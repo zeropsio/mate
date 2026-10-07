@@ -486,6 +486,9 @@ export function mateChat(
         }),
       text,
       noText: (value: string) => text(value, false),
+      reviewClosed: Effect.promise(() =>
+        page.waitForSelector('[data-zerops-surface="review"]', { hidden: true }),
+      ),
       path: (path: string) =>
         Effect.promise(async () => {
           await page.waitForFunction((path) => location.pathname === path, { timeout: 8000 }, path);

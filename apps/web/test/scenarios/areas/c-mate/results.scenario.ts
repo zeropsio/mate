@@ -514,6 +514,7 @@ describe("C: calls, results and crew actions", () => {
             yield* chat.then.text("The order IDs are documented.");
             yield* chat.then.text("Check the order IDs.");
             yield* chat.when.key("Escape");
+            yield* chat.then.reviewClosed;
           }),
         );
         yield* chat.step(

@@ -189,25 +189,25 @@ describe("C: reading, replay and attention", () => {
           usagePause: wire.usagePause,
         });
         wire.shell();
-        yield* chat.then.text("Paused");
-        yield* chat.then.control("Resume by itself at the reset", "switch");
+        yield* chat.then.text("I've hit the coding agent's limit.");
+        yield* chat.then.control("Continue automatically", "switch");
         yield* chat.step(
           "the person's resume choice is acknowledged by the source",
-          chat.when.press("Resume by itself at the reset", "switch"),
+          chat.when.press("Continue automatically", "switch"),
         );
         const off = yield* Effect.promise(() =>
           wire.waitForCommand("thread.usage-auto-resume.set"),
         );
         expect(off).toMatchObject({ threadId: "thread-Ada", enabled: false });
-        yield* chat.then.text("Send a message then");
+        yield* chat.then.text("Automatic continuation is off");
         yield* chat.when.reload();
-        yield* chat.then.text("Send a message then");
-        yield* chat.when.press("Resume by itself at the reset", "switch");
+        yield* chat.then.text("Automatic continuation is off");
+        yield* chat.when.press("Continue automatically", "switch");
         const on = yield* Effect.promise(() =>
           wire.waitForCommand("thread.usage-auto-resume.set", 2),
         );
         expect(on).toMatchObject({ threadId: "thread-Ada", enabled: true });
-        yield* chat.then.text("by itself");
+        yield* chat.then.text("try again automatically");
         wire.usagePause = null;
         wire.event("thread.usage-pause-set", { threadId: wire.mate.thread.id, usagePause: null });
         wire.shell();
