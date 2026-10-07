@@ -1,5 +1,4 @@
 import "vite-plus/test/config";
-import * as NodeURL from "node:url";
 
 import { defineConfig, mergeConfig } from "vite-plus";
 
@@ -46,7 +45,7 @@ export default mergeConfig(
       // imports Node's loader rejects, so source imports the package and only
       // the bundle swaps in the ES build.
       alias: {
-        "jsonc-parser": NodeURL.fileURLToPath(import.meta.resolve("jsonc-parser/lib/esm/main.js")),
+        "jsonc-parser": "jsonc-parser/lib/esm/main.js",
       },
       clean: true,
       deps: {
