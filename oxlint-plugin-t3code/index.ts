@@ -19,6 +19,7 @@ import noRestyle from "./rules/no-restyle.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 import requireStaticClasses from "./rules/require-static-classes.ts";
+import noUnscopedHas from "./rules/no-unscoped-has.ts";
 
 export default definePlugin({
   meta: {
@@ -44,5 +45,6 @@ export default definePlugin({
     "no-unknown-classes": noUnknownClasses,
     "no-theme-escape-hatches": noThemeEscapeHatches,
     "require-static-classes": requireStaticClasses,
+    "no-unscoped-has": noUnscopedHas,
   },
 });
