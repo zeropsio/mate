@@ -29,7 +29,7 @@ import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
-import { useMatesSettled } from "../zerops/useMatesSettled";
+import { useDiscoveryStatus } from "../zerops/useDiscoveryStatus";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
@@ -89,7 +89,7 @@ type IndexLanding =
 function IndexDraftLanding() {
   const projects = useProjects();
   const threads = useThreadShells();
-  const matesSettled = useMatesSettled();
+  const discovery = useDiscoveryStatus();
   const { settled: hqMatesRead } = useHqMatesRead();
   const hqMates = useAtomValue(hqMatesAtom);
   const openMate = useOpenMate();
@@ -216,10 +216,10 @@ function IndexDraftLanding() {
     hqMatesRead,
     organizationId: activeOrganization?.id ?? null,
     organization: organizationStatus,
-    accountTrouble: inventory.error !== null,
+    accountTrouble: inventory.error !== null || discovery === "unavailable",
     catalogFailed,
     // A negative answer needs both the platform/registration read and HQ's unopened Mates.
-    projectsRead: matesSettled,
+    projectsRead: discovery === "complete",
     projectsShown,
   });
   // Kept from the render that painted it, so nothing it holds — an open row, a dialog — is torn

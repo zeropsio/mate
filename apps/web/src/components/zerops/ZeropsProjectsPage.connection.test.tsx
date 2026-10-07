@@ -62,7 +62,7 @@ vi.mock("~/zerops/accountEnvironments", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useConnectMate: () => mocks.connect,
 }));
-vi.mock("~/zerops/useZeropsUpgradeRestart", () => ({ useZeropsUpgradeRestart: () => null }));
+vi.mock("~/zerops/useMateUpgradeRecovery", () => ({ useMateUpgradeRecovery: () => null }));
 
 afterEach(() => {
   mocks.connect = async () => undefined;

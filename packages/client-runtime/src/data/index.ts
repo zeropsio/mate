@@ -394,3 +394,12 @@ export { makeMateBrowserInputCommand } from "./adapters/mateBrowserFrame.ts";
 
 export { demandLocationLatency } from "./adapters/locationLatency.ts";
 export { regionRecommendation } from "./projections/regionRecommendation.ts";
+
+export { discoveryStatus, type DiscoveryStatus } from "./projections/discoveryStatus.ts";
+export { appReleaseRows, type AppReleaseRows } from "./projections/appReleaseRows.ts";
+
+export {
+  mateUpgradeRecovery,
+  upgradeRecoveryFromEvidence,
+  type MateUpgradeRecovery,
+} from "./projections/mateUpgradeRecovery.ts";

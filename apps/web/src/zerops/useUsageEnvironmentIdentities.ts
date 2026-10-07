@@ -25,7 +25,7 @@ import {
   type UsageOwnersStatus,
   type UsagePeopleStatus,
 } from "./usageEnvironmentIdentities";
-import { useMatesSettled } from "./useMatesSettled";
+import { useDiscoveryStatus } from "./useDiscoveryStatus";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -34,7 +34,7 @@ const NONE: UsageEnvironmentIdentities = new Map();
 export function useUsageEnvironmentIdentities(): {
   readonly identities: UsageEnvironmentIdentities;
   readonly owners: UsageOwnersStatus;
-  /** The environments are listed whole: no Mate is still to be registered (`useMatesSettled`). */
+  /** The environments are listed whole: no Mate is still to be registered (`useDiscoveryStatus`). */
   readonly listed: boolean;
   readonly baseline: UsageOwnersStatus;
   readonly projects: ReadonlyMap<string, string>;
@@ -77,7 +77,7 @@ export function useUsageEnvironmentIdentities(): {
     people: peopleStatus,
     listing: listing.state,
   });
-  const listed = useMatesSettled();
+  const listed = useDiscoveryStatus() === "complete";
   const baseline =
     session.status === "loading"
       ? "resolving"

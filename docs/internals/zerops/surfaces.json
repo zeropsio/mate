@@ -1204,7 +1204,7 @@
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts",
-        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
+        "apps/web/src/zerops/useMateUpgradeRecovery.test.ts",
         "packages/client-runtime/src/data/projections/platformAccess.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",
         "packages/client-runtime/src/data/projections/platformInventory.test.ts",
@@ -1399,7 +1399,7 @@
         "packages/client-runtime/src/data/operations/executors/platformAdmission.test.ts",
         "packages/client-runtime/src/data/operations/executors/zerops.test.ts",
         "packages/client-runtime/src/data/account.test.ts",
-        "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
+        "apps/web/src/zerops/useMateUpgradeRecovery.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],
       "captures": []
