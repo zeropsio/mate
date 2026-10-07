@@ -7,6 +7,7 @@
  *
  * @module data/projections/hqProjectPeople
  */
+import type { MateProjectKey } from "./mateAttention.ts";
 import type { PlacementValue } from "../families/hqNavigation.ts";
 
 import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
@@ -68,5 +69,25 @@ export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProje
         ];
       }),
     ),
+  equals: sameValue,
+};
+
+/** One project's person facts and named owner, with only that person's fact as a dependency. */
+export const hqProjectPerson: Projection<MateProjectKey, HqProjectPeople | undefined> = {
+  name: "hqProjectPerson",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { orgId, projectId }) => {
+    if (!read.members(placementsScope(orgId)).ids.includes(projectId)) return undefined;
+    const placement = read.fact("placement", projectId);
+    if (placement.kind !== "known") return undefined;
+    const { person, signedInNow, everSignedIn } = placement.value;
+    return {
+      owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
+      owner: ownerOf(read, orgId, person?.ownerUserId),
+      waitsOnViewer: person?.waitsOnViewer,
+      signedInNow,
+      everSignedIn,
+    };
+  },
   equals: sameValue,
 };

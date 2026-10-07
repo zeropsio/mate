@@ -31,8 +31,20 @@ export {
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
-export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
-export { matesAttention, type MateAttentionRead } from "./projections/mateAttention.ts";
+export {
+  hqMateOverview,
+  hqMatePresence,
+  hqMateLogins,
+  hqMateReady,
+  hqMates,
+  type HqMatesRead,
+} from "./projections/hqMates.ts";
+export {
+  mateAttention,
+  attentionProjects,
+  matesAttention,
+  type MateAttentionRead,
+} from "./projections/mateAttention.ts";
 export {
   changeDiscussion,
   discussionGate,
@@ -190,8 +202,16 @@ export {
   vaultAtom,
   shownProjectsAtom,
   NOT_READ_HQ,
+  hqMateOverviewAtom,
+  hqMatePresenceAtom,
+  hqMateLoginsAtom,
+  hqMateReadyAtom,
+  mateAttentionAtom,
+  shownAttentionProjectsAtom,
+  shownMatesAttentionAtom,
   shownHqMatesAtom,
   shownHqNavigationAtom,
+  shownHqMenuNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -212,7 +232,7 @@ export {
   registrationRequestId,
   type MateRegistration,
 } from "./projections/mateRegistration.ts";
-export { shownHqProjectPeopleAtom } from "./personReads.ts";
+export { hqProjectPersonAtom, shownHqProjectPeopleAtom } from "./personReads.ts";
 export {
   hqProjectPeople,
   type HqMateOwner,

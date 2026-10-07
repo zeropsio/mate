@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
-import { accountReadsAtom } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  makeAccountStore,
+  hqMateOverviewAtom,
+  mateAttentionAtom,
+} from "@t3tools/client-runtime/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -11,6 +16,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useEffect: reactHookHarness.useEffect, useMemo: reactHookHarness.useMemo };
 });
 
+import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { ZeropsAccountData } from "./ZeropsAccountData";
 import type { ZeropsDataBinding } from "./ZeropsAccountEnvironmentProvider";
 
@@ -41,6 +47,43 @@ describe("ZeropsAccountData on mobile", () => {
     render("org-2");
     stop();
     expect(heard).toEqual(["org-2"]);
+  });
+  it("retained mobile shares org-keyed HQ and attention readers without changing its thread sidebar", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    seedHqNavigation(store, "org-1", {
+      mates: { mate: { presence: { online: true, since: "now", overview: "none" } } },
+    });
+    const binding = {
+      registry,
+      accountData: {
+        store,
+        data: store.data,
+        observation: {
+          show: () => undefined,
+          closed: () => false,
+          demandDetail: () => () => {},
+          renewHeld: () => {},
+        },
+      },
+    } as unknown as ZeropsDataBinding;
+    const render = (activeOrganizationId: string) => {
+      hooks.beginRender();
+      ZeropsAccountData({ binding, activeOrganizationId, children: null });
+    };
+    render("org-1");
+    const row = hqMateOverviewAtom("mate");
+    const stop = registry.subscribe(row, () => registry.get(row), { immediate: true });
+    expect(registry.get(row)?.presence.online).toBe(true);
+    render("org-2");
+    expect(registry.get(row)).toBeNull();
+    expect(registry.get(mateAttentionAtom("mate"))).toEqual({
+      attention: null,
+      live: false,
+      unseen: null,
+    });
+    stop();
+    registry.dispose();
   });
 });
 

@@ -1,24 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { matesAttention, type MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
-import { useThreadShell, useThreadShells } from "../state/entities";
-import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import { useThreadShell } from "../state/entities";
 import { useUiStateStore } from "../uiStateStore";
 import { threadAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import { createLiveStepPacer, sameLiveStep, type ShownLiveSteps } from "./liveStep";
-import { mateEnvironmentOf, matesActivityOf, type MatesActivityInput } from "./mateActivity";
-import { useAccountOrgId, useProjection } from "./ZeropsAccountData";
-
-/** The socket phases in which a conversation read through it still stands: up, or only blinking. */
-const STANDING_PHASES: ReadonlySet<EnvironmentConnectionPhase> = new Set([
-  "connected",
-  "reconnecting",
-]);
+import { mateActivityAtom, matesActivityAtom, matesMenuActivityAtom } from "./mateActivityAtoms";
 
 /** What each Mate is up to, found by its project or by the environment it runs in. */
 export interface MatesActivity {
@@ -26,84 +15,33 @@ export interface MatesActivity {
   readonly ofEnvironment: (environmentId: EnvironmentId) => ZeropsAgentActivity | undefined;
 }
 
-const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
-const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
-
-/**
- * Every Mate's activity (`matesActivityOf`): the left menu, the projects screen and a
- * conversation's panel all read this, so a Mate says the same thing in each. Each Mate is read off
- * its attention as the account's store holds it (`matesAttention`) — the Mates HQ places, and those
- * this page has open.
- */
-export function useMatesActivity(): MatesActivity {
-  const threads = useThreadShells();
-  const hq = useAtomValue(hqMatesAtom);
-  const environments = useAtomValue(zeropsEnvironmentsAtom);
-  const threadLastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const orgId = useAccountOrgId();
-  const { sockets, standing } = useMemo(() => {
-    const sockets = new Map<string, EnvironmentId>();
-    const standing = new Set<EnvironmentId>();
-    for (const environment of environments) {
-      if (typeof environment.zeropsProjectId === "string")
-        sockets.set(environment.zeropsProjectId, environment.environmentId);
-      if (STANDING_PHASES.has(environment.connection.phase))
-        standing.add(environment.environmentId);
-    }
-    return { sockets, standing };
-  }, [environments]);
-  const projectIds = useMemo(() => {
-    // The Mates HQ places, where HQ named any, and those this page has open.
-    const ids = new Set(sockets.keys());
-    if (hq !== null) for (const projectId of hq.mates.keys()) ids.add(projectId);
-    return [...ids].toSorted();
-  }, [hq, sockets]);
-  const attention = useProjection(
-    matesAttention,
-    orgId === null ? null : { orgId, projectIds },
-    NO_ATTENTION,
-  );
-  const input = useMemo(
-    () => ({
-      projectIds,
-      attention,
-      overviews: hq?.mates ?? null,
-      hqCurrent: hq?.current === true,
-      threads,
-      sockets,
-      standing,
-      lastVisitedAtById: threadLastVisitedAtById,
-    }),
-    [attention, hq, projectIds, sockets, standing, threadLastVisitedAtById, threads],
-  );
-  // Each Mate's entry stands while what it says does (`matesActivityOf`): the reading changes
-  // only when some Mate's does, not on every event of a streaming chat's shell.
-  const [sharer] = useState(createActivitySharer);
-  const read = useMemo(() => sharer(input), [input, sharer]);
+/** Enumeration is composed from stable project readers; the menu asks only for order/count facts. */
+export function useMatesActivity(menu = false): MatesActivity {
+  const read = useAtomValue(menu ? matesMenuActivityAtom : matesActivityAtom);
   const activity = usePacedLiveSteps(read);
-  const overviews = input.overviews;
-  return useMemo(() => {
-    const byEnvironment = new Map<EnvironmentId, ZeropsAgentActivity>();
-    for (const [projectId, entry] of activity) {
-      const environmentId = mateEnvironmentOf({ attention, overviews, sockets }, projectId);
-      if (environmentId !== undefined) byEnvironment.set(environmentId, entry);
-    }
-    return {
-      ofProject: (projectId) => activity.get(projectId),
-      ofEnvironment: (environmentId) => byEnvironment.get(environmentId),
-    };
-  }, [activity, attention, overviews, sockets]);
+  return useMemo(
+    () => ({
+      ofProject: (projectId: string) => activity.get(projectId),
+      ofEnvironment: (environmentId: EnvironmentId) =>
+        [...activity.values()].find(
+          (entry) =>
+            entry.threadKey === scopedThreadKey({ environmentId, threadId: entry.threadId }),
+        ),
+    }),
+    [activity],
+  );
 }
 
-/** `matesActivityOf` over successive inputs, each read sharing what it can with the last. */
-function createActivitySharer(): (
-  input: MatesActivityInput,
-) => ReadonlyMap<string, ZeropsAgentActivity> {
-  let last: ReadonlyMap<string, ZeropsAgentActivity> | undefined;
-  return (input) => {
-    last = matesActivityOf(input, last);
-    return last;
-  };
+export function useProjectMateActivity(projectId: string): ZeropsAgentActivity | undefined {
+  const activity = useAtomValue(mateActivityAtom(projectId));
+  const entries = useMemo(
+    () =>
+      activity === undefined
+        ? new Map<string, ZeropsAgentActivity>()
+        : new Map([[projectId, activity]]),
+    [activity, projectId],
+  );
+  return usePacedLiveSteps(entries).get(projectId);
 }
 
 /**

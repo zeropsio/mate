@@ -11,8 +11,8 @@ import { deriveZeropsCandidates, type ZeropsCandidate } from "../../zerops/candi
 import { placeProjects, placementsOf, type HqPlacements } from "../../zerops/hq/placement.ts";
 import type { Projection } from "../store.ts";
 import { platformInventory, type PlatformInventory } from "./platformInventory.ts";
-import { hqNavigation } from "./hqNavigation.ts";
-import { hqMates } from "./hqMates.ts";
+import { hqMenuNavigation } from "./hqNavigation.ts";
+import { hqMateLogins, hqMateReady } from "./hqMates.ts";
 import { projectServices } from "./services.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
 import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
@@ -44,22 +44,22 @@ export const inventoryPlacements: Projection<string, HqPlacements | null> = {
   name: "inventoryPlacements",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
-    const navigation = hqNavigation.derive(read, orgId);
+    const navigation = hqMenuNavigation.derive(read, orgId);
     if (navigation.structure === null) return null;
-    const mates = hqMates.derive(read, orgId).mates;
+    const ids = read.members(placementsScope(orgId)).ids;
     return placementsOf(
       navigation.structure,
       new Map(
-        Object.entries(mates).flatMap(([id, mate]) =>
-          mate.logins === undefined ? [] : [[id, mate.logins] as const],
-        ),
+        ids.flatMap((projectId) => {
+          const logins = hqMateLogins.derive(read, { orgId, projectId });
+          return logins === undefined ? [] : [[projectId, logins] as const];
+        }),
       ),
       new Map(
-        Object.entries(mates).flatMap(([id, mate]) =>
-          mate.identity?.runsWithoutSignIn === undefined
-            ? []
-            : [[id, mate.identity.runsWithoutSignIn] as const],
-        ),
+        ids.flatMap((projectId) => {
+          const ready = hqMateReady.derive(read, { orgId, projectId });
+          return ready === undefined ? [] : [[projectId, ready] as const];
+        }),
       ),
       navigation.presses,
     );

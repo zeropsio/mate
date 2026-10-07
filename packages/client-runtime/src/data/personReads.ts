@@ -7,7 +7,11 @@
  */
 import { Atom } from "effect/unstable/reactivity";
 
-import { hqProjectPeople, type HqProjectPeople } from "./projections/hqProjectPeople.ts";
+import {
+  hqProjectPerson,
+  hqProjectPeople,
+  type HqProjectPeople,
+} from "./projections/hqProjectPeople.ts";
 import { accountReadsAtom } from "./reads.ts";
 
 const NO_PEOPLE: Readonly<Record<string, HqProjectPeople>> = {};
@@ -20,3 +24,12 @@ export const shownHqProjectPeopleAtom = Atom.make(
     return get(account.data.project(hqProjectPeople, account.orgId));
   },
 ).pipe(Atom.withLabel("data:shown-hq-project-people"));
+
+export const hqProjectPersonAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    return account?.orgId == null
+      ? undefined
+      : get(account.data.project(hqProjectPerson, { orgId: account.orgId, projectId }));
+  }),
+);

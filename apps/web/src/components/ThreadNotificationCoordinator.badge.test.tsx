@@ -301,3 +301,27 @@ it("badges a Mate's attention while it is of now, whatever HQ's overview says", 
   expect(state.badge).toHaveBeenLastCalledWith(1);
   expect(TestNotification.sent.at(-1)?.title).toBe("Approval needed");
 });
+
+it("a direct-only Mate's attention rings without generating a new list reader", async () => {
+  state.environmentIds = [];
+  const said = (waiting: boolean) => ({
+    attention: {
+      source: { environmentId: "direct", epoch: 1, incarnation: "m1", revision: waiting ? 2 : 1 },
+      mainThreadId: "thread",
+      lastThreadId: "thread",
+      working: 0,
+      waiting: waiting ? 1 : 0,
+      results: [],
+      questions: waiting ? [{ threadId: "thread", kind: "approval", turnId: "turn" }] : [],
+      truncated: false,
+    },
+    live: true,
+    unseen: null,
+  });
+  state.attention = { direct: said(false) };
+  await render();
+  state.attention = { direct: said(true) };
+  await render();
+  expect(state.badge).toHaveBeenLastCalledWith(1);
+  expect(TestNotification.sent.at(-1)?.title).toBe("Approval needed");
+});

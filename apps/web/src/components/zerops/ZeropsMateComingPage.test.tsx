@@ -110,6 +110,7 @@ vi.mock("~/routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ mateLink: () => app.link }),
 }));
 vi.mock("~/state/shell", () => ({
+  environmentSnapshotAtom: () => Atom.make(null),
   environmentShell: { stateValueAtom: () => Atom.make({ status: "live" }) },
 }));
 vi.mock("~/state/entities", () => ({

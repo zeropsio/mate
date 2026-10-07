@@ -23,6 +23,8 @@ import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
@@ -110,14 +112,14 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
   ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
   useWaitsOnViewer: () => (projectId: string) =>
     session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
-  useHqProjectPeopleOf: () => (projectId: string) => {
+  useHqProjectPerson: (projectId: string) => {
     if (!hqSigners.said) return undefined;
     const signer = signerOf.get(projectId);
     const signers = signer === undefined ? {} : { "claude-code": signer };
     return {
       owned: ownedBy.has(projectId),
       owner: null,
-      waitsOnViewer: false,
+      waitsOnViewer: session.viewer !== undefined && signer === session.viewer,
       signedInNow: signers,
       everSignedIn: signers,
     };
@@ -4270,4 +4272,83 @@ describe("the menu's release offer", () => {
       registry.dispose();
     }
   });
+});
+
+it("the tree retains its order on a timestamp-only delivery and each row reads only its own Mate", () => {
+  const registry = AtomRegistry.make();
+  const at = "2026-10-07T00:00:00Z";
+  const overview = (id: string, words: string, updatedAt = at) => ({
+    presence: { online: true, since: at, overview: "live" as const },
+    identity: {
+      environmentId: EnvironmentId.make(`env-${id}`),
+      serverVersion: "0.14.35",
+      update: null,
+    },
+    main: {
+      id: ThreadId.make(`chat-${id}`),
+      title: "Task",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      interactionMode: "default" as const,
+      backgroundLiveness: null,
+      session: null,
+      latestTurn: null,
+      latestUserMessageAt: at,
+      updatedAt,
+      latestMessagePreview: { role: "assistant" as const, text: words },
+      latestUserMessagePreview: { text: "Task" },
+      planProgress: null,
+      pendingQuestion: null,
+      usagePause: null,
+      liveStep: null,
+    },
+  });
+  const a = candidate("a", { tags: ["mate"], hq: AAA() });
+  const b = candidate("b", { tags: ["mate"], hq: AAA() });
+  const candidates = [a, b];
+  let mates = { a: overview("a", "First"), b: overview("b", "First") };
+  const hq = mountHqNavigation(registry, "org", { mates });
+  const onSelect = vi.fn();
+  function Menu() {
+    const activity = useMatesActivity(true);
+    const getActivity = useMateRowActivity(activity);
+    return (
+      <SidebarZeropsTree
+        candidates={candidates}
+        complete
+        keyedReadings
+        getActivity={getActivity}
+        onSelect={onSelect}
+        onBrowseProjects={onSelect}
+      />
+    );
+  }
+  const tree = mount(
+    <RegistryContext.Provider value={registry}>
+      <Menu />
+    </RegistryContext.Provider>,
+  );
+  const rows = () =>
+    tree.root.findAll(
+      (node) => node.type === "button" && node.props["data-zerops-surface"] === "sidebar-mate",
+    );
+  const root = () => surface(tree, "sidebar-environments");
+  const before = rows().map((row) => row.props);
+  const treeBefore = root().props;
+  const deliver = (next: typeof mates.a) => {
+    mates = { ...mates, a: next };
+    act(() => hq.seed({ mates }));
+  };
+  deliver(overview("a", "Second"));
+  expect(rows().filter((row, i) => row.props !== before[i])).toHaveLength(1);
+  expect(root().props).toBe(treeBefore);
+  expect(text(rows()[0]!)).toContain("Second");
+  const messageRows = rows().map((row) => row.props);
+  deliver(overview("a", "Second", "2026-10-07T00:00:01Z"));
+  expect(rows().filter((row, i) => row.props !== messageRows[i])).toHaveLength(0);
+  expect(root().props).toBe(treeBefore);
+  // Click selection still use the candidate the row actually represents.
+  act(() => rows()[1]!.props.onClick());
+  expect(onSelect).toHaveBeenLastCalledWith(b);
 });

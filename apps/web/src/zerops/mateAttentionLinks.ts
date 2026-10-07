@@ -19,10 +19,10 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { seenResultsOf } from "./mateActivity";
 import { useProjection } from "./ZeropsAccountData";
@@ -92,19 +92,16 @@ export function useMateResultsSeen(
   orgId: string | null,
   seen: (projectId: string, resultIds: ReadonlyArray<string>) => void,
 ): void {
-  const hq = useAtomValue(hqMatesAtom);
-  const projectIds = useMemo(() => (hq === null ? [] : [...hq.mates.keys()].toSorted()), [hq]);
-  const attention = useProjection(
-    matesAttention,
-    orgId === null ? null : { orgId, projectIds },
-    NO_ATTENTION,
-  );
+  const attention = useProjection(matesAttention, orgId, NO_ATTENTION);
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   /**
    * What was told HQ already, by project, while it counted the same unseen: told again once its
    * count moves. A word told while HQ's link is down, the link tells HQ once it is up again.
    */
   const told = useRef(new Map<string, { readonly unseen: number; readonly ids: Set<string> }>());
+  useEffect(() => {
+    told.current.clear();
+  }, [orgId]);
   useEffect(() => {
     for (const [projectId, read] of Object.entries(attention)) {
       // Only HQ counts what is unseen; nothing to tell it while it counts nothing.

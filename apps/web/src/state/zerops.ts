@@ -21,6 +21,7 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/unstable/reactivity";
 import {
   inventoryTopology,
@@ -159,7 +160,7 @@ export interface HqMatesView {
 
 /** The Mates of the organization in view, as HQ last told them; null without one in view. */
 export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
-  const orgId = get(shownHqNavigationAtom).orgId;
+  const orgId = get(accountReadsAtom)?.orgId ?? null;
   if (orgId === null) return null;
   const { mates, live } = get(shownHqMatesAtom);
   return { organizationId: orgId, mates: new Map(Object.entries(mates)), current: live };
@@ -403,3 +404,25 @@ export function projectTopologyAtom(project: ProjectRef): Atom.Atom<ProjectTopol
   if (!topologyProjects.has(key)) topologyProjects.set(key, project);
   return projectTopologies(key);
 }
+
+export const hqMateVersionsAtom = Atom.make((get) => {
+  const hq = get(hqMatesAtom);
+  return Object.fromEntries(
+    [...(hq?.mates ?? [])].map(([id, mate]) => [id, mate.identity?.serverVersion]),
+  );
+}).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+export const hqMainChatsAtom = Atom.make((get) => {
+  const hq = get(hqMatesAtom);
+  return Object.fromEntries(
+    [...(hq?.mates ?? [])].map(([id, mate]) => [
+      id,
+      {
+        read: mate.main !== undefined,
+        chat:
+          mate.identity === undefined || !mate.main
+            ? undefined
+            : { environmentId: mate.identity.environmentId, threadId: mate.main.id },
+      },
+    ]),
+  );
+}).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
