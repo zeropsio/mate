@@ -88,6 +88,10 @@ export default defineConfig({
       "apps/mobile/ios/**",
       "apps/web/public/mockServiceWorker.js",
       "apps/web/src/lib/vendor/qrcodegen.ts",
+      // The Import zone is upstream's bytes, pinned by imported.lock; its recorded transform
+      // (fork.md §3.1) shortens import paths, which the formatter would reflow.
+      "packages/effect-codex-app-server/**",
+      "packages/effect-acp/**",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
     ],

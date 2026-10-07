@@ -1,7 +1,17 @@
 {
   "upstream": "422248515a1eebff607b44d5abef91e13f6228fc",
   "paths": {
-    "packages/effect-codex-app-server": "3ab6b38f6053645fa00c62cbf80e48e08513a475",
-    "packages/effect-acp": "1c70adfcc3e3be314ee2273393cf02b6943c14e7"
+    "packages/effect-codex-app-server": "85a14330a36fb267e47cc329734b5db5fa751aa2",
+    "packages/effect-acp": "cfd407a783d415bdd1838c5fbf8efd715b5ad0bb"
+  },
+  "transform": {
+    "name": "effect-401",
+    "script": "scripts/effect-401-codemod.ts --import-zone",
+    "since": "2026-10-07",
+    "until": "the next re-import",
+    "upstreamPaths": {
+      "packages/effect-codex-app-server": "3ab6b38f6053645fa00c62cbf80e48e08513a475",
+      "packages/effect-acp": "1c70adfcc3e3be314ee2273393cf02b6943c14e7"
+    }
   }
 }
