@@ -1,7 +1,9 @@
 /**
- * `provider.interrupt` (process-bound, lane `control`): asks the driver to stop the run's turn.
- * Its return only records that it was asked; the run ends on its turn's own end. With no live
- * session nothing is called, and the Stop ends the run there and then.
+ * `provider.interrupt` (process-bound, lane `control`): asks the driver to stop the run's turn,
+ * by its native id. A turn the driver has not named yet (its send is still on the way) is never
+ * interrupted blind (Codex ignores an interrupt with no turn): the host sends the Stop the moment
+ * the turn opens. Its return only records that it was asked; the run ends on its turn's own end.
+ * With no live session nothing is called, and the Stop ends the run there and then.
  *
  * @module engine/effects/providerInterrupt
  */
@@ -33,11 +35,12 @@ export const makeProviderInterrupt = Effect.gen(function* () {
         );
         if (host === undefined) return failed("No live session to stop.");
         const turn = payload.turn as TurnHandle | null;
-        if (turn !== null) yield* host.record({ kind: "interrupt", turn });
         const native =
-          (turn === null ? undefined : yield* host.nativeTurn(turn)) ??
+          (turn === null ? undefined : yield* host.interruptOrDefer(turn)) ??
           payload.providerTurnId ??
           undefined;
+        // Its turn has no name yet (the send is on the way): the host stops it once it opens.
+        if (native === undefined && turn !== null) return ok({ deferred: true });
         yield* provider.interruptTurn({
           threadId: host.thread,
           ...(native === undefined ? {} : { turnId: native as TurnId }),

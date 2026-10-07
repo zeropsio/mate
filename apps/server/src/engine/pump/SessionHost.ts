@@ -26,7 +26,7 @@ import type * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import type { ConversationId, SpiEvent, ThreadId, TurnHandle } from "@t3tools/contracts";
+import type { ConversationId, SpiEvent, ThreadId, TurnHandle, TurnId } from "@t3tools/contracts";
 
 import type { ProviderServiceShape } from "../../provider/Services/ProviderService.ts";
 import type {
@@ -72,6 +72,11 @@ export interface SessionHost {
   /** The session never opened: what it held is dropped. */
   readonly discard: (session: SessionId) => Effect.Effect<void>;
   readonly nativeTurn: (turn: TurnHandle) => Effect.Effect<string | undefined>;
+  /**
+   * A Stop for a turn: records it and gives the turn's native id to interrupt now; a turn the
+   * driver has not named yet (its send is still on the way) is interrupted the moment it opens.
+   */
+  readonly interruptOrDefer: (turn: TurnHandle) => Effect.Effect<string | undefined>;
   readonly nativeRequest: (key: RequestKey) => Effect.Effect<NativeRequest | undefined>;
   /** Background work alive in the current session. */
   readonly liveWork: Effect.Effect<number>;
@@ -128,6 +133,8 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     TurnHandle,
     { readonly session: SessionId | null; readonly done: Deferred.Deferred<SendEvidence> }
   >();
+  /** Stops asked before the driver named their turn: sent the moment it does. */
+  const deferredInterrupts = new Set<TurnHandle>();
   let current: SessionId | null = null;
   let recording: SessionId | null = null;
 
@@ -229,6 +236,22 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     }
     // 3. the live plane.
     yield* Effect.all(live, { discard: true });
+    // A Stop that came before its turn had a name: the turn has one now, or never will.
+    for (const { turn, evidence: said } of evidence) {
+      if (said._tag !== "Accepted") deferredInterrupts.delete(turn);
+    }
+    if (closed.length > 0) deferredInterrupts.clear();
+    for (const turn of deferredInterrupts) {
+      const native = translator.nativeTurn(turn);
+      if (native === undefined) continue;
+      deferredInterrupts.delete(turn);
+      yield* deps.provider.interruptTurn({ threadId: input.thread, turnId: native as TurnId }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("engine pump: a deferred Stop could not be sent", { cause }),
+        ),
+        Effect.forkIn(deps.scope),
+      );
+    }
     if (unasked) yield* replaceUnasked;
   });
 
@@ -321,6 +344,15 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         }),
       ),
     nativeTurn: (turn) => Effect.sync(() => translator.nativeTurn(turn)),
+    interruptOrDefer: (turn) =>
+      lock.withPermits(1)(
+        Effect.gen(function* () {
+          yield* enqueue({ _tag: "input", input: { kind: "interrupt", turn } });
+          const native = translator.nativeTurn(turn);
+          if (native === undefined) deferredInterrupts.add(turn);
+          return native;
+        }),
+      ),
     nativeRequest: (key) => Effect.sync(() => translator.nativeRequest(key)),
     liveWork: Effect.sync(() => toCore.liveWork()),
     forkInSession: (call) => Effect.forkIn(call, deps.scope),

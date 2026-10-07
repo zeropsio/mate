@@ -27,7 +27,12 @@ const world = (
   options: {
     readonly refuse?: string;
     readonly admissionDies?: string;
-    readonly scripted?: Partial<{ ignoreInterrupt: boolean; holdNextSend: boolean }>;
+    readonly scripted?: Partial<{
+      ignoreInterrupt: boolean;
+      holdNextSend: boolean;
+      interruptHangs: boolean;
+      slowSendMs: number;
+    }>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -786,5 +791,20 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect("a Stop asked while the message is being sent stops the turn the moment it opens", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { slowSendMs: 300 } });
+        yield* send(w);
+        assert.strictEqual((yield* w.run(r(1)))?.state, "sending");
+        yield* stop(w);
+        yield* w.advance(300);
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-confirmed"]);
+        assert.strictEqual(w.provider.calls.at(-1), `interrupt ${w.thread} T1`);
+        yield* w.shutdown;
+      }),
+    ),
   );
 });

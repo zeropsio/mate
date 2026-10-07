@@ -71,6 +71,10 @@ export interface ScriptedProviderOptions {
   failStart?: string | undefined;
   /** The agent never confirms a Stop: the interrupt returns and the turn runs on. */
   ignoreInterrupt?: boolean | undefined;
+  /** The interrupt call never returns. */
+  interruptHangs?: boolean | undefined;
+  /** A send takes this long before the driver opens its turn and returns. */
+  slowSendMs?: number | undefined;
   /** The next send never comes back: the driver holds it with nothing said. */
   holdNextSend?: boolean | undefined;
   /**
@@ -185,6 +189,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             yield* emit("session.exited", input.threadId, { payload: { exitKind: "error" } });
             yield* emit("session.started", input.threadId);
           }
+          if (options.slowSendMs !== undefined) yield* Effect.sleep(options.slowSendMs);
           const session = yield* sessionOf(input.threadId);
           if (session.open !== null && steers(driver)) {
             return { threadId: input.threadId, turnId: session.open as TurnId };
@@ -206,9 +211,12 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       interruptTurn: (input) =>
         Effect.gen(function* () {
           calls.push(`interrupt ${input.threadId} ${input.turnId ?? ""}`);
+          if (options.interruptHangs === true) return yield* Effect.never;
           const session = yield* sessionOf(input.threadId);
           const open = session.open;
           if (open === null || options.ignoreInterrupt === true) return;
+          // Codex interrupts a named turn only: with none, turn/interrupt returns and does nothing.
+          if (driver === "codex" && input.turnId === undefined) return;
           switch (driver) {
             case "claudeAgent":
               // A Stop kills the CLI: the turn ends interrupted and the session exits with it.
