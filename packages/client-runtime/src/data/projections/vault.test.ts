@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
+import { historyScope } from "../families/process.ts";
 import { projectVariablesFamily, projectVariablesScope } from "../families/projectVariables.ts";
 import { serviceVariableFamily, serviceVariablesScope } from "../families/serviceVariables.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
@@ -200,7 +201,35 @@ const viewOf = (...inputs: ReadonlyArray<ReadonlyArray<AccountInput>>): VaultVie
   return vault.derive(readsOfState(state), { orgId: ORG, projectId: PROJECT });
 };
 
-const base = liveZerops({ running: PROCESSES, services: SERVICES });
+/** The project's process history answered: these processes, newest hundred. */
+const historyAnswer = (
+  processes: ReadonlyArray<Parameters<typeof processValue>[0]>,
+): ReadonlyArray<AccountInput> => {
+  const scope = historyScope(ORG, PROJECT);
+  const rows = processes.map((process): Row => ({
+    family: "process",
+    id: process.id,
+    value: processValue(process),
+    revision: { kind: "zerops", version: 1 },
+  }));
+  return [
+    event(scope, { kind: "demand", demanded: true }),
+    event(scope, { kind: "attempt" }),
+    event(scope, { kind: "handshake" }),
+    { kind: "baseline-begin", scope, generation: 1 },
+    {
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-realtime",
+      members: rows.map((row) => row.id),
+      rows,
+    },
+    event(scope, { kind: "baseline-committed" }),
+  ];
+};
+
+const base = [...liveZerops({ running: [], services: SERVICES }), ...historyAnswer(PROCESSES)];
 const sharedAnswer = answered(SHARED_SCOPE, "projectVariables", [
   { id: PROJECT, envList: SHARED_ROWS },
 ]);
@@ -373,6 +402,7 @@ describe("vault", () => {
   it("calls every value nothing reads unread while no deploy is known", () => {
     const view = viewOf(
       liveZerops({ running: [], services: SERVICES }),
+      historyAnswer([]),
       sharedAnswer,
       servicesAnswer,
     );
@@ -426,5 +456,45 @@ describe("vault — the Mate's own keys", () => {
     expect(scope(view, "s-app").reads.find((read) => read.key === "ADMIN")?.refs).toEqual([
       { kind: "platform", name: "ZCP_API_KEY" },
     ]);
+  });
+});
+
+describe("vault — when services started", () => {
+  it("claims nothing that waits on a start until the project's history has answered", () => {
+    // The processes are known from the running work, the history not read yet.
+    const view = viewOf(
+      liveZerops({ running: PROCESSES, services: SERVICES }),
+      sharedAnswer,
+      servicesAnswer,
+    );
+    expect(view.notLive.map((each) => each.kind)).toEqual(["missing", "self"]);
+    expect(value(view, "shared", "LOG_LEVEL").readers.map((each) => each.state)).toEqual([
+      "unknown",
+      "unknown",
+    ]);
+  });
+
+  it("takes a deploy also from a service's active version, newest of the two", () => {
+    const view = viewOf(
+      liveZerops({
+        running: [],
+        services: SERVICES.map((service) =>
+          service.id === "s-app"
+            ? { ...service, activeAppVersion: { id: "v1", activationDate: T(12) } }
+            : service,
+        ),
+      }),
+      // The deploy fell out of the newest hundred.
+      historyAnswer(PROCESSES.filter((process) => process.id !== "deploy")),
+      sharedAnswer,
+      servicesAnswer,
+    );
+    expect(scope(view, "s-app").startedAt).toBe(T(12));
+    expect(value(view, "shared", "LOG_LEVEL").readers.map((each) => each.state)).toEqual([
+      "live",
+      "live",
+    ]);
+    // Written before that deploy: nothing waits for one.
+    expect(view.notLive.filter((each) => each.kind === "unread")).toEqual([]);
   });
 });

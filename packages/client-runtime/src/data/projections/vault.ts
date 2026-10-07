@@ -9,6 +9,7 @@
  */
 import { isZcpService } from "../../zerops/containerAddress.ts";
 import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts";
+import { historyScope } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
 import type { ServiceValue } from "../families/service.ts";
@@ -70,10 +71,20 @@ const after = (left: string | null, right: string | null): boolean =>
 const newest = (left: string | null, right: string | undefined): string | null =>
   right === undefined || (left !== null && !after(right, left)) ? left : right;
 
-/** When each service last started, and the project's newest deploy, from its finished processes. */
-function startsOf(read: ProjectionReads, projectId: string) {
+/**
+ * When each service last started, and the project's newest deploy: from its finished processes,
+ * and from each service's active version's activation (a deploy the newest hundred processes may
+ * have lost), the newest of the two.
+ */
+function startsOf(read: ProjectionReads, projectId: string, services: ReadonlyArray<ServiceValue>) {
   const startedAt = new Map<string, string>();
   let deployedAt: string | null = null;
+  for (const service of services) {
+    const activated = service.activeAppVersion?.activationDate ?? undefined;
+    if (activated === undefined) continue;
+    startedAt.set(service.id, activated);
+    deployedAt = newest(deployedAt, activated);
+  }
   for (const id of read.index("project", projectId)) {
     const fact = read.fact("process", id);
     if (fact.kind !== "known") continue;
@@ -206,7 +217,14 @@ export const vault: Projection<VaultKey, VaultView> = {
       services: services.map(({ ref }) => ref),
     };
     const readers = readersOf(world);
-    const { startedAt, deployedAt } = startsOf(read, projectId);
+    const { startedAt, deployedAt } = startsOf(
+      read,
+      projectId,
+      services.map(({ service }) => service),
+    );
+    // A start or a deploy the history has not answered yet may be newer than any known: no
+    // verdict waits on one until it has.
+    const historyRead = read.coverage(historyScope(orgId, projectId)) !== "unknown";
 
     const valueOf = (
       scope: VaultScopeRef,
@@ -223,7 +241,9 @@ export const vault: Projection<VaultKey, VaultView> = {
       madeByZerops,
       readers: (readers.get(valueIdOf(scope, row.key)) ?? []).map((reader) => ({
         ...reader,
-        state: readerState(startedAt.get(reader.serviceId) ?? null, row.lastUpdate),
+        state: historyRead
+          ? readerState(startedAt.get(reader.serviceId) ?? null, row.lastUpdate)
+          : "unknown",
       })),
     });
 
@@ -262,7 +282,7 @@ export const vault: Projection<VaultKey, VaultView> = {
     const managed = services.filter(({ ref }) => ref.kind === "managed").map(serviceScope);
     const scopes = [shared, ...runtimes, ...managed];
 
-    return { status, scopes, notLive: notLiveOf(scopes, deployedAt, whole) };
+    return { status, scopes, notLive: notLiveOf(scopes, deployedAt, whole, historyRead) };
   },
   equals: sameValue,
 };
@@ -271,7 +291,10 @@ export const vault: Projection<VaultKey, VaultView> = {
 function notLiveOf(
   scopes: ReadonlyArray<VaultScope>,
   deployedAt: string | null,
+  /** Both answers whole: an absence proves something. */
   whole: boolean,
+  /** The history read: no deploy known proves something. */
+  historyRead: boolean,
 ): ReadonlyArray<VaultNotLive> {
   const restarts = new Map<string, { hostname: string; keys: Set<string> }>();
   const literal: VaultNotLive[] = [];
@@ -290,6 +313,7 @@ function notLiveOf(
       const written = value.changedAt ?? value.createdAt;
       if (
         whole &&
+        historyRead &&
         scope.editable &&
         value.readers.length === 0 &&
         (deployedAt === null || written === null || after(written, deployedAt))

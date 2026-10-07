@@ -57,7 +57,8 @@ export interface VaultScope {
   readonly reads: ReadonlyArray<VaultRead>;
   /**
    * A runtime service: when its containers last started — the end of its newest deploy, start or
-   * restart in the project's process history; `null` where none is known.
+   * restart in the project's process history, or its active version's activation, the newest;
+   * `null` where none is known.
    */
   readonly startedAt: string | null;
 }
