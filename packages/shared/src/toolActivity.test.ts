@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveToolActivityPresentation } from "./toolActivity.ts";
+import { deriveToolActivityPresentation, skillInvocation } from "./toolActivity.ts";
 
 describe("toolActivity", () => {
   it("normalizes command tools to a stable ran-command label", () => {
@@ -53,5 +53,24 @@ describe("toolActivity", () => {
     ).toEqual({
       summary: "Read file",
     });
+  });
+
+  it.each([
+    [
+      "Claude's Skill call",
+      "Skill",
+      { skill: "claude-api", args: " pricing " },
+      { name: "claude-api", args: "pricing" },
+    ],
+    [
+      "OpenCode's skill call",
+      "skill",
+      { name: "zerops-deploy" },
+      { name: "zerops-deploy", args: undefined },
+    ],
+    ["a skill call that names no skill", "Skill", { skill: " " }, undefined],
+    ["another tool's input that happens to say skill", "Read", { skill: "full-send" }, undefined],
+  ])("%s: the skill it loads, and what it passes", (_call, toolName, input, expected) => {
+    expect(skillInvocation(toolName, input)).toEqual(expected);
   });
 });

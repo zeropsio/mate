@@ -14,6 +14,24 @@ function asTrimmedString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+/**
+ * A skill call, whichever agent made it: the skill it loads and the arguments it passes, if any.
+ * Claude's `Skill` names it at `skill`; OpenCode's `skill` at `name`.
+ */
+export function skillInvocation(
+  toolName: string | null | undefined,
+  input: unknown,
+): { readonly name: string; readonly args: string | undefined } | undefined {
+  const record = asRecord(input);
+  const name =
+    toolName === "Skill"
+      ? asTrimmedString(record?.skill)
+      : toolName === "skill"
+        ? (asTrimmedString(record?.name) ?? asTrimmedString(record?.skill))
+        : undefined;
+  return name === undefined ? undefined : { name, args: asTrimmedString(record?.args) };
+}
+
 function normalizeCommandValue(value: unknown): string | undefined {
   const direct = asTrimmedString(value);
   if (direct) {

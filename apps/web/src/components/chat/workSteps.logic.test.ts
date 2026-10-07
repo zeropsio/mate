@@ -895,6 +895,17 @@ describe("stepOf — every driver", () => {
       words: "Started a helper",
     },
     {
+      name: "an OpenCode skill, by the skill it loads",
+      partial: {
+        label: "skill",
+        itemType: "dynamic_tool_call",
+        toolName: "skill",
+        callInput: { skill: "zerops-deploy" },
+      },
+      kind: "tool",
+      words: "Used the zerops-deploy skill",
+    },
+    {
       name: "a Zerops tool with no card, from any driver",
       partial: {
         label: "Running zerops_knowledge",

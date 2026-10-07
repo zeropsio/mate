@@ -733,6 +733,9 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         ZEROPS_WORDS[entry.toolTitle ?? ""];
       if (zerops !== undefined) return running ? zerops[0] : zerops[1];
       if (named === null) return say("Using a tool", "Used a tool");
+      if (named === "Skill" && input?.skill !== undefined) {
+        return say(`Using the ${input.skill} skill`, `Used the ${input.skill} skill`);
+      }
       const words = toolCallWords(named, entry.detail);
       return running ? words : pastWords(words);
     }

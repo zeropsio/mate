@@ -28,6 +28,7 @@ import {
   UserInputAttachmentAnswerPayload,
 } from "@t3tools/contracts";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
+import { skillInvocation } from "@t3tools/shared/toolActivity";
 
 import { humanizeToolName, TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
 import type {
@@ -119,6 +120,8 @@ export interface WorkCallInput {
   readonly glob?: string;
   readonly url?: string;
   readonly query?: string;
+  /** The skill a skill call loads, whichever agent's (`skillInvocation`). */
+  readonly skill?: string;
 }
 
 const CALL_INPUT_KEYS: ReadonlyArray<readonly [string, keyof WorkCallInput]> = [
@@ -1259,8 +1262,12 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       }
     }
   } else if (!isTaskActivity) {
-    const callInput = readCallInput(asRecord(data?.input));
-    if (callInput !== undefined) entry.callInput = callInput;
+    const input = asRecord(data?.input);
+    const skill = skillInvocation(asTrimmedString(data?.toolName), input)?.name;
+    const callInput = readCallInput(input);
+    if (callInput !== undefined || skill !== undefined) {
+      entry.callInput = { ...callInput, ...(skill !== undefined ? { skill } : {}) };
+    }
     const output = asTrimmedString(asRecord(data?.rawOutput)?.content) ?? "";
     const sent = BACKGROUND_NOTICE.exec(output);
     if (sent?.[1] !== undefined) entry.sentToBackground = sent[1];

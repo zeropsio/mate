@@ -80,6 +80,12 @@ describe("a call's own words and target reach its entry", () => {
       data: { toolName: "WebSearch", input: { query: "zerops yml", glob: "*.md" } },
       expected: { query: "zerops yml", glob: "*.md" },
     },
+    {
+      name: "the skill a skill call loads",
+      itemType: "dynamic_tool_call",
+      data: { toolName: "skill", input: { name: "zerops-deploy" } },
+      expected: { skill: "zerops-deploy" },
+    },
   ])("keeps $name", ({ itemType, data, expected }) => {
     const [entry] = deriveWorkLogEntries([completedCall(itemType, data)]);
     expect(entry?.callInput).toEqual(expected);
