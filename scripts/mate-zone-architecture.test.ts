@@ -1628,12 +1628,14 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
 // `zerops/**` directly (Zerops reaches it through `ports.ts`; a neutral seam
 // such as WorkspaceHistory may itself import zerops modules). Outside, only the wiring
 // files and the graft layers that branch reach in, and only to its public
-// surface: the service, the layer and the ports. Tests may reach further.
+// surface: the service, the layer, the ports and the wire's RPC registration. Tests may reach
+// further.
 const ENGINE_DIR = "apps/server/src/engine";
 const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engine/MateEngine.ts",
   "apps/server/src/engine/layer.ts",
   "apps/server/src/engine/ports.ts",
+  "apps/server/src/engine/registerEngineRpc.ts",
 ]);
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/serverRuntimeStartup.ts",

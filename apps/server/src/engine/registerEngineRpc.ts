@@ -11,13 +11,16 @@
  *
  * @module engine/registerEngineRpc
  */
-import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  type EnvironmentAuthorizationError,
+  type WsRpcGroup,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
 import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
-import type { RegisterZeropsRpcDeps } from "../zerops/registerZeropsRpc.ts";
 import type { MateEngineService } from "./MateEngine.ts";
 import type { WireCaller } from "./wire/EngineWire.ts";
 
@@ -40,14 +43,24 @@ type EngineRpcHandlers = {
   readonly [Current in EngineRpc as Current["_tag"]]: Rpc.ToHandlerFn<Current, never>;
 };
 
-export type RegisterEngineRpcDeps = Pick<
-  RegisterZeropsRpcDeps,
-  "observeRpcEffect" | "observeRpcStream" | "subject"
-> & {
+export interface RegisterEngineRpcDeps {
+  /** The connecting session's subject: a client never names its own. */
+  readonly subject: string;
+  /** `ws.ts`'s scope-checked, instrumented wrappers, as every RPC in the router goes through. */
+  readonly observeRpcEffect: <A, E, R>(
+    method: string,
+    effect: Effect.Effect<A, E, R>,
+    traceAttributes?: Readonly<Record<string, unknown>>,
+  ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
+  readonly observeRpcStream: <A, E, R>(
+    method: string,
+    stream: Stream.Stream<A, E, R>,
+    traceAttributes?: Readonly<Record<string, unknown>>,
+  ) => Stream.Stream<A, E | EnvironmentAuthorizationError, R>;
   readonly engine: Pick<MateEngineService, "wire">;
   /** The Mate's environment and this start's epoch: the revision every record carries. */
   readonly source: Effect.Effect<{ readonly environmentId: string; readonly epoch: number }>;
-};
+}
 
 const traceAttributes = { "rpc.aggregate": "engine" } as const;
 
