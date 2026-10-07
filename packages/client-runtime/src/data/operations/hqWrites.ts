@@ -9,7 +9,7 @@
  */
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqMateSetUp } from "../../zerops/hq/client.ts";
-import type { OperationIntent } from "../model.ts";
+import { linkKeys, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
 import { shownInFacts } from "./shownInFacts.ts";
@@ -83,11 +83,11 @@ function shown<Kind extends keyof import("../model.ts").OperationIntents & strin
 function made<Kind extends "create-app" | "record-birth">(
   kind: Kind,
   /** The ids of the records HQ's navigation holds that this intent would have made. */
-  candidates: (read: ProjectionReads, intent: IntentOf<Kind>) => ReadonlyArray<string>,
+  candidates: (read: ProjectionReads, intent: IntentOf<Kind>) => ReadonlyArray<string> | null,
   resultOf: (id: string) => Kind extends "create-app" ? { appId: string } : { birthId: string },
 ): OperationKind<Kind> {
   const holds = (read: ProjectionReads, intent: IntentOf<Kind>, id: string) =>
-    candidates(read, intent).includes(id);
+    (candidates(read, intent) ?? []).includes(id);
   return {
     kind,
     executor: "hq",
@@ -102,19 +102,35 @@ function made<Kind extends "create-app" | "record-birth">(
 
 export const createApp = made(
   "create-app",
-  (read, intent) =>
-    read
-      .members(hqAppsScope(intent.orgId))
-      .ids.filter((id) => appOf(read, id)?.name === intent.name),
+  (read, intent) => {
+    const scope = hqAppsScope(intent.orgId);
+    const apps = read.members(scope);
+    if (
+      apps.coverage !== "complete" ||
+      read.stream(scope).phase !== "live" ||
+      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
+    )
+      return null;
+    return apps.ids.filter((id) => appOf(read, id)?.name === intent.name);
+  },
   (appId) => ({ appId }),
 );
 
 export const recordBirth = made(
   "record-birth",
-  (read, intent) =>
-    birthsOf(read, intent.appId)
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (
+      app.kind !== "known" ||
+      app.value.births === undefined ||
+      read.stream(app.scope).phase !== "live" ||
+      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
+    )
+      return null;
+    return app.value.births
       .filter((birth) => birth.face === intent.face && birth.projectId == null)
-      .map((birth) => birth.id),
+      .map((birth) => birth.id);
+  },
   (birthId) => ({ birthId }),
 );
 

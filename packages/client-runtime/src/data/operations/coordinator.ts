@@ -17,6 +17,7 @@ import type {
 } from "../model.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
+import { sameValue } from "../projections/equal.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
 
@@ -27,6 +28,8 @@ import { OPERATION_KINDS, operationKind } from "./kinds.ts";
  */
 export interface OwnerUnobservable {
   readonly unobservable: Unobservable & { readonly handles?: ReadonlyArray<string> };
+  /** Retained acceptance evidence for the steps the owner did finish before losing observation. */
+  readonly receipt?: OperationReceipt;
 }
 
 /** What an owner answers when asked: its receipt; `null` for none; or that it cannot observe it. */
@@ -44,6 +47,8 @@ export interface UncertainAcceptance {
  * by the intended effect in the owner's facts (the kind's `effectHandles`) — never by sending again.
  */
 export interface OperationExecutor {
+  /** Whether this intent still belongs to the mounted account and accepting owner. */
+  readonly isCurrent?: (intent: OperationIntent) => boolean;
   readonly submit: (
     requestId: string,
     intent: OperationIntent,
@@ -73,6 +78,8 @@ export interface Operations {
     requestId: string,
     intent: OperationIntent,
     handles?: ReadonlyArray<string>,
+    /** The owner's effects saved before the original send; never recaptured on reload. */
+    before?: ReadonlyArray<string>,
   ) => Effect.Effect<void>;
 }
 
@@ -92,6 +99,13 @@ export function makeOperations(options: {
     const executor = options.executors[owner];
     if (executor === undefined) throw new Error(`No executor for ${owner} is wired.`);
     return { owner, executor };
+  };
+
+  const heldRequest = (requestId: string, intent: OperationIntent) => {
+    const held = store.state().operations.get(requestId);
+    if (held !== undefined && !sameValue(held.intent, intent))
+      throw new Error(`Operation ${requestId} already names another intent.`);
+    return held;
   };
 
   const send = (requestId: string, intent: OperationIntent, resend: boolean): Effect.Effect<void> =>
@@ -149,7 +163,7 @@ export function makeOperations(options: {
     for (const [other, record] of state.operations)
       if (other !== requestId && !ended(read, record))
         for (const handle of record.handles) claimed.add(handle);
-    const candidates = effectHandles(read, intent).filter(
+    const candidates = (effectHandles(read, intent) ?? []).filter(
       (handle) => !before.includes(handle) && !claimed.has(handle),
     );
     return candidates.length === 1 ? candidates[0]! : null;
@@ -157,7 +171,9 @@ export function makeOperations(options: {
 
   /** Files the owner's answer under this account's request id, whatever id the owner knows. */
   const admit = (answer: OwnerAnswer, requestId: string) =>
-    Effect.sync(() =>
+    Effect.sync(() => {
+      if (answer !== null && "unobservable" in answer && answer.receipt !== undefined)
+        store.dispatch({ kind: "operation-receipt", receipt: { ...answer.receipt, requestId } });
       store.dispatch(
         answer === null
           ? { kind: "operation-lookup-failed", requestId }
@@ -179,8 +195,8 @@ export function makeOperations(options: {
                   : { handles: answer.unobservable.handles }),
               }
             : { kind: "operation-receipt", receipt: { ...answer, requestId } },
-      ),
-    );
+      );
+    });
 
   /**
    * Resolves a lost answer. By a known handle; else by the request id, sending again — once, under
@@ -193,6 +209,16 @@ export function makeOperations(options: {
     resend: boolean,
   ): Effect.Effect<void> => {
     const { owner, executor } = executorOf(intent);
+    if (executor.isCurrent?.(intent) === false)
+      return admit(
+        {
+          unobservable: {
+            nextActor: "person",
+            nextAction: "Return to the original account and HQ to check this operation",
+          },
+        },
+        requestId,
+      );
     // Every ask goes by the handles the record holds first, whoever learned them.
     const handle = store.state().operations.get(requestId)?.handles[0];
     if (handle !== undefined && executor.lookupHandle !== undefined)
@@ -239,15 +265,22 @@ export function makeOperations(options: {
     submit: (intent, named) =>
       Effect.gen(function* () {
         const requestId = named ?? options.makeId();
-        const effectHandles = kindOf(intent).effectHandles;
+        const held = heldRequest(requestId, intent);
+        if (held !== undefined) {
+          // Only a definitively unsent step can be sent by another deliberate press.
+          if (held.receipt === null && held.submission === "unsent") {
+            store.dispatch({ kind: "operation-absent", requestId });
+            yield* send(requestId, intent, true);
+          }
+          return requestId;
+        }
+        const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent);
         store.dispatch({
           kind: "operation-recorded",
           requestId,
           intent,
           // What the owner's facts show before the send is never this operation's own effect.
-          ...(effectHandles === undefined
-            ? {}
-            : { before: effectHandles(readsOfState(store.state()), intent) }),
+          ...(before == null ? {} : { before }),
         });
         yield* send(requestId, intent, true);
         return requestId;
@@ -256,18 +289,28 @@ export function makeOperations(options: {
       Effect.suspend(() => {
         const record = store.state().operations.get(requestId);
         if (record === undefined || record.receipt !== null) return Effect.void;
-        if (record.submission === "unsent") return send(requestId, record.intent, true);
+        if (record.submission === "unsent") {
+          store.dispatch({ kind: "operation-absent", requestId });
+          return send(requestId, record.intent, true);
+        }
         if (record.submission === "uncertain-unasked")
           return reconcile(requestId, record.intent, true);
         return Effect.void;
       }),
-    resume: (requestId, intent, handles) =>
+    resume: (requestId, intent, handles, before) =>
       Effect.gen(function* () {
+        const held = heldRequest(requestId, intent);
+        if (
+          held?.receipt?.acceptance.kind === "refused" ||
+          (held !== undefined && ended(readsOfState(store.state()), held))
+        )
+          return;
         store.dispatch({
           kind: "operation-recorded",
           requestId,
           intent,
           ...(handles === undefined ? {} : { handles }),
+          ...(before === undefined ? {} : { before }),
         });
         yield* reconcile(requestId, intent, true);
       }),

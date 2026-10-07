@@ -86,6 +86,37 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect.each(["app", "birth"] as const)(
+    "a lost $0 answer cannot adopt a preexisting record from an unread baseline",
+    (kind) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        liveZerops({ running: [] }).forEach(store.dispatch);
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          createApp: async () => {
+            sends++;
+            hqSays(store, [app({ id: "preexisting", name: "Garden" })]);
+            throw lost;
+          },
+          recordBirth: async () => {
+            sends++;
+            hqSays(store, [
+              app({ births: [{ id: "preexisting", face: "face", projectId: null }] }),
+            ]);
+            throw lost;
+          },
+        });
+        yield* operations.submit(
+          kind === "app"
+            ? { kind: "create-app", orgId: ORG, name: "Garden" }
+            : { kind: "record-birth", orgId: ORG, appId: "app-1", face: "face" },
+        );
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+        expect(sends).toBe(1);
+      }),
+  );
+
   it.effect("are done once HQ answers, each with what it answered", () =>
     Effect.gen(function* () {
       const said: string[] = [];
