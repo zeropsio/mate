@@ -365,7 +365,15 @@ describe("B: menu liveness", () => {
         yield* s.then.menu.row("Bea").appears();
         const retained = yield* s.then.menu.keepsRows(["Ada"]);
         yield* s.colleague.deletes("Bea");
-        yield* Effect.promise(() => s.clock.advance(12 * 60_000));
+        yield* Effect.promise(() =>
+          s.clock.advanceStepped(12 * 60_000, {
+            // Ada's refusal is deliberately held until after this advance.
+            settle: () =>
+              s.page.evaluate(
+                () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+              ),
+          }),
+        );
         yield* s.menu.absent("Bea");
         // Keep observing through any delayed confirmation reads and their rendered results.
         yield* s.colleague.settlesRefusal("Ada");

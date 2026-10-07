@@ -3,7 +3,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { visibleText } from "../../harness/browser.ts";
+import { visibleText, sendConversationMessage } from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -96,35 +96,7 @@ export function mateChat(
         .click();
     });
   const send = (message: string, waitForReady: boolean) =>
-    Effect.promise(async () => {
-      const input = page.locator(composer).setTimeout(8000);
-      await (await input.waitHandle()).focus();
-      await page.keyboard.down(modifier);
-      await page.keyboard.press("a");
-      await page.keyboard.up(modifier);
-      await page.keyboard.press("Backspace");
-      await page.keyboard.type(message);
-      await page.waitForFunction(
-        (message) => document.activeElement?.textContent === message,
-        { timeout: 8000, polling: "raf" },
-        message,
-      );
-      if (waitForReady)
-        await page.waitForFunction(
-          () =>
-            [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
-              (button) =>
-                ["Send message", "Queue message"].includes(
-                  button.getAttribute("aria-label") ?? "",
-                ) &&
-                !button.disabled &&
-                button.getBoundingClientRect().height > 0,
-            ),
-          { timeout: 8000, polling: "raf" },
-        );
-      await (await input.waitHandle()).focus();
-      await page.keyboard.press("Enter");
-    });
+    Effect.promise(() => sendConversationMessage(page, message, waitForReady));
   return {
     step: <A, E, R>(name: string, action: Effect.Effect<A, E, R>) =>
       action.pipe(
