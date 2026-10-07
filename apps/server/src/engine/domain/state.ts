@@ -30,7 +30,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -138,6 +138,12 @@ export interface ConversationState {
   /** The agent the conversation belongs to, once assigned. */
   readonly agent: ConversationAgent | null;
   readonly model: string | null;
+  /**
+   * The generation of the conversation's provider thread: bumped when the conversation moves to
+   * another instance or driver, whose saved resume state does not carry over, so its next session
+   * starts fresh on a thread of its own.
+   */
+  readonly threadGeneration: number;
   readonly nextRunOrdinal: number;
   readonly runs: Readonly<Record<string, RunRecord>>;
   /** Queued runs, oldest first. */
@@ -187,6 +193,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   archived: false,
   agent: null,
   model: null,
+  threadGeneration: 1,
   nextRunOrdinal: 1,
   runs: {},
   queue: [],

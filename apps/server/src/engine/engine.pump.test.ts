@@ -850,4 +850,32 @@ describe("the running engine", () => {
       }),
     ),
   );
+
+  it.effect(
+    "a conversation moved to another instance starts a fresh native session on a thread of its own",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: "codex-bo",
+              driver: "codex",
+              model: "m1",
+              profile: { kind: "mate" },
+            },
+          });
+          yield* send(w, "again");
+          assert.deepStrictEqual(w.provider.calls.slice(-3), [
+            `stop ${w.thread}`,
+            "start mate/s/2",
+            "send mate/s/2: again",
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
 });

@@ -378,6 +378,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     model: b.state.model,
     resume: b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
+    generation: b.state.threadGeneration,
   });
 };
 

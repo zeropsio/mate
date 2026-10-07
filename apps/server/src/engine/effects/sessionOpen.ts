@@ -33,6 +33,8 @@ interface Payload {
   readonly model: string | null;
   readonly resume: string | null;
   readonly rotateFrom: string | null;
+  /** The conversation's thread generation (absent from an open asked before it existed: 1). */
+  readonly generation?: number;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -64,7 +66,7 @@ export const makeSessionOpen = Effect.gen(function* () {
           return failed(`The engine cannot run the ${payload.driver} driver yet.`);
         }
         const driver = payload.driver;
-        const host = yield* pump.hostFor(row.conversationId, driver);
+        const host = yield* pump.hostFor(row.conversationId, driver, payload.generation ?? 1);
         const session = yield* sessionIdOf(host.thread, row.conversationId, row.effectId);
         const setup = yield* workspace.of(row.conversationId);
         yield* host.begin(session);

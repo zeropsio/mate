@@ -1406,6 +1406,28 @@ describe("decide: the conversation holds the agent it belongs to", () => {
     ]);
     expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
   });
+  it("a conversation given another instance opens a fresh native session; a model switch resumes its own", () => {
+    const generationOf = (steps: ReadonlyArray<Step>) =>
+      (play(steps).effects[0]?.payload as { readonly generation?: number }).generation;
+    const first = [{ _tag: "AssignAgent", agent } as const, send("go")];
+    expect(generationOf([...first, prepared(1)])).toBe(1);
+    expect(
+      generationOf([
+        { _tag: "AssignAgent", agent },
+        { _tag: "SwitchModel", model: "sonnet" },
+        send("go"),
+        prepared(1),
+      ]),
+    ).toBe(1);
+    expect(
+      generationOf([
+        { _tag: "AssignAgent", agent },
+        { _tag: "AssignAgent", agent: { ...agent, instanceId: "claude-bo" } },
+        send("go"),
+        prepared(1),
+      ]),
+    ).toBe(2);
+  });
   it("giving a conversation the agent it already has records nothing", () => {
     const scene = play([
       { _tag: "AssignAgent", agent },

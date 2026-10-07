@@ -6,9 +6,11 @@
  * event by its thread to the conversation's host, never blocking. An event for a thread no host
  * owns (a Codex helper's thread, a leftover) is dropped and counted.
  *
- * Every conversation runs its sessions on one ProviderService thread of its own,
- * `<conversation>/s/<n>`: never V1's thread, so ProviderService never adopts V1's binding or resume
- * cursor, while a later session of the same conversation resumes from the binding's latest cursor.
+ * Every conversation runs its sessions on a ProviderService thread of its own,
+ * `<conversation>/s/<generation>`: never V1's thread, so ProviderService never adopts V1's binding
+ * or resume cursor, while a later session of the same generation resumes from the binding's
+ * latest cursor. A move to another instance or driver bumps the generation: a fresh native
+ * session, which ProviderService would otherwise refuse to resume across instances.
  *
  * At shutdown the pump stops first (the engine is released before ProviderService), so the turn
  * ends ProviderService reports while it stops every session are not read as stops or crashes:
@@ -31,21 +33,26 @@ import { Conversations } from "../Conversations.ts";
 import { LiveBus } from "../LiveBus.ts";
 import { makeSessionHost, type SessionHost } from "./SessionHost.ts";
 
-/** The engine's generation of a conversation's provider thread; a fresh native session bumps it. */
-export const THREAD_GENERATION = 1;
-
 /** How long `quiet` lets the bus run: at least a few turns of the scheduler, at most many. */
 const QUIET_MIN_ROUNDS = 8;
 const QUIET_ROUNDS = 256;
 
-export const providerThreadOf = (conversation: ConversationId): ThreadId =>
-  ThreadId.make(`${conversation}/s/${THREAD_GENERATION}`);
+/**
+ * A conversation's provider thread for its generation (the conversation's state holds it, and
+ * bumps it when a move to another instance or driver means a fresh native session).
+ */
+export const providerThreadOf = (conversation: ConversationId, generation = 1): ThreadId =>
+  ThreadId.make(`${conversation}/s/${generation}`);
 
 export interface TurnPumpShape {
-  /** The conversation's host, made on first use; its driver is the session's that made it. */
+  /**
+   * The conversation's host for this driver and thread generation, made on first use; a new
+   * driver or generation gets a new host on its own thread.
+   */
   readonly hostFor: (
     conversation: ConversationId,
     driver: BridgeDriver,
+    generation: number,
   ) => Effect.Effect<SessionHost>;
   /** The host, if one was made. */
   readonly existing: (conversation: ConversationId) => Effect.Effect<SessionHost | undefined>;
@@ -80,12 +87,14 @@ export const makeTurnPump = Effect.gen(function* () {
   const byThread = new Map<string, SessionHost>();
   const foreign = new Map<string, number>();
 
-  const hostFor: TurnPumpShape["hostFor"] = (conversation, driver) =>
+  const hostFor: TurnPumpShape["hostFor"] = (conversation, driver, generation) =>
     Effect.gen(function* () {
+      const thread = providerThreadOf(conversation, generation);
       const known = hosts.get(conversation);
-      if (known !== undefined && known.driver === driver) return known;
+      if (known !== undefined && known.driver === driver && known.thread === thread) return known;
+      if (known !== undefined) byThread.delete(known.thread);
       const host = yield* makeSessionHost(
-        { conversationId: conversation, thread: providerThreadOf(conversation), driver },
+        { conversationId: conversation, thread, driver },
         { conversations, live, provider, scope, stopping: () => stopping, quiet },
       );
       hosts.set(conversation, host);
