@@ -9,6 +9,11 @@ interface DeletionTarget {
   readonly projectId: string;
 }
 
+export interface PreparedMateDeletion {
+  readonly keyTokenId: string | null;
+  readonly completion: string;
+}
+
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "prepare-mate-deletion": DeletionTarget;
@@ -29,10 +34,7 @@ declare module "../model.ts" {
     };
   }
   interface OperationResults {
-    readonly "prepare-mate-deletion": {
-      readonly keyTokenId: string | null;
-      readonly completion: string;
-    };
+    readonly "prepare-mate-deletion": PreparedMateDeletion;
   }
 }
 

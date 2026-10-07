@@ -8,6 +8,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Release } from "@t3tools/shared/hqRelease";
 
+import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { holdHqWrites } from "./hqWrites";
 import { useFlowVerbs, VERB_ALREADY_RUNNING, type FlowVerbs } from "./flowVerbs";
 import type { ZeropsProjectFlow } from "./projectFlows";
@@ -129,6 +130,7 @@ function Probe() {
 let letGo: () => void = () => {};
 
 beforeEach(async () => {
+  openAccountLifetime("ada");
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   hq.release.mockReset();
   hq.merge.mockReset();
@@ -149,6 +151,7 @@ beforeEach(async () => {
   });
 });
 afterEach(() => {
+  closeAccountLifetime();
   letGo();
   act(() => tree?.unmount());
   tree = undefined;

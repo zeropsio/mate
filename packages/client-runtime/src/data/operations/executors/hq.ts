@@ -132,12 +132,16 @@ function flowWrite(
 
 const FLOW_KINDS: ReadonlySet<string> = new Set(FLOW_WRITE_KINDS.map(({ kind }) => kind));
 
-function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
+function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAcceptance {
   const message = cause instanceof Error ? cause.message : String(cause);
   if (!(cause instanceof HqError) || cause.kind === "uncertain")
     return { outcome: "uncertain-acceptance", message };
   if (cause.kind === "refused")
-    return { outcome: "definitive-refusal", message, code: cause.reason ?? cause.code };
+    return {
+      outcome: "definitive-refusal",
+      message,
+      ...(keepCode ? { code: cause.reason ?? cause.code } : {}),
+    };
   return { outcome: "transient", message };
 }
 
@@ -284,7 +288,7 @@ export function makeHqExecutor(ports: {
         const record = yield* Effect.tryPromise({
           try: () => api.lifecycleReceipt!(requestId),
           catch: (cause): StreamFault => {
-            const fault = faultOf(cause);
+            const fault = faultOf(cause, true);
             return fault.outcome === "uncertain-acceptance"
               ? { outcome: "transient", message: fault.message }
               : fault;
@@ -338,7 +342,7 @@ export function makeHqExecutor(ports: {
             });
           const record = yield* Effect.tryPromise({
             try: () => api.lifecycleWrite!(requestId, intent),
-            catch: faultOf,
+            catch: (cause) => faultOf(cause, true),
           });
           return lifecycleReceipt(record);
         }
