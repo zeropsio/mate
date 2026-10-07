@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { followScrollTo } from "~/lib/followScroll";
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "./tooltip";
 
 const openPopupText = () =>
@@ -78,6 +79,56 @@ describe("tooltip scroll dismissal", () => {
       if (interaction === "focus" || interaction === "hover then focus") {
         expect(document.activeElement).toBe(trigger);
       }
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // A run card's box and the browser strip keep themselves at their end while a run streams;
+  // their own scrolls must not close a tooltip the person is reading.
+  it.each([
+    { scroll: "a box following its end", afterScroll: "https://example.com" },
+    { scroll: "a person in a box that followed its end", afterScroll: null },
+  ])("in the conversation, a scroll by $scroll leaves $afterScroll open", async (scenario) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.useFakeTimers();
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(
+          <TooltipScrollDismissArea>
+            <Tooltip>
+              <TooltipTrigger delay={0}>message link</TooltipTrigger>
+              <TooltipPopup>https://example.com</TooltipPopup>
+            </Tooltip>
+            <div data-testid="follows" style={{ height: 40, overflow: "auto" }}>
+              <div style={{ height: 400 }} />
+            </div>
+          </TooltipScrollDismissArea>,
+        );
+      });
+      const trigger = container.querySelector<HTMLButtonElement>("button")!;
+      const box = container.querySelector<HTMLElement>('[data-testid="follows"]')!;
+      await act(async () => {
+        trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        trigger.dispatchEvent(new MouseEvent("mouseenter"));
+        trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(60);
+      });
+      expect(openPopupText()).toBe("https://example.com");
+
+      await act(async () => {
+        followScrollTo(box, 360);
+        if (scenario.scroll !== "a box following its end") box.scrollTop = 200;
+        box.dispatchEvent(new Event("scroll"));
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(openPopupText()).toBe(scenario.afterScroll);
     } finally {
       await act(async () => root.unmount());
       container.remove();

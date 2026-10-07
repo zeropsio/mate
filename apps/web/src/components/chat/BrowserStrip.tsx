@@ -40,6 +40,7 @@ import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { CheckRead } from "./CheckRead";
 import { useNearViewport } from "../../hooks/useNearViewport";
 import { useTakeThumbnail } from "./takeThumbnail";
+import { followScrollTo } from "~/lib/followScroll";
 
 const DEVICE_WORD: Record<BrowserDevice, string> = {
   desktop: "Desktop",
@@ -177,7 +178,7 @@ export function BrowserStrip({
     shownFramesRef.current = frames;
     setPickedKey(null);
     const film = filmRef.current;
-    if (film) film.scrollTop = film.scrollHeight;
+    if (film) followScrollTo(film, film.scrollHeight);
   });
 
   const shots = strip.checks.flatMap((check) =>

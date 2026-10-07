@@ -1,6 +1,7 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { createContext, use, useEffect, useRef, type ComponentProps, type RefObject } from "react";
 
+import { isFollowScroll } from "~/lib/followScroll";
 import { cn } from "~/lib/utils";
 import { gatedPortal } from "~/components/ui/portal-gate";
 
@@ -24,6 +25,8 @@ function TooltipScrollDismissArea({ onScrollCapture, ...props }: ComponentProps<
         {...props}
         onScrollCapture={(event) => {
           onScrollCapture?.(event);
+          // A box keeping itself at its end while a run streams is not the person scrolling.
+          if (isFollowScroll(event.target)) return;
           const tooltip = hovered.current;
           if (!tooltip || tooltip.trigger.contains(tooltip.trigger.ownerDocument.activeElement)) {
             return;
