@@ -68,6 +68,7 @@ export function SidebarProductionChip({
   mates,
   onAskToFix,
   onOpenStop,
+  onReviewRelease,
 }: {
   readonly chip: ProductionChip;
   /**
@@ -83,6 +84,8 @@ export function SidebarProductionChip({
   /** Writes the problem into the Mate's composer, not sent; absent, no fix is offered. */
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
+  /** Opens the release review only when HQ navigation offers it. */
+  readonly onReviewRelease?: (() => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -147,6 +150,14 @@ export function SidebarProductionChip({
                       opens();
                     };
               }}
+              onReviewRelease={
+                onReviewRelease === undefined
+                  ? undefined
+                  : () => {
+                      setOpen(false);
+                      onReviewRelease();
+                    }
+              }
               projectName={projectName}
             />
           </PopoverPrimitive.Popup>
@@ -174,6 +185,7 @@ export function ChipMenu({
   mates,
   onAskToFix,
   onOpenStop,
+  onReviewRelease,
 }: {
   readonly menu: (nowMs: number) => ChipMenuModel;
   readonly projectName: string;
@@ -181,6 +193,8 @@ export function ChipMenu({
   readonly mates: ReadonlyArray<ChipMate>;
   readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly onOpenStop: OpenStop;
+  /** Opens the release review only when HQ navigation offers it. */
+  readonly onReviewRelease?: (() => void) | undefined;
 }) {
   // Drawn only while open, so this is the moment it opened.
   const [openedAt] = useState(Date.now);
@@ -202,6 +216,16 @@ export function ChipMenu({
           />
         </Fragment>
       ))}
+      {onReviewRelease === undefined ? null : (
+        <button
+          className="zerops-envpop-stop zerops-envpop-press"
+          data-zerops-surface="sidebar-production-review"
+          onClick={onReviewRelease}
+          type="button"
+        >
+          Review release
+        </button>
+      )}
       {alone?.projectId === undefined ? null : (
         <>
           <Separator />
