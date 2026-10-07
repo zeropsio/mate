@@ -190,6 +190,7 @@ import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
+import { VaultPanelContainer } from "./zerops/vault/VaultPanelContainer";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
@@ -3794,6 +3795,10 @@ export default function ChatView(props: ChatViewProps) {
   const addMcpSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "mcp");
+  }, [activeThreadRef]);
+  const addVaultSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "vault");
   }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
@@ -8082,6 +8087,9 @@ export default function ChatView(props: ChatViewProps) {
       case "mcp":
         addMcpSurface();
         return;
+      case "vault":
+        addVaultSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -8192,6 +8200,14 @@ export default function ChatView(props: ChatViewProps) {
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
                   threadId={isServerThread ? activeThreadRef.threadId : undefined}
+                />
+              );
+            case "vault":
+              // One Mate's vault: another Mate's draws afresh, nothing open or half-typed carried over.
+              return (
+                <VaultPanelContainer
+                  environmentId={activeThreadRef.environmentId}
+                  key={activeThreadRef.environmentId}
                 />
               );
             case "change":

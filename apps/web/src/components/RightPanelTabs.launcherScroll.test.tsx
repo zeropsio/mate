@@ -80,7 +80,7 @@ describe("RightPanelTabs launcher scrolling", () => {
   it.each([
     { keys: ["ArrowDown"], lit: "Terminal" },
     { keys: ["ArrowDown", "ArrowDown"], lit: "Files" },
-    { keys: ["ArrowUp"], lit: "MCP" },
+    { keys: ["ArrowUp"], lit: "Vault" },
   ])("brings the card $keys lights ($lit) into view", ({ keys, lit }) => {
     for (const key of keys) press(key);
     expect(scrolled.at(-1)).toMatch(new RegExp(`^${lit}`));
