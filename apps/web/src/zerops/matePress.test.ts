@@ -1,4 +1,9 @@
 import {
+  acquireHqPressLease as pressHold,
+  PRESS_RENEW_MS,
+  PRESS_STEP_RENEW_MS,
+} from "@t3tools/client-runtime/data";
+import {
   finishMateSetupVerb,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
@@ -35,10 +40,7 @@ import {
   STOPPED_SHOWN_MS,
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
-  PRESS_RENEW_MS,
-  PRESS_STEP_RENEW_MS,
   PRESSED_IN_ANOTHER_BROWSER,
-  pressHold,
   whilePressing,
   type MatePress,
   type MatePressState,

@@ -1,3 +1,5 @@
+import { randomUUID } from "~/lib/utils";
+import { acquireHqPressLease } from "@t3tools/client-runtime/data";
 /**
  * Stands one environment up in a group — a Mate, a stage or a production — from whatever surface
  * asked for it: the New Mate dialog over any view (`ZeropsNewMateHost`), and the projects page's
@@ -40,7 +42,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
-import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
+import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { useReadGroupAgents } from "./groupAgents";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
@@ -280,10 +282,15 @@ export function useEnvironmentCreation(): (
       const hold =
         pressKind === null
           ? undefined
-          : pressHold(accountHqApi(client, organization.id, hq), {
-              kind: pressKind,
-              appId: group.groupId,
-            });
+          : acquireHqPressLease(
+              accountHqApi(client, organization.id, hq),
+              {
+                kind: pressKind,
+                active: isCurrent,
+                appId: group.groupId,
+              },
+              randomUUID(),
+            );
       const platform = pressPlatform(inputs, {
         register: pressRegistration(
           inputs,

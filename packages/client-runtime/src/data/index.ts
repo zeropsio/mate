@@ -357,3 +357,12 @@ export { gitCredentials } from "./projections/gitCredentials.ts";
 
 export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
 export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";
+export {
+  acquireHqPressLease,
+  PRESS_RENEW_MS,
+  PRESS_STEP_RENEW_MS,
+  type PressHold,
+} from "./operations/executors/hqPressLease.ts";
+export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
+
+export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";

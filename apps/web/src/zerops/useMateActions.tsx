@@ -1,3 +1,4 @@
+import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
@@ -31,7 +32,7 @@
  * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
  * lets them: its dialog open until HQ answers, a refusal said there.
  */
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
   buildZeropsGroupTree,
@@ -55,7 +56,15 @@ import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import type { HqMoveTo } from "@t3tools/shared/hqOffers";
@@ -185,6 +194,15 @@ interface DialogPress {
 }
 
 const NO_REMAINDERS = Atom.make(NO_LIFECYCLE_REMAINDERS);
+type FaceRequestIntent = { readonly requestId: string; readonly face: string };
+const faceRequests = Atom.family((key: string) =>
+  Atom.make<FaceRequestIntent | null>(null).pipe(
+    Atom.keepAlive,
+    Atom.withLabel(`face-intent:${key}`),
+  ),
+);
+const NO_FACE_REQUEST = Atom.make<FaceRequestIntent | null>(null);
+const EMPTY_FACE_ACTION = Atom.make(NO_FACE_ACTION);
 const UNPRESSED: DialogPress = { pending: false, error: null };
 
 /** HQ says this Mate's key reads other projects too (`keyWider`, ADR 0003's fallout). */
@@ -257,6 +275,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { activeOrganization, client, user } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
+  const atomRegistry = useContext(RegistryContext);
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const router = useRouter();
@@ -272,6 +291,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const [press, setPress] = useState<DialogPress>(UNPRESSED);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
+  const faceRequest = useAtomValue(
+    dialog?.kind === "face" && activeOrganization !== null
+      ? faceRequests(JSON.stringify([activeOrganization.id, dialog.candidate.project.id]))
+      : NO_FACE_REQUEST,
+  );
+  const facePress = useProjection(faceAction, faceRequest?.requestId ?? null, EMPTY_FACE_ACTION);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
@@ -1196,13 +1221,37 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const saveFace = useCallback(
     (candidate: ZeropsCandidatePresentation, face: ZeropsMateFace) => {
       const isCurrent = captureAccountLifetime();
-      setPress({ pending: true, error: null });
       Promise.resolve()
         .then(() => {
           if (!isCurrent()) return;
-          return hqApi().updateMate(candidate.project.id, {
-            face: changedMateFace(readZeropsMembership(candidate.project).face, face),
-          });
+          if (activeOrganization === null) throw new Error("Choose an organization first.");
+          const value = changedMateFace(readZeropsMembership(candidate.project).face, face);
+          const key = JSON.stringify([activeOrganization.id, candidate.project.id]);
+          const selected = atomRegistry.get(faceRequests(key));
+          const previous =
+            selected?.face === value &&
+            !["done", "refused"].includes(operations.readProgress(selected.requestId).stage)
+              ? selected.requestId
+              : undefined;
+          const requestId = previous ?? randomUUID();
+          atomRegistry.set(faceRequests(key), { requestId, face: value });
+          return (async () => {
+            if (previous !== undefined) await operations.askAgain(requestId);
+            if (!isCurrent()) return;
+            await operations.run(
+              {
+                kind: "update-mate-face",
+                orgId: activeOrganization.id,
+                projectId: candidate.project.id,
+                face: value,
+              },
+              {
+                orgId: activeOrganization.id,
+                requestId,
+                unobserved: "HQ may have saved the face. Ask HQ again before changing it.",
+              },
+            );
+          })();
         })
         .then(
           () => {
@@ -1210,13 +1259,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             // Still saying Saving… as it fades: the face it saved shows through it.
             setDialog({ kind: "face", candidate, closing: true });
           },
-          (cause: unknown) => {
-            if (!isCurrent()) return;
-            setPress({ pending: false, error: zeropsErrorMessage(cause) });
-          },
+          // The face projection retains HQ refusal or the uncertain request for this dialog.
+          () => undefined,
         );
     },
-    [hqApi, setDialog],
+    [activeOrganization, atomRegistry, operations, setDialog],
   );
 
   const changeFace = useCallback(
@@ -1476,7 +1523,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "face" ? (
         <ZeropsChangeFaceDialog
-          error={press.error}
+          error={facePress.error}
           face={mateFaceOf(
             tints,
             // The face it wears now, a write landed since the dialog opened included.
@@ -1498,7 +1545,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             saveFace(dialog.candidate, face);
           }}
           open={dialog.closing !== true}
-          pending={press.pending}
+          pending={facePress.pending}
         />
       ) : null}
       {dialog?.kind === "assign" ? (

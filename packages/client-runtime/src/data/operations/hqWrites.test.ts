@@ -40,6 +40,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
     apiOf: (orgId) => {
       calls.push(`hq ${orgId}`);
       return {
+        updateMate: asked("updateMate"),
         renameApp: asked("renameApp"),
         deleteApp: asked("deleteApp"),
         createApp: asked("createApp"),
@@ -412,6 +413,64 @@ describe("keep-deploy-key", () => {
       yield* operations.submit(KEY);
       expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+});
+
+describe("changing a Mate's face", () => {
+  const saysFace = (store: AccountStore, face: string) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [], ungrouped: [{ projectId: "p1", name: "p1", mate: { face } }] },
+    });
+  it.effect(
+    "keeps a lost answer uncertain and adopts only the newly reflected face without another write",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        saysFace(store, "slate:squircle");
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          updateMate: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit({
+          kind: "update-mate-face",
+          orgId: ORG,
+          projectId: "p1",
+          face: "blue:circle",
+        });
+        expect(progress(store).stage).toBe("uncertain");
+        yield* operations.retry("r1");
+        expect(sends).toBe(1);
+        saysFace(store, "blue:circle");
+        yield* operations.retry("r1");
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(sends).toBe(1);
+      }),
+  );
+  it.effect("retains HQ's refusal until a deliberate new attempt", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, {
+        updateMate: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "forbidden",
+            message: "HQ refused this face.",
+          });
+        },
+      });
+      yield* operations.submit({
+        kind: "update-mate-face",
+        orgId: ORG,
+        projectId: "p1",
+        face: "blue:circle",
+      });
+      expect(progress(store)).toMatchObject({ stage: "refused", reason: "HQ refused this face." });
+      yield* operations.retry("r1");
+      expect(progress(store).stage).toBe("refused");
     }),
   );
 });

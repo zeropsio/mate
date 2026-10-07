@@ -1,3 +1,4 @@
+import { randomUUID } from "~/lib/utils";
 /**
  * The press: everything a new environment needs the person's rights for, done in the foreground
  * before Add returns (pass 28; the owner: "this should never ever be tied to user having to have
@@ -16,6 +17,11 @@
  * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
  * group at birth — draws the rest.
  */
+import {
+  acquireHqPressLease,
+  hardenMateProject,
+  type PressHold,
+} from "@t3tools/client-runtime/data";
 import type { MateRegistration } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
@@ -41,8 +47,6 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   birthIntentOf,
   heldOf,
-  HqError,
-  type HqApi,
   type HqEndpoint,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -57,7 +61,6 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { randomUUID } from "~/lib/utils";
 import { accountHqApi } from "./accountHq";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
@@ -903,115 +906,6 @@ function pressedElsewhere(
  * at most once a minute (Chrome's intensive throttling), so a press in a background tab keeps its
  * hold with four minutes to spare, and a closed tab's hold runs out within five.
  */
-export const PRESS_RENEW_MS = 60_000;
-
-/** The least time between two renewals a press's steps ask for: its steps move far more often. */
-export const PRESS_STEP_RENEW_MS = 20_000;
-
-/**
- * A press's hold at its organization's HQ (`PUT /api/presses/{projectId}`, B5): what another
- * browser reads to tell a press still running — however slow — from one whose tab closed, and what
- * keeps two presses from writing one project twice. Taken once the press's project is known,
- * renewed every {@link PRESS_RENEW_MS} and at each of its steps while it runs, given its container
- * import's process once Zerops answered it, and ended at its end: a press that finished leaves no
- * record, one that stopped keeps it for its setup to be finished for its kind. A hold HQ does not
- * answer is not the press's to wait on: it goes on, renewing; only HQ's refusal for another
- * browser's press stops it. One HQ refuses this person outright leaves the press unheld, never
- * asked again.
- */
-export interface PressHold {
-  /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
-  readonly take: (projectId: string) => Promise<"held" | "elsewhere">;
-  /**
-   * Renews the hold now — a step of the press moved — unless it was renewed within
-   * {@link PRESS_STEP_RENEW_MS}.
-   */
-  readonly renew: () => void;
-  /** Names the container import's Zerops process the press is followed by from now on. */
-  readonly imported: (processId: string) => Promise<void>;
-  /** Ends the hold at the press's end: whether it `finished`, or stopped. */
-  readonly end: (finished: boolean) => Promise<void>;
-}
-
-export function pressHold(
-  api: Pick<HqApi, "holdPress" | "endPress"> | null,
-  press: { readonly kind: "mate" | "stage" | "production"; readonly appId?: string | undefined },
-  owner: string = randomUUID(),
-): PressHold {
-  let projectId: string | null = null;
-  let importProcessId: string | undefined;
-  let renewal: ReturnType<typeof setInterval> | null = null;
-  let heldAt = Number.NEGATIVE_INFINITY;
-  // Whether HQ answered a hold of this press: from then on each hold only renews its own live
-  // hold, so one landing after the press's end changes nothing there.
-  let taken = false;
-  // Every hold sent, one after another: the end waits for the last to land.
-  let sending: Promise<void> = Promise.resolve();
-  const hold = (): Promise<void> => {
-    const held = projectId;
-    if (api === null || held === null) return Promise.resolve();
-    heldAt = Date.now();
-    const body = {
-      owner,
-      kind: press.kind,
-      ...(press.appId === undefined ? {} : { appId: press.appId }),
-      ...(importProcessId === undefined ? {} : { importProcessId }),
-    };
-    const sent = sending.then(async () => {
-      // The press ended while this waited its turn: nothing is held any more.
-      if (projectId !== held) return;
-      await api.holdPress(held, taken ? { ...body, renew: true } : body);
-      taken = true;
-    });
-    // The next waits for this one to land, however it lands; its caller hears how.
-    sending = Promise.allSettled([sent]).then(() => undefined);
-    return sent;
-  };
-  const renewNow = () => {
-    hold().catch(() => undefined);
-  };
-  const renew = () => {
-    if (Date.now() - heldAt >= PRESS_STEP_RENEW_MS) renewNow();
-  };
-  return {
-    take: async (pressed) => {
-      projectId = pressed;
-      try {
-        await hold();
-      } catch (cause) {
-        if (cause instanceof HqError && cause.reason === "press_held") return "elsewhere";
-        // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
-        // never asked again. One HQ did not answer is renewed as the press runs.
-        if (cause instanceof HqError && cause.kind === "refused") {
-          projectId = null;
-          return "held";
-        }
-      }
-      if (api !== null && renewal === null) renewal = setInterval(renewNow, PRESS_RENEW_MS);
-      return "held";
-    },
-    renew,
-    imported: async (processId) => {
-      importProcessId = processId;
-      await hold().catch(() => undefined);
-    },
-    end: async (finished) => {
-      if (renewal !== null) clearInterval(renewal);
-      renewal = null;
-      const held = projectId;
-      projectId = null;
-      importProcessId = undefined;
-      if (api === null || held === null) return;
-      // A renewal in flight lands first: the end is always the last word HQ hears of this press.
-      await sending;
-      try {
-        await api.endPress(held, owner, finished);
-      } catch {
-        // A hold HQ did not end runs out on its own: it is the press's lease.
-      }
-    },
-  };
-}
 
 async function pressRun(
   input: Parameters<typeof runPress>[0],
@@ -1185,34 +1079,6 @@ export async function finishMateSetup(input: {
   );
 }
 
-/** The id of the key the Mate of `input.projectId` named to HQ; none where HQ does not say one. */
-async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<string | null> {
-  if (input.hq === null) return null;
-  try {
-    return await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey(
-      input.projectId,
-    );
-  } catch {
-    // HQ not answering, or not telling this person: the harden matches the token list instead.
-    return null;
-  }
-}
-
-/**
- * HQ asked to read the Mate's widened key again (`recheckKey`); HQ not answering leaves its word as
- * it was, and Finish setup offered again — nothing of the Mate's waits on it.
- */
-async function recheckKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<void> {
-  if (input.hq === null) return;
-  try {
-    await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey(
-      input.projectId,
-    );
-  } catch {
-    // Said again on its menu; the harden it asked for is done.
-  }
-}
-
 /**
  * The Mate's zcp service of the project, one Mate per project (audit D2): its id where the project
  * holds one, none where it holds none yet; a project holding several is refused, naming them.
@@ -1284,13 +1150,18 @@ async function finishLocked(
   const hold =
     input.hq === null
       ? undefined
-      : pressHold(accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq), {
-          kind: "mate",
-          appId:
-            input.registration !== null && input.registration.kind === "mate"
-              ? input.registration.groupId
-              : undefined,
-        });
+      : acquireHqPressLease(
+          accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
+          {
+            kind: "mate",
+            active: input.isCurrent,
+            appId:
+              input.registration !== null && input.registration.kind === "mate"
+                ? input.registration.groupId
+                : undefined,
+          },
+          randomUUID(),
+        );
   const platform = pressPlatform(input.inputs, {
     register:
       input.registration === null
@@ -1303,21 +1174,19 @@ async function finishLocked(
   // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
-    // The key its Mate named to HQ by its id, hardened by it alone (audit K3) — a widened one
-    // included, which its id lets the harden narrow; matched on the token list only where the Mate
-    // named none, or HQ does not say.
-    const keyTokenId = await mateKeyAtHq(input);
     try {
-      const organizationId = input.inputs.organizationId;
-      ({ keyNotLowered } = await input.inputs.operations.run(
-        {
-          kind: "harden-project",
-          orgId: organizationId,
-          projectId: input.projectId,
-          ...(keyTokenId === null ? {} : { keyTokenId }),
-        },
-        { orgId: organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
-      ));
+      ({ keyNotLowered } = await hardenMateProject({
+        api:
+          input.hq === null
+            ? null
+            : accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
+        orgId: input.inputs.organizationId,
+        projectId: input.projectId,
+        keyWider: input.keyWider === true,
+        active: input.isCurrent,
+        run: input.inputs.operations.run,
+        unobserved: PRESS_MAY_HAVE_LANDED,
+      }));
     } catch (cause) {
       return finishStopped(input, { kind: "close-off" }, zeropsErrorMessage(cause));
     }
@@ -1325,8 +1194,6 @@ async function finishLocked(
     if (keyNotLowered !== null && input.isCurrent()) {
       noteKeyNotLowered(input.projectId, keyNotLowered);
     }
-    // HQ reads the key again, and stops saying it reads other projects once it does not.
-    if (input.keyWider === true && keyNotLowered === null) await recheckKeyAtHq(input);
   }
   if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
   return runPress({

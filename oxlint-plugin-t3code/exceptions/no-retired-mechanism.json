@@ -634,22 +634,6 @@
   {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "retired-token",
-    "fingerprint": "pressHold(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
-    "fingerprint": "pressHold(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
     "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
@@ -749,14 +733,6 @@
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
     "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
-    "kind": "retired-token",
-    "fingerprint": "pressHold(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {

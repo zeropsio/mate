@@ -202,48 +202,8 @@
   {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "CallExpression",
-    "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
-    "fingerprint": "api.endPress",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
-    "fingerprint": "api.holdPress",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
     "fingerprint": "input.inputs.client.listProjectServices",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "hqApi().updateMate",
-    "owner": "data-layer rewrite: HQ",
     "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   },

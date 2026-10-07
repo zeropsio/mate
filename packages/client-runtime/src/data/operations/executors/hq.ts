@@ -53,7 +53,7 @@ export type HqWrites = Pick<
   | "keepDeployToken"
 > &
   FlowWrites &
-  Partial<Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt">>;
+  Partial<Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate">>;
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -222,6 +222,19 @@ export function makeHqExecutor(ports: {
 
   const creationWrite = (requestId: string, api: HqWrites, intent: HqWriteIntent) => {
     switch (intent.kind) {
+      case "update-mate-face":
+        return Effect.as(
+          write(() => {
+            if (api.updateMate === undefined)
+              throw new HqError({
+                kind: "refused",
+                code: "unsupported",
+                message: "HQ cannot change this Mate’s face.",
+              });
+            return api.updateMate(intent.projectId, { face: intent.face });
+          }),
+          answered(requestId, intent.projectId),
+        );
       case "create-app":
         return Effect.map(
           write(() => api.createApp(intent.name)),
