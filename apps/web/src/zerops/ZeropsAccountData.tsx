@@ -7,6 +7,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   buildsUnderWay,
   makeAccountStore,
+  makeVaultReveal,
   makeZeropsWire,
   observeAccount,
   NOT_READ_SERVICES,
@@ -22,6 +23,7 @@ import {
   type DetailDemand,
   type DatabaseReads,
   type Projection,
+  type VaultReveal,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
@@ -49,6 +51,8 @@ export interface AccountData extends AccountReads {
   readonly handoverCandidates: AccountObservation["handoverCandidates"];
   /** `null` until the mount has made them. */
   readonly logs: BuildLogRegistry | null;
+  /** A secret of the vault, decrypted for the person who asks to see it; held by nothing else. */
+  readonly reveal?: VaultReveal;
   /** A detail held until its read settles: `true` once read, `false` once it failed or was refused. */
   readonly readDetail: AccountObservation["readDetail"];
   /** Our own write changed a sampled detail: it is read again. */
@@ -82,6 +86,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [client, store],
   );
   const logs = useAccountBuildLogs(client, store);
+  const reveal = useMemo(() => makeVaultReveal(client), [client]);
   const database = useAccountDatabase(store);
   const orgId = status === "signed-in" ? (activeOrganization?.id ?? null) : null;
   // The account's lifetime closes (sign-out, another account) before React unmounts this, and
@@ -108,9 +113,10 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       moveOffers: observation.moveOffers,
       handoverCandidates: observation.handoverCandidates,
       logs,
+      reveal,
       compare: observation.compare,
     }),
-    [activeOrganization, database, logs, observation, orgId, store],
+    [activeOrganization, database, logs, observation, orgId, reveal, store],
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);

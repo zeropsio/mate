@@ -251,15 +251,6 @@ export function looksSecret(key: string): boolean {
   );
 }
 
-/** A password a person signs in with: it stays readable to them, hidden on screen. */
-export function isSignInPassword(key: string): boolean {
-  const words = keyWords(key);
-  return (
-    words.some((word) => ADMIN.has(word)) &&
-    words.some((word) => word === "PASSWORD" || word === "PASS")
-  );
-}
-
 /** How a closed row shows a value. */
 export type VaultShow =
   /** Written secret: nobody reads it back. */
@@ -402,9 +393,7 @@ export function vaultNeeds(groups: ReadonlyArray<VaultGroup>): VaultNeeds {
   const entries = groups.flatMap((group) => group.entries).filter((e) => e.scope.editable);
   return {
     unset: entries.filter((entry) => showOf(entry.value).kind === "unset"),
-    readable: entries.filter(
-      (entry) => showOf(entry.value).kind === "masked" && !isSignInPassword(entry.value.key),
-    ),
+    readable: entries.filter((entry) => showOf(entry.value).kind === "masked"),
   };
 }
 
@@ -543,4 +532,18 @@ export function serviceWords(scope: VaultScope): {
     return known ?? { kind: "database", words: type };
   }
   return { kind: "app", words: type === null ? null : (RUNTIME_WORDS[type] ?? type) };
+}
+
+/** Why Zerops would not show a secret, in words: its refusal's code, else that it could not. */
+export function revealRefusalWords(code: string | null): string {
+  switch (code) {
+    case "notInSudoMode":
+      return "Zerops wants you to confirm it's you before it shows a secret.";
+    case "notAuthorized":
+    case "forbidden":
+    case "insufficientPermissions":
+      return "Your role in this organization can't show secrets.";
+    default:
+      return "Couldn't show it. Try again.";
+  }
 }

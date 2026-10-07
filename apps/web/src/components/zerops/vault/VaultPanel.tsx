@@ -14,6 +14,7 @@
 import type {
   VaultImpact,
   VaultNotLive as VaultNotLiveItem,
+  VaultRevealed,
   VaultScope,
   VaultScopeRef,
   VaultView,
@@ -113,6 +114,8 @@ export interface VaultPanelBodyProps {
   readonly onRestart: (serviceId: string) => Promise<void>;
   /** A link to an app's deploy config, drawn by whoever knows the workspace; none without one. */
   readonly renderDeployConfig?: (hostname: string) => ReactNode;
+  /** Decrypts a secret for the person who asks to see it; no Show without it. */
+  readonly onReveal?: (scope: VaultScopeRef, id: string) => Promise<VaultRevealed>;
   /** The clock relative times are read against; now when absent. */
   readonly nowMs?: number;
 }
@@ -499,6 +502,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         mateName={mateName}
         nowMs={nowMs}
         onRestart={(serviceId) => restart(serviceId)}
+        onReveal={props.onReveal}
         onToggle={() => setOpenRow((current) => (current === rowKey ? null : rowKey))}
         onWrite={(change) => {
           void write(entry.scope, change).then((ok) => {
@@ -607,7 +611,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           id="made"
           title="Made by Zerops"
         >
-          <VaultManagedRows scope={scope} />
+          <VaultManagedRows onReveal={props.onReveal} scope={scope} />
         </VaultBox>
       );
     }

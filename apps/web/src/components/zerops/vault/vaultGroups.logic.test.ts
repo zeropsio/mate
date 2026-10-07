@@ -4,10 +4,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { VAULT_FIXTURE } from "./vaultFixture";
 import {
   deployConfigPath,
-  isSignInPassword,
   keyWords,
   labelOf,
   looksSecret,
+  revealRefusalWords,
   serviceWords,
   setupLine,
   showOf,
@@ -154,15 +154,6 @@ describe("secrets", () => {
     expect(looksSecret(key)).toBe(secret);
   });
 
-  it.each([
-    ["SUPERADMIN_PASSWORD", true],
-    ["ADMIN_PASS", true],
-    ["DB_PASSWORD", false],
-    ["ADMIN_EMAIL", false],
-  ])("reads %s as a password a person signs in with: %s", (key, signIn) => {
-    expect(isSignInPassword(key)).toBe(signIn);
-  });
-
   it("shows a written secret and a readable one as dots, a value not set as such, and references apart", () => {
     expect(showOf(value("TOKEN", { sensitive: true, value: null })).kind).toBe("secret");
     expect(showOf(value("JWT_SECRET", { value: "abc" }))).toEqual({ kind: "masked", value: "abc" });
@@ -179,7 +170,7 @@ describe("secrets", () => {
 });
 
 describe("what needs the person", () => {
-  it("asks for the values not set, and offers to protect the readable secrets but a sign-in password", () => {
+  it("asks for the values not set, and offers to protect every readable secret", () => {
     const view = viewOf([
       value("STRIPE_API_KEY", { value: "" }),
       value("STRIPE_WEBHOOK_SECRET", { value: "" }),
@@ -191,7 +182,10 @@ describe("what needs the person", () => {
       "STRIPE_API_KEY",
       "STRIPE_WEBHOOK_SECRET",
     ]);
-    expect(needs.readable.map((entry) => entry.value.key)).toEqual(["COOKIE_SECRET"]);
+    expect(needs.readable.map((entry) => entry.value.key)).toEqual([
+      "SUPERADMIN_PASSWORD",
+      "COOKIE_SECRET",
+    ]);
     expect(unsetTitle(needs.unset)).toBe("Stripe isn't set up yet");
   });
 
@@ -249,5 +243,15 @@ describe("services in words", () => {
     [{ kind: "managed", serviceType: "object-storage" }, "storage", "File storage"],
   ] as const)("says what %j is", (over, kind, words) => {
     expect(serviceWords({ ...SHARED, ...over })).toEqual({ kind, words });
+  });
+});
+
+describe("showing a secret", () => {
+  it.each([
+    ["notAuthorized", "Your role in this organization can't show secrets."],
+    ["notInSudoMode", "Zerops wants you to confirm it's you before it shows a secret."],
+    [null, "Couldn't show it. Try again."],
+  ])("says why Zerops would not show one (%s)", (code, words) => {
+    expect(revealRefusalWords(code)).toBe(words);
   });
 });

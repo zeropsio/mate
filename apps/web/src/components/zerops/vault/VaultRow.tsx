@@ -6,7 +6,9 @@
  */
 import type {
   VaultImpact,
+  VaultRevealed,
   VaultScope,
+  VaultScopeRef,
   VaultValue,
   VaultView,
   VaultWrite,
@@ -40,8 +42,8 @@ import {
   type VaultWordPart,
 } from "./vault.logic";
 import {
-  isSignInPassword,
   looksSecret,
+  revealRefusalWords,
   showOf,
   usedByWords,
   type VaultShow,
@@ -159,6 +161,8 @@ export interface VaultRowProps {
   readonly onToggle: () => void;
   readonly onWrite: (write: VaultWrite) => void;
   readonly onRestart: (serviceId: string, hostname: string) => void;
+  /** Decrypts a secret for the person who asks; absent where nothing can. */
+  readonly onReveal?: ((scope: VaultScopeRef, id: string) => Promise<VaultRevealed>) | undefined;
 }
 
 /** One value on one line: its name in words at the left, the value at the right; open, its verbs. */
@@ -275,11 +279,31 @@ function RowBody(props: VaultRowProps) {
   const masked = !value.sensitive && looksSecret(value.key);
   const [draft, setDraft] = useState(value.sensitive ? "" : (value.value ?? ""));
   const [reveal, setReveal] = useState(false);
+  /** A secret as Zerops decrypted it for this person, held only while the row is open. */
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [revealRefusal, setRevealRefusal] = useState<string | null>(null);
+  const show = async () => {
+    if (props.onReveal === undefined) return;
+    setRevealing(true);
+    const answer = await props.onReveal(scope.ref, value.id);
+    setRevealing(false);
+    if (answer.ok) {
+      setRevealed(answer.value);
+      setDraft(answer.value);
+      setReveal(true);
+      setRevealRefusal(null);
+    } else {
+      setRevealRefusal(revealRefusalWords(answer.code));
+    }
+  };
   const [guard, setGuard] = useState(false);
   const [locking, setLocking] = useState(false);
   const busy = props.activity.kind === "busy";
   const reference = referenceFor(scope, value.key);
-  const changed = value.sensitive ? draft !== "" : draft !== (value.value ?? "");
+  const changed = value.sensitive
+    ? draft !== "" && draft !== revealed
+    : draft !== (value.value ?? "");
   const restarts = value.readers.filter((reader) => reader.state === "restart");
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
@@ -311,12 +335,25 @@ function RowBody(props: VaultRowProps) {
             if (event.key === "Enter") save();
             if (event.key === "Escape") props.onToggle();
           }}
-          placeholder={value.sensitive ? "Paste a new value to replace it" : "Not set"}
+          placeholder={value.sensitive ? "Hidden · paste a new value to replace it" : "Not set"}
           spellCheck={false}
-          type={value.sensitive || (masked && !reveal) ? "password" : "text"}
+          type={(value.sensitive || masked) && !reveal ? "password" : "text"}
           value={draft}
         />
-        {masked ? (
+        {value.sensitive && props.onReveal !== undefined && revealed === null ? (
+          <Tip tip="Show it to you">
+            <Button
+              aria-label="Show"
+              disabled={revealing}
+              onClick={() => void show()}
+              size="icon-sm"
+              variant="ghost-muted"
+            >
+              {revealing ? <Spinner size="xs" /> : <EyeIcon />}
+            </Button>
+          </Tip>
+        ) : null}
+        {masked || (value.sensitive && revealed !== null) ? (
           <Tip tip={reveal ? "Hide" : "Show"}>
             <Button
               aria-label={reveal ? "Hide" : "Show"}
@@ -328,11 +365,11 @@ function RowBody(props: VaultRowProps) {
             </Button>
           </Tip>
         ) : null}
-        {!value.sensitive && (value.value ?? "") !== "" ? (
+        {(!value.sensitive && (value.value ?? "") !== "") || revealed !== null ? (
           <Tip tip={isCopied ? "Copied" : "Copy"}>
             <Button
               aria-label="Copy"
-              onClick={() => copyToClipboard(value.value ?? "", undefined)}
+              onClick={() => copyToClipboard(revealed ?? value.value ?? "", undefined)}
               size="icon-sm"
               variant="ghost-muted"
             >
@@ -362,10 +399,15 @@ function RowBody(props: VaultRowProps) {
         {value.sensitive ? (
           <p className="flex items-center gap-1.5">
             <LockIcon aria-hidden="true" className="size-3 shrink-0" />
-            Secret — nobody can read it back, not you and not {props.mateName ?? "your Mate"}. Your
-            apps still get it.
+            Secret — hidden here and from {props.mateName ?? "your Mate"}. Show reveals it to you;
+            your apps still get it.
           </p>
         ) : null}
+        {revealRefusal === null ? null : (
+          <p className="text-destructive-foreground" role="alert">
+            {revealRefusal}
+          </p>
+        )}
         <p>
           {usedByWords(value)}
           {restarts.length > 0 ? (
@@ -421,11 +463,8 @@ function RowBody(props: VaultRowProps) {
           role="alertdialog"
         >
           <p>
-            Once it's secret, nobody can read it back — not you, not {props.mateName ?? "your Mate"}
-            . Your apps still get it.
-            {isSignInPassword(value.key)
-              ? " You sign in with this one: copy it somewhere safe first."
-              : ""}
+            Once it's secret it stays hidden from everyone who opens this environment and from{" "}
+            {props.mateName ?? "your Mate"}. You can still show it here; your apps still get it.
           </p>
           <div className="flex justify-end gap-1.5">
             <Button onClick={() => setLocking(false)} size="xs" variant="ghost-muted">
@@ -479,33 +518,77 @@ function RowBody(props: VaultRowProps) {
 }
 
 /** A service Zerops runs for the environment (a database): its values, read only. */
-export function VaultManagedRows({ scope }: { readonly scope: VaultScope }) {
+export function VaultManagedRows({
+  scope,
+  onReveal,
+}: {
+  readonly scope: VaultScope;
+  readonly onReveal?: ((scope: VaultScopeRef, id: string) => Promise<VaultRevealed>) | undefined;
+}) {
   return (
     <>
-      {scope.values.map((value) => {
-        const reference = referenceFor(scope, value.key).own;
-        return (
-          <div
-            className="vault-row flex h-11 items-center gap-3 px-3.5"
-            data-static=""
-            data-vault-row={value.key}
-            key={value.id}
-          >
-            <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
-            <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
-              <span className="min-w-0 truncate">
-                {value.sensitive || looksSecret(value.key) ? (
-                  <span className="vault-dots">{DOTS}</span>
-                ) : (
-                  value.value
-                )}
-              </span>
-              <CopyReference text={reference} />
-            </span>
-          </div>
-        );
-      })}
+      {scope.values.map((value) => (
+        <VaultManagedRow key={value.id} onReveal={onReveal} scope={scope} value={value} />
+      ))}
     </>
+  );
+}
+
+function VaultManagedRow({
+  scope,
+  value,
+  onReveal,
+}: {
+  readonly scope: VaultScope;
+  readonly value: VaultValue;
+  readonly onReveal?: ((scope: VaultScopeRef, id: string) => Promise<VaultRevealed>) | undefined;
+}) {
+  const reference = referenceFor(scope, value.key).own;
+  const hidden = value.sensitive || looksSecret(value.key);
+  const [shown, setShown] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const show = async () => {
+    if (!value.sensitive) return setShown(value.value ?? "");
+    if (onReveal === undefined) return;
+    const answer = await onReveal(scope.ref, value.id);
+    if (answer.ok) setShown(answer.value);
+    else setRefusal(revealRefusalWords(answer.code));
+  };
+  return (
+    <div
+      className="vault-row flex min-h-11 flex-wrap items-center gap-x-3 px-3.5 py-1"
+      data-static=""
+      data-vault-row={value.key}
+    >
+      <span className="min-w-0 shrink truncate text-line text-foreground">{value.key}</span>
+      <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1 text-line text-muted-foreground">
+        <span className="min-w-0 truncate" data-vault-shown={shown === null ? undefined : ""}>
+          {hidden && shown === null ? (
+            <span className="vault-dots">{DOTS}</span>
+          ) : (
+            (shown ?? value.value)
+          )}
+        </span>
+        {hidden && (onReveal !== undefined || !value.sensitive) ? (
+          <Tip tip={shown === null ? "Show it to you" : "Hide"}>
+            <Button
+              aria-label={shown === null ? "Show" : "Hide"}
+              onClick={() => (shown === null ? void show() : setShown(null))}
+              size="icon-xs"
+              variant="ghost-muted"
+            >
+              {shown === null ? <EyeIcon /> : <EyeOffIcon />}
+            </Button>
+          </Tip>
+        ) : null}
+        <CopyReference text={reference} />
+      </span>
+      {refusal === null ? null : (
+        <p className="w-full pb-1.5 text-xs text-destructive-foreground" role="alert">
+          {refusal}
+        </p>
+      )}
+    </div>
   );
 }
 

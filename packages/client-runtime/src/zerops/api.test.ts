@@ -2625,6 +2625,28 @@ describe("vault variable writes", () => {
     expect(sent === null ? null : JSON.parse(sent)).toEqual(body);
   });
 
+  it.each([
+    {
+      name: "reveals a Shared secret",
+      call: (client: ZeropsApiClient) => client.revealProjectVariable("e1"),
+      url: `${BASE}/project-env/e1/reveal`,
+    },
+    {
+      name: "reveals a service's secret",
+      call: (client: ZeropsApiClient) => client.revealServiceVariable("u1"),
+      url: `${BASE}/user-data/u1/reveal`,
+    },
+  ])("$name: one GET, answering the decrypted content", async ({ call, url }) => {
+    const stub = recordingFetch(() => jsonResponse(200, { content: "made-up-value" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(call(client)).resolves.toBe("made-up-value");
+    expect(stub.requests).toHaveLength(1);
+    expect(stub.requests[0]?.method ?? "GET").toBe("GET");
+    expect(stub.requests[0]?.url).toBe(url);
+  });
+
   it("keeps the platform's code on a refusal, never the value", async () => {
     const stub = recordingFetch(() =>
       jsonResponse(400, { error: { code: "projectEnvDuplicateKey", message: "Duplicate key." } }),
