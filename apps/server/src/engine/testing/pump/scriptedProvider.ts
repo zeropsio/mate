@@ -343,6 +343,28 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           });
           return itemId;
         }),
+      /** The agent writes a file: a call that starts and completes with its own record. */
+      write: (thread: string, path: string, content: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const payload = { itemType: "file_change", title: `Write ${path}` };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress" },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: { toolName: "Write", input: { file_path: path, content } },
+            },
+          });
+          return itemId;
+        }),
       finish: (thread: string) => endTurn(live(thread), { state: "completed" }),
       /** The agent's process dies mid-turn, each driver as its adapter reports it. */
       crash: (thread: string) =>

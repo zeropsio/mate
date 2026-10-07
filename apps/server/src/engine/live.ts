@@ -47,6 +47,13 @@ const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(Conversatio
 const decodeEnd = Schema.decodeUnknownEffect(Schema.fromJsonString(RunEnd));
 const decodeSource = Schema.decodeUnknownEffect(RunEndSource);
 
+interface CallDataRow {
+  readonly item_id: string;
+  readonly data_json: string;
+  readonly at: number;
+  readonly body_json: string;
+}
+
 interface RunEndRow {
   readonly run_id: string;
   readonly end_json: string | null;
@@ -213,6 +220,40 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         ),
       );
 
+    const callData: MateEngineService["callData"] = (conversationId, find) =>
+      ("itemIds" in find
+        ? find.itemIds.length === 0
+          ? Effect.succeed<ReadonlyArray<CallDataRow>>([])
+          : sql<CallDataRow>`
+              SELECT d.item_id, d.data_json, d.at, i.body_json FROM engine_item_data d
+              JOIN engine_item i ON i.item_id = d.item_id
+              WHERE d.conversation_id = ${conversationId} AND ${sql.in("d.item_id", find.itemIds)}
+              ORDER BY i.opened_seq
+            `
+        : // Only the records whose stored text holds the text, as JSON writes it: a scan of
+          // the bytes, never a parse of every record.
+          sql<CallDataRow>`
+            SELECT d.item_id, d.data_json, d.at, i.body_json FROM engine_item_data d
+            JOIN engine_item i ON i.item_id = d.item_id
+            WHERE d.conversation_id = ${conversationId}
+              AND instr(d.data_json, ${JSON.stringify(find.naming).slice(1, -1)}) > 0
+            ORDER BY i.opened_seq
+          `
+      ).pipe(
+        Effect.map((rows) =>
+          rows.map((row) => {
+            const body = JSON.parse(row.body_json) as { readonly state?: unknown };
+            return {
+              itemId: row.item_id,
+              state: typeof body.state === "string" ? body.state : "unknown",
+              at: row.at,
+              data: JSON.parse(row.data_json) as unknown,
+            };
+          }),
+        ),
+        Effect.orElseSucceed(() => []),
+      );
+
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
@@ -265,6 +306,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       runOutcome,
       assignAgent,
       callProgress,
+      callData,
       runOf,
     });
   });

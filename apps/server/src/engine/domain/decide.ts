@@ -51,6 +51,7 @@ import type {
   EffectLane,
   Envelope,
   EventDraft,
+  ItemDataDraft,
   ItemDetailDraft,
   ProviderSignal,
 } from "./command.ts";
@@ -119,6 +120,7 @@ class StepBuilder {
   readonly events: Array<EventDraft> = [];
   readonly effects: Array<EffectDraft> = [];
   readonly details: Array<ItemDetailDraft> = [];
+  readonly data: Array<ItemDataDraft> = [];
   result: Omit<Extract<CommandResult, { _tag: "Accepted" }>, "_tag" | "seq"> = {};
 
   readonly envelope: Envelope;
@@ -178,6 +180,7 @@ export const decide = (state: ConversationState, envelope: Envelope, now: number
       events: b.events,
       effects: b.effects,
       details: b.details,
+      ...(b.data.length === 0 ? {} : { data: b.data }),
       result: { _tag: "Accepted", seq: b.state.headSeq, ...b.result },
     },
   };
@@ -1128,6 +1131,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       }
       if (signal.kind !== "item-updated" && signal.detail !== undefined) {
         b.details.push({ itemId: id, body: signal.detail });
+      }
+      if (signal.kind === "item-closed" && signal.data !== undefined) {
+        b.data.push({ itemId: id, data: signal.data });
       }
       return;
     }

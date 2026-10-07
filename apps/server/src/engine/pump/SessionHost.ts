@@ -163,11 +163,22 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     const closed: Array<{ readonly session: SessionId; readonly words: string }> = [];
     let unasked = false;
     for (const next of inputs) {
+      // A call's own record (what it was asked, what it wrote) rides its close to the record.
+      const data =
+        next.kind === "event" && next.event.type === "item.completed"
+          ? (next.event.payload as { readonly data?: unknown }).data
+          : undefined;
       for (const signal of translator.step(next)) {
         const step = toCore.step(signal, now);
         if (step.signals.length > 0) {
           const batch = batches.get(signal.session) ?? [];
-          batch.push(...step.signals);
+          batch.push(
+            ...(data === undefined
+              ? step.signals
+              : step.signals.map((one) =>
+                  one.kind === "item-closed" && one.body.kind === "call" ? { ...one, data } : one,
+                )),
+          );
           batches.set(signal.session, batch);
         }
         evidence.push(...step.evidence);

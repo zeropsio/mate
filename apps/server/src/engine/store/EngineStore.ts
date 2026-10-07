@@ -387,6 +387,13 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         ON CONFLICT (item_id) DO UPDATE SET body = excluded.body
       `;
     }
+    for (const kept of step.data ?? []) {
+      yield* sql`
+        INSERT INTO engine_item_data (item_id, conversation_id, data_json, at)
+        VALUES (${kept.itemId}, ${envelope.conversationId}, ${jsonText(kept.data)}, ${now})
+        ON CONFLICT (item_id) DO UPDATE SET data_json = excluded.data_json, at = excluded.at
+      `;
+    }
     yield* fault("projections");
 
     const newHead = head + events.length;

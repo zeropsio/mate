@@ -234,3 +234,32 @@ describe("a call's progress", () => {
     ),
   );
 });
+
+describe("a completed call's own record", () => {
+  it.effect("is kept beside its item, for what a file write wrote", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Write the readme" });
+        yield* w.agent((agent, thread) => agent.write(thread, "/var/www/README.md", "# Hi\n"));
+        const engine = yield* w.engine;
+        const call = (yield* w.items(runId(mate, 1))).find((item) => item.kind === "call");
+        assert.strictEqual(call?.state, "closed");
+        const written = yield* engine.callData(mate, { naming: "/var/www/README.md" });
+        assert.deepStrictEqual(
+          written.map((row) => [row.state, row.data]),
+          [
+            [
+              "done",
+              { toolName: "Write", input: { file_path: "/var/www/README.md", content: "# Hi\n" } },
+            ],
+          ],
+        );
+        const byId = yield* engine.callData(mate, { itemIds: [written[0]!.itemId] });
+        assert.strictEqual(byId.length, 1);
+        assert.deepStrictEqual(yield* engine.callData(mate, { naming: "/etc/passwd" }), []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});

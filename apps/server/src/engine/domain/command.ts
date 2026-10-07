@@ -73,6 +73,8 @@ export type ProviderSignal =
       readonly by?: ItemActor;
       readonly body: ItemBody;
       readonly detail?: string;
+      /** A call's own record as its driver gave it (what it was asked, what it wrote). */
+      readonly data?: unknown;
       readonly afterEnd?: true;
     }
   | {
@@ -220,10 +222,17 @@ export interface ItemDetailDraft {
   readonly body: string;
 }
 
+/** A call's own record, kept beside its item: never read by the rules, only by its readers. */
+export interface ItemDataDraft {
+  readonly itemId: string;
+  readonly data: unknown;
+}
+
 export interface Step {
   readonly events: ReadonlyArray<EventDraft>;
   readonly effects: ReadonlyArray<EffectDraft>;
   readonly details: ReadonlyArray<ItemDetailDraft>;
+  readonly data?: ReadonlyArray<ItemDataDraft>;
   readonly result: Extract<CommandResult, { _tag: "Accepted" }>;
 }
 

@@ -68,6 +68,14 @@ export class WakeRefused extends Data.TaggedError("WakeRefused")<{
   readonly message: string;
 }> {}
 
+/** A call's own record: its item, how the call ended (`done`, `failed`, …), and when. */
+export interface CallData {
+  readonly itemId: string;
+  readonly state: string;
+  readonly at: number;
+  readonly data: unknown;
+}
+
 /** How a woken run ended, once it has, and who said so. */
 export interface RunOutcome {
   readonly wakeId: WakeId;
@@ -111,6 +119,14 @@ export interface MateEngineService {
     toolName: string,
     progress: unknown,
   ) => Effect.Effect<void>;
+  /**
+   * Calls' own records kept beside their items (what a file write wrote), by item, or every call
+   * of the conversation whose record names this text; the oldest first.
+   */
+  readonly callData: (
+    conversationId: ConversationId,
+    find: { readonly itemIds: ReadonlyArray<string> } | { readonly naming: string },
+  ) => Effect.Effect<ReadonlyArray<CallData>>;
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
@@ -143,5 +159,6 @@ export const inertMateEngine: MateEngineService = {
   runOutcome: () => Effect.succeed(undefined),
   assignAgent: () => Effect.succeed(false),
   callProgress: () => Effect.void,
+  callData: () => Effect.succeed([]),
   runOf: () => Effect.succeed(undefined),
 };
