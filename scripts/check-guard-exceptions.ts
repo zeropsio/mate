@@ -8,6 +8,8 @@ import {
   loadCompletedPhases,
   loadExceptionLedger,
   parseFindingMessage,
+  normalizeFingerprint,
+  type ExceptionEntry,
   reconcileExceptions,
   type ExceptionFinding,
 } from "@t3tools/oxlint-plugin-t3code/exceptions";
@@ -18,8 +20,10 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
 /**
@@ -51,6 +55,15 @@ const OxlintOutputSchema = Schema.Struct({
 });
 const decodeOxlintOutput = Schema.decodeUnknownSync(Schema.fromJsonString(OxlintOutputSchema));
 
+const decodeGitHubEvent = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      before: Schema.optional(Schema.String),
+      pull_request: Schema.optional(Schema.Struct({ base: Schema.Struct({ sha: Schema.String }) })),
+    }),
+  ),
+);
+
 /** Everything the injectable lint runner needs to execute one isolated rule scan. */
 export interface GuardLintRequest {
   readonly cwd: string;
@@ -76,6 +89,7 @@ interface GuardExceptionCheckOptions<E, R> {
   readonly cwd: string;
   readonly directory: string;
   readonly ruleNames?: ReadonlyArray<string>;
+  readonly baseline?: ReadonlyMap<string, ReadonlyArray<ExceptionEntry>>;
   readonly runLint: (request: GuardLintRequest) => Effect.Effect<GuardLintOutput, E, R>;
 }
 
@@ -132,6 +146,98 @@ const spawnGuardLint = Effect.fn("spawnGuardLint")(function* (request: GuardLint
   );
   return { stdout, stderr, exitCode };
 }, Effect.scoped);
+
+/** These ledgers remain files even at zero; rule discovery must never lose a guard. */
+export const RATCHET_RULES = [
+  "no-remote-io-outside-data-layer",
+  "no-retired-mechanism",
+  "no-failure-to-empty",
+  "no-remote-data-in-browser-storage",
+] as const;
+
+const encodeIdentity = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+
+const identityOf = (entry: ExceptionEntry): string =>
+  encodeIdentity([
+    entry.path.replaceAll("\\", "/"),
+    entry.kind,
+    normalizeFingerprint(entry.fingerprint),
+  ]);
+
+/** Metadata edits cannot buy another identity or another occurrence of the same identity. */
+export const ratchetAdditions = (
+  entries: ReadonlyArray<ExceptionEntry>,
+  baseline: ReadonlyArray<ExceptionEntry>,
+): ReadonlyArray<string> => {
+  const counts = new Map<string, number>();
+  for (const entry of baseline) {
+    const identity = identityOf(entry);
+    counts.set(identity, (counts.get(identity) ?? 0) + 1);
+  }
+  const additions: Array<string> = [];
+  for (const entry of entries) {
+    const identity = identityOf(entry);
+    const remaining = counts.get(identity) ?? 0;
+    if (remaining === 0)
+      additions.push(`${entry.path}:${entry.kind} ${normalizeFingerprint(entry.fingerprint)}`);
+    else counts.set(identity, remaining - 1);
+  }
+  return additions;
+};
+
+/** Compare with the shared ancestor, including uncommitted edits. Main CI compares its last commit. */
+export const loadRatchetBaseline = (
+  cwd: string,
+  base: string,
+): ReadonlyMap<string, ReadonlyArray<ExceptionEntry>> => {
+  const git = (args: ReadonlyArray<string>): string => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+    return result.stdout.trim();
+  };
+  const head = git(["rev-parse", "HEAD"]);
+  let comparison = base;
+  if (process.env.GITHUB_ACTIONS === "true" && base === "origin/main") {
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    if (eventPath === undefined)
+      throw new Error("GitHub ratchet needs its push or PR event baseline.");
+    const event = decodeGitHubEvent(NodeFS.readFileSync(eventPath, "utf8"));
+    const revision = event.pull_request?.base.sha ?? event.before;
+    if (revision === undefined || !/^[a-f0-9]{40}$/u.test(revision) || /^0+$/u.test(revision)) {
+      throw new Error("GitHub ratchet needs a valid previous main or PR base commit.");
+    }
+    comparison = revision;
+    // Checkouts may contain only HEAD. Load both ancestry chains before computing their merge-base.
+    if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
+      git(["fetch", "--no-tags", "--unshallow", "origin", head, comparison]);
+    } else if (
+      NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${comparison}^{commit}`], { cwd })
+        .status !== 0
+    ) {
+      git(["fetch", "--no-tags", "origin", comparison]);
+    }
+  }
+  const ancestor = git(["merge-base", comparison, "HEAD"]);
+  const revision =
+    process.env.CI === "true" && process.env.GITHUB_ACTIONS !== "true" && ancestor === head
+      ? git(["rev-parse", "HEAD^"])
+      : ancestor;
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "guard-baseline-"));
+  try {
+    return new Map(
+      RATCHET_RULES.map((ruleName) => {
+        // Missing history or a missing baseline ledger is an error, never a fresh allowance.
+        NodeFS.writeFileSync(
+          NodePath.join(directory, `${ruleName}.json`),
+          git(["show", `${revision}:oxlint-plugin-t3code/exceptions/${ruleName}.json`]),
+        );
+        return [ruleName, loadExceptionLedger(ruleName, directory).entries];
+      }),
+    );
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true });
+  }
+};
 
 const discoverRuleNames = (directory: string): ReadonlyArray<string> => {
   if (!NodeFS.existsSync(directory)) return [];
@@ -201,6 +307,15 @@ const parseFindings = (
 /** One AST scan for the selected rules, then reconcile each ledger independently. */
 export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E, R>) =>
   Effect.gen(function* () {
+    if (options.baseline !== undefined) {
+      for (const ruleName of RATCHET_RULES) {
+        yield* tryDriverOperation(ruleName, "required ledger file is missing", () => {
+          if (!NodeFS.existsSync(NodePath.join(options.directory, `${ruleName}.json`))) {
+            throw new Error("Keep the ledger file as [] at zero.");
+          }
+        });
+      }
+    }
     const ruleNames = [
       ...new Set(options.ruleNames ?? discoverRuleNames(options.directory)),
     ].toSorted();
@@ -225,6 +340,13 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
       const ledger = yield* tryDriverOperation(ruleName, "failed to load exception ledger", () =>
         loadExceptionLedger(ruleName, options.directory),
       );
+      const baseline = options.baseline?.get(ruleName);
+      if (baseline !== undefined) {
+        const additions = ratchetAdditions(ledger.entries, baseline);
+        problemCount += additions.length;
+        for (const addition of additions)
+          reports.push(`${ruleName}: new exception identity/occurrence ${addition}`);
+      }
       const findings = yield* tryDriverOperation(ruleName, "failed to parse oxlint findings", () =>
         parseFindings(ruleName, options.cwd, output),
       );
@@ -249,6 +371,7 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
 export const checkGuardExceptionsCommand = Command.make(
   "check-guard-exceptions",
   {
+    base: Flag.String("base").pipe(Flag.withDefault("origin/main")),
     rule: Flag.String("rule").pipe(
       Flag.atLeast(0),
       Flag.withDescription(
@@ -256,12 +379,18 @@ export const checkGuardExceptionsCommand = Command.make(
       ),
     ),
   },
-  ({ rule }) =>
+  ({ rule, base }) =>
     Effect.gen(function* () {
       const directory = NodePath.join(DEFAULT_REPO_ROOT, "oxlint-plugin-t3code", "exceptions");
+      const baseline = yield* tryDriverOperation(
+        "guard exceptions",
+        "failed to load Git ratchet baseline",
+        () => loadRatchetBaseline(DEFAULT_REPO_ROOT, base),
+      );
       const result = yield* checkGuardExceptions({
         cwd: DEFAULT_REPO_ROOT,
         directory,
+        baseline,
         ...(rule.length > 0 ? { ruleNames: rule } : {}),
         runLint: spawnGuardLint,
       });
@@ -273,7 +402,16 @@ export const checkGuardExceptionsCommand = Command.make(
           process.exitCode = result.exitCode;
         });
       }
-    }),
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          yield* Console.error(error.message);
+          yield* Effect.sync(() => {
+            process.exitCode = 1;
+          });
+        }),
+      ),
+    ),
 ).pipe(
   Command.withDescription(
     "Reconcile design-system guard diagnostics with their fingerprint exception ledgers.",
