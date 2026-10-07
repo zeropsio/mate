@@ -30,7 +30,9 @@ export function budgets(s: Scenario) {
             return message.values.some((row) => {
               if (row.key !== `app:${appId}`) return false;
               const app = Schema.decodeUnknownOption(HqNavigationApp)(row.value);
-              return Option.isSome(app) && app.value.releaseOffer?.head != null;
+              if (Option.isNone(app)) return false;
+              const offer = app.value.releaseOffer;
+              return offer !== null && "head" in offer && offer.head !== null;
             });
           });
         }).pipe(Effect.scoped),
