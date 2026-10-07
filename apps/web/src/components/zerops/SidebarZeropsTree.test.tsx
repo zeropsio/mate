@@ -625,6 +625,15 @@ describe("SidebarZeropsTree", () => {
     expect(html.includes("<button")).toBe(again);
   });
 
+  it("the header shows HQ's refusal and next action instead of an unreachable status", () => {
+    const line = "HQ refused the renewed session. Try again, or sign in to Zerops again.";
+    const html = renderToStaticMarkup(
+      <SidebarHqStatus kind="refused" line={line} onAgain={() => {}} />,
+    );
+    expect(html).toContain(line);
+    expect(html).not.toContain("HQ is not reachable");
+  });
+
   // One band in the list lights the open Mate's row and slides to the next
   // one opened (M11): the row itself paints nothing for being open, and
   // lights only under the pointer.

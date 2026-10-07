@@ -1887,7 +1887,7 @@ export function SidebarHqStatus({
             aria-hidden="true"
             className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
           >
-            {kind === "last-known" ? HQ_LAST_KNOWN : "HQ unavailable"}
+            {kind === "refused" ? line : kind === "last-known" ? HQ_LAST_KNOWN : "HQ unavailable"}
           </span>
         )}
         <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>

@@ -24,7 +24,7 @@ import {
   type StreamFault,
 } from "./streamMachine.ts";
 
-export type LinkSignal = "manual-retry" | "input-changed";
+export type LinkSignal = "manual-retry" | "input-changed" | "resume";
 
 export interface LinkSupervisor {
   /** Runs for as long as the link is demanded; interrupting it ends the demand. */
@@ -64,7 +64,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
     const { key, scopes, store } = options;
     /** Every child of the link now: its navigation scopes and the details demanded. */
     const children = () => [...scopes, ...(options.details?.() ?? [])];
-    const signals = yield* Queue.unbounded<LinkSignal>();
+    const signals = yield* Queue.sliding<LinkSignal>(1);
 
     /**
      * Every stream event goes through here. Whenever the link ends up refused — by a refusal, a
@@ -228,9 +228,17 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
       // by it, never by its link's own attempts.
       signal: (signal) =>
         Effect.gen(function* () {
+          if (
+            signal === "resume" &&
+            [key, ...children()].every(
+              (target) => streamOf(store.state(), target).phase !== "recovering",
+            )
+          )
+            return;
           for (const scope of children()) yield* dispatch({ kind: signal }, scope);
           options.childMoved?.();
-          yield* Queue.offer(signals, signal);
+          if (signal !== "resume" || streamOf(store.state(), key).phase === "recovering")
+            yield* Queue.offer(signals, signal);
         }),
     };
   });
