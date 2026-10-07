@@ -52,6 +52,12 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
 import { AssetSigningKey } from "./AssetSigningKey.ts";
+import {
+  findRetainedMedia,
+  isTemporaryMediaPath,
+  retainedMediaDirectory,
+  retainMedia,
+} from "./RetainedMedia.ts";
 
 export const ASSET_ROUTE_PREFIX = "/api/assets";
 
@@ -104,6 +110,12 @@ const AssetClaimsSchema = Schema.Union([
     filePath: Schema.String,
     device: Schema.String,
     inode: Schema.String,
+    expiresAt: Schema.Number,
+  }),
+  Schema.Struct({
+    version: Schema.Literal(1),
+    kind: Schema.Literal("retained-media"),
+    relativePath: Schema.String,
     expiresAt: Schema.Number,
   }),
   Schema.Struct({
@@ -340,6 +352,23 @@ const resolveOutsideWorkspaceImage = Effect.fn("AssetAccess.resolveOutsideWorksp
   },
 );
 
+const signAssetUrl = Effect.fnUntraced(function* (input: {
+  readonly resource: AssetResource;
+  readonly claims: AssetClaims;
+  readonly fileName: string;
+}) {
+  const signingKey = yield* AssetSigningKey;
+  const signingSecret = yield* signingKey.get.pipe(
+    Effect.mapError((cause) => new AssetSigningKeyLoadError({ resource: input.resource, cause })),
+  );
+  const encodedPayload = base64UrlEncode(encodeAssetClaims(input.claims));
+  const token = `${encodedPayload}.${signPayload(encodedPayload, signingSecret)}`;
+  return {
+    relativeUrl: `${ASSET_ROUTE_PREFIX}/${token}/${encodeURIComponent(input.fileName)}`,
+    expiresAt: input.claims.expiresAt,
+  };
+});
+
 export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (input: {
   readonly resource: AssetResource;
   readonly workspaceRoot?: string;
@@ -353,7 +382,58 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   let fileName: string;
   let sourcePath: string | undefined;
   let imageDimensions: ImageDimensions | null = null;
+  let canonicalMediaPath: string | undefined;
+  const mediaResource =
+    input.resource._tag === "media-file" ||
+    (input.resource._tag === "workspace-file" && isWorkspaceImagePreviewPath(input.resource.path))
+      ? input.resource
+      : undefined;
+  const requestedMediaPath = mediaResource
+    ? path.isAbsolute(mediaResource.path)
+      ? mediaResource.path
+      : input.workspaceRoot
+        ? path.resolve(input.workspaceRoot, mediaResource.path)
+        : undefined
+    : undefined;
+  const retainedPath =
+    mediaResource &&
+    requestedMediaPath &&
+    !(yield* fileSystem
+      .exists(requestedMediaPath)
+      .pipe(
+        Effect.mapError(
+          (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+        ),
+      ))
+      ? yield* findRetainedMedia(mediaResource, requestedMediaPath).pipe(
+          Effect.mapError(
+            (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+          ),
+        )
+      : null;
 
+  if (retainedPath !== null) {
+    if (input.resource._tag === "workspace-file" && !input.workspaceRoot) {
+      return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
+    }
+    const retainedFile = yield* resolveCanonicalWorkspaceFile({
+      workspaceRoot: yield* retainedMediaDirectory,
+      relativePath: retainedPath,
+    }).pipe(
+      Effect.mapError(
+        (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+      ),
+    );
+    if (!retainedFile)
+      return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
+    imageDimensions = yield* readImageDimensionsFromHeader(retainedFile);
+    claims = { version: 1, kind: "retained-media", relativePath: retainedPath, expiresAt };
+    fileName = path.basename(retainedPath);
+    return {
+      ...(yield* signAssetUrl({ resource: input.resource, claims, fileName })),
+      ...(imageDimensions !== null ? { imageDimensions } : {}),
+    };
+  }
   switch (input.resource._tag) {
     case "media-file": {
       let requestedPath = input.resource.path;
@@ -391,6 +471,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
       }
       imageDimensions = opened.dimensions;
+      canonicalMediaPath = canonicalFile;
       claims = {
         version: 1,
         kind: "media-file-exact",
@@ -435,6 +516,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         }
         const image = yield* resolveOutsideWorkspaceImage(input.resource, outsideRoot);
         imageDimensions = image.dimensions;
+        canonicalMediaPath = image.canonicalFile;
         claims = {
           version: 1,
           kind: "media-file-exact",
@@ -495,6 +577,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
             baseRelativePath: path.dirname(resolved.relativePath),
             expiresAt,
           };
+      if (claims.kind === "workspace-file-exact") canonicalMediaPath = canonicalFile;
       fileName = path.basename(resolved.relativePath);
       break;
     }
@@ -638,16 +721,31 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     }
   }
 
-  const signingKey = yield* AssetSigningKey;
-  const signingSecret = yield* signingKey.get.pipe(
-    Effect.mapError(
-      (cause) =>
-        new AssetSigningKeyLoadError({
-          resource: input.resource,
-          cause,
-        }),
-    ),
-  );
+  if (
+    mediaResource &&
+    requestedMediaPath &&
+    canonicalMediaPath &&
+    (yield* isTemporaryMediaPath(canonicalMediaPath).pipe(
+      Effect.mapError(
+        (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+      ),
+    ))
+  ) {
+    const retained = yield* retainMedia({
+      resource: mediaResource,
+      sourcePath: requestedMediaPath,
+      canonicalFile: canonicalMediaPath,
+      ...(claims.kind === "media-file-exact" ? { identity: claims } : {}),
+    }).pipe(
+      Effect.mapError(
+        (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+      ),
+    );
+    if (!retained) return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
+    claims = { version: 1, kind: "retained-media", relativePath: retained, expiresAt };
+    fileName = path.basename(retained);
+  }
+
   if (claims.kind === "project-favicon" || claims.kind === "project-favicon-external") {
     const issuedAt = yield* Clock.currentTimeMillis;
     expiresAt =
@@ -655,11 +753,8 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       PROJECT_FAVICON_TOKEN_BUCKET_MS;
     claims = { ...claims, expiresAt };
   }
-  const encodedPayload = base64UrlEncode(encodeAssetClaims(claims));
-  const token = `${encodedPayload}.${signPayload(encodedPayload, signingSecret)}`;
   return {
-    relativeUrl: `${ASSET_ROUTE_PREFIX}/${token}/${encodeURIComponent(fileName)}`,
-    expiresAt,
+    ...(yield* signAssetUrl({ resource: input.resource, claims, fileName })),
     ...(sourcePath !== undefined ? { sourcePath } : {}),
     ...(imageDimensions !== null ? { imageDimensions } : {}),
   };
@@ -739,6 +834,23 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
   const decodedPath = decodeRelativePath(relativePath);
   if (decodedPath === null) return null;
   const path = yield* Path.Path;
+  if (claims.kind === "retained-media") {
+    if (decodedPath !== path.basename(claims.relativePath)) return null;
+    const canonicalFile = yield* resolveCanonicalWorkspaceFileForRequest({
+      workspaceRoot: yield* retainedMediaDirectory,
+      relativePath: claims.relativePath,
+    });
+    if (!canonicalFile) return null;
+    const mimeType = mediaMimeTypeFromExtension(path.extname(canonicalFile));
+    if (!mimeType) return null;
+    const file = yield* openMediaFile(canonicalFile).pipe(
+      Effect.tapError((cause) => Effect.logError("Failed to open retained media.", { cause })),
+      Effect.orElseSucceed(() => null),
+    );
+    return file
+      ? ({ kind: "file", path: canonicalFile, mimeType, file } satisfies ResolvedAsset)
+      : null;
+  }
   if (claims.kind === "media-file-exact") {
     if (decodedPath !== path.basename(claims.filePath)) return null;
     const canonicalFile = yield* resolveCanonicalFile(claims.filePath).pipe(
