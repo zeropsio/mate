@@ -582,6 +582,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
     : mateEnvironmentsEmptyReason(candidates);
+  const openReleaseReview = useOpenReview();
   const hqView = useAtomValue(hqMatesAtom);
   const hqMates = hqView?.current === true ? hqView.mates : null;
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
@@ -1152,6 +1153,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               }
               onAskToFix={onAskToFix}
               onOpenStop={openStop}
+              onReviewRelease={
+                flow?.releaseOffered === true
+                  ? () => openReleaseReview({ kind: "release", groupId: id })
+                  : undefined
+              }
               projectName={projectName}
               stops={productionStop === undefined ? [] : [productionStop.projectId]}
             />

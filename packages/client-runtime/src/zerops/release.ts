@@ -38,12 +38,7 @@
 
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import {
-  compareReleaseTags,
-  nextPatch,
-  type Release,
-  type ReleaseRollout,
-} from "@t3tools/shared/hqRelease";
+import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { Moved, MovedCommits } from "./releaseCompare.ts";
@@ -170,108 +165,9 @@ export function releaseNothingReason(gate: ReleaseGate | undefined): string | un
 export const RELEASE_NO_PRODUCTION = "There is no production to release to.";
 /** Who may release is not known yet: HQ's rule has nothing to be asked over. */
 export const RELEASE_CHECKING = "Checking what can be released…";
-/** What goes live could not be compared: no release is offered over a list nobody could read. */
-export function releaseUncheckedReason(why: string): string {
-  return `Can't check what can be released: ${why.replace(/\.$/u, "")}.`;
-}
 /** A release tagged and not yet running: another tag now would be a second release of it. */
 export function releaseInFlightReason(tag: string): string {
   return `Releasing ${tag}…`;
-}
-
-/**
- * Whether to offer *Release* at all.
- *
- * Who may is HQ's offer (`can`'s `release`), in its words; HQ asks it again at the press. Then a
- * release in flight, nothing merged, and nothing that would move hold it, in that order; and last
- * what goes live while it is read, or could not be (main C05).
- */
-export function releaseGate(input: {
-  /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
-  readonly permission: ReleaseGate | undefined;
-  readonly entries: ReadonlyArray<ReleaseEntry>;
-  /**
-   * Per service, repository `main` against production. Omitted where production's
-   * side is not known — then the gate says nothing about what would move.
-   */
-  readonly comparison?: ReadonlyArray<ReleaseComparison> | undefined;
-  /** The release tag on its way to production (`releaseInFlight`). */
-  readonly inFlight?: string | undefined;
-  /** What it would put live (`movedCommits`); omitted where nobody asks. */
-  readonly live?: MovedCommits | undefined;
-  /**
-   * Whether the application has a production, in any state; omitted where it is not known. With
-   * none no release exists, whoever asks.
-   */
-  readonly hasProduction?: boolean | undefined;
-}): ReleaseGate {
-  if (input.hasProduction === false) return { allowed: false, reason: RELEASE_NO_PRODUCTION };
-  if (input.permission === undefined) return { allowed: false, reason: RELEASE_CHECKING };
-  if (!input.permission.allowed) return input.permission;
-  if (input.inFlight !== undefined)
-    return { allowed: false, reason: releaseInFlightReason(input.inFlight) };
-  if (input.entries.length === 0) return { allowed: false, reason: RELEASE_NOTHING_MERGED };
-  const comparison = input.comparison;
-  if (comparison !== undefined && comparison.length > 0 && !comparison.some((row) => row.changed)) {
-    return { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN };
-  }
-  if (input.live?.state === "reading") return { allowed: false, reason: RELEASE_CHECKING };
-  if (input.live?.state === "failed")
-    return { allowed: false, reason: releaseUncheckedReason(input.live.reason) };
-  return { allowed: true };
-}
-
-/**
- * What the button shows before it is pressed, from what would be released and
- * what production actually runs.
- *
- * The whole offer in one answer, so no surface holds release logic of its own:
- * the comparison the person reads, the tag name that would be suggested,
- * whether it is offered at all, and the entries the tag lists — the verb tags
- * exactly what the offer showed.
- */
-export function releaseOffer(input: {
-  /** HQ's rule for this person (`releaseGate`). */
-  readonly permission: ReleaseGate | undefined;
-  /** `{service: full sha}` each repository's default branch holds. */
-  readonly candidate: ReadonlyMap<string, string>;
-  /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
-  readonly production: ReadonlyMap<string, string>;
-  /** The release tag on its way to production (`releaseInFlight`). */
-  readonly inFlight?: string | undefined;
-  /** Every release's name, so the next one is suggested over the newest (`nextPatch`). */
-  readonly tags: ReadonlyArray<string>;
-  /** What it would put live, as HQ compared it (`movedCommits`). */
-  readonly live: MovedCommits;
-  /** Whether the application has a production (`releaseGate`). */
-  readonly hasProduction?: boolean | undefined;
-}): {
-  readonly gate: ReleaseGate;
-  readonly suggestion: string;
-  readonly comparison: ReadonlyArray<ReleaseComparison>;
-  readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** What it would put live, per comparison read; nothing until all of it is known. */
-  readonly contents: ReadonlyArray<Moved>;
-} {
-  const entries = releaseEntries(input.candidate);
-  const comparison = compareForRelease({
-    candidate: input.candidate,
-    production: input.production,
-  });
-  return {
-    gate: releaseGate({
-      permission: input.permission,
-      entries,
-      comparison,
-      inFlight: input.inFlight,
-      live: input.live,
-      hasProduction: input.hasProduction,
-    }),
-    suggestion: nextPatch(input.tags),
-    comparison,
-    entries,
-    contents: input.live.state === "known" ? input.live.moved : [],
-  };
 }
 
 /** How HQ judged a release, at its birth: approved, or refused (`Release.state`). */

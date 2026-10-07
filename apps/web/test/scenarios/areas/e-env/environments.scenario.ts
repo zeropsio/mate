@@ -16,8 +16,7 @@ describe("E: stage, production, release and rollback", () => {
           const sha = yield* f.merge();
           if (stage === "failed") yield* a.when.finish("stage", "FAILED");
           yield* f.s.given.signedIn;
-          yield* a.when.openFromNavigation;
-          yield* a.when.click("Review release");
+          yield* a.when.reviewFromFoldedChip;
           yield* a.then.releaseEntriesShow(sha);
           yield* a.when.click("Release v0.1.0");
           yield* a.when.finish("production");

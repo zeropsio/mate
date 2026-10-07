@@ -41,6 +41,19 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       page.locator('[data-zerops-surface="sidebar-production-main"]').click(),
     );
   });
+  const reviewFromFoldedChip = Effect.gen(function* () {
+    yield* Effect.promise(() =>
+      page
+        .locator(
+          `[data-zerops-group="${appId}"] [data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]`,
+        )
+        .click(),
+    );
+    yield* Effect.promise(() =>
+      page.locator('[data-zerops-surface="sidebar-production-review"]').click(),
+    );
+    expect(page.url()).not.toContain(`/Shop-production`);
+  });
   const releaseEntriesShow = (sha: string) =>
     Effect.promise(() =>
       page.waitForFunction(
@@ -262,6 +275,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     when: {
       open,
       openFromNavigation,
+      reviewFromFoldedChip,
       longRunningGap,
       finish,
       finishImport,

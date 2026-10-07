@@ -11,7 +11,6 @@ import {
   releaseEntries,
   releaseCandidate,
   releaseInFlight,
-  releaseUncheckedReason,
   releaseRow,
   releaseStalled,
   releaseWord,
@@ -707,7 +706,10 @@ describe("firstReleaseHandoff", () => {
       case: "what goes live could not be compared yet",
       input: {
         hasProduction: true,
-        gate: { allowed: false, reason: releaseUncheckedReason("HQ has no such commit.") } as const,
+        gate: {
+          allowed: false,
+          reason: "Can't check what can be released: HQ has no such commit.",
+        } as const,
       },
       want: "wait",
     },
