@@ -7,6 +7,8 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import { ZeropsApiError, type ZeropsProject } from "../../../zerops/api.ts";
+import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
+import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationReceipt } from "../../model.ts";
 import type { ProjectTagWriter } from "./projectTags.ts";
 import type { OwnerUnobservable } from "../coordinator.ts";
@@ -76,7 +78,17 @@ export function assignMateOwnerExecutor(platform: {
   readonly fetchProject: (projectId: string) => Promise<ZeropsProject>;
 }) {
   const write = (projectId: string, clientUserId: string, roleCode: "OWNER" | null) =>
-    verb(() => platform.setProjectMemberRole({ projectId, clientUserId, roleCode }));
+    verb(() =>
+      platform
+        .setProjectMemberRole({ projectId, clientUserId, roleCode })
+        .catch((cause: unknown) => {
+          // This helper writes the role, then reads the project. A refused read-back cannot prove
+          // the role write was refused. Before-send admission uses ZeropsWriteNotSent separately.
+          if (cause instanceof ZeropsApiError)
+            throw new ZeropsApiError(cause.detail ?? cause.message, "uncertain");
+          throw cause;
+        }),
+    );
   /**
    * The project as Zerops holds it after the first write: its own answer, or — that answer lost —
    * the project read again, once it shows the person picked as its OWNER.
@@ -100,15 +112,70 @@ export function assignMateOwnerExecutor(platform: {
         },
       } satisfies OwnerUnobservable;
     });
-  return (requestId: string, intent: IntentOf<"assign-mate-owner">) =>
+  return (
+    requestId: string,
+    intent: IntentOf<"assign-mate-owner"> | IntentOf<"finish-mate-handover">,
+  ) =>
     Effect.gen(function* () {
-      const handed = yield* handedOver(intent);
+      const handed =
+        intent.kind === "finish-mate-handover"
+          ? yield* Effect.tryPromise({
+              try: () => platform.fetchProject(intent.projectId),
+              catch: zeropsFault,
+            })
+          : yield* handedOver(intent);
       if ("unobservable" in handed) return handed;
-      const receipt = answeredReceipt(requestId, { family: "project", id: intent.projectId });
+      if (!ownersOf(handed).includes(intent.clientUserId) && intent.kind === "finish-mate-handover")
+        return yield* Effect.fail<StreamFault>({
+          outcome: "definitive-refusal",
+          message: "The chosen owner no longer owns this Mate. Review its current ownership.",
+        });
+      const previousOwnerIds =
+        intent.kind === "finish-mate-handover"
+          ? intent.previousOwnerIds.filter((id) => id !== intent.clientUserId)
+          : ownersOf(handed).filter((id) => id !== intent.clientUserId);
+      const receipt: OperationReceipt = {
+        ...answeredReceipt(requestId, { family: "project", id: intent.projectId }),
+        acceptance: { kind: "accepted", result: { previousOwnerIds } },
+      };
+      let current = handed;
+      const changed = (): OperationReceipt => ({
+        ...receipt,
+        outcome: {
+          kind: "failed",
+          evidence:
+            "Ownership changed during the hand-over. Review who owns the Mate before continuing.",
+        },
+      });
+      if (!ownersOf(current).includes(intent.clientUserId)) return changed();
       // Only once the first write is known to have landed is the Mate taken off its previous owner.
-      for (const owner of ownersOf(handed).filter((id) => id !== intent.clientUserId)) {
+      for (const owner of previousOwnerIds) {
+        const held = ownersOf(current);
+        if (
+          !held.includes(intent.clientUserId) ||
+          held.some((id) => id !== intent.clientUserId && !previousOwnerIds.includes(id))
+        )
+          return changed();
+        if (!held.includes(owner)) continue;
         const taken = yield* Effect.result(write(intent.projectId, owner, null));
-        if (Result.isFailure(taken))
+        if (Result.isFailure(taken)) {
+          if (taken.failure.outcome === "uncertain-acceptance") {
+            const read = yield* Effect.result(verb(() => platform.fetchProject(intent.projectId)));
+            if (Result.isSuccess(read) && !ownersOf(read.success).includes(owner)) {
+              current = read.success;
+              continue;
+            }
+            return {
+              receipt: { ...receipt, outcome: { kind: "pending" } },
+              unobservable: {
+                nextActor: "person",
+                nextAction:
+                  "Check the original hand-over, then finish removing its previous owners",
+                reason: taken.failure.message,
+                handles: [intent.projectId],
+              },
+            } satisfies OwnerUnobservable;
+          }
           return {
             ...receipt,
             outcome: {
@@ -116,7 +183,11 @@ export function assignMateOwnerExecutor(platform: {
               evidence: `It was handed over, but its previous owner still owns it too: ${taken.failure.message}`,
             },
           } satisfies OperationReceipt;
+        }
+        current = taken.success;
       }
+      if (ownersOf(current).length !== 1 || ownersOf(current)[0] !== intent.clientUserId)
+        return changed();
       return receipt;
     });
 }

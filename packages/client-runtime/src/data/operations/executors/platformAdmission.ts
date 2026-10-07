@@ -9,6 +9,7 @@ import type { AccountStore } from "../../store.ts";
 import { readsOfState } from "../../store.ts";
 import type { DetailDemand } from "../../demand.ts";
 import type { StreamFault } from "../../streamMachine.ts";
+import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
 
 export function admitPlatformOperation(input: {
   readonly intent: OperationIntent;
@@ -24,6 +25,21 @@ export function admitPlatformOperation(input: {
     const { intent, viewer } = input;
     if (intent.kind === "throwaway-sweep") return;
     if (viewer === undefined) return yield* refused("Your Zerops access is still being checked.");
+    if (
+      (intent.kind === "assign-mate-owner" || intent.kind === "finish-mate-handover") &&
+      !roleAtLeast(viewer.roleCode, "ADMIN")
+    )
+      return yield* refused("An organization owner or admin must hand over this Mate.");
+    if (intent.kind === "retire-mate-key") {
+      if (
+        viewer.id !== intent.orgId ||
+        !mateKeyRetirementAllowed(readsOfState(input.store.state()), intent)
+      )
+        return yield* refused(
+          "The original deletion receipts must confirm this exact key before retirement.",
+        );
+      return;
+    }
     if (
       intent.kind === "create-project" ||
       intent.kind === "import-project" ||
@@ -56,7 +72,9 @@ export function admitPlatformOperation(input: {
     const current = access();
     if (current.kind === "unknown")
       return yield* refused("Your access to this project is still being checked.");
-    if (current.kind !== "allowed" || !roleAtLeast(current.role, "BASIC_USER"))
+    const requiredRole =
+      intent.kind === "delete-project" || intent.kind === "rename-project" ? "ADMIN" : "BASIC_USER";
+    if (current.kind !== "allowed" || !roleAtLeast(current.role, requiredRole))
       return yield* refused("Your role in this project doesn't allow this.");
   });
 }

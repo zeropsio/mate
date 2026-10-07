@@ -5,7 +5,7 @@
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
-import { assignMateOwner } from "./assignMateOwner.ts";
+import { assignMateOwner, finishMateHandover } from "./assignMateOwner.ts";
 import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
@@ -22,6 +22,8 @@ import { renameApp, deleteApp } from "./hqAppWrites.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
+import { moveProject } from "./moveProject.ts";
+import { MATE_DELETION_KINDS } from "./mateDeletion.ts";
 import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
@@ -53,6 +55,9 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   assignMateOwner,
+  finishMateHandover,
+  moveProject,
+  ...MATE_DELETION_KINDS,
   createProject,
   importProject,
   importServices,

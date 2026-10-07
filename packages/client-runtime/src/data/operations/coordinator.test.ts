@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
@@ -112,6 +114,99 @@ const reflect = (store: AccountStore) =>
   });
 
 describe("makeOperations", () => {
+  it.effect("a second retry press while its answer is pending sends no duplicate write", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = fixtureOwner({ loseAnswers: 0, unavailable: 1 });
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const executor: OperationExecutor = {
+        ...owner.executor,
+        submit: (id, intent) =>
+          Effect.gen(function* () {
+            const answer = yield* owner.executor.submit(id, intent);
+            yield* Deferred.succeed(started, undefined);
+            yield* Deferred.await(release);
+            return answer;
+          }),
+      };
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { hq: executor },
+        makeId: ids(),
+      });
+      yield* operations.submit(MOVE, "original");
+      const pending = yield* Effect.forkChild(operations.submit(MOVE, "original"));
+      yield* Deferred.await(started);
+      expect(progress(store, "original").stage).toBe("submitting");
+      yield* operations.submit(MOVE, "original");
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(pending);
+      expect(owner.submitted).toEqual(["original", "original"]);
+      expect(owner.effects).toEqual(["original"]);
+    }),
+  );
+
+  it.effect("a deliberate retry of a named unsent step uses its original id", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = fixtureOwner({ loseAnswers: 0, unavailable: 1 });
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
+      yield* operations.submit(MOVE, "original");
+      expect(progress(store, "original").stage).toBe("unsent");
+      yield* operations.submit(MOVE, "original");
+      expect(progress(store, "original").stage).toBe("accepted");
+      expect(owner.submitted).toEqual(["original", "original"]);
+      expect(owner.effects).toEqual(["original"]);
+    }),
+  );
+
+  it.effect.each([0, 1])(
+    "reopening a named request sends once, even after %s lost answers",
+    (loseAnswers) =>
+      Effect.gen(function* () {
+        const store = account();
+        const owner = fixtureOwner({ loseAnswers, unreachable: () => true });
+        const operations = makeOperations({
+          store,
+          kinds,
+          executors: { hq: owner.executor },
+          makeId: ids(),
+        });
+        yield* operations.submit(MOVE, "original");
+        const before = progress(store, "original");
+        yield* operations.submit({ ...MOVE }, "original");
+        expect(owner.submitted).toEqual(["original"]);
+        expect(progress(store, "original")).toEqual(before);
+      }),
+  );
+
+  it.effect("a request id cannot be reused to act on another Mate", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = fixtureOwner({ loseAnswers: 0 });
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
+      yield* operations.submit(MOVE, "original");
+      const result = yield* Effect.exit(
+        operations.submit({ ...MOVE, projectId: "another" } as OperationIntent, "original"),
+      );
+      expect(result._tag).toBe("Failure");
+      expect(owner.submitted).toEqual(["original"]);
+      expect(store.state().operations.get("original")?.intent).toEqual(MOVE);
+    }),
+  );
+
   it.effect("goes accepted → reflected → done, the end said by its owner, never by a clock", () =>
     Effect.gen(function* () {
       const store = account();

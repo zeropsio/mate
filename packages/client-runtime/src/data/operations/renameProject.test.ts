@@ -57,6 +57,23 @@ function operationsOf(store: AccountStore, answer: () => Promise<unknown>) {
 }
 
 describe("rename-project", () => {
+  it.effect.each([{ before: [] }, { before: ["p1"] }, { before: undefined }])(
+    "reload adopts only an effect absent before the original send: $before",
+    ({ before }) =>
+      Effect.gen(function* () {
+        const store = account();
+        named(store, RENAME.name);
+        const { operations, calls } = operationsOf(store, () =>
+          Promise.reject(new Error("must not resend")),
+        );
+        yield* operations.resume("original", RENAME, [], before);
+        expect(progressOf(store, "original").stage).toBe(
+          before?.length === 0 ? "done" : "uncertain",
+        );
+        expect(calls).toEqual([]);
+      }),
+  );
+
   it.effect("ends as Zerops answers it, only from the name it was planned from", () =>
     Effect.gen(function* () {
       for (const [answer, nameAfter, expected] of [
