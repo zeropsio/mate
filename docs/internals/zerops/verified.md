@@ -7656,3 +7656,33 @@ mcp-disabled.json`, a JSON array of names (`cursor-agent mcp disable`, isolated 
 - **A process search no longer lists a weeks-old `stack.enableSubdomainAccess`**: on four KRLS Mates
   made 2026-10-02/03, `POST /process/search` by project returned 8 recent processes and none of the
   enable, so whether a service's `lastUpdate` moves when its subdomain access flips stays unmeasured.
+
+## The data-layer rewrite, measured — 2026-10-05…07
+
+- **Zerops org-wide realtime is filtered per token** (2026-10-05). Identical `clientId eq <org>`
+  registrations on an owner socket and on a `NO_ACCESS` integration token holding READ_ONLY on one
+  project: all registrations answered 200; the scoped baselines held only that project (1 project,
+  2 services, 1 ACTIVE of 1 version) against the owner's 40 projects, 174 services and 331 versions.
+  Another project's stop produced 8 owner frames and none on the scoped socket; the shared project's
+  deploy reached both within ±0.15 s.
+- **Membership deletion arrives on `listStream`, not `updateStream`** (2026-10-05). Process, service
+  and version removals came as list frames; updates carried whole rows. An ACTIVE version replacement
+  came as one list frame `add:[new], delete:[old]` plus an update frame; the order of list and update
+  frames differed between sockets, so no ordering may be assumed. After a grant was removed the
+  project left membership in 1.1 s, its services only on their next change, and version membership
+  stayed stale; a deleted token got 401 on REST and registration while its socket still answered
+  pings for 102 s — 401/403 starts recovery, removals are not a revocation signal.
+- **Public HTTP routings read organization-wide in one search** (2026-10-06, KRLS owner).
+  `POST /public-http-routing/search` filtered by `clientId`: 200, 80 routings across 37 projects,
+  73.5 kB, 35 ms; without the `clientId` filter it answers 400 `invalidUserInputWithText`. The
+  routing `listStream` pushes `{delete:[id]}` when a subdomain is disabled and `{add:[row]}` when
+  enabled; `updateStream` pushes only on enable or in-place edits. Two temporary integration-token
+  shapes got 401 on the org-wide search, so per-token access to it stays unmeasured.
+- **The browser's navigation uses 10 Zerops registrations** (2026-10-07, scenario area H): one
+  `listStream`/`updateStream` pair each for projects, services, processes, active versions and public
+  routings, plus at most 8 other requests at start; the count does not grow with Mates or projects.
+- **HQ cold navigation is bounded in SQL statements, not milliseconds** (2026-10-07,
+  `apps/hq/src/hqScopes.integration.test.ts`): five people and 30 Mates need at most 45 statements
+  (two session reads and one seen-results read per person, at most two shared structure reads, one
+  shared change read); unchanged resumes send no values. On a shared CI runner the same navigation's
+  median varied from ~48 ms to 432 ms, so wall time is reported, not asserted.
