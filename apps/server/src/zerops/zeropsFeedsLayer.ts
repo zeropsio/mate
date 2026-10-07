@@ -192,6 +192,7 @@ const liveLayer = Layer.mergeAll(
   // here once its asker has an agent to run — admitted through the same gate.
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.
   ZeropsStandUpRelayModule.layer.pipe(
+    Layer.provide(MateEngineLive),
     Layer.provideMerge(
       ZeropsSetupModule.layer.pipe(
         Layer.provide(

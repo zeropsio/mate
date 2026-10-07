@@ -62,6 +62,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations;
     const signals = yield* EngineSignalsModule.EngineSignals;
+    const live = yield* LiveBusModule.LiveBus;
     const sql = yield* SqlClient.SqlClient;
     const context = yield* Effect.context<
       | TurnPumpModule.TurnPump
@@ -194,6 +195,24 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         ),
       );
 
+    const callProgress: MateEngineService["callProgress"] = (providerThread, toolName, progress) =>
+      Effect.gen(function* () {
+        const conversation = TurnPumpModule.conversationOfThread(providerThread);
+        if (conversation === undefined) return;
+        const [call] = yield* sql<{ readonly item_id: string }>`
+          SELECT item_id FROM engine_item
+          WHERE conversation_id = ${conversation} AND kind = 'call' AND state = 'open'
+            AND json_extract(body_json, '$.tool.name') = ${toolName}
+          ORDER BY opened_seq DESC LIMIT 1
+        `;
+        if (call === undefined) return;
+        yield* live.progress(conversation, call.item_id, progress);
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Mate engine: a call's progress could not be shown", cause),
+        ),
+      );
+
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
@@ -245,6 +264,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       wake,
       runOutcome,
       assignAgent,
+      callProgress,
       runOf,
     });
   });

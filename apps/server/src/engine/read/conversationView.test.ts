@@ -207,3 +207,30 @@ describe("the engine's doors for the grafts", () => {
       ),
   );
 });
+
+describe("a call's progress", () => {
+  it.effect("reaches the conversation's live plane under the call's item, never the record", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Stand up" });
+        yield* w.agent((agent, thread) => agent.call(thread));
+        const live = yield* w.live;
+        const frames = yield* live.subscribe(mate);
+        const engine = yield* w.engine;
+        yield* engine.callProgress(w.thread, "Command run", { phase: "deploy" });
+        yield* engine.callProgress("someone-else/s/1", "Command run", { phase: "x" });
+        const [, progress] = yield* Stream.runCollect(Stream.take(frames, 2));
+        const frame = progress as {
+          readonly _tag: string;
+          readonly key: string;
+          readonly value: unknown;
+        };
+        assert.deepStrictEqual([frame._tag, frame.value], ["Progress", { phase: "deploy" }]);
+        // Keyed by the call's item in the record: the run's item, not the person's message.
+        assert.match(frame.key, new RegExp(`^${runId(mate, 1)}/i/[2-9]$`, "u"));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});

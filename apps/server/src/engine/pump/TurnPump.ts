@@ -22,7 +22,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { ThreadId, type ConversationId, type SpiEvent } from "@t3tools/contracts";
+import { ConversationId, ThreadId, type SpiEvent } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
@@ -40,6 +40,12 @@ const QUIET_ROUNDS = 256;
 
 export const providerThreadOf = (conversation: ConversationId): ThreadId =>
   ThreadId.make(`${conversation}/s/${THREAD_GENERATION}`);
+
+/** The conversation a provider thread of the engine's belongs to; none for any other thread. */
+export const conversationOfThread = (thread: string): ConversationId | undefined => {
+  const match = /^(.+)\/s\/\d+$/u.exec(thread);
+  return match === null ? undefined : ConversationId.make(match[1]!);
+};
 
 export interface TurnPumpShape {
   /** The conversation's host, made on first use; its driver is the session's that made it. */

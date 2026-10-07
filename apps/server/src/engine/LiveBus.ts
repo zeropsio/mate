@@ -31,6 +31,8 @@ export type LiveFrame =
         readonly stream: AppendStream;
         readonly text: string;
       }>;
+      /** The latest progress of each call that reports one (the stand-up's), by its item. */
+      readonly progress?: ReadonlyArray<{ readonly key: string; readonly value: unknown }>;
       readonly liveSeq: number;
     }
   | {
@@ -42,6 +44,13 @@ export type LiveFrame =
       readonly liveSeq: number;
     }
   | { readonly _tag: "Context"; readonly usage: ThreadTokenUsageSnapshot; readonly liveSeq: number }
+  /** A call's progress, by the record's item id (`null`: it has none to show any more). */
+  | {
+      readonly _tag: "Progress";
+      readonly key: string;
+      readonly value: unknown;
+      readonly liveSeq: number;
+    }
   /** Frames were dropped for this subscriber: subscribe again for the text so far. */
   | { readonly _tag: "Gap" };
 
@@ -56,6 +65,15 @@ export interface LiveBusShape {
   readonly context: (
     conversation: ConversationId,
     usage: ThreadTokenUsageSnapshot,
+  ) => Effect.Effect<void>;
+  /**
+   * A call's progress, keyed by its item in the record: live, never stored; the latest is held
+   * for a late subscriber until it is cleared (`null`).
+   */
+  readonly progress: (
+    conversation: ConversationId,
+    itemId: string,
+    value: unknown,
   ) => Effect.Effect<void>;
   /** The item closed: its text is in the record now. Returns what the live plane held. */
   readonly settle: (conversation: ConversationId, key: string) => Effect.Effect<string | undefined>;
@@ -76,6 +94,8 @@ interface Channel {
   readonly lock: Semaphore.Semaphore;
   /** key → stream → text so far. */
   readonly open: Map<string, Map<AppendStream, string>>;
+  /** item → its latest progress. */
+  readonly progress: Map<string, unknown>;
   seq: number;
 }
 
@@ -89,6 +109,7 @@ export const makeLiveBus = (options: { readonly buffer?: number } = {}) =>
         frames: yield* PubSub.sliding<Frame>(options.buffer ?? LIVE_BUFFER),
         lock: yield* Semaphore.make(1),
         open: new Map(),
+        progress: new Map(),
         seq: 0,
       };
       // Another fiber may have made it meanwhile: the first one stays.
@@ -127,6 +148,14 @@ export const makeLiveBus = (options: { readonly buffer?: number } = {}) =>
           Effect.flatMap(channelOf(conversation), (channel) =>
             publish(channel, (liveSeq) => ({ _tag: "Context", usage, liveSeq })),
           ),
+        progress: (conversation, itemId, value) =>
+          Effect.flatMap(channelOf(conversation), (channel) =>
+            publish(channel, (liveSeq) => {
+              if (value === null) channel.progress.delete(itemId);
+              else channel.progress.set(itemId, value);
+              return { _tag: "Progress", key: itemId, value, liveSeq };
+            }),
+          ),
         settle: (conversation, key) =>
           Effect.gen(function* () {
             const channel = channels.get(conversation);
@@ -148,9 +177,15 @@ export const makeLiveBus = (options: { readonly buffer?: number } = {}) =>
                 const items = [...channel.open].flatMap(([key, streams]) =>
                   [...streams].map(([stream, text]) => ({ key, stream, text })),
                 );
+                const progress = [...channel.progress].map(([key, value]) => ({ key, value }));
                 return {
                   subscription,
-                  open: { _tag: "Open", items, liveSeq: channel.seq } satisfies LiveFrame,
+                  open: {
+                    _tag: "Open",
+                    items,
+                    ...(progress.length === 0 ? {} : { progress }),
+                    liveSeq: channel.seq,
+                  } satisfies LiveFrame,
                 };
               }),
             );

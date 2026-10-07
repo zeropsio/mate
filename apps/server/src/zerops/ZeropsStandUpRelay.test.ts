@@ -21,6 +21,7 @@ import { OrchestrationEngineService } from "../orchestration/Services/Orchestrat
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
 import { layer as relayLayer, standUpProgressOf } from "./ZeropsStandUpRelay.ts";
+import { inertMateEngine, MateEngine } from "../engine/MateEngine.ts";
 import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
 
 const CALL_AT = "2026-10-01T10:00:00.000Z";
@@ -125,6 +126,7 @@ describe("ZeropsStandUpRelay", () => {
               standUpGone: () => Effect.succeed(false),
               noteStandUpCall: () => Effect.void,
             }),
+            Layer.succeed(MateEngine, inertMateEngine),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
                 Ref.update(appended, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
@@ -206,6 +208,7 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
               standUpGone: () => Effect.succeed(false),
               noteStandUpCall: () => Effect.void,
             }),
+            Layer.succeed(MateEngine, inertMateEngine),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
                 Ref.update(appended, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
@@ -348,6 +351,7 @@ const deadLayer = (
             Effect.map(Ref.get(gone), (dead) => dead && read?.standup?.startedAt === deadAt),
           noteStandUpCall: (call) => Ref.update(noted, (all) => [...all, call]),
         }),
+        Layer.succeed(MateEngine, inertMateEngine),
         Layer.mock(OrchestrationEngineService)({
           dispatch: () =>
             Ref.update(appended, (count) => count + 1).pipe(Effect.as({ sequence: 1 })),
@@ -377,6 +381,7 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
             standUpGone: () => Effect.succeed(false),
             noteStandUpCall: () => Effect.void,
           }),
+          Layer.succeed(MateEngine, inertMateEngine),
           Layer.mock(OrchestrationEngineService)({
             dispatch: (command) =>
               Ref.update(appended, (all) => [
@@ -434,6 +439,66 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
         yield* Ref.set(status, running("2026-10-01T10:00:01Z", "done"));
         yield* Effect.sleep(Duration.millis(2_500));
         assert.deepStrictEqual(yield* Ref.get(appended), ["zerops-standup:thread-main:call-1"]);
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    }),
+  );
+});
+
+describe("ZeropsStandUpRelay on the Mate engine", () => {
+  it.live("relays each change of the call's section live onto the call, sending V1 nothing", () =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<SpiEvent>();
+      const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
+      const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
+      const shown = yield* Ref.make<ReadonlyArray<readonly [string, string, unknown]>>([]);
+      const layer = relayLayer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ProviderRuntimeEventBus, {
+              version: PROVIDER_RUNTIME_SPI_VERSION,
+              events: Stream.fromQueue(events),
+              enrichmentFailures: Stream.empty,
+            }),
+            Layer.mock(ZeropsSetup)({
+              status: Ref.get(status),
+              standUpGone: () => Effect.succeed(false),
+              noteStandUpCall: () => Effect.void,
+            }),
+            Layer.succeed(MateEngine, {
+              ...inertMateEngine,
+              live: true,
+              callProgress: (thread, tool, progress) =>
+                Ref.update(shown, (all) => [...all, [thread, tool, progress] as const]),
+            }),
+            Layer.mock(OrchestrationEngineService)({
+              dispatch: (command) =>
+                Ref.update(dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
+              streamDomainEvents: Stream.never,
+            }),
+            NodeServices.layer,
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
+        yield* Ref.set(status, section());
+        yield* Effect.sleep(Duration.seconds(3));
+        yield* Ref.set(status, section({ state: "done" }));
+        yield* Queue.offer(events, standUpEvent("item.completed", "2026-10-01T10:05:00.000Z"));
+        yield* Effect.sleep(Duration.millis(200));
+        const all = yield* Ref.get(shown);
+        assert.deepStrictEqual(
+          all.map(([thread, tool, progress]) => [
+            thread,
+            tool,
+            (progress as { readonly state: string }).state,
+          ]),
+          [
+            ["thread-main", "zerops_standup", "running"],
+            ["thread-main", "zerops_standup", "done"],
+          ],
+        );
+        assert.deepStrictEqual(yield* Ref.get(dispatched), []);
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );

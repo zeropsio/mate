@@ -102,6 +102,15 @@ export interface MateEngineService {
     conversationId: ConversationId,
     agent: ConversationAgent,
   ) => Effect.Effect<boolean>;
+  /**
+   * A call's progress (the stand-up's, from zcp's status file), live on the call's item in the
+   * conversation a provider thread belongs to; never stored. `null` clears it.
+   */
+  readonly callProgress: (
+    providerThread: string,
+    toolName: string,
+    progress: unknown,
+  ) => Effect.Effect<void>;
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
@@ -133,5 +142,6 @@ export const inertMateEngine: MateEngineService = {
   wake: notRunning,
   runOutcome: () => Effect.succeed(undefined),
   assignAgent: () => Effect.succeed(false),
+  callProgress: () => Effect.void,
   runOf: () => Effect.succeed(undefined),
 };

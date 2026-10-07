@@ -52,4 +52,28 @@ describe("LiveBus", () => {
       }),
     ),
   );
+
+  it.effect("a call's progress is live under its item, the latest held for a late subscriber", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const bus = yield* makeLiveBus();
+        yield* bus.progress(mate, "mate/r/1/i/2", { phase: "build" });
+        const frames = yield* bus.subscribe(mate);
+        yield* bus.progress(mate, "mate/r/1/i/2", { phase: "deploy" });
+        const seen = yield* Stream.runCollect(Stream.take(frames, 2));
+        assert.deepStrictEqual(seen, [
+          {
+            _tag: "Open",
+            items: [],
+            progress: [{ key: "mate/r/1/i/2", value: { phase: "build" } }],
+            liveSeq: 1,
+          },
+          { _tag: "Progress", key: "mate/r/1/i/2", value: { phase: "deploy" }, liveSeq: 2 },
+        ]);
+        yield* bus.progress(mate, "mate/r/1/i/2", null);
+        const [open] = yield* Stream.runCollect(Stream.take(yield* bus.subscribe(mate), 1));
+        assert.deepStrictEqual(open, { _tag: "Open", items: [], liveSeq: 3 });
+      }),
+    ),
+  );
 });
