@@ -2989,7 +2989,8 @@ describe("a Mate's row says more without words", () => {
         }),
     });
     expect(html).toContain(">Limit · until ");
-    expect(html).toContain("hit the Claude limit.");
+    expect(html).toContain("hit the Claude limit");
+    expect(html).toContain("can continue at");
     expect(html).toContain("Provider limit");
     expect(html).not.toContain("I've hit");
   });

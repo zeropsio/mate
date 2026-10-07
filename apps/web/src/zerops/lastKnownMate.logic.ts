@@ -37,5 +37,12 @@ export function lastKnownMateWords(
                 : held.kind === "done"
                   ? `${name} had finished the work.`
                   : `${name} had no active work.`;
-  return `Last known ${formatDayAwareTimestamp(held.at, timestampFormat)}: ${words}`;
+  const preview =
+    held.usageLimited ||
+    held.pausedUntil !== undefined ||
+    held.kind === "failed" ||
+    held.kind === "input"
+      ? undefined
+      : activity.snippet;
+  return `Last known ${formatDayAwareTimestamp(held.at, timestampFormat)}: ${words}${preview === undefined ? "" : ` ${preview}`}`;
 }
