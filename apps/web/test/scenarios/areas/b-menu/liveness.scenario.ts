@@ -367,7 +367,7 @@ describe("B: menu liveness", () => {
         yield* s.colleague.deletes("Bea");
         yield* Effect.promise(() =>
           s.clock.advanceStepped(12 * 60_000, {
-            // Ada's refusal is deliberately held until after this advance.
+            // Render the browser's scheduled work before advancing another positive timer.
             settle: () =>
               s.page.evaluate(
                 () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),

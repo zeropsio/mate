@@ -26,17 +26,25 @@ export async function sendConversationMessage(page: Page, message: string, waitF
     { timeout: 8000, polling: "raf" },
     message,
   );
-  if (waitForReady)
-    await page.waitForFunction(
-      () =>
-        [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
-          (button) =>
-            ["Send message", "Queue message"].includes(button.getAttribute("aria-label") ?? "") &&
-            !button.disabled &&
-            button.getBoundingClientRect().height > 0,
-        ),
-      { timeout: 8000, polling: "raf" },
-    );
+  if (waitForReady) {
+    try {
+      await page.waitForFunction(
+        () =>
+          [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
+            (button) =>
+              ["Send message", "Queue message"].includes(button.getAttribute("aria-label") ?? "") &&
+              !button.disabled &&
+              button.getBoundingClientRect().height > 0,
+          ),
+        { timeout: 8000, polling: "raf" },
+      );
+    } catch (cause) {
+      throw new Error(
+        `Composer did not become ready:\n${await page.evaluate(() => document.body.innerText)}`,
+        { cause },
+      );
+    }
+  }
   await (await input.waitHandle()).focus();
   await page.keyboard.press("Enter");
 }
