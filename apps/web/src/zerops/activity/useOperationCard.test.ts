@@ -814,6 +814,17 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
     });
   });
 
+  it("withholds a running call's last-known frame until its revision is observed again", () => {
+    browserStreamSpy.mockReturnValue({ kind: "known", frame: FRAME, freshness: "stale" });
+    hooks.beginRender();
+    const region = useOperationCard(
+      operation({ kind: "browser", phase: "running" }),
+      ENVIRONMENT_ID,
+    );
+    expect(region.live).toBe(true);
+    expect(region.liveFrame).toBeUndefined();
+  });
+
   it("never gives an unknown second call the first call's frame", () => {
     const first = operation({
       key: "op:brw1",

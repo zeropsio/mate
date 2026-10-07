@@ -41,6 +41,32 @@ function rig() {
 }
 
 describe("Mate call frame slots", () => {
+  it.each([
+    { name: "legacy viewport", event: image, freshness: "stale" },
+    { name: "live viewport status", event: { type: "state", status: "live" }, freshness: "stale" },
+    { name: "another call", event: { ...identified(3), callId: "second" }, freshness: "stale" },
+    { name: "older call revision", event: identified(2), freshness: "stale" },
+    {
+      name: "partial call revision",
+      event: { ...identified(3), completeness: "partial" },
+      freshness: "stale",
+    },
+    { name: "the retained call revision", event: identified(3), freshness: "live" },
+  ] as const)("$name after reconnect proves only its own freshness", ({ event, freshness }) => {
+    const r = rig();
+    try {
+      r.sink.event(identified(3));
+      r.sink.lost({ outcome: "transient", message: "offline" });
+      r.sink.session();
+      r.sink.event(event);
+      expect(r.read()).toMatchObject({ kind: "known", frame: { data: "A" }, freshness });
+      if ("callId" in event && event.callId === "second")
+        expect(r.read("second").freshness).toBe("live");
+    } finally {
+      r.registry.dispose();
+    }
+  });
+
   it("fences frames and faults from an attempt replaced by a new source session", () => {
     const r = rig();
     r.sink.event(identified(1));

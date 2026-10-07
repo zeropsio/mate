@@ -17,6 +17,8 @@ export type MateBrowserFrameValue =
       readonly state: ZeropsBrowserStreamState;
       /** A frame received in this source session, rather than retained from an earlier one. */
       readonly currentFrame: boolean;
+      /** Exact call revisions observed in this source session, separately from retained values. */
+      readonly observedCalls: ReadonlyMap<string, number>;
     };
 
 declare module "../model.ts" {

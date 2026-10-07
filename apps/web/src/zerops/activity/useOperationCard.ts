@@ -333,7 +333,7 @@ function useLiveBrowserFrame(
   const frame = read.frame;
   return {
     live,
-    ...(frame === null
+    ...(frame === null || (live && read.freshness !== "live")
       ? {}
       : { liveFrame: { src: frameImageSrc(frame), width: frame.width, height: frame.height } }),
   };

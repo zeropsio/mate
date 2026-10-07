@@ -34,16 +34,19 @@ export const mateBrowserFrame: Projection<
     const scope = mateBrowserFrameScope(environmentId);
     const stream = read.stream(scope);
     if (stream.phase === "refused") return { kind: "refused", frame: null, freshness: "unknown" };
-    const fact = read.fact(
-      "mateBrowserFrame",
-      mateBrowserFrameId(environmentId, threadId, turnId, callId),
-    );
+    const id = mateBrowserFrameId(environmentId, threadId, turnId, callId);
+    const fact = read.fact("mateBrowserFrame", id);
     if (fact.kind !== "known" || fact.value.kind !== "call") return UNKNOWN_BROWSER_FRAME;
+    const observation = read.fact("mateBrowserFrame", mateBrowserStreamId(environmentId));
+    const observed =
+      observation.kind === "known" &&
+      observation.value.kind === "stream" &&
+      observation.value.observedCalls.get(id) === fact.value.revision;
     const frame = fact.value.frame;
     return {
       kind: frame === null ? "absent" : "known",
       frame,
-      freshness: stream.phase === "live" ? "live" : "stale",
+      freshness: stream.phase === "live" && observed ? "live" : "stale",
     };
   },
   equals: sameValue,

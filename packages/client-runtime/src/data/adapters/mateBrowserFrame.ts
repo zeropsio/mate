@@ -46,6 +46,7 @@ export function makeMateBrowserFrameSink({
       ? retained.value.state
       : INITIAL_BROWSER_STREAM_STATE;
   let currentFrame = false;
+  let observedCalls: ReadonlyMap<string, number> = new Map();
   let based = false;
   const prior = store.state().facts.get(`mateBrowserFrame:${streamId}`)?.revision;
   let sequence = prior?.kind === "mate-link" ? prior.sequence : 0;
@@ -56,6 +57,7 @@ export function makeMateBrowserFrameSink({
     session(now = 0) {
       based = false;
       currentFrame = false;
+      observedCalls = new Map();
       signal({ kind: "demand", demanded: true }, now);
       signal({ kind: "attempt" }, now);
       signal({ kind: "handshake" }, now);
@@ -78,14 +80,7 @@ export function makeMateBrowserFrameSink({
           : next;
       if (event.type === "frame") currentFrame = true;
       else if (event.type === "state" && event.status !== "live") currentFrame = false;
-      const rows: Row[] = [
-        {
-          family: "mateBrowserFrame",
-          id: streamId,
-          value: { kind: "stream", state, currentFrame },
-          revision: { kind: "mate-link", sequence: ++sequence },
-        },
-      ];
+      const rows: Row[] = [];
       if (
         event.type !== "state" &&
         event.callId !== undefined &&
@@ -98,10 +93,13 @@ export function makeMateBrowserFrameSink({
       ) {
         const frame =
           event.type === "frame" ? event : event.type === "call-result" ? event.frame : undefined;
-        if (frame !== undefined)
+        if (frame !== undefined) {
+          const id = mateBrowserFrameId(environmentId, event.threadId, event.turnId, event.callId);
+          if ((observedCalls.get(id) ?? -1) < event.revision)
+            observedCalls = new Map(observedCalls).set(id, event.revision);
           rows.push({
             family: "mateBrowserFrame",
-            id: mateBrowserFrameId(environmentId, event.threadId, event.turnId, event.callId),
+            id,
             value: {
               kind: "call",
               callId: event.callId,
@@ -116,7 +114,14 @@ export function makeMateBrowserFrameSink({
               revision: event.revision,
             },
           });
+        }
       }
+      rows.unshift({
+        family: "mateBrowserFrame",
+        id: streamId,
+        value: { kind: "stream", state, currentFrame, observedCalls },
+        revision: { kind: "mate-link", sequence: ++sequence },
+      });
       if (!based) {
         store.dispatch({ kind: "baseline-begin", scope, generation });
         store.dispatch({

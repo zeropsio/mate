@@ -248,7 +248,9 @@ and the previous direct database command and catalog cache are removed.
 Browser viewport and call results are separate slots in `mateBrowserFrame`. A call slot includes
 environment, thread, turn and tool-call identity and compares the source's revision. Only complete
 identified evidence replaces a call result; explicit complete absence clears its frame. A viewport
-frame without that identity cannot become a call result just because a card is mounted or a call
+event proves only the call revision it identifies in the current connection session. Retained
+frames stay last-known after reconnect until that revision is observed again; running cards withhold
+last-known images. A frame without that identity cannot become a call result just because a card is mounted or a call
 is active. Older servers omit the identity, so their call slots stay unknown while the live browser
 panel still reads the viewport. The optional RPC call-result capability keeps older clients able
 to subscribe to the same relay. Account teardown closes demanded adapters before registry disposal.
