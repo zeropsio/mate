@@ -12,6 +12,7 @@ import { isEntrypoint } from "./entrypoint.ts";
 import { projectCommand } from "./cli/project.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { serviceCommand } from "./cli/service.ts";
+import { traceCommand } from "./cli/trace.ts";
 import { triageCommand } from "./cli/triage.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
@@ -31,6 +32,7 @@ const makeCli = () =>
       serveCommand,
       projectCommand,
       serviceCommand,
+      traceCommand,
       triageCommand,
     ]),
   );

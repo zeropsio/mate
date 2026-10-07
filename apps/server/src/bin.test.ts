@@ -693,3 +693,36 @@ it.layer(NodeServices.layer)("mate server command safety", (it) => {
     }),
   );
 });
+
+const encodeTraceLine = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
+it.layer(NodeServices.layer)("mate trace summary", (it) => {
+  it.effect("summarizes the trace file and its rotated backups", () =>
+    Effect.gen(function* () {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-cli-trace-"));
+      const traceFile = NodePath.join(root, "server.trace.ndjson");
+      const span = (name: string, durationMs: number) =>
+        encodeTraceLine({
+          type: "effect-span",
+          name,
+          durationMs,
+          endTimeUnixNano: "1000000000000000000",
+          exit: { _tag: "Success" },
+        });
+      NodeFS.writeFileSync(traceFile, `${span("refresh", 12)}\n`);
+      NodeFS.writeFileSync(`${traceFile}.1`, `${span("refresh", 30)}\n${span("probe", 5)}\n`);
+
+      const { output } = yield* captureStdout(
+        runCli(["trace", "summary"]).pipe(
+          Effect.provide(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_TRACE_FILE: traceFile } })),
+          ),
+        ),
+      );
+
+      assert.include(output, "3 spans ended");
+      assert.match(output, /refresh\s+2\s/);
+      assert.match(output, /probe\s+1\s/);
+    }),
+  );
+});
