@@ -22,7 +22,7 @@
  * the conversation's to send. A Mate another member signed in is theirs
  * (D6): it is not offered at all.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
   isAtomCommandInterrupted,
@@ -48,6 +48,7 @@ import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsChangeLandedEvents } from "~/zerops/useZeropsChangeLandedEvents";
+import { useVaultTurnNotes } from "~/zerops/vaultTurnNotes";
 
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
@@ -233,6 +234,14 @@ function useJumpWrite(
   const readOnly = useMateReadOnly(environmentId, shell?.modelSelection.instanceId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const landed = useZeropsChangeLandedEvents(environmentId);
+  // The vault changes the Mate has not heard, the same note its own composer would carry.
+  const vaultTurn = useVaultTurnNotes(
+    environmentId,
+    environmentId === null || threadId === null
+      ? null
+      : scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+    useMemo(() => (detail === undefined ? undefined : agentLastSpokeAt(detail.messages)), [detail]),
+  );
   // A parked Mate's cached conversation reads before its link is up: the send waits for it.
   const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
@@ -337,7 +346,12 @@ function useJumpWrite(
     // When the agent last spoke: the line between what it knows and what
     // landed since — the conversation's own reading of it. A slash command
     // carries none.
-    const notes = agentNotesFor(text, agentTurnNotes(landed, agentLastSpokeAt(detail.messages)));
+    const notes = agentNotesFor(text, [
+      ...agentTurnNotes(landed, agentLastSpokeAt(detail.messages)),
+      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
+    ]);
+    const toldVault =
+      vaultTurn.note !== null && notes.includes(vaultTurn.note) ? vaultTurn.changes : [];
     void startTurn({
       environmentId,
       input: {
@@ -351,8 +365,10 @@ function useJumpWrite(
       },
     }).then((result) => {
       setSending(false);
-      if (result._tag === "Success") sent(target);
-      else if (!isAtomCommandInterrupted(result)) failed(result);
+      if (result._tag === "Success") {
+        vaultTurn.told(toldVault);
+        sent(target);
+      } else if (!isAtomCommandInterrupted(result)) failed(result);
     });
   };
 

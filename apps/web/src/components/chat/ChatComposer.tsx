@@ -141,7 +141,9 @@ import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
 import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConversationEffort";
 import { getProviderModelCapabilities } from "../../providerModels";
 import { zeropsCommands } from "../../state/zeropsCommands";
+import type { VaultChange } from "@t3tools/client-runtime/data";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
+import { ComposerPendingVaultChanges } from "./ComposerPendingVaultChanges";
 import { shouldUseCompactComposerPrimaryActions } from "../composerFooterLayout";
 import {
   type ComposerEditorSnapshot,
@@ -353,6 +355,7 @@ const extendReplacementRangeForTrailingSpace = (
 
 const NO_PICTURES: ReadonlyArray<ComposerPictureView> = [];
 const NO_FILES: ReadonlyArray<ComposerFileView> = [];
+const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
@@ -539,6 +542,9 @@ export interface ChatComposerProps {
    * edges and corners, over what they write.
    */
   top?: ReactNode;
+  /** The vault changes the next message tells the Mate: chips above the text, each set aside with ×. */
+  vaultChanges?: ReadonlyArray<VaultChange> | undefined;
+  onDismissVaultChange?: ((change: VaultChange) => void) | undefined;
 
   // Session phase
   phase: SessionPhase;
@@ -689,6 +695,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     mentionCrewmates,
     crewRunsOn,
     top,
+    vaultChanges = NO_VAULT_CHANGES,
+    onDismissVaultChange,
     phase,
     isConnecting,
     isSendBusy,
@@ -1303,12 +1311,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         prompt,
         imageCount: composerImages.length + composerFiles.length,
         terminalContexts: composerTerminalContexts,
-        elementContextCount: composerReviewComments.length,
+        elementContextCount: composerReviewComments.length + vaultChanges.length,
       }),
     [
       composerFiles.length,
       composerImages.length,
       composerReviewComments.length,
+      vaultChanges.length,
       composerTerminalContexts,
       prompt,
     ],
@@ -3656,6 +3665,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       onRemove={(commentId) =>
                         removeComposerDraftReviewComment(composerDraftTarget, commentId)
                       }
+                      className="mb-3"
+                    />
+                  )}
+
+                {!isComposerCollapsedMobile &&
+                  !isComposerApprovalState &&
+                  pendingUserInputs.length === 0 &&
+                  vaultChanges.length > 0 &&
+                  onDismissVaultChange !== undefined && (
+                    <ComposerPendingVaultChanges
+                      changes={vaultChanges}
+                      onRemove={onDismissVaultChange}
                       className="mb-3"
                     />
                   )}
