@@ -182,6 +182,18 @@ const harness = Effect.fn("harness")(function* () {
 const testLayer = Journal.layer.pipe(Layer.provide(SqlitePersistenceMemory));
 
 describe("Workspace history", () => {
+  it.effect("why a run's capture broke is held only while its run is", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      h.failJournalInsert(true);
+      yield* h.prepare();
+      const gaps = yield* h.history.gapsOf(threadId, "request");
+      expect(gaps.map((gap) => gap.service)).toEqual(["workspace"]);
+      yield* h.history.release(threadId, undefined, "request");
+      expect(yield* h.history.gapsOf(threadId, "request")).toEqual([]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("names each service a run's capture could not snapshot, and why", () =>
     Effect.gen(function* () {
       const h = yield* harness();

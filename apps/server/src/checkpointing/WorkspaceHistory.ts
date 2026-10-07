@@ -128,7 +128,7 @@ const LIVE_TURN_POLL = Duration.millis(250);
 export const make = Effect.gen(function* () {
   const store = yield* CheckpointStore;
   const journal = yield* WorkspaceCaptureJournal;
-  /** Why a run's capture broke as a whole, by its key, until the run is gone from memory. */
+  /** Why a run's capture broke as a whole, by its key, while the run is held (`forget`). */
   const broken = new Map<string, string>();
   const source = yield* Effect.serviceOption(ZeropsRepositorySource);
   const observer = yield* Effect.serviceOption(ZeropsWorkspaceObserver);
@@ -150,6 +150,11 @@ export const make = Effect.gen(function* () {
       sentTurnId?: TurnId;
     }
   >();
+  /** A run leaves memory: what was held of it goes with it. */
+  const forget = (runKey: string) => {
+    active.delete(runKey);
+    broken.delete(runKey);
+  };
   const captureLock = yield* Semaphore.make(1);
   const key = (threadId: ThreadId, runId: string) => JSON.stringify([threadId, runId]);
   const logFailure = (error: unknown) =>
@@ -371,7 +376,7 @@ export const make = Effect.gen(function* () {
         if (joined) {
           yield* Deferred.succeed(preparing.done, undefined);
           yield* Deferred.succeed(preparing.prepared, undefined);
-          active.delete(runKey);
+          forget(runKey);
           return yield* join(joined);
         }
         // The previous run's end is this one's start, but a message never waits
@@ -450,7 +455,7 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             yield* Deferred.succeed(entry.done, undefined);
             yield* Deferred.succeed(entry.prepared, undefined);
-            active.delete(runKey);
+            forget(runKey);
           }),
         ),
       );
@@ -504,7 +509,7 @@ export const make = Effect.gen(function* () {
         continue;
       yield* Deferred.succeed(r.done, undefined);
       yield* Deferred.succeed(r.prepared, undefined);
-      active.delete(runKey);
+      forget(runKey);
     }
   });
 
@@ -661,7 +666,7 @@ export const make = Effect.gen(function* () {
         )
           continue;
         yield* Deferred.succeed(entry.done, undefined);
-        active.delete(runKey);
+        forget(runKey);
       }
     },
   );
