@@ -777,20 +777,6 @@ still to come says so.
     record at HQ (`ZeropsProjectRow.logic.ts`, `plainZeropsProject`); it registers the Mate in HQ
 - **7** — zcp's delegated launch and the GitHub `prodCd` track for group Mates
   - _State:_ **open** — `launch_delegation.go` and the build-integration track remain in zcp
-- **8** — The vault: a project's variables (Shared plus one per service), who reads each, what is
-  not live, and the Mate told of the person's changes
-  - _State:_ built, not released — the Vault tab beside a Mate's conversation and beside a stage or
-    production page; reads are live queries; writes, restarts and edit as text; the composer's
-    chips and the `<zerops-update>` note; zcp acts strict (readers-only restarts, a preflight that
-    fails an unresolved reference, sensitive values masked in every tool output). Open: who reads a
-    value at build (exposed nowhere), the release gate (a release naming what production's vault
-    lacks), Logs beside the vault, and `KEY: ${KEY}` resolving on the platform (until then zcp
-    renames: `APP_KEY: ${APP_KEY_SECRET}`)
-  - _Built in:_ branches `vault/base` (mate) and `vault/strict` (zcp), 2026-10-07
-  - _Proven by:_ `vaultReferences.test.ts`, `vault.test.ts`, `vaultChanges.test.ts`,
-    `vaultWrite.test.ts`, `projectVariables.test.ts`, `vault.logic.test.ts`,
-    `vaultTurnNotes.logic.test.ts`, `VaultPanel.test.tsx`; ledger _The vault's platform, measured_;
-    a live look on Rhea's and xyz's projects (2026-10-07)
 
 ## 6. Decisions behind it
 

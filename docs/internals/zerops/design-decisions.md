@@ -1838,18 +1838,6 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
-- **2026-10-03** — **The MCP servers a Mate's agents can call are a right-panel tab, and /mcp opens
-  it** (the owner: "a proper mcp management dialog … or one of the right side tabs? it feels like
-  mcp is quite like .. important"). The tab is labelled "MCP"; Zerops' own server stands first,
-  marked "Built in", shown and reconnected, never turned off or removed; a repo `.mcp.json` server
-  is shown and edited in the repo. A row's dot is the conversation's agent's state, a second line
-  only for an error, a needed sign-in or a server turned off, and a third names which agent stands
-  how when they differ. A server added there is written for every agent installed on the Mate, in
-  each one's user-scope config — not the repo, so secrets stay out of git. /mcp is Mate's own
-  command, like /model: it opens the tab and sends nothing. Signing in to an OAuth server waits
-  for its own slice; mobile has no right panel, so no tab yet.
-  - _Why:_ Claude Code's /mcp in a Mate answers with one line of text, Codex has none, and an MCP
-    server a person adds is useful only if it reaches whichever agent the conversation runs on.
 
 - **2026-10-04** — **Origin's load and agent readiness fixes use HQ's facts.** A ready agent outside
   Mate's personal sign-in flow is relayed in its overview's identity, alongside provider changes.
@@ -2114,46 +2102,3 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's helpers were already named by their nickname or path. Where the launch named none, or
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
-- **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
-  Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
-  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
-  write's content or an edit's new text, drawn from the call's own stored payload
-  (`threads.fileWrites`): Claude Code's `Write` content and `Edit`/`MultiEdit` `new_string`s and
-  `NotebookEdit` `new_source`, Codex's added files and the added lines of its updates, OpenCode's
-  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and for an ACP agent (Cursor, Grok, Antigravity) the `new_string`, `newString` or `content` its call's raw input carries, else what its `diff` block adds over its old text, worked out on the server and cut to the characters that differ (`…db2…`): a line that stands unchanged in the old text is never shown as added, and a Codex or patch run that removes and adds the same line drops the pair. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
-  call carries only a mark that it wrote something; a call whose driver sent none keeps the row it
-  had, and a running or failed write opens onto nothing. Each file's text stands in the card's own
-  item box: in the log whole once opened, nothing scrolling inside (the 0.14.4 rule). "Open in
-  Files" for a path inside the workspace opens the Files tab as before; for one outside, the
-  read-only panel shows the thread's newest completed write of that path, labelled "As Sage wrote
-  it at 01:23" (`threads.writtenFile`).
-  - _Rule:_ what a reader sees is exactly what the agent wrote in its calls, from the thread's own
-    record. Nothing is read from disk, and nothing the agent only read or found in a file is sent:
-    never an edit's old text, a diff's removed or context lines, a patch's hunk headers, ACP's
-    `oldText` or a deleted file's content.
-    - Only a completed call wrote, as the server's own stored row says: a failed, declined or
-      never-returned call counts for nothing.
-    - The Files tab's path must equal exactly — untrimmed, in the form it was named — a path that a
-      completed call of THIS thread wrote; another thread's writes count for nothing.
-    - Both methods take `orchestration:read`, as `subscribeThread` does, and one answer carries at
-      most 1 MiB of text.
-  - _Why:_ a security review found that serving the file from disk cannot hold: an edit of one line
-    of `~/.npmrc` or an outside `.env` would serve the token beside it, which the agent never wrote
-    and readers never saw (a Read reaches them as an 84-character summary), and a renamed folder, a
-    write through a shared mapping, a FUSE mount, a timing slack or another clock each put other
-    content under the written name. The agent's own calls already reach every reader of the thread;
-    showing those, and only those, discloses nothing new.
-- **2026-10-07** — **A project's variables are its vault: Shared plus one per service, plain or
-  sensitive, and who reads each is worked out from what is deployed** (the owner: "a single `vault`
-  on both project and service level, with two sections … single add / edit, as well as multi edit
-  … some clever way to then let mate know"; round 3 of the "Mate Vault Prototype", Quiet look and
-  tools in the right panel taken as recommended). The Vault tab sits beside a Mate's conversation
-  and a Vault column beside a stage or production page. Sensitive is write-only; a write always
-  carries `sensitive`. Readers come from the deployed run entries (a deploy activates references, a
-  restart values); a value nothing references reads "nothing reads it yet". The Mate hears the
-  person's changes with the next message as a note of keys and what each needs, never a value; the
-  composer shows a chip per change. Edit as text applies one write per value after a review.
-  - _Why:_ "you need deploy to activate the zerops.yml reference / when the vault value changes,
-    you need to restart the services … but you don't really know which reference it" — the
-    platform does not know who reads a value, so Mate reads it off each service's deployed entries;
-    and a value typed into the chat would reach the model, so a value goes only to the vault.
