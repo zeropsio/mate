@@ -103,20 +103,26 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
       target: LinkKey | ScopeKey,
       generation: number | null,
     ): Effect.Effect<never, Deadline> =>
-      Effect.gen(function* () {
-        while (true) {
-          const { next, phase, generation: current } = streamOf(store.state(), target);
-          const waiting = next.kind === "await-handshake" || next.kind === "await-baseline";
-          // The link's watch ends once this attempt stops waiting; a scope's once it is live.
-          if (generation !== null && (current !== generation || !waiting))
-            return yield* Effect.never;
-          if (phase === "live") return yield* Effect.never;
-          const now = yield* Clock.currentTimeMillis;
-          if (waiting && now >= next.deadlineAt) return yield* Effect.fail({ deadline: target });
-          // A scope not begun yet is looked at again within the time its handshake may take.
-          yield* Effect.sleep(waiting ? next.deadlineAt - now : STREAM_POLICY.handshakeTimeoutMs);
-        }
-      });
+      Effect.scoped(
+        Effect.gen(function* () {
+          const changes = yield* Queue.sliding<void>(1);
+          const stop = store.subscribe(() => Queue.offerUnsafe(changes, undefined));
+          yield* Effect.addFinalizer(() => Effect.sync(stop));
+          while (true) {
+            const { next, generation: current } = streamOf(store.state(), target);
+            const waiting = next.kind === "await-handshake" || next.kind === "await-baseline";
+            // The link ends its initial wait once connected. A scope can baseline again on the
+            // next segment, so keep watching its named deadlines until the attempt ends.
+            if (generation !== null && (current !== generation || !waiting))
+              return yield* Effect.never;
+            const now = yield* Clock.currentTimeMillis;
+            if (waiting && now >= next.deadlineAt) return yield* Effect.fail({ deadline: target });
+            yield* waiting
+              ? Effect.raceFirst(Queue.take(changes), Effect.sleep(next.deadlineAt - now))
+              : Queue.take(changes);
+          }
+        }),
+      );
     /**
      * The demanded details' deadlines, whichever are demanded now: a detail demanded during the
      * attempt is looked at within the time its handshake may take. A detail's read that passes its

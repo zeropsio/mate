@@ -138,11 +138,12 @@ export const newSegmentWithoutSnapshot = (s: Scenario) =>
 
 export const heartbeatsWithoutSnapshot = (s: Scenario) =>
   Effect.gen(function* () {
-    // Nine acknowledged heartbeats in the NEW segment span 180 seconds of virtual browser time.
-    for (let n = 0; n < 9; n++) {
-      yield* Effect.promise(() => s.clock.advance(20_000));
+    // A responding transport cannot extend the scope's 20-second catchup deadline.
+    for (let n = 0; n < 3; n++) {
+      yield* Effect.promise(() => s.clock.advance(5_000));
       yield* Effect.promise(() => outageControls(s.drivers).ping());
     }
+    yield* Effect.promise(() => s.clock.advance(5_000));
   });
 
 export const stallsHq = (s: Scenario) =>

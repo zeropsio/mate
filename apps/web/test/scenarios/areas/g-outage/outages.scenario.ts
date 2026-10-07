@@ -215,16 +215,15 @@ describe("G: outages, sleep and several tabs", () => {
     );
 
     // Targets a new segment staying apparently current when pings arrive but its snapshot never does.
-    it.effect.fails("a new HQ segment without its snapshot cannot stay live on pings", () =>
+    it.effect("a new HQ segment without its snapshot cannot stay live on pings", () =>
       Effect.gen(function* () {
-        const target = expectedFailureTarget("new-segment outage surface");
         const s = yield* givenOutage();
         yield* s.given.signedIn;
         yield* caughtUp(s, "Shop");
         yield* newSegmentWithoutSnapshot(s);
         yield* heartbeatsWithoutSnapshot(s);
         yield* checkpoint(s);
-        yield* target(s.then.hq.isUnavailable);
+        yield* s.then.hq.isUnavailable;
       }),
     );
 

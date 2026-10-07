@@ -607,6 +607,7 @@ export function hqNavigationLink(options: {
               });
             asked.clear();
             if (resumed.length > 0) {
+              for (const registered of resumed) yield* register(registered);
               yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
               for (const { wire } of resumed) asked.add(hqScopeKey(wire));
             }
