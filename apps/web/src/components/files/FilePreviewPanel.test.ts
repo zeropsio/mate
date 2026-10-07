@@ -1,3 +1,5 @@
+import { ProjectReadFileError } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -5,7 +7,64 @@ import {
   normalizeFileCommentRange,
   remapFileCommentAnnotations,
 } from "./fileCommentAnnotations";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
+import {
+  filePreviewReadFailure,
+  isMarkdownPreviewFile,
+  setMarkdownTaskChecked,
+} from "./filePreviewMode";
+
+const decodeReadError = Schema.decodeSync(ProjectReadFileError);
+
+describe("a file preview that could not read its file", () => {
+  it.each([
+    ["path_not_file", "The path is a folder or a special file, not a file."],
+    ["binary_file", "The file is binary and can't be shown as text."],
+    ["workspace_path_outside_root", "The path is outside the project's folder."],
+    ["resolved_path_outside_root", "The path leads outside the project's folder."],
+    ["operation_failed", "The file couldn't be read. It may be missing or not readable."],
+  ] as const)("says why for %s, never the platform's own words", (failure, message) => {
+    const error = new ProjectReadFileError({
+      cwd: "/var/www/app",
+      relativePath: "docs/outline.md",
+      failure,
+      operation: "realpath-target",
+      resolvedPath: "/var/www/app/docs/outline.md",
+      cause: new Error("EACCES: sensitive platform detail"),
+    });
+    expect(filePreviewReadFailure(error, "/var/www/app")).toEqual({
+      message,
+      attemptedPath: "/var/www/app/docs/outline.md",
+      workspaceFolder: "/var/www/app",
+    });
+  });
+
+  it("tells a project folder it couldn't open from a file it couldn't read", () => {
+    const error = new ProjectReadFileError({
+      cwd: "/var/www/app",
+      relativePath: "outline.md",
+      failure: "operation_failed",
+      operation: "realpath-workspace-root",
+      operationPath: "/var/www/app",
+    });
+    expect(filePreviewReadFailure(error, "/var/www/app")).toEqual({
+      message: "The project's folder couldn't be opened.",
+      attemptedPath: "/var/www/app",
+      workspaceFolder: "/var/www/app",
+    });
+  });
+
+  it("keeps an older server's own words, and names no path it did not say", () => {
+    const error = decodeReadError({
+      _tag: "ProjectReadFileError",
+      message: "Legacy file read failure.",
+    });
+    expect(filePreviewReadFailure(error, "/var/www/app")).toEqual({
+      message: "Legacy file read failure.",
+      attemptedPath: null,
+      workspaceFolder: "/var/www/app",
+    });
+  });
+});
 
 describe("file comment annotations", () => {
   it("normalizes and formats selected line ranges", () => {

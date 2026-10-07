@@ -438,6 +438,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       openFile: (ref, requestedPath, line) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
+            if (requestedPath === ".") {
+              return upsertSurface(current, singletonSurface("files"));
+            }
             // Workspace entry paths use '/', including on Windows. A folder link
             // ends in one; the tree names the folder without it.
             const relativePath = /^[A-Za-z]:\/+$/.test(requestedPath)

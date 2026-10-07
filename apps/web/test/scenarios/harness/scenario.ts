@@ -464,7 +464,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const page = yield* Effect.promise(() => web.newPage(context));
     return actor(page, options.person ?? "owner");
   });
-  // oxlint-disable-next-line unicorn/no-thenable
+  // oxlint-disable-next-line unicorn/no-thenable -- the scenario keeps its `then` step, never awaited.
   return {
     ...primary,
     given: { ...primary.given, browserActor: newActor },

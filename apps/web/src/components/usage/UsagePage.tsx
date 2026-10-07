@@ -11,6 +11,7 @@ import {
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
+  type MergedUsage,
 } from "@t3tools/shared/usageMerge";
 
 import { isElectron } from "../../env";
@@ -34,6 +35,7 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
+  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
@@ -526,7 +528,7 @@ export function UsagePage({
                 environments={scopedEnvironments}
                 nameOf={nameOf}
                 duplicateSources={merged.duplicateSources}
-                staleEnvironments={merged.staleEnvironments}
+                contractMismatches={merged.contractMismatches}
               />
             ) : null}
             {showingLimits ? (
@@ -889,12 +891,12 @@ function UsageCoverageNotice({
   environments,
   nameOf,
   duplicateSources,
-  staleEnvironments,
+  contractMismatches,
 }: {
   readonly environments: readonly EnvironmentUsageStatus[];
   readonly nameOf: (environment: EnvironmentUsageStatus) => string;
   readonly duplicateSources: readonly string[];
-  readonly staleEnvironments: readonly string[];
+  readonly contractMismatches: MergedUsage["contractMismatches"];
 }) {
   const degraded = environments.filter(
     (environment) =>
@@ -906,13 +908,17 @@ function UsageCoverageNotice({
         environment.summary.pricing.status !== "fresh"),
   );
   const failed = environments.filter((environment) => environment.error !== null);
-  const stale = environments.filter((environment) =>
-    staleEnvironments.includes(environment.environmentId),
+  const mismatchByEnvironment = new Map(
+    contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
   );
+  const incompatible = environments.flatMap((environment) => {
+    const mismatch = mismatchByEnvironment.get(environment.environmentId);
+    return mismatch === undefined ? [] : [{ environment, mismatch }];
+  });
   if (
     environments.every((environment) => environment.summary === null) &&
     failed.length === 0 &&
-    stale.length === 0 &&
+    incompatible.length === 0 &&
     duplicateSources.length === 0
   ) {
     return null;
@@ -936,9 +942,9 @@ function UsageCoverageNotice({
             {nameOf(environment)} snapshot read at {environment.summary?.readAt}.
           </span>
         ))}
-      {stale.map((environment) => (
+      {incompatible.map(({ environment, mismatch }) => (
         <span key={environment.environmentId}>
-          {nameOf(environment)} runs an older server version and is excluded from totals.
+          {formatUsageContractMismatch(nameOf(environment), mismatch)}
         </span>
       ))}
       {duplicateSources.length > 0 ? (

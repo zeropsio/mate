@@ -80,6 +80,12 @@ describe("a call's own words and target reach its entry", () => {
       data: { toolName: "WebSearch", input: { query: "zerops yml", glob: "*.md" } },
       expected: { query: "zerops yml", glob: "*.md" },
     },
+    {
+      name: "the skill a skill call loads",
+      itemType: "dynamic_tool_call",
+      data: { toolName: "skill", input: { name: "zerops-deploy" } },
+      expected: { skill: "zerops-deploy" },
+    },
   ])("keeps $name", ({ itemType, data, expected }) => {
     const [entry] = deriveWorkLogEntries([completedCall(itemType, data)]);
     expect(entry?.callInput).toEqual(expected);
@@ -238,5 +244,33 @@ describe("a call that wrote a file is marked on its entry by its end", () => {
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]?.wroteFile === true).toBe(wrote);
+  });
+});
+
+describe("how a call presents itself reaches its entry", () => {
+  it("keeps the title and server its agent gave it, from its first word through its completion", () => {
+    const presentation = {
+      title: "Firecrawl scrape",
+      source: { key: "mcp:claude_ai_firecrawl", name: "Firecrawl" },
+    };
+    const data = { toolName: "mcp__claude_ai_Firecrawl__firecrawl_scrape", input: {} };
+    const entries = deriveWorkLogEntries([
+      activity({
+        kind: "tool.updated",
+        payload: {
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          toolCallId: "toolu_fc",
+          data,
+          presentation,
+        },
+      }),
+      activity({
+        kind: "tool.completed",
+        createdAt: "2026-09-27T08:00:05.000Z",
+        payload: { itemType: "mcp_tool_call", status: "completed", toolCallId: "toolu_fc", data },
+      }),
+    ]);
+    expect(entries.map((entry) => entry.toolPresentation)).toEqual([presentation]);
   });
 });

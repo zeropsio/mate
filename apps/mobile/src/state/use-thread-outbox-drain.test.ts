@@ -132,6 +132,11 @@ vi.mock("./thread-outbox", async () => {
 });
 
 import { appAtomRegistry } from "./atom-registry";
+import {
+  clearThreadComposerError,
+  setThreadComposerError,
+  threadComposerErrorsAtom,
+} from "./thread-composer-error";
 import type { QueuedThreadMessage } from "./thread-outbox-model";
 import * as composerDrafts from "./use-composer-drafts";
 import { editingQueuedMessageIdsAtom } from "./use-thread-outbox";
@@ -202,6 +207,7 @@ afterEach(() => {
   appAtomRegistry.set(composerDrafts.composerDraftsAtom, {});
   appAtomRegistry.set(composerDrafts.composerCloudDraftsAtom, { accountId: null, signedOut: {} });
   appAtomRegistry.set(editingQueuedMessageIdsAtom, {});
+  appAtomRegistry.set(threadComposerErrorsAtom, {});
   harness.draftFile.setWriteError(null);
   harness.removePersistedFile.mockClear();
   harness.removeOutboxMessage.mockClear();
@@ -442,6 +448,25 @@ describe("thread outbox drain delivery cleanup", () => {
     expect(appAtomRegistry.get(acknowledgedThreadMessagesAtom)).toEqual([message]);
   });
 
+  it("clears an error about the delivered message but keeps one about another message", async () => {
+    const threadKey = "environment-1:thread-1";
+    const retried = queuedMessage({ messageId: "message-retried", text: "retried" });
+    await harness.manager.enqueue(retried);
+    // A failed recovery left this message queued with an error about it.
+    setThreadComposerError(threadKey, "could not be restored", retried.messageId);
+
+    await completeQueuedMessageDelivery(retried, harness.manager.revisionOf(retried.messageId));
+    expect(appAtomRegistry.get(threadComposerErrorsAtom)[threadKey]).toBeUndefined();
+
+    const other = queuedMessage({ messageId: "message-other", text: "other" });
+    await harness.manager.enqueue(other);
+    // The thread's error explains a different, rejected message still in the draft.
+    setThreadComposerError(threadKey, "rejected", "message-rejected");
+
+    await completeQueuedMessageDelivery(other, harness.manager.revisionOf(other.messageId));
+    expect(appAtomRegistry.get(threadComposerErrorsAtom)[threadKey]?.message).toBe("rejected");
+  });
+
   it("keeps a delivered message when its editor opens during storage removal", async () => {
     const message = queuedMessage({
       messageId: "message-editor-removal-race",
@@ -626,6 +651,54 @@ describe("thread outbox recovery rollback", () => {
     expect(harness.setPendingConnectionError).toHaveBeenCalledWith("rejected by server");
   });
 
+  it("says why a rejected message came back, above its thread's composer", async () => {
+    const message = queuedMessage({ messageId: "message-rejected", text: "rejected text" });
+    await harness.manager.enqueue(message);
+
+    await expect(restoreRejectedQueuedMessage(message, "rejected")).resolves.toBe("restored");
+
+    expect(
+      appAtomRegistry.get(threadComposerErrorsAtom)[`${message.environmentId}:${message.threadId}`],
+    ).toEqual({ message: "rejected", messageId: message.messageId });
+    expect(harness.setPendingConnectionError).not.toHaveBeenCalled();
+  });
+
+  it("leaves no error when the restored text is resent before recovery finishes", async () => {
+    const message = queuedMessage({ messageId: "message-resent", text: "resend me" });
+    const threadKey = `${message.environmentId}:${message.threadId}`;
+    await harness.manager.enqueue(message);
+    // The user sees the restored text as soon as the merge publishes it and
+    // sends it again while the recovery is still awaiting persistence.
+    const unsubscribe = appAtomRegistry.subscribe(composerDrafts.composerDraftsAtom, (drafts) => {
+      if (drafts[threadKey]?.text === "resend me") {
+        unsubscribe();
+        clearThreadComposerError(threadKey);
+        void composerDrafts.clearComposerDraftContent(threadKey);
+      }
+    });
+
+    await expect(restoreRejectedQueuedMessage(message, "rejected")).resolves.toBe("restored");
+
+    expect(appAtomRegistry.get(threadComposerErrorsAtom)).toEqual({});
+  });
+
+  it("withdraws the error when an edit makes the recovery back out", async () => {
+    const message = queuedMessage({ messageId: "message-edited-mid-recovery", text: "edit me" });
+    const threadKey = `${message.environmentId}:${message.threadId}`;
+    await harness.manager.enqueue(message);
+    const unsubscribe = appAtomRegistry.subscribe(composerDrafts.composerDraftsAtom, (drafts) => {
+      if (drafts[threadKey]?.text === "edit me") {
+        unsubscribe();
+        appAtomRegistry.set(editingQueuedMessageIdsAtom, { [message.messageId]: true });
+      }
+    });
+
+    await expect(restoreRejectedQueuedMessage(message, "rejected")).resolves.toBe("deferred");
+
+    expect(appAtomRegistry.get(threadComposerErrorsAtom)).toEqual({});
+    expect(remainingMessages()).toEqual([message]);
+  });
+
   it("rolls a failed recovery merge back so the retry cannot duplicate the text", async () => {
     const message = queuedMessage({ messageId: "message-restore", text: "queued text" });
     const draftKey = `${message.environmentId}:${message.threadId}`;
@@ -649,6 +722,6 @@ describe("thread outbox recovery rollback", () => {
       "typed offline\n\nqueued text",
     );
     expect(remainingMessages()).toEqual([]);
-    expect(harness.setPendingConnectionError).toHaveBeenCalledWith("too large");
+    expect(appAtomRegistry.get(threadComposerErrorsAtom)[draftKey]?.message).toBe("too large");
   });
 });

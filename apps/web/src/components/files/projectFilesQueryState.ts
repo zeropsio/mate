@@ -115,6 +115,8 @@ function errorMessage(cause: unknown): string | null {
 const isProjectReadFileError = Schema.is(ProjectReadFileError);
 
 interface ProjectFileQueryState extends ProjectQueryState<ProjectReadFileResult> {
+  /** The read's own failure, for the preview to say why and which path it tried. */
+  readonly readError: ProjectReadFileError | null;
   /** The path exists but is not a regular file, typically a directory. */
   readonly isNotFile: boolean;
 }
@@ -192,6 +194,7 @@ export function useProjectFileQuery(
   return {
     data: drafted ?? data,
     error: errorMessage(cause),
+    readError: isProjectReadFileError(cause) ? cause : null,
     isNotFile:
       (isProjectReadFileError(cause) && cause.failure === "path_not_file") ||
       (typeof cause === "object" &&

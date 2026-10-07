@@ -25,6 +25,7 @@ import type { Thread, ThreadShell } from "../types";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
+  projectScriptKeybindingWrites,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   branchMismatchKey,
   waitForRevertedMessage,
@@ -2605,5 +2606,74 @@ describe("sendStepAfterUploads", () => {
       action: "hold",
       reason: "An attachment didn't upload.",
     });
+  });
+});
+
+describe("projectScriptKeybindingWrites", () => {
+  const command = "script.test.run" as const;
+  const bound = (key: string, mod = true) => ({
+    command,
+    shortcut: { key, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, modKey: mod },
+  });
+
+  it("a changed shortcut replaces the one the action had", () => {
+    expect(
+      projectScriptKeybindingWrites({
+        rule: { key: "mod+j", command },
+        command,
+        bound: [bound("k")],
+        retainedElsewhere: false,
+      }),
+    ).toEqual({
+      remove: [],
+      upsert: { key: "mod+j", command, replace: { key: "mod+k", command } },
+    });
+  });
+
+  it("a cleared shortcut no longer runs the action", () => {
+    expect(
+      projectScriptKeybindingWrites({
+        rule: null,
+        command,
+        bound: [bound("k")],
+        retainedElsewhere: false,
+      }),
+    ).toEqual({ remove: [{ key: "mod+k", command }], upsert: null });
+  });
+
+  it("a shortcut another project's action still runs by is kept", () => {
+    expect(
+      projectScriptKeybindingWrites({
+        rule: null,
+        command,
+        bound: [bound("k")],
+        retainedElsewhere: true,
+      }),
+    ).toEqual({ remove: [], upsert: null });
+  });
+
+  it("shortcuts an earlier edit left behind go, the newest is replaced", () => {
+    expect(
+      projectScriptKeybindingWrites({
+        rule: { key: "mod+j", command },
+        command,
+        bound: [bound("h"), bound("k")],
+        retainedElsewhere: false,
+      }),
+    ).toEqual({
+      remove: [{ key: "mod+h", command }],
+      upsert: { key: "mod+j", command, replace: { key: "mod+k", command } },
+    });
+  });
+
+  it("an unchanged shortcut is written as it is", () => {
+    expect(
+      projectScriptKeybindingWrites({
+        rule: { key: "mod+k", command },
+        command,
+        bound: [bound("k")],
+        retainedElsewhere: false,
+      }),
+    ).toEqual({ remove: [], upsert: { key: "mod+k", command } });
   });
 });

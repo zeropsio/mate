@@ -20,6 +20,34 @@ describe("mobile Zerops integration", () => {
     expect(app).not.toContain('from "./Stack"');
   });
 
+  it("wraps whatever mounts the Stack in the global voice input provider and pill", () => {
+    // Every thread screen's composer reads the global voice input session, which
+    // throws without its provider; upstream wraps Navigation in both in App.tsx.
+    const self = NodePath.resolve(new URL(import.meta.url).pathname);
+    const sourceRoot = NodePath.join(repositoryRoot, "apps/mobile/src");
+    const stackMounters = (
+      NodeFS.readdirSync(sourceRoot, { recursive: true }) as ReadonlyArray<string>
+    )
+      .map((file) => NodePath.join(sourceRoot, file))
+      .filter((file) => /\.tsx?$/u.test(file) && file !== self)
+      .map((file) => ({ file, source: NodeFS.readFileSync(file, "utf8") }))
+      .filter(({ source }) => /from "(?:\.\/|(?:\.\.\/)+)Stack"/u.test(source));
+
+    for (const { file, source } of stackMounters) {
+      const order = [
+        "<VoiceInputProvider>",
+        "<GlobalVoiceInputControl>",
+        "<Navigation",
+        "</GlobalVoiceInputControl>",
+        "</VoiceInputProvider>",
+      ].map((tag) => source.indexOf(tag));
+      expect(order, NodePath.relative(repositoryRoot, file)).not.toContain(-1);
+      expect(order, NodePath.relative(repositoryRoot, file)).toEqual(
+        order.toSorted((a, b) => a - b),
+      );
+    }
+  });
+
   it("reads the shared candidate selector over the store's roster and services", () => {
     const candidates = readSource("src/features/zerops/useZeropsCandidates.ts");
 

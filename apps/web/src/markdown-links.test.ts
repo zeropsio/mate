@@ -503,3 +503,14 @@ describe("directory paths with a trailing separator", () => {
     expect(meta?.basename).not.toBe("");
   });
 });
+
+it("routes the project-root code link to the workspace explorer", () => {
+  const cwd = "/var/www/appdev";
+  expect(resolveInlineCodeFileLinkMeta(cwd, cwd)).toMatchObject({
+    workspaceRelativePath: ".",
+    filePath: cwd,
+  });
+  expect(resolveMarkdownFileLinkMeta(`${cwd}/`, cwd)).toMatchObject({
+    workspaceRelativePath: ".",
+  });
+});
