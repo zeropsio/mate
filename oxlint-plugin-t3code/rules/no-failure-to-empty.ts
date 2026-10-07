@@ -7,6 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
+import { compactSyntax, enclosingFunction } from "./boundaries.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 const RULE_NAME = "no-failure-to-empty";
@@ -421,6 +422,28 @@ export default defineRule({
         );
       },
       ConditionalExpression(node) {
+        const fn = enclosingFunction(node);
+        const expression = compactSyntax(context, node);
+        // A failed settled command focuses no terminal; its failure is reported by the caller.
+        if (
+          path === "packages/client-runtime/src/zerops/agentLogin.ts" &&
+          fn?.type === "FunctionDeclaration" &&
+          fn.id?.name === "agentLoginTerminalToFocus" &&
+          expression === 'result._tag==="Success"?result.value.terminalId:undefined' &&
+          compactSyntax(context, fn).includes(
+            "AtomCommandResult<ZeropsAgentLoginStartResult,unknown>",
+          )
+        )
+          return;
+        // Optional composition supplies no phase. The separate build read remains unobservable.
+        if (
+          path === "packages/client-runtime/src/zerops/model/deriveThreadModel.ts" &&
+          fn?.type === "FunctionDeclaration" &&
+          fn.id?.name === "deriveZeropsThreadModel" &&
+          expression === 'lifecycle?.state==="known"?lifecycle.value.envelope:undefined' &&
+          compactSyntax(context, fn).includes("builds:input.builds??UNOBSERVABLE")
+        )
+          return;
         const check = heldCheck(context, node.test);
         if (check === undefined) return;
         const [held, otherwise] = check.heldInConsequent
@@ -434,6 +457,21 @@ export default defineRule({
         );
       },
       LogicalExpression(node) {
+        // Optional labels decorate the still-present attention collection; they are not its facts.
+        const property = node.parent;
+        const object = property?.parent;
+        const call = object?.parent;
+        if (
+          path === "apps/web/src/components/zerops/ZeropsGroupDetail.tsx" &&
+          property?.type === "Property" &&
+          property.value === node &&
+          getPropertyName(property.key).pipe(Option.getOrUndefined) === "mateNames" &&
+          call?.type === "CallExpression" &&
+          call.callee.type === "Identifier" &&
+          call.callee.name === "projectAttention" &&
+          compactSyntax(context, node) === "mateNames??EMPTY_MATE_NAMES"
+        )
+          return;
         if (node.operator !== "??" || !isEmptyDefault(context, node.right)) return;
         if (!isStoreRead(context, node.left, new Set())) return;
         report(

@@ -48,14 +48,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/environments/primary/auth.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "effect/unstable/http",
-    "owner": "data-layer rewrite: Mate transport",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/environments/primary/httpLayer.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
@@ -84,14 +76,6 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/observability/clientTracing.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "effect/unstable/http",
-    "owner": "data-layer rewrite: Mate transport",
     "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
     "expires": "never"
   },
@@ -165,46 +149,6 @@
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/accountHq.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "data-layer rewrite: HQ",
-    "reason": "Retained account/HQ entry boundary: this call establishes or repairs the Zerops-identity door, HQ session or Core artifact before source subscriptions can run. Its discovery and credential lifecycle must be preserved separately from these data-family reads.",
     "expires": "never"
   },
   {
@@ -445,14 +389,6 @@
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.platform.register",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
     "expires": "never"
   }
 ]
