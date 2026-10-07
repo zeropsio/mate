@@ -18,6 +18,7 @@
  * @module ThreadFileWrites
  */
 import {
+  ConversationId,
   type FileWrite,
   ThreadFileWritesError,
   type ThreadFileWritesInput,
@@ -27,10 +28,12 @@ import {
   type ThreadWrittenFileResult,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";
 
 /** The most text one answer carries: past it, what is left is cut and said to be. */
@@ -209,4 +212,31 @@ export const makeSqlStore = Effect.gen(function* () {
   return { completedWrites, callPayloads } satisfies ThreadFileWritesStore;
 });
 
-export const layer = Layer.effect(ThreadFileWrites, Effect.map(makeSqlStore, make));
+/**
+ * The store over the Mate engine's record, while it owns the conversation: a conversation's
+ * calls' own records, kept beside their items (`MateEngine.callData`). The thread is the
+ * conversation, a call its item.
+ */
+export const makeEngineStore = (engine: MateEngineService): ThreadFileWritesStore => ({
+  completedWrites: (threadId, path) =>
+    Effect.map(engine.callData(ConversationId.make(threadId), { naming: path }), (rows) =>
+      rows.map((row) => ({
+        // The call's own end, as V1's row says it: only a call that completed wrote.
+        payload: { status: row.state === "done" ? "completed" : row.state, data: row.data },
+        completedAt: DateTime.formatIso(DateTime.makeUnsafe(row.at)),
+      })),
+    ),
+  callPayloads: (threadId, callIds) =>
+    Effect.map(engine.callData(ConversationId.make(threadId), { itemIds: callIds }), (rows) =>
+      rows.toReversed().map((row) => ({ callId: row.itemId, payload: { data: row.data } })),
+    ),
+});
+
+/** What the thread's agent wrote: from the engine's record while it owns the conversation. */
+export const layer = Layer.effect(
+  ThreadFileWrites,
+  Effect.gen(function* () {
+    const engine = yield* MateEngine;
+    return make(engine.live ? makeEngineStore(engine) : yield* makeSqlStore);
+  }),
+);

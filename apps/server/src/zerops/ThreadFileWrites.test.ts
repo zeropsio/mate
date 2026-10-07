@@ -7,10 +7,12 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import {
   FILE_WRITES_RESPONSE_MAX_CHARS,
   make,
+  makeEngineStore,
   makeSqlStore,
   type CompletedWrite,
   type ThreadFileWritesStore,
 } from "./ThreadFileWrites.ts";
+import { inertMateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 
 const THREAD = ThreadId.make("thread-writes");
 const t = (second: number) => `2026-10-06T10:00:${String(second).padStart(2, "0")}.000Z`;
@@ -241,5 +243,66 @@ describe("the sqlite store", () => {
         .pipe(Effect.flip);
       expect(stillRefused.reason).toBe("not_written");
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
+  );
+});
+
+describe("the engine's store, while the Mate engine owns the conversation", () => {
+  const conversation = "conversation-writes";
+  const written = (itemId: string, state: string, path: string, content: string, at: number) => ({
+    itemId,
+    state,
+    at,
+    data: { toolName: "Write", input: { file_path: path, content } },
+  });
+  const engine = (rows: ReadonlyArray<ReturnType<typeof written>>): MateEngineService => ({
+    ...inertMateEngine,
+    live: true,
+    callData: (_conversation, find) =>
+      Effect.succeed(
+        "itemIds" in find
+          ? rows.filter((row) => find.itemIds.includes(row.itemId))
+          : rows.filter((row) => JSON.stringify(row.data).includes(find.naming)),
+      ),
+  });
+
+  it.effect("shows what the conversation's newest completed call wrote at a path, and when", () =>
+    Effect.gen(function* () {
+      const service = make(
+        makeEngineStore(
+          engine([
+            written("i1", "done", "/etc/app.conf", "a=1\n", Date.parse("2026-10-07T10:00:00.000Z")),
+            written("i2", "done", "/etc/app.conf", "a=2\n", Date.parse("2026-10-07T11:00:00.000Z")),
+            written(
+              "i3",
+              "failed",
+              "/etc/app.conf",
+              "a=3\n",
+              Date.parse("2026-10-07T12:00:00.000Z"),
+            ),
+          ]),
+        ),
+      );
+      const result = yield* service.writtenFile({
+        threadId: ThreadId.make(conversation),
+        path: "/etc/app.conf",
+      });
+      expect(result.writtenAt).toBe("2026-10-07T11:00:00.000Z");
+      expect(result.write.changes.map((change) => change.text).join("")).toContain("a=2");
+    }),
+  );
+
+  it.effect("answers each asked call by the record kept beside its item", () =>
+    Effect.gen(function* () {
+      const service = make(
+        makeEngineStore(engine([written("i1", "done", "/var/www/README.md", "# Hi\n", 1)])),
+      );
+      const result = yield* service.fileWrites({
+        threadId: ThreadId.make(conversation),
+        toolCallIds: ["i1", "i9"],
+      });
+      expect(
+        result.calls.map((call) => [call.toolCallId, call.writes.map((write) => write.path)]),
+      ).toEqual([["i1", ["/var/www/README.md"]]]);
+    }),
   );
 });

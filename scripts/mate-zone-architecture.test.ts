@@ -1638,6 +1638,7 @@ const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
+  "apps/server/src/zerops/ThreadFileWrites.ts",
   "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
   "apps/server/src/zerops/ZeropsHqLink.ts",
   "apps/server/src/zerops/ZeropsMateAttention.ts",
