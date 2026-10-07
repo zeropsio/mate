@@ -86,7 +86,10 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     registry.set(mateConversationStoreAtom, store);
     registry.set(creationPressStoreAtom, store);
+    let closed = false;
     const close = () => {
+      if (closed) return;
+      closed = true;
       closeSharedMateSetupDemand(store);
       if (registry.get(mateConversationStoreAtom) === store)
         registry.set(mateConversationStoreAtom, null);
