@@ -18,7 +18,7 @@ import type {
 } from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { DatabaseIcon, LockIcon, PlusIcon, SearchIcon, TextIcon, XIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button, InlineButton } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -547,23 +547,36 @@ function ScopeBar(props: {
   readonly query: string;
   readonly onPick: (id: string) => void;
 }) {
-  const index = Math.max(
-    0,
-    props.scopes.findIndex((scope) => scope.id === props.current),
-  );
+  const bar = useRef<HTMLDivElement>(null);
+  const pill = useRef<HTMLSpanElement>(null);
+  // The pill sits under the scope picked, each as wide as its name: measured, not divided, so a
+  // project of many services scrolls sideways instead of cutting their names; the one picked stays
+  // in view.
+  useLayoutEffect(() => {
+    const row = bar.current;
+    if (row === null || props.scopes.length === 0) return;
+    const place = () => {
+      const tab = row.querySelector<HTMLElement>(
+        `[data-vault-scope="${CSS.escape(props.current)}"]`,
+      );
+      if (tab === null || pill.current === null) return;
+      pill.current.style.setProperty("--vault-pill-x", `${tab.offsetLeft}px`);
+      pill.current.style.setProperty("--vault-pill-w", `${tab.offsetWidth}px`);
+      const right = tab.offsetLeft + tab.offsetWidth;
+      if (tab.offsetLeft < row.scrollLeft) row.scrollLeft = tab.offsetLeft - 2;
+      else if (right > row.scrollLeft + row.clientWidth)
+        row.scrollLeft = right - row.clientWidth + 2;
+    };
+    place();
+    // A tab grows with its count; the row with the panel.
+    const observer = new ResizeObserver(place);
+    observer.observe(row);
+    for (const tab of row.querySelectorAll("[data-vault-scope]")) observer.observe(tab);
+    return () => observer.disconnect();
+  }, [props.current, props.scopes]);
   return (
-    <div
-      aria-label="Scope"
-      className="vault-scopes mx-4 mb-3 flex-none"
-      role="tablist"
-      style={
-        {
-          "--vault-scopes": props.scopes.length,
-          "--vault-scope": index,
-        } as React.CSSProperties
-      }
-    >
-      <span aria-hidden="true" className="vault-scope-pill" />
+    <div aria-label="Scope" className="vault-scopes mx-4 mb-3 flex-none" ref={bar} role="tablist">
+      <span aria-hidden="true" className="vault-scope-pill" ref={pill} />
       {props.scopes.map((scope) => {
         const count = scopeCount(scope, props.query);
         const selected = scope.id === props.current;
@@ -572,10 +585,10 @@ function ScopeBar(props: {
             aria-selected={selected}
             className={
               props.query !== "" && count === 0
-                ? "vault-scope flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md font-medium text-line text-muted-foreground opacity-40"
+                ? "vault-scope flex h-7 shrink-0 items-center px-2.5 justify-center gap-1.5 rounded-md font-medium text-line text-muted-foreground opacity-40"
                 : selected
-                  ? "vault-scope flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md font-medium text-line text-foreground"
-                  : "vault-scope flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md font-medium text-line text-muted-foreground hover:text-foreground"
+                  ? "vault-scope flex h-7 shrink-0 items-center px-2.5 justify-center gap-1.5 rounded-md font-medium text-line text-foreground"
+                  : "vault-scope flex h-7 shrink-0 items-center px-2.5 justify-center gap-1.5 rounded-md font-medium text-line text-muted-foreground hover:text-foreground"
             }
             data-vault-scope={scope.id}
             key={scope.id}
@@ -586,7 +599,7 @@ function ScopeBar(props: {
             {scope.kind === "managed" ? (
               <DatabaseIcon aria-hidden="true" className="size-3 shrink-0 opacity-70" />
             ) : null}
-            <span className="truncate">{scopeName(scope)}</span>
+            <span className="whitespace-nowrap">{scopeName(scope)}</span>
             {count > 0 ? (
               <span className="font-normal text-xs text-muted-foreground tabular-nums">
                 {count}

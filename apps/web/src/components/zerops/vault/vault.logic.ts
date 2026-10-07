@@ -176,6 +176,8 @@ export function isUnread(view: VaultView, scope: VaultScope, key: string): boole
 
 export type VaultValueLine =
   | { readonly kind: "value"; readonly text: string; readonly tail: string | null }
+  /** A plain value that is the empty string: said so, never a blank line. */
+  | { readonly kind: "empty"; readonly tail: string | null }
   | { readonly kind: "sensitive"; readonly text: string };
 
 const NOTHING_READS_YET = "nothing reads it yet";
@@ -192,7 +194,10 @@ export function valueLine(
 ): VaultValueLine {
   const unread = isUnread(view, scope, value.key);
   if (!value.sensitive) {
-    return { kind: "value", text: value.value ?? "", tail: unread ? NOTHING_READS_YET : null };
+    const tail = unread ? NOTHING_READS_YET : null;
+    return (value.value ?? "") === ""
+      ? { kind: "empty", tail }
+      : { kind: "value", text: value.value ?? "", tail };
   }
   if (value.madeByZerops) return { kind: "sensitive", text: "Sensitive · made by Zerops" };
   const when = agoWords(value.changedAt ?? value.createdAt, nowMs);
@@ -249,6 +254,12 @@ export function serviceMonograms(hostnames: ReadonlyArray<string>): ReadonlyMap<
     }
     marks.set(host, (host[shared] ?? host[0] ?? "?").toUpperCase());
   }
+  // One letter two services share (medusastage, nextstorestage → S) leads with each first letter.
+  const uses = new Map<string, number>();
+  for (const mark of marks.values()) uses.set(mark, (uses.get(mark) ?? 0) + 1);
+  for (const [host, mark] of marks)
+    if ((uses.get(mark) ?? 0) > 1 && host.length > 2)
+      marks.set(host, `${host[0]?.toUpperCase() ?? ""}${mark}`);
   return marks;
 }
 

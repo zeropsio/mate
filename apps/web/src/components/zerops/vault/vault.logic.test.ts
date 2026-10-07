@@ -184,6 +184,14 @@ describe("valueLine", () => {
     ).toEqual(line);
   });
 
+  it("says an empty plain value is empty, never a blank line", () => {
+    const empty = { ...valueOf("shared", "API_URL"), value: "" };
+    expect(valueLine(VAULT_FIXTURE, SHARED, empty, VAULT_FIXTURE_NOW)).toEqual({
+      kind: "empty",
+      tail: null,
+    });
+  });
+
   it("tails an unread plain value", () => {
     const view = {
       ...VAULT_FIXTURE,
@@ -358,6 +366,19 @@ describe("removeGuardWords", () => {
 });
 
 describe("serviceMonograms", () => {
+  it("never gives two services one mark: two families of dev and stage", () => {
+    const marks = serviceMonograms(["medusadev", "medusastage", "nextstoredev", "nextstorestage"]);
+    expect(marks).toEqual(
+      new Map([
+        ["medusadev", "MD"],
+        ["medusastage", "MS"],
+        ["nextstoredev", "ND"],
+        ["nextstorestage", "NS"],
+      ]),
+    );
+    expect(new Set(marks.values()).size).toBe(marks.size);
+  });
+
   it("names each service by what tells it from the others", () => {
     expect(serviceMonograms(["appdev", "appstage", "db"])).toEqual(
       new Map([

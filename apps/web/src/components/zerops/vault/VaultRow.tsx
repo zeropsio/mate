@@ -183,6 +183,11 @@ export function VaultRow(props: VaultRowProps) {
               <TriangleAlertIcon aria-hidden="true" className="size-[11px] shrink-0" />
               <span className="truncate">{activity.reason}</span>
             </span>
+          ) : line.kind === "empty" ? (
+            <>
+              <span className="italic">Empty</span>
+              {line.tail === null ? null : <span className="shrink-0">· {line.tail}</span>}
+            </>
           ) : line.kind === "sensitive" ? (
             <>
               <LockIcon aria-hidden="true" className="size-[11px] shrink-0" />

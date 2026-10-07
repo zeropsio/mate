@@ -9433,28 +9433,35 @@ button.rv-relrow:hover .rv-relrow-go {
 
 .vault-scopes {
   position: relative;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  display: flex;
   gap: 2px;
   padding: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   border-radius: var(--radius-lg);
   background: color-mix(in oklab, var(--input) 40%, transparent);
+}
+
+.vault-scopes::-webkit-scrollbar {
+  display: none;
 }
 
 .vault-scope-pill {
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: 2px;
-  width: calc((100% - 4px - (var(--vault-scopes) - 1) * 2px) / var(--vault-scopes));
+  left: 0;
+  width: var(--vault-pill-w, 0px);
   border-radius: var(--radius-md);
   background: var(--card);
   box-shadow:
     0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent),
     0 0 0 1px color-mix(in oklab, var(--foreground) 4%, transparent);
-  transform: translateX(calc(var(--vault-scope) * (100% + 2px)));
-  transition: transform 0.28s var(--vault-ease);
+  transform: translateX(var(--vault-pill-x, 2px));
+  transition:
+    transform 0.28s var(--vault-ease),
+    width 0.28s var(--vault-ease);
 }
 
 .dark .vault-scope-pill {
@@ -9464,6 +9471,7 @@ button.rv-relrow:hover .rv-relrow-go {
 .vault-scope {
   position: relative;
   z-index: 1;
+  flex: 1 0 auto;
   transition: color 0.15s;
 }
 
