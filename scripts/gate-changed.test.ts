@@ -24,6 +24,9 @@ it("includes relay consumers when discovering related tests for shared changes",
 });
 
 it("selects only the owned scenario area for an area change", () => {
+  expect(
+    selectScenarioAreas(["apps/web/test/scenarios/areas/b-menu/liveness.scenario.ts"]),
+  ).toEqual(["b-menu"]);
   expect(selectScenarioAreas(["apps/web/test/scenarios/areas/d-change/dsl.ts"])).toEqual([
     "d-change",
   ]);
@@ -146,6 +149,17 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 );
 
 it.each([
+  {
+    areas: ["b-menu"],
+    chatGate: false,
+    includes: [
+      "test/scenarios/areas/b-menu/access.scenario.ts",
+      "test/scenarios/areas/b-menu/decode.scenario.ts",
+      "test/scenarios/areas/b-menu/liveness.scenario.ts",
+      "test/scenarios/areas/b-menu/placement.scenario.ts",
+      "test/scenarios/fakes/b-menu/overview.test.ts",
+    ],
+  },
   {
     areas: ["c-mate"],
     chatGate: false,
