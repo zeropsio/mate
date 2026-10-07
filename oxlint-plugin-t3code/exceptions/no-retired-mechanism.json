@@ -4,7 +4,7 @@
     "kind": "retired-token",
     "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "retired-token",
     "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "retired-token",
     "fingerprint": "createWorkspaceFileImageAtomFamily(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a hook fetches workspace images itself; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "retired-token",
     "fingerprint": "createWorkspaceFileImageAtomFamily(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a hook fetches workspace images itself; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "retired-token",
     "fingerprint": "hqAbsent()",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "mobile selects candidates around an absent HQ itself; read the projection",
+    "reason": "Retained mobile candidate presentation: the unreleased mobile source keeps its separate candidate/absent-HQ path. Replacing this token requires migrating that navigation surface and preserving its setup/access behavior; the released web inventory projection does not delete mobile presentation APIs.",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "retired-token",
     "fingerprint": "hqAbsent()",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "mobile selects candidates around an absent HQ itself; read the projection",
+    "reason": "Retained mobile candidate presentation: the unreleased mobile source keeps its separate candidate/absent-HQ path. Replacing this token requires migrating that navigation surface and preserving its setup/access behavior; the released web inventory projection does not delete mobile presentation APIs.",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "retired-token",
     "fingerprint": "selectCandidates(",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "mobile selects candidates around an absent HQ itself; read the projection",
+    "reason": "Retained mobile candidate presentation: the unreleased mobile source keeps its separate candidate/absent-HQ path. Replacing this token requires migrating that navigation surface and preserving its setup/access behavior; the released web inventory projection does not delete mobile presentation APIs.",
     "expires": "never"
   },
   {
@@ -68,7 +68,7 @@
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -76,7 +76,7 @@
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -84,7 +84,7 @@
     "kind": "retired-token",
     "fingerprint": "createAttachmentEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -92,7 +92,7 @@
     "kind": "retired-token",
     "fingerprint": "createAttachmentEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -100,7 +100,7 @@
     "kind": "retired-token",
     "fingerprint": "createFilesystemEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -108,7 +108,7 @@
     "kind": "retired-token",
     "fingerprint": "createFilesystemEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -116,7 +116,7 @@
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -124,7 +124,7 @@
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -132,7 +132,7 @@
     "kind": "retired-token",
     "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -140,7 +140,7 @@
     "kind": "retired-token",
     "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -148,7 +148,7 @@
     "kind": "retired-token",
     "fingerprint": "createServerEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -156,7 +156,7 @@
     "kind": "retired-token",
     "fingerprint": "createServerEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "retired-token",
     "fingerprint": "createSourceControlEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "retired-token",
     "fingerprint": "createSourceControlEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -180,7 +180,7 @@
     "kind": "retired-token",
     "fingerprint": "createTerminalEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -188,7 +188,7 @@
     "kind": "retired-token",
     "fingerprint": "createTerminalEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -196,7 +196,7 @@
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "retired-token",
     "fingerprint": "createVcsEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "retired-token",
     "fingerprint": "createVcsEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -220,7 +220,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -228,7 +228,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -236,7 +236,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -244,7 +244,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -252,7 +252,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -260,7 +260,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -268,7 +268,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -276,7 +276,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -284,7 +284,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -292,7 +292,7 @@
     "kind": "retired-token",
     "fingerprint": "mate:composer-control:v1",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -300,7 +300,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -308,7 +308,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerControl",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the composer's model label is remembered in browser storage; the catalog's projection replaces it",
+    "reason": "Retained provider-picker debt: these labels and selections depend on the provider catalog and its remembered selection. Their projection/storage migration is independent of database mention context and must preserve picker behavior before deletion.",
     "expires": "never"
   },
   {
@@ -316,7 +316,7 @@
     "kind": "retired-token",
     "fingerprint": "setProjectFileQueryData(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -324,7 +324,7 @@
     "kind": "retired-token",
     "fingerprint": "setProjectFileQueryData(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -332,7 +332,7 @@
     "kind": "retired-token",
     "fingerprint": "getProjectFileQueryAtom(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -340,7 +340,7 @@
     "kind": "retired-token",
     "fingerprint": "getProjectFileQueryAtom(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -348,7 +348,7 @@
     "kind": "retired-token",
     "fingerprint": "getProjectFileQueryAtom(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -356,7 +356,7 @@
     "kind": "retired-token",
     "fingerprint": "setProjectFileQueryData(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -364,7 +364,7 @@
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -372,7 +372,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -380,7 +380,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -388,7 +388,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -396,7 +396,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -404,7 +404,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -412,7 +412,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -420,7 +420,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a component probes git remotes itself; the adapter owns the read",
+    "reason": "Retained separate surface boundary: a component probes git remotes itself; the adapter owns the read. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -428,7 +428,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a component probes git remotes itself; the adapter owns the read",
+    "reason": "Retained separate surface boundary: a component probes git remotes itself; the adapter owns the read. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -436,7 +436,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained separate surface boundary: a Mate update settles to idle after a timer; only the source settles an operation. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -444,7 +444,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -452,7 +452,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -460,7 +460,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -468,7 +468,7 @@
     "kind": "retired-token",
     "fingerprint": "bear(false)",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client lists organization members for permissions; HQ computes them",
+    "reason": "Retained separate surface boundary: the client lists organization members for permissions; HQ computes them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -476,7 +476,7 @@
     "kind": "retired-token",
     "fingerprint": "LIVE_GRACE_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a live grace timer decides a Mate is up; the stream's state says it",
+    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -484,7 +484,7 @@
     "kind": "retired-token",
     "fingerprint": "LIVE_GRACE_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a live grace timer decides a Mate is up; the stream's state says it",
+    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -492,7 +492,7 @@
     "kind": "retired-token",
     "fingerprint": "graceOver",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a live grace timer decides a Mate is up; the stream's state says it",
+    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -500,7 +500,7 @@
     "kind": "retired-token",
     "fingerprint": "graceOver",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a live grace timer decides a Mate is up; the stream's state says it",
+    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -508,7 +508,7 @@
     "kind": "retired-token",
     "fingerprint": "graceOver",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a live grace timer decides a Mate is up; the stream's state says it",
+    "reason": "Retained separate surface boundary: a live grace timer decides a Mate is up; the stream's state says it. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -516,7 +516,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -524,7 +524,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -532,7 +532,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -540,7 +540,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -548,7 +548,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -556,7 +556,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -564,7 +564,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -572,7 +572,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -580,7 +580,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -588,7 +588,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -596,7 +596,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -604,7 +604,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -612,7 +612,7 @@
     "kind": "retired-token",
     "fingerprint": "firstReleaseHandoff(",
     "owner": "data-layer rewrite: releases/environments",
-    "reason": "the review hand-off is decided in the app; the operation's result says where to go",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -620,7 +620,7 @@
     "kind": "retired-token",
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
-    "reason": "the review hand-off is decided in the app; the operation's result says where to go",
+    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -628,7 +628,7 @@
     "kind": "retired-token",
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
-    "reason": "the review hand-off is decided in the app; the operation's result says where to go",
+    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -636,7 +636,7 @@
     "kind": "retired-token",
     "fingerprint": "setHandoffTo",
     "owner": "data-layer rewrite: releases/environments",
-    "reason": "the review hand-off is decided in the app; the operation's result says where to go",
+    "reason": "Retained separate surface boundary: the review hand-off is decided in the app; the operation's result says where to go. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -644,7 +644,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained separate surface boundary: a Mate update settles to idle after a timer; only the source settles an operation. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -652,7 +652,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -660,7 +660,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -668,7 +668,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -676,7 +676,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -684,7 +684,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -692,7 +692,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -700,7 +700,7 @@
     "kind": "retired-token",
     "fingerprint": "REREAD_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "crew files are re-read on a timer; the Mate's stream reports changes",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -708,7 +708,7 @@
     "kind": "retired-token",
     "fingerprint": "REREAD_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "crew files are re-read on a timer; the Mate's stream reports changes",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -716,7 +716,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -724,7 +724,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -732,7 +732,7 @@
     "kind": "retired-token",
     "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -740,7 +740,7 @@
     "kind": "retired-token",
     "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -748,7 +748,7 @@
     "kind": "retired-token",
     "fingerprint": "getProjectFileQueryAtom(",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "project file query atoms are read and written by panels; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -756,7 +756,7 @@
     "kind": "retired-token",
     "fingerprint": "await fetch(url, { signal: requestSignal })",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a hook fetches workspace images itself; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -764,7 +764,7 @@
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -772,7 +772,7 @@
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -780,7 +780,7 @@
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -788,7 +788,7 @@
     "kind": "retired-token",
     "fingerprint": "createAuthEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -796,7 +796,7 @@
     "kind": "retired-token",
     "fingerprint": "createAuthEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -804,7 +804,7 @@
     "kind": "retired-token",
     "fingerprint": "createFilesystemEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -812,7 +812,7 @@
     "kind": "retired-token",
     "fingerprint": "createFilesystemEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -820,7 +820,7 @@
     "kind": "retired-token",
     "fingerprint": "createGitEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -828,7 +828,7 @@
     "kind": "retired-token",
     "fingerprint": "createGitEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -836,7 +836,7 @@
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -844,7 +844,7 @@
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -852,7 +852,7 @@
     "kind": "retired-token",
     "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -860,7 +860,7 @@
     "kind": "retired-token",
     "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -868,7 +868,7 @@
     "kind": "retired-token",
     "fingerprint": "createServerEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -876,7 +876,7 @@
     "kind": "retired-token",
     "fingerprint": "createServerEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -884,7 +884,7 @@
     "kind": "retired-token",
     "fingerprint": "createSourceControlEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -892,7 +892,7 @@
     "kind": "retired-token",
     "fingerprint": "createSourceControlEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -900,7 +900,7 @@
     "kind": "retired-token",
     "fingerprint": "createTerminalEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -908,7 +908,7 @@
     "kind": "retired-token",
     "fingerprint": "createTerminalEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -916,7 +916,7 @@
     "kind": "retired-token",
     "fingerprint": "createUsageByWindowAtomFamily(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -924,7 +924,7 @@
     "kind": "retired-token",
     "fingerprint": "createUsageByWindowAtomFamily(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -932,7 +932,7 @@
     "kind": "retired-token",
     "fingerprint": "useUsage(",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "usage atoms read every Mate's shell; HQ sends what concerns the person",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -940,7 +940,7 @@
     "kind": "retired-token",
     "fingerprint": "createVcsEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -948,7 +948,7 @@
     "kind": "retired-token",
     "fingerprint": "createVcsEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -956,7 +956,7 @@
     "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "feed atoms built in the app duplicate the Mate adapter; read the projection",
+    "reason": "Retained Mate feed host: only lifecycle, agent authentication and crew atom families remain here. Inventory joins read data projections and database/browser feeds have been removed; those remaining source protocols need their own family migration.",
     "expires": "never"
   },
   {
@@ -964,7 +964,7 @@
     "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "feed atoms built in the app duplicate the Mate adapter; read the projection",
+    "reason": "Retained Mate feed host: only lifecycle, agent authentication and crew atom families remain here. Inventory joins read data projections and database/browser feeds have been removed; those remaining source protocols need their own family migration.",
     "expires": "never"
   },
   {
@@ -972,7 +972,7 @@
     "kind": "retired-token",
     "fingerprint": "ownersAndAdmins(",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
+    "reason": "Retained official-HQ discovery boundary: the member read is already a data-layer projection, but locating and verifying the official HQ and naming who can establish it still consume the member list. Person-facing Mate ownership comes from HQ facts; removing this entry requires a separate authenticated HQ-anchor discovery protocol.",
     "expires": "never"
   },
   {
@@ -980,7 +980,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
+    "reason": "Retained official-HQ discovery boundary: the member read is already a data-layer projection, but locating and verifying the official HQ and naming who can establish it still consume the member list. Person-facing Mate ownership comes from HQ facts; removing this entry requires a separate authenticated HQ-anchor discovery protocol.",
     "expires": "never"
   },
   {
@@ -988,7 +988,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
+    "reason": "Retained official-HQ discovery boundary: the member read is already a data-layer projection, but locating and verifying the official HQ and naming who can establish it still consume the member list. Person-facing Mate ownership comes from HQ facts; removing this entry requires a separate authenticated HQ-anchor discovery protocol.",
     "expires": "never"
   },
   {
@@ -996,7 +996,7 @@
     "kind": "retired-token",
     "fingerprint": "mate:zerops:composer-top-memory",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
     "expires": "never"
   },
   {
@@ -1004,7 +1004,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
     "expires": "never"
   },
   {
@@ -1012,7 +1012,7 @@
     "kind": "retired-token",
     "fingerprint": "rememberedComposerTop",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "the composer's change strip is remembered in browser storage; the change projection paints it",
+    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
     "expires": "never"
   },
   {
@@ -1020,7 +1020,7 @@
     "kind": "retired-token",
     "fingerprint": "void readFiles().then",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "crew files are re-read on a timer; the Mate's stream reports changes",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -1028,7 +1028,7 @@
     "kind": "retired-token",
     "fingerprint": "createZeropsFeedAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "feed atoms built in the app duplicate the Mate adapter; read the projection",
+    "reason": "Retained separate surface boundary: feed atoms built in the app duplicate the Mate adapter; read the projection. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
     "expires": "never"
   },
   {
@@ -1036,7 +1036,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1044,7 +1044,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1052,7 +1052,7 @@
     "kind": "retired-token",
     "fingerprint": "setInterval(renewNow, PRESS_RENEW_MS)",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1060,7 +1060,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1068,7 +1068,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1076,7 +1076,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1084,7 +1084,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1092,7 +1092,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1100,7 +1100,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1108,7 +1108,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1116,7 +1116,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1124,7 +1124,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1132,7 +1132,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1140,7 +1140,7 @@
     "kind": "retired-token",
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1148,7 +1148,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -1156,7 +1156,7 @@
     "kind": "retired-token",
     "fingerprint": "useSentAsks",
     "owner": "data-layer rewrite: operations",
-    "reason": "creations and sent asks are kept by the app; the operations adapter feeds the store",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   },
   {
@@ -1164,7 +1164,7 @@
     "kind": "retired-token",
     "fingerprint": "pressHold(",
     "owner": "data-layer rewrite: operations",
-    "reason": "a press is held and renewed on a timer in the app; the operation's stream settles it",
+    "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
     "expires": "never"
   },
   {
@@ -1172,7 +1172,7 @@
     "kind": "retired-token",
     "fingerprint": "ReturnType<typeof makeGitCredentialStore>",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "repository and git-credential stores are built in the app; the HQ adapter owns them",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -1180,7 +1180,7 @@
     "kind": "retired-token",
     "fingerprint": "MATE_SETUP_POLL_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate setup is polled in the app; the Mate's stream reports setup",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -1188,7 +1188,7 @@
     "kind": "retired-token",
     "fingerprint": "MATE_SETUP_POLL_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate setup is polled in the app; the Mate's stream reports setup",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -1196,7 +1196,7 @@
     "kind": "retired-token",
     "fingerprint": "new Map<string, SetupObservation>()",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate setup is polled in the app; the Mate's stream reports setup",
+    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
     "expires": "never"
   },
   {
@@ -1204,7 +1204,7 @@
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -1212,7 +1212,7 @@
     "kind": "retired-token",
     "fingerprint": "ReturnType<typeof makeRepositoryStore>",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "repository and git-credential stores are built in the app; the HQ adapter owns them",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -1220,7 +1220,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -1228,7 +1228,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -1236,7 +1236,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -1244,7 +1244,7 @@
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -1252,7 +1252,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "a component probes git remotes itself; the adapter owns the read",
+    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {
@@ -1260,7 +1260,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsOrganizationMembersRead",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
+    "reason": "Retained official-HQ discovery boundary: the member read is already a data-layer projection, but locating and verifying the official HQ and naming who can establish it still consume the member list. Person-facing Mate ownership comes from HQ facts; removing this entry requires a separate authenticated HQ-anchor discovery protocol.",
     "expires": "never"
   },
   {
@@ -1268,7 +1268,7 @@
     "kind": "retired-token",
     "fingerprint": "settleToIdleAfter",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -1276,7 +1276,7 @@
     "kind": "retired-token",
     "fingerprint": "settleToIdleAfter",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -1284,7 +1284,7 @@
     "kind": "retired-token",
     "fingerprint": "settleToIdleAfter",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -1292,7 +1292,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
-    "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -1300,7 +1300,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsRegistry",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "registry, recipes and releases are read by app hooks; the HQ adapter feeds the store",
+    "reason": "Retained presentation facade name: useZeropsRegistry reads the data-layer HQ navigation projection and derives a view without remote I/O or a second source cache. The token guard also matches its existing API and consumers; removing the entry requires replacing that API or narrowing the detector.",
     "expires": "never"
   },
   {
@@ -1308,7 +1308,7 @@
     "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
     "owner": "data-layer rewrite: operations",
-    "reason": "upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them",
+    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {
@@ -1316,7 +1316,7 @@
     "kind": "retired-token",
     "fingerprint": "serverConfigState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1324,7 +1324,7 @@
     "kind": "retired-token",
     "fingerprint": "serverConfigState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1332,7 +1332,7 @@
     "kind": "retired-token",
     "fingerprint": "serverConfigState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1340,7 +1340,7 @@
     "kind": "retired-token",
     "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1348,7 +1348,7 @@
     "kind": "retired-token",
     "fingerprint": "createAssetEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1356,7 +1356,7 @@
     "kind": "retired-token",
     "fingerprint": "createAttachmentEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1364,7 +1364,7 @@
     "kind": "retired-token",
     "fingerprint": "createAuthEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1372,7 +1372,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1380,7 +1380,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1388,7 +1388,7 @@
     "kind": "retired-token",
     "fingerprint": "createFilesystemEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1396,7 +1396,7 @@
     "kind": "retired-token",
     "fingerprint": "createGitEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1404,7 +1404,7 @@
     "kind": "retired-token",
     "fingerprint": "createReviewEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1412,7 +1412,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentQueryAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1420,7 +1420,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentQueryAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1428,7 +1428,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1436,7 +1436,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1444,7 +1444,7 @@
     "kind": "retired-token",
     "fingerprint": "createServerEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1452,7 +1452,7 @@
     "kind": "retired-token",
     "fingerprint": "initialConfigAtom",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1460,7 +1460,7 @@
     "kind": "retired-token",
     "fingerprint": "initialConfigAtom",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1468,7 +1468,7 @@
     "kind": "retired-token",
     "fingerprint": "initialConfigAtom",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "server config is read through its own atoms; the Mate adapter feeds the store",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1476,7 +1476,7 @@
     "kind": "retired-token",
     "fingerprint": "makeEnvironmentShellState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1484,7 +1484,7 @@
     "kind": "retired-token",
     "fingerprint": "makeEnvironmentShellState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1492,7 +1492,7 @@
     "kind": "retired-token",
     "fingerprint": "createSourceControlEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1500,7 +1500,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1508,7 +1508,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1516,7 +1516,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1524,7 +1524,7 @@
     "kind": "retired-token",
     "fingerprint": "createTerminalEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1532,7 +1532,7 @@
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1540,7 +1540,7 @@
     "kind": "retired-token",
     "fingerprint": "makeEnvironmentThreadState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1548,7 +1548,7 @@
     "kind": "retired-token",
     "fingerprint": "makeEnvironmentThreadState",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1556,7 +1556,7 @@
     "kind": "retired-token",
     "fingerprint": "resumeFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1564,7 +1564,7 @@
     "kind": "retired-token",
     "fingerprint": "resumeFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "shell and thread state are rebuilt per environment; one store per family",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1572,7 +1572,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1580,7 +1580,7 @@
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "environment query and subscription atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1588,7 +1588,7 @@
     "kind": "retired-token",
     "fingerprint": "createVcsEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "auxiliary environment atom families duplicate the Mate adapter; read the projection",
+    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
     "expires": "never"
   },
   {
@@ -1596,7 +1596,7 @@
     "kind": "retired-token",
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "an unverified conversation is shown until a timer bound; the source verifies it",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -1604,7 +1604,7 @@
     "kind": "retired-token",
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "an unverified conversation is shown until a timer bound; the source verifies it",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -1612,7 +1612,7 @@
     "kind": "retired-token",
     "fingerprint": "CONVERSATION_UNVERIFIED_BOUND_MS",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "an unverified conversation is shown until a timer bound; the source verifies it",
+    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -1620,7 +1620,7 @@
     "kind": "retired-token",
     "fingerprint": "ownersAndAdmins(",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "the client reads organization members for owners and admins; HQ sends them finished",
+    "reason": "Retained official-HQ discovery boundary: the member read is already a data-layer projection, but locating and verifying the official HQ and naming who can establish it still consume the member list. Person-facing Mate ownership comes from HQ facts; removing this entry requires a separate authenticated HQ-anchor discovery protocol.",
     "expires": "never"
   },
   {
@@ -1628,7 +1628,7 @@
     "kind": "retired-token",
     "fingerprint": "selectCandidates(",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "mobile selects candidates around an absent HQ itself; read the projection",
+    "reason": "Retained mobile candidate presentation: the unreleased mobile source keeps its separate candidate/absent-HQ path. Replacing this token requires migrating that navigation surface and preserving its setup/access behavior; the released web inventory projection does not delete mobile presentation APIs.",
     "expires": "never"
   },
   {
@@ -1636,7 +1636,7 @@
     "kind": "retired-token",
     "fingerprint": "firstReleaseHandoff(",
     "owner": "data-layer rewrite: releases/environments",
-    "reason": "the review hand-off is decided in the app; the operation's result says where to go",
+    "reason": "Retained creation/handoff debt: sent asks or release handoff still depend on this local workflow record. Replacing it requires the corresponding operation result and navigation projection; inventory, database and browser facts do not prove that outcome.",
     "expires": "never"
   }
 ]
