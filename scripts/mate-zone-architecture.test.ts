@@ -1654,8 +1654,11 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 
 // The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
-// `ProviderService` and its bridge, and no other provider file.
+// `ProviderService` and its bridge, and no other provider file. Its tests and the
+// `testing/` harness may record through real drivers.
 const ENGINE_PROVIDER_DOOR = "apps/server/src/provider/Services/ProviderService.ts";
+
+const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
 
 const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolations")(function* (
   root: string,
@@ -1665,6 +1668,7 @@ const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolatio
   const violations: Array<ImportViolation> = [];
   for (const file of yield* collectTsFiles(path.join(root, ENGINE_DIR))) {
     const relativeFile = path.relative(root, file).split(path.sep).join("/");
+    if (isEngineTestFile(relativeFile)) continue;
     for (const { specifier, clause } of collectImportStatements(yield* fs.readFileString(file))) {
       const target = specifier.startsWith(".")
         ? path
@@ -1682,8 +1686,6 @@ const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolatio
     a.file === b.file ? a.specifier.localeCompare(b.specifier) : a.file.localeCompare(b.file),
   );
 });
-
-const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
 
 const collectEngineBoundaryViolations = Effect.fn("collectEngineBoundaryViolations")(function* (
   root: string,
@@ -1958,6 +1960,20 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
             specifier: "../provider/Layers/ClaudeAdapter.ts",
           },
         ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "engine SPI fixture: the engine's tests and its testing/ harness may record through real drivers",
+    () =>
+      Effect.gen(function* () {
+        const fixtureRoot = yield* makeRepoFixture({
+          "apps/server/src/engine/testing/bridge/record.ts":
+            'import { makeCursorAdapter } from "../../../provider/Layers/CursorAdapter.ts";\n',
+          "apps/server/src/engine/bridge/translate.test.ts":
+            'import { makeGrokAdapter } from "../../provider/Layers/GrokAdapter.ts";\n',
+        });
+        assert.deepStrictEqual(yield* collectEngineProviderViolations(fixtureRoot), []);
       }).pipe(Effect.scoped),
   );
 
