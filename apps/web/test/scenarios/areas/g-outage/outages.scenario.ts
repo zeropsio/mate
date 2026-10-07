@@ -1,6 +1,7 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { outageControls } from "./fake.ts";
 import {
   givenOutage,
   reportsWork,
@@ -24,6 +25,24 @@ import {
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // No baseline from HQ can prove that the platform containers belong to no application.
+    it.effect("cold HQ placement stays unknown on Projects until owner evidence arrives", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        outageControls(s.drivers).silenceFacts();
+        yield* s.given.signedIn;
+        yield* Effect.promise(() =>
+          s.page.locator('[data-zerops-surface="other-containers"]').setTimeout(15_000).wait(),
+        );
+        const words = yield* Effect.promise(() =>
+          s.page.$eval('[data-zerops-surface="other-containers"]', (node) => node.textContent),
+        );
+        expect(words).toContain("placement unknown");
+        expect(words).not.toContain("Not in a project");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // A completed HQ read remains evidence of absence while the source reconnects.
     it.effect("HQ down retains a known Not in this HQ row", () =>
       Effect.gen(function* () {

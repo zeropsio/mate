@@ -88,6 +88,7 @@ import {
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  shownHqMateIdentitiesAtom,
   shownHqPersonFactsAtom,
   hqMatePresenceAtom,
   shownAttentionProjectsAtom,
@@ -600,6 +601,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(shownHqMenuNavigationAtom);
+  const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
   const carried = useCarriedCoreBuild();
@@ -904,6 +906,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const tints = assignCandidateMateTints(candidates);
   /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
   const faceOf = (project: ZeropsCandidate["project"]) => {
+    const identity = identities[project.id];
+    if (identity !== undefined) return { tint: identity.tint, shape: identity.shape };
     const tint = tints.get(project.id) ?? "slate";
     return { tint, shape: mateShapeOf(project, tint) };
   };

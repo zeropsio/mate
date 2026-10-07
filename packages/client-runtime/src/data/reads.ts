@@ -6,6 +6,7 @@ import { mateHealth } from "./projections/mateHealth.ts";
  *
  * @module data/reads
  */
+import { hqMateIdentities, type HqMateIdentity } from "./projections/hqMateIdentity.ts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
@@ -482,3 +483,11 @@ export const shownHqMenuNavigationAtom = Atom.make(
       : { ...get(account.data.project(hqMenuNavigation, account.orgId)), orgId: account.orgId };
   },
 );
+
+/** The mounted account's HQ identities; names and faces share no platform listing dependency. */
+export const shownHqMateIdentitiesAtom = Atom.make(
+  (get): Readonly<Record<string, HqMateIdentity>> => {
+    const account = get(accountReadsAtom);
+    return account?.orgId == null ? {} : get(account.data.project(hqMateIdentities, account.orgId));
+  },
+).pipe(Atom.withLabel("data:shown-hq-mate-identities"));

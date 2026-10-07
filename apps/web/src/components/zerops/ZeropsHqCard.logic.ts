@@ -1,8 +1,7 @@
 /**
  * The words of HQ's card on the projects page (`ZeropsHqCard.tsx`), from reads already made: HQ's
  * standing, the Core it runs and how its parts stand (`hqStandingAtom`, off HQ's stream, never
- * polled), the structure and the Mates' presence the same stream keeps, and — once an admin opens the card — HQ's services and builds, read
- * from Zerops once.
+ * polled), the structure and the Mates' presence the same stream keeps, HQ's services from the platform summary, and — once an admin opens the card — its builds.
  */
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type {
@@ -30,7 +29,7 @@ export interface HqCardInput {
   /** An owner or an admin of the organization: who keeps HQ running. */
   readonly admin: boolean;
   readonly standing: HqStanding;
-  /** HQ's services as the opened card read them from Zerops; `undefined` while unread. */
+  /** HQ's services from the platform summary; `undefined` while unread. */
   readonly services: ReadonlyArray<ZeropsService> | undefined;
   /** The structure HQ's stream last told; `null` while nothing is known. */
   readonly structure: HqStructure | null;
@@ -47,7 +46,7 @@ export interface HqCardInput {
 export interface HqCardView {
   /** HQ's state as one `StatusDot`; `null` before its health is first read. */
   readonly state: {
-    readonly kind: "healthy" | "degraded" | "down" | "updating";
+    readonly kind: "healthy" | "degraded" | "down" | "updating" | "transitioning";
     readonly tone: ServiceStatusToneId;
     readonly word: string;
   } | null;
@@ -182,7 +181,7 @@ function servicesTroubles(
   services: ReadonlyArray<ZeropsService> | undefined,
 ): ReadonlyArray<string> {
   return ownServices(services)
-    .filter((service) => !RUNNING.has(service.status))
+    .filter((service) => !RUNNING.has(service.status) && service.status !== "UPGRADING")
     .map(
       (service) => `${service.name} isn't active in Zerops: ${zeropsStatusWord(service.status)}.`,
     );
@@ -260,7 +259,7 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
   // A rolling deploy: HQ serves on its Core until the new one answers.
   if (
     input.admin &&
-    (input.updating || readState(input.update)?.kind === "updating") &&
+    input.updating &&
     (standing.kind === "healthy" || standing.kind === "unchecked")
   ) {
     return { kind: "updating", tone: "busy", word: "Updating" };
@@ -279,6 +278,11 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
     case "healthy":
       // Whoever sees none of HQ's parts is told only that it serves: "Healthy" claims more.
       if (!input.admin) return { kind: "healthy", tone: "ok", word: "Running" };
+      if (
+        troubles.length === 0 &&
+        ownServices(input.services).some((service) => service.status === "UPGRADING")
+      )
+        return { kind: "transitioning", tone: "busy", word: "Services upgrading" };
       return troubles.length === 0
         ? { kind: "healthy", tone: "ok", word: "Healthy" }
         : { kind: "degraded", tone: "attention", word: "Needs attention" };
@@ -291,18 +295,21 @@ export function hqCardView(input: HqCardInput): HqCardView {
   // The Core it runs, once HQ's stream or its health has named it.
   const build = serving ? standing.build : undefined;
   const update = readState(input.update);
-  const troubles = admin
+  const healthTroubles = admin
     ? [
         ...((standing.kind === "healthy" || standing.kind === "unchecked") &&
         standing.parts !== undefined
           ? partsTroubles(standing.parts, input.structure)
           : []),
         ...servicesTroubles(input.services),
-        ...(update?.kind === "failed" ? [hqUpdateWords(update, undefined).line] : []),
       ]
     : [];
+  const troubles = [
+    ...healthTroubles,
+    ...(admin && update?.kind === "failed" ? [hqUpdateWords(update, undefined).line] : []),
+  ];
   return {
-    state: headline(input, troubles),
+    state: headline(input, healthTroubles),
     opens: admin && standing.kind !== "unknown",
     counts: holdings(input.structure, input.online),
     coreDay: build === undefined ? null : coreDayLabel(build),

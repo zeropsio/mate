@@ -5,6 +5,7 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
 import {
+  shownHqMateIdentitiesAtom,
   mateArrival,
   setupFailure as setupFailureProjection,
   setupFailureLogQuery,
@@ -340,10 +341,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // one surface from the press to the sign-in (`mateArrivalShown`).
   const arrival = mateArrivalShown({ page, cameUp, failuresSinceConnect });
 
-  // Who it is: its listing's, the moment it is listed — the name and the tint the menu gives it —
-  // and until then what its creation or its press knew.
+  // HQ names it as the menu does. Before registration, its creation or press names it.
+  const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
+    if (identity !== undefined)
+      return {
+        ...(candidate === undefined ? {} : zeropsMateIdentityOf(candidate, tints)),
+        ...identity,
+        connected: candidate?.group === "connected",
+      };
     if (candidate !== undefined) {
       const listed = zeropsMateIdentityOf(candidate, tints);
       // Listed before HQ places it: no application to cut its name under, but its creation or its
@@ -368,7 +375,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [press, candidate, creation, projectId, projectUnavailable, recovery.standing, tints, viewer]);
+  }, [
+    identity,
+    press,
+    candidate,
+    creation,
+    projectId,
+    projectUnavailable,
+    recovery.standing,
+    tints,
+    viewer,
+  ]);
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once

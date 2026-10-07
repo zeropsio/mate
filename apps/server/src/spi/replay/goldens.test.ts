@@ -55,10 +55,7 @@ interface GoldenCase {
 
 // Claude/Codex: replay a static JSONL wire fixture through the ported
 // adapter (see claudeReplay.ts / codexReplay.ts for the seam each uses).
-// The four Claude fixtures are real recordings (SPI-3,
-// apps/server/src/spi/recording/record-claude.mjs, SDK 0.3.250 / CLI
-// 2.1.251 / claude-opus-5[1m]); Codex's is the real
-// codexMultiAgentWire.json capture converted once to JSONL.
+// Provenance belongs to each recording’s meta sidecar; synthetic cases say so explicitly.
 const CLAUDE_FIXTURE_NAMES = [
   "plain-text-turn",
   "zerops-workflow-envelope",
@@ -90,6 +87,12 @@ const jsonlCases: ReadonlyArray<GoldenCase> = [
     name: "multi-agent-wire",
     record: () =>
       replayCodex(loadFixture(NodePath.join(fixturesRoot, "codex"), "multi-agent-wire")),
+    timeoutMs: 20_000,
+  },
+  {
+    driver: "codex",
+    name: "helper-wait",
+    record: () => replayCodex(loadFixture(NodePath.join(fixturesRoot, "codex"), "helper-wait")),
     timeoutMs: 20_000,
   },
 ];
@@ -236,5 +239,53 @@ describe("zerops-workflow-envelope golden content", () => {
       const envelope = extractZeropsEnvelope(call.result?.text ?? "");
       assert.isDefined(envelope, `${toolName}: result.text should decode a zcp envelope`);
     }
+  });
+});
+
+describe("current Codex golden content", () => {
+  it("retains native output and the Zerops result while a helper finishes before its parent", () => {
+    const events = JSON.parse(
+      NodeFS.readFileSync(
+        expectedPathFor(NodePath.join(fixturesRoot, "codex"), "multi-agent-wire"),
+        "utf8",
+      ),
+    ) as ReadonlyArray<SpiEvent>;
+    const items = events.filter((event) => event.type === "item.completed");
+    const helper = items.find((event) => event.payload.detail === "helper-ok");
+    const parent = items.find((event) => event.payload.detail === "trace-ok");
+    assert.isDefined(helper);
+    assert.isDefined(parent);
+    assert.notEqual(helper?.threadId, parent?.threadId);
+    assert.notEqual(helper?.turnId, parent?.turnId);
+    const terminal = events.filter((event) => event.type === "turn.completed");
+    assert.deepEqual(
+      terminal.map((event) => [event.threadId, event.turnId, event.payload.state]),
+      [
+        [helper?.threadId, helper?.turnId, "completed"],
+        [parent?.threadId, parent?.turnId, "completed"],
+      ],
+    );
+    assert.isTrue(
+      events.some(
+        (event) =>
+          event.type === "content.delta" &&
+          event.payload.streamKind === "command_output" &&
+          event.payload.delta === "native-ok" &&
+          event.threadId === parent?.threadId,
+      ),
+    );
+    const discovery = items.find((event) => event.toolCall?.name === "zerops_discover");
+    assert.equal(discovery?.threadId, parent?.threadId);
+    assert.deepEqual(discovery?.toolCall?.arguments, {});
+    assert.strictEqual(discovery?.toolCall?.result?.failed, false);
+    const result = JSON.parse(discovery?.toolCall?.result?.text ?? "null") as {
+      readonly project: { readonly name: string };
+      readonly services: ReadonlyArray<{ readonly hostname: string }>;
+    };
+    assert.equal(result.project.name, "Fixture Mate");
+    assert.sameMembers(
+      result.services.map((service) => service.hostname),
+      ["appdev", "appstage", "zcp"],
+    );
   });
 });

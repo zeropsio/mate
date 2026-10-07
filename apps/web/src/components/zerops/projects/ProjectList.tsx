@@ -17,6 +17,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
+import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
@@ -237,6 +238,7 @@ function RowDetail<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
 }) {
   const { flow, group } = entry;
+  useHqAppDetailHold([group.groupId]);
   const mates = matesOf(entry);
   const groupRows = props.renderGroupRows(group);
   const release = releaseVerbFor(entry, props.renderReleaseVerb);

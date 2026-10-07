@@ -36,6 +36,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { useComposerDraftStore } from "../composerDraftStore";
 import { zeropsSessionAtom } from "../state/zerops";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { organization } from "../zerops/__fixtures__/platformData";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import {
   useEnvironmentLinks,
@@ -1007,8 +1008,8 @@ describe("the descriptor index", () => {
     atoms.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
-      activeOrganization: { organizationId: "org-1" },
-    } as never);
+      activeOrganization: organization,
+    });
     mountHqNavigation(
       atoms,
       "org-1",
@@ -1020,8 +1021,8 @@ describe("the descriptor index", () => {
         mates: {
           [one.projectId]: {
             presence: { online: true, since: "2026-10-06T00:00:00Z", overview: "live" },
-            identity: { environmentId: ENV_A },
-          } as unknown as MateLiveView,
+            identity: { environmentId: ENV_A, serverVersion: "0.14.43", update: null },
+          },
         },
       },
       store,
@@ -1101,4 +1102,57 @@ describe("the descriptor index", () => {
     );
     rig.adapter.dispose();
   });
+});
+
+it("the gate names HQ's Mate on its first render instead of the environment catalog label", () => {
+  shell.environments = [
+    {
+      environmentId: ENV_A,
+      displayUrl: ORIGIN,
+      label: "Old label",
+      connection: { phase: "connected" },
+    },
+  ];
+  mountHqNavigation(
+    atoms,
+    "org-1",
+    {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "project-1", name: "Quill", mate: { face: "sky:seal" } }],
+      },
+      mates: {
+        "project-1": {
+          presence: { online: true, since: "2026-10-07T00:00:00Z", overview: "live" },
+          identity: { environmentId: ENV_A, serverVersion: "0.14.43", update: null },
+        },
+      },
+    },
+    store,
+  );
+  const frames: Array<{ name: string; projectId: string | null }> = [];
+  function Probe() {
+    const inputs = useRouteGateInputs(ENV_A);
+    frames.push({ name: inputs.mateName, projectId: inputs.projectId });
+    return inputs.mateName;
+  }
+  act(() => renderIn(<Probe />));
+  expect(frames[0]).toEqual({ name: "Quill", projectId: "project-1" });
+  expect(container.textContent).toBe("Quill");
+});
+
+it("the gate keeps its placeholder when HQ names no Mate for the environment", () => {
+  shell.environments = [
+    {
+      environmentId: ENV_A,
+      displayUrl: ORIGIN,
+      label: "Guess",
+      connection: { phase: "connected" },
+    },
+  ];
+  function Probe() {
+    return useRouteGateInputs(ENV_A).mateName;
+  }
+  act(() => renderIn(<Probe />));
+  expect(container.textContent).toBe("This Mate");
 });

@@ -63,7 +63,7 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 
 ## Commands
 
-- Prepare a lane: `node scripts/prepare-worktree.ts` (frozen install, Electron, local prerequisites).
+- Prepare a lane: `cd "$(node scripts/prepare-worktree.ts <job>)"` (reuse an idle worktree; install and check readiness).
 
 - Lanes run `node scripts/gate-changed.ts` (default diff: merge-base with `origin/main`, plus
   staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
@@ -75,8 +75,6 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
   exceptions, `surfaces.json`, theme tokens or tooling. At most one
   `gh run watch <id> --exit-status`, then read the failures once; never poll logs in a loop.
-- A fresh worktree needs the Electron runtime: `vp run --filter @t3tools/desktop ensure:electron`
-  once after the install ("Electron failed to install correctly" means it was skipped).
 - The integrator runs the full gates before pushing the assembled work: `node scripts/ci-local.ts`
   for CI's Check job, plus the full unit and scenario suites. CI runs the repository-wide checks;
   lanes keep their local checks targeted.

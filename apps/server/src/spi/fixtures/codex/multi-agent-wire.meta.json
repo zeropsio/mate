@@ -1,7 +1,31 @@
 {
   "driver": "codex",
-  "cliVersion": "codex-cli 0.145.0",
-  "model": "gpt-5.6-luna",
-  "notes": "Converted once from apps/server/src/provider/testFixtures/codexMultiAgentWire.json (that file stays untouched \u2014 upstream CodexCollabWire.test.ts / CodexCollabRuntime.integration.test.ts keep consuming it directly). rootThreadId=019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5, childThreadIds=019fcfd6-2883-77e0-9013-4410ede70371,019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf. Each of the 21 real captured notifications is fed to the ported mapToRuntimeEvents mapper individually (via the FakeCodexRuntime/makeRuntime seam), addressed at its own wire threadId \u2014 this pins the mapper's per-notification-shape behavior faithfully, but does NOT replay CodexSessionRuntime's child-registration/collabAgent synthesis step (already covered by CodexCollabWire.test.ts / CodexCollabRuntime.integration.test.ts), so none of these 21 notifications produce collabAgent/* synthetic events here. Intake row 5 (import at upstream 7a12aff47): the thread/started thread gains \"projectId\": null, the same edit upstream made to codexMultiAgentWire.json when its protocol moved to Codex 0.156 \u2014 Thread.projectId is required from Codex 0.149 on, and without it the notification no longer decodes. Every other byte is the 0.145.0 capture.",
-  "synthetic": false
+  "cliVersion": "codex-cli 0.160.0",
+  "model": "gpt-6-luna",
+  "prompt": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+  "capturedAt": "2026-10-07T22:43:01.108Z",
+  "capturedOn": "KRLS disposable e2e rig / zcp",
+  "capturedBy": "chat3",
+  "synthetic": false,
+  "terminal": {
+    "id": "01a11888-b181-7d90-9082-f49318301e83",
+    "items": [
+      {
+        "type": "agentMessage",
+        "id": "msg_0d240ea1727087cc016ac6caf4bc6481918e6bad4566f893d8",
+        "text": "trace-ok",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null
+      }
+    ],
+    "itemsView": "summary",
+    "status": "completed",
+    "error": null,
+    "startedAt": 1791412974,
+    "completedAt": 1791412980,
+    "durationMs": 6913
+  },
+  "notes": "Recorded current app-server notifications in arrival order, omitting legacy codex/event duplicates. Native printf, read-only Zerops discovery and one helper. Fixture project/service identities and public URLs anonymized consistently; all tool content and lifecycle shapes retained. Replays the adapter mapper, not session-runtime child routing. The old collabAgentToolCall wait shapes are retained in helper-wait."
 }

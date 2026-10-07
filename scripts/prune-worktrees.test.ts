@@ -4,7 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
-import { parseWorktrees, pruneDecision, parseCwds } from "./prune-worktrees.ts";
+import { idleDecision, parseWorktrees, pruneDecision, parseCwds } from "./prune-worktrees.ts";
 
 const candidate = { path: "/repo/z3-wt/done", branch: "refs/heads/done", locked: false };
 const evidence = {
@@ -15,8 +15,8 @@ const evidence = {
   cwds: [] as string[],
 };
 it.each([
-  { name: "merged clean idle lane", worktree: candidate, evidence, reason: undefined },
-  { name: "no commits beyond main", worktree: candidate, evidence, reason: undefined },
+  { name: "merged clean idle lane", worktree: candidate, evidence, reason: "idle pool member" },
+  { name: "no commits beyond main", worktree: candidate, evidence, reason: "idle pool member" },
   {
     name: "main checkout",
     worktree: { ...candidate, path: evidence.main },
@@ -57,17 +57,18 @@ it.each([
     name: "similar cwd is elsewhere",
     worktree: candidate,
     evidence: { ...evidence, cwds: ["/repo/z3-wt/done-other"] },
-    reason: undefined,
+    reason: "idle pool member",
   },
   { name: "locked worktree", worktree: { ...candidate, locked: true }, evidence, reason: "locked" },
   {
     name: "detached worktree",
     worktree: { ...candidate, branch: undefined },
     evidence,
-    reason: "no branch",
+    reason: undefined,
   },
 ])("prune keeps $name safe", ({ worktree, evidence, reason }) => {
   expect(pruneDecision(worktree, evidence)).toBe(reason);
+  expect(idleDecision(worktree, evidence)).toBe(reason === "idle pool member" ? undefined : reason);
 });
 
 it("reads worktree paths with spaces and lsof cwd records", () => {
@@ -80,7 +81,7 @@ it("reads worktree paths with spaces and lsof cwd records", () => {
   ]);
 });
 
-it("dry-run keeps eligible worktrees; apply removes only a merged clean idle branch", () => {
+it("dry-run keeps eligible worktrees; apply removes only an unassigned clean merged worktree", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-"));
   const main = NodePath.join(root, "z3");
   const git = (cwd: string, ...args: string[]) => {
@@ -100,6 +101,8 @@ it("dry-run keeps eligible worktrees; apply removes only a merged clean idle bra
     for (const name of ["merged", "dirty", "unmerged"])
       git(main, "worktree", "add", "-qb", name, NodePath.join(root, "z3-wt", name));
     const merged = NodePath.join(root, "z3-wt/merged");
+    const detached = NodePath.join(root, "z3-wt/detached");
+    git(main, "worktree", "add", "--detach", detached);
     const dirty = NodePath.join(root, "z3-wt/dirty");
     const unmerged = NodePath.join(root, "z3-wt/unmerged");
     NodeFS.writeFileSync(NodePath.join(dirty, "new"), "dirty");
@@ -113,12 +116,14 @@ it("dry-run keeps eligible worktrees; apply removes only a merged clean idle bra
       });
     const preview = run();
     expect(preview.status, preview.stderr).toBe(0);
-    expect(preview.stdout).toContain(`would remove ${merged}`);
+    expect(preview.stdout).toContain(`would remove ${detached}`);
+    expect(preview.stdout).toContain(`keep ${merged}: idle pool member`);
     expect(NodeFS.existsSync(merged)).toBe(true);
     const apply = run("--apply");
     expect(apply.status, apply.stderr).toBe(0);
     expect(apply.stdout).toContain("Removed 1 worktrees");
-    expect(NodeFS.existsSync(merged)).toBe(false);
+    expect(NodeFS.existsSync(merged)).toBe(true);
+    expect(NodeFS.existsSync(detached)).toBe(false);
     expect(NodeFS.existsSync(dirty)).toBe(true);
     expect(NodeFS.existsSync(unmerged)).toBe(true);
     expect(NodeFS.existsSync(main)).toBe(true);

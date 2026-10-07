@@ -6,6 +6,7 @@
  * stopped answering (`menuSourcesSettled`): a first paint is the settled one, never reordered.
  */
 import {
+  shownHqMateIdentitiesAtom,
   listedProjectAtom,
   projectGoneAtom,
   shownHqVerdictAtom,
@@ -53,6 +54,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
       const project = get(listedProjectAtom(id));
       return project === null ? [] : [project];
     });
+    const identities = get(shownHqMateIdentitiesAtom);
     const placed = placedMenuRows({
       organizationId,
       placements,
@@ -61,6 +63,18 @@ export function menuRowsAtom<Row extends CandidateRow>(
       candidates,
       gone,
     });
-    return { settled: true, rows: menuRows({ placed, candidates, gone }) };
+    return {
+      settled: true,
+      rows: menuRows({
+        placed: placed.map((row) => {
+          const identity = identities[row.project.id];
+          return identity === undefined
+            ? row
+            : { ...row, project: { ...row.project, name: identity.fullName } };
+        }),
+        candidates,
+        gone,
+      }),
+    };
   });
 }
