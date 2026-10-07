@@ -6,6 +6,10 @@ import { VcsDriverKind } from "./vcs.ts";
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const GIT_LIST_BRANCHES_MAX_LIMIT = 200;
 
+// Git reads an argument that starts with a dash as an option (`--upload-pack=…` runs a
+// command), and no branch name may start with one, so a ref name never does.
+const GitRefNameSchema = TrimmedNonEmptyStringSchema.check(Schema.isPattern(/^[^-]/));
+
 // Domain Types
 
 export const GitStackedAction = Schema.Literals([
@@ -136,9 +140,9 @@ export type VcsListRefsInput = typeof VcsListRefsInput.Type;
 
 export const VcsCreateWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
-  newRefName: Schema.optional(TrimmedNonEmptyStringSchema),
-  baseRefName: Schema.optional(TrimmedNonEmptyStringSchema),
+  refName: GitRefNameSchema,
+  newRefName: Schema.optional(GitRefNameSchema),
+  baseRefName: Schema.optional(GitRefNameSchema),
   path: Schema.NullOr(TrimmedNonEmptyStringSchema),
 });
 export type VcsCreateWorktreeInput = typeof VcsCreateWorktreeInput.Type;
@@ -166,7 +170,7 @@ export type VcsRemoveWorktreeInput = typeof VcsRemoveWorktreeInput.Type;
 
 export const VcsCreateRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
+  refName: GitRefNameSchema,
   switchRef: Schema.optional(Schema.Boolean),
 });
 export type VcsCreateRefInput = typeof VcsCreateRefInput.Type;
@@ -178,7 +182,7 @@ export type VcsCreateRefResult = typeof VcsCreateRefResult.Type;
 
 export const VcsSwitchRefInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
-  refName: TrimmedNonEmptyStringSchema,
+  refName: GitRefNameSchema,
 });
 export type VcsSwitchRefInput = typeof VcsSwitchRefInput.Type;
 
