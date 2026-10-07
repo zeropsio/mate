@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ChatImageAttachment } from "./orchestration.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -271,6 +272,20 @@ export type Run = typeof Run.Type;
 
 // ── items ───────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * What a person's message carries besides its text: a picture as main's chat attachment, its
+ * bytes held by the asset store and referenced by occurrence. A newer build's kind of
+ * attachment decodes as `unknown`, keeping its type.
+ */
+export const PersonAttachment = forwardCompatibleUnion({
+  key: "type",
+  known: ["image", "unknown"],
+  members: [ChatImageAttachment],
+  fallback: Schema.Struct({ type: Schema.Literal("unknown"), was: Schema.String }),
+  toFallback: (_raw, was) => ({ type: "unknown" as const, was }),
+});
+export type PersonAttachment = typeof PersonAttachment.Type;
+
 /** Background work's kinds and states, as the bridge reports them. */
 export const WORK_KINDS = ["helper", "shell", "monitor", "other"] as const;
 export const WORK_STATUSES = [
@@ -289,7 +304,8 @@ export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "
 const itemBodyFields = {
   person: {
     text: Schema.String,
-    attachments: Schema.Array(Schema.String),
+    /** Pictures by reference (their asset occurrence), never bytes. */
+    attachments: Schema.Array(PersonAttachment),
     sendId: CommandId,
     delivery: Schema.Struct({
       /** `unknown`: a restart cut its send mid-flight; it may or may not have arrived. */

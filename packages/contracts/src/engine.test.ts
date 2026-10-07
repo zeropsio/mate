@@ -214,6 +214,13 @@ describe("a stored event from a newer build still decodes (rule 10)", () => {
       ),
     ],
     ["call.state", opened({ ...call, state: "cut" })],
+    [
+      "attachment",
+      opened(
+        { ...person, attachments: [{ type: "file", id: "f1", name: "notes.pdf" }] },
+        { kind: "person", principal: { kind: "person", subject: "ana" } },
+      ),
+    ],
   ] as const)("an event with a newer %s still decodes", (_name, raw) => {
     expect(decodes(raw)).toBe(true);
   });

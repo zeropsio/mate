@@ -343,6 +343,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
       sessionId: session.id,
       turn: run.id,
       text: run.text,
+      attachments: run.personBody?.attachments ?? [],
     });
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
     return;

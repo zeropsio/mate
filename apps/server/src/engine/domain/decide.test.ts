@@ -9,6 +9,7 @@ import {
   requestId,
   runId,
   wakeId,
+  type ChatImageAttachment,
   type EffectOutcome,
   type EngineEventTag,
   type KnownEngineEvent,
@@ -1535,5 +1536,46 @@ describe("decide: a restart's words", () => {
       kind: "cut-by-restart",
       words: "Zerops restarted the service after an update.",
     });
+  });
+});
+
+describe("decide: pictures go by reference", () => {
+  const picture = {
+    type: "image",
+    id: "img-1",
+    name: "screen.png",
+    mimeType: "image/png",
+    sizeBytes: 2048,
+    asset: {
+      id: "occ-1",
+      threadId: "mate",
+      ownerId: "mate/r/1/i/1",
+      name: "screen.png",
+      provenance: "upload",
+      original: {
+        status: "ready",
+        digest: "a".repeat(64),
+        mimeType: "image/png",
+        sizeBytes: 2048,
+      },
+    },
+  } as unknown as ChatImageAttachment;
+  it("a message's pictures are in its record and in its send, by their asset reference", () => {
+    const queued = play([{ _tag: "Send", text: "look", attachments: [picture] }]);
+    expect(queued.events[1]).toMatchObject({ body: { kind: "person", attachments: [picture] } });
+    const sending = play([
+      { _tag: "Send", text: "look", attachments: [picture] },
+      prepared(1),
+      opened(1),
+    ]);
+    expect(sending.effects[0]).toMatchObject({
+      kind: "provider.send",
+      payload: { attachments: [picture] },
+    });
+  });
+  it("a message of pictures alone is not empty", () => {
+    expect(play([{ _tag: "Send", text: " ", attachments: [picture] }]).decision._tag).toBe(
+      "Accept",
+    );
   });
 });

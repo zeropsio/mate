@@ -10,6 +10,7 @@
  */
 import type {
   BootId,
+  ChatImageAttachment,
   ConversationAgent,
   CommandId,
   CommandResult,
@@ -124,7 +125,8 @@ export type Command =
   | {
       readonly _tag: "Send";
       readonly text: string;
-      readonly attachments?: ReadonlyArray<string>;
+      /** Pictures by reference, captured into the asset store before the command is told. */
+      readonly attachments?: ReadonlyArray<ChatImageAttachment>;
       /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
       readonly maintenance?: boolean;
     }
