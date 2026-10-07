@@ -59,50 +59,15 @@ jobs:
       - name: mate zone architecture
         run: vp test run scripts/mate-zone-architecture.test.ts
 
-      - name: Reconcile no-platform-globals exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-platform-globals
+      # One AST scan reconciles every ledger and checks the identity ratchets.
+      - name: Reconcile guard exceptions
+        run: node scripts/check-guard-exceptions.ts
 
       - name: Check CSS motion
         run: node scripts/check-css-motion.ts
 
-      - name: Reconcile no-infinite-motion exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-infinite-motion
-
-      - name: Check legacy vocabulary exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-legacy-vocabulary
-
-      - name: Reconcile no-failure-to-empty exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-failure-to-empty
-
-      - name: Reconcile no-restyle exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-restyle
-
-      - name: Reconcile no-unknown-classes exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-unknown-classes
-
-      - name: Reconcile require-static-classes exceptions
-        run: node scripts/check-guard-exceptions.ts --rule require-static-classes
-
-      - name: Reconcile no-arbitrary-values exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-arbitrary-values
-
-      - name: Reconcile no-direct-permission-rule exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-direct-permission-rule
-
-      - name: Reconcile no-remote-data-in-browser-storage exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-remote-data-in-browser-storage
-
-      - name: Reconcile no-remote-io-outside-data-layer exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-remote-io-outside-data-layer
-
-      - name: Reconcile no-retired-mechanism exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-retired-mechanism
-
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
-
-      - name: Check theme escape-hatch exceptions
-        run: node scripts/check-guard-exceptions.ts --rule no-theme-escape-hatches
 
       - name: Check generated theme tokens
         run: node scripts/generate-theme-tokens.ts --check
