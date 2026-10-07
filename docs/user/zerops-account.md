@@ -80,6 +80,8 @@ history and agent work belong to the container; the browser cache is not a backu
 
 If an operation's response is lost, inspect the project and its services before starting it again.
 Mate reports uncertainty rather than assuming the operation failed or creating another project.
+When a setup write may have landed, Mate withholds its setup retry until you inspect the accepted
+project and operation.
 
 Creation progress and failures survive a reload of the same tab. A request interrupted before
 Mate heard its answer is shown as uncertain; check the projects before starting again.
@@ -87,7 +89,8 @@ Mate heard its answer is shown as uncertain; check the projects before starting 
 A Mate added from a recipe starts development after its asker signs an agent in. A Mate with no
 recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
 offers **Try again** and gives you the composer back so you can type instead. It never sends another
-attempt automatically.
+attempt automatically. A retry stays in progress until the Mate reports that the stand-up finished
+or stopped; accepting the retry alone does not mean setup is ready.
 
 If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
 to sign in again after the server can write its record. The login cannot start personal turns until

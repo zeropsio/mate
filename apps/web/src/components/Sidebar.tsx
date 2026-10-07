@@ -3992,6 +3992,14 @@ export default function Sidebar() {
                     }
                     className="min-w-0 flex-1"
                   />
+                  {isSearchingThreads &&
+                  threadSearch.incomplete &&
+                  !threadSearch.isPending &&
+                  threadSearchResults.length > 0 ? (
+                    <p role="status" className="px-2 text-xs text-sidebar-muted-foreground">
+                      Some conversations could not be searched.
+                    </p>
+                  ) : null}
                   {isSearchingThreads ? (
                     <Button
                       type="button"
@@ -4272,7 +4280,11 @@ export default function Sidebar() {
                 role="status"
                 className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
               >
-                {threadSearch.isPending ? "Searching thread messages…" : "No threads found"}
+                {threadSearch.isPending
+                  ? "Searching thread messages…"
+                  : threadSearch.incomplete
+                    ? "Some conversations could not be searched."
+                    : "No threads found"}
               </p>
             )
           ) : null}

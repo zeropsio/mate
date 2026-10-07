@@ -4,7 +4,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
+    "reason": "Mobile later: native account connection uses its current HTTP transport. Mobile is explicitly outside this migration.",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained identity/setup wire: this call probes a Mate descriptor, container health or setup before a usable Mate session exists. The established-session database and browser adapters cannot replace discovery or setup without a separate connection-lifecycle change.",
+    "reason": "Mobile later: native pre-session identity discovery still uses its existing descriptor transport. Mobile is explicitly outside this migration.",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "Identifier",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
+    "reason": "Mobile later: native HTTP and socket hosts retain their current transports. Mobile is explicitly outside this migration.",
     "expires": "never"
   },
   {
@@ -28,31 +28,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained transport/auth boundary: this host supplies the existing HTTP, socket or tracing transport and Zerops sign-in session. Removing it would disconnect released clients; inventory, database and browser adapters consume these transports and do not replace account entry or tracing.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/commands.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcCommand",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate command or workspace boundary: this call supports attachment, MCP, workspace or agent/crew commands outside database reads and browser frames. Its command contract and callers need their own executor migration before this entry can be removed.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "CallExpression",
-    "fingerprint": "input.inputs.client.listProjectServices",
-    "owner": "data-layer rewrite: Zerops platform",
-    "reason": "Retained operation-flow debt: this call performs project creation, press coordination, deletion or Mate mutation. Deleting it would remove the corresponding action; replacing its write, lost-answer handling and owner receipt requires a dedicated operation executor migration.",
+    "reason": "Mobile later: native HTTP and socket hosts retain their current transports. Mobile is explicitly outside this migration.",
     "expires": "never"
   }
 ]

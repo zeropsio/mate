@@ -4,6 +4,11 @@ import type { EnvironmentRpcInput, EnvironmentRpcSuccess } from "../../rpc/clien
 import type { RegisteredOperationKind } from "./kind.ts";
 
 export const WORKSPACE_MUTATIONS = {
+  "mate-clone-repository": WS_METHODS.sourceControlCloneRepository,
+  "mate-project-clone-start": WS_METHODS.projectCloneStart,
+  "mate-project-clone-cancel": WS_METHODS.projectCloneCancel,
+  "mate-project-clone-retry": WS_METHODS.projectCloneRetry,
+  "mate-publish-repository": WS_METHODS.sourceControlPublishRepository,
   "mate-attachment-create-upload": WS_METHODS.attachmentsCreateUploadUrl,
   "mate-attachment-delete": WS_METHODS.attachmentsDelete,
   "mate-mcp-add": WS_METHODS.mcpServersAdd,

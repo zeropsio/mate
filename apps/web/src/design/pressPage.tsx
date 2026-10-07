@@ -1,3 +1,5 @@
+import { makeAccountStore, creationPressStoreAtom } from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 /**
  * The page a press lands on, for the add dialogs' harnesses (`design-newproject.html`,
  * `design-newmate.html`): the Mate coming up, drawn by the real stage (`MateEmptyStateView`), the
@@ -42,7 +44,7 @@ import {
   pressDoneAt,
   pressFailure,
   progressPress,
-  settlePress,
+  recordPressOutcome,
   useMatePress,
 } from "~/zerops/matePress";
 import {
@@ -56,6 +58,7 @@ import {
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 openAccountLifetime("harness-person");
+appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
 
 const FAIL = new URLSearchParams(location.search).get("fail");
 
@@ -147,12 +150,12 @@ function press(
       const projectId = taken();
       if (projectId !== null) {
         const at = kinds.findIndex(([each]) => each === kind);
-        settlePress(projectId, {
+        recordPressOutcome(projectId, {
           kind: "failed",
           step: kind,
           reason: "Zerops did not answer in time.",
           retry: async () => {
-            settlePress(projectId, { kind: "pressing" });
+            recordPressOutcome(projectId, { kind: "pressing" });
             await go(at, null);
           },
         });

@@ -9,6 +9,9 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   buildsUnderWay,
   makeAccountStore,
+  closeSharedMateSetupDemand,
+  mateConversationStoreAtom,
+  creationPressStoreAtom,
   makeVaultReveal,
   makeZeropsWire,
   observeAccount,
@@ -80,6 +83,22 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const { client, status, activeOrganization } = useZeropsSession();
   const registry = useContext(RegistryContext);
   const store = useMemo(() => makeAccountStore(registry), [registry]);
+  useEffect(() => {
+    registry.set(mateConversationStoreAtom, store);
+    registry.set(creationPressStoreAtom, store);
+    const close = () => {
+      closeSharedMateSetupDemand(store);
+      if (registry.get(mateConversationStoreAtom) === store)
+        registry.set(mateConversationStoreAtom, null);
+      if (registry.get(creationPressStoreAtom) === store)
+        registry.set(creationPressStoreAtom, null);
+    };
+    const stop = onAccountLifetimeClose(close);
+    return () => {
+      stop();
+      close();
+    };
+  }, [registry, store]);
   useMateFeeds(store);
   const observation = useMemo(
     () =>

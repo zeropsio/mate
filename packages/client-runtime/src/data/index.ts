@@ -444,3 +444,21 @@ export {
   setupFailureLogQuery,
   setupFailureReason,
 } from "./projections/setupFailure.ts";
+export type { MateFeedFamily, MateFeedValues, MateFeedKey } from "./families/mateFeeds.ts";
+
+export {
+  createAccountConversationAtoms,
+  mateConversationStoreAtom,
+} from "./adapters/mateConversation.ts";
+
+export { creationProgress } from "./projections/creationProgress.ts";
+export {
+  creationPressStoreAtom,
+  beginCreationPress,
+  recordCreationProgress,
+} from "./operations/executors/creationPress.ts";
+
+export { mateFeedServices } from "./adapters/mateFeeds.ts";
+
+export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
+export { mateSetupRetryCommand } from "./mateActionReads.ts";

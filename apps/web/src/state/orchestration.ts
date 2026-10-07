@@ -1,5 +1,7 @@
-import { createOrchestrationEnvironmentAtoms } from "@t3tools/client-runtime/state/orchestration";
-
-import { connectionAtomRuntime } from "../connection/runtime";
-
-export const orchestrationEnvironment = createOrchestrationEnvironmentAtoms(connectionAtomRuntime);
+import { workspaceQuery } from "./workspace";
+export const orchestrationEnvironment = {
+  turnDiff: workspaceQuery("turnDiff"),
+  workflowScript: workspaceQuery("workflowScript"),
+  fullThreadDiff: workspaceQuery("fullThreadDiff"),
+  threadSearch: workspaceQuery("threadSearch"),
+};

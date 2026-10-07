@@ -8,9 +8,14 @@ import type { EnvironmentRegistry } from "../../../connection/registry.ts";
 import { EnvironmentRpcUnavailableError } from "../../../rpc/client.ts";
 import { mateActions } from "../../projections/mateActions.ts";
 import { makeAccountStore, readsOfState } from "../../store.ts";
+import { mateSetupOwner, mateSetupScope } from "../../families/mateSetup.ts";
+import { streamOf } from "../../reducer.ts";
 import { makeMateActions } from "./mateActions.ts";
 const environmentId = EnvironmentId.make("mate");
-const rig = <E>(answer: Effect.Effect<unknown, E>) => {
+const rig = <E>(
+  answer: Effect.Effect<unknown, E>,
+  setup?: Parameters<typeof makeMateActions>[0]["setup"],
+) => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   let calls = 0;
@@ -18,6 +23,7 @@ const rig = <E>(answer: Effect.Effect<unknown, E>) => {
   const revalidated: string[] = [];
   const actions = makeMateActions({
     store,
+    ...(setup === undefined ? {} : { setup }),
     makeId: () => `request-${++ordinal}`,
     revalidate: (action) => {
       revalidated.push(action);
@@ -156,3 +162,74 @@ describe("Mate action receipts", () => {
     }),
   );
 });
+
+it.effect(
+  "retry acceptance stays pending until newer setup evidence, retaining demand after navigation",
+  () =>
+    Effect.gen(function* () {
+      let held = 0;
+      let refreshes = 0;
+      const r = rig(Effect.succeed(true), {
+        demand: () => {
+          held++;
+          return () => {
+            held--;
+          };
+        },
+        refresh: () => {
+          refreshes++;
+        },
+        close: () => {},
+      });
+      const owner = mateSetupOwner("org", "https://mate.example");
+      const scope = mateSetupScope(owner);
+      const report = (sequence: number, standup: "failed" | "running" | "done") => {
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+        ] as const)
+          r.store.dispatch({ kind: "stream", key: scope, now: 1, event });
+        const generation = streamOf(r.store.state(), scope).generation;
+        r.store.dispatch({
+          kind: "rows",
+          scope,
+          generation,
+          method: "read",
+          via: "mate-direct",
+          rows: [
+            {
+              family: "mateSetup",
+              id: owner,
+              revision: { kind: "mate-link", sequence },
+              value: { kind: "setup", setup: { at: "owner", standup } },
+            },
+          ],
+        });
+        r.store.dispatch({
+          kind: "stream",
+          key: scope,
+          now: 1,
+          event: { kind: "baseline-committed" },
+        });
+      };
+      report(1, "failed");
+      yield* r.actions.execute(
+        "standUpRetry",
+        environmentId,
+        {},
+        { orgId: "org", origin: "https://mate.example" },
+      );
+      expect(r.read()).toMatchObject([{ pending: true }]);
+      expect(held).toBe(1);
+      expect(refreshes).toBe(1);
+      report(1, "failed");
+      expect(r.read()).toMatchObject([{ pending: true }]);
+      report(2, "running");
+      expect(r.read()).toMatchObject([{ pending: true }]);
+      report(3, "done");
+      expect(r.read()).toMatchObject([{ pending: false, error: null }]);
+      expect(held).toBe(0);
+      r.close();
+    }),
+);
