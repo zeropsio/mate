@@ -6,7 +6,7 @@ import { RenderErrorBoundary } from "./components/RenderErrorBoundary";
 import { ZeropsAppFailed } from "./components/zerops/landing/ZeropsAppFailed";
 import type { AppRouter } from "./router";
 import { ZeropsSessionProvider } from "./zerops/ZeropsSessionProvider";
-import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
+import { ZeropsAccountEnvironmentProvider } from "./zerops/ZeropsAccountEnvironmentProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
 import { AppRoot, ZeropsAccountDataBoundary, ZeropsProductHosts } from "./AppRoot";
@@ -49,7 +49,7 @@ describe("AppRoot", () => {
 
   it("starts HQ before runtime admission and inventory", () => {
     const boundary = ZeropsAccountDataBoundary({ children: "product" });
-    expect(boundary.type).toBe(ZeropsDataProvider);
+    expect(boundary.type).toBe(ZeropsAccountEnvironmentProvider);
     const parts = childrenOf(boundary);
     expect(isValidElement(parts[0]) && parts[0].type).toBe(ZeropsHqNavigation);
     const inventory = parts[1];

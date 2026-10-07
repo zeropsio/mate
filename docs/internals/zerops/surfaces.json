@@ -6,13 +6,13 @@
       "title": "Zerops session provider",
       "components": [
         "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-        "apps/web/src/zerops/ZeropsDataProvider.tsx",
+        "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
         "apps/web/src/zerops/ZeropsAccountData.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "packages/client-runtime/src/zerops/account/accountRuntime.ts",
-        "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
+        "apps/mobile/src/features/zerops/ZeropsAccountEnvironmentProvider.tsx",
         "apps/mobile/src/features/zerops/ZeropsAccountData.tsx",
-        "packages/client-runtime/src/zerops/data/runtime.ts"
+        "packages/client-runtime/src/data/account.ts"
       ],
       "entryPoints": [
         {
@@ -58,13 +58,13 @@
         "apps/web/src/AppRoot.test.tsx",
         "apps/web/src/zerops/accountLifetime.test.ts",
         "apps/web/src/zerops/draftStorage.test.ts",
-        "apps/web/src/zerops/ZeropsDataProvider.test.tsx",
+        "apps/web/src/zerops/signIn.guards.test.tsx",
         "apps/web/src/zerops/zeropsDataContext.test.tsx",
-        "apps/web/src/zerops/zeropsDataBindings.test.ts",
-        "apps/mobile/src/features/zerops/ZeropsDataProvider.test.tsx",
-        "packages/client-runtime/src/zerops/data/runtime.test.ts"
+        "apps/web/src/zerops/environmentPorts.test.ts",
+        "apps/mobile/src/features/zerops/ZeropsAccountEnvironmentProvider.test.tsx",
+        "packages/client-runtime/src/data/account.test.ts"
       ],
-      "untested": "The browser-integrated pass covers startup, refresh, expiry recovery, reconnect, suspension and cross-tab logout. Completing the final Zerops app-token grant remains pending explicit approval.",
+      "untested": "A live Zerops account sign-in pass has not been run in this lane; session guards and account lifecycle behavior have focused automated coverage.",
       "captures": []
     },
     {
@@ -505,7 +505,9 @@
         "packages/client-runtime/src/zerops/changeDiff.test.ts",
         "packages/client-runtime/src/zerops/changeReadout.test.ts",
         "packages/client-runtime/src/zerops/recipeReach.test.ts",
-        "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
+        "packages/client-runtime/src/zerops/reviewVerdict.test.ts",
+        "apps/web/src/zerops/useLinkedChange.test.ts",
+        "packages/client-runtime/src/data/adapters/hqChangeReads.test.ts"
       ],
       "captures": []
     },
@@ -1189,15 +1191,14 @@
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
         "apps/web/src/zerops/turnstile.test.ts",
         "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
-        "apps/web/src/zerops/ZeropsInventoryProvider.test.ts",
+        "packages/client-runtime/src/data/projections/platformAccess.test.ts",
         "apps/web/src/zerops/useProjectTopology.test.ts",
-        "packages/client-runtime/src/zerops/data/inventory.test.ts",
+        "packages/client-runtime/src/data/projections/platformInventory.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts",
         "packages/client-runtime/src/zerops/projectFlow.test.ts",
         "packages/client-runtime/src/zerops/hq/menuRows.test.ts",
         "apps/web/src/zerops/useAccountVoice.test.ts",
-        "apps/web/src/zerops/useProjectTopology.demand.test.ts",
-        "packages/client-runtime/src/zerops/data/demandScope.test.ts",
+        "packages/client-runtime/src/data/demand.test.ts",
         "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx"
       ],
       "captures": []
@@ -1381,8 +1382,9 @@
         "apps/web/src/components/zerops/ZeropsNewProjectComingPage.test.tsx",
         "apps/web/src/zerops/newProjectBirth.test.ts",
         "packages/client-runtime/src/zerops/newProject.test.ts",
-        "packages/client-runtime/src/zerops/data/commands.test.ts",
-        "packages/client-runtime/src/zerops/data/runtime.test.ts",
+        "packages/client-runtime/src/data/operations/executors/platformAdmission.test.ts",
+        "packages/client-runtime/src/data/operations/executors/zerops.test.ts",
+        "packages/client-runtime/src/data/account.test.ts",
         "apps/web/src/zerops/useZeropsUpgradeRestart.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts"
       ],

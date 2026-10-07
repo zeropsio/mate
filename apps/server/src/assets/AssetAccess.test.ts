@@ -29,6 +29,7 @@ import {
 } from "./AssetAccess.ts";
 import { openMediaFile } from "./MediaFile.ts";
 import * as AssetSigningKey from "./AssetSigningKey.ts";
+import { TemporaryMediaRoots } from "./RetainedMedia.ts";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof NodeFSP>();
@@ -49,7 +50,8 @@ const makeTestLayer = (services = NodeServices.layer) =>
     ),
     AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer), Layer.provide(configLayer)),
   ).pipe(Layer.provideMerge(services));
-const testLayer = makeTestLayer();
+// Workspace fixtures use temp directories but model files on a persistent workspace volume.
+const testLayer = makeTestLayer().pipe(Layer.provideMerge(Layer.succeed(TemporaryMediaRoots, [])));
 
 const recordingKeyServices = (read: Effect.Effect<void, PlatformError.PlatformError>) =>
   Layer.effect(

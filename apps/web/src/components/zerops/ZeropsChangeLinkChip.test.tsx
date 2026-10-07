@@ -3,17 +3,17 @@ import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { buttonsLabelled, press, TestNode } from "../../zerops/__fixtures__/testDom";
-import type { ZeropsLandedChangeState } from "../../zerops/useZeropsLandedChange";
+import type { LinkedChangeState } from "../../zerops/useLinkedChange";
 
 /** What HQ answers for a change the flow does not carry, and the change the chip last asked for. */
 const hq = vi.hoisted(() => ({
-  answer: { kind: "reading" } as ZeropsLandedChangeState,
+  answer: { kind: "reading" } as LinkedChangeState,
   asked: null as ChangeLink | null,
   readAgain: vi.fn(),
 }));
 
-vi.mock("../../zerops/useZeropsLandedChange", () => ({
-  useZeropsLandedChange: (link: ChangeLink | null) => {
+vi.mock("../../zerops/useLinkedChange", () => ({
+  useLinkedChange: (link: ChangeLink | null) => {
     hq.asked = link;
     return link === null
       ? { kind: "idle" }
@@ -109,7 +109,7 @@ describe("ZeropsChangeLinkChip", () => {
     readonly renders: ReadonlyArray<{
       readonly hqAddress: string | undefined;
       readonly merged?: ReadonlyArray<FlowPullRequest>;
-      readonly answer?: ZeropsLandedChangeState;
+      readonly answer?: LinkedChangeState;
     }>;
     readonly text: string;
   }>([

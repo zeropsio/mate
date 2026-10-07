@@ -12,7 +12,7 @@
  *   probe ends by `PROBE_DEADLINE_MS` as `unreachable`.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
  */
-import type { Instant } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
 import type { DescriptorFacts } from "./environmentMachine.ts";
 
 /** What one probe of an origin concluded (`containerHealth.ts` reads it). */

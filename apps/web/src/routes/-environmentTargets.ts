@@ -8,7 +8,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { Instant } from "@t3tools/client-runtime/zerops/data";
+import type { Instant } from "@t3tools/client-runtime/zerops/environments";
 import {
   environmentLinkable,
   mateLink,
@@ -164,11 +164,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           environmentId,
           hqNamed,
-          inventoryKnown:
-            inventory !== null &&
-            inventory.account.kind === "authorized" &&
-            !inventory.isLoading &&
-            inventory.error === null,
+          inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
           organization: ORGANIZATION[organizationStatus],
           content,
         });

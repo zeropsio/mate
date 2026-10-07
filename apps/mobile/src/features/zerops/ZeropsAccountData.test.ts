@@ -11,7 +11,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 import { ZeropsAccountData } from "./ZeropsAccountData";
-import type { ZeropsDataBinding } from "./ZeropsDataProvider";
+import type { ZeropsDataBinding } from "./ZeropsAccountEnvironmentProvider";
 
 beforeEach(() => hooks.reset());
 

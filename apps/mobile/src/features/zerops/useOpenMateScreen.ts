@@ -2,7 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect } from "react";
 
 import { openMateScreen } from "./open-mate";
-import { useZeropsData } from "./ZeropsDataProvider";
+import { useZeropsData } from "./ZeropsAccountEnvironmentProvider";
 
 /** The screen of this environment's Mate is open while the calling screen is mounted (A9). */
 export function useOpenMateScreen(environmentId: EnvironmentId | null): void {

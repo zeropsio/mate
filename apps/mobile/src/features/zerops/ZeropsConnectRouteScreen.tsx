@@ -32,7 +32,7 @@ import {
   type ZeropsCandidatePresentation,
 } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useZeropsData } from "./ZeropsDataProvider";
+import { useZeropsData } from "./ZeropsAccountEnvironmentProvider";
 import { checkCloseOff, closeOffFacts } from "./close-off";
 import { useAccountData } from "./ZeropsAccountData";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";

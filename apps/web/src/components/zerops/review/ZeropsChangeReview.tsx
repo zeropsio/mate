@@ -56,7 +56,7 @@ import {
 import { useChangeDiscussion, type ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import { useZeropsChangeRun } from "~/zerops/useZeropsChangeRun";
 import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
-import { useZeropsLandedChange } from "~/zerops/useZeropsLandedChange";
+import { useLinkedChange } from "~/zerops/useLinkedChange";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
@@ -143,7 +143,7 @@ export function ZeropsChangeReview({
   const merged = flow?.merged.find(matches);
   // A change the flow does not hold — landed before the flow was read, or a flow not read yet —
   // is read on its own.
-  const landed = useZeropsLandedChange(
+  const landed = useLinkedChange(
     open !== undefined || merged !== undefined
       ? null
       : { appId: target.groupId, repo: target.repository, number: target.number },

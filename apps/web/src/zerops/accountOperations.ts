@@ -1,3 +1,5 @@
+import { captureAccountLifetime } from "./accountLifetime";
+import { zeropsClientsFromUser } from "@t3tools/client-runtime/zerops";
 /**
  * The account's operations: one coordinator per account store and session client, with Zerops
  * and the organization's official HQ wired as the owners of their kinds. A verb submits an intent here and reads where it stands through
@@ -83,6 +85,7 @@ export function accountOperations(
   client: SessionClient,
   demandDetail: (demand: DetailDemand) => () => void,
   revalidate: (demand: DetailDemand) => void,
+  readDetail: (demand: DetailDemand) => Promise<boolean>,
 ): AccountOperations {
   let byClient = coordinators.get(store);
   if (byClient === undefined) {
@@ -99,6 +102,14 @@ export function accountOperations(
       hq: makeHqExecutor({ apiOf: hqWritesOf, zerops: client }),
       zerops: makeZeropsExecutor({
         client,
+        viewerOf: (orgId) => {
+          const user = client.verifiedUser()?.user;
+          return user === undefined
+            ? undefined
+            : zeropsClientsFromUser(user).find(({ id }) => id === orgId);
+        },
+        active: captureAccountLifetime(),
+        readDetail,
         store,
         registry,
         demandDetail,

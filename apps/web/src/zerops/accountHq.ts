@@ -21,21 +21,19 @@ import {
   findOfficialHq,
   HqError,
   HQ_NOT_OPEN,
-  makeHqApi,
   ownersAndAdmins,
-  readHqHealth,
   type HqApi,
   type HqCoreArtifact,
   type HqEndpoint,
   type HqHealth,
   type HqParts,
   type OfficialHq,
-  type OpenHqSocket,
 } from "@t3tools/client-runtime/zerops/hq";
 import {
   connectThroughThrowaway,
   zeropsThrowawayPlatform,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
+import { makeBrowserHqApi, readAccountHqHealth } from "@t3tools/client-runtime/data";
 import { organizationMembers } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
@@ -86,7 +84,7 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     () =>
       data === null || clientId === undefined
         ? undefined
-        : { account: data.runtime.scope.account, clientId },
+        : { account: data.scope.account, clientId },
     [clientId, data],
   );
   const kept = useHqVerdict(owner);
@@ -219,9 +217,6 @@ function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
   endHqSession(session);
 }
 
-const apis = new Map<string, HqApi>();
-onAccountLifetimeClose(() => apis.clear());
-
 /** The official HQ from the account's current member fact, refreshed for this birth attempt. */
 export async function readOfficialHqNow(
   account: AccountData,
@@ -257,27 +252,6 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
  * its pong is sent before liveness callbacks, with no timer or React scheduling in between.
  * Close codes pass through so the stream owner distinguishes rotation, going-away and refusal.
  */
-const openBrowserSocket: OpenHqSocket = (url, on) => {
-  const socket = new WebSocket(url);
-  /** What was sent before the socket opened: the scope requests, sent as soon as it does. */
-  const early: string[] = [];
-  socket.addEventListener("open", () => {
-    for (const data of early.splice(0)) socket.send(data);
-  });
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data === "string") on.message(event.data);
-  });
-  socket.addEventListener("close", (event) => on.close(event.code));
-  return {
-    // What is sent to a socket already closing is lost with it.
-    send: (data) => {
-      if (socket.readyState === WebSocket.CONNECTING) early.push(data);
-      else if (socket.readyState === WebSocket.OPEN) socket.send(data);
-    },
-    close: () => socket.close(),
-  };
-};
-
 /**
  * Whether HQ's health says it is not the organization's official HQ: its anchor is gone, names
  * another, or its own credentials are wrong — never merely a standby, or a Zerops it cannot check.
@@ -341,15 +315,12 @@ async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
  * again.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
-  const key = `${client.accountEpoch}:${clientId}:${hq.projectId}:${hq.address}`;
-  const held = apis.get(key);
-  if (held !== undefined) return held;
   const platform = zeropsThrowawayPlatform(client, {
     asked: true,
     debt: accountThrowawayDebt(client),
   });
   const keptKey = keptHqKey(clientId, hq);
-  const api = makeHqApi({
+  const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
       read: () => keptHqSessions.read(keptKey)?.token ?? null,
@@ -368,7 +339,6 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       },
       forget: (token) => forgetKeptHqSession(keptKey, token),
     },
-    fetch: (input, init) => fetch(input, init),
     beforeWrite: () => writeChecked(clientId, hq),
     throughDoor: (use) =>
       doorChecked(clientId, hq).then(() =>
@@ -385,15 +355,13 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
           connect: use,
         }).catch(async (cause: unknown) => {
           if (cause instanceof HqError && cause.code === "not_active") {
-            const health = await readHqHealth((input, init) => fetch(input, init), hq.address);
+            const health = await readAccountHqHealth(hq.address);
             if (saysNotOfficial(health)) forgetHqVerdict(clientId, hq);
           }
           throw cause;
         }),
       ),
-    openSocket: openBrowserSocket,
   });
-  apis.set(key, api);
   return api;
 }
 
@@ -406,11 +374,15 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
   const client = session?.client;
   const clientId = session?.activeOrganization?.id;
   const { hq } = useAccountHq(clientId);
-  const api =
-    client === undefined || clientId === undefined || hq.kind !== "official"
-      ? null
-      : accountHqApi(client, clientId, hq);
+  const projectId = hq.kind === "official" ? hq.projectId : null;
   const address = hq.kind === "official" ? hq.address : null;
+  const api = useMemo(
+    () =>
+      client === undefined || clientId === undefined || projectId === null || address === null
+        ? null
+        : accountHqApi(client, clientId, { projectId, address }),
+    [client, clientId, projectId, address],
+  );
   return useMemo(
     () => (address === null || api === null ? null : { address, api }),
     [address, api],

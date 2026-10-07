@@ -91,18 +91,29 @@ T14) and its code is gone.
 ## 2. The parts and where they live
 
 - **The app — web, desktop, mobile** — this repo (`zeropsio/mate`): `apps/web/src/zerops`,
-  `apps/web/src/components/zerops`, `packages/client-runtime/src/zerops` (HQ's client in its `hq/`)
+  `apps/web/src/components/zerops`, `packages/client-runtime/src/data` (the account data layer),
+  `packages/client-runtime/src/zerops` (HQ wire/client utilities in its `hq/`)
   - _Does:_ sign-in; HQ's birth and the gate in front of the product (`hqBirth.ts`, `hqGate.ts`);
-    the menu from HQ's stream (`hqStructure.ts`); _New project_, _Add Mate_, _Add stage_, _Add
-    production_ written into HQ, with an environment's deploy token minted and handed over; a Mate's
+    the menu from HQ navigation projections (`data/projections/hqNavigation.ts`); _New project_,
+    _Add Mate_, _Add stage_, _Add production_ written into HQ, with an environment's deploy token minted and handed over; a Mate's
     change, its review, _Merge_ and _Close_, the Git tab and the Git page `/git`, from HQ;
     _Release_, _Roll back to this_, a repository's history and what each release carried, from HQ;
     what the stage and production run, as HQ records it; every verb HQ owns drawn from what HQ offers
-    the person beside its structure (`useHqOffers.ts`, `useChangeOffers.ts`), the client deciding no
-    permission
+    the person in scoped facts, the client deciding no permission
+  - _Data flow (Mate 0.14.26):_ adapter → reducer → keyed account store → projection → component.
+    One Zerops socket per account carries organization-wide membership/update registrations for
+    projects, processes, services, active versions and public HTTP routings (10 registrations,
+    independent of the Mate count). Detail is demanded while drawn. Remote facts live in account
+    memory, with no browser-storage caches and no fixed-interval polling for live facts. Sources
+    without realtime use a declared sampled policy while demanded. The old Zerops runtime, query
+    cells, grant driver and second socket are removed; inventory's presentation join remains D03,
+    database catalog/query reads D57 and versioned browser frames D47 ([data layer](data-layer.md)).
+    HQ writes are operations with receipts: accepted, reflected and completed are distinct; a lost
+    answer is recovered from identity or proven effect, never a blind resend
 - **HQ Core** — `apps/hq`, the service `hq`, deployed by HQ's birth from the build the app came with
   - _Does:_ the leader lock and its epoch, the official check, `/health`; the door and its sessions;
-    the structure and its stream; the Mate credential and the Mate's link; git at `/git/*`; changes,
+    the scoped HQ protocol (navigation, app-detail, change, discussion, operation and attention);
+    the Mate credential and the Mate's link; git at `/git/*`; changes,
     merges, comments and pictures; the recipe; environments and their deploy tokens; stage and
     production deploys; releases; backup sets and their restore; and what each reader may do, its
     one rule `can` (`permissions.ts`) streamed as offers (`offers.ts`)
@@ -283,9 +294,14 @@ still to come says so.
     `accountHq.test.ts`, `ZeropsHqGate.test.tsx`
 - **T5** — The structure in HQ, and the menu from its stream
   - _State:_ live on the rig — _New project_, _Add Mate_, an environment's attach and a Mate's
-    registration write HQ; the menu draws from one stream (the whole structure, then its changes, a
-    ping every 20 s); HQ follows Zerops by itself — a deleted project leaves, a lost role hides —
-    and reconciles every 60 s. The client writes no structure tag: its one tag is the `mate` marker
+    registration write HQ through operations with receipts. One HQ socket per renderer and organization
+    carries revisioned navigation, with app-detail, change, discussion, operation and attention
+    scopes demanded separately. Reconnect resumes each scope by incarnation/revision and known keys;
+    retained deltas or a scope reset end at `scope-ready`. Navigation never hydrates detail.
+    Explicit removals distinguish deletion from lost access; outages retain last-known facts.
+    HQ follows Zerops by itself — a deleted project leaves, a lost role hides — and its server
+    reconciliation is separate from client demand ([HQ scopes](hq-scopes.md)). The client writes no
+    structure tag: its one tag is the `mate` marker
     (`tagPatch.ts`), written for the Zerops GUI and read by nothing — a Mate exists where HQ places
     it, its container the only other evidence (`groups.ts`); a project carrying only the marker is
     no Mate row, no _Set up Mate_ and no taken name. Every press — a Mate's, a stage's or a
@@ -307,7 +323,7 @@ still to come says so.
     `finishSetup.logic.test.ts`
 - **TP** — Who may: one pure rule, `can`, HQ's alone, and what HQ offers by it
   - _State:_ built — HQ asks `can` (`apps/hq/src/permissions.ts`) for every structure, change,
-    deploy and release verb, and streams what each reader may do beside its structure
+    deploy and release verb, and streams what each reader may do in its navigation facts
     (`offers.ts`): the organization's verbs in the org message, a `can` record beside each
     application, environment and Mate, and a Mate's `moveTo` choices — decided over the target the
     write is enforced with, over the org as HQ last read it. The client decides no permission: it
@@ -344,7 +360,8 @@ still to come says so.
     s. Up goes its overview (`zeropsHqOverview.ts`): its main chat as a menu row reads it, a digest
     of its other chats, its logins and its crew — whole first on every link, then only the sections
     that changed, on its own events. HQ keeps it, stored across a restart (`mateOverviews.ts`), and
-    hands each Mate's view to whoever may observe it on the structure socket; the menu, the rows,
+    hands each Mate's view and source-ordered attention to whoever may observe it through HQ scopes;
+    the menu, the rows,
     notifications, the palette and the crew line draw from that, with no socket to the Mate (step
     A, A0–A8, A12). Who
     asked for a Mate's stand-up and its close-off are HQ's record; whose a login is, the server's
@@ -693,13 +710,14 @@ still to come says so.
   - _Built in:_ mate 0.11.2 `68634f145` `e090a363b` `7abefe78f` `938de7167`; 0.11.3 `682ce19ed`
   - _Proven by:_ ledger _A project creation that the platform failed after answering 200_
 - **—** — The client state model: fact owners, machines, lifetimes
-  - _State:_ partial — Phases 0 to 3 built except 2.5; of Phase 4 the one tag writer
-    (`data/tagWriter.ts`), the registry now HQ's structure (`hq/registry.ts`), and the forge store
-    gone with the Gitea session (T12); Phase 5 open. Item by item:
-    [`client-state-model.md`](client-state-model.md#status-by-phase)
-  - _Built in:_ mate `main`, merged wave by wave from `e22e38db0`
-  - _Proven by:_ the sign-in guards (`ZeropsInventoryProvider.lifecycle.test.tsx`); the zone tests
-    (`scripts/mate-zone-architecture.test.ts`)
+  - _State:_ superseded by the shipped account data layer in Mate 0.14.26. Its source adapters,
+    reducer, keyed store, projections and operations replace the old Zerops runtime, query cells,
+    grant driver, duplicate transport and browser-storage remote caches. The remaining presentation
+    and source-contract work is D03, D57 and D47, listed in [data-layer.md](data-layer.md).
+    [`client-state-model.md`](client-state-model.md#status-by-phase) records the earlier phases.
+  - _Built in:_ Mate 0.14.26, following the data-layer waves
+  - _Proven by:_ `packages/client-runtime/src/data` tests; hosted scenarios in
+    `apps/web/test/scenarios/areas/{a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget}`
 - **—** — Pass 16: the left menu — rows, the production chip, crews, the band, search
   - _State:_ **live** at the owner's size on the localhost pair, 2026-09-29: at 435 and 256 px the
     faces at 16 px and every word at 56, rows of 76, 58 and 48 px, 30 px from one Mate's words to

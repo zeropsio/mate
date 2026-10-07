@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { identity, project, service } from "../data/__fixtures__/index.ts";
-import type { CollectionRead, ServiceDeployInfo, ServiceRecord } from "../data/types.ts";
-import { serviceRecordToZeropsService } from "../data/dto.ts";
+import { project, service } from "../data/__fixtures__/index.ts";
+import type { DeploymentServices, ServiceDeployInfo } from "./deployment.ts";
+import type { ServiceValue } from "../../data/families/service.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
 import { deployedVersion, environmentRow, type EnvironmentRow } from "../groupRows.ts";
@@ -22,13 +22,7 @@ import {
 import { runningBuild, work } from "./__fixtures__/work.ts";
 import type { ZeropsServiceDeployedVersion } from "../../data/projections/serviceRuns.ts";
 import type { StopWork } from "../../data/projections/stopWork.ts";
-import {
-  deployed,
-  record,
-  servicesRead,
-  UNAVAILABLE_DEPLOYMENT,
-  UNRESOLVED_DEPLOYMENT,
-} from "./__fixtures__/services.ts";
+import { deployed, record, servicesRead, UNRESOLVED_DEPLOYMENT } from "./__fixtures__/services.ts";
 
 const NOW = 100_000;
 const SHA = "3f9c1b2000000000000000000000000000000000";
@@ -381,13 +375,12 @@ const UNSTATED: ServiceDeployInfo = {
 /** What the service's variables state of a version nothing named, before they answer. */
 const ASKED = { state: "unread", waitingFor: null } as const;
 
-function serviceDeployment(read: CollectionRead<ServiceRecord>): Shown<Deployment> | undefined {
+function serviceDeployment(read: DeploymentServices): Shown<Deployment> | undefined {
   const stops = stopServices(
     {
       services: read,
       work: work(),
       versions: new Map(),
-      refused: null,
       stated: new Map([[UNSTATED.id!, ASKED]]),
       detail: false,
     },
@@ -402,7 +395,7 @@ describe("a service's deployment", () => {
       state: "known",
       coverage: "complete",
       freshness: { kind: "live" },
-      asOf: { ordinal: 4, atMs: 40 },
+      asOf: { ordinal: 0, atMs: 0 },
       value: {
         kind: "running",
         activatedAt: "2026-09-20T10:00:00Z",
@@ -460,7 +453,7 @@ describe("a service's deployment", () => {
       const deployment = serviceDeployment(servicesRead([stated]));
       const topology = projectTopology(
         { id: "project-1", name: "project", status: "ACTIVE" },
-        [serviceRecordToZeropsService(stated)!],
+        [stated],
         [],
       );
 
@@ -469,56 +462,28 @@ describe("a service's deployment", () => {
     });
   });
 
-  it("marks a value the paused or failed source no longer vouches for", () => {
-    const paused = serviceDeployment(
-      servicesRead([record("s1", "app", deployed(null))], {
-        interest: { status: "paused", identity: identity(), reason: "background" },
-      }),
-    );
-    expect(paused).toMatchObject({
-      state: "known",
-      freshness: { kind: "paused", by: "background" },
-    });
+  it("keeps the last deployment while its source catches up", () => {
     const failed = serviceDeployment(
-      servicesRead([record("s1", "app", deployed(null))], {
-        interest: {
-          status: "failed",
-          identity: identity(),
-          reason: "disconnect",
-          attempts: 1,
-          retryable: true,
-          retryAtMs: null,
-        },
-      }),
+      servicesRead([record("s1", "app", deployed(null))], { live: false, reconnecting: true }),
     );
     expect(failed).toMatchObject({
       state: "known",
       freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: null } },
     });
   });
-
-  it("fails what was never read when the source gave up", () => {
-    const deployment = serviceDeployment(
-      servicesRead([], {
-        coverage: { kind: "none" },
-        interest: {
-          status: "failed",
-          identity: identity(),
-          reason: "registration refused",
-          retryable: true,
-          attempts: 3,
-          retryAtMs: NOW + 8_000,
-        },
-      }),
-    );
-    expect(deployment).toMatchObject({ state: "failed", attempt: 3, retryAtMs: NOW + 8_000 });
+  it("fails what was never read when the source refuses", () => {
+    expect(
+      serviceDeployment(
+        servicesRead([], { complete: false, live: false, unavailableReason: "refused" }),
+      ),
+    ).toMatchObject({ state: "failed", attempt: 1, retryAtMs: null });
   });
 });
 
 describe("stopServices", () => {
   const PROJECT = project("project-stage");
   const listed = (
-    records: ReadonlyArray<ServiceRecord | "unresolved">,
+    records: ReadonlyArray<ServiceValue | "unresolved">,
     options: Parameters<typeof servicesRead>[1] = {},
   ) => servicesRead(records, { project: PROJECT, ...options });
   const build = (appVersion?: { readonly id: string; readonly name?: string }) =>
@@ -543,9 +508,8 @@ describe("stopServices", () => {
 
   const cases: ReadonlyArray<{
     readonly name: string;
-    readonly read: CollectionRead<ServiceRecord>;
+    readonly read: DeploymentServices;
     readonly work?: StopWork;
-    readonly refused?: StopReads["refused"];
     readonly stated?: StopReads["stated"];
     readonly detail?: boolean;
     readonly versions?: StopReads["versions"];
@@ -554,7 +518,7 @@ describe("stopServices", () => {
   }> = [
     {
       name: "a listing still being read",
-      read: listed([], { coverage: { kind: "none" } }),
+      read: listed([], { complete: false }),
       expected: "unread",
     },
     {
@@ -568,10 +532,8 @@ describe("stopServices", () => {
         record("s2", "web", UNRESOLVED_DEPLOYMENT),
         record("s1", "app", deployed(PUSHED)),
         record("s3", "worker", deployed(null)),
-        record("s4", "api", UNAVAILABLE_DEPLOYMENT),
       ]),
       expected: [
-        ["api", "failed"],
         ["app", "running"],
         ["web", "unread"],
         ["worker", "none"],
@@ -585,13 +547,7 @@ describe("stopServices", () => {
     {
       name: "a partial listing is no list",
       read: listed([record("s1", "app", deployed(null))], {
-        coverage: {
-          kind: "partial-window",
-          offset: 0,
-          limit: 1,
-          traversedPages: 1,
-          observedTotal: 2,
-        },
+        complete: false,
       }),
       expected: "unread",
     },
@@ -616,10 +572,12 @@ describe("stopServices", () => {
       expected: [["app", "failed"]],
     },
     {
-      name: "a refused services demand fails the none it could not prove",
-      read: listed([record("s1", "app", deployed(null))]),
+      name: "a refused services listing fails the none it could not prove",
+      read: listed([record("s1", "app", deployed(null))], {
+        live: false,
+        unavailableReason: "refused",
+      }),
       work: work({ complete: false }),
-      refused: { reason: "account-capacity", attempt: 1 },
       expected: [["app", "failed"]],
     },
     {
@@ -742,13 +700,12 @@ describe("stopServices", () => {
     },
   ];
 
-  it.each(cases)("$name", ({ read, work: held, refused, stated, detail, versions, expected }) => {
+  it.each(cases)("$name", ({ read, work: held, stated, detail, versions, expected }) => {
     const stops = stopServices(
       {
         services: read,
         work: held ?? work(),
         versions: versions ?? new Map(),
-        refused: refused ?? null,
         stated: stated ?? new Map(),
         detail: detail ?? false,
       },
@@ -772,7 +729,6 @@ describe("stopServices", () => {
       {
         work: work(),
         versions: new Map(),
-        refused: null,
         stated: new Map(),
         detail: false,
         ...reads,
@@ -870,7 +826,6 @@ describe("stopServices", () => {
         services: listed([record("s1", "app", deployed(PUSHED), { project: PROJECT })]),
         work: work(),
         versions: new Map(),
-        refused: null,
         stated: new Map(),
         detail: false,
       },
@@ -1158,7 +1113,6 @@ it.each([
       services: servicesRead([record("app", "app", deployed(deploy))]),
       work: work(),
       versions: new Map(),
-      refused: null,
       stated: new Map(),
       detail: false,
     },
@@ -1184,7 +1138,6 @@ it("a version with no id, which nothing can ever state, ends visibly instead of 
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, id: null }))]),
       work: work(),
       versions: new Map(),
-      refused: null,
       stated: new Map(),
       detail: false,
     },
@@ -1202,7 +1155,6 @@ it("the embedded name of the active version settles a stop even when source is o
       services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
       work: work(),
       versions: new Map(),
-      refused: null,
       stated: new Map(),
       detail: false,
     },
@@ -1222,7 +1174,6 @@ it("a deployment facet not stated yet is unknown until the service says, never a
       services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
       work: work(),
       versions: new Map(),
-      refused: null,
       stated: new Map(),
       detail: false,
     },

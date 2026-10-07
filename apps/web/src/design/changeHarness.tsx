@@ -14,8 +14,7 @@
  */
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import type { ManagedZeropsDataRuntime } from "@t3tools/client-runtime/zerops/data";
-import * as Stream from "effect/Stream";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -66,11 +65,10 @@ function Standins({ children }: { readonly children: ReactNode }) {
     error: null,
     projectRefs: new Map(),
     authority: new Map(),
-    account: { kind: "authorized" },
     lost: new Set(),
   };
   const data: ZeropsDataContextValue = {
-    runtime: { access: { changes: Stream.empty } } as unknown as ManagedZeropsDataRuntime,
+    scope: {} as AccountScope,
     signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
     organizationRef: () => {
       throw new Error("not in the harness");

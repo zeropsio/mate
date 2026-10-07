@@ -17,7 +17,7 @@
 import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import type { ConnectionBlockedReason } from "../../connection/model.ts";
-import type { GrantCapability, Instant } from "../data/access/grant.ts";
+import type { Instant } from "./exchange.ts";
 import type { AbsenceEvidence } from "../knowledge/known.ts";
 import {
   backoffOn,
@@ -148,10 +148,10 @@ export type RefusalReason =
    * rejecting freshly exchanged ones (`AUTH_LOOP_REJECTIONS`).
    */
   | { readonly kind: "credential" }
-  /** `identityMint` refused for a reason no later round changes. */
+  /** The account session ended during an exchange. */
   | {
       readonly kind: "access";
-      readonly reason: Extract<GrantCapability, { readonly allowed: false }>["reason"];
+      readonly reason: "epoch-closed" | "role-denies";
     };
 
 export type ExchangeFailure =
@@ -218,13 +218,10 @@ export interface EnvironmentGuards {
   readonly want: boolean;
   readonly routeTarget: boolean;
   readonly visible: boolean;
-  /** The epoch's first grant is admitted. */
-  readonly postGrant: boolean;
-  readonly identityMint: GrantCapability;
-  /** The grant's rounds are failing with a transport or server cause. */
-  readonly zeropsFailing: boolean;
-  /** Local wall time of the newest admitted grant round; null before one. */
-  readonly grantVerifiedAtMs: number | null;
+  /** The account's sign-in has verified its principal. */
+  readonly verified: boolean;
+  /** The source's own observation state, retained independently from its facts. */
+  readonly zeropsState: "unknown" | "live" | "unavailable";
   /** The tab's exchange budget has a token. */
   readonly budget: boolean;
 }
@@ -233,10 +230,8 @@ export const IDLE_GUARDS: EnvironmentGuards = {
   want: false,
   routeTarget: false,
   visible: false,
-  postGrant: false,
-  identityMint: { allowed: false, reason: "access-unverified", waitable: true },
-  zeropsFailing: false,
-  grantVerifiedAtMs: null,
+  verified: false,
+  zeropsState: "unknown",
   budget: false,
 };
 
@@ -294,14 +289,12 @@ export interface EnvironmentMachine {
    * answered by a re-exchange; a connect or an input change starts the count over.
    */
   readonly configurationBlocks: number;
-  /** A descriptor read reported identity `ok` since Zerops last started failing for the grant. */
+  /** A descriptor read reported identity `ok` since the account's Zerops source stopped answering. */
   readonly identityAnswered: boolean;
   /** Consecutive descriptor reads reporting identity `failed`, each with a newer check. */
   readonly identityFailures: {
     readonly reads: number;
     readonly lastCheckedAt: string | null;
-    /** Local wall time the first of them arrived; null with no failed read. */
-    readonly sinceMs: number | null;
   };
   readonly nextAttempt: number;
   /**
@@ -407,7 +400,6 @@ const IDENTITY_FAILED_RUNG = 3;
 const NO_IDENTITY_FAILURES: EnvironmentMachine["identityFailures"] = {
   reads: 0,
   lastCheckedAt: null,
-  sinceMs: null,
 };
 
 export const initialEnvironment = (input: {
@@ -474,17 +466,13 @@ type Verdict =
 const gate = (machine: EnvironmentMachine): Verdict => {
   const guards = machine.guards;
   if (!guards.want) return { kind: "idle" };
-  if (!guards.postGrant) return { kind: "wait", on: "access" };
+  if (!guards.verified) return { kind: "wait", on: "access" };
   const origin = originOf(machine.presence);
   if (origin === null || rememberedElsewhere(machine)) return { kind: "wait", on: "presence" };
   if (containerHolds(machine)) return { kind: "wait", on: "container" };
-  if (guards.zeropsFailing && !machine.identityAnswered) return { kind: "wait", on: "zerops" };
+  if (guards.zeropsState === "unavailable" && !machine.identityAnswered)
+    return { kind: "wait", on: "zerops" };
   if (!guards.visible && !guards.routeTarget) return { kind: "wait", on: "visible" };
-  if (!guards.identityMint.allowed) {
-    return guards.identityMint.waitable
-      ? { kind: "wait", on: "access" }
-      : { kind: "refuse", reason: { kind: "access", reason: guards.identityMint.reason } };
-  }
   if (!guards.budget) return { kind: "wait", on: "budget" };
   return { kind: "go", origin, probe: machine.presence.kind === "remembered" };
 };
@@ -613,7 +601,6 @@ const descriptorMoved = (before: DescriptorFacts | null, after: DescriptorFacts)
 const countIdentityFailure = (
   failures: EnvironmentMachine["identityFailures"],
   descriptor: DescriptorFacts,
-  nowMs: number,
 ): EnvironmentMachine["identityFailures"] => {
   if (descriptor.identity !== "failed") return NO_IDENTITY_FAILURES;
   const checkedAt = descriptor.identityCheckedAt;
@@ -622,39 +609,24 @@ const countIdentityFailure = (
   return {
     reads: failures.reads + 1,
     lastCheckedAt: checkedAt,
-    sinceMs: failures.sinceMs ?? nowMs,
   };
 };
 
 const ingestDescriptor = (
   machine: EnvironmentMachine,
   descriptor: DescriptorFacts,
-  ctx: EnvironmentContext,
 ): EnvironmentMachine => ({
   ...machine,
   descriptor,
   identityAnswered: machine.identityAnswered || descriptor.identity === "ok",
-  identityFailures: countIdentityFailure(machine.identityFailures, descriptor, ctx.now.wall),
+  identityFailures: countIdentityFailure(machine.identityFailures, descriptor),
 });
 
-/**
- * Restart is offered for identity `failed` only when two consecutive reads report it with an
- * advancing check AND this tab's grant stayed granted and fresh over the same period — a round
- * admitted after the first failure, none failing since. Zerops then answers us but not the Mate's
- * key; during a Zerops outage the key is not the cause, so nothing is offered (§4.4).
- */
-export const identityRestartOffered = (machine: EnvironmentMachine): boolean => {
-  const failures = machine.identityFailures;
-  const guards = machine.guards;
-  return (
-    failures.reads >= 2 &&
-    failures.sinceMs !== null &&
-    guards.grantVerifiedAtMs !== null &&
-    guards.grantVerifiedAtMs >= failures.sinceMs &&
-    guards.identityMint.allowed &&
-    !guards.zeropsFailing
-  );
-};
+/** Two advancing identity failures while Zerops is answering identify the Mate's key as failed. */
+export const identityRestartOffered = (machine: EnvironmentMachine): boolean =>
+  machine.identityFailures.reads >= 2 &&
+  machine.guards.verified &&
+  machine.guards.zeropsState === "live";
 
 /** `from` was replaced by `to`: every id that pointed at `from` now points at `to`. */
 const supersede = (
@@ -687,7 +659,7 @@ const probed = (
   if (!result.ok) {
     return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
   }
-  const next = ingestDescriptor(machine, result.descriptor, ctx);
+  const next = ingestDescriptor(machine, result.descriptor);
   const verdict = gate(next);
   if (verdict.kind !== "go") {
     return { ...next, credential: { kind: "none", reconnect: credential.reconnect } };
@@ -879,7 +851,9 @@ const apply = (
         ...machine,
         guards: event.guards,
         identityAnswered:
-          event.guards.zeropsFailing && !before.zeropsFailing ? false : machine.identityAnswered,
+          event.guards.zeropsState === "unavailable" && before.zeropsState !== "unavailable"
+            ? false
+            : machine.identityAnswered,
       };
       // With no connection demand, abandon pending work but keep an installed credential.
       // The driver aborts the old attempt once it is no longer tracked by the machine.
@@ -892,10 +866,6 @@ const apply = (
             probing: null,
             credential: { kind: "none", reconnect: credential.reconnect },
           };
-      }
-      const mintMoved = !sameJson(before.identityMint, event.guards.identityMint);
-      if (credential.kind === "refused" && credential.reason.kind === "access" && mintMoved) {
-        return inputChanged(next, "input-change");
       }
       // A Mate the cap put five minutes out that becomes the route is tried now: the cap spares
       // only the Mates nobody is looking at.
@@ -948,7 +918,7 @@ const apply = (
       return onLink(machine, event.link, ctx, out);
     case "DESCRIPTOR": {
       const moved = descriptorMoved(machine.descriptor, event.descriptor);
-      const next = ingestDescriptor(machine, event.descriptor, ctx);
+      const next = ingestDescriptor(machine, event.descriptor);
       return moved ? inputChanged(next, "input-change") : next;
     }
     case "DESCRIPTOR_READ": {
@@ -966,7 +936,7 @@ const apply = (
         return backoff(machine, { kind: "descriptor-unreachable" }, true, ctx);
       }
       const read = event.result.descriptor;
-      const next = ingestDescriptor(machine, read, ctx);
+      const next = ingestDescriptor(machine, read);
       if (read.environmentId !== credential.environmentId) {
         return {
           ...next,
@@ -996,7 +966,7 @@ const apply = (
         return stale(machine, event.attempt, out);
       }
       const next =
-        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor, ctx);
+        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor);
       const record = machine.record;
       return {
         ...next,
@@ -1019,7 +989,7 @@ const apply = (
         return stale(machine, event.attempt, out);
       }
       const next =
-        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor, ctx);
+        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor);
       if (event.failure.class === "retryable") {
         return backoff(next, event.failure.cause, credential.reconnect, ctx);
       }

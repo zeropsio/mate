@@ -1,8 +1,7 @@
 /**
- * The account runtime's ports on a device (DESIGN §7.5): the device's signals, the access grant's
- * verifier over the session's client, and the Mate environments' — the door through the
- * connection runtime, the connection catalog and its links, and the probe through the data
- * layer's reads (`mateContainerReads`). Adapters only: every decision is the runtime's.
+ * The verified account's device ports: lifecycle signals, the Mate door and connection catalog,
+ * and probes through data-layer projections (`mateContainerReads`). The shared adapter owns
+ * connection decisions.
  */
 import type { BearerConnectionRegistration } from "@t3tools/client-runtime/connection";
 import {
@@ -12,7 +11,7 @@ import {
   connectionCatalogDisplayUrl,
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
-import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type {
   AccountEnvironmentPorts,
   AccountRuntimePorts,
@@ -20,8 +19,7 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import { mateContainerReads, projectStandingAtom } from "@t3tools/client-runtime/data";
-import { makeRestAccessVerifier, type AccountScope } from "@t3tools/client-runtime/zerops/data";
+import { mateContainerReads } from "@t3tools/client-runtime/data";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -208,28 +206,18 @@ const catalogPort: AccountEnvironmentPorts["catalog"] = {
 
 // ── The ports ────────────────────────────────────────────────────────────────────────────────
 
-export type MobileAccountPorts = Pick<AccountRuntimePorts, "verifier" | "signals" | "environments">;
+export type MobileAccountPorts = Pick<AccountRuntimePorts, "signals" | "environments">;
 
 /**
- * The account runtime's ports for one verified account: `client` is the session's, and `onUser`
- * hears each user a grant round reads.
+ * The Mate adapter's ports for one verified account, using the session's REST client.
  */
 export async function mobileAccountPorts(input: {
-  readonly account: AccountScope;
   readonly client: ZeropsApiClient;
   /** The account's registry, where its store says where each project stands. */
   readonly registry: AtomRegistry.AtomRegistry;
-  readonly onUser: (user: ZeropsUser) => void;
 }): Promise<MobileAccountPorts> {
-  const { account, client } = input;
+  const { client } = input;
   return {
-    verifier: makeRestAccessVerifier({
-      client,
-      standing: (project) => input.registry.get(projectStandingAtom(project.projectId)),
-      account: account.account,
-      onUser: input.onUser,
-      recentUser: () => client.verifiedUser(),
-    }),
     signals: mobilePlatformSignals(),
     environments: {
       clock: systemExchangeClock,

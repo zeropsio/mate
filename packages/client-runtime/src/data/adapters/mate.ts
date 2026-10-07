@@ -37,7 +37,7 @@ import {
   type FetchLike,
 } from "../../zerops/containerHealth.ts";
 import { DOOR_MINT_PACE, makeMintPace } from "../../zerops/doorThrowaway.ts";
-import type { Instant } from "../../zerops/data/access/grant.ts";
+import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {
   containerVerdict,
@@ -412,10 +412,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let cancelMintTimer: (() => void) | null = null;
   let cancelProbeWake: (() => void) | null = null;
   let account: AccountGuards = {
-    postGrant: false,
-    identityMint: { allowed: false, reason: "access-unverified", waitable: true },
-    zeropsFailing: false,
-    grantVerifiedAtMs: null,
+    verified: false,
+    zeropsState: "unknown",
   };
   let visible = false;
   let hiddenSince: number | null = null;
@@ -701,10 +699,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       want: wanted.length > 0,
       routeTarget: wanted.includes("route"),
       visible,
-      postGrant: account.postGrant,
-      identityMint: account.identityMint,
-      zeropsFailing: account.zeropsFailing,
-      grantVerifiedAtMs: account.grantVerifiedAtMs,
+      verified: account.verified,
+      zeropsState: account.zeropsState,
       budget,
     };
   };

@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import * as Effect from "effect/Effect";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 
-import { makeZeropsAtomSelectionStore, runZeropsCommand } from "./zeropsDataContext";
+import { makeZeropsAtomSelectionStore } from "./zeropsDataContext";
 
 describe("makeZeropsAtomSelectionStore", () => {
   it("reconciles a newer atom value when the first subscriber attaches", () => {
@@ -70,23 +69,5 @@ describe("makeZeropsAtomSelectionStore", () => {
     unsubscribe();
     for (const unmount of unmounts) unmount();
     registry.dispose();
-  });
-});
-
-describe("runZeropsCommand", () => {
-  it("returns the typed value", async () => {
-    await expect(
-      runZeropsCommand(Effect.succeed({ attempt: {} as never, value: "created" })),
-    ).resolves.toBe("created");
-  });
-
-  it("preserves the typed failure for uncertainty and error copy", async () => {
-    const failure = {
-      _tag: "ZeropsDataAdapterError" as const,
-      kind: "uncertain" as const,
-      message: "The platform response was lost.",
-    };
-
-    await expect(runZeropsCommand(Effect.fail(failure))).rejects.toBe(failure);
   });
 });

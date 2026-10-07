@@ -1,27 +1,14 @@
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import {
-  DEFAULT_ZEROPS_DATA_POLICY,
-  createZeropsDataAtoms,
-  makeInitialZeropsDataState,
-  projectKeyOf,
-  reduceZeropsDataState,
-  type ManagedZeropsDataRuntime,
-} from "@t3tools/client-runtime/zerops/data";
+import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { zeropsDataRuntimeAtom, zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
+import { zeropsInventoryAtom, zeropsSessionAtom } from "../state/zerops";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-import {
-  desiredInterest,
-  identity,
-  organization,
-  project,
-  scope,
-} from "./__fixtures__/platformData";
+import { organization, project } from "./__fixtures__/platformData";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import { zeropsEnvironmentNamesAtom } from "./useZeropsEnvironmentNames";
@@ -78,45 +65,12 @@ function registered(input: {
  * A runtime that has read the project's zcp container, under a grant that names the
  * organization.
  */
-function readRuntime(): ManagedZeropsDataRuntime {
-  const id = identity();
-  const state = reduceZeropsDataState(
-    makeInitialZeropsDataState(scope()),
-    { kind: "interest-upserted", interest: desiredInterest(id) },
-    DEFAULT_ZEROPS_DATA_POLICY,
-  ).state;
-  const granted = {
-    machine: {
-      phase: {
-        phase: "granted",
-        evidence: {
-          account: { organizations: [{ organization }] },
-          // The grant admits the project: its services are its Mates'.
-          projects: new Map([
-            [
-              owner.projectId,
-              { access: { project: owner, role: "OWNER", mutationsAllowed: true } },
-            ],
-          ]),
-          unverified: new Map(),
-          closedProjects: new Map(),
-        },
-      },
-    },
-  };
-  return {
-    scope: scope(),
-    reads: createZeropsDataAtoms(Atom.make(state)).reads,
-    access: { view: Atom.make(granted) },
-  } as unknown as ManagedZeropsDataRuntime;
-}
 
 /** What the account's product publishes once its inventory is granted; its store's roster. */
 function publishAccount(registry: AtomRegistry.AtomRegistry) {
   mountRoster(registry, organization.organizationId, [PROJECT], {
     services: [{ ...ZCP, projectId: PROJECT.id }],
   });
-  registry.set(zeropsDataRuntimeAtom, readRuntime());
   registry.set(zeropsSessionAtom, {
     status: "signed-in",
     organizationStatus: "selected",
@@ -126,7 +80,6 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
     projects: [PROJECT],
     projectRefs: new Map([[projectKeyOf(owner), owner]]),
     authority: new Map(),
-    account: { kind: "authorized" },
   });
 }
 

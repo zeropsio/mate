@@ -17,7 +17,7 @@
  *
  * A change at the official HQ is drawn from its address at once — its
  * application, repository and number are in it — and takes its word from the
- * flow, or from HQ for one the flow does not carry (`useZeropsLandedChange`).
+ * flow, or from HQ for one the flow does not carry (`useLinkedChange`).
  */
 import { changeState, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { parseChangeUrl } from "@t3tools/shared/hqChanges";
@@ -30,7 +30,7 @@ import { AppLinkContext } from "../ServiceBrowserLink";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAppsChanges, useHqAddress } from "../../zerops/projectFlows";
-import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
+import { useLinkedChange } from "../../zerops/useLinkedChange";
 
 /**
  * When the message a chip stands in was written: a change that landed after
@@ -77,7 +77,7 @@ export function ZeropsChangeLinkChip({
     entry.repository === link?.repo && entry.number === link.number;
   const held = flow?.pullRequests.find(named) ?? flow?.merged.find(named);
   // Only a change the flow does not carry is asked for.
-  const landed = useZeropsLandedChange(link === null || held !== undefined ? null : link);
+  const landed = useLinkedChange(link === null || held !== undefined ? null : link);
   const pull = held ?? (landed.kind === "read" ? landed.pull : undefined);
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
   // Drawn from the url while HQ is still answering: the repository and the

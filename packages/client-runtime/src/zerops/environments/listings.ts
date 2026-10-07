@@ -27,9 +27,6 @@ import type { ProjectServices } from "../../data/projections/services.ts";
 import { projectProcessesAtom, projectServicesAtom, shownProjectsAtom } from "../../data/reads.ts";
 import type { ZeropsService } from "../api.ts";
 
-import { projectsNeverSeen } from "../data/access/grantProjects.ts";
-import type { Evidence, GrantMachine } from "../data/access/grant.ts";
-import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import type { Freshness, Known } from "../knowledge/known.ts";
 import {
   addressFactsOf,
@@ -40,7 +37,6 @@ import {
   rememberAddresses,
   serviceUpdatedAtIn,
   subdomainEnableIn,
-  type AddressMemory,
   type CandidateRow,
 } from "../projections/candidates.ts";
 import { systemExchangeClock } from "./exchange.ts";
@@ -50,13 +46,6 @@ export interface OrganizationListing {
   readonly organizationId: string;
   readonly listing: Known<ReadonlyArray<CandidateRow>>;
 }
-
-const heldEvidence = (machine: GrantMachine): Evidence | null =>
-  machine.phase.phase === "granted"
-    ? machine.phase.evidence
-    : machine.phase.phase === "lapsed"
-      ? machine.phase.last
-      : null;
 
 /**
  * The roster as knowledge: unread until asked for, reading until its first baseline, failed where
@@ -111,8 +100,6 @@ const wayOf = (roster: OrganizationProjects) =>
 /** One project as last derived: what it was derived from, and what came out. */
 interface ProjectEntry {
   readonly project: ProjectValue;
-  /** Whether the grant admits the project: only then are its services its Mates'. */
-  readonly admitted: boolean;
   /** Its services as last read; null for a project whose status reads no services. */
   readonly services: ProjectServices | null;
   /** Its processes as read for a container lacking its address; null where none was asked. */
@@ -132,9 +119,6 @@ interface OrganizationEntry {
 }
 
 const NO_LISTINGS: ReadonlyArray<OrganizationListing> = [];
-
-/** A project the grant does not admit: its services say nothing of a Mate of this person's. */
-const UNREAD_SERVICES: Known<ReadonlyArray<ZeropsService>> = { state: "unread", waitingFor: null };
 
 /** A project's services as knowledge: as current as the organization's services listing. */
 export function knownServices(
@@ -177,80 +161,42 @@ const sameShell = <T>(left: Known<T>, right: Known<T>): boolean =>
 const sameItems = <T>(left: ReadonlyArray<T>, right: ReadonlyArray<T>): boolean =>
   left.length === right.length && left.every((item, index) => item === right[index]);
 
-const listings = new WeakMap<
-  ManagedZeropsDataRuntime,
-  Atom.Atom<ReadonlyArray<OrganizationListing>>
->();
-
-/**
- * The account's listings over this data runtime: one per organization the grant names — the one
- * the account observes as its store reads it, every other unread. The same atom for every reader.
- */
-export function mateListingsAtom(
-  data: ManagedZeropsDataRuntime,
-): Atom.Atom<ReadonlyArray<OrganizationListing>> {
-  const held = listings.get(data);
-  if (held !== undefined) return held;
-  let organization: OrganizationEntry | null = null;
-  // Outlives every entry: a read that blinks drops its project's entry, never what it knew of an
-  // address (`AddressMemory`).
-  let addresses: AddressMemory = NO_ADDRESS_MEMORY;
-  let published: ReadonlyArray<OrganizationListing> = NO_LISTINGS;
-  const unreadListings = new Map<string, OrganizationListing>();
-
+/** The same account-store listing atom in each account registry. */
+export const mateListingsAtom = (() => {
+  const memory = Atom.make(() => ({
+    organization: null as OrganizationEntry | null,
+    addresses: NO_ADDRESS_MEMORY,
+    published: NO_LISTINGS,
+  }));
   const atom = Atom.make((get): ReadonlyArray<OrganizationListing> => {
+    const memoryOfAccount = get(memory);
     const nowMs = systemExchangeClock.now().wall;
     const { orgId, ...roster } = get(shownProjectsAtom);
-    const evidence = heldEvidence(get(data.access.view).machine);
-    // Every organization the grant names has its listing: the one observed as read, every other
-    // unread until it is — never absent, which would say nothing of what it holds.
-    const granted = (evidence?.account.organizations ?? []).map(
-      ({ organization: granted }) => granted.organizationId as string,
-    );
-    const unreadOf = (organizationId: string): OrganizationListing =>
-      unreadListings.get(organizationId) ??
-      unreadListings
-        .set(organizationId, {
-          organizationId,
-          listing: { state: "unread", waitingFor: null },
-        })
-        .get(organizationId)!;
     const publish = (shown: OrganizationListing | null) => {
-      const next = [
-        ...(shown === null ? [] : [shown]),
-        ...granted.filter((id) => id !== shown?.organizationId).map(unreadOf),
-      ];
-      if (!sameItems(published, next)) published = next;
-      return published;
+      const next = shown === null ? [] : [shown];
+      if (!sameItems(memoryOfAccount.published, next)) memoryOfAccount.published = next;
+      return memoryOfAccount.published;
     };
     if (orgId === null) {
-      organization = null;
+      memoryOfAccount.organization = null;
       return publish(null);
     }
-    // Every project the organization's roster lists is the viewer's: Zerops filters the
-    // organization-wide listing and its pushes by the viewer's token, so being listed is the
-    // evidence of access, and no grant round has to name it first. Only a project the grant knows
-    // this person can never see — NO_ACCESS, or denied — keeps its services from being its Mates':
-    // its Mate gets no address, no probe and no connection.
-    const neverSeen = projectsNeverSeen({ evidence, access: get(data.reads.access) });
 
     const derive = (
       project: ProjectValue,
       before: ProjectEntry | undefined,
       known: ProjectServices | null,
-      isAdmitted: boolean,
     ): ProjectEntry => {
       let services: ProjectServices | null = null;
       let activity: ProjectProcesses | null = null;
       const rows = projectCandidates(
         project,
         () => {
-          if (!isAdmitted) return UNREAD_SERVICES;
           const read = known ?? get(projectServicesAtom(project.id));
           services = read;
           return knownServices(read, nowMs);
         },
-        addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
+        addressFactsOf(memoryOfAccount.addresses, nowMs, (_projectId, serviceId) => {
           activity = get(projectProcessesAtom(project.id));
           // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
           return subdomainEnableIn(
@@ -260,11 +206,10 @@ export function mateListingsAtom(
           );
         }),
       );
-      addresses = rememberAddresses(addresses, rows);
+      memoryOfAccount.addresses = rememberAddresses(memoryOfAccount.addresses, rows);
       const same = before !== undefined && sameJson(before.rows, rows);
       return {
         project,
-        admitted: isAdmitted,
         services,
         activity,
         rows: same ? before.rows : rows,
@@ -274,20 +219,22 @@ export function mateListingsAtom(
 
     /** One project, derived again only from a new value, new services or admission. */
     const projectEntry = (project: ProjectValue, before: ProjectEntry | undefined) => {
-      const isAdmitted = !neverSeen(project.id);
       const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
-      if (before?.project === project && before.admitted === isAdmitted && !arrivalOver) {
+      if (before?.project === project && !arrivalOver) {
         if (before.services === null) return before;
         const read = get(projectServicesAtom(project.id));
         const activityMoved =
           before.activity !== null && get(projectProcessesAtom(project.id)) !== before.activity;
         if (read === before.services && !activityMoved) return before;
-        return derive(project, before, read, isAdmitted);
+        return derive(project, before, read);
       }
-      return derive(project, before, null, isAdmitted);
+      return derive(project, before, null);
     };
 
-    const before = organization?.listed.organizationId === orgId ? organization : null;
+    const before =
+      memoryOfAccount.organization?.listed.organizationId === orgId
+        ? memoryOfAccount.organization
+        : null;
     const way = wayOf(roster);
     const since = before !== null && before.way === way ? before.since : nowMs;
     const projects = knownRoster(roster, since);
@@ -320,7 +267,7 @@ export function mateListingsAtom(
         listed: unchanged ? previous : { organizationId: orgId, listing },
       };
     }
-    organization = next;
+    memoryOfAccount.organization = next;
     // An arrival pose ends on a clock, a face's, not a verdict's: the listing is derived again
     // then, so a Mate that never answered stops being shown on its way.
     const arrivalEnds = [...next.entries.values()].flatMap((entry) =>
@@ -335,6 +282,5 @@ export function mateListingsAtom(
     }
     return publish(next.listed);
   });
-  listings.set(data, atom);
   return atom;
-}
+})();

@@ -4,7 +4,7 @@
  * a code change still hands over to the release production waits for.
  */
 import { changeReadout, releaseOffer, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import type { ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeDetailResponse, ChangeFile, HqChange } from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
 import { act, createElement } from "react";
@@ -12,6 +12,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { buttonsLabelled, elementsOf, press, TestNode } from "~/zerops/__fixtures__/testDom";
+import { RegistryContext } from "@effect/atom-react";
+import { AccountDataContext } from "~/zerops/ZeropsAccountData";
+import { reviewAccount } from "~/zerops/__fixtures__/reviewAccount";
 import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 
 import {
@@ -67,7 +70,16 @@ const hq = vi.hoisted(() => ({
       const key = `${link.appId}/${link.repo}#${String(link.number)}`;
       account.reads.push(key);
       if (account.readError !== null) throw account.readError;
-      return { change: account.changes.get(key) };
+      return {
+        change: account.changes.get(key),
+        mainHead: null,
+        mergeBase: null,
+        mergeability: { kind: "clean" },
+        files: [],
+        filesTruncated: false,
+        commits: [],
+        commitsTruncated: false,
+      } as ChangeDetailResponse;
     },
   },
 }));
@@ -516,19 +528,29 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     const { createRoot } = await import("react-dom/client");
     const host = document.createElement("div") as unknown as TestNode;
     const root = createRoot(host as unknown as Element);
+    const data = reviewAccount(({ link }) => hq.api.change(link));
     await act(async () => {
       root.render(
-        createElement(ZeropsChangeReview, {
-          target: { kind: "change", groupId: "group-orchard", repository: "apidev", number: 1 },
-          titleId: "t",
-          onClose: noop,
-        }),
+        createElement(
+          RegistryContext.Provider,
+          { value: data.registry },
+          createElement(
+            AccountDataContext,
+            { value: data.data },
+            createElement(ZeropsChangeReview, {
+              target: { kind: "change", groupId: "group-orchard", repository: "apidev", number: 1 },
+              titleId: "t",
+              onClose: noop,
+            }),
+          ),
+        ),
       );
     });
     await test(host);
     await act(async () => {
       root.unmount();
     });
+    data.registry.dispose();
   }
 
   it("holds its application's detail while it is drawn, and lets it go when it closes", async () => {

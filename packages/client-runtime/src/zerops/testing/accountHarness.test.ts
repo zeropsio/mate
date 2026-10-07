@@ -25,6 +25,5 @@ describe("makeAccountHarness", () => {
     await expect(client.fetchUser()).resolves.toEqual(person);
     expect(harness.browser.localStorageKeys()).toHaveLength(1);
     expect(harness.rest.projectsOf("org-1").map(({ id }) => id)).toEqual(["p1"]);
-    expect(harness.datastream.registrations()).toEqual([]);
   });
 });

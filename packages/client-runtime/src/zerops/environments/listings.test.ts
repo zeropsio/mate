@@ -9,8 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { ZeropsService } from "../api.ts";
 import { organization, project } from "../data/__fixtures__/index.ts";
-import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import { ZeropsOrganizationId } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import { knownRoster, mateListingsAtom } from "./listings.ts";
 
@@ -164,8 +162,6 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
     const registry = AtomRegistry.make();
     const servicesRead = Atom.make<ProjectServices>(read([]));
     const projectsRead = Atom.make<OrganizationProjects>(roster([shop]));
-    /** The grant's projects denied since, awaiting their owner's word; none at first. */
-    const denied = Atom.make<ReadonlyMap<string, unknown>>(new Map());
     const activity = Atom.make<ProjectProcesses>(activityOf(null, false));
     // The account's store, as far as the listing reads it: the roster and this project's processes.
     registry.set(accountReadsAtom, {
@@ -181,27 +177,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
       demandDetail: () => () => {},
       renewHeld: () => {},
     });
-    const data = {
-      scope: { account: organization.account },
-      access: {
-        // The grant names no project of the organization: the roster's listing admits them.
-        view: Atom.make((get) => ({
-          machine: {
-            phase: {
-              phase: "granted",
-              evidence: {
-                account: { organizations: [{ organization }] },
-                projects: new Map(),
-                unverified: new Map(),
-                closedProjects: get(denied),
-              },
-            },
-          },
-        })),
-      },
-      reads: { access: Atom.make({ status: "unverified" }) },
-    } as unknown as ManagedZeropsDataRuntime;
-    const listings = mateListingsAtom(data);
+    const listings = mateListingsAtom;
     registry.mount(listings);
     return {
       apply: (event: Event) => {
@@ -237,15 +213,13 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
           case "projects-back":
             return registry.set(projectsRead, roster([shop]));
           case "denied":
+            return registry.set(servicesRead, {
+              services: undefined,
+              live: false,
+              reconnecting: false,
+            });
           case "admitted":
-            return registry.set(
-              denied,
-              event === "denied"
-                ? new Map([
-                    [project().projectId, { project: project(), confirmation: { status: "due" } }],
-                  ])
-                : new Map(),
-            );
+            return registry.set(servicesRead, read([zcp(false)]));
           case "tick":
             return undefined;
         }
@@ -402,8 +376,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
   });
 });
 
-describe("mateListingsAtom: one listing per organization the grant names", () => {
-  const other = { ...organization, organizationId: ZeropsOrganizationId.make("org-2") };
+describe("mateListingsAtom: the observed organization", () => {
   const over = (orgId: string | null) => {
     const registry = AtomRegistry.make();
     registry.set(accountReadsAtom, {
@@ -414,41 +387,17 @@ describe("mateListingsAtom: one listing per organization the grant names", () =>
       demandDetail: () => () => {},
       renewHeld: () => {},
     });
-    const data = {
-      scope: { account: organization.account },
-      access: {
-        view: Atom.make({
-          machine: {
-            phase: {
-              phase: "granted",
-              evidence: {
-                account: { organizations: [{ organization }, { organization: other }] },
-                projects: new Map(),
-                unverified: new Map(),
-                closedProjects: new Map(),
-              },
-            },
-          },
-        }),
-      },
-      reads: { access: Atom.make({ status: "unverified" }) },
-    } as unknown as ManagedZeropsDataRuntime;
-    return registry.get(mateListingsAtom(data));
+    return registry.get(mateListingsAtom);
   };
-
-  it("lists the organization shown as read, every other as unread until it is", () => {
+  it("lists only the organization this account observes", () => {
     expect(
       over(organization.organizationId).map(({ organizationId, listing }) => [
         organizationId,
         listing.state,
       ]),
-    ).toEqual([
-      [organization.organizationId, "known"],
-      ["org-2", "unread"],
-    ]);
+    ).toEqual([[organization.organizationId, "known"]]);
   });
-
-  it("lists every organization unread while none is shown", () => {
-    expect(over(null).map(({ listing }) => listing.state)).toEqual(["unread", "unread"]);
+  it("reads nothing while no organization is shown", () => {
+    expect(over(null)).toEqual([]);
   });
 });

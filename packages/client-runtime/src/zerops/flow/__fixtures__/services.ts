@@ -1,158 +1,70 @@
-/**
- * A project's service listing as the data runtime publishes it, for the flow's tests: records with
- * their deployment facets, listed completely unless a test says otherwise.
- */
-import { identity, project, service, stamp } from "../../data/__fixtures__/index.ts";
-import {
-  AccountEpoch,
-  DispatchOrdinal,
-  ReadStartOrdinal,
-  ReceiptOrdinal,
-  queryKeyOf,
-  type CollectionRead,
-  type FacetAdmission,
-  type InterestState,
-  type ProjectRef,
-  type QueryCoverage,
-  type ServiceDeployInfo,
-  type ServiceRecord,
-} from "../../data/types.ts";
+/** Service facts used by the flow's behaviour tests. */
+import { project } from "../../data/__fixtures__/index.ts";
+import type { ProjectRef } from "../../data/types.ts";
+import type { ServiceValue } from "../../../data/families/service.ts";
+import type { DeploymentServices, ServiceDeployInfo } from "../deployment.ts";
 
-const admission: FacetAdmission = {
-  lastNativeReceiptOrdinal: null,
-  lastAppliedAuthoritativeDispatchOrdinal: null,
-  hasAuthoritativeObservation: true,
-};
-
-export function deployed(activeDeploy: ServiceDeployInfo | null): ServiceRecord["deployment"] {
-  return {
-    knowledge: "observed",
-    fields: { versionNumber: null, mode: null, activeDeploy },
-    unresolvedRequiredFields: [],
-    source: "direct-read",
-    stamp: stamp(4),
-    admission,
-  };
-}
-
-export const UNRESOLVED_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unresolved",
-  fields: {},
-  unresolvedRequiredFields: [],
-  admission,
-};
-
-export const UNAVAILABLE_DEPLOYMENT: ServiceRecord["deployment"] = {
-  knowledge: "unavailable",
-  reason: "forbidden",
-  previousFields: {},
-  stamp: stamp(5),
-  fence: {
-    accountEpoch: AccountEpoch.make(1),
-    readStartOrdinal: ReadStartOrdinal.make(1),
-    dispatchOrdinal: DispatchOrdinal.make(1),
-    verifiedAccessDeadlineMs: 0,
-  },
-  admission,
-};
-
+export const deployed = (deploy: ServiceDeployInfo | null) => deploy;
+export const UNRESOLVED_DEPLOYMENT = undefined;
 export function record(
   id: string,
-  hostname: string,
-  deployment: ServiceRecord["deployment"],
+  name: string,
+  deploy: ServiceDeployInfo | null | undefined,
   options: {
     readonly isSystem?: boolean;
     readonly type?: string;
     readonly project?: ProjectRef;
   } = {},
-): ServiceRecord {
+): ServiceValue {
   return {
-    ref: service(id, options.project),
-    identity: {
-      knowledge: "observed",
-      fields: {
-        hostname,
-        isSystem: options.isSystem ?? false,
-        type: { versionName: options.type ?? "nodejs@22", displayName: null, category: null },
-      },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    lifecycle: {
-      knowledge: "observed",
-      fields: { status: "ACTIVE", createdAt: null, updatedAt: null },
-      unresolvedRequiredFields: [],
-      source: "direct-read",
-      stamp: stamp(1),
-      admission,
-    },
-    routing: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
-    deployment,
-    scaling: { knowledge: "unresolved", fields: {}, unresolvedRequiredFields: [], admission },
+    id,
+    name,
+    projectId: (options.project ?? project()).projectId,
+    status: "ACTIVE",
+    isSystem: options.isSystem ?? false,
+    serviceStackTypeInfo: { serviceStackTypeVersionName: options.type ?? "nodejs@22" },
+    ...(deploy === undefined
+      ? {}
+      : {
+          activeAppVersion:
+            deploy === null
+              ? null
+              : {
+                  ...(deploy.id === null ? {} : { id: deploy.id }),
+                  ...(deploy.status === null ? {} : { status: deploy.status }),
+                  ...(deploy.source === null ? {} : { source: deploy.source }),
+                  ...(deploy.name === null ? {} : { name: deploy.name }),
+                  ...(deploy.activatedAt === null ? {} : { lastUpdate: deploy.activatedAt }),
+                  githubIntegration: {
+                    branchName: deploy.branch,
+                    commit: deploy.commit,
+                    tagName: deploy.tag,
+                    repositoryFullName: deploy.repository,
+                  },
+                },
+        }),
   };
 }
-
-const COMPLETE: QueryCoverage = {
-  kind: "exhausted-traversal",
-  traversedPages: 1,
-  observedTotal: null,
-  guarantee: "non-atomic",
-};
-
 export function servicesRead(
-  records: ReadonlyArray<ServiceRecord | "unresolved">,
+  records: ReadonlyArray<ServiceValue | "unresolved">,
   options: {
-    readonly coverage?: QueryCoverage;
-    readonly interest?: InterestState;
+    readonly complete?: boolean;
+    readonly live?: boolean;
+    readonly reconnecting?: boolean;
+    readonly unavailableReason?: DeploymentServices["unavailableReason"];
     readonly project?: ProjectRef;
   } = {},
-): CollectionRead<ServiceRecord> {
-  const coverage = options.coverage ?? COMPLETE;
-  const owner = options.project ?? project();
-  const descriptor = {
-    kind: "services-of-project" as const,
-    project: owner,
-    schemaVersion: 1 as const,
-  };
-  const common = {
-    descriptor,
-    key: queryKeyOf(descriptor),
-    memberKeys: [],
-    unresolvedMemberKeys: [],
-    membershipOperations: new Map(),
-  };
+): DeploymentServices {
   return {
-    project: owner,
-    value: records.map((entry, index) =>
-      entry === "unresolved"
-        ? { knowledge: "unresolved", ref: service(`unresolved-${index}`) }
-        : { knowledge: "observed", record: entry },
-    ),
-    observation: {
-      required: [
-        options.interest ?? {
-          status: "observing",
-          identity: identity(),
-          guarantee: "source-order-unverified",
-          sinceReceiptOrdinal: ReceiptOrdinal.make(1),
-        },
-      ],
-      optional: [],
-      access: { status: "unverified" },
-    },
-    query:
-      coverage.kind === "none" || coverage.kind === "partial"
-        ? { ...common, status: "unresolved", coverage, lastAppliedReadStartOrdinal: null }
-        : {
-            ...common,
-            status: "observed",
-            coverage,
-            observedTotal: records.length,
-            source: "direct-read",
-            stamp: stamp(2),
-            lastAppliedReadStartOrdinal: ReadStartOrdinal.make(1),
-          },
+    project: options.project ?? project(),
+    services:
+      options.complete === false || records.includes("unresolved")
+        ? undefined
+        : records.filter((entry): entry is ServiceValue => entry !== "unresolved"),
+    live: options.live ?? true,
+    reconnecting: options.reconnecting ?? false,
+    ...(options.unavailableReason === undefined
+      ? {}
+      : { unavailableReason: options.unavailableReason }),
   };
 }

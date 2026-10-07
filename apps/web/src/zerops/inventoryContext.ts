@@ -18,23 +18,17 @@ import { useProjectsServices } from "./ZeropsAccountData";
 
 export interface Inventory {
   /**
-   * The projects whose content may be shown: a project the grant withholds (DESIGN §4.2 G12) is
-   * left out of `projects` at this read, and every project is while the account's
-   * access lapses. Its identity stays in `projectRefs`.
+   * Projects whose source access projection allows them to be shown. A withheld project's
+   * identity stays in `projectRefs` while its protected content stays out of this list.
    */
   readonly projects: ReadonlyArray<ZeropsProject>;
   readonly isLoading: boolean;
   readonly error: string | null;
   /** Operable, account-scoped identities used to filter every shared projection. */
   readonly projectRefs: ReadonlyMap<string, ProjectRef>;
-  /**
-   * Each project's authority as the access grant last published it, by
-   * `inventoryProjectRefKey` (DESIGN G12).
-   */
+  /** Each project's source access at the read, by `inventoryProjectRefKey`. */
   readonly authority: ReadonlyMap<string, ScopeAuthority>;
-  /** The account's authority: withheld while its access lapses, every project with it. */
-  readonly account: ScopeAuthority;
-  /** The projects a confirming read proved lost (G6), by project id. */
+  /** Projects whose source denied access, by project id. */
   readonly lost: ReadonlySet<string>;
 }
 
@@ -42,10 +36,7 @@ export interface Inventory {
  * What the account's product publishes of its inventory for the derived atoms (`state/zerops.ts`):
  * the projection without the round's loading and error words.
  */
-export type InventoryProjection = Pick<
-  Inventory,
-  "projects" | "projectRefs" | "authority" | "account"
->;
+export type InventoryProjection = Pick<Inventory, "projects" | "projectRefs" | "authority">;
 
 export function inventoryProjectRefKey(ref: ProjectRef): string {
   return projectKeyOf(ref);
@@ -74,15 +65,12 @@ const PROJECT_SURFACE: KnownSurface<never> = {
 const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
 
 /**
- * A project's authority at the read (DESIGN §4.2 G12): the account's while its access lapses,
- * otherwise the project's own. A project the grant never named — a command established it since —
- * rests on the account's.
+ * A project's source access at the read. Operations perform their own admission when pressed.
  */
 export function projectAuthority(
-  inventory: Pick<Inventory, "account" | "authority" | "projectRefs">,
+  inventory: Pick<Inventory, "authority" | "projectRefs">,
   projectId: string,
 ): ScopeAuthority {
-  if (inventory.account.kind === "withheld") return inventory.account;
   const ref = findInventoryProjectRef(inventory, projectId);
   return (
     (ref === null ? undefined : inventory.authority.get(inventoryProjectRefKey(ref))) ?? AUTHORIZED
@@ -95,9 +83,7 @@ export function conversationAccess(inventory: Inventory, projectId: string): Con
 }
 
 /**
- * What a project's region says instead of its content while the grant withholds that project,
- * e.g. "Checking your access to this project…"; `null` while its content may be shown, and while a
- * lapse withholds every project: the app's one banner says that (DESIGN §3.4).
+ * What a project's region says while its source withholds content; null while it may be shown.
  */
 export function withheldProjectNotice(inventory: Inventory, projectId: string): string | null {
   const authority = projectAuthority(inventory, projectId);
@@ -112,9 +98,7 @@ export function withheldProjectNotice(inventory: Inventory, projectId: string): 
 }
 
 /**
- * Why the projects the grant withholds alone are not shown, in place of the rows their content
- * would draw (DESIGN §3.4): each cause once, however many projects it withholds, and none while
- * a lapse withholds them all.
+ * Why withheld projects are not shown: each source reason once, however many projects it affects.
  */
 export function withheldProjectNotices(inventory: Inventory): ReadonlyArray<string> {
   const notices = new Set<string>();
@@ -148,9 +132,7 @@ export function useInventoryCandidates(): ReadonlyArray<ZeropsCandidate> {
 export const InventoryContext = createContext<Inventory | null>(null);
 
 /**
- * The inventory's projects as held, before withholding: only for the wiring that a
- * withholding must not end — the projects each group's deploy read covers (DESIGN law 5, M7).
- * Nothing renders from it; every surface reads `InventoryContext`.
+ * The visible project roster used by demand wiring; rendered content reads `InventoryContext`.
  */
 export const HeldInventoryContext = createContext<Pick<Inventory, "projects"> | null>(null);
 
@@ -162,8 +144,7 @@ export function useZeropsInventory(): Inventory {
 
 /**
  * A dialog's state that holds one project's content — what it captured when it opened — closed the
- * moment that project stops being shown: the grant withholds it, the account's lapse included, or
- * it is lost (DESIGN §4.2 G6, G12). A captured copy outlives the read that withheld it.
+ * moment its source withholds it or proves it lost. A captured copy outlives a withheld read.
  */
 export function useProjectDialog<T>(
   projectOf: (dialog: T) => string,
@@ -186,14 +167,12 @@ export function useProjectDialog<T>(
  * account's product.
  */
 export interface AccountTrouble {
-  readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
   readonly trouble: InventoryTroubleVoice | null;
-  /** The grant is lapsed, a trouble is spoken, or a read of the organization in view is pending. */
+  /** The organization in view has not answered or is recovering. */
   readonly unanswered: boolean;
-  /** What isn't answering (`troubleSubject`); null when nothing is named. */
+  /** What isn't answering; null when nothing is named. */
   readonly subject: string | null;
   readonly retry: () => void;
-  readonly signOut: () => void;
 }
 
 export const AccountTroubleContext = createContext<AccountTrouble | null>(null);

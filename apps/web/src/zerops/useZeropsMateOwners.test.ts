@@ -1,21 +1,18 @@
 import { act, createElement, StrictMode } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
-  ZeropsOrganizationId,
   type AccountScope,
-  type OrganizationRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { zeropsSessionAtom } from "../state/zerops";
 import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
 import { AccountDataContext } from "./ZeropsAccountData";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
@@ -84,7 +81,7 @@ describe("useZeropsOrganizationMembersRead", () => {
         return [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never;
       },
     });
-    const data = { runtime: { scope } } as unknown as ZeropsDataContextValue;
+    const data = { scope } as unknown as ZeropsDataContextValue;
     const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
     function Probe() {
       seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));

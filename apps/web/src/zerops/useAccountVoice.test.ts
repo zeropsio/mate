@@ -1,11 +1,9 @@
 import { expect, it, vi } from "vite-plus/test";
 const facts = vi.hoisted(() => ({
   unanswered: true,
-  lapse: null,
-  subject: "Your Zerops access",
+  subject: "Org's projects and services",
   trouble: { sentence: "Zerops isn't answering. Trying again…", tryNow: true },
   retry: vi.fn(),
-  signOut: vi.fn(),
 }));
 vi.mock("./inventoryContext", () => ({ useAccountTrouble: () => facts }));
 vi.mock("react", () => ({

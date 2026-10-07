@@ -15,8 +15,8 @@ import type { UncertainAcceptance } from "../coordinator.ts";
 
 function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
   const message = cause instanceof Error ? cause.message : String(cause);
-  // Refused before it was sent: not taken, sent again when the person asks.
-  if (cause instanceof ZeropsWriteNotSent) return { outcome: "transient", message };
+  // Refused before it was sent: final until the person changes the input or tries again.
+  if (cause instanceof ZeropsWriteNotSent) return { outcome: "definitive-refusal", message };
   if (!(cause instanceof ZeropsApiError)) return { outcome: "uncertain-acceptance", message };
   if (
     cause.kind === "network" ||

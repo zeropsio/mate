@@ -510,7 +510,6 @@ const UNREAD: Inventory = {
   error: null,
   projectRefs: new Map(),
   authority: new Map(),
-  account: { kind: "authorized" },
   lost: new Set(),
 };
 

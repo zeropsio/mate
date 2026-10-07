@@ -1,8 +1,8 @@
 # Client data layer
 
-This is the concept and change contract for agents working on the client. The rewrite lands in
-waves; some surfaces still use the retiring runtime. Follow this model for new work, and coordinate
-with the active rewrite before changing those surfaces. The implementation recipe lives in
+This is the change contract for agents working on the client. Since Mate 0.14.26 the client data
+layer is the only data path; the old Zerops runtime is removed. Follow this model for new work.
+The implementation recipe lives in
 [`packages/client-runtime/src/data/README.md`](../../../packages/client-runtime/src/data/README.md).
 
 ## Why one layer
@@ -195,8 +195,9 @@ acknowledgements; absent attention means unknown unseen, not zero.
 ## Guards and proof
 
 The oxlint rules `no-remote-io-outside-data-layer`, `no-remote-data-in-browser-storage` and
-`no-retired-mechanism` enforce the boundary and retirement. Their exception ledgers are migration
-debt and only shrink; do not add an exception to build a new old path. A surviving sanctioned
+`no-retired-mechanism` enforce the boundary and retirement. Their exception ledgers record
+remaining migration debt and sanctioned boundaries and only shrink; do not add an exception to build
+a new old path. A surviving sanctioned
 boundary needs an explicit reason. `scripts/check-guard-exceptions.ts` reconciles ledger entries
 against actual findings so deletions cannot leave stale exemptions.
 
@@ -219,30 +220,50 @@ mobile and desktop behavior still need a separate surface decision.
    refusal and ordering inputs. Move every affected surface to that projection.
 4. Add a pure operation kind, register it in `operations/kinds.ts`, wire its executor and define
    reflection, settlement and observation demand. Test uncertain acceptance and recovery from evidence.
-5. Follow shared behavior through web, desktop and mobile, shrink the retiring path's guard entries
+5. Follow shared behavior through web, desktop and mobile, shrink the replaced path's guard entries
    and cover the affected scenario area. Run focused checks appropriate to the change.
 
 Never fetch directly in a component or hook, cache remote facts or verdicts in `localStorage`,
 use timers to decide outcomes or source precedence, compute person facts in the client, or make
 navigation fetch every detail. Do not retain a parallel old path after its replacement is wired.
 
-## Work in flight
+## Remaining work after Mate 0.14.26
 
-The rewrite lands in waves. The remaining lanes are:
+As of 2026-10-07, three items remain in transit:
 
-- Zerops access without per-project reads.
-- Person-fact surfaces consuming HQ's decisions.
-- Creation through HQ operations and their receipts.
-- Mate connections without polling.
-- Menu first-paint and outage truth.
-- Variables on declared data-layer demand.
-- Releases and environments client surfaces.
-- Final removal of the old runtime and remaining duplicate paths.
+- **D03 — inventory presentation join.** The inventory atom still joins navigation and project
+  topology. Replace that presentation join with the closing projection over HQ placement and Mate
+  connections; its platform input already comes from the data layer.
+- **D57 — database catalog/query family.** Mate database actions still need a fact family and
+  surface projection for their catalog and query reads. They do not use the removed Zerops runtime;
+  deleting their current path before replacing it would remove working database actions.
+- **D47 — `rememberedRef`.** Mate browser-stream frames lack call identity, revision and replacement
+  completeness. Moving the last partial frame into a fact family requires a contract and server
+  change that proves replacement, absence and deletion; client timing cannot supply that evidence.
 
-Code in these areas is being replaced — coordinate before changing it. Build new work on the data
-layer, not on the old runtime: `packages/client-runtime/src/zerops/data/runtime.ts` and its related
-stores, grant plumbing and wrappers are being deleted. An old call site is migration debt, not a
-pattern to copy.
+The guard ledgers in `oxlint-plugin-t3code/exceptions/*.json` retain these reason classes
+(counted at 0.14.26; these are findings, not separate features):
+
+- **67 remote-I/O entries:** Mate transport/socket/client wiring and direct stream/HTTP reads
+  (18), Mate command atoms constructed by the app (23), direct HQ calls (20), and Zerops calls in
+  hooks/components or operation flows (6). Their remaining boundaries belong in transport adapters,
+  source adapters or operation executors, with surfaces dispatching and reading projections.
+- **226 retired-mechanism entries:** duplicate Mate environment/query/feed/config/shell atoms;
+  workspace-image, project-file and git-remote reads; HQ registry/recipe/release/credential hooks
+  and readiness flags; mobile candidate selection; client-derived member/permission facts;
+  locally held creation, press, update and hand-off state, polling and grace timers; usage/attention
+  reads and stored composer labels/change strips. The ledger also explicitly preserves D03's
+  inventory join, D57's database actions and D47's unversioned partial browser frames until their
+  replacements have the required presentation or source contract.
+- **8 storage entries:** the copied provider/model label (2), the copied HQ change strip (3), and
+  this tab's container intents (3). Remote labels and strips must come from projections; local
+  intent bookkeeping needs its declared allowlisted home rather than becoming a remote verdict cache.
+
+The old Zerops runtime, query cells, grant driver and second realtime socket are removed. The verified account owns one
+Zerops store and transport, with its Mate presentation adapter closed before its registry. Operations
+admit each write against the store's current platform-access projection and fence the account again
+before sending, including after an awaited source read or session repair. Transport loss retains
+access evidence; an authoritative refusal stays final until explicit retry or changed input.
 
 HQ change attachments are the `hqPicture` detail family. A description picture near the viewport demands its immutable
 attachment identity; the HQ link reads its bytes through the wire once and publishes the answer
@@ -252,3 +273,8 @@ belong to the mounted view and are revoked when it releases them; bytes remain i
 Build-log transport opening is not evidence that its baseline is read. A valid source frame,
 including an explicitly empty frame, ends the initial loading state. Publication batching only
 coalesces updates; elapsed time never declares a log live.
+
+HQ review descriptions, commits and linked changes use the `hqChangeRead` detail family on the
+account's HQ link. Its owner identity includes the requested change and review snapshot, so another
+head demands another read. A settled snapshot remains in account memory through outages and
+remounts; only explicit retry or revalidation reads the same identity again.

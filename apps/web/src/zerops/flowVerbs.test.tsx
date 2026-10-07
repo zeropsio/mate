@@ -50,6 +50,7 @@ vi.mock("./accountOperations", async (importOriginal) => {
         client as never,
         () => () => {},
         () => {},
+        async () => false,
       );
     },
   };

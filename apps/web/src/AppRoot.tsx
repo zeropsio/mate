@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore, type ReactNode } from "react";
 import { ZeropsAccountData } from "./zerops/ZeropsAccountData";
-import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
+import { ZeropsAccountEnvironmentProvider } from "./zerops/ZeropsAccountEnvironmentProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZeropsMenuPreview } from "./zerops/useMenuRows";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
@@ -32,10 +32,10 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
  */
 export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
   return (
-    <ZeropsDataProvider pending={<ZeropsMenuPreview />}>
+    <ZeropsAccountEnvironmentProvider pending={<ZeropsMenuPreview />}>
       <ZeropsHqNavigation />
-      <ZeropsInventoryProvider pending={<ZeropsMenuPreview />}>{children}</ZeropsInventoryProvider>
-    </ZeropsDataProvider>
+      <ZeropsInventoryProvider>{children}</ZeropsInventoryProvider>
+    </ZeropsAccountEnvironmentProvider>
   );
 }
 
