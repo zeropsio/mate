@@ -895,6 +895,20 @@ describe("stepOf — every driver", () => {
       words: "Started a helper",
     },
     {
+      name: "a Claude MCP call, by the title Claude Code gives it",
+      partial: {
+        label: "MCP tool call",
+        itemType: "mcp_tool_call",
+        toolName: "mcp__claude_ai_Firecrawl__firecrawl_scrape",
+        toolPresentation: {
+          title: "Firecrawl scrape",
+          source: { key: "mcp:claude_ai_firecrawl", name: "Firecrawl" },
+        },
+      },
+      kind: "tool",
+      words: "Used Firecrawl scrape",
+    },
+    {
       name: "an OpenCode skill, by the skill it loads",
       partial: {
         label: "skill",

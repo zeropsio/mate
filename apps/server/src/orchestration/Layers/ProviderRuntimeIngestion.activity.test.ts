@@ -226,6 +226,35 @@ describe("runtimeEventToActivities a call's response", () => {
   });
 });
 
+describe("runtimeEventToActivities a call's presentation", () => {
+  const presentation = {
+    title: "Firecrawl scrape",
+    source: { key: "mcp:claude_ai_firecrawl", name: "Firecrawl" },
+  };
+  it.each(["item.started", "item.updated", "item.completed"] as const)(
+    "keeps how a call presents itself on its %s, through the projection",
+    (type) => {
+      const event = {
+        ...base,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        type,
+        eventId: EventId.make(`evt-tool-presented-${type}`),
+        payload: {
+          itemType: "mcp_tool_call",
+          status: type === "item.completed" ? "completed" : "inProgress",
+          title: "MCP tool call",
+          presentation,
+          data: { toolName: "mcp__claude_ai_Firecrawl__firecrawl_scrape", input: {} },
+        },
+      } satisfies ProviderRuntimeEvent;
+
+      const [activity] = runtimeEventToActivities(event);
+      const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
+      expect(payload.presentation).toEqual(presentation);
+    },
+  );
+});
+
 describe("runtimeEventToActivities a helper's words", () => {
   const taskId = RuntimeTaskId.make("helper-1");
   const longReport = Array.from(

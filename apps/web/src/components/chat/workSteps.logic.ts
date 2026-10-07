@@ -732,6 +732,9 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         ZEROPS_WORDS[entry.label] ??
         ZEROPS_WORDS[entry.toolTitle ?? ""];
       if (zerops !== undefined) return running ? zerops[0] : zerops[1];
+      // Its agent's own title for it (an MCP tool's), over its name in words.
+      const presented = entry.toolPresentation?.title;
+      if (presented !== undefined) return say(`Using ${presented}`, `Used ${presented}`);
       if (named === null) return say("Using a tool", "Used a tool");
       if (named === "Skill" && input?.skill !== undefined) {
         return say(`Using the ${input.skill} skill`, `Used the ${input.skill} skill`);

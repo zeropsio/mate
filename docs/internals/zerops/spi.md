@@ -147,7 +147,7 @@ must not dispatch before it.
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.6"` (`providerRuntimeSpi.ts`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.7"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
@@ -165,7 +165,9 @@ code reads it yet. Claude emits it, the other drivers do not yet. 2.6 adds an op
 to an item's lifecycle payload, on the start of each of the agent's own calls — the model response
 it was written in — and an optional `unreturned` on the completion a turn's end gives a call that
 never returned; the live run card and the menu row's live step read a batch as one model response
-by it. Claude emits both, the other drivers do not. The bus
+by it. Claude emits both, the other drivers do not. 2.7 adds an optional `presentation` to an
+item's lifecycle payload — an MCP tool's own title and its server, by name and icon — which Claude
+reads from Claude Code's `tool_use_meta`; the other drivers do not yet. The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
 gate is a **stated intent, not implemented**; nothing reads `bus.version` today (the "exposes the

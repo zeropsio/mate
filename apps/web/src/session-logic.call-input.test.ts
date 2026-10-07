@@ -246,3 +246,31 @@ describe("a call that wrote a file is marked on its entry by its end", () => {
     expect(entries[0]?.wroteFile === true).toBe(wrote);
   });
 });
+
+describe("how a call presents itself reaches its entry", () => {
+  it("keeps the title and server its agent gave it, from its first word through its completion", () => {
+    const presentation = {
+      title: "Firecrawl scrape",
+      source: { key: "mcp:claude_ai_firecrawl", name: "Firecrawl" },
+    };
+    const data = { toolName: "mcp__claude_ai_Firecrawl__firecrawl_scrape", input: {} };
+    const entries = deriveWorkLogEntries([
+      activity({
+        kind: "tool.updated",
+        payload: {
+          itemType: "mcp_tool_call",
+          status: "inProgress",
+          toolCallId: "toolu_fc",
+          data,
+          presentation,
+        },
+      }),
+      activity({
+        kind: "tool.completed",
+        createdAt: "2026-09-27T08:00:05.000Z",
+        payload: { itemType: "mcp_tool_call", status: "completed", toolCallId: "toolu_fc", data },
+      }),
+    ]);
+    expect(entries.map((entry) => entry.toolPresentation)).toEqual([presentation]);
+  });
+});

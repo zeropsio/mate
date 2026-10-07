@@ -77,6 +77,13 @@
  *   an unreturned call as "No result". Claude emits both, the other drivers
  *   do not; a driver that names no response keeps the order of starts and
  *   returns. Additive.
+ * - 2.7 (2026-10-07): an item's lifecycle payload gains an optional
+ *   `presentation` — how a call presents itself where its tool name says
+ *   too little: an MCP tool's own title and the server it comes from, by
+ *   name and icon (`mcpToolPresentation`, `@t3tools/shared/toolActivity`).
+ *   Claude emits it from Claude Code's `tool_use_meta`, in an update once
+ *   its assistant frame names the call and on every step after; the other
+ *   drivers do not yet. Additive.
  *
  * @module providerRuntimeSpi
  */
@@ -90,7 +97,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.6";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.7";
 
 /**
  * One image content block an MCP tool result carried, e.g. a
