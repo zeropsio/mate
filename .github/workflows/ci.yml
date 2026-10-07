@@ -181,6 +181,12 @@ jobs:
       - name: Install the scenarios' Chrome for Testing
         run: vp run test:browser
 
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces through
+      # AppArmor; Chrome for Testing has no profile of its own, so its sandbox
+      # cannot start and the browser exits at launch ("Target closed").
+      - name: Let Chrome's sandbox start on the runner
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Provider goldens, client wire journeys and typecheck
         run: node scripts/chat-gate.ts
 
