@@ -1,4 +1,4 @@
-// @effect-diagnostics globalFetchInEffect:off - browser HTTP cache revalidates byte representations and returns Blob bodies.
+// @effect-diagnostics globalFetchInEffect:off - browser HTTP cache retains immutable byte representations and returns Blob bodies.
 import { WS_METHODS, type EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -22,7 +22,7 @@ import {
   type MateImageKey,
   type MateImageValue,
 } from "../families/mateImage.ts";
-import type { AccountStore } from "../store.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -274,6 +274,8 @@ export const makeMateImageWire = (
 });
 
 export function makeMateImages(options: {
+  /** Hosted images reuse immutable facts; native readers retain their current path. */
+  readonly reuseRetained?: boolean;
   readonly store: AccountStore;
   readonly wire: {
     readonly read: (key: MateImageKey) => Effect.Effect<MateImageValue, StreamFault>;
@@ -364,7 +366,16 @@ export function makeMateImages(options: {
                   yield* signal(scope, { kind: "handshake" });
                   const generation = streamOf(options.store.state(), scope).generation;
                   options.store.dispatch({ kind: "baseline-begin", scope, generation });
-                  const value = yield* options.wire.read(key).pipe(
+                  const retained = readsOfState(options.store.state()).fact("mateImage", id);
+                  const value = yield* (
+                    options.reuseRetained &&
+                    id.startsWith("image/") &&
+                    retained.kind === "known" &&
+                    options.store.state().facts.get(`mateImage:${id}`)?.access === "allowed" &&
+                    retained.value.blob !== null
+                      ? Effect.succeed(retained.value)
+                      : options.wire.read(key)
+                  ).pipe(
                     Effect.tapError((fault) =>
                       Effect.sync(() => {
                         if (

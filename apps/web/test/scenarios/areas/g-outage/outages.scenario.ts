@@ -1,6 +1,7 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { outageControls } from "./fake.ts";
 import {
   givenOutage,
   reportsWork,
@@ -20,10 +21,104 @@ import {
   opensMate,
   messageAppears,
   showsWokenTab,
+  stopHq,
+  startHq,
+  declareNewerProtocol,
+  endHqSession,
+  refuseHq,
+  resumeTab,
+  hqRefusalShown,
+  retryHq,
 } from "./dsl.ts";
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // No baseline from HQ can prove that the platform containers belong to no application.
+    it.effect("cold HQ placement stays unknown on Projects until owner evidence arrives", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        outageControls(s.drivers).silenceFacts();
+        yield* s.given.signedIn;
+        yield* Effect.promise(() =>
+          s.page.locator('[data-zerops-surface="other-containers"]').setTimeout(15_000).wait(),
+        );
+        const words = yield* Effect.promise(() =>
+          s.page.$eval('[data-zerops-surface="other-containers"]', (node) => node.textContent),
+        );
+        expect(words).toContain("placement unknown");
+        expect(words).not.toContain("Not in a project");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // A replaced Core must resubscribe the open tab, including after backoff reaches its cap.
+    it.effect("HQ restart and a new build recover the open tab without reloading", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        yield* s.given.signedIn;
+        yield* caughtUp(s, "Shop");
+        for (const build of [undefined, "redeployed-core"]) {
+          yield* s.when.hq.socket.drops;
+          yield* stopHq(s);
+          yield* cappedHqOutage(s);
+          yield* startHq(s, build);
+          if (build !== undefined) yield* declareNewerProtocol(s);
+          yield* s.when.hq.socket.returns;
+          yield* Effect.promise(() => s.clock.advanceStepped(60_000));
+          yield* caughtUp(s, "Shop");
+        }
+        yield* checkpoint(s);
+      }),
+    );
+    // Returning input wakes backoff, but only a fresh HQ answer clears the header.
+    for (const trigger of ["online", "focus", "visibilitychange"] as const)
+      it.effect(`${trigger} recovers HQ during capped backoff without reloading`, () =>
+        Effect.gen(function* () {
+          const s = yield* givenOutage();
+          yield* s.given.signedIn;
+          yield* caughtUp(s, "Shop");
+          yield* s.when.hq.socket.drops;
+          yield* cappedHqOutage(s);
+          yield* s.when.hq.socket.returns;
+          yield* resumeTab(s, trigger);
+          yield* caughtUp(s, "Shop");
+          yield* checkpoint(s);
+        }),
+      );
+
+    // A session ending is not a permanent denial of a newly authenticated subscription.
+    it.effect("successive HQ session endings renew and restore the menu", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        yield* s.given.signedIn;
+        yield* caughtUp(s, "Shop");
+        for (let end = 0; end < 3; end++) {
+          yield* endHqSession(s);
+          yield* s.then.hq.isUnavailable;
+          yield* resumeTab(s, "online");
+          yield* caughtUp(s, "Shop");
+        }
+        yield* checkpoint(s);
+      }),
+    );
+
+    // A genuine refusal is shown as a refusal and incidental wake events cannot undo it.
+    it.effect("HQ refusal says why and waits for an explicit retry", () =>
+      Effect.gen(function* () {
+        const s = yield* givenOutage();
+        yield* s.given.signedIn;
+        yield* caughtUp(s, "Shop");
+        yield* refuseHq(s);
+        yield* hqRefusalShown(s);
+        for (const trigger of ["online", "focus", "visibilitychange"] as const)
+          yield* resumeTab(s, trigger);
+        yield* Effect.promise(() => s.clock.advanceStepped(120_000));
+        yield* hqRefusalShown(s);
+        yield* retryHq(s);
+        yield* caughtUp(s, "Shop");
+        yield* checkpoint(s);
+      }),
+    );
     // A completed HQ read remains evidence of absence while the source reconnects.
     it.effect("HQ down retains a known Not in this HQ row", () =>
       Effect.gen(function* () {

@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBudget } from "./fake.ts";
+import { reportsWork } from "../g-outage/fake.ts";
 import { budgets } from "./dsl.ts";
 
 const report = (line: string) => process.stdout.write(`${line}\n`);
@@ -14,6 +15,87 @@ const REGISTRATIONS = 10;
 
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // App detail scales with visible rows; adding collapsed applications must add no history reads.
+    it.effect(
+      "Projects holds no collapsed app detail as the organization grows; one open row holds one scope",
+      () =>
+        Effect.gen(function* () {
+          for (const count of [1, 16])
+            yield* Effect.scoped(
+              Effect.gen(function* () {
+                const s = yield* createScenario([installBudget]);
+                const b = budgets(s);
+                for (let index = 0; index < count; index++)
+                  yield* s.given.project(`Mate-${index}`, {
+                    mate: index === 0,
+                    kind: index === 0 ? "mate" : "stage",
+                    app: index === 0 ? "Shop" : `App-${index}`,
+                  });
+                yield* s.given.signedIn;
+                yield* b.when.menuReady(["Mate-0"]);
+                yield* b.when.projectsReady;
+                yield* b.when.projectsAre(count);
+                yield* b.when.browserSettled;
+                expect(b.measure.appDetails()).toEqual([]);
+                yield* b.when.togglesProject("Shop");
+                yield* b.when.appDetailsAre(["Shop"]);
+                expect(b.measure.appDetails()).toHaveLength(1);
+                yield* b.when.togglesProject("Shop");
+                yield* b.when.appDetailsAre([]);
+                yield* s.then.noExternalNetwork;
+              }),
+            );
+        }),
+    );
+
+    // Leaving Projects releases the expanded row; Usage's source migration owns its RPC budget.
+    it.effect("opening Usage releases Projects detail demand", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* b.given.mates(["Ada"]);
+        yield* s.given.signedIn;
+        yield* b.when.projectsReady;
+        yield* b.when.togglesProject("Shop");
+        yield* b.when.appDetailsAre(["Shop"]);
+        yield* b.when.opensUsage;
+        yield* b.when.appDetailsAre([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // A neighbor's task does not mutate an unchanged row or cause an app-detail read.
+    it.effect("an unrelated Mate attention update leaves the other Projects row unchanged", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installBudget]);
+        const b = budgets(s);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Other" });
+        yield* reportsWork(s.drivers, "Bea", "Inspect Bea checkout");
+        yield* s.given.signedIn;
+        yield* b.when.projectsReady;
+        yield* b.when.browserSettled;
+        const other = s.appIds.get("Other")!;
+        const before = yield* Effect.promise(() =>
+          s.page.$eval(`[data-zerops-group="${other}"]`, (row) => row.textContent),
+        );
+        yield* reportsWork(s.drivers, "Ada", "Inspect Ada changed checkout");
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() =>
+            document
+              .querySelector('[data-zerops-surface="project-rows"]')
+              ?.textContent?.includes("Inspect Ada changed checkout"),
+          ),
+        );
+        const after = yield* Effect.promise(() =>
+          s.page.$eval(`[data-zerops-group="${other}"]`, (row) => row.textContent),
+        );
+        expect(after).toBe(before);
+        expect(b.measure.appDetails()).toEqual([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches menu discovery connecting every Mate and spending container resources before a click.
     it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
       Effect.gen(function* () {

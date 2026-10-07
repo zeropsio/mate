@@ -127,7 +127,11 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
         ? null
         : {
             status: thread.session.status,
-            lastError: textOf(thread.session.lastError?.split("\n")[0]),
+            lastError:
+              textOf(thread.session.lastError?.split("\n")[0]) ??
+              (thread.usagePause && thread.session.providerName
+                ? `${thread.session.providerName === "claudeAgent" ? "Claude" : thread.session.providerName === "codex" ? "Codex" : "Coding agent"} usage limit reached.`
+                : null),
           },
     latestTurn:
       thread.latestTurn === null

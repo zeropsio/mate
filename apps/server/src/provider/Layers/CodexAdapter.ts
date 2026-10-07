@@ -79,6 +79,7 @@ import {
   type CodexRateLimitSnapshot,
   codexRateLimitsToUpdate,
   codexUsageLimitMessage,
+  codexUsageLimitBlock,
   mergeCodexRateLimits,
 } from "./codexUsageLimits.ts";
 const isCodexAppServerProcessExitedError = Schema.is(CodexErrors.CodexAppServerProcessExitedError);
@@ -1902,10 +1903,15 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               );
               // The failed `turn/completed` repeats this sentence and is answered
               // below; relaying both would show the limit twice.
-              if (errorPayload?.error.codexErrorInfo === "usageLimitExceeded") return;
+              if (
+                errorPayload?.error.codexErrorInfo === "usageLimitExceeded" ||
+                errorPayload?.error.codexErrorInfo === "rateLimitExceeded"
+              )
+                return;
             }
 
             let usageLimitError: ProviderRuntimeEvent | undefined;
+            let usageLimitReset: ProviderRuntimeEvent | undefined;
             let usageLimitMessage: string | undefined;
             if (event.method === "turn/completed") {
               const completedPayload = readPayload(
@@ -1916,8 +1922,19 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 completedPayload?.turn.status === "failed"
                   ? completedPayload.turn.error
                   : undefined;
-              if (turnError?.codexErrorInfo === "usageLimitExceeded") {
+              if (
+                turnError?.codexErrorInfo === "usageLimitExceeded" ||
+                turnError?.codexErrorInfo === "rateLimitExceeded"
+              ) {
                 usageLimitMessage = codexUsageLimitMessage(rateLimits, event.createdAt);
+                const blocked = codexUsageLimitBlock(rateLimits, event.createdAt);
+                if (blocked)
+                  usageLimitReset = {
+                    ...runtimeEventBase(event, event.threadId),
+                    eventId: EventId.make(`${event.id}:usage-limit`),
+                    type: "account.rate-limits.updated",
+                    payload: { limits: { windows: [] }, blocked },
+                  };
                 usageLimitError = {
                   ...runtimeEventBase(event, event.threadId),
                   type: "runtime.error",
@@ -1939,7 +1956,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
                 : runtimeEvent,
             );
             const runtimeEvents = usageLimitError
-              ? [usageLimitError, ...mappedEvents]
+              ? [...(usageLimitReset ? [usageLimitReset] : []), usageLimitError, ...mappedEvents]
               : mappedEvents;
             if (runtimeEvents.length === 0) {
               yield* Effect.logDebug("ignoring unhandled Codex provider event", {

@@ -22,10 +22,10 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 export interface HqOutage {
   /**
    * `syncing`: its first read is catching up, nothing of it shown yet; `last-known`: what it last
-   * said stands, and the menu says so in words; `unavailable`: it refused, or stopped retrying
-   * often, before it ever answered.
+   * said stands; `unavailable`: retries have reached their backoff cap before it ever answered;
+   * `refused`: HQ's actual refusal and the next action, whether or not it answered before.
    */
-  readonly kind: "syncing" | "last-known" | "unavailable";
+  readonly kind: "syncing" | "last-known" | "unavailable" | "refused";
   readonly line: string;
   /** Whether the person's *Try again* is offered: HQ refused, or its retries are capped. */
   readonly again: boolean;
@@ -49,26 +49,27 @@ export function hqOutage(
 ): HqOutage | null {
   if (navigation.live) return null;
   const read = navigation.structure !== null;
-  const stopped = navigation.refusal !== null || navigation.capped;
+  if (navigation.refusal !== null)
+    return {
+      kind: "refused",
+      line: `${navigation.refusal}${read ? " Showing what HQ last said." : ""}`,
+      again: true,
+    };
+  const stopped = navigation.capped;
   if (!stopped && !navigation.reconnecting) return null;
   const since =
     downSince === null
       ? ""
       : ` since ${formatDayAwareTimestamp(new Date(downSince).toISOString(), timestampFormat, nowMs)}`;
-  const refusal = navigation.refusal === null ? "" : `${navigation.refusal} `;
-  const retry = navigation.capped
-    ? " Retrying every minute."
-    : navigation.refusal === null
-      ? " Reconnecting…"
-      : "";
+  const retry = navigation.capped ? " Retrying every minute." : " Reconnecting…";
   if (read) {
-    const line = `${refusal}HQ is not reachable${since} — showing what it last said.${retry}`;
+    const line = `HQ is not reachable${since} — showing what it last said.${retry}`;
     return { kind: "last-known", line, again: stopped };
   }
   if (!stopped) return { kind: "syncing", line: "Reconnecting…", again: false };
   return {
     kind: "unavailable",
-    line: `${refusal}HQ unavailable${since}.${navigation.capped ? " Retrying every minute." : ""}`,
+    line: `HQ unavailable${since}.${navigation.capped ? " Retrying every minute." : ""}`,
     again: true,
   };
 }

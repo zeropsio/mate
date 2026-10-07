@@ -124,7 +124,7 @@ import {
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { useToldActivity } from "~/zerops/useMenuMateReadings";
+import { useToldActivity, useLastKnownMateWords } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -709,12 +709,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       : page?.kind === "up"
         ? (link.reachability ?? null)
         : null;
+  const lastKnown = useLastKnownMateWords(projectId, named.name);
   const linkVoice = mateNoticeVoice({
     reachability: linkReachability,
     recovery,
     conversationShown: false,
     nowMs,
     mateName: named.name,
+    lastKnown,
   });
   const view: MateEmptyComing | null =
     page === undefined

@@ -31,14 +31,107 @@ import {
   type MovedCommits,
   type ProductionRun,
   type ReleaseGate,
-} from "@t3tools/client-runtime/zerops";
-import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+  type ReleaseContentsSummary,
+  type ReleaseComparison,
+  type ReleaseEntry,
+  type Moved,
+  type GroupEnvironment,
+  type GroupEnvironmentTier,
+  type FlowReleaseRow,
+} from "../../zerops/index.ts";
+import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
 import type { Release } from "@t3tools/shared/hqRelease";
 
-import type { ZeropsProjectFlow } from "./projectFlows";
-import type { ComparedCommits } from "./useReleaseComparisons";
+type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
+
+/** What *Release* offers on a project, when it is offered at all. */
+export interface ZeropsReleaseOffer {
+  readonly comparisonFailure?:
+    | { readonly reason: string; readonly again?: (() => void) | undefined }
+    | undefined;
+  readonly summary?: ReleaseContentsSummary | undefined;
+  readonly gate: ReleaseGate;
+  /**
+   * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
+   * has not said. HQ asks it again at the press.
+   */
+  readonly permission: ReleaseGate | undefined;
+  /** The recipe's `main` as read with the offer: what the release tags; HQ refuses one that moved. */
+  readonly groupHead: string | undefined;
+  /** The next patch, suggested from the newest existing tag. */
+  readonly suggestion: string;
+  readonly comparison: ReadonlyArray<ReleaseComparison>;
+  /** What the tag would list — what the verb tags, so it matches what was shown. */
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
+  readonly inFlight: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
+  readonly stalled: string | undefined;
+  /**
+   * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
+   * `main` has that its services do not run. With squash merges each is one task delivered.
+   * Nothing until all of it is known — the gate holds Release until then.
+   */
+  readonly contents: ReadonlyArray<Moved>;
+  /** Production's services whose commit cannot be told: what goes live on them is not said. */
+  readonly untold: ReadonlyArray<string>;
+  /**
+   * What each production service runs (`productionRuns`), whole; `undefined` until it is known. A
+   * roll back compares from it what leaves production and what comes back.
+   */
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+  /** The repository each production runtime builds from (the recipe's); `undefined` until read. */
+  readonly repositories: ReadonlyMap<string, string> | undefined;
+}
+
+/** One project's flow: its environments, what is waiting, what was released. */
+export interface ZeropsProjectFlow {
+  readonly groupId: string;
+  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  /**
+   * Whether HQ has told the project's environments: until then `declarations` is empty for want of
+   * an answer, not because the project has none.
+   */
+  readonly declarationsRead: boolean;
+  /** Stages first, then the production — the order code travels. */
+  readonly environments: ReadonlyArray<EnvironmentRow>;
+  readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
+  /** The tiers the recipe on `main` holds; empty until it is read (`recipeRead`). */
+  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
+  /** Whether the recipe on `main` is read: until it is, `recipeTiers` is empty for want of an answer. */
+  readonly recipeRead: boolean;
+  /** Every open change a push reached on the project's repositories, as HQ's stream says. */
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /**
+   * Whether HQ's stream has told the project's changes: until then
+   * `pullRequests` is empty for want of an answer, not of a change, and the
+   * left menu draws no change row. Once told, they stand through a stream
+   * that goes quiet.
+   */
+  readonly changesKnown: boolean;
+  /**
+   * Why its changes were never told: HQ not answering while none are held. `undefined` once
+   * they are, or while HQ answers.
+   */
+  readonly changesFailure?: string | undefined;
+  /** The changes that have landed — what a conversation's timeline places. */
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  /** Newest first. */
+  readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /**
+   * Whether HQ has answered the application's releases: until then `releases` is empty for want
+   * of an answer, and production's chip says only what the platform says.
+   */
+  readonly releasesKnown: boolean;
+  /**
+   * The application's repositories with their `main`, as HQ last listed them; `undefined` until it
+   * answered. What a history and a release read from.
+   */
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly release: ZeropsReleaseOffer;
+}
 
 /** One group's changes as its flow shows them: the open ones a push reached, and the landed. */
 export interface GroupChanges {

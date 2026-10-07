@@ -4671,6 +4671,41 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBeNull();
   });
 
+  it("retains a provider limit without a reset until the provider confirms recovery", async () => {
+    const harness = await createHarness();
+    const base = {
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt: "2026-10-08T14:20:00Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-limit"),
+    };
+    harness.emit({ ...base, type: "turn.started", eventId: asEventId("limit-start"), payload: {} });
+    harness.emit({
+      ...base,
+      type: "account.rate-limits.updated",
+      eventId: asEventId("limit-rejected"),
+      payload: { limits: { windows: [] }, refused: true },
+    });
+    const blocked = await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.lastError === "Claude usage limit reached.",
+    );
+    expect(blocked.session?.status).toBe("running");
+    expect(blocked.session?.activeTurnId).toBe("turn-limit");
+    harness.emit({
+      ...base,
+      type: "account.rate-limits.updated",
+      eventId: asEventId("limit-allowed"),
+      payload: { limits: { windows: [] }, refused: false },
+    });
+    const recovered = await waitForThread(
+      harness.readModel,
+      (thread) => thread.session?.lastError === null,
+    );
+    expect(recovered.session?.status).toBe("running");
+    expect(recovered.session?.activeTurnId).toBe("turn-limit");
+  });
+
   it("maps session/thread lifecycle and item.started into session/activity projections", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

@@ -57,6 +57,8 @@ every existing product test sentence and follows all affected clients. Keep sour
 shapes, policies and surface behavior in code and tests; platform assumptions belong beside the
 code that depends on them or in a short ledger with a verification command.
 
+- Projects grouping reads `inventoryGroups`; compact flow and row summaries read keyed application, placement, access and service facts through `projectFlow` and `projectSummary`. Mate activity is keyed by project. Collapsed rows hold no app detail; expansion and review share detail demand, while stop version/deploy cells retain their platform summary demand. The shared flow join preserves the existing operation and remainder model. Desktop uses this web path; mobile remains on its current path.
+
 ### Hosted client guard completion and mobile later
 
 The hosted client reads Git reachability, workspace search/diffs, clone state, provider configuration,

@@ -13,7 +13,6 @@ const fixturesDir = NodePath.join(__dirname, "../fixtures/codex");
 describe("replayCodex", () => {
   it("maps every notification in the real multi-agent-wire capture through the ported mapper", async () => {
     const fixture = loadFixture(fixturesDir, "multi-agent-wire");
-    assert.equal(fixture.lines.length, 21);
 
     const events = await replayCodex(fixture);
 

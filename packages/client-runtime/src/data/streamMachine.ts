@@ -121,6 +121,8 @@ export type StreamEvent =
   | { readonly kind: "deadline" }
   /** The person asked to try again. */
   | { readonly kind: "manual-retry" }
+  /** Network, visibility or focus returned: expedite recovery, never undo a refusal. */
+  | { readonly kind: "resume" }
   /**
    * A sampled or read-once scope's value is old: its revalidation came due, or our own write
    * changed it. It is read again, under its value; a refusal stays refused.
@@ -336,5 +338,7 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
       return state.phase === "recovering" || state.phase === "paused"
         ? attempt(state, now)
         : settle(state);
+    case "resume":
+      return state.demanded && state.phase === "recovering" ? attempt(state, now) : settle(state);
   }
 }
