@@ -24,6 +24,7 @@
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
  */
+import { makeMateBrowserInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
 import { WS_METHODS } from "@t3tools/contracts";
@@ -70,10 +71,7 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsLoginRemove,
   });
 
-  const browserInput = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:browserInput",
-    tag: WS_METHODS.zeropsBrowserInput,
-  });
+  const browserInput = makeMateBrowserInputCommand(runtime);
 
   const gitProbeRemote = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:git:probeRemote",

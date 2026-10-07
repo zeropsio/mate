@@ -34,8 +34,6 @@
  *
  * @module mateSetup
  */
-import { zeropsMateBaseUrl } from "./candidates.ts";
-import type { FetchLike } from "./containerHealth.ts";
 
 export type MateSetupStepId = "container" | "git" | "runtimes" | "signin" | "standup";
 
@@ -155,31 +153,4 @@ export type MateSetupFailure = Extract<
   { readonly kind: "refused" | "invalid" }
 >["kind"];
 
-export async function readMateSetup(
-  origin: string,
-  fetchImpl: FetchLike = globalThis.fetch.bind(globalThis),
-  signal?: AbortSignal,
-): Promise<MateSetupReading> {
-  const url = `${zeropsMateBaseUrl(origin.replace(/\/+$/, ""))}/setup.json`;
-  let response: Response;
-  try {
-    response = await fetchImpl(
-      url,
-      signal === undefined ? { redirect: "manual" } : { redirect: "manual", signal },
-    );
-  } catch {
-    return { kind: "unreachable" };
-  }
-  if (response.status === 404) return { kind: "absent" };
-  if (response.type === "opaqueredirect") return { kind: "refused" };
-  if (response.status >= 500) return { kind: "unreachable" };
-  if (!response.ok) return { kind: "refused" };
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    return { kind: "invalid" };
-  }
-  const setup = parseMateSetup(body);
-  return setup === undefined ? { kind: "invalid" } : { kind: "setup", setup };
-}
+export { readMateSetup } from "../data/adapters/mateSetupWire.ts";

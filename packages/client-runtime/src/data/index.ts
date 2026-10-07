@@ -382,3 +382,12 @@ export type { SentAsk } from "./operations/mateSendTurn.ts";
 
 export { STREAM_POLICY } from "./streamMachine.ts";
 export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";
+
+export {
+  browserTransportFetch,
+  browserHttpClientLayer,
+  browserWebSocketLayer,
+  browserPrimaryHttpLayer,
+  makeBrowserMateDescriptors,
+} from "./adapters/mateTransport.ts";
+export { makeMateBrowserInputCommand } from "./adapters/mateBrowserFrame.ts";
