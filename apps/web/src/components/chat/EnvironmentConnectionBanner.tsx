@@ -10,7 +10,7 @@ import {
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 
 import { Button } from "../ui/button";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
@@ -87,7 +87,16 @@ export function mateVoiceBannerItem(input: {
           : "default",
     icon: <WifiOffIcon />,
     title: voice.headline ?? voice.text,
-    ...(voice.secondary === undefined ? {} : { description: voice.secondary }),
+    ...(voice.secondary === undefined
+      ? {}
+      : {
+          description:
+            voice.restarting === true && voice.restartLines !== undefined ? (
+              <RestartWords key={input.environmentId} lines={voice.restartLines} />
+            ) : (
+              voice.secondary
+            ),
+        }),
     ...(askAgain !== null ||
     toProjects ||
     openInZerops ||
@@ -145,4 +154,23 @@ export function environmentRetryFailureToast(
 ): { readonly title: string; readonly description: string } | null {
   if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
   return { title: "Couldn't reconnect", description: "Reload the page to try again." };
+}
+
+/** The restart notice's copy rotates with its fade. It never changes the source verdict. */
+function RestartWords({ lines }: { readonly lines: ReadonlyArray<string> }) {
+  const [cycle, setCycle] = useState(0);
+  return (
+    <span
+      data-mate-restart-words=""
+      onAnimationIteration={(event) => {
+        if (
+          event.animationName === "mate-restart-words" &&
+          !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        )
+          setCycle((value) => (value + 1) % lines.length);
+      }}
+    >
+      {lines[cycle % lines.length]}
+    </span>
+  );
 }

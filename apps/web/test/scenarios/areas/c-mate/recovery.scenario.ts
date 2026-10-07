@@ -5,24 +5,25 @@ import { createScenario } from "../../harness/scenario.ts";
 import { installArea, reportContainer, projectGrant, deleteProjectEvidence } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
-const setup = Effect.gen(function* () {
-  const s = yield* createScenario([installArea]);
-  yield* s.given.project("Wren", { mate: true });
-  const chat = mateChat(s);
-  const wire = chat.fixture("Wren");
-  wire.history();
-  yield* Effect.promise(() => s.clock.install());
-  yield* s.given.signedIn;
-  yield* chat.when.open("Wren");
-  return { s, chat, wire };
-});
+const setup = (freezeClock = true) =>
+  Effect.gen(function* () {
+    const s = yield* createScenario([installArea]);
+    yield* s.given.project("Wren", { mate: true });
+    const chat = mateChat(s);
+    const wire = chat.fixture("Wren");
+    wire.history();
+    if (freezeClock) yield* Effect.promise(() => s.clock.install());
+    yield* s.given.signedIn;
+    yield* chat.when.open("Wren");
+    return { s, chat, wire };
+  });
 
 describe("C: source failures keep the conversation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // A proved restart failure must name both the Mate and startup cause, not an intentional stop.
     it.effect("a failed restart has its cause and a direct restart action", () =>
       Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup;
+        const { s, chat, wire } = yield* setup();
         reportContainer(s.drivers, "Wren", "ACTION_FAILED", true);
         wire.disconnect();
         yield* chat.then.text("Wren could not restart. Its startup command failed.");
@@ -36,7 +37,7 @@ describe("C: source failures keep the conversation", () => {
     // An intentional stop must offer the platform start operation directly beside the conversation.
     it.effect("a stopped container offers Start beside retained history", () =>
       Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup;
+        const { s, chat, wire } = yield* setup();
         reportContainer(s.drivers, "Wren", "STOPPED");
         wire.disconnect();
         yield* chat.then.text("Wren's container is stopped. Start Wren to reconnect.");
@@ -54,7 +55,7 @@ describe("C: source failures keep the conversation", () => {
       "revoked project access is named and an authoritative regrant reopens its route",
       () =>
         Effect.gen(function* () {
-          const { s, chat } = yield* setup;
+          const { s, chat } = yield* setup();
           projectGrant(s.drivers, "Wren", false);
           yield* chat.then.text("You no longer have access to Wren's project");
           yield* chat.then.noText("The existing conversation is still here");
@@ -69,7 +70,7 @@ describe("C: source failures keep the conversation", () => {
     // Confirmed deletion must remove the dead platform link on both chat and project routes.
     it.effect("project deletion is named and leaves no dead Open in Zerops link", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* setup;
+        const { s, chat } = yield* setup();
         deleteProjectEvidence(s.drivers, "Wren");
         yield* chat.then.text("Wren's project was deleted");
         yield* chat.then.noText("The existing conversation is still here");
@@ -86,12 +87,12 @@ describe("C: source failures keep the conversation", () => {
       "an active run interrupted during transport loss returns with history and draft",
       () =>
         Effect.gen(function* () {
-          const { s, chat, wire } = yield* setup;
+          const { s, chat, wire } = yield* setup(false);
           wire.run("active-run", "running");
+          yield* chat.then.control("Stop generation", "button");
           yield* chat.when.type("Keep this draft through the interruption");
           wire.disconnect();
           wire.run("active-run", "interrupted");
-          yield* Effect.promise(() => s.clock.advanceStepped(30_000));
           yield* chat.then.once("The existing conversation is still here");
           yield* chat.then.draft("Keep this draft through the interruption");
           yield* chat.then.control("Stop generation", "button", false);
@@ -102,7 +103,7 @@ describe("C: source failures keep the conversation", () => {
     // Elapsed time alone must never end a provider's reported running turn.
     it.effect("a long run stays working until the provider reports its result", () =>
       Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup;
+        const { s, chat, wire } = yield* setup();
         wire.run("long-run", "running");
         yield* chat.then.control("Stop generation", "button");
         yield* Effect.promise(() => s.clock.advance(4 * 60 * 60 * 1000, true));
@@ -119,7 +120,7 @@ describe("C: source failures keep the conversation", () => {
     // Expiry of a recorded provider login must offer sign-in without hiding history.
     it.effect("an expired Codex login blocks sending and preserves the conversation", () =>
       Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup;
+        const { s, chat, wire } = yield* setup();
         wire.expireLogin();
         yield* chat.then.once("The existing conversation is still here");
         yield* chat.then.text("Sign in");
