@@ -48,7 +48,12 @@ import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey, projectFileEditorCacheKey } from "./fileContentRevision";
 import { fileBreadcrumbs } from "./filePath";
-import { isMarkdownPreviewFile, setMarkdownTaskChecked } from "./filePreviewMode";
+import {
+  filePreviewReadFailure,
+  type FilePreviewReadFailure,
+  isMarkdownPreviewFile,
+  setMarkdownTaskChecked,
+} from "./filePreviewMode";
 import { useFileSaveCoordinator } from "./useFileSaveCoordinator";
 import {
   getProjectFileDraft,
@@ -732,6 +737,35 @@ function initialExplorerOpen(): boolean {
  * the agent wrote it, from the thread's record, never read from disk
  * (`WrittenFilePanel`).
  */
+/** Why the file could not be shown, with the path it tried and the folder it looked in. */
+function FileReadFailure(props: {
+  readonly failure: FilePreviewReadFailure | null;
+  readonly fallback: string;
+}) {
+  const { failure } = props;
+  return (
+    <div role="alert" className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div className="my-auto flex shrink-0 flex-col gap-3 px-6 py-6 text-center text-xs leading-relaxed">
+        <p className="text-destructive">{failure?.message ?? props.fallback}</p>
+        {failure?.attemptedPath ? (
+          <p className="text-muted-foreground">
+            Tried
+            <code className="block break-all font-mono text-foreground select-all">
+              {failure.attemptedPath}
+            </code>
+          </p>
+        ) : null}
+        {failure ? (
+          <p className="text-muted-foreground">
+            In <code className="break-all font-mono select-all">{failure.workspaceFolder}</code>.
+            Check the link's path, or find the file in Files.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function FilePreviewPanel(props: FilePreviewPanelProps) {
   const { relativePath } = props;
   if (
@@ -953,9 +987,10 @@ function WorkspaceFilePreviewPanel({
               alt={relativePath}
             />
           ) : relativePath && file.error && file.data === null ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-destructive">
-              {file.error}
-            </div>
+            <FileReadFailure
+              failure={file.readError ? filePreviewReadFailure(file.readError, cwd) : null}
+              fallback={file.error}
+            />
           ) : relativePath && file.data === null ? (
             <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
               <LoaderCircle className="size-5 animate-spin" />
