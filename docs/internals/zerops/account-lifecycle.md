@@ -124,8 +124,8 @@ A running renewal leaves writes open until the old evidence expires. A failed in
 on the session backoff (2, 4, 8, 15, 30, 60 s); a failed renewal at 10, 20, 40 and 60 s within the
 held deadline; a lapsed grant at 2, 5, 15, 30 and 60 s. Failed checks retry only in a visible tab:
 a visible wake or `online` starts them again at once, from the first rung, and **Try now** does the
-same. A malformed answer is definitive: no rung, wake or `online` asks again, only **Try now** does
-(the 2026-10-05 rule in `design-decisions.md`). Try now during a round joins it; should that round run out unanswered, the next goes out at
+same. A malformed answer is definitive: no rung, wake or `online` asks again, only **Try now** does.
+Try now during a round joins it; should that round run out unanswered, the next goes out at
 once rather than on the ladder. A tab hidden for 60 minutes stops healthy renewal; its grant still expires on time, and its
 visible wake starts a round.
 

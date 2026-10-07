@@ -7,8 +7,9 @@
  *   own payload as the server stored it (the client's copy keeps none of it).
  * - `threads.writtenFile` — the Files tab's read-only view of a file the
  *   thread's agent wrote outside the workspace: the newest completed write of
- *   that exact path, as it wrote it. The security model is the 2026-10-06
- *   entry in `docs/internals/zerops/design-decisions.md`.
+ *   that exact path, as it wrote it. A thread reader gets only the call's recorded
+ *   write payload; an arbitrary disk read could reveal adjacent secrets or later content
+ *   the agent never wrote.
  *
  * @module threadFileWrites
  */
