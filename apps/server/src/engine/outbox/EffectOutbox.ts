@@ -2,10 +2,12 @@
  * EffectOutbox: the effects a step queued, in the same transaction as the step.
  *
  * The claim is one statement: the oldest pending row whose time has come, and only when nothing
- * earlier in its conversation and lane is still pending or running — a row waiting in backoff
- * holds the rows behind it. A retryable failure is bookkeeping (back to pending, later); a terminal
- * outcome is a fact the owner's actor records (`EffectSettled`). At boot, process-bound rows from
- * another boot are cut (their process is gone) and replay-safe rows are requeued.
+ * earlier in its conversation and lane is still pending, running or settling — a row waiting in
+ * backoff holds the rows behind it. A retryable failure is bookkeeping (back to pending, later). A
+ * terminal outcome is first written to its row (`settling`), then told to the owner's actor, which
+ * records it (`EffectSettled`); a tell that failed is told again by a sweep with backoff, and at
+ * boot, so an outcome is never lost and its lane never stays blocked. At boot, process-bound rows
+ * from another boot are cut (their process is gone) and replay-safe rows are requeued.
  *
  * @module engine/outbox/EffectOutbox
  */
@@ -15,12 +17,18 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import type { BootId, ConversationId, EffectId, RunId } from "@t3tools/contracts";
+import {
+  EffectOutcome,
+  type BootId,
+  type ConversationId,
+  type EffectId,
+  type RunId,
+} from "@t3tools/contracts";
 
 import type { EffectClass, EffectLane } from "../domain/command.ts";
 import { EngineStoreError } from "../store/EngineStore.ts";
 
-export type EffectRowState = "pending" | "running" | "done" | "failed" | "cut";
+export type EffectRowState = "pending" | "running" | "settling" | "done" | "failed" | "cut";
 
 export interface EffectRow {
   readonly effectId: EffectId;
@@ -36,6 +44,10 @@ export interface EffectRow {
   readonly availableAt: number;
   readonly claimedBoot: BootId | null;
   readonly lastError: string | null;
+  /** A settling row's outcome, not yet recorded by its owner. */
+  readonly outcome: EffectOutcome | null;
+  /** Tells of a settling row's outcome so far. */
+  readonly settleAttempt: number;
 }
 
 /** One conversation a restart touched, and the process-bound work it left behind. */
@@ -61,10 +73,23 @@ export interface EffectOutboxShape {
   /** A terminal outcome its owner could not record: closed here so it never blocks its lane. */
   readonly close: (
     effect: EffectId,
-    state: Exclude<EffectRowState, "pending" | "running">,
+    state: Exclude<EffectRowState, "pending" | "running" | "settling">,
     reason: string,
   ) => Effect.Effect<void, EngineStoreError>;
-  /** When the earliest pending row comes due. */
+  /** A terminal outcome, written to its row before its owner is told. */
+  readonly settling: (
+    effect: EffectId,
+    outcome: EffectOutcome,
+    now: number,
+  ) => Effect.Effect<void, EngineStoreError>;
+  /** The owner could not be told: tell it again after `backoffMs(settleAttempt)`. */
+  readonly settleLater: (row: EffectRow, now: number) => Effect.Effect<void, EngineStoreError>;
+  /** The oldest settling row due to be told again (every one at boot: `now` = Infinity). */
+  readonly nextSettling: (now: number) => Effect.Effect<Option.Option<EffectRow>, EngineStoreError>;
+  /**
+   * When the worker next has something to do: the earliest lane head that comes due, or the
+   * earliest settling row due to be told again. A row behind a running or settling row is not due.
+   */
   readonly nextAvailableAt: Effect.Effect<Option.Option<number>, EngineStoreError>;
   readonly row: (effect: EffectId) => Effect.Effect<Option.Option<EffectRow>, EngineStoreError>;
   /** Boot: requeues replay-safe rows another boot was running; returns how many. */
@@ -103,28 +128,45 @@ interface Row {
   readonly available_at: number;
   readonly claimed_boot: string | null;
   readonly last_error: string | null;
+  readonly outcome_json: string | null;
+  readonly settle_attempt: number;
 }
 
 const decodePayload = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeOutcome = Schema.decodeUnknownEffect(Schema.fromJsonString(EffectOutcome));
 
 const fromRow = (row: Row) =>
-  Effect.map(decodePayload(row.payload_json), (payload): EffectRow => ({
-    effectId: row.effect_id as EffectId,
-    conversationId: row.conversation_id as ConversationId,
-    lane: row.lane as EffectLane,
-    kind: row.kind,
-    class: row.class as EffectClass,
-    runId: row.run_id as RunId | null,
-    payload,
-    state: row.state as EffectRowState,
-    attempt: row.attempt,
-    availableAt: row.available_at,
-    claimedBoot: row.claimed_boot as BootId | null,
-    lastError: row.last_error,
-  }));
+  Effect.all({
+    payload: decodePayload(row.payload_json),
+    outcome: row.outcome_json === null ? Effect.succeed(null) : decodeOutcome(row.outcome_json),
+  }).pipe(
+    Effect.map(({ payload, outcome }): EffectRow => ({
+      effectId: row.effect_id as EffectId,
+      conversationId: row.conversation_id as ConversationId,
+      lane: row.lane as EffectLane,
+      kind: row.kind,
+      class: row.class as EffectClass,
+      runId: row.run_id as RunId | null,
+      payload,
+      state: row.state as EffectRowState,
+      attempt: row.attempt,
+      availableAt: row.available_at,
+      claimedBoot: row.claimed_boot as BootId | null,
+      lastError: row.last_error,
+      outcome,
+      settleAttempt: row.settle_attempt,
+    })),
+  );
 
 const COLUMNS = `effect_id, conversation_id, lane, kind, class, run_id, payload_json, state, attempt,
-  available_at, claimed_boot, last_error`;
+  available_at, claimed_boot, last_error, outcome_json, settle_attempt`;
+
+/** A lane's head: nothing earlier in its conversation and lane is still in flight. */
+const LANE_HEAD = `NOT EXISTS (
+  SELECT 1 FROM engine_effect p
+  WHERE p.conversation_id = e.conversation_id AND p.lane = e.lane
+    AND p.rowid < e.rowid AND p.state IN ('pending', 'running', 'settling')
+)`;
 
 export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -137,12 +179,7 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
       SET state = 'running', claimed_boot = ${boot}, claimed_at = ${now}, attempt = attempt + 1
       WHERE effect_id = (
         SELECT e.effect_id FROM engine_effect e
-        WHERE e.state = 'pending' AND e.available_at <= ${now}
-          AND NOT EXISTS (
-            SELECT 1 FROM engine_effect p
-            WHERE p.conversation_id = e.conversation_id AND p.lane = e.lane
-              AND p.rowid < e.rowid AND p.state IN ('pending', 'running')
-          )
+        WHERE e.state = 'pending' AND e.available_at <= ${now} AND ${sql.literal(LANE_HEAD)}
         ORDER BY e.rowid LIMIT 1
       )
       RETURNING ${sql.literal(COLUMNS)}
@@ -174,10 +211,38 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
     close: (effect, state, reason) =>
       sql`
         UPDATE engine_effect SET state = ${state}, last_error = ${reason}
-        WHERE effect_id = ${effect} AND state IN ('pending', 'running')
+        WHERE effect_id = ${effect} AND state IN ('pending', 'running', 'settling')
       `.pipe(Effect.asVoid, Effect.mapError(failed("close"))),
+    settling: (effect, outcome, now) =>
+      sql`
+        UPDATE engine_effect SET state = 'settling', outcome_json = ${JSON.stringify(outcome)},
+          available_at = ${now}, settle_attempt = 0
+        WHERE effect_id = ${effect} AND state = 'running'
+      `.pipe(Effect.asVoid, Effect.mapError(failed("settling"))),
+    settleLater: (effect, now) =>
+      sql`
+        UPDATE engine_effect SET settle_attempt = settle_attempt + 1,
+          available_at = ${now + backoffMs(effect.settleAttempt + 1)}
+        WHERE effect_id = ${effect.effectId} AND state = 'settling'
+      `.pipe(Effect.asVoid, Effect.mapError(failed("settleLater"))),
+    nextSettling: (now) =>
+      sql<Row>`
+        SELECT ${sql.literal(COLUMNS)} FROM engine_effect
+        WHERE state = 'settling' AND available_at <= ${Number.isFinite(now) ? now : Number.MAX_SAFE_INTEGER}
+        ORDER BY available_at, rowid LIMIT 1
+      `.pipe(
+        Effect.flatMap((rows) =>
+          rows[0] === undefined ? Effect.succeed(Option.none()) : Effect.asSome(fromRow(rows[0])),
+        ),
+        Effect.mapError(failed("nextSettling")),
+      ),
     nextAvailableAt: sql<{ readonly at: number | null }>`
-      SELECT min(available_at) AS at FROM engine_effect WHERE state = 'pending'
+      SELECT min(at) AS at FROM (
+        SELECT min(e.available_at) AS at FROM engine_effect e
+        WHERE e.state = 'pending' AND ${sql.literal(LANE_HEAD)}
+        UNION ALL
+        SELECT min(available_at) AS at FROM engine_effect WHERE state = 'settling'
+      )
     `.pipe(
       Effect.map((rows) => Option.fromNullishOr(rows[0]?.at)),
       Effect.mapError(failed("nextAvailableAt")),

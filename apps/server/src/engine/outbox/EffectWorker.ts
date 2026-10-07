@@ -2,8 +2,11 @@
  * EffectWorker: fibers over the outbox. Each claims a row, finds the handler for its kind, lets
  * the handler adopt prior evidence (a previous attempt that landed before a crash) before it acts,
  * and sends a terminal outcome back as `EffectSettled` through the owner's actor, which records it
- * in the same transaction as its consequences. A retryable failure backs off; past the attempt
- * limit it fails for good. A fiber sleeps until the next row comes due or the actor rings.
+ * in the same transaction as its consequences. The outcome is written to its row first, so a tell
+ * that fails is told again (with backoff, and at boot) instead of leaving the row running. A
+ * replay-safe handler's failure backs off and retries; past the attempt limit it fails for good.
+ * A process-bound handler's failure is its outcome: it may have acted, so it is never tried again.
+ * A fiber sleeps until the next row comes due or the actor rings.
  *
  * Boot reconcile runs before the worker starts: replay-safe rows are requeued, and every
  * conversation with process-bound work left behind, a live run or an open session is told
@@ -72,11 +75,17 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         outcome: { kind: "failed", reason: `no handler for ${row.kind}` },
       });
     }
+    // A process-bound handler that failed may already have acted (a message may be out), so it is
+    // never tried again: its failure is the outcome. A replay-safe one is retried.
     const act = handler
       .run(row)
       .pipe(
         Effect.catchCause((cause) =>
-          Effect.succeed<HandlerResult>({ _tag: "Retry", reason: String(cause) }),
+          Effect.succeed<HandlerResult>(
+            row.class === "process-bound"
+              ? { _tag: "Done", outcome: { kind: "failed", reason: String(cause) } }
+              : { _tag: "Retry", reason: String(cause) },
+          ),
         ),
       );
     if (handler.adopt === undefined) return act;
@@ -91,30 +100,53 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     );
   };
 
-  const settle = Effect.fnUntraced(function* (row: EffectRow, outcome: EffectOutcome) {
+  /** Tells the owner an outcome already written to its row; a failed tell is told again later. */
+  const tell = Effect.fnUntraced(function* (row: EffectRow, outcome: EffectOutcome) {
     // A failed commit reloads the actor's state, so the same settle is retried as it is.
-    const result = yield* Effect.retry(
-      conversations.tell({
-        commandId: effectSettledCommandId(row.effectId),
-        conversationId: row.conversationId,
-        principal: ENGINE,
-        command: { _tag: "EffectSettled", effectId: row.effectId, outcome },
-      }),
-      { times: 3 },
+    const told = yield* Effect.exit(
+      Effect.retry(
+        conversations.tell({
+          commandId: effectSettledCommandId(row.effectId),
+          conversationId: row.conversationId,
+          principal: ENGINE,
+          command: { _tag: "EffectSettled", effectId: row.effectId, outcome },
+        }),
+        { times: 3 },
+      ),
     );
+    if (told._tag === "Failure") {
+      yield* Effect.logWarning("engine effect outcome not recorded yet", told.cause);
+      yield* outbox.settleLater(row, yield* Clock.currentTimeMillis);
+      return;
+    }
     // The owner no longer tracks it (a bug or a lost state): close the row so its lane moves on.
-    if (result._tag === "Rejected") {
+    if (told.value._tag === "Rejected") {
       yield* outbox.close(
         row.effectId,
-        outcome.kind === "ok" ? "done" : outcome.kind,
-        `settle rejected: ${result.rejection.reason}`,
+        outcome.kind === "ok" ? "done" : outcome.kind === "cut" ? "cut" : "failed",
+        `settle rejected: ${told.value.rejection.reason}`,
       );
     }
   });
 
-  /** Claims and processes one row; false when none was due. */
+  const settle = Effect.fnUntraced(function* (row: EffectRow, outcome: EffectOutcome) {
+    yield* outbox.settling(row.effectId, outcome, yield* Clock.currentTimeMillis);
+    yield* tell(row, outcome);
+  });
+
+  /** Tells one settling row again, if one is due; false when none was. */
+  const sweepOnce = (now: number) =>
+    Effect.gen(function* () {
+      const due = yield* outbox.nextSettling(now);
+      if (Option.isNone(due) || due.value.outcome === null) return false;
+      yield* tell(due.value, due.value.outcome);
+      return true;
+    });
+
+  /** Tells a settling row again or claims and processes one row; false when nothing was due. */
   const runOnce = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
+    if (yield* sweepOnce(now)) return true;
     const claimed = yield* outbox.claim(boot, now);
     if (Option.isNone(claimed)) return false;
     const row = claimed.value;
@@ -161,6 +193,10 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
   const reconcileAtBoot = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const requeued = yield* outbox.requeueReplaySafe(boot, now);
+    // Outcomes decided before the restart are recorded before anything is cut.
+    for (let told = 0; told < 10_000; told++) {
+      if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break;
+    }
     const owners = yield* outbox.recoveryOwners(boot);
     for (const owner of owners) {
       yield* conversations.tell({

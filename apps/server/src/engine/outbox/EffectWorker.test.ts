@@ -553,6 +553,42 @@ describe("EffectWorker: the worker", () => {
     }),
   );
 
+  it.effect("an outcome decided before a restart is recorded at boot, before anything is cut", () =>
+    Effect.gen(function* () {
+      const file = tempDb("settling");
+      const world = new World();
+      let failing = 0;
+      const fault = () =>
+        failing > 0
+          ? Effect.fail(
+              new EngineStoreError({ operation: "commit", cause: new Error("SQLITE_BUSY") }),
+            )
+          : Effect.void;
+      yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* conversations.ask(env({ _tag: "Send", text: "go" }));
+        failing = 1; // the store refuses every commit from now on, then the process dies
+        yield* Effect.exit(worker.runOnce);
+      }).pipe(Effect.provide(engineLayer(file, world.handlers(), { fault: () => fault() })));
+      world.crash();
+      const opening = yield* Effect.gen(function* () {
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* worker.reconcileAtBoot;
+        const { events, problems } = yield* audit(mate);
+        const recorded = events.find(
+          (e) => e._tag === "EffectOutcomeRecorded" && e.kind === "session.open",
+        );
+        return {
+          outcome: recorded?._tag === "EffectOutcomeRecorded" ? recorded.outcome.kind : null,
+          acts: world.acts.get(effectId(r(1, mate), "session.open", 1)),
+          problems,
+        };
+      }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+      expect(opening).toEqual({ outcome: "ok", acts: 1, problems: [] });
+    }),
+  );
+
   it.effect("a send whose handler died after the message went out is not sent again", () =>
     Effect.gen(function* () {
       const world = new World();
