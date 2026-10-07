@@ -174,6 +174,8 @@ export type Command =
       readonly cutEffects: ReadonlyArray<EffectId>;
       /** Process-bound effects the restart found never tried: nothing of them happened. */
       readonly unstartedEffects?: ReadonlyArray<EffectId>;
+      /** The platform's evidence of the restart, worded for the person. */
+      readonly words?: string;
     };
 
 export type CommandTag = Command["_tag"];

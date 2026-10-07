@@ -1462,3 +1462,78 @@ describe("decide: a turn the agent starts itself while a run is prepared", () =>
     expect(after.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
   });
 });
+
+describe("decide: a message the session could not take", () => {
+  const undelivered = (n = 1) =>
+    settled(
+      r(1),
+      "provider.send",
+      { kind: "failed", reason: "no live session", undelivered: true },
+      n,
+    );
+  it("goes again once, on a new session", () => {
+    const scene = play([send("go"), prepared(1), opened(1), undelivered()]);
+    expect(tags(scene)).toEqual([
+      "EffectOutcomeRecorded",
+      "SessionClosed",
+      "RunRequeued",
+      "RunAdmitted",
+      "EffectRequested",
+    ]);
+    expect(scene.effects).toMatchObject([{ kind: "session.open" }]);
+    const resent = play([
+      send("go"),
+      prepared(1),
+      opened(1),
+      undelivered(),
+      opened(1, { session: "s2", n: 2 }),
+    ]);
+    expect(resent.effects).toMatchObject([
+      {
+        kind: "provider.send",
+        effectId: effectId(r(1), "provider.send", 2),
+        payload: { text: "go" },
+      },
+    ]);
+  });
+  it("ends the run failed, its message refused, when it could not go twice", () => {
+    const { state, log } = playAll([
+      send("go"),
+      prepared(1),
+      opened(1),
+      undelivered(),
+      opened(1, { session: "s2", n: 2 }),
+      undelivered(2),
+    ]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "failed" });
+    expect(delivery(log)).toBe("refused");
+  });
+  it("a turn the bridge says never reached the agent goes again the same way", () => {
+    const scene = play([
+      send("go"),
+      prepared(1),
+      opened(1),
+      ended(1, { kind: "undelivered", words: "the session was closed" }),
+    ]);
+    expect(tags(scene)).toContain("RunRequeued");
+    expect(scene.state.runs[r(1)]?.state).toBe("admitted");
+  });
+});
+
+describe("decide: a restart's words", () => {
+  it("are on the run the restart cut, for the person", () => {
+    const { state } = playAll([
+      ...running,
+      {
+        _tag: "Recovered",
+        bootId: "boot-2" as never,
+        cutEffects: [],
+        words: "Zerops restarted the service after an update.",
+      },
+    ]);
+    expect(state.runs[r(1)]?.end).toMatchObject({
+      kind: "cut-by-restart",
+      words: "Zerops restarted the service after an update.",
+    });
+  });
+});

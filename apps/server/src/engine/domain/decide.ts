@@ -221,7 +221,7 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "ProviderSignals":
       return signals(b, command.sessionId, command.signals);
     case "Recovered":
-      return recovered(b, command.cutEffects, command.unstartedEffects ?? []);
+      return recovered(b, command.cutEffects, command.unstartedEffects ?? [], command.words);
   }
 };
 
@@ -802,12 +802,14 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       return;
     case "provider.send":
       if (failure !== null) {
+        const undelivered = outcome.kind === "failed" ? outcome.undelivered : undefined;
+        if (undelivered === true && sendsAgain(b, run, failure)) return;
         endRun(
           b,
           run,
           { kind: "failed", reason: failure, next: null },
           "inferred-from-effect",
-          "refused",
+          undelivered === undefined || undelivered === true ? "refused" : "unknown",
         );
         admitNext(b);
         return;
@@ -852,6 +854,21 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     default:
       return;
   }
+};
+
+/**
+ * A message the session could not take never reached the agent (its session died under it): the
+ * session is gone, and the run goes back to the head of the queue to be sent once more on a new
+ * one. False when it already went twice, or a Stop is asked: then it ends.
+ */
+const sendsAgain = (b: StepBuilder, run: RunRecord, reason: string): boolean => {
+  if (run.sendAttempts >= 2 || run.stopAsked !== null || run.state !== "sending") return false;
+  if (b.state.session !== null && b.state.session.id === run.sessionId) {
+    b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "exited" });
+  }
+  b.emit({ _tag: "RunRequeued", runId: run.id, reason: `undelivered: ${reason}` });
+  admitNext(b);
+  return true;
 };
 
 /** What a capture could not take, one line per service; a failed capture is one gap. */
@@ -1101,6 +1118,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "turn-ended": {
       const run = runOfTurn(b.state, signal.turn);
       if (run === undefined || !isLive(run)) return;
+      if (signal.outcome.kind === "undelivered" && sendsAgain(b, run, signal.outcome.words)) return;
       // A turn that ends before it was seen to start still started: the message reached the agent.
       if (run.state === "sending") markStarted(b, run, null, signal.turn);
       const live = b.run(run.id);
@@ -1313,6 +1331,7 @@ const recovered = (
   b: StepBuilder,
   cutEffects: ReadonlyArray<EffectId>,
   unstartedEffects: ReadonlyArray<EffectId>,
+  words: string | undefined,
 ): void => {
   const record = (id: EffectId, reason: string) => {
     const effect = b.state.effects[id];
@@ -1344,9 +1363,12 @@ const recovered = (
     endRun(
       b,
       run,
-      refusal === null
-        ? { kind: "cut-by-restart", continuedBy: null }
-        : { kind: "cut-by-restart", continuedBy: null, notContinued: refusal },
+      {
+        kind: "cut-by-restart",
+        continuedBy: null,
+        ...(refusal === null ? {} : { notContinued: refusal }),
+        ...(words === undefined ? {} : { words }),
+      },
       "inferred-from-restart",
     );
     if (refusal === null) {

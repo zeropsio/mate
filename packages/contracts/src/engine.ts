@@ -180,6 +180,8 @@ export const RunEnd = forwardCompatibleUnion({
       kind: Schema.Literal("cut-by-restart"),
       continuedBy: Schema.NullOr(RunId),
       notContinued: Schema.optionalKey(Schema.String),
+      /** What the platform said about the restart, shown to the person. */
+      words: Schema.optionalKey(Schema.String),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
@@ -576,6 +578,11 @@ export const EffectOutcome = forwardCompatibleUnion({
       reason: Schema.String,
       /** The other side refused for good: an answer it can no longer take, a run it won't admit. */
       refused: Schema.optionalKey(Schema.Boolean),
+      /**
+       * A send's word on its message: `true` it never reached the agent (safe to send again on a
+       * new session), `false` it did, `"unknown"` nobody can tell.
+       */
+      undelivered: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Literal("unknown")])),
     }),
     Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
   ],

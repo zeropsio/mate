@@ -222,6 +222,7 @@ export class Gen {
               bootId: boot,
               cutEffects: effects.filter((_, i) => i % 2 === 0).map((effect) => effect.id),
               unstartedEffects: effects.filter((_, i) => i % 2 === 1).map((effect) => effect.id),
+              ...(rng.chance(0.5) ? { words: "The service restarted." } : {}),
             },
             ENGINE,
             recoveredCommandId(boot, this.conversation),
@@ -265,7 +266,13 @@ export class Gen {
         _tag: "EffectSettled",
         effectId: effect.id,
         outcome: failed
-          ? { kind: "failed", reason: "boom" }
+          ? {
+              kind: "failed",
+              reason: "boom",
+              ...(effect.kind === "provider.send" && rng.chance(0.5)
+                ? { undelivered: rng.pick([true, false, "unknown"] as const) }
+                : {}),
+            }
           : value === undefined
             ? { kind: "ok" }
             : { kind: "ok", value },
