@@ -20,9 +20,11 @@ build and `T3CODE_MATE_ENGINE` picks one per Mate at boot (`v1`, the default, or
   **principal** (on whose behalf and subscription it runs) and one of these states:
   `queued → admitted → sending → running → waiting → ended`. Its end is one of `completed`,
   `stopped`, `failed`, `crashed`, `usage-limit`, `superseded`, `cut-by-restart`, and records its
-  source: the agent said so, the engine inferred it from a crash, a Stop was asked, or a Stop was
-  confirmed. A run that continues another one `joins` it and shares its card. `unresponsive` is a
-  mark a watchdog may set on a running run; it is never an end.
+  source: the bridge's word for its turn (the agent said so, a Stop was asked or confirmed, or it
+  was inferred from a crash, a closed session or the next turn), or the engine's (a restart, an
+  effect that failed for good). Every turn-scoped signal names its turn, so it lands on that turn's
+  run. A run that continues another one `joins` it and shares its card. `unresponsive` is a mark a
+  watchdog may set on a running run; it is never an end.
 - **Item** — one typed thing in the record: a person's message, a note, a thought, a call, a helper
   or job report, a plan, a request's place, the context the agent was told, a marker (compaction,
   session boundary, command, resumed, woke). Every item has a server sequence that is its order,
