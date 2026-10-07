@@ -24,11 +24,12 @@ export interface QueuedMessageSendSettings {
 }
 
 /**
- * A queued message the root sender has under way for a conversation not on screen: preparing
- * (uploads, the thread's settings) until its turn start goes out, then the thread as it was at
- * that moment, so the next message waits until the server has moved past it.
+ * A thread's queued message under way, whichever sender took it — the open conversation or the
+ * root sender: preparing (uploads, the thread's settings) until its turn start goes out, then
+ * the thread as it was at that moment. The next message waits until the server has moved past
+ * it, so two messages never leave on one boundary.
  */
-export type BackgroundQueuedSend =
+export type QueuedSendInFlight =
   | { readonly phase: "preparing" }
   | { readonly phase: "dispatched"; readonly thread: LocalDispatchSnapshot };
 
@@ -88,12 +89,12 @@ interface QueuedMessageStoreState {
    * queue; the root sender sends the others'.
    */
   openThreadKeys: Record<string, number>;
-  /** The root sender's send per thread, while it prepares and until the server picks it up. */
-  backgroundSendByThreadKey: Record<string, BackgroundQueuedSend>;
+  /** Each thread's queued send in flight, while it prepares and until the server picks it up. */
+  queuedSendByThreadKey: Record<string, QueuedSendInFlight>;
   /** Marks a conversation on screen until the returned release runs. */
   holdOpen: (threadKey: string) => () => void;
-  /** Records the root sender's send for a thread, or forgets it (null). */
-  setBackgroundSend: (threadKey: string, send: BackgroundQueuedSend | null) => void;
+  /** Records a thread's queued send in flight, or forgets it (null). */
+  setQueuedSend: (threadKey: string, send: QueuedSendInFlight | null) => void;
   enqueue: (threadKey: string, message: Omit<QueuedComposerMessage, "id">) => QueuedComposerMessage;
   /**
    * Removes one message and returns it, or null when another caller already
@@ -144,7 +145,7 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
     queuesByThreadKey: {},
     drainGenerationByThreadKey: {},
     openThreadKeys: {},
-    backgroundSendByThreadKey: {},
+    queuedSendByThreadKey: {},
     holdOpen: (threadKey) => {
       const step = (by: 1 | -1) =>
         set((state) => {
@@ -162,12 +163,12 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
         step(-1);
       };
     },
-    setBackgroundSend: (threadKey, send) => {
+    setQueuedSend: (threadKey, send) => {
       set((state) => {
-        const backgroundSendByThreadKey = { ...state.backgroundSendByThreadKey };
-        if (send === null) delete backgroundSendByThreadKey[threadKey];
-        else backgroundSendByThreadKey[threadKey] = send;
-        return { backgroundSendByThreadKey };
+        const queuedSendByThreadKey = { ...state.queuedSendByThreadKey };
+        if (send === null) delete queuedSendByThreadKey[threadKey];
+        else queuedSendByThreadKey[threadKey] = send;
+        return { queuedSendByThreadKey };
       });
     },
     enqueue: (threadKey, message) => {
@@ -382,7 +383,7 @@ export function queuedBubbleState(input: {
 }
 
 onAccountLifetimeClose(() => {
-  useQueuedMessageStore.setState({ queuesByThreadKey: {}, backgroundSendByThreadKey: {} });
+  useQueuedMessageStore.setState({ queuesByThreadKey: {}, queuedSendByThreadKey: {} });
 });
 
 export function useQueuedMessages(threadKey: string): QueuedComposerMessage[] {
@@ -392,4 +393,32 @@ export function useQueuedMessages(threadKey: string): QueuedComposerMessage[] {
 /** The thread's drain count: a send captures it at its take and gives up if Stop moved it. */
 export function drainGenerationOf(threadKey: string): number {
   return useQueuedMessageStore.getState().drainGenerationByThreadKey[threadKey] ?? 0;
+}
+
+/**
+ * Takes a thread's queued message to send it — either sender, the open conversation or the
+ * root one — and marks the thread's send in flight. Null when another caller took it first.
+ */
+export function beginQueuedSend(
+  threadKey: string,
+  id: string,
+  toolActivityId: string | null,
+): QueuedComposerMessage | null {
+  const store = useQueuedMessageStore.getState();
+  const taken = store.take(threadKey, id, toolActivityId);
+  if (taken !== null) store.setQueuedSend(threadKey, { phase: "preparing" });
+  return taken;
+}
+
+/** The thread's queued send went out as it was then (a snapshot), or ended without one (null). */
+export function settleQueuedSend(
+  threadKey: string,
+  dispatched: LocalDispatchSnapshot | null,
+): void {
+  useQueuedMessageStore
+    .getState()
+    .setQueuedSend(
+      threadKey,
+      dispatched === null ? null : { phase: "dispatched", thread: dispatched },
+    );
 }

@@ -60,7 +60,7 @@ function ThreadQueueSenderFor({
   const environment = useEnvironment(threadRef.environmentId);
   const queue = useQueuedMessages(threadKey);
   const open = useQueuedMessageStore((state) => Boolean(state.openThreadKeys[threadKey]));
-  const send = useQueuedMessageStore((state) => state.backgroundSendByThreadKey[threadKey]);
+  const send = useQueuedMessageStore((state) => state.queuedSendByThreadKey[threadKey]);
   const pendingRequest = useMemo(() => {
     const pending = derivePendingRequests(thread?.activities ?? []);
     return pending.approvals.length > 0 || pending.userInputs.length > 0;

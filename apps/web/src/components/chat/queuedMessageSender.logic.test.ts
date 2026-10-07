@@ -13,6 +13,8 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  beginQueuedSend,
+  settleQueuedSend,
   useQueuedMessageStore,
   type QueuedComposerMessage,
   type QueuedMessageSendSettings,
@@ -149,7 +151,7 @@ describe("backgroundQueuedMessageDue", () => {
       queuesByThreadKey: {},
       drainGenerationByThreadKey: {},
       openThreadKeys: {},
-      backgroundSendByThreadKey: {},
+      queuedSendByThreadKey: {},
     });
   });
 
@@ -252,6 +254,18 @@ describe("backgroundQueuedMessageDue", () => {
     expect(backgroundQueuedMessageDue({ ...base, thread: pickedUp, next, send })).toBe(true);
   });
 
+  it("the next message waits for the one in flight, whichever sender took it", () => {
+    const first = queue("first");
+    const next = queue("next");
+    // The open conversation takes the first and is still uploading it when the person leaves.
+    expect(beginQueuedSend(threadKey, first.id, null)?.prompt).toBe("first");
+    const inFlight = () => useQueuedMessageStore.getState().queuedSendByThreadKey[threadKey];
+
+    expect(backgroundQueuedMessageDue({ ...base, next, send: inFlight() })).toBe(false);
+    settleQueuedSend(threadKey, null);
+    expect(backgroundQueuedMessageDue({ ...base, next, send: inFlight() })).toBe(true);
+  });
+
   it("a message queued without its settings waits for its conversation", () => {
     const { sendSettings: _settings, ...withoutSettings } = {
       prompt: "overflow",
@@ -274,7 +288,7 @@ describe("sendQueuedMessageInBackground", () => {
       queuesByThreadKey: {},
       drainGenerationByThreadKey: {},
       openThreadKeys: {},
-      backgroundSendByThreadKey: {},
+      queuedSendByThreadKey: {},
     });
   });
 
@@ -334,7 +348,7 @@ describe("sendQueuedMessageInBackground", () => {
       ["first", true, "The agent is signed out."],
       ["second", undefined, undefined],
     ]);
-    expect(useQueuedMessageStore.getState().backgroundSendByThreadKey[threadKey]).toBeUndefined();
+    expect(useQueuedMessageStore.getState().queuedSendByThreadKey[threadKey]).toBeUndefined();
   });
 
   it("an interrupted send goes back unheld for the next try, with the same ids", async () => {

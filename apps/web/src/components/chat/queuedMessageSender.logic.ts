@@ -18,12 +18,14 @@ import type { ComposerFileAttachment } from "../../lib/composerFiles";
 import { materializePicturePrompt } from "../../lib/composerPictures";
 import { appendTerminalContextsToPrompt } from "../../lib/terminalContext";
 import {
+  beginQueuedSend,
   drainGenerationOf,
   isQueuedMessageDue,
   latestCompletedToolActivityId,
   queuedSendAttemptIds,
+  settleQueuedSend,
   useQueuedMessageStore,
-  type BackgroundQueuedSend,
+  type QueuedSendInFlight,
   type QueuedComposerMessage,
 } from "../../queuedMessageStore";
 import { appendReviewCommentsToPrompt } from "../../reviewCommentContext";
@@ -47,7 +49,7 @@ import { getComposerSubmissionValidationMessage } from "./composerSubmission";
  * one boundary.
  */
 export function queuedSendAwaitsServer(input: {
-  readonly send: BackgroundQueuedSend | undefined;
+  readonly send: QueuedSendInFlight | undefined;
   readonly thread: Thread | null;
   readonly phase: SessionPhase;
   readonly pendingRequest: boolean;
@@ -84,7 +86,7 @@ export function backgroundQueuedMessageDue(input: {
   readonly connected: boolean;
   readonly serverConfigKnown: boolean;
   readonly pendingRequest: boolean;
-  readonly send: BackgroundQueuedSend | undefined;
+  readonly send: QueuedSendInFlight | undefined;
 }): boolean {
   const { next, thread } = input;
   if (next === undefined || next.sendSettings === undefined) return false;
@@ -201,13 +203,12 @@ export async function sendQueuedMessageInBackground(
     return;
   }
 
-  const taken = store().take(
+  const taken = beginQueuedSend(
     threadKey,
     message.id,
     latestCompletedToolActivityId(thread.activities),
   );
   if (taken === null) return;
-  store().setBackgroundSend(threadKey, { phase: "preparing" });
   const drainGenerationAtTake = drainGenerationOf(threadKey);
   const ids = queuedSendAttemptIds({
     given: undefined,
@@ -215,7 +216,7 @@ export async function sendQueuedMessageInBackground(
     mint: deps.mintIds,
   });
   const abort = (failure: QueuedSendFailure) => {
-    store().setBackgroundSend(threadKey, null);
+    settleQueuedSend(threadKey, null);
     const outcome = queuedSendOutcome(failure, message.retries ?? 0);
     if (outcome.action === "requeue") {
       store().requeueAtFront(threadKey, { ...message, sendIds: ids });
@@ -258,7 +259,7 @@ export async function sendQueuedMessageInBackground(
   // Stop drained the queue while this one uploaded: no turn starts after a Stop. It waits at
   // the head for the person's Send now instead of going anywhere by itself.
   if (drainGenerationOf(threadKey) !== drainGenerationAtTake) {
-    store().setBackgroundSend(threadKey, null);
+    settleQueuedSend(threadKey, null);
     store().holdAtFront(threadKey, message);
     return;
   }
@@ -275,7 +276,7 @@ export async function sendQueuedMessageInBackground(
       abort(failureOf(result));
       return;
     }
-    store().setBackgroundSend(threadKey, null);
+    settleQueuedSend(threadKey, null);
     deps.uploads.release(message.images, files);
     return;
   }
@@ -311,10 +312,7 @@ export async function sendQueuedMessageInBackground(
     }
   }
 
-  store().setBackgroundSend(threadKey, {
-    phase: "dispatched",
-    thread: createLocalDispatchSnapshot(deps.readThread() ?? current),
-  });
+  settleQueuedSend(threadKey, createLocalDispatchSnapshot(deps.readThread() ?? current));
   const result = await deps.startTurn({
     commandId: ids.commandId,
     threadId,

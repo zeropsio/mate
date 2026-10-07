@@ -319,8 +319,10 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  beginQueuedSend,
   drainGenerationOf,
   isQueuedMessageDue,
+  settleQueuedSend,
   queuedSendAttemptIds,
   latestCompletedToolActivityId,
   type QueuedComposerMessage,
@@ -6742,14 +6744,13 @@ export default function ChatView(props: ChatViewProps) {
     // Every early return above leaves a queued message in the queue for a
     // later retry. From here on a failure hands it back held.
     if (queuedMessage) {
+      // Marked in flight for both senders: the next message waits for this one.
       const taken = activeThreadKey
-        ? useQueuedMessageStore
-            .getState()
-            .take(
-              activeThreadKey,
-              queuedMessage.id,
-              latestCompletedToolActivityId(threadActivities),
-            )
+        ? beginQueuedSend(
+            activeThreadKey,
+            queuedMessage.id,
+            latestCompletedToolActivityId(threadActivities),
+          )
         : null;
       if (!taken) {
         sendInFlightRef.current = false;
@@ -6779,6 +6780,7 @@ export default function ChatView(props: ChatViewProps) {
       message: QueuedComposerMessage | undefined = queuedMessage,
     ) => {
       if (!message || !activeThreadKey) return;
+      settleQueuedSend(activeThreadKey, null);
       const outcome = queuedSendOutcome(failure, message.retries ?? 0);
       const store = useQueuedMessageStore.getState();
       if (outcome.action === "requeue") {
@@ -6853,6 +6855,7 @@ export default function ChatView(props: ChatViewProps) {
       drainGenerationOf(activeThreadKey) !== drainGenerationAtTake
     ) {
       sendInFlightRef.current = false;
+      settleQueuedSend(activeThreadKey, null);
       restoreQueuedMessagesToComposer([queuedMessage]);
       return;
     }
@@ -6890,6 +6893,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
+        if (queuedMessage && activeThreadKey) settleQueuedSend(activeThreadKey, null);
         if (supportsAttachmentUploads) {
           releaseAttachmentUploads(composerImagesSnapshot);
           releaseAttachmentUploads(composerFilesSnapshot);
@@ -7151,6 +7155,9 @@ export default function ChatView(props: ChatViewProps) {
       const toldVault =
         vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
       turnStartAttempted = true;
+      if (queuedMessage && activeThreadKey) {
+        settleQueuedSend(activeThreadKey, createLocalDispatchSnapshot(activeThread));
+      }
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -7306,6 +7313,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
     sendInFlightRef.current = false;
+    // A queued send that ended without its turn leaves nothing in flight for the next to wait on.
+    if (queuedMessage && activeThreadKey && !turnStartSucceeded) {
+      settleQueuedSend(activeThreadKey, null);
+    }
     if (!turnStartSucceeded) {
       setDockedDraftHeroThreadKey((currentThreadKey) =>
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
@@ -7330,17 +7341,17 @@ export default function ChatView(props: ChatViewProps) {
   const queueBlockedByPendingRequest =
     activePendingApproval !== null || pendingUserInputs.length > 0;
   // The open conversation sends its own queue; the root sender sends the others'
-  // (`QueuedMessageSender`). One it sent before this opened is waited for here too.
+  // (`QueuedMessageSender`). A send in flight from either is waited for here.
   useEffect(
     () =>
       activeThreadKey ? useQueuedMessageStore.getState().holdOpen(activeThreadKey) : undefined,
     [activeThreadKey],
   );
-  const backgroundQueuedSend = useQueuedMessageStore((state) =>
-    activeThreadKey ? state.backgroundSendByThreadKey[activeThreadKey] : undefined,
+  const queuedSendInFlight = useQueuedMessageStore((state) =>
+    activeThreadKey ? state.queuedSendByThreadKey[activeThreadKey] : undefined,
   );
-  const backgroundQueuedSendAwaitsServer = queuedSendAwaitsServer({
-    send: backgroundQueuedSend,
+  const queuedSendInFlightAwaitsServer = queuedSendAwaitsServer({
+    send: queuedSendInFlight,
     thread: activeThread ?? null,
     phase,
     pendingRequest: queueBlockedByPendingRequest,
@@ -7350,7 +7361,7 @@ export default function ChatView(props: ChatViewProps) {
   // leaves the message queued. Re-run when any of them clear so a due
   // message does not wait for an unrelated phase change.
   const queueSendGate =
-    backgroundQueuedSendAwaitsServer ||
+    queuedSendInFlightAwaitsServer ||
     activeEnvironmentUnavailable ||
     isRevertingCheckpoint ||
     threadDetailLoading ||
