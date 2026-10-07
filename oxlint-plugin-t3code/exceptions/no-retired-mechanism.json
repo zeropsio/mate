@@ -992,54 +992,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/accountHq.ts",
     "kind": "retired-token",
     "fingerprint": "ownersAndAdmins(",
@@ -1397,22 +1349,6 @@
     "fingerprint": "useZeropsDataCatalogStore",
     "owner": "data-layer rewrite: services",
     "reason": "a component runs its own data-catalog requests; the adapter owns them",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsFeeds.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsFeeds.ts",
-    "kind": "retired-token",
-    "fingerprint": "zeropsInventoryAtom",
-    "owner": "data-layer rewrite: services",
-    "reason": "The inventory atom is the current presentation join for navigation and project topology. Its removal belongs to the closing surface projection over HQ placement and Mate connections; this runtime lane replaces its platform input.",
     "expires": "never"
   },
   {

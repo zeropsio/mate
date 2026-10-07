@@ -41,14 +41,16 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { useMemo } from "react";
 
 import {
-  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
   environmentProjectRef,
   environmentProjectsAtom,
   projectTopologyAtom,
   zeropsFeeds,
-  zeropsInventoryAtom,
-  type ProjectTopologySnapshot,
+  inventoryReadAtom,
 } from "../state/zerops";
+import {
+  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  type ProjectTopologySnapshot,
+} from "@t3tools/client-runtime/data";
 import { useMateOfEnvironment } from "./accountEnvironments";
 
 /**
@@ -70,7 +72,7 @@ const NO_TOPOLOGY_ATOM = Atom.make(EMPTY_PROJECT_TOPOLOGY_SNAPSHOT).pipe(
 export function useEnvironmentProjectRef(environmentId: EnvironmentId | null): ProjectRef | null {
   const mate = useMateOfEnvironment(environmentId);
   const located = useAtomValue(environmentProjectsAtom);
-  const inventory = useAtomValue(zeropsInventoryAtom);
+  const inventory = useAtomValue(inventoryReadAtom);
   return useMemo(
     () =>
       environmentId === null || inventory === null

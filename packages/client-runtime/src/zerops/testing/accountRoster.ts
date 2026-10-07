@@ -70,6 +70,7 @@ export function mountRoster(
     );
   if (options.into === undefined)
     registry.set(accountReadsAtom, {
+      viewer: { id: orgId, name: "Organization", membershipId: "member", roleCode: "ADMIN" },
       data: store.data,
       orgId,
       demandDetail: () => () => undefined,

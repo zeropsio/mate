@@ -7,6 +7,7 @@
  */
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
@@ -40,6 +41,7 @@ import type { HqAppValue, HqPersonFacts, HqStatusValue } from "./families/hqNavi
 import type { AccountStore } from "./store.ts";
 
 export interface AccountReads {
+  readonly viewer?: ZeropsOrganization | undefined;
   readonly data: AccountStore["data"];
   /** The organization whose navigation is observed; `null` before one is chosen. */
   readonly orgId: string | null;

@@ -229,3 +229,19 @@ export { streamOf } from "./reducer.ts";
 export { classifyHqCall } from "./adapters/hqWire.ts";
 
 export { makeBrowserHqApi, readAccountHqHealth } from "./adapters/hqBrowser.ts";
+
+export {
+  inventory,
+  inventoryCandidates,
+  NOT_READ_INVENTORY,
+  inventoryPlacements,
+  type InventoryKey,
+  type InventoryRead,
+} from "./projections/inventory.ts";
+
+export {
+  inventoryTopology,
+  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  type ProjectTopologySnapshot,
+  type ProjectTopologyLiveness,
+} from "./projections/inventoryTopology.ts";

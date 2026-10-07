@@ -9,7 +9,7 @@ import { usageOwnerOf } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useSyncExternalStore } from "react";
 
-import type { ProjectTopologySnapshot } from "../state/zerops";
+import type { ProjectTopologySnapshot } from "@t3tools/client-runtime/data";
 import { useEnvironmentProjectRef, useEnvironmentTopology } from "./useZeropsFeeds";
 import { useAccountDataOptional, useDetailDemand } from "./ZeropsAccountData";
 

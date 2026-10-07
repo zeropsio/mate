@@ -1,5 +1,4 @@
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
 import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -10,8 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { organization, project } from "../zerops/__fixtures__/platformData";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
-import type { InventoryProjection } from "../zerops/inventoryContext";
-import { mateRowsAtom, takenBotNamesAtom, zeropsInventoryAtom, zeropsSessionAtom } from "./zerops";
+import { mateRowsAtom, takenBotNamesAtom, zeropsSessionAtom } from "./zerops";
 import { mountHqNavigation } from "../zerops/__fixtures__/hqNavigation";
 
 /** A Mate's record as HQ's navigation says it, nothing said beyond its face. */
@@ -60,11 +58,6 @@ describe("the candidate rows", () => {
       organizationStatus: "selected",
       activeOrganization: organization,
     });
-    registry.set(zeropsInventoryAtom, {
-      projects: [PROJECT],
-      projectRefs: new Map([[projectKeyOf(owner), owner]]),
-      authority: new Map(),
-    });
 
     const rows = registry.get(mateRowsAtom);
     const listed = registry
@@ -86,11 +79,6 @@ describe("the candidate rows", () => {
       status: "signed-in",
       organizationStatus: "selected",
       activeOrganization: organization,
-    });
-    registry.set(zeropsInventoryAtom, {
-      projects: [PROJECT],
-      projectRefs: new Map([[projectKeyOf(owner), owner]]),
-      authority: new Map(),
     });
     const hq = mountHqNavigation(
       registry,
@@ -205,12 +193,6 @@ describe("the names the organization's Mates go by", () => {
       status: "signed-in",
       organizationStatus: "selected",
       activeOrganization: organization,
-    });
-    // The inventory holds only the project the last round verified.
-    registry.set(zeropsInventoryAtom, {
-      projects: [named],
-      projectRefs: new Map([[projectKeyOf(owner), owner]]),
-      authority: new Map(),
     });
     mountHqNavigation(
       registry,

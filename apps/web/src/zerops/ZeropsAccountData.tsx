@@ -90,6 +90,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const value = useMemo(
     () => ({
       data: store.data,
+      viewer: activeOrganization ?? undefined,
       orgId,
       demandDetail: observation.demandDetail,
       renewHeld: observation.renewHeld,
@@ -103,7 +104,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       logs,
       compare: observation.compare,
     }),
-    [logs, observation, orgId, store],
+    [activeOrganization, logs, observation, orgId, store],
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);
