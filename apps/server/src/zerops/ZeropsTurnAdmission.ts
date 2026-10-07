@@ -183,6 +183,15 @@ export class ZeropsTurnAdmission extends Context.Service<
      * somebody else, or nobody. A login no credential holds, a token's and a
      * driver Mate signs nobody in to are nobody's, and pass.
      */
+    /**
+     * Fails with the refusal when `principal` may not start a run on
+     * `instanceId` (D6): the Mate engine's admission, which names its instance
+     * and reads no V1 conversation.
+     */
+    readonly admitRun: (input: {
+      readonly instanceId: string;
+      readonly principal: TurnPrincipal;
+    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
     readonly admitOperator: (input: {
       readonly instanceIds: ReadonlyArray<string>;
       readonly principal: TurnPrincipal;
@@ -292,11 +301,9 @@ export const make = Effect.gen(function* () {
 
   /** D6 itself: the agent must be signed in, and signed in by this principal. */
   const refuseSomeoneElsesAgent = Effect.fnUntraced(function* (
-    command: OrchestrationCommand,
-    thread: OrchestrationThreadShell | undefined,
+    instanceId: string | undefined,
     principal: TurnPrincipal,
   ) {
-    const instanceId = instanceIdOf(command, thread);
     const login = instanceId === undefined ? undefined : yield* zeropsLogins.resolve(instanceId);
     if (login !== undefined) return yield* refuseSomeoneElsesLogin(login, principal);
     const agentId = yield* agentIdOf(instanceId);
@@ -361,7 +368,22 @@ export const make = Effect.gen(function* () {
       }
     }
     if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
-    yield* refuseSomeoneElsesAgent(command, thread, principal);
+    yield* refuseSomeoneElsesAgent(instanceIdOf(command, thread), principal);
+  });
+
+  /**
+   * The command door's checks for a run that names its instance and reads no
+   * conversation: a wake's person must still have access, and the agent or
+   * login must be signed in by this principal. The crew-thread guards stay
+   * with `admit`: crew is off whenever the Mate engine runs.
+   */
+  const admitRun: ZeropsTurnAdmission["Service"]["admitRun"] = Effect.fnUntraced(function* ({
+    instanceId,
+    principal,
+  }) {
+    if (!isZeropsEnvironment(config)) return;
+    if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
+    yield* refuseSomeoneElsesAgent(instanceId, principal);
   });
 
   /**
@@ -416,7 +438,7 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return ZeropsTurnAdmission.of({ admit, admitOperator });
+  return ZeropsTurnAdmission.of({ admit, admitRun, admitOperator });
 });
 
 export const layer = Layer.effect(ZeropsTurnAdmission, make);
