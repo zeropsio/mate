@@ -65,6 +65,27 @@ export const chatGateStages = [
     ],
   },
   {
+    // The engine's proof on the harness's fixed seeds (deep seeds run before an engine release,
+    // never here), and the running engine end to end on every driver.
+    name: "E: engine proof",
+    commands: [
+      {
+        cwd: "apps/server",
+        args: [
+          "test",
+          "run",
+          "src/engine/domain/decide.model.test.ts",
+          "src/engine/outbox/crash.test.ts",
+          "src/engine/engine.sim.test.ts",
+          "src/engine/engine.pump.test.ts",
+          "--allowOnly=false",
+          "--reporter=default",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
+        ],
+      },
+    ],
+  },
+  {
     name: "Typecheck: wire consumers",
     commands: [
       ...["apps/server", "packages/contracts", "packages/client-runtime", "apps/web"].map(
