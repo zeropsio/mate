@@ -3,7 +3,12 @@ import type { Mermaid } from "mermaid";
 import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
-import { type MermaidRenderResult, withoutRemoteCssUrls } from "./mermaidDiagram.logic";
+import {
+  diagramCss,
+  diagramStyleAttribute,
+  MERMAID_SECURE_KEYS,
+  type MermaidRenderResult,
+} from "./mermaidDiagram.logic";
 
 let mermaidModulePromise: Promise<{ mermaid: Mermaid; purify: typeof DOMPurify }> | null = null;
 let renderQueue: Promise<unknown> = Promise.resolve();
@@ -26,20 +31,24 @@ function loadMermaid(): Promise<{ mermaid: Mermaid; purify: typeof DOMPurify }> 
 }
 
 let purifier: ReturnType<typeof DOMPurify> | null = null;
+// The diagram being sanitized; renders run one at a time.
+let sanitizingId = "";
 
 // A diagram comes from the agent's words, so strip anything that can navigate,
 // run script, or fetch remote content on top of Mermaid's own strict
-// sanitization. CSS keeps only local url(#id) references; label text is untouched.
-function sanitizeMermaidSvg(createPurifier: typeof DOMPurify, svg: string): string {
+// sanitization. Its stylesheet keeps only rules on the diagram itself, and no
+// CSS keeps anything that fetches or pins; label text is untouched.
+function sanitizeMermaidSvg(createPurifier: typeof DOMPurify, svg: string, id: string): string {
+  sanitizingId = id;
   if (!purifier) {
     purifier = createPurifier(window);
     purifier.addHook("uponSanitizeElement", (node, data) => {
-      if (data.tagName === "style" && node.textContent) {
-        node.textContent = withoutRemoteCssUrls(node.textContent);
+      if (data.tagName === "style") {
+        node.textContent = diagramCss(node.textContent ?? "", sanitizingId);
       }
     });
     purifier.addHook("uponSanitizeAttribute", (_node, data) => {
-      if (data.attrName === "style") data.attrValue = withoutRemoteCssUrls(data.attrValue);
+      if (data.attrName === "style") data.attrValue = diagramStyleAttribute(data.attrValue);
     });
   }
   return purifier.sanitize(svg, {
@@ -73,18 +82,10 @@ async function renderMermaid(
       startOnLoad: false,
       securityLevel: "strict",
       suppressErrorRendering: true,
-      // HTML labels and theme CSS are mounted while Mermaid lays the diagram
+      // HTML labels, theme CSS, theme variables and fonts reach the diagram's
+      // stylesheet unescaped, and Mermaid mounts it while laying the diagram
       // out, before sanitizing, so diagram directives must not set them.
-      secure: [
-        "secure",
-        "securityLevel",
-        "startOnLoad",
-        "maxTextSize",
-        "suppressErrorRendering",
-        "maxEdges",
-        "htmlLabels",
-        "themeCSS",
-      ],
+      secure: [...MERMAID_SECURE_KEYS],
       htmlLabels: false,
       // Set at the answer's code size and spacing, so a diagram of a dozen
       // steps fits its frame without scaling its words below legibility.
@@ -95,7 +96,7 @@ async function renderMermaid(
       fontFamily: getComputedStyle(document.body).fontFamily,
     });
     const { svg } = await mermaid.render(id, source);
-    return { status: "rendered", svg: sanitizeMermaidSvg(purify, svg) };
+    return { status: "rendered", svg: sanitizeMermaidSvg(purify, svg, id) };
   } catch (error) {
     const message = error instanceof Error ? error.message : "The diagram could not be drawn.";
     return { status: "error", message, retryable: CHUNK_LOAD_ERROR.test(message) };

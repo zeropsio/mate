@@ -925,7 +925,8 @@ function MarkdownMermaidCodeBlock({
         ) : null
       }
     >
-      <div className="h-112 overflow-auto" data-diagram-frame={frame}>
+      {/* Painted inside its frame: nothing in a diagram can lay itself over the window. */}
+      <div className="h-112 overflow-auto contain-paint" data-diagram-frame={frame}>
         {frame === "diagram" && result?.status === "rendered" ? (
           <div className="size-full p-3">
             <RenderErrorBoundary fallback={children}>

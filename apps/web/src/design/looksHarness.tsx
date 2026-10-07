@@ -63,6 +63,21 @@ const ANSWER = [
   "Tests pass, and `src/payment.ts` is new.",
 ].join("\n");
 
+/** Directives that tried to lay a diagram over the window and to fetch a tracking pixel. */
+const HOSTILE = [
+  "```mermaid",
+  '%%{init: {"fontFamily": "x; position: fixed !important; inset: 0; z-index: 2147483647; width: 100vw !important"}}%%',
+  "flowchart TD",
+  "  A[Over the window?] --> B[No]",
+  "```",
+  "",
+  "```mermaid",
+  '%%{init: {"fontFamily": "x; background-image: image-set(\\"https://evil.example/p.png\\" 1x)"}}%%',
+  "flowchart TD",
+  "  A[Tracking pixel?] --> B[No]",
+  "```",
+].join("\n");
+
 const BROKEN = ["```mermaid", "flowchart TD", "  A[Cart] --> --> B{", "```"].join("\n");
 
 /** The answer as it streams: the fence arrives a line at a time, then settles. */
@@ -243,6 +258,8 @@ function Harness() {
         <div className="mx-auto grid w-full max-w-3xl gap-10" data-looks-harness={unit}>
           {unit === "mermaid-stream" ? (
             <StreamingAnswer />
+          ) : unit === "mermaid-hostile" ? (
+            <ChatMarkdown variant="answer" text={HOSTILE} cwd={undefined} />
           ) : unit === "mermaid" ? (
             <>
               <ChatMarkdown variant="answer" text={ANSWER} cwd={undefined} />
