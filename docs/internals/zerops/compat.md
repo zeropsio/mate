@@ -98,14 +98,16 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   - _Goldens/driver:_ unchanged from row 5
   - _Notes:_ See below
 - **8** — 2026-10-07
-  - _Ported upstream SHA:_ `10f39eb9a` (row 7's) — intake row 6b, lane conv: V1 re-implementations
-    of V2 fixes plus 3 ports, see `intake.md`
+  - _Ported upstream SHA:_ `10f39eb9a` (row 7's) — intake row 6b: lane conv's V1
+    re-implementations of V2 fixes plus 3 ports, and lane server's provider-zone ports (Claude
+    commands per workspace, a subagent's own model, Antigravity files by path), see `intake.md`
   - _Claude CLI:_ unchanged from row 5
   - _Claude Agent SDK:_ unchanged from row 5
   - _Codex CLI:_ floor `0.155.1` unchanged
   - _Effect:_ unchanged from row 5
-  - _Fixture set:_ row 5; `claude/zerops-workflow-envelope` regenerated (see notes)
-  - _Goldens/driver:_ unchanged from row 5
+  - _Fixture set:_ unchanged from row 5
+  - _Goldens/driver:_ counts unchanged from row 5; `claude/zerops-workflow-envelope`'s expected
+    output regenerated (see notes)
   - _Notes:_ See below
 
 ## Row 0 notes
@@ -298,4 +300,7 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   `claudeCallPresentation`, `presentCalls` in `handleAssistantMessage`, the presentation at a
   helper call's start and on the result update, completion and unreturned close; the
   `non_execution_kind` read on a tool result. `CodexSessionRuntime.ts`: the unarchive-and-resume
-  retry on an archived session.
+  retry on an archived session. From lane server, the fork-side lines in ported upstream fixes:
+  `ClaudeAdapter.ts` resolves a call seen only in a snapshot through `subagentToolParents` →
+  `helperOfCall` (upstream's `hasSubagents` is absent), and `AntigravityAcpSupport.ts` keeps the
+  unreadable copy with `fileContextOverLimit` for any file. No event member changed with them.

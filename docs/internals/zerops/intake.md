@@ -238,6 +238,41 @@ table keeps the decisions.
     for their own change. **Open for the owner:** one live Antigravity 1.3.0 turn, a live
     decode of Codex 0.155.1 against the new import, `git --version` ≥ 2.24 in the zcp image, and
     the `/ws` URL still carries the client-device parameters only the session list reads.
+  - _6b (2026-10-07):_ the same range's adapt verdicts, three lanes plus a dev-server fix.
+    **Clients (15 ports + 2 fixes):** mobile Home rows lighter and drawn further ahead, running
+    threads open at the latest message, the folded-screen composer, nitro-markdown autolinks
+    (ports, single-label hosts, a trailing `_`/`~`), dictation behind an edge pill with a lazy
+    recorder and a steady timer, a rejected follow-up says why above its thread's composer
+    (a rejected new task keeps the connection-wide error: no creation-outcome card here), By model
+    follows the metric on mobile; desktop Linux URL handler icon (not the pre-ready portal, which
+    needs upstream's window capture) and the AppImage static runtime; the release's catalog
+    overrides; a cloned project's favicon, server half only (the refetch waits for the entity
+    store). The mobile `App.tsx` is still the browser placeholder, so the voice provider and pill
+    have no mount yet; a source test makes whatever mounts the Stack wrap it. **Server (17 ports +
+    2 fixes):** Codex Fast/Ultrafast pricing, oversized transcript records streamed (new server
+    dependencies `stream-json` + `stream-chain`, bundled), commit-message staging kept, home-relative
+    media paths, triage names the `zerops@mate` journal, worktree submodules, DPoP replay markers
+    pruned, atomic cache writes, Antigravity reads an unsupported file by path, usage version
+    mismatches named per Mate, a subagent's own model, Claude commands per workspace (retry backing
+    off 10 s → 5 min), "Restart the coding agent" in ⌘K (only while the agent is idle), two lint
+    rules. **Conv (3 ports + 10 V1 re-implementations of V2 fixes + 4 fixes):** queued messages
+    leave while their conversation is not open (a root sender, one in-flight record per thread,
+    Stop per thread), skill calls name the skill, MCP calls carry their tool's own title and server
+    (SPI 2.7) and a cancelled call ends `stopped` (SPI 2.8), a model change that would end
+    background work is refused with its reason, an archived Codex session resumes, a local branch
+    named `t3code`, settling closes idle shells, passive rows stop retaining pollers (the web row
+    flags wait for the entity store's key), stale action shortcuts, file preview read errors,
+    composer suggestions for screen readers. **Dev fix:** the dev server loads jsonc-parser by name
+    again; only the bundle aliases its ES build. **Integration:** main's usage-coverage rewrite
+    keeps its layout and shows the contract-mismatch lines; both queue senders record a send in
+    the account's turn receipts through one helper. **Declined:** the two OTEL ports (`fd996d15e`,
+    `74ee5153e`) — Zerops project variables reach the zcp service, so a person's
+    `OTEL_EXPORTER_OTLP_ENDPOINT` for their own apps would make the Mate export to their collector;
+    a Mate-specific variable if ever wanted. The Codex API-key warning fixes (`bf7121d7a`,
+    `a8927712f`) — their code is the deleted telemetry. Legacy-sidebar items — that tree renders
+    only for environments that are not Zerops. `3a7058da5` (the route remounts here; its runtime
+    half is V2), `fffe6e6c8` (diverged palette, low value). The visible adoptions (mermaid, shell
+    highlighting, usage anatomy) wait for the owner.
   - _Open security candidates:_ `rev-parse --verify <rev>` sites take no `--end-of-options` (git
     learned it there in 2.30); the dead desktop bootstrap grant (`PairingGrantStore.ts`, nothing
     sends one in a Mate); `28ce9d1c1`'s split of `settings:write`/`providers:manage` out of
