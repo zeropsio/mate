@@ -16,6 +16,7 @@ import {
   wakeId,
   type EffectOutcome,
   type SessionId,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import * as ConversationsModule from "../Conversations.ts";
@@ -377,7 +378,12 @@ const signalsFrom = (session: string, ...list: ReadonlyArray<ProviderSignal>) =>
     { _tag: "ProviderSignals", sessionId: session as SessionId, signals: list },
     signalsCommandId(session as SessionId, ++proofBatches),
   );
-const ended: ProviderSignal = { kind: "turn-ended", outcome: { kind: "completed" } };
+const ended: ProviderSignal = {
+  kind: "turn-ended",
+  turn: "mate/r/1" as TurnHandle,
+  outcome: { kind: "completed" },
+  source: "agent",
+};
 const yieldMany = Effect.forEach(Array.from({ length: 300 }), () => Effect.yieldNow, {
   discard: true,
 });

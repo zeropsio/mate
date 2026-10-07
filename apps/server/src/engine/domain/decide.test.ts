@@ -15,7 +15,11 @@ import {
   type RejectionReason,
   type RunEndSource,
   type RunState,
+  type TurnEndSource,
+  type TurnHandle,
 } from "@t3tools/contracts";
+
+import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
 import { CONTINUE_TEXT, WATCHDOG_SILENCE_MS, decide } from "./decide.ts";
@@ -28,6 +32,8 @@ const bo: Principal = { kind: "person", subject: "bo" };
 const T0 = 1_000_000_000;
 const MINUTE = 60_000;
 const r = (n: number) => runId(conversation, n);
+/** The engine's handle for run n's turn: the run's own id. */
+const T = (n: number) => r(n) as string as TurnHandle;
 const s1 = SessionId.make("s1");
 
 interface Input {
@@ -115,7 +121,12 @@ const signal = (...signals: ReadonlyArray<ProviderSignal>): Command => ({
 const ask = { kind: "approval", requestKind: "command", detail: "rm -rf build" } as const;
 const requestOpened = (key = "q1", answerable = true) =>
   signal({ kind: "request-opened", key, ask, answerable });
-const turnEnded = signal({ kind: "turn-ended", outcome: { kind: "completed" } });
+const ended = (
+  n = 1,
+  outcome: TurnOutcome = { kind: "completed" },
+  source: TurnEndSource = "agent",
+): Command => signal({ kind: "turn-ended", turn: T(n), outcome, source });
+const turnEnded = ended(1);
 const stop = (run?: number): Command =>
   run === undefined ? { _tag: "Stop" } : { _tag: "Stop", runId: r(run) };
 const recovered = (cut: ReadonlyArray<string> = []): Command => ({
@@ -191,7 +202,7 @@ const transitions: ReadonlyArray<Row> = [
   {
     name: "a turn-started signal starts a run still sending",
     given: [send(), opened(1)],
-    when: signal({ kind: "turn-started", providerTurnId: "t1" }),
+    when: signal({ kind: "turn-started", turn: T(1), origin: "engine", providerTurnId: "t1" }),
     events: ["RunStarted", "ItemUpdated", "WakeArmed"],
     run: { n: 1, state: "running" },
   },
@@ -248,16 +259,16 @@ const transitions: ReadonlyArray<Row> = [
   {
     name: "a failed turn ends failed, said by the agent",
     given: running,
-    when: signal({ kind: "turn-ended", outcome: { kind: "failed", reason: "overloaded" } }),
+    when: ended(1, { kind: "failed", class: "provider", words: "overloaded" }),
     run: { n: 1, end: "failed", source: "agent" },
   },
   {
     name: "items open, update and close by the driver's key",
     given: running,
     when: signal(
-      { kind: "item-opened", key: "k", by: { kind: "mate" }, body: note("k") },
-      { kind: "item-updated", key: "k", body: note("k2") },
-      { kind: "item-closed", key: "k", body: { ...note("k3"), streaming: false } },
+      { kind: "item-opened", turn: T(1), key: "k", by: { kind: "mate" }, body: note("k") },
+      { kind: "item-updated", turn: T(1), key: "k", body: note("k2") },
+      { kind: "item-closed", turn: T(1), key: "k", body: { ...note("k3"), streaming: false } },
     ),
     events: ["ItemOpened", "ItemUpdated", "ItemClosed"],
     also: (scene) => expect(scene.events[0]).toMatchObject({ itemId: `${r(1)}/i/2`, key: "k" }),
@@ -266,11 +277,11 @@ const transitions: ReadonlyArray<Row> = [
     name: "a run's end closes its open items and lapses its requests",
     given: [
       ...waiting,
-      signal({ kind: "item-opened", key: "k", by: { kind: "mate" }, body: note("k") }),
+      signal({ kind: "item-opened", turn: T(1), key: "k", by: { kind: "mate" }, body: note("k") }),
     ],
     when: signal({ kind: "session-exited", reason: "exit 137" }),
     events: ["ItemClosed", "RequestClosed", "WakeCancelled", "RunEnded", "SessionClosed"],
-    run: { n: 1, end: "crashed", source: "inferred" },
+    run: { n: 1, end: "crashed", source: "inferred-from-crash" },
     also: (scene) => {
       expect(scene.events[0]).toMatchObject({ body: { streaming: false } });
       expect(scene.events[1]).toMatchObject({ state: "lapsed" });
@@ -295,14 +306,23 @@ const transitions: ReadonlyArray<Row> = [
   {
     name: "the provider ending the turn after a Stop confirms the Stop",
     given: [...running, stop()],
-    when: turnEnded,
+    when: ended(1, { kind: "interrupted" }, "stop-confirmed"),
     run: { n: 1, end: "stopped", source: "stop-confirmed" },
   },
   {
-    name: "an interrupt the provider acknowledges confirms the Stop",
-    given: [...running, stop()],
+    name: "an interrupt the provider acknowledges keeps the run until its own turn ends",
+    given: [...running, send("next"), stop()],
     when: settled(r(1), "provider.interrupt", { kind: "ok" }),
-    run: { n: 1, end: "stopped", source: "stop-confirmed" },
+    events: ["EffectOutcomeRecorded"],
+    run: { n: 1, state: "running" },
+    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("queued"),
+  },
+  {
+    name: "a stopped turn's own end ends the run and admits the next",
+    given: [...running, send("next"), stop(), settled(r(1), "provider.interrupt", { kind: "ok" })],
+    when: ended(1, { kind: "interrupted" }, "stop-asked"),
+    run: { n: 1, end: "stopped", source: "stop-asked" },
+    also: (scene) => expect(scene.state.runs[r(2)]?.state).toBe("sending"),
   },
   {
     name: "an interrupt that fails still ends the run, said by the Stop",
@@ -314,13 +334,13 @@ const transitions: ReadonlyArray<Row> = [
     name: "a session that fails to open ends the admitted run failed, inferred",
     given: [send()],
     when: settled(r(1), "session.open", { kind: "failed", reason: "not signed in" }),
-    run: { n: 1, end: "failed", source: "inferred" },
+    run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
   {
     name: "a send that fails ends the run failed, inferred",
     given: [send(), opened(1)],
     when: settled(r(1), "provider.send", { kind: "failed", reason: "socket closed" }),
-    run: { n: 1, end: "failed", source: "inferred" },
+    run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
   {
     name: "a usage limit ends the run and arms a resume at the reset",
@@ -360,7 +380,7 @@ const transitions: ReadonlyArray<Row> = [
     given: running,
     when: recovered(),
     events: ["WakeCancelled", "RunEnded", "WakeArmed", "SessionClosed"],
-    run: { n: 1, end: "cut-by-restart", source: "inferred" },
+    run: { n: 1, end: "cut-by-restart", source: "inferred-from-restart" },
     also: (scene) =>
       expect(scene.events[2]).toMatchObject({
         kind: "restart-continuation",
@@ -391,7 +411,7 @@ const transitions: ReadonlyArray<Row> = [
     name: `a restart does not continue a run when ${reason === "archived" ? "the conversation is archived" : reason}`,
     given,
     when: recovered(),
-    run: { n: 1, end: "cut-by-restart", source: "inferred" },
+    run: { n: 1, end: "cut-by-restart", source: "inferred-from-restart" },
     also: (scene) => {
       expect(scene.state.runs[r(1)]?.end).toMatchObject({ notContinued: reason });
       expect(tags(scene)).not.toContain("WakeArmed");
@@ -423,15 +443,26 @@ const transitions: ReadonlyArray<Row> = [
   },
   {
     name: "a turn the agent starts itself joins the run whose work it reports",
-    given: [...running, turnEnded, { command: send("other"), by: bo }, turnEnded],
-    when: signal({ kind: "turn-started", providerTurnId: "bg", reportsOn: r(1) }),
+    given: [...running, turnEnded, { command: send("other"), by: bo }, ended(2)],
+    when: signal({
+      kind: "turn-started",
+      turn: "bg" as TurnHandle,
+      origin: "self",
+      providerTurnId: "bg",
+      reportsOn: r(1),
+    }),
     events: ["RunQueued", "RunAdmitted", "RunStarted", "WakeArmed"],
     run: { n: 3, state: "running", joins: 1, cause: "self", principal: ana },
   },
   {
     name: "a turn the agent starts itself joins the latest run when the bridge names none",
     given: [...running, turnEnded],
-    when: signal({ kind: "turn-started", providerTurnId: "bg" }),
+    when: signal({
+      kind: "turn-started",
+      turn: "bg" as TurnHandle,
+      origin: "self",
+      providerTurnId: "bg",
+    }),
     run: { n: 2, state: "running", joins: 1, cause: "self", principal: ana },
   },
   {
@@ -446,7 +477,13 @@ const transitions: ReadonlyArray<Row> = [
     given: [
       ...running,
       {
-        command: signal({ kind: "item-opened", key: "k", by: { kind: "mate" }, body: note("k") }),
+        command: signal({
+          kind: "item-opened",
+          turn: T(1),
+          key: "k",
+          by: { kind: "mate" },
+          body: note("k"),
+        }),
         at: T0 + 5 * MINUTE,
       },
     ],
@@ -458,13 +495,19 @@ const transitions: ReadonlyArray<Row> = [
   {
     name: "a boundary from an unresponsive run clears the mark",
     given: [...running, fired("watchdog", r(1), T0 + WATCHDOG_SILENCE_MS)],
-    when: signal({ kind: "item-opened", key: "k", by: { kind: "mate" }, body: note("k") }),
+    when: signal({
+      kind: "item-opened",
+      turn: T(1),
+      key: "k",
+      by: { kind: "mate" },
+      body: note("k"),
+    }),
     events: ["RunResponsive", "ItemOpened"],
   },
   {
     name: "activity is recorded at most every half watchdog",
-    given: [...running, { command: signal({ kind: "activity" }), at: T0 + MINUTE }],
-    when: { command: signal({ kind: "activity" }), at: T0 + WATCHDOG_SILENCE_MS / 2 },
+    given: [...running, { command: signal({ kind: "activity", turn: T(1) }), at: T0 + MINUTE }],
+    when: { command: signal({ kind: "activity", turn: T(1) }), at: T0 + WATCHDOG_SILENCE_MS / 2 },
     events: ["RunResponsive"],
     also: (scene) =>
       expect(scene.state.runs[r(1)]?.lastActivityAt).toBe(T0 + WATCHDOG_SILENCE_MS / 2),
@@ -644,7 +687,7 @@ const rejections: ReadonlyArray<{
   {
     name: "signals before any session opened",
     given: [send()],
-    when: signal({ kind: "turn-started", providerTurnId: null }),
+    when: signal({ kind: "turn-started", turn: T(1), origin: "engine", providerTurnId: null }),
     reason: "stale-session",
   },
   {
@@ -752,7 +795,7 @@ describe("decide: a turn's signals land on its own run", () => {
       send("next"),
       stop(),
       settled(r(1), "provider.interrupt", { kind: "ok" }),
-      turnEnded,
+      ended(1, { kind: "interrupted" }, "stop-confirmed"),
     ]);
     expect(ends(log)).toEqual(["1:stopped/stop-confirmed"]);
     expect(state.runs[r(2)]?.state).toBe("sending");
@@ -784,23 +827,26 @@ describe("decide: a turn's signals land on its own run", () => {
       turnEnded,
       signal({
         kind: "item-closed",
+        turn: T(1),
         key: "late",
         body: { kind: "note", text: "x", streaming: false, answer: false },
+        afterEnd: true,
       }),
     ]);
     const filed = log.flatMap((e) =>
       e._tag === "ItemOpened" && e.by.kind === "mate" ? [e.runId] : [],
     );
-    expect(filed).toEqual([]);
+    expect(filed).not.toContain(r(2));
+    expect(filed).toEqual([r(1)]);
   });
   it("a turn the bridge says ended by a crash ends the run inferred, not said by the agent", () => {
-    const end = {
-      kind: "turn-ended",
-      outcome: { kind: "failed", reason: "process exited" },
-      source: "inferred-from-crash",
-    } as unknown as ProviderSignal;
-    const { log } = playAll([...proofRunning, signal(end)]);
-    expect(ends(log)).toEqual(["1:failed/inferred"]);
+    const end = ended(
+      1,
+      { kind: "failed", class: "unknown", words: "process exited" },
+      "inferred-from-crash",
+    );
+    const { log } = playAll([...proofRunning, end]);
+    expect(ends(log)).toEqual(["1:failed/inferred-from-crash"]);
   });
 });
 
@@ -877,7 +923,7 @@ describe("decide: the watchdog watches a running run only", () => {
     const { state } = playAll([
       ...proofRunning,
       silent,
-      { command: signal({ kind: "activity" }), at: T0 + WATCHDOG_SILENCE_MS + 1 },
+      { command: signal({ kind: "activity", turn: T(1) }), at: T0 + WATCHDOG_SILENCE_MS + 1 },
     ]);
     expect(Object.values(state.wakes).some((w) => w.kind === "watchdog")).toBe(true);
   });

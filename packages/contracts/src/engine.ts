@@ -34,6 +34,13 @@ export const SessionId = engineId("EngineSessionId");
 export type SessionId = typeof SessionId.Type;
 export const BootId = engineId("EngineBootId");
 export type BootId = typeof BootId.Type;
+/**
+ * One turn the bridge reports on: the engine's handle for a message it sent (its run's id), or
+ * the bridge's for a turn the agent opened itself. Every turn-scoped signal names one, so a late
+ * signal lands on its own run.
+ */
+export const TurnHandle = TrimmedNonEmptyString.pipe(Schema.brand("TurnHandle"));
+export type TurnHandle = typeof TurnHandle.Type;
 
 /** `${conversation}/r/${ordinal}`: the conversation's n-th run. */
 export const runId = (conversation: ConversationId, ordinal: number): RunId =>
@@ -150,10 +157,34 @@ export type RunEnd = typeof RunEnd.Type;
 export type RunEndKind = RunEnd["kind"];
 
 /**
- * Who said the run ended: the agent itself; the bridge, inferring it from a crash or a failed
- * effect; the engine on a Stop no provider confirmed; or the provider confirming a Stop.
+ * Who says a turn ended, as the bridge reports it:
+ * - `agent`: the driver reported the end, and no Stop was asked;
+ * - `stop-confirmed`: a Stop was asked and the agent itself acknowledged it;
+ * - `stop-asked`: a Stop was asked and the end is local, without the agent confirming;
+ * - `inferred-from-crash`: no terminal came; the process died or the session was found gone;
+ * - `inferred-from-close`: the host closed the session with the turn open;
+ * - `inferred-from-next-turn`: the driver opened another turn first.
  */
-export const RunEndSource = Schema.Literals(["agent", "inferred", "stop-asked", "stop-confirmed"]);
+export const TURN_END_SOURCES = [
+  "agent",
+  "stop-confirmed",
+  "stop-asked",
+  "inferred-from-crash",
+  "inferred-from-close",
+  "inferred-from-next-turn",
+] as const;
+export const TurnEndSource = Schema.Literals(TURN_END_SOURCES);
+export type TurnEndSource = typeof TurnEndSource.Type;
+
+/**
+ * Who said the run ended: the bridge's word for its turn, or the engine inferring it from a
+ * restart or from an effect that failed for good.
+ */
+export const RunEndSource = Schema.Literals([
+  ...TURN_END_SOURCES,
+  "inferred-from-restart",
+  "inferred-from-effect",
+]);
 export type RunEndSource = typeof RunEndSource.Type;
 
 /** Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn). */
@@ -472,6 +503,8 @@ export const RunSending = event("RunSending", {
 export const RunStarted = event("RunStarted", {
   runId: RunId,
   providerTurnId: Schema.NullOr(Schema.String),
+  /** The turn the run lives in: its own handle, or the agent's turn its message joined. */
+  turn: Schema.NullOr(TurnHandle),
 });
 export const RunWaiting = event("RunWaiting", { runId: RunId, requestId: RequestId });
 export const RunResumed = event("RunResumed", { runId: RunId });

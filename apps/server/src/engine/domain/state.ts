@@ -20,6 +20,7 @@ import type {
   RunTrigger,
   SessionCapabilities,
   SessionId,
+  TurnHandle,
   WakeId,
 } from "@t3tools/contracts";
 
@@ -27,7 +28,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -44,6 +45,8 @@ export interface RunRecord {
   readonly state: RunState;
   readonly sessionId: SessionId | null;
   readonly providerTurnId: string | null;
+  /** The turn the run lives in, once it is sending or started. */
+  readonly turn: TurnHandle | null;
   readonly waitingOn: RequestId | null;
   readonly stopAsked: { readonly by: Principal; readonly at: number } | null;
   readonly end: RunEnd | null;
@@ -119,6 +122,8 @@ export interface ConversationState {
   readonly latestRunId: RunId | null;
   /** The latest ended runs, oldest first, kept so a wake or a self-started turn can join them. */
   readonly endedRuns: ReadonlyArray<RunId>;
+  /** Each known turn's run: every turn-scoped signal is routed through it. Pruned with the runs. */
+  readonly turns: Readonly<Record<string, RunId>>;
   /** Sequence of the latest person message (a sent or steered one). */
   readonly lastPersonSeq: number;
   readonly session: SessionRecord | null;
@@ -143,6 +148,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   activeRunId: null,
   latestRunId: null,
   endedRuns: [],
+  turns: {},
   lastPersonSeq: 0,
   session: null,
   lastNativeRef: null,
@@ -155,3 +161,9 @@ export const initialState = (conversationId: ConversationId): ConversationState 
 
 export const activeRun = (state: ConversationState): RunRecord | undefined =>
   state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+
+/** The run a turn belongs to, while the state still keeps it. */
+export const runOfTurn = (state: ConversationState, turn: string): RunRecord | undefined => {
+  const id = state.turns[turn];
+  return id === undefined ? undefined : state.runs[id];
+};

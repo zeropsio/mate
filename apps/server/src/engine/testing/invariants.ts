@@ -6,6 +6,7 @@
 import * as Schema from "effect/Schema";
 import {
   EngineEvent,
+  TURN_END_SOURCES,
   type ConversationId,
   type KnownEngineEvent,
   type RunId,
@@ -47,18 +48,14 @@ const LEGAL: Readonly<Record<RunState | "none", ReadonlyArray<RunState>>> = {
 };
 
 /** Who may end a run, and how (rule 5: only evidence ends a run). */
+const signalEnds = ["completed", "failed", "usage-limit", "stopped", "crashed"].flatMap((kind) =>
+  TURN_END_SOURCES.map((source) => `${kind}/${source}`),
+);
 const ENDERS: Readonly<Record<string, ReadonlyArray<string>>> = {
   Stop: ["stopped/stop-asked"],
-  EffectSettled: ["failed/inferred", "stopped/stop-confirmed", "stopped/stop-asked"],
-  ProviderSignals: [
-    "completed/agent",
-    "failed/agent",
-    "usage-limit/agent",
-    "stopped/stop-confirmed",
-    "stopped/stop-asked",
-    "crashed/inferred",
-  ],
-  Recovered: ["cut-by-restart/inferred"],
+  EffectSettled: ["failed/inferred-from-effect", "stopped/stop-asked"],
+  ProviderSignals: signalEnds,
+  Recovered: ["cut-by-restart/inferred-from-restart"],
 };
 
 interface ModelRun {

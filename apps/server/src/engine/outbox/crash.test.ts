@@ -18,6 +18,7 @@ import {
   type Principal,
   type RequestId,
   type SessionId,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import { Conversations } from "../Conversations.ts";
@@ -35,7 +36,13 @@ type Move =
   | { readonly kind: "signals"; readonly signals: ReadonlyArray<ProviderSignal> }
   | { readonly kind: "work" };
 
-const turnEnded: ProviderSignal = { kind: "turn-ended", outcome: { kind: "completed" } };
+const turnOf = (run: number) => `${c}/r/${run}` as TurnHandle;
+const turnEnded = (run: number | TurnHandle): ProviderSignal => ({
+  kind: "turn-ended",
+  turn: typeof run === "number" ? turnOf(run) : run,
+  outcome: { kind: "completed" },
+  source: "agent",
+});
 const script: ReadonlyArray<Move> = [
   { kind: "ask", command: { _tag: "Send", text: "go" }, id: "send-1" },
   { kind: "work" }, // session.open
@@ -45,6 +52,7 @@ const script: ReadonlyArray<Move> = [
     signals: [
       {
         kind: "item-opened",
+        turn: turnOf(1),
         key: "n1",
         by: { kind: "mate" },
         body: { kind: "note", text: "on it", streaming: true, answer: false },
@@ -72,10 +80,10 @@ const script: ReadonlyArray<Move> = [
     id: "answer-1",
   },
   { kind: "work" }, // provider.respond
-  { kind: "signals", signals: [turnEnded] },
+  { kind: "signals", signals: [turnEnded(1)] },
   { kind: "ask", command: { _tag: "Send", text: "again" }, id: "send-2" },
   { kind: "work" }, // provider.send
-  { kind: "signals", signals: [turnEnded] },
+  { kind: "signals", signals: [turnEnded(2)] },
 ];
 
 type Crash =
@@ -219,7 +227,7 @@ const reboot = (file: string, world: World) =>
           command: {
             _tag: "ProviderSignals",
             sessionId: state.session!.id as SessionId,
-            signals: [turnEnded],
+            signals: [turnEnded(run.turn ?? turnOf(run.ordinal))],
           },
         });
         continue;

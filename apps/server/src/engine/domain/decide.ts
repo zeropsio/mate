@@ -32,7 +32,10 @@ import {
   type RunTrigger,
   type SessionCapabilities,
   type SessionId,
+  type TurnHandle,
 } from "@t3tools/contracts";
+
+import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type {
   Command,
@@ -46,12 +49,14 @@ import type {
   ProviderSignal,
 } from "./command.ts";
 import { evolve, stampEvents } from "./evolve.ts";
-import { activeRun, type ConversationState, type RunRecord } from "./state.ts";
+import { activeRun, runOfTurn, type ConversationState, type RunRecord } from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
+/** How a run reads when its own agent interrupted the turn, no Stop asked. */
+export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 
 /** The effects `decide` asks for, with the lane they queue in and what a restart does to them. */
 export const EFFECT_KINDS = {
@@ -242,6 +247,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     const effect = b.effect("provider.send", run.id, 1, run.id, {
       runId: run.id,
       sessionId: session.id,
+      turn: run.id,
       text: run.text,
     });
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
@@ -323,8 +329,13 @@ const armWatchdog = (b: StepBuilder, run: RunRecord, from: number): void => {
   });
 };
 
-const markStarted = (b: StepBuilder, run: RunRecord, providerTurnId: string | null): void => {
-  b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId });
+const markStarted = (
+  b: StepBuilder,
+  run: RunRecord,
+  providerTurnId: string | null,
+  turn: TurnHandle | null = run.turn,
+): void => {
+  b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   updatePerson(b, run, "delivered");
   armWatchdog(b, b.run(run.id), b.now);
 };
@@ -379,6 +390,7 @@ const stop = (b: StepBuilder, target: RunId | undefined): void => {
   const effect = b.effect("provider.interrupt", run.id, 1, run.id, {
     runId: run.id,
     sessionId: run.sessionId,
+    turn: run.turn,
     providerTurnId: run.providerTurnId,
   });
   b.emit({ _tag: "RunStopAsked", runId: run.id, by: b.envelope.principal, effectId: effect });
@@ -579,7 +591,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   switch (effect.kind) {
     case "session.open":
       if (failure !== null) {
-        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred");
+        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
         admitNext(b);
         return;
       }
@@ -588,28 +600,38 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       return;
     case "provider.send":
       if (failure !== null) {
-        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred");
+        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
         admitNext(b);
         return;
       }
       if (run.state === "sending") {
-        const value = outcome.kind === "ok" ? outcome.value : undefined;
-        const turn =
-          typeof value === "object" && value !== null && "providerTurnId" in value
-            ? String((value as { providerTurnId: unknown }).providerTurnId)
-            : null;
-        markStarted(b, run, turn);
+        const accepted = sendAccepted(outcome.kind === "ok" ? outcome.value : undefined);
+        markStarted(b, run, accepted.providerTurnId, accepted.turn ?? run.turn);
       }
       return;
-    case "provider.interrupt": {
-      const by = run.stopAsked?.by ?? b.envelope.principal;
-      endRun(b, run, { kind: "stopped", by }, failure === null ? "stop-confirmed" : "stop-asked");
-      admitNext(b);
+    case "provider.interrupt":
+      // The interrupt's acknowledgement is not the turn's end: the run stays until its own turn
+      // ends. An interrupt that failed leaves nothing to wait for, so the Stop ends the run.
+      if (failure !== null && run.stopAsked !== null && isLive(run)) {
+        endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-asked");
+        admitNext(b);
+      }
       return;
-    }
     default:
       return;
   }
+};
+
+/** What a send settles with: the turn the message went into, and the driver's id for it. */
+const sendAccepted = (
+  value: unknown,
+): { readonly turn: TurnHandle | null; readonly providerTurnId: string | null } => {
+  const record =
+    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return {
+    turn: typeof record.turn === "string" ? (record.turn as TurnHandle) : null,
+    providerTurnId: typeof record.providerTurnId === "string" ? record.providerTurnId : null,
+  };
 };
 
 const openSession = (b: StepBuilder, value: unknown): void => {
@@ -646,26 +668,36 @@ const signals = (
   }
 };
 
-/** The active run once it is live: a boundary while still sending means the turn started. */
-const liveRun = (b: StepBuilder): RunRecord | undefined => {
-  const run = activeRun(b.state);
-  if (run === undefined || !isLive(run)) return undefined;
+/** A boundary from a live run: one while it is still sending means its turn started. */
+const awaken = (b: StepBuilder, run: RunRecord): RunRecord => {
   if (run.state === "sending") markStarted(b, run, null);
   const live = b.run(run.id);
   if (live.unresponsiveSince !== null) b.emit({ _tag: "RunResponsive", runId: live.id });
   return b.run(run.id);
 };
 
+/** The run a turn-scoped signal belongs to; a turn the engine does not know has none. */
+const routed = (b: StepBuilder, turn: TurnHandle | undefined): RunRecord | undefined => {
+  if (turn === undefined) {
+    const active = activeRun(b.state);
+    return active !== undefined && isLive(active) ? active : undefined;
+  }
+  return runOfTurn(b.state, turn);
+};
+
 const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal): void => {
   switch (signal.kind) {
     case "turn-started": {
-      const run = activeRun(b.state);
-      if (run?.state === "sending") return markStarted(b, run, signal.providerTurnId);
-      if (run !== undefined) return;
-      return selfStarted(b, signal.providerTurnId, signal.reportsOn ?? null);
+      const run = runOfTurn(b.state, signal.turn);
+      if (run !== undefined) {
+        if (run.state === "sending") markStarted(b, run, signal.providerTurnId, signal.turn);
+        return;
+      }
+      if (signal.origin !== "self" || b.state.activeRunId !== null) return;
+      return selfStarted(b, signal.turn, signal.providerTurnId, signal.reportsOn ?? null);
     }
     case "activity": {
-      const run = activeRun(b.state);
+      const run = routed(b, signal.turn);
       if (run === undefined || !isLive(run)) return;
       const quiet = b.now - (run.lastActivityAt ?? 0) >= WATCHDOG_SILENCE_MS / 2;
       if (run.unresponsiveSince !== null || quiet) {
@@ -676,8 +708,10 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     }
     case "item-opened":
     case "item-closed": {
-      const run = liveRun(b);
-      if (run === undefined) return;
+      const owner = routed(b, signal.turn);
+      if (owner === undefined) return;
+      const run = isLive(owner) ? awaken(b, owner) : owner;
+      if (run.state !== "ended" && !isLive(run)) return;
       const open = Object.values(b.state.items).find((item) => item.key === signal.key);
       let id = open?.id;
       if (id === undefined) {
@@ -693,32 +727,47 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       } else if (signal.kind === "item-opened") {
         b.emit({ _tag: "ItemUpdated", runId: run.id, itemId: id, body: signal.body });
       }
-      if (signal.kind === "item-closed") {
-        b.emit({ _tag: "ItemClosed", runId: run.id, itemId: id, body: signal.body });
+      // A run that has ended never holds an open item: what arrives after its end is filed closed.
+      if (signal.kind === "item-closed" || run.state === "ended") {
+        b.emit({
+          _tag: "ItemClosed",
+          runId: run.id,
+          itemId: id,
+          body: run.end === null ? signal.body : settledBody(signal.body, run.end),
+        });
       }
       if (signal.detail !== undefined) b.details.push({ itemId: id, body: signal.detail });
       return;
     }
     case "item-updated": {
+      const owner = routed(b, signal.turn);
       const open = Object.values(b.state.items).find((item) => item.key === signal.key);
-      if (open === undefined || liveRun(b) === undefined) return;
+      if (owner === undefined || open === undefined || !isLive(owner)) return;
+      awaken(b, owner);
       b.emit({ _tag: "ItemUpdated", runId: open.runId, itemId: open.id, body: signal.body });
       return;
     }
     case "request-opened": {
-      const run = liveRun(b);
-      if (run === undefined) return;
+      const owner = routed(b, signal.turn);
+      if (owner === undefined) return;
       if (Object.values(b.state.requests).some((request) => request.key === signal.key)) return;
+      const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
+      const live = isLive(run);
       b.emit({
         _tag: "RequestOpened",
         runId: run.id,
         requestId: id,
         key: signal.key,
         ask: signal.ask,
-        answerable: signal.answerable ?? true,
+        answerable: live && (signal.answerable ?? true),
         principal: run.principal,
       });
+      if (!live) {
+        // Its turn already ended: nothing can take the answer.
+        b.emit({ _tag: "RequestClosed", runId: run.id, requestId: id, state: "lapsed" });
+        return;
+      }
       if (b.run(run.id).state !== "waiting") {
         b.emit({ _tag: "RunWaiting", runId: run.id, requestId: id });
       }
@@ -737,50 +786,33 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
     case "turn-ended": {
-      const run = activeRun(b.state);
+      const run = runOfTurn(b.state, signal.turn);
       if (run === undefined || !isLive(run)) return;
-      if (run.stopAsked !== null) {
-        endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-confirmed");
-      } else if (signal.outcome.kind === "completed") {
-        endRun(b, run, { kind: "completed" }, "agent");
-      } else {
-        endRun(
-          b,
-          run,
-          { kind: "failed", reason: signal.outcome.reason, next: signal.outcome.next ?? null },
-          "agent",
-        );
-      }
+      // A turn that ends before it was seen to start still started: the message reached the agent.
+      if (run.state === "sending") markStarted(b, run, null, signal.turn);
+      const live = b.run(run.id);
+      const end = turnEnd(live, signal.outcome);
+      endRun(b, live, end, signal.source);
+      if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
       return;
     }
     case "usage-limit": {
-      const run = activeRun(b.state);
+      const run = routed(b, signal.turn);
       if (run !== undefined && isLive(run)) {
         endRun(b, run, { kind: "usage-limit", resetsAt: signal.resetsAt }, "agent");
-        if (signal.resetsAt !== null) {
-          b.emit({
-            _tag: "WakeArmed",
-            wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
-            kind: "usage-resume",
-            dueAt: signal.resetsAt,
-            cron: null,
-            principal: run.principal,
-            joins: run.id,
-            text: CONTINUE_TEXT,
-          });
-        }
+        limited(b, run, signal.resetsAt);
       }
       admitNext(b);
       return;
     }
     case "session-exited": {
       const run = activeRun(b.state);
-      if (run !== undefined && isLive(run)) {
+      if (run !== undefined && isLive(run) && run.sessionId === sessionId) {
         if (run.stopAsked !== null) {
-          endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-asked");
+          endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "inferred-from-crash");
         } else {
-          endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred");
+          endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash");
         }
       }
       b.emit({ _tag: "SessionClosed", sessionId, reason: "exited" });
@@ -790,8 +822,57 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
   }
 };
 
+/** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */
+const turnEnd = (run: RunRecord, outcome: TurnOutcome): RunEnd => {
+  const stoppedBy = run.stopAsked?.by;
+  switch (outcome.kind) {
+    case "completed":
+      return { kind: "completed" };
+    case "interrupted":
+      return stoppedBy !== undefined
+        ? { kind: "stopped", by: stoppedBy }
+        : { kind: "failed", reason: AGENT_STOPPED_ITSELF, next: null };
+    case "failed":
+    case "unknown":
+    case "undelivered":
+      return { kind: "failed", reason: outcome.words, next: null };
+    case "usage-limited":
+      return { kind: "usage-limit", resetsAt: resetTime(outcome.resetsAt) };
+    case "cut":
+      return stoppedBy !== undefined
+        ? { kind: "stopped", by: stoppedBy }
+        : { kind: "crashed", reason: outcome.words ?? outcome.cause };
+  }
+};
+
+const resetTime = (resetsAt: string): number | null => {
+  if (resetsAt === "unknown") return null;
+  const at = Date.parse(resetsAt);
+  return Number.isNaN(at) ? null : at;
+};
+
+/** A usage limit ended `run`: a known reset arms a resume that joins it. */
+const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void => {
+  if (resetsAt === null) return;
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
+    kind: "usage-resume",
+    dueAt: resetsAt,
+    cron: null,
+    principal: run.principal,
+    joins: run.id,
+    text: CONTINUE_TEXT,
+  });
+};
+
 /** A turn the agent started on its own: a run that joins the run whose work it reports. */
-const selfStarted = (b: StepBuilder, providerTurnId: string | null, reportsOn: RunId | null) => {
+const selfStarted = (
+  b: StepBuilder,
+  turn: TurnHandle,
+  providerTurnId: string | null,
+  reportsOn: RunId | null,
+) => {
   const joins = reportsOn ?? b.state.latestRunId;
   const joined = joins === null ? undefined : b.state.runs[joins];
   const run = queueRun(b, {
@@ -802,7 +883,7 @@ const selfStarted = (b: StepBuilder, providerTurnId: string | null, reportsOn: R
     text: "",
   });
   b.emit({ _tag: "RunAdmitted", runId: run });
-  markStarted(b, b.run(run), providerTurnId);
+  markStarted(b, b.run(run), providerTurnId, turn);
 };
 
 // ── recovery ────────────────────────────────────────────────────────────────────────────────
@@ -836,7 +917,7 @@ const recovered = (b: StepBuilder, cutEffects: ReadonlyArray<EffectId>): void =>
       refusal === null
         ? { kind: "cut-by-restart", continuedBy: null }
         : { kind: "cut-by-restart", continuedBy: null, notContinued: refusal },
-      "inferred",
+      "inferred-from-restart",
     );
     if (refusal === null) {
       b.emit({

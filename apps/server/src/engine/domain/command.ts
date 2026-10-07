@@ -25,34 +25,58 @@ import type {
   RequestState,
   RunId,
   SessionId,
+  TurnEndSource,
+  TurnHandle,
   WakeId,
 } from "@t3tools/contracts";
 
-/** What a driver reported at a boundary. Deltas never come here; they stay on the live plane. */
+import type { TurnOutcome } from "../bridge/spi3.ts";
+
+/**
+ * What a driver reported at a boundary. Deltas never come here; they stay on the live plane. Every
+ * turn-scoped signal names its turn, so a late signal lands on the run that turn belongs to and
+ * never on whatever run is active; a signal for a turn the engine does not know is dropped.
+ */
 export type ProviderSignal =
   | {
       readonly kind: "turn-started";
+      readonly turn: TurnHandle;
+      /** `self`: the agent opened it with no message from the engine (Claude's background results). */
+      readonly origin: "engine" | "self";
       readonly providerTurnId: string | null;
       /** For a turn the agent started itself: the run whose work it reports, when the bridge knows. */
       readonly reportsOn?: RunId | null;
     }
   | {
       readonly kind: "item-opened";
+      readonly turn: TurnHandle;
       readonly key: string;
       readonly by: ItemActor;
       readonly body: ItemBody;
       readonly detail?: string;
+      /** Arrived after its turn ended; filed under that turn's run, never reopening it. */
+      readonly afterEnd?: true;
     }
-  | { readonly kind: "item-updated"; readonly key: string; readonly body: ItemBody }
+  | {
+      readonly kind: "item-updated";
+      readonly turn: TurnHandle;
+      readonly key: string;
+      readonly body: ItemBody;
+      readonly afterEnd?: true;
+    }
   | {
       readonly kind: "item-closed";
+      readonly turn: TurnHandle;
       readonly key: string;
       readonly by?: ItemActor;
       readonly body: ItemBody;
       readonly detail?: string;
+      readonly afterEnd?: true;
     }
   | {
       readonly kind: "request-opened";
+      /** Absent when the driver could not tie the request to a turn: the active run's. */
+      readonly turn?: TurnHandle;
       readonly key: string;
       readonly ask: RequestAsk;
       readonly answerable?: boolean;
@@ -64,14 +88,19 @@ export type ProviderSignal =
     }
   | {
       readonly kind: "turn-ended";
-      readonly outcome:
-        | { readonly kind: "completed" }
-        | { readonly kind: "failed"; readonly reason: string; readonly next?: string | null };
+      readonly turn: TurnHandle;
+      readonly outcome: TurnOutcome;
+      readonly source: TurnEndSource;
     }
-  | { readonly kind: "usage-limit"; readonly resetsAt: number | null }
+  | {
+      readonly kind: "usage-limit";
+      /** The turn the limit parked or ended; absent between turns. */
+      readonly turn?: TurnHandle;
+      readonly resetsAt: number | null;
+    }
   | { readonly kind: "session-exited"; readonly reason: string }
-  /** Deltas flowed: the run is alive. Throttled by `decide`, so the pump may send it per batch. */
-  | { readonly kind: "activity" };
+  /** Deltas flowed: the turn is alive. Throttled by `decide`, so the pump may send it per batch. */
+  | { readonly kind: "activity"; readonly turn: TurnHandle };
 
 export type Command =
   | {

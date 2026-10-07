@@ -10,6 +10,7 @@ import {
   type KnownEngineEvent,
   type RunEnd,
   type RunId,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
@@ -49,6 +50,9 @@ const without = <V>(record: Readonly<Record<string, V>>, key: string): Record<st
   return rest;
 };
 
+const withTurn = (state: ConversationState, turn: string, run: RunId): ConversationState =>
+  state.turns[turn] === run ? state : { ...state, turns: { ...state.turns, [turn]: run } };
+
 const touch = (state: ConversationState, id: RunId | null, at: number) =>
   withRun(state, id, (run) => ({ ...run, lastActivityAt: at }));
 
@@ -74,6 +78,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         state: "queued",
         sessionId: null,
         providerTurnId: null,
+        turn: null,
         waitingOn: null,
         stopAsked: null,
         end: null,
@@ -117,20 +122,25 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         (run) => ({ ...run, state: "admitted", admittedAt: event.at }),
       );
     case "RunSending":
-      return withRun(state, event.runId, (run) => ({
+      // The engine's handle for the message it sends is the run's own id.
+      return withRun(withTurn(state, event.runId, event.runId), event.runId, (run) => ({
         ...run,
         state: "sending",
         sessionId: event.sessionId,
+        turn: run.turn ?? (event.runId as string as TurnHandle),
       }));
-    case "RunStarted":
-      return withRun(state, event.runId, (run) => ({
+    case "RunStarted": {
+      const turned = event.turn === null ? state : withTurn(state, event.turn, event.runId);
+      return withRun(turned, event.runId, (run) => ({
         ...run,
         state: "running",
         startedAt: event.at,
         providerTurnId: event.providerTurnId,
+        turn: event.turn ?? run.turn,
         sessionId: run.sessionId ?? state.session?.id ?? null,
         lastActivityAt: event.at,
       }));
+    }
     case "RunWaiting":
       return withRun(state, event.runId, (run) => ({
         ...run,
@@ -160,13 +170,15 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       }));
       const kept = [...state.endedRuns.filter((id) => id !== event.runId), event.runId];
       const dropped = kept.length > KEPT_ENDED_RUNS ? kept.shift() : undefined;
-      const runs =
-        dropped !== undefined && dropped !== state.latestRunId
-          ? without(ended.runs, dropped)
-          : ended.runs;
+      const prune = dropped !== undefined && dropped !== state.latestRunId;
+      const runs = prune ? without(ended.runs, dropped) : ended.runs;
+      const turns = prune
+        ? Object.fromEntries(Object.entries(ended.turns).filter(([, run]) => run !== dropped))
+        : ended.turns;
       return {
         ...ended,
         runs,
+        turns,
         queue: state.queue.filter((id) => id !== event.runId),
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         endedRuns: kept,

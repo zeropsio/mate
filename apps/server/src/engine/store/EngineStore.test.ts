@@ -1,6 +1,6 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { CommandId, ConversationId, type SessionId } from "@t3tools/contracts";
+import { CommandId, ConversationId, type SessionId, type TurnHandle } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -11,6 +11,7 @@ import {
   T0,
   conversation,
   drive,
+  ended,
   envelope,
   opened,
   r,
@@ -18,6 +19,7 @@ import {
   sent,
   signal,
   sqliteWithEngineTables,
+  turn,
   turnEnded,
 } from "../testing/fixtures.ts";
 import { Conversations } from "../Conversations.ts";
@@ -216,7 +218,7 @@ describe("EngineStore", () => {
           opened(1),
           sent(1),
           signal(
-            { kind: "item-opened", key: "a", by: { kind: "mate" }, body: note("a") },
+            { kind: "item-opened", turn: turn(1), key: "a", by: { kind: "mate" }, body: note("a") },
             {
               kind: "request-opened",
               key: "q",
@@ -226,9 +228,15 @@ describe("EngineStore", () => {
           send("queued"),
           turnEnded,
           sent(2),
-          signal({ kind: "item-opened", key: "b", by: { kind: "mate" }, body: note("b") }),
-          signal({ kind: "item-closed", key: "b", body: note("b") }),
-          turnEnded,
+          signal({
+            kind: "item-opened",
+            turn: turn(2),
+            key: "b",
+            by: { kind: "mate" },
+            body: note("b"),
+          }),
+          signal({ kind: "item-closed", turn: turn(2), key: "b", body: note("b") }),
+          ended(2),
         ];
         let state = initialState(conversation);
         let tailFolds = 0;
@@ -277,6 +285,7 @@ describe("EngineStore", () => {
           sent(1),
           signal({
             kind: "item-closed",
+            turn: turn(1),
             key: "cmd",
             by: { kind: "mate" },
             body: {
@@ -340,7 +349,13 @@ describe("EngineStore: what it writes, it can read back", () => {
                 _tag: "ProviderSignals",
                 sessionId: "w1" as SessionId,
                 signals: [
-                  { kind: "item-opened", key: "k1", by: { kind: "mate" }, body: body as never },
+                  {
+                    kind: "item-opened",
+                    turn: "mate/r/1" as TurnHandle,
+                    key: "k1",
+                    by: { kind: "mate" },
+                    body: body as never,
+                  },
                 ],
               },
             }),

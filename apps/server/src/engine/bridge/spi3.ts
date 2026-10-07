@@ -15,9 +15,10 @@
  * Where a driver cannot know a fact, a signal says `"unknown"`; the bridge
  * never fills a gap with a guess.
  *
- * Ids: a session is the engine's `SessionId` (`packages/contracts/src/engine.ts`),
- * re-exported here. Turn handles and item, work, request and response keys are
- * the bridge's own brands; the engine stores them as opaque strings.
+ * Ids: a session is the engine's `SessionId` and a turn its `TurnHandle`
+ * (`packages/contracts/src/engine.ts`), re-exported here with the turn's end
+ * sources. Item, work, request and response keys are the bridge's own brands;
+ * the engine stores them as opaque strings.
  */
 import type {
   CanonicalRequestType,
@@ -26,6 +27,8 @@ import type {
   RuntimePlanStep,
   SessionId,
   SpiToolCall,
+  TurnEndSource,
+  TurnHandle,
   ThreadTokenUsageSnapshot,
   ToolLifecycleItemType,
   UserInputQuestion,
@@ -33,15 +36,13 @@ import type {
 import type * as Brand from "effect/Brand";
 
 /** One native driver session; rotates under a conversation. */
-export type { SessionId };
+export type { SessionId, TurnEndSource, TurnHandle };
 
 export const DRIVER_SPI_VERSION = "3.0";
 
 /** The six drivers the bridge knows; a seventh needs its row in `capabilities.ts` first. */
 export type BridgeDriver = "claudeAgent" | "codex" | "cursor" | "grok" | "antigravity" | "opencode";
 
-/** The engine's handle for one message it sent, or the bridge's for a turn the agent opened itself. */
-export type TurnHandle = Brand.Branded<string, "TurnHandle">;
 /** `${turn}.i${n}`: n is the order the bridge first saw the item in that turn. */
 export type ItemKey = Brand.Branded<string, "ItemKey">;
 /** `${session}.w${n}`: background work (a helper, a shell, a monitor). */
@@ -107,25 +108,6 @@ export type EngineCommand =
   | { readonly kind: "stopped" };
 
 // ── driver → engine: signals ────────────────────────────────────────
-
-/**
- * Who says the turn ended:
- * - `agent` — the driver reported the end, and no Stop was asked;
- * - `stop-confirmed` — a Stop was asked and the agent itself acknowledged it;
- * - `stop-asked` — a Stop was asked and the end is local: the adapter cancelled
- *   or killed without the agent confirming (Cursor, Grok, Claude's kill);
- * - `inferred-from-crash` — no terminal came; the process died or the session
- *   was found gone, and the bridge ended the turn from that evidence;
- * - `inferred-from-close` — the host closed the session with the turn open;
- * - `inferred-from-next-turn` — the driver opened another turn first.
- */
-export type TurnEndSource =
-  | "agent"
-  | "stop-confirmed"
-  | "stop-asked"
-  | "inferred-from-crash"
-  | "inferred-from-close"
-  | "inferred-from-next-turn";
 
 export type FailureClass =
   | "provider"

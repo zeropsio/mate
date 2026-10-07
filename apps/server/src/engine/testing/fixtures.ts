@@ -11,6 +11,7 @@ import {
   effectId,
   runId,
   type Principal,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
@@ -29,6 +30,9 @@ export const ana: Principal = { kind: "person", subject: "ana" };
 export const T0 = 1_000_000_000;
 export const r = (n: number, c: ConversationId = conversation) => runId(c, n);
 export const s1 = SessionId.make("s1");
+/** The engine's handle for run n's turn: the run's own id. */
+export const turn = (n: number, c: ConversationId = conversation) =>
+  r(n, c) as string as TurnHandle;
 
 let commandCounter = 0;
 export const envelope = (
@@ -70,7 +74,10 @@ export const signal = (...signals: ReadonlyArray<ProviderSignal>): Command => ({
   sessionId: s1,
   signals,
 });
-export const turnEnded = signal({ kind: "turn-ended", outcome: { kind: "completed" } });
+/** Run n's turn ends, said by the agent. */
+export const ended = (n = 1): Command =>
+  signal({ kind: "turn-ended", turn: turn(n), outcome: { kind: "completed" }, source: "agent" });
+export const turnEnded = ended(1);
 
 /** Decides and commits each command in turn, as the actor would; returns the last commit. */
 export const drive = Effect.fnUntraced(function* (

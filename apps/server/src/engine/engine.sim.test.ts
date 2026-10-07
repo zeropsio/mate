@@ -23,6 +23,7 @@ import {
   type RequestId,
   type RunId,
   type SessionId,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import { Conversations } from "./Conversations.ts";
@@ -40,6 +41,7 @@ const MIN = 60_000;
 
 interface Turn {
   readonly id: string;
+  readonly turn: TurnHandle;
   readonly runId: string;
   readonly session: string;
   readonly script: Array<ProviderSignal>;
@@ -109,15 +111,18 @@ class Driver {
               readonly sessionId: string;
               readonly text: string;
               readonly runId: string;
+              readonly turn: TurnHandle;
             };
             if (!alive(p.sessionId)) return failed("no live session");
             this.world.act(row);
             this.world.received.push({ session: p.sessionId, text: p.text });
             const id = `T${++this.count}`;
+            const turn = p.turn;
             const script: Array<ProviderSignal> = [
-              { kind: "turn-started", providerTurnId: id },
+              { kind: "turn-started", turn, origin: "engine", providerTurnId: id },
               {
                 kind: "item-opened",
+                turn,
                 key: `${id}-note`,
                 by: { kind: "mate" },
                 body: { kind: "note", text: "working", streaming: true, answer: false },
@@ -126,6 +131,7 @@ class Driver {
             if (this.rng.chance(0.25)) {
               script.push({
                 kind: "request-opened",
+                turn,
                 key: `${id}-q`,
                 ask: { kind: "approval", requestKind: "command", detail: "deploy" },
               });
@@ -133,13 +139,15 @@ class Driver {
             script.push(
               {
                 kind: "item-closed",
+                turn,
                 key: `${id}-note`,
                 body: { kind: "note", text: "done", streaming: false, answer: true },
               },
-              { kind: "turn-ended", outcome: { kind: "completed" } },
+              { kind: "turn-ended", turn, outcome: { kind: "completed" }, source: "agent" },
             );
             this.turns.push({
               id,
+              turn,
               runId: p.runId,
               session: p.sessionId,
               script,
@@ -160,7 +168,9 @@ class Driver {
             if (turn !== undefined) {
               turn.script.splice(0, turn.script.length, {
                 kind: "turn-ended",
-                outcome: { kind: "completed" },
+                turn: turn.turn,
+                outcome: { kind: "interrupted" },
+                source: "stop-confirmed",
               });
               turn.blockedOn = null;
               turn.parkedUntil = null;
@@ -212,7 +222,7 @@ class Driver {
       turn.parkedUntil = now + 30 * MIN;
       return {
         session: turn.session,
-        signals: [{ kind: "usage-limit", resetsAt: turn.parkedUntil }],
+        signals: [{ kind: "usage-limit", turn: turn.turn, resetsAt: turn.parkedUntil }],
         serves: turn.runId,
         note: "limit parks the turn",
       };
@@ -227,8 +237,10 @@ class Driver {
           signals: [
             {
               kind: "item-closed",
+              turn: turn.turn,
               key: `${turn.id}-late`,
               body: { kind: "note", text: "one more thing", streaming: false, answer: false },
+              afterEnd: true,
             },
           ],
           serves: turn.runId,

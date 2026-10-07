@@ -14,8 +14,12 @@ import {
   type RunId,
   SessionId,
   BootId,
+  TurnHandle,
+  type TurnEndSource,
   type WakeId,
 } from "@t3tools/contracts";
+
+import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
 import {
@@ -266,6 +270,15 @@ export class Gen {
     const items = Object.values(state.items);
     const requests = Object.values(state.requests);
     const count = rng.int(1, 3);
+    const active = activeRun(state);
+    const known = Object.keys(state.turns) as Array<TurnHandle>;
+    /** Mostly the active run's turn; sometimes an older one, or one the engine never knew. */
+    const turn = (): TurnHandle =>
+      active?.turn != null && rng.chance(0.75)
+        ? active.turn
+        : known.length > 0 && rng.chance(0.85)
+          ? rng.pick(known)
+          : TurnHandle.make(`stray-${this.keys}`);
     const signals: Array<ProviderSignal> = [];
     for (let i = 0; i < count; i++) {
       const kind = rng.weighted<string>([
@@ -284,16 +297,29 @@ export class Gen {
       switch (kind) {
         case "turn-started": {
           const ended = state.endedRuns;
-          signals.push({
-            kind: "turn-started",
-            providerTurnId: `t${++this.turns}`,
-            ...(ended.length > 0 && rng.chance(0.3) ? { reportsOn: rng.pick(ended) } : {}),
-          });
+          const sending = active?.state === "sending" ? active.turn : null;
+          signals.push(
+            sending !== null && rng.chance(0.7)
+              ? {
+                  kind: "turn-started",
+                  turn: sending,
+                  origin: "engine",
+                  providerTurnId: `t${++this.turns}`,
+                }
+              : {
+                  kind: "turn-started",
+                  turn: TurnHandle.make(`self-${++this.turns}`),
+                  origin: "self",
+                  providerTurnId: `t${this.turns}`,
+                  ...(ended.length > 0 && rng.chance(0.3) ? { reportsOn: rng.pick(ended) } : {}),
+                },
+          );
           break;
         }
         case "item-opened":
           signals.push({
             kind: "item-opened",
+            turn: turn(),
             key: items.length > 0 && rng.chance(0.2) ? (rng.pick(items).key ?? `k${n}`) : `k${n}`,
             by: { kind: "mate" },
             body: bodies(rng, n),
@@ -302,6 +328,7 @@ export class Gen {
         case "item-updated":
           signals.push({
             kind: "item-updated",
+            turn: turn(),
             key: rng.pick(items).key ?? `k${n}`,
             body: bodies(rng, n),
           });
@@ -309,14 +336,17 @@ export class Gen {
         case "item-closed":
           signals.push({
             kind: "item-closed",
+            turn: turn(),
             key: items.length > 0 ? (rng.pick(items).key ?? `k${n}`) : `k${n}`,
             body: bodies(rng, n),
             ...(rng.chance(0.2) ? { detail: `full body ${n}` } : {}),
+            ...(rng.chance(0.1) ? { afterEnd: true as const } : {}),
           });
           break;
         case "request-opened":
           signals.push({
             kind: "request-opened",
+            ...(rng.chance(0.8) ? { turn: turn() } : {}),
             key: `q${n}`,
             ask: { kind: "approval", requestKind: "command", detail: "rm -rf build" },
             answerable: rng.chance(0.85),
@@ -332,14 +362,25 @@ export class Gen {
         case "turn-ended":
           signals.push({
             kind: "turn-ended",
-            outcome: rng.chance(0.8)
-              ? { kind: "completed" }
-              : { kind: "failed", reason: "tool crashed", next: null },
+            turn: turn(),
+            outcome: rng.weighted<TurnOutcome>([
+              [{ kind: "completed" }, 8],
+              [{ kind: "failed", class: "provider", words: "tool crashed" }, 1],
+              [{ kind: "interrupted" }, 0.5],
+              [{ kind: "cut", cause: "process-exit" }, 0.3],
+            ]),
+            source: rng.weighted<TurnEndSource>([
+              [active?.stopAsked != null ? "stop-confirmed" : "agent", 8],
+              ["stop-asked", 0.5],
+              ["inferred-from-crash", 0.5],
+              ["inferred-from-next-turn", 0.3],
+            ]),
           });
           break;
         case "usage-limit":
           signals.push({
             kind: "usage-limit",
+            ...(rng.chance(0.7) ? { turn: turn() } : {}),
             resetsAt: rng.chance(0.75) ? _now + rng.int(1, 90) * 60_000 : null,
           });
           break;
@@ -347,7 +388,7 @@ export class Gen {
           signals.push({ kind: "session-exited", reason: "exit 137" });
           break;
         default:
-          signals.push({ kind: "activity" });
+          signals.push({ kind: "activity", turn: turn() });
       }
     }
     return this.env(
