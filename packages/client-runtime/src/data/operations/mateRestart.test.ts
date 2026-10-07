@@ -288,7 +288,11 @@ describe("mate-restart", () => {
           ),
       });
       yield* operationsOf(store, registry, platform).submit(RESTART);
-      expect(progress(store)).toEqual({ stage: "refused", reason: "Service stack is failed." });
+      expect(progress(store)).toEqual({
+        stage: "refused",
+        reason: "Service stack is failed.",
+        code: "serviceStackIsFailed",
+      });
     }),
   );
 

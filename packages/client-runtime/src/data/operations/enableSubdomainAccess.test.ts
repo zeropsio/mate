@@ -74,7 +74,11 @@ describe("enable-subdomain-access", () => {
                 ),
               ),
             false,
-            { stage: "refused", reason: "Only the project's owner may publish it." },
+            {
+              stage: "refused",
+              reason: "Only the project's owner may publish it.",
+              code: "projectAccessDenied",
+            },
           ],
           [
             () => Promise.reject(new ZeropsApiError("No answer.", "network")),

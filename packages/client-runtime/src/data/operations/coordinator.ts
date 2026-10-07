@@ -109,7 +109,11 @@ export function makeOperations(options: {
                 executor: executorOf(intent).owner,
                 affected: [],
                 handles: [],
-                acceptance: { kind: "refused", reason: fault.message },
+                acceptance: {
+                  kind: "refused",
+                  reason: fault.message,
+                  ...(fault.code === undefined ? {} : { code: fault.code }),
+                },
                 outcome: { kind: "pending" },
               },
             }),

@@ -105,6 +105,14 @@ export type {
   VaultView,
   VaultWrite,
 } from "./projections/vaultModel.ts";
+export { vault, type VaultKey } from "./projections/vault.ts";
+export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
+export {
+  projectVariablesScope,
+  type ProjectVariablesValue,
+  type VariableRow,
+} from "./families/projectVariables.ts";
+export { serviceVariablesScope, type ServiceVariableValue } from "./families/serviceVariables.ts";
 export {
   serviceRuns,
   type ServiceRuns,
@@ -165,6 +173,8 @@ export {
   projectServicesAtom,
   projectsServicesAtom,
   projectUsageAtom,
+  NOT_READ_VAULT,
+  vaultAtom,
   shownProjectsAtom,
   NOT_READ_HQ,
   shownHqMatesAtom,
