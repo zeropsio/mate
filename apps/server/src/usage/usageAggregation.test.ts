@@ -12,7 +12,7 @@ const rates: RateTable = new Map([
       outputCostPerToken: 5e-5,
       cacheReadCostPerToken: 1e-6,
       cacheCreationCostPerToken: 1.25e-5,
-      fastMultiplier: 1,
+      fastMultiplier: 2,
     },
   ],
 ]);
@@ -74,6 +74,23 @@ describe("UsageAggregator", () => {
           rates,
         }),
     ).toThrow("requires exact time bounds");
+  });
+
+  it("splits a bucket's cost by category and speed", () => {
+    const [bucket] = aggregate([record(), record({ fast: true })]).buckets;
+
+    // Standard costs $0.005625 and fast twice that.
+    expect(bucket).toMatchObject({
+      costUsd: expect.closeTo(0.016875),
+      categoryCostUsd: {
+        input: expect.closeTo(0.003),
+        cacheRead: expect.closeTo(0.003),
+        cacheWrite: expect.closeTo(0.000375),
+        output: expect.closeTo(0.0075),
+      },
+      fastCostUsd: expect.closeTo(0.01125),
+      speedPremiumUsd: expect.closeTo(0.005625),
+    });
   });
 
   it("keeps only the first record for a repeated dedupe key", () => {

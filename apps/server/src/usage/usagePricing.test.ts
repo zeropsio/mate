@@ -42,7 +42,7 @@ describe("usage pricing", () => {
     });
 
     for (const reportedCostUsd of [null, 99]) {
-      expect(priceUsage(table, record("example-model", reportedCostUsd), overrides)).toEqual({
+      expect(priceUsage(table, record("example-model", reportedCostUsd), overrides)).toMatchObject({
         costUsd: 13.5,
         costSource: "modelPriced",
       });
@@ -64,7 +64,7 @@ describe("usage pricing", () => {
     expect(cacheSavingsUsd(table, cursorRecord("claude-fable-5-1-thinking-high"))).toBeCloseTo(9);
     expect(cacheSavingsUsd(table, cursorRecord("cursor-grok-4.7-high-fast"))).toBeCloseTo(1.5);
     expect(cacheSavingsUsd(table, cursorRecord("default"))).toBe(0);
-    expect(priceUsage(table, cursorRecord("grok-4.7-xhigh-fast"))).toEqual({
+    expect(priceUsage(table, cursorRecord("grok-4.7-xhigh-fast"))).toMatchObject({
       costUsd: 0.25,
       costSource: "providerReported",
     });
@@ -76,7 +76,7 @@ describe("usage pricing", () => {
       "example-model": { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 },
     });
 
-    expect(priceUsage(table, record("example-model"), overrides)).toEqual({
+    expect(priceUsage(table, record("example-model"), overrides)).toMatchObject({
       costUsd: 14,
       costSource: "modelPriced",
     });
@@ -91,7 +91,7 @@ describe("usage pricing", () => {
         outputCostPerMillionTokens: 0,
       },
     });
-    expect(priceUsage(table, record(" vendor/example-model[1m] ", 99), overrides)).toEqual({
+    expect(priceUsage(table, record(" vendor/example-model[1m] ", 99), overrides)).toMatchObject({
       costUsd: 0,
       costSource: "modelPriced",
     });
@@ -105,6 +105,8 @@ describe("usage pricing", () => {
       expect(priceUsage(table, record(model, 99), overrides)).toEqual({
         costUsd: 99,
         costSource: "providerReported",
+        categoryCostUsd: null,
+        speedPremiumUsd: 0,
       });
     }
   });
@@ -129,6 +131,42 @@ describe("usage pricing", () => {
     expect(cost("claude-opus-5-5", true, overrides)).toBe(
       cost("claude-opus-5-5", false, overrides),
     );
+  });
+
+  it("splits cost by category and prices the speed premium", () => {
+    const table = parseRateTable({
+      "claude-opus-5-5": {
+        ...rate(4e-6, 4e-7),
+        cache_creation_input_token_cost: 5e-6,
+        provider_specific_entry: { fast: 2 },
+      },
+    });
+    const split = (input: number, cacheRead: number, cacheWrite: number, output: number) => ({
+      input: expect.closeTo(input),
+      cacheRead: expect.closeTo(cacheRead),
+      cacheWrite: expect.closeTo(cacheWrite),
+      output: expect.closeTo(output),
+    });
+
+    expect(priceUsage(table, record("claude-opus-5-5", null, true))).toEqual({
+      costUsd: expect.closeTo(58.8),
+      costSource: "modelPriced",
+      categoryCostUsd: split(8, 0.8, 10, 40),
+      speedPremiumUsd: expect.closeTo(29.4),
+    });
+    // A reported cost keeps its total and splits in proportion to list rates.
+    expect(priceUsage(table, record("claude-opus-5-5", 29.4, true))).toEqual({
+      costUsd: 29.4,
+      costSource: "providerReported",
+      categoryCostUsd: split(4, 0.4, 5, 20),
+      speedPremiumUsd: expect.closeTo(14.7),
+    });
+    // Without rates there is nothing to split it by.
+    expect(priceUsage(table, record("unknown-model", 29.4, true))).toMatchObject({
+      costUsd: 29.4,
+      categoryCostUsd: null,
+      speedPremiumUsd: 0,
+    });
   });
 
   it("keeps the canonical Fable rate separate from DeepInfra in either order", () => {
