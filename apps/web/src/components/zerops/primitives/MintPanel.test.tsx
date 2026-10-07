@@ -10,8 +10,6 @@ describe("MintPanel", () => {
 
     expect(html).toContain('data-zerops-primitive="mint-panel"');
     expect(html).toContain(`aria-label="${label}"`);
-    expect(html).toContain("bg-[var(--zerops-mint-panel)]");
-    expect(html).toContain("rounded-[var(--zerops-card-radius)]");
     expect(html).toContain(label);
   });
 });

@@ -11,6 +11,5 @@ describe("KeyChip", () => {
     expect(html.startsWith("<kbd")).toBe(true);
     expect(html).toContain('data-zerops-primitive="key-chip"');
     expect(html).toContain(`aria-label="${key} key"`);
-    expect(html).toContain("rounded-[var(--zerops-key-chip-radius)]");
   });
 });

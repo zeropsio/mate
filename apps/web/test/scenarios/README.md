@@ -49,13 +49,13 @@ Only browsers actually opened by selected tests contribute diagnostics; `-t` fil
 - `harness/clientClock.ts`: opt-in browser timers, stepped network settling and lifecycle controls.
 - `harness/completedHttp.ts`: request-body completion and renderer-turn receipts for clock settling.
 - `harness/hqCore.ts`: production-like Core timing defaults and per-scenario overrides.
-- `apps/hq/test/harness/coreWithDeployTimings.ts`: opt-in composition of real Core layers for deploy timing overrides.
+- `apps/hq/test/harness/core.ts`: real Core with injectable timing overrides.
 - `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
 - `fakes/zeropsWrites.ts`: shared HTTP deployment/import driver and process transitions.
 - `fakes/zeropsWorld.ts`: organization memberships, person presets and project grants.
 - `fakes/mate.ts`: contract-checked environment, door/OAuth, RPC, snapshots and sequence replay.
 - `fakes/hqConnection.ts`: interruptible, endpoint-agnostic proxy to real Core.
-- `areas/foundation/examples.scenario.ts`: B (known failure and HQ path), C and G.
+- `areas/foundation/examples.scenario.ts`: B (Zerops-only discovery and HQ path), C and G.
 - `areas/harness/extensions.scenario.ts`: reusable apps, tiers, identities, tabs and contexts proof.
 - `fakes/**/*.test.ts`: focused wire/HTTP/clock/proxy tests.
 
@@ -176,10 +176,8 @@ values are milliseconds. `startCore` accepts corresponding Effect Duration overr
 its old 300/200/200 ms defaults for existing HQ unit tests. Page clocks do not advance Core time.
 `followFor` and `pollEvery` similarly pass from `createScenario` through `startScenarioCore` into
 `startCore`, which accepts Effect Durations. Omitting either preserves that Deploys default
-(75 minutes / 10 seconds). Production `coreApp` currently hard-codes `deploysLayer()`; only timing
-overrides select a test-only composition using the same real service graph, routes and production
-drain. Keep that graph aligned with `apps/hq/src/core.ts`; remove the copy when Core exposes deploy
-options. The default harness path still uses production `coreApp` directly.
+(75 minutes / 10 seconds). The production Core's injectable deploy options provide these overrides;
+scenario tests use the same service graph, routes and production drain.
 G exercises real client reconnect timers with this clock. Core's own 10-second HTTP timeout is
 native; it is not sped up by the page clock. For time-sensitive areas this split is the least
 intrusive seam: no application hooks, fake responses or altered backoff implementation.
@@ -233,9 +231,6 @@ signatures, DPoP and expiry enforcement are synthetic. Real Core overview links 
 use `drivers.links.get(name)` to send further contract-typed `MateLinkUp` overviews in an area driver.
 No real credentials/live databases are read. Desktop/mobile behavior is outside this hosted suite.
 
-B's Zerops-only case is explicitly `it.effect.fails`: after a colleague's push, today's client
-still misses the menu row within five seconds without HQ enrollment. Removing expected-failure
-marking fails at `Menu row Bea missing`. The green B example is explicitly the HQ enrollment path;
-it guards that path only. Request: establish inventory/access demand on a new organization list
-membership so the Zerops-only row appears without reload/HQ. No application change or new selector
-was needed for the harness. Remove `.fails` when the client supplies the target behavior.
+B's Zerops-only discovery case is an ordinary scenario: a colleague's project appears within
+five seconds without HQ enrollment or reload. The separate HQ enrollment example protects its
+own path; both remain useful witnesses.

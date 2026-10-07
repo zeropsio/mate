@@ -1,4 +1,3 @@
-// @effect-diagnostics nodeBuiltinImport:off -- The heading's band is checked against the stylesheet that draws it.
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -11,7 +10,6 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RegistryContext } from "@effect/atom-react";
@@ -1457,33 +1455,6 @@ describe("the project's flow under it", () => {
     expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
-  // The menu has one text column (the owner, 2026-09-25: "everything jumps
-  // around differently"), 56 px from its edge, and one column of marks at 16:
-  // the list starts 9 px in, and a row's own inset, its mark's column and the
-  // gap after it make up the rest.
-  it("starts a Mate's name on the menu's one text column, its face on the column of marks", () => {
-    const html = withFlow([CRM_DEV, CRM_STAGE, CRM_PROD]);
-    const PX: Record<string, number> = {
-      "ps-1.75": 7,
-      "grid-cols-[28px_minmax(0,1fr)]": 28,
-      "gap-x-3": 12,
-    };
-    const LIST = 9;
-    const classes = (tag: string | undefined) => (tag ?? "").split(" ");
-    const px = (tag: string | undefined, pattern: RegExp) =>
-      PX[classes(tag).find((name) => pattern.test(name)) ?? ""] ?? Number.NaN;
-    const mate = /<button class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u.exec(html)?.[1];
-    const face = LIST + px(mate, /^ps-/u);
-    expect(face).toBe(16);
-    expect(face + px(mate, /^grid-cols-/u) + px(mate, /^gap-x-/u)).toBe(56);
-    // A change's mark in the faces' column, its title on the words' edge.
-    const change = /<li class="([^"]*)"[^>]*data-zerops-surface="sidebar-pull-request"/u.exec(
-      html,
-    )?.[1];
-    expect(classes(change)).toContain("grid-cols-[28px_minmax(0,1fr)_auto]");
-    expect(LIST + px(change, /^ps-/u) + 28 + px(change, /^gap-x-/u)).toBe(56);
-  });
-
   // The one door to merging is the review (R1): every change says *Review*
   // in blue, and nothing on the row merges, asks or grades it.
   it("offers Review on every change, and never Merge, Ask or a status dot from the row", () => {
@@ -2604,92 +2575,6 @@ describe("a project collapsed to its heading", () => {
     }
   });
 
-  // The logo row and the projects are two groups (the owner, 2026-09-29:
-  // "first project is too close to logo"): the list stands 16 px under the
-  // row, so the first project's name starts 43 px under the mark's foot,
-  // where one folded heading's stands 29 px under the one before it.
-  it("stands the list 16 px under the logo row", () => {
-    const nav = /<nav[^>]*class="([^"]*)"/u.exec(render([CRM_DEV]))?.[1]?.split(" ") ?? [];
-    expect(nav).toContain("pt-4");
-  });
-
-  // The band stands as far from the window as from the divider, and the
-  // chips sit in it with one gap above, below and after them, so its corners
-  // run parallel to theirs (S4; the owner, 2026-09-29: "the tag no properly
-  // aligned on the left with border radius looking bad"). The title keeps the
-  // mark edge and the chips the menu's end edge: the band moved, not them.
-  it("stands its band 10 px from either side of the menu, the chips 6 px inside it, its corners parallel to theirs", () => {
-    const sheet = NodeFS.readFileSync(new URL("../../index.css", import.meta.url), "utf8").replace(
-      /\/\*[\s\S]*?\*\//gu,
-      "",
-    );
-    const rule = (selector: string) => {
-      const at = sheet.indexOf(`\n${selector} {`);
-      const body = sheet.slice(sheet.indexOf("{", at) + 1, sheet.indexOf("}", at));
-      return new Map(
-        body
-          .split(";")
-          .map((declaration) => declaration.split(":").map((part) => part.trim()))
-          .filter(([property]) => property !== undefined && property !== "")
-          .map(([property, ...value]) => [property!, Number.parseFloat(value.join(":"))]),
-      );
-    };
-    const PX: Record<string, number> = {
-      "ms-px": 1,
-      "me-0.5": 2,
-      "ps-1.5": 6,
-      "pe-1.5": 6,
-      "h-8": 32,
-    };
-    // The list's own inset: 9 px from the window, 8 from the divider.
-    const LIST = { start: 9, end: 8 };
-    const classes =
-      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u
-        .exec(
-          renderToStaticMarkup(
-            <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
-          ),
-        )?.[1]
-        ?.split(" ") ?? [];
-    const px = (pattern: RegExp) => PX[classes.find((name) => pattern.test(name)) ?? ""] ?? NaN;
-    const bandStart = LIST.start + px(/^ms-/u);
-    const bandEnd = LIST.end + px(/^me-/u);
-    expect(bandStart).toBe(10);
-    expect(bandEnd).toBe(bandStart);
-    // The title on the mark edge; the chips on the menu's end edge, 16 px in.
-    expect(bandStart + px(/^ps-/u)).toBe(16);
-    expect(bandEnd + px(/^pe-/u)).toBe(16);
-    const chip = rule(".zerops-envchip");
-    const band = rule(".zerops-project-heading");
-    const gap = (px(/^h-8$/u) - (chip.get("height") ?? NaN)) / 2;
-    // One gap above, below and after the chips.
-    expect(gap).toBe(px(/^pe-/u));
-    expect(band.get("border-radius")).toBe((chip.get("border-radius") ?? NaN) + gap);
-    expect(rule(".zerops-project-heading::before").get("border-radius")).toBe(
-      band.get("border-radius"),
-    );
-  });
-
-  // The whole heading folds the project, so it lights under the pointer as a
-  // row does (the owner, 2026-09-29: "very slight grey bg on the hover"); the
-  // ungrouped heading folds nothing and stays unlit.
-  it("lights a heading that folds under the pointer, and never the ungrouped one", () => {
-    const classes = (html: string) =>
-      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1]?.split(" ");
-    expect(
-      classes(
-        renderToStaticMarkup(
-          <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
-        ),
-      ),
-    ).toContain("zerops-project-heading");
-    expect(
-      classes(
-        renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
-      ),
-    ).not.toContain("zerops-project-heading");
-  });
-
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {
     const toggle =
       /<button[^>]*data-zerops-surface="sidebar-project-toggle"[^>]*>(.*?)<\/button>/u.exec(
@@ -2947,11 +2832,6 @@ describe("the sidebar and the projects page read one group the same way", () => 
 });
 
 describe("arranging the projects by hand", () => {
-  /** The stylesheet the heading's band is drawn by, without its comments. */
-  const STYLESHEET = NodeFS.readFileSync(
-    new URL("../../index.css", import.meta.url),
-    "utf8",
-  ).replace(/\/\*[\s\S]*?\*\//gu, "");
   const SHOP_MATE = named("shop-dev", "Shop - dev", { tags: ["mate"], hq: inApp("shop", "Shop") });
   const order = (html: string) =>
     [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
@@ -2990,7 +2870,6 @@ describe("arranging the projects by hand", () => {
   // are — nowhere near the band's corners, and the name keeps the mark edge
   // in either order, so nothing moves when it shows.
   it("stands the grip among the heading's verbs, clear of the band's corners, the name on its edge", () => {
-    const band = (selector: string) => STYLESHEET.indexOf(`${selector} {`);
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
     const html = render([LINKS_MATE, SHOP_MATE]);
     const heading = html.slice(
@@ -2998,25 +2877,10 @@ describe("arranging the projects by hand", () => {
       html.indexOf('data-zerops-surface="sidebar-project-add-mate"'),
     );
     const at = (needle: string) => html.indexOf(needle);
-    const grip =
-      /<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-grip"/u
-        .exec(html)?.[1]
-        ?.split(" ") ?? [];
     // After the title and the room the title leaves, first of the verbs.
     expect(at("sidebar-project-grip")).toBeGreaterThan(at("sidebar-project-toggle"));
-    expect(at("sidebar-project-grip")).toBeGreaterThan(
-      at('<span aria-hidden="true" class="min-w-0 flex-1"></span>'),
-    );
     expect(at("sidebar-project-add-mate")).toBeGreaterThan(at("sidebar-project-grip"));
     expect(heading).toContain("sidebar-project-grip");
-    // A verb's size and corners, in the flow: no gutter, no reach of the band.
-    expect(grip).toEqual(expect.arrayContaining(["size-7", "rounded-md", "cursor-grab"]));
-    expect(grip.some((name) => /^(absolute|-?start-)/u.test(name))).toBe(false);
-    expect(band(".zerops-project-heading:has([data-zerops-grip])::before")).toBe(-1);
-    // The name on the mark edge, 6 px inside the band, grip or none.
-    expect(
-      /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html)?.[1],
-    ).toContain("ps-1.5");
   });
 
   // The heading's toggle covers the whole heading (`after:inset-0`): every

@@ -88,3 +88,44 @@ describe("makeAccountStore", () => {
     ).toBe("running");
   });
 });
+
+describe("derived reader lifetime", () => {
+  it("shares holders, releases the last mount, and remounts with current facts", async () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [] }).forEach(store.dispatch);
+    const key = { orgId: ORG, projectId: "p" };
+    const atom = store.data.project(runningWork, key);
+    const first = registry.mount(atom);
+    const second = registry.mount(store.data.project(runningWork, key));
+    first();
+    expect(registry.getNodes().has(atom)).toBe(true);
+    second();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(registry.getNodes().has(atom)).toBe(false);
+    store.dispatch(processRows(["work", 1]));
+    store.dispatch({
+      kind: "stream",
+      key: running,
+      now: 0,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "definitive-refusal", message: "Not allowed" },
+      },
+    });
+    const refusal = store.state().streams.get(running);
+    const remount = registry.mount(atom);
+    expect(registry.get(atom).kind).toBe("running");
+    remount();
+    expect(store.state().streams.get(running)).toBe(refusal);
+    expect(refusal?.phase).toBe("refused");
+    expect(registry.get(store.data.fact("process", "work")).kind).toBe("known");
+    store.close();
+    registry.dispose();
+    expect(registry.getNodes().size).toBe(0);
+    const ended = store.state();
+    store.dispatch(processRows(["late", 1]));
+    expect(store.state()).toBe(ended);
+  });
+});

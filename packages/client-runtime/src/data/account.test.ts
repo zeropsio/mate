@@ -239,6 +239,7 @@ describe("observeAccount — closed with its account", () => {
       // The account's registry goes at once; what the closed observation still does is silent:
       // a screen's release, a new hold, an interrupted link's last event.
       registry.dispose();
+      expect(registry.getNodes().size).toBe(0);
       release();
       account.demandDetail({ family: "process", listing: "history", ownerId: "p2" })();
       expect(() =>

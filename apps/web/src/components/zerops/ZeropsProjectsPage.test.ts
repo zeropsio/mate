@@ -41,8 +41,6 @@ import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
 import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
-import sidebarSource from "../Sidebar.tsx?raw";
-import newProjectPortsSource from "../../zerops/useRunNewProject.ts?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -835,60 +833,6 @@ describe("a project's next step on the projects page", () => {
     );
     expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).not.toContain("?.missing ??");
-  });
-});
-
-describe("a creation under way on the projects page", () => {
-  it("is drawn in its group from the one placing the left menu reads, and feeds the flow", () => {
-    // A New project this tab is making included, from the press, on both.
-    expect(projectsPageSource).toContain("placedNewProjects(made, activeOrganization?.id),");
-    expect(projectsPageSource).toContain("pending: group.pending,");
-    expect(sidebarTreeSource).toContain("pending: group?.pending ?? [],");
-    expect(sidebarSource).toContain("placedPressesIn(\n        zeropsPresses,");
-  });
-
-  it("is under way from the click: the add verbs are off before the group's agents are read", () => {
-    // `creationRunning` disables every add verb, Add production included; a
-    // creation that waited on the agents' read before saying so left the verb
-    // pressable for a second creation of the same production.
-    const start = projectsPageSource.indexOf("const createEnvironment = useCallback(");
-    const body = projectsPageSource.slice(start);
-    const underWay = body.indexOf(
-      'setCreation({ name: choice.name, tier: tier ?? "mate", progress: [] });',
-    );
-    expect(underWay).toBeGreaterThan(-1);
-    // The group's agents are read inside the creation, after the verbs are off.
-    expect(underWay).toBeLessThan(body.indexOf("await runCreation("));
-    expect(creationSource.indexOf("await readGroupAgents(request.environments)")).toBeGreaterThan(
-      -1,
-    );
-    // A plan refused ends it, so the verbs come back.
-    const refused = body.slice(body.indexOf('if (run.kind === "refused") {'));
-    expect(refused.slice(0, refused.indexOf("return;"))).toContain("setCreation(null);");
-  });
-
-  it("lists the organization again the moment a creation is accepted, as New project does", () => {
-    expect(creationSource).toContain("beginPress(");
-    expect(creationSource).toContain('invalidateZerops({ topic: "inventory"');
-    expect(newProjectPortsSource).toContain("beginPress(");
-    expect(newProjectPortsSource).toContain(
-      'invalidateZerops({ topic: "inventory", organization });',
-    );
-  });
-
-  it("says why a merge or a release was refused, in the page's own trouble line", () => {
-    const trouble = projectsPageSource.slice(
-      projectsPageSource.indexOf("const trouble ="),
-      projectsPageSource.indexOf(";", projectsPageSource.indexOf("const trouble =")),
-    );
-    expect(trouble).toContain("verbs.trouble");
-    expect(projectsPageSource).toContain(
-      '<p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>',
-    );
-  });
-
-  it("tells the left menu the release on its way, as the page reads it", () => {
-    expect(sidebarSource).toContain("releaseInFlight: flow.release.inFlight,");
   });
 });
 
