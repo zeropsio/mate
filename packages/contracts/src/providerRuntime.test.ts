@@ -47,6 +47,18 @@ describe("ProviderRuntimeEvent", () => {
     expect(parsed.payload.blocked).toEqual(blocked);
   });
 
+  it.each([true, false])("preserves provider admission evidence without a reset: %s", (refused) => {
+    const parsed = decodeRuntimeEvent({
+      type: "account.rate-limits.updated",
+      eventId: "event-admission",
+      provider: "claudeAgent",
+      createdAt: "2026-10-08T14:20:00Z",
+      threadId: "thread-1",
+      payload: { limits: { windows: [] }, refused },
+    });
+    expect(parsed.type === "account.rate-limits.updated" && parsed.payload.refused).toBe(refused);
+  });
+
   it.each([
     ["no terminal reason", {}, undefined],
     ["the driver's terminal reason", { terminalReason: "prompt_too_long" }, "prompt_too_long"],

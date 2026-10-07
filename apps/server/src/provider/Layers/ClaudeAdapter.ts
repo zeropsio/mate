@@ -4567,18 +4567,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ? claudeUsageLimitBlock(rateLimitInfo, Date.parse(stamp.createdAt), names)
         : undefined;
       context.usageLimitBlockedUntilMs = closed?.resetsAtMs;
-      if (limits || closed) {
-        yield* offerRuntimeEvent({
-          ...base,
-          type: "account.rate-limits.updated",
-          payload: {
-            limits: limits ?? { windows: [] },
-            ...(closed ? { blocked: closed.block } : {}),
-          },
-        });
-      }
       const limitType = rateLimitInfo.rateLimitType ?? "unknown";
       const limitKey = `${limitType}:${rateLimitInfo.resetsAt ?? "unknown"}`;
+      const wasRefused = (context.turnState?.rejectedRateLimitTypes.size ?? 0) > 0;
       if (context.turnState) {
         // Current blocking evidence is independent of whether its warning has
         // already been shown. A recovery can omit or advance the reset time;
@@ -4591,6 +4582,26 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ) {
           context.turnState.rejectedRateLimitTypes.delete(limitType);
         }
+      }
+      const knowsAdmission =
+        blocked ||
+        rateLimitInfo.status === "allowed" ||
+        rateLimitInfo.status === "allowed_warning" ||
+        overageAllowed;
+      const refused =
+        context.turnState && knowsAdmission && (blocked || wasRefused)
+          ? context.turnState.rejectedRateLimitTypes.size > 0
+          : undefined;
+      if (limits || closed || refused !== undefined) {
+        yield* offerRuntimeEvent({
+          ...base,
+          type: "account.rate-limits.updated",
+          payload: {
+            limits: limits ?? { windows: [] },
+            ...(closed ? { blocked: closed.block } : {}),
+            ...(refused === undefined ? {} : { refused }),
+          },
+        });
       }
       if (blocked && context.turnState !== undefined) {
         // Tracked per turn as a set of limit identities, not as the rendered

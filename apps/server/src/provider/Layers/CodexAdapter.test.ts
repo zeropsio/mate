@@ -1,3 +1,4 @@
+import * as DateTime from "effect/DateTime";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeAssert from "node:assert/strict";
 import * as NodeFS from "node:fs";
@@ -2436,7 +2437,7 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startUsageLimitRuntime();
       const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.take(5),
+        Stream.take(7),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -2467,11 +2468,27 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
         events.map((event) => event.type),
         [
           "account.rate-limits.updated",
+          "account.rate-limits.updated",
           "runtime.error",
           "turn.completed",
+          "account.rate-limits.updated",
           "runtime.error",
           "turn.completed",
         ],
+      );
+      const resets = events.flatMap((event) =>
+        event.type === "account.rate-limits.updated" && event.payload.blocked
+          ? [event.payload.blocked]
+          : [],
+      );
+      NodeAssert.deepStrictEqual(
+        resets,
+        [0, 1].map(() => ({
+          window: "Weekly",
+          resetsAt: DateTime.formatIso(
+            DateTime.makeUnsafe((USAGE_LIMIT_NOW_SECONDS + 5 * 86400 + 5 * 3600) * 1000),
+          ),
+        })),
       );
       for (const event of events) {
         if (event.type === "runtime.error") {
@@ -2491,7 +2508,7 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startUsageLimitRuntime();
       const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.take(3),
+        Stream.take(4),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -2525,7 +2542,7 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startUsageLimitRuntime();
       const eventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.take(3),
+        Stream.take(4),
         Stream.runCollect,
         Effect.forkChild,
       );

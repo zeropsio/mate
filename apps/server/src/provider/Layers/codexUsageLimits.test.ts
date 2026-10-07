@@ -7,6 +7,7 @@ import {
   codexRateLimitsToUpdate,
   codexResetCreditsToContract,
   codexUsageLimitMessage,
+  codexUsageLimitBlock,
   mergeCodexRateLimits,
 } from "./codexUsageLimits.ts";
 
@@ -295,5 +296,27 @@ describe("mergeCodexRateLimits", () => {
         primary: { usedPercent: 3, resetsAt: 1_800_000_000, windowDurationMins: 300 },
       }),
     ).toBe(main);
+  });
+});
+
+describe("a refused Codex turn's reset", () => {
+  it("reports the latest exhausted window as a typed pause", () => {
+    expect(
+      codexUsageLimitBlock(
+        {
+          primary: { usedPercent: 100, resetsAt: 1800000000 },
+          secondary: { usedPercent: 100, resetsAt: 1800100000 },
+        },
+        "2026-10-08T14:20:00Z",
+      ),
+    ).toEqual({ window: "Weekly", resetsAt: "2027-01-16T11:46:40.000Z" });
+  });
+  it.each([
+    undefined,
+    { primary: { usedPercent: 50, resetsAt: 1800000000 } },
+    { primary: { usedPercent: 100 } },
+    { limitId: "spark", primary: { usedPercent: 100, resetsAt: 1800000000 } },
+  ])("never guesses a reset from %j", (snapshot) => {
+    expect(codexUsageLimitBlock(snapshot, "2026-10-08T14:20:00Z")).toBeUndefined();
   });
 });
