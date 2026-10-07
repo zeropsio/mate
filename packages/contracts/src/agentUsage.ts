@@ -202,6 +202,7 @@ export const UsageStatistics = Schema.Struct({
 });
 export type UsageStatistics = typeof UsageStatistics.Type;
 export const UsageDailyDetail = Schema.Struct({
+  meterVersion: Schema.optionalKey(UsageIdentity),
   originId: UsageIdentity,
   day: UsageUtcDay,
   model: Schema.NullOr(UsageIdentity),
@@ -217,9 +218,32 @@ export const UsageReport = Schema.Struct({
   basis: Schema.Literal("recorded-provider-usage-current-owner-and-app"),
   state: Schema.Literals(["unknown", "partial", "complete", "unsupported-exact-boundary"]),
   coverage: Schema.Array(
-    Schema.Struct({ originId: UsageIdentity, value: UsageCoverage, deleted: Schema.Boolean }),
+    Schema.Struct({
+      originId: UsageIdentity,
+      value: UsageCoverage,
+      deleted: Schema.Boolean,
+      projectId: Schema.optionalKey(UsageIdentity),
+      mateId: Schema.optionalKey(UsageIdentity),
+      appId: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
+      ownerUserId: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
+      label: Schema.optionalKey(UsageIdentity),
+      placement: Schema.optionalKey(Schema.Literals(["current", "last-known"])),
+    }),
   ).check(Schema.isMaxLength(200)),
   coverageMore: Schema.Boolean,
+  captureGaps: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        projectId: UsageIdentity,
+        mateId: UsageIdentity,
+        appId: Schema.NullOr(UsageIdentity),
+        ownerUserId: Schema.NullOr(UsageIdentity),
+        label: UsageIdentity,
+        reason: Schema.Literal("unregistered"),
+      }),
+    ).check(Schema.isMaxLength(200)),
+  ),
+  captureGapsMore: Schema.optionalKey(Schema.Boolean),
   retention: Schema.optionalKey(
     Schema.Struct({
       targetDays: Schema.Literal(AGENT_USAGE_EXACT_DAYS),

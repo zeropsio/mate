@@ -47,6 +47,17 @@ describe("durable usage wire", () => {
     assert.strictEqual(
       readLinkUp(
         JSON.stringify({
+          type: "usage-snapshot-abandon",
+          ledgerId: "L",
+          channel: "C",
+          snapshotId: "interrupted",
+        }),
+      ).kind,
+      "message",
+    );
+    assert.strictEqual(
+      readLinkUp(
+        JSON.stringify({
           type: "usage-batch",
           ledgerId: "L",
           channel: "C",

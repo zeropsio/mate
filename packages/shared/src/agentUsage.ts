@@ -55,7 +55,17 @@ export const UsageSnapshot = Schema.Struct({
     Schema.isMaxLength(64),
   ),
 });
-export const UsageLinkUp = Schema.Union([UsageHello, UsageBatch, UsageSnapshot]);
+export const UsageSnapshotAbandon = Schema.Struct({
+  type: Schema.Literal("usage-snapshot-abandon"),
+  ...Channel,
+  snapshotId: UsageIdentity,
+});
+export const UsageLinkUp = Schema.Union([
+  UsageHello,
+  UsageBatch,
+  UsageSnapshot,
+  UsageSnapshotAbandon,
+]);
 export type UsageLinkUp = typeof UsageLinkUp.Type;
 export const UsageLinkDown = Schema.Union([
   Schema.Struct({
