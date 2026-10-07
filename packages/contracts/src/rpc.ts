@@ -995,11 +995,14 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
-/** One explicit retry of a failed stand-up send, authorized as the authenticated asker. */
+/**
+ * One explicit retry of a failed stand-up send, authorized as the authenticated asker. Refused
+ * (`OrchestrationDispatchCommandError`) while the Mate engine owns the conversation.
+ */
 const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
   payload: Schema.Struct({}),
   success: Schema.Boolean,
-  error: EnvironmentAuthorizationError,
+  error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
 const WsZeropsLifecycleGetRpc = Rpc.make(WS_METHODS.zeropsLifecycleGet, {
