@@ -16,6 +16,11 @@ available pictures.
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
+## Undo picture edits
+
+While editing a pasted picture, press `Cmd+Z` on macOS or `Ctrl+Z` on Windows and Linux to undo a
+note or crop change. Add `Shift` to redo. While typing note text, those keys edit the text itself.
+
 ## Custom models
 
 On web and desktop, use Settings → Providers → **Models** to add an unlisted model with a custom
