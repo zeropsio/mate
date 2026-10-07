@@ -309,6 +309,116 @@
       "captures": []
     },
     {
+      "id": "zerops-vault",
+      "title": "Zerops Vault tab",
+      "components": [
+        "apps/web/src/components/zerops/vault/VaultEditors.tsx",
+        "apps/web/src/components/zerops/vault/VaultNotLive.tsx",
+        "apps/web/src/components/zerops/vault/VaultPanel.tsx",
+        "apps/web/src/components/zerops/vault/VaultPanelContainer.tsx",
+        "apps/web/src/components/zerops/vault/VaultRow.tsx",
+        "apps/web/src/components/zerops/vault/StopVault.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Vault (shortcut E)"
+        },
+        {
+          "kind": "inline",
+          "value": "Vault beside a stage or production page (its header's Vault toggle)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Add",
+          "reverse": "Remove"
+        },
+        {
+          "action": "Remove",
+          "reverse": "Add"
+        },
+        {
+          "action": "Save",
+          "reverse": "none: a sensitive value is never read back, so its previous value cannot be put back."
+        },
+        {
+          "action": "Make sensitive",
+          "reverse": "none: a sensitive value is never shown again; it is replaced, not made plain."
+        },
+        {
+          "action": "Restart",
+          "reverse": "none: a restart only applies what the vault already holds."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Vault tab yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/vault/VaultPanel.test.tsx",
+        "apps/web/src/components/zerops/vault/vault.logic.test.ts",
+        "apps/web/src/components/zerops/vault/vaultText.logic.test.ts",
+        "apps/web/src/components/zerops/vault/vaultOutcome.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-vault-request",
+      "title": "Zerops vault request card",
+      "components": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.tsx",
+        "apps/web/src/components/zerops/vault/VaultRequestCardContainer.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_env action=request"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/client-runtime/zerops/model"],
+      "reverseStates": [
+        {
+          "action": "Put in vault",
+          "reverse": "none: a sensitive value is never read back; the Vault tab removes or replaces it."
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: kept in memory only; a reload draws the request open until the key is in the vault."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the vault request yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.test.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-review",
       "title": "Zerops review",
       "components": [

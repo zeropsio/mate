@@ -153,7 +153,12 @@ export interface OperationReceipt {
         /** What the owner answered with, where its kind declares a result. */
         readonly result?: OperationResult;
       }
-    | { readonly kind: "refused"; readonly reason: string };
+    | {
+        readonly kind: "refused";
+        readonly reason: string;
+        /** The owner's own code for the refusal (`projectEnvDuplicateKey`), where it named one. */
+        readonly code?: string;
+      };
   readonly outcome:
     | { readonly kind: "pending" }
     | { readonly kind: "succeeded" | "failed" | "cancelled"; readonly evidence: string };

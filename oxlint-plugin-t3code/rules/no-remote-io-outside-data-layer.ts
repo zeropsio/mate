@@ -133,6 +133,8 @@ const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
 
 /** The Zerops API client's remote verbs (`ZeropsApiClient`, `client-runtime/src/zerops/api.ts`). */
 export const ZEROPS_CLIENT_VERBS = [
+  "addProjectVariable",
+  "addServiceVariable",
   "adoptSession",
   "buildAndDeployAppVersion",
   "createAppVersion",
@@ -172,8 +174,10 @@ export const ZEROPS_CLIENT_VERBS = [
   "readProjectBirthEnv",
   "readProjectEnv",
   "regenerateIntegrationToken",
-  "renewHeldSession",
   "register",
+  "removeProjectVariable",
+  "removeServiceVariable",
+  "renewHeldSession",
   "requestData",
   "restartService",
   "setIntegrationTokenProjects",
@@ -182,6 +186,8 @@ export const ZEROPS_CLIENT_VERBS = [
   "startService",
   "stopService",
   "syncPublicHttpRouting",
+  "updateProjectVariable",
+  "updateServiceVariable",
   "uploadAppVersionArchive",
   "verifyTotp",
   "writeMateFlag",

@@ -213,6 +213,8 @@ import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
+import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
@@ -2120,6 +2122,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       ) : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
+      {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
@@ -3003,9 +3006,37 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
 }) {
   const ctx = use(TimelineRowCtx);
   const regions = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  // A request for a vault value is the person's to answer: its card is the ask.
+  if (vaultAskOf(row.operation) !== null) {
+    return (
+      <div className="min-w-0 px-1 py-0.5">
+        <VaultRequestCardContainer
+          environmentId={ctx.activeThreadEnvironmentId}
+          operation={row.operation}
+        />
+      </div>
+    );
+  }
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+    </div>
+  );
+});
+
+/** A value the Mate asked the person for, after its run: the card that takes it into the vault. */
+const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "vault-request" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <VaultRequestCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
+        operation={row.operation}
+      />
     </div>
   );
 });

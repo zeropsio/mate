@@ -39,6 +39,7 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  vault: "available",
 } as const;
 
 function renderLauncher(
@@ -69,16 +70,16 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBVGCM"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="TFDAZBVGCME"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="TFDABVGCM"',
+      'data-surface-launcher-keys="TFDABVGCME"',
     );
   });
 
   it("draws a crew card only while the crew kind is not hidden", () => {
     expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
-    expect(hidden).toContain('data-surface-launcher-keys="TFDAZBVGM"');
+    expect(hidden).toContain('data-surface-launcher-keys="TFDAZBVGME"');
     expect(hidden).not.toContain(">Crew<");
   });
 
@@ -95,12 +96,13 @@ describe("RightPanelTabs launcher", () => {
       git: "unavailable",
       crew: "hidden",
       mcp: "unavailable",
+      vault: "unavailable",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");
     expect(html).toContain("Available from a thread.");
     expect(html).toContain("Available from a conversation.");
-    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(4);
+    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(5);
   });
 });
 

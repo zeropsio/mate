@@ -5,7 +5,7 @@
 import { readString } from "../../cards/decode.ts";
 import { decodeProcessOutcome, type ZeropsProcessOutcome } from "../../cards/payloads.ts";
 import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
-import type { ZeropsCall, ZeropsEnvChange } from "../types.ts";
+import type { ZeropsCall, ZeropsEnvChange, ZeropsVaultRequest } from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
@@ -143,6 +143,7 @@ const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
   get: "get",
   set: "set",
   delete: "delete",
+  request: "request",
   "generate-dotenv": "dotenv",
 };
 
@@ -168,13 +169,56 @@ function readEnvChange(
   const count = action === "set" || action === "delete" ? variablesCount(input) : undefined;
   const scope = project && asked !== "dotenv" ? "project" : "service";
   const refused = action === "dotenv" ? refusedByHand(document) : undefined;
+  const request = action === "request" ? readVaultRequest(input, document) : undefined;
   return {
     action,
     scope,
     ...(scope === "project" || service === undefined ? {} : { service }),
     ...(count === undefined ? {} : { count }),
     ...(refused === undefined ? {} : { refused }),
+    ...(request === undefined ? {} : { request }),
   };
+}
+
+/**
+ * What a request asked for: its key and reason from the input, how it is kept from zcp's answer
+ * (`requested`, or `alreadySet` when the key is in that vault) — before it answers, the input's
+ * flag, else the name as zcp reads it (`ops.DefaultSensitive`).
+ */
+function readVaultRequest(
+  input: Record<string, unknown> | undefined,
+  document: Record<string, unknown> | undefined,
+): ZeropsVaultRequest | undefined {
+  const key = readInputString(input, "key");
+  if (key === undefined) return undefined;
+  const already = readObject(document?.alreadySet);
+  const answered = already ?? readObject(document?.requested);
+  const reason = readInputString(input, "reason");
+  const sensitive =
+    typeof answered?.sensitive === "boolean"
+      ? answered.sensitive
+      : input?.sensitive !== undefined
+        ? readFlexBool(input, "sensitive")
+        : sensitiveByName(key);
+  return {
+    key,
+    sensitive,
+    ...(reason === undefined ? {} : { reason }),
+    alreadySet: already !== undefined,
+  };
+}
+
+function readObject(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** zcp's `ops.DefaultSensitive`: a name that reads as a secret is kept sensitive. */
+const SENSITIVE_NAME = /SECRET|TOKEN|KEY|PASSWORD|PASS|DSN|PRIVATE|CREDENTIAL/u;
+
+function sensitiveByName(key: string): boolean {
+  return SENSITIVE_NAME.test(key.toUpperCase());
 }
 
 /**

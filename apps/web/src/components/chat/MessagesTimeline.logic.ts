@@ -72,6 +72,7 @@ import {
   type WorkStep,
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
+import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -648,6 +649,16 @@ type MessagesTimelineRowBody =
       held: number;
     }
   | { kind: "outcome"; id: string; createdAt: string; outcome: OutcomeModel }
+  | {
+      /**
+       * A value the Mate asked the person for (`zerops_env action=request`): theirs to answer, so
+       * it stands after the run and its answer, never folded away with the work.
+       */
+      kind: "vault-request";
+      id: string;
+      createdAt: string;
+      operation: ZeropsOperation;
+    }
   | {
       /** A quiet line where a day begins, or where the conversation went quiet for a while. */
       kind: "seam";
@@ -2753,6 +2764,16 @@ export function deriveMessagesTimelineRows(input: {
         imageOnly: false,
         showAssistantMeta: !answer.message.streaming,
         ...(foldsFrom === undefined ? {} : { foldsFrom }),
+      });
+    }
+    // What it asked the person for follows its words: the person answers it there.
+    for (const item of items) {
+      if (item.kind !== "operation" || vaultAskOf(item.operation) === null) continue;
+      rows.push({
+        kind: "vault-request",
+        id: `vault-request:${item.operation.key}`,
+        createdAt: item.operation.anchorAt,
+        operation: item.operation,
       });
     }
     lastEnd = last.endedAt ?? last.startedAt;

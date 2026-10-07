@@ -455,6 +455,38 @@ describe("envChangeWords — what an env call changed and where, never a value",
       tense: "failed",
       words: "Changing apidev's variables failed",
     },
+    {
+      change: {
+        ...project,
+        action: "request",
+        request: { key: "STRIPE_KEY", sensitive: true, alreadySet: false },
+      },
+      tense: "asked",
+      words: "Ask for STRIPE_KEY",
+    },
+    {
+      change: {
+        ...service,
+        action: "request",
+        request: { key: "MAIL_FROM", sensitive: false, alreadySet: false },
+      },
+      tense: "done",
+      words: "Asked for MAIL_FROM",
+    },
+    {
+      change: {
+        ...project,
+        action: "request",
+        request: { key: "STRIPE_KEY", sensitive: true, alreadySet: true },
+      },
+      tense: "done",
+      words: "STRIPE_KEY is in the vault already",
+    },
+    {
+      change: { ...project, action: "request" },
+      tense: "failed",
+      words: "Asking for a value failed",
+    },
   ] as const)("$words", ({ change, tense, words }) => {
     expect(envChangeWords(change, tense)).toBe(words);
   });

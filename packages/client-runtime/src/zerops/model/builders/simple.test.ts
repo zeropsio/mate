@@ -261,3 +261,88 @@ describe("buildSimpleFields — an env call's failure never carries an entry", (
     expect(JSON.stringify(fields)).not.toContain(secret);
   });
 });
+
+// zcp's `zerops_env action=request` asks the person for a value only they
+// have (`internal/tools/env.go`): the card reads what was asked off the input
+// and zcp's answer — never a value, there is none.
+describe("buildSimpleFields — a request for a vault value", () => {
+  const requestCall = (
+    input: Record<string, unknown>,
+    result: Record<string, unknown> | undefined,
+    status: ZeropsCall["status"] = "completed",
+  ) => ({ ...simpleCall("zerops_env", status, result), input });
+  it.each([
+    {
+      name: "a Shared secret, sensitive as zcp answered",
+      input: {
+        action: "request",
+        key: "STRIPE_KEY",
+        project: true,
+        reason: "Stripe charges cards.",
+      },
+      result: { requested: { key: "STRIPE_KEY", scope: "shared", sensitive: true } },
+      envChange: {
+        action: "request",
+        scope: "project",
+        request: {
+          key: "STRIPE_KEY",
+          sensitive: true,
+          reason: "Stripe charges cards.",
+          alreadySet: false,
+        },
+      },
+    },
+    {
+      name: "a service's plain value, the answer's flag over the name",
+      input: { action: "request", key: "PUBLIC_KEY", serviceHostname: "apidev" },
+      result: {
+        requested: {
+          key: "PUBLIC_KEY",
+          scope: "service",
+          serviceHostname: "apidev",
+          sensitive: false,
+        },
+      },
+      envChange: {
+        action: "request",
+        scope: "service",
+        service: "apidev",
+        request: { key: "PUBLIC_KEY", sensitive: false, alreadySet: false },
+      },
+    },
+    {
+      name: "already in the vault: nothing was asked",
+      input: { action: "request", key: "OPENAI_API_KEY", project: "true" },
+      result: {
+        alreadySet: { key: "OPENAI_API_KEY", scope: "shared", sensitive: true, alreadySet: true },
+      },
+      envChange: {
+        action: "request",
+        scope: "project",
+        request: { key: "OPENAI_API_KEY", sensitive: true, alreadySet: true },
+      },
+    },
+    {
+      name: "while it runs, the input's flag, else the name",
+      input: { action: "request", key: "DB_PASSWORD", project: true },
+      result: undefined,
+      status: "inProgress" as const,
+      envChange: {
+        action: "request",
+        scope: "project",
+        request: { key: "DB_PASSWORD", sensitive: true, alreadySet: false },
+      },
+    },
+    {
+      name: "a request naming no key asks for nothing",
+      input: { action: "request", project: true },
+      result: undefined,
+      status: "failed" as const,
+      envChange: { action: "request", scope: "project" },
+    },
+  ])("$name", ({ input, result, status, envChange }) => {
+    expect(buildSimpleFields("env", requestCall(input, result, status)).envChange).toEqual(
+      envChange,
+    );
+  });
+});

@@ -892,6 +892,8 @@ left.
 | T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                            |
 | Open in editor                                                                          | **Cloud IDE**                                                                                   |
 | the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                  |
+| project env, project-level variables                                                    | **Shared** — the project's vault; never _project variables_                                     |
+| env vars, environment variables, secrets                                                | **the vault**, its **values** — each _Plain_ or _Sensitive_                                     |
 | commit & push                                                                           | zcp's pipeline, never the client's                                                              |
 | "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                              |
 | stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before it is merged                     |

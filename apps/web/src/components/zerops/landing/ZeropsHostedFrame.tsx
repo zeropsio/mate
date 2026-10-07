@@ -37,6 +37,7 @@ export function ZeropsHostedFrame({
   centered = false,
   footer,
   width = "wide",
+  side,
   children,
 }: {
   /** Shown in the bar inside the app shell, where the sidebar holds the brand. */
@@ -55,6 +56,8 @@ export function ZeropsHostedFrame({
   /** One quiet line at the foot of a centred page — the byline. */
   readonly footer?: ReactNode;
   readonly width?: WorkspacePageWidth;
+  /** A column beside the page, below the bar (an environment's vault), full height. */
+  readonly side?: ReactNode;
   readonly children: ReactNode;
 }) {
   const standalone = useOptionalSidebar() === null;
@@ -106,10 +109,17 @@ export function ZeropsHostedFrame({
               <footer className="flex shrink-0 justify-center px-6 pb-6">{footer}</footer>
             )}
           </div>
-        ) : (
+        ) : side === undefined ? (
           <ScrollArea className="min-h-0 flex-1">
             <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
           </ScrollArea>
+        ) : (
+          <div className="flex min-h-0 flex-1">
+            <ScrollArea className="min-h-0 min-w-0 flex-1">
+              <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
+            </ScrollArea>
+            {side}
+          </div>
         )}
       </div>
     </SidebarInset>

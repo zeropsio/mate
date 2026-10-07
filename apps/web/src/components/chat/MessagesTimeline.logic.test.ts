@@ -3678,3 +3678,55 @@ describe("conversationSpeaker: who speaks in a conversation", () => {
     ).toEqual(speaker);
   });
 });
+
+// The Mate asks the person for a value only they have (`zerops_env
+// action=request`): the ask is theirs to answer, so it stands after the run
+// and its answer — never folded away with the work.
+describe("deriveMessagesTimelineRows — a request for a vault value", () => {
+  const request = (
+    id: string,
+    minute: number,
+    over: { phase?: "done" | "failed"; alreadySet?: boolean; action?: "request" | "set" } = {},
+  ) =>
+    operation(id, "t1", minute, {
+      kind: "env",
+      phase: over.phase ?? "done",
+      subject: "the project",
+      envChange:
+        over.action === "set"
+          ? { action: "set", scope: "project", count: 1 }
+          : {
+              action: "request",
+              scope: "project",
+              request: { key: "STRIPE_KEY", sensitive: true, alreadySet: over.alreadySet ?? false },
+            },
+    });
+
+  it("settled: after the run's answer", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1), request("e1", 2), assistant("a1", "t1", 3)],
+      settled: "t1",
+    });
+    expect(shape(list).slice(-2)).toEqual(["message:a1", "vault-request:vault-request:op:e1"]);
+  });
+
+  it("live: after the run's card", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1), request("e1", 2)],
+      live: "t1",
+    });
+    expect(shape(list).at(-1)).toBe("vault-request:vault-request:op:e1");
+  });
+
+  it.each([
+    { name: "a set", over: { action: "set" as const } },
+    { name: "a key already in the vault", over: { alreadySet: true } },
+    { name: "a request zcp refused", over: { phase: "failed" as const } },
+  ])("asks nothing for $name", ({ over }) => {
+    const list = rows({
+      entries: [user("u1", 0), request("e1", 2, over), assistant("a1", "t1", 3)],
+      settled: "t1",
+    });
+    expect(list.some((row) => row.kind === "vault-request")).toBe(false);
+  });
+});

@@ -9432,3 +9432,273 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* ==== end of the Crew tab ==== */
+
+/* ==== the Vault tab ==== */
+/* The Quiet look (the owner's vault prototype, 2026-10-07): one scope at a time under a segmented
+   bar whose pill slides; two-line rows that open in place; what is not live yet in one quiet
+   warning block whose items grow in and fold away. Heights move by grid rows, so a row's body
+   and an item travel with the content under them; reduced motion keeps only the end states. */
+.vault-panel {
+  --vault-ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --vault-row-hover: color-mix(in oklab, var(--accent) 55%, var(--card));
+  --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
+  --vault-row-bg: var(--card);
+  container-type: inline-size;
+}
+
+.vault-find {
+  display: block;
+  width: 0;
+  overflow: hidden;
+  padding-block: 3px;
+  transition: width 0.26s var(--vault-ease);
+}
+
+.vault-find[data-open] {
+  width: 188px;
+}
+
+.vault-scopes {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--input) 40%, transparent);
+}
+
+.vault-scopes::-webkit-scrollbar {
+  display: none;
+}
+
+.vault-scope-pill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: var(--vault-pill-w, 0px);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow:
+    0 1px 2px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--foreground) 4%, transparent);
+  transform: translateX(var(--vault-pill-x, 2px));
+  transition:
+    transform 0.28s var(--vault-ease),
+    width 0.28s var(--vault-ease);
+}
+
+.dark .vault-scope-pill {
+  background: color-mix(in oklab, var(--input) 72%, transparent);
+}
+
+.vault-scope {
+  position: relative;
+  z-index: 1;
+  flex: 1 0 auto;
+  transition: color 0.15s;
+}
+
+/* What is not live yet: the block and each item fold in and out. */
+.vault-fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 0.24s var(--vault-ease),
+    opacity 0.18s;
+}
+
+.vault-fold > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vault-fold[data-leaving] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+[data-vault-settled] .vault-fold {
+  @starting-style {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+.vault-card {
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
+}
+
+.vault-read-link:hover {
+  background: var(--vault-row-hover);
+}
+
+.vault-notlive-item:hover {
+  background: color-mix(in oklab, var(--warning) 12%, transparent);
+}
+
+/* Rows */
+.vault-row {
+  --vault-row-bg: var(--card);
+  position: relative;
+  border-radius: var(--radius-lg);
+  background: var(--vault-row-bg);
+  transition:
+    background-color 0.16s,
+    box-shadow 0.24s var(--vault-ease),
+    margin 0.24s var(--vault-ease);
+}
+
+.vault-row:not([data-static]):not([data-open]):hover {
+  --vault-row-bg: var(--vault-row-hover);
+}
+
+.vault-row[data-open] {
+  margin-block: 6px;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
+}
+
+.vault-row[data-flash] {
+  animation: vault-flash 1.5s var(--vault-ease) 1;
+}
+
+.vault-row-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.24s var(--vault-ease);
+}
+
+.vault-row[data-open] > .vault-row-body {
+  grid-template-rows: 1fr;
+}
+
+.vault-row-body > div {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.vault-row[data-open] > .vault-row-body > div {
+  opacity: 1;
+  transition: opacity 0.22s 0.06s;
+}
+
+.vault-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vault-section::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-left: 4px;
+  background: color-mix(in oklab, var(--border) 60%, transparent);
+}
+
+/* A service's mark: 16 px, overlapped in a stack, amber when it runs the previous value. */
+.vault-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--vault-mark);
+  color: color-mix(in oklab, var(--foreground) 62%, transparent);
+  box-shadow: 0 0 0 2px var(--vault-row-bg);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  transition: box-shadow 0.16s;
+}
+
+.vault-mark + .vault-mark {
+  margin-left: -3px;
+}
+
+.vault-mark[data-restart] {
+  background: var(--warning-surface);
+  color: var(--warning-foreground);
+  box-shadow:
+    0 0 0 2px var(--vault-row-bg),
+    inset 0 0 0 1.5px var(--warning);
+}
+
+.vault-mark[data-flat] {
+  box-shadow: none;
+}
+
+.vault-mark[data-flat][data-restart] {
+  box-shadow: inset 0 0 0 1.5px var(--warning);
+}
+
+.vault-settled {
+  animation: vault-settled 1.4s var(--vault-ease) both;
+}
+
+.vault-gutter > span {
+  display: block;
+  height: 20px;
+}
+
+.vault-textarea {
+  field-sizing: content;
+  tab-size: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-find,
+  .vault-scope-pill,
+  .vault-fold,
+  .vault-row,
+  .vault-row-body,
+  .vault-row-body > div,
+  .vault-row[data-open] > .vault-row-body > div {
+    transition: none;
+  }
+
+  .vault-row[data-flash],
+  .vault-settled {
+    animation: none;
+  }
+}
+
+@keyframes vault-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@keyframes vault-settled {
+  0% {
+    opacity: 0;
+    scale: 0.6;
+  }
+  14%,
+  72% {
+    opacity: 1;
+    scale: 1;
+  }
+  100% {
+    opacity: 0;
+    scale: 0.9;
+  }
+}
+
+/* ==== end of the Vault tab ==== */

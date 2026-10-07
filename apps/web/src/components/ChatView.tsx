@@ -190,6 +190,7 @@ import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
+import { VaultPanelContainer } from "./zerops/vault/VaultPanelContainer";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
@@ -218,6 +219,8 @@ import {
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
 } from "../zerops/useZeropsChangeLandedEvents";
+import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
+import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
@@ -2941,9 +2944,14 @@ export default function ChatView(props: ChatViewProps) {
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
+  // What the Mate hears of its vault: the person's changes since it last spoke, as chips and a note.
+  const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
   const agentNotes = useMemo(
-    () => agentTurnNotes(changeLandedEvents, agentSpokeAt),
-    [agentSpokeAt, changeLandedEvents],
+    () => [
+      ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
+      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
+    ],
+    [agentSpokeAt, changeLandedEvents, vaultTurn.note],
   );
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
@@ -3794,6 +3802,10 @@ export default function ChatView(props: ChatViewProps) {
   const addMcpSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "mcp");
+  }, [activeThreadRef]);
+  const addVaultSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "vault");
   }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
@@ -6429,7 +6441,9 @@ export default function ChatView(props: ChatViewProps) {
       prompt: promptForSend,
       imageCount: composerImages.length + composerFiles.length,
       terminalContexts: composerTerminalContexts,
-      elementContextCount: composerReviewComments.length,
+      // The vault's chips ride with a message typed now, never with one queued before them.
+      elementContextCount:
+        composerReviewComments.length + (queuedMessage ? 0 : vaultTurn.changes.length),
     });
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
@@ -6638,7 +6652,13 @@ export default function ChatView(props: ChatViewProps) {
       model: ctxSelectedModel,
       models: ctxSelectedProviderModels,
       effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+      text:
+        messageTextForSend ||
+        (!queuedMessage &&
+        composerImagesSnapshot.length + composerFilesSnapshot.length === 0 &&
+        vaultTurn.changes.length > 0
+          ? vaultChipsOnlyText(vaultTurn.changes)
+          : IMAGE_ONLY_BOOTSTRAP_PROMPT),
     });
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       // A queued message that no longer fits is held at the head for the
@@ -7064,6 +7084,8 @@ export default function ChatView(props: ChatViewProps) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
       const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
+      const toldVault =
+        vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -7094,6 +7116,7 @@ export default function ChatView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        vaultTurn.told(toldVault);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
@@ -8082,6 +8105,9 @@ export default function ChatView(props: ChatViewProps) {
       case "mcp":
         addMcpSurface();
         return;
+      case "vault":
+        addVaultSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -8192,6 +8218,14 @@ export default function ChatView(props: ChatViewProps) {
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
                   threadId={isServerThread ? activeThreadRef.threadId : undefined}
+                />
+              );
+            case "vault":
+              // One Mate's vault: another Mate's draws afresh, nothing open or half-typed carried over.
+              return (
+                <VaultPanelContainer
+                  environmentId={activeThreadRef.environmentId}
+                  key={activeThreadRef.environmentId}
                 />
               );
             case "change":
@@ -8625,6 +8659,8 @@ export default function ChatView(props: ChatViewProps) {
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
                               top={threadDetailLoading ? null : composerTop}
+                              vaultChanges={vaultTurn.changes}
+                              onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {

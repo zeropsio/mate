@@ -16,6 +16,8 @@ import { projectProcesses, type ProjectProcesses } from "./projections/processes
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
+import { vault } from "./projections/vault.ts";
+import type { VaultView } from "./projections/vaultModel.ts";
 import {
   listedProject,
   organizationProjects,
@@ -104,6 +106,26 @@ export const projectUsageAtom = Atom.family((owner: string) =>
     if (account === null || account.orgId === null) return NOT_READ_USAGE;
     return get(account.data.project(projectUsage, { orgId: account.orgId, owner }));
   }).pipe(Atom.withLabel(`data:project-usage:${owner}`)),
+);
+
+export const NOT_READ_VAULT: VaultView = {
+  status: "unread",
+  complete: false,
+  scopes: [],
+  notLive: [],
+};
+
+/**
+ * One project's vault, in the shown organization, as the mounted account holds it; not read
+ * without one. Read only while a screen demands the project's `projectVariables` and
+ * `serviceVariable` details and its process `history` (when services started, when it deployed).
+ */
+export const vaultAtom = Atom.family((projectId: string) =>
+  Atom.make((get): VaultView => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return NOT_READ_VAULT;
+    return get(account.data.project(vault, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:vault:${projectId}`)),
 );
 
 const NO_PROJECTS_SERVICES: Readonly<Record<string, ProjectServices>> = {};

@@ -45,6 +45,7 @@ import {
   startServiceExecutor,
 } from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
+import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
@@ -81,6 +82,12 @@ type ZeropsOperationsClient = Pick<
   | "createPublicHttpRouting"
   | "syncPublicHttpRouting"
   | "listOrganizationMembers"
+  | "addProjectVariable"
+  | "updateProjectVariable"
+  | "removeProjectVariable"
+  | "addServiceVariable"
+  | "updateServiceVariable"
+  | "removeServiceVariable"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -211,6 +218,17 @@ export function makeZeropsExecutor(input: {
         newBirthId: input.makeId,
       },
     });
+    const vault = vaultWriteExecutor({
+      addProjectVariable: (projectId, write) => client.addProjectVariable(projectId, write),
+      updateProjectVariable: (id, write) => client.updateProjectVariable(id, write),
+      removeProjectVariable: (id) => client.removeProjectVariable(id),
+      addServiceVariable: (serviceId, write) => client.addServiceVariable(serviceId, write),
+      updateServiceVariable: (id, write) => client.updateServiceVariable(id, write),
+      removeServiceVariable: (id) => client.removeServiceVariable(id),
+    });
+    const restartOne = serviceRestartExecutor({
+      restartService: (serviceId) => client.restartService(serviceId),
+    });
     return {
       submit: (requestId, intent) =>
         Effect.suspend(() => {
@@ -252,6 +270,10 @@ export function makeZeropsExecutor(input: {
             case "route-hq-domain":
             case "mark-official-hq":
               return birthWrite(requestId, intent);
+            case "vault-write":
+              return vault(requestId, intent);
+            case "service-restart":
+              return restartOne(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -301,6 +323,12 @@ export function makeZeropsExecutor(input: {
         buildAndDeployAppVersion: (id, deploy, signal) =>
           source.buildAndDeployAppVersion(id, deploy, signal, check),
         createProjectEnv: (id, key, content) => source.createProjectEnv(id, key, content, check),
+        addProjectVariable: (id, write) => source.addProjectVariable(id, write, check),
+        updateProjectVariable: (id, write) => source.updateProjectVariable(id, write, check),
+        removeProjectVariable: (id) => source.removeProjectVariable(id, check),
+        addServiceVariable: (id, write) => source.addServiceVariable(id, write, check),
+        updateServiceVariable: (id, write) => source.updateServiceVariable(id, write, check),
+        removeServiceVariable: (id) => source.removeServiceVariable(id, check),
         mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
         regenerateIntegrationToken: (token, signal) =>
           source.regenerateIntegrationToken(token, signal, check),

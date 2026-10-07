@@ -2556,3 +2556,86 @@ describe("ZeropsApiClient.hasServiceVariable", () => {
     }
   });
 });
+
+describe("vault variable writes", () => {
+  const BASE = `${DEFAULT_ZEROPS_API_BASE}/api/rest/public`;
+  const write = { key: "STRIPE_KEY", content: "sk_test", sensitive: true };
+
+  it.each<{
+    readonly name: string;
+    readonly call: (client: ZeropsApiClient) => Promise<{ readonly processId: string | undefined }>;
+    readonly method: string;
+    readonly url: string;
+    readonly body: unknown;
+  }>([
+    {
+      name: "adds a Shared value",
+      call: (client) => client.addProjectVariable("p1", write),
+      method: "POST",
+      url: `${BASE}/project/p1/env`,
+      body: write,
+    },
+    {
+      name: "updates a Shared value, its sensitivity always said",
+      call: (client) =>
+        client.updateProjectVariable("e1", { key: "LOG_LEVEL", content: "warn", sensitive: false }),
+      method: "PUT",
+      url: `${BASE}/project-env/e1`,
+      body: { key: "LOG_LEVEL", content: "warn", sensitive: false },
+    },
+    {
+      name: "removes a Shared value",
+      call: (client) => client.removeProjectVariable("e1"),
+      method: "DELETE",
+      url: `${BASE}/project-env/e1`,
+      body: null,
+    },
+    {
+      name: "adds a service's value",
+      call: (client) => client.addServiceVariable("s1", write),
+      method: "POST",
+      url: `${BASE}/service-stack/s1/user-data`,
+      body: write,
+    },
+    {
+      name: "updates a service's value, its sensitivity always said",
+      call: (client) => client.updateServiceVariable("u1", write),
+      method: "PUT",
+      url: `${BASE}/user-data/u1`,
+      body: write,
+    },
+    {
+      name: "removes a service's value",
+      call: (client) => client.removeServiceVariable("u1"),
+      method: "DELETE",
+      url: `${BASE}/user-data/u1`,
+      body: null,
+    },
+  ])("$name, answering its process", async ({ call, method, url, body }) => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "process-1" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    await expect(call(client)).resolves.toEqual({ processId: "process-1" });
+
+    expect(stub.requests).toHaveLength(1);
+    expect(stub.requests[0]?.method).toBe(method);
+    expect(stub.requests[0]?.url).toBe(url);
+    const sent = stub.requests[0]?.body ?? null;
+    expect(sent === null ? null : JSON.parse(sent)).toEqual(body);
+  });
+
+  it("keeps the platform's code on a refusal, never the value", async () => {
+    const stub = recordingFetch(() =>
+      jsonResponse(400, { error: { code: "projectEnvDuplicateKey", message: "Duplicate key." } }),
+    );
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const error = await client.addProjectVariable("p1", write).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ZeropsApiError);
+    expect((error as ZeropsApiError).code).toBe("projectEnvDuplicateKey");
+    expect((error as ZeropsApiError).message).not.toContain("sk_test");
+  });
+});
