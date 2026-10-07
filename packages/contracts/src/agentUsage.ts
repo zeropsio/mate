@@ -175,7 +175,7 @@ export const UsageReportGeneration = Schema.Struct({
 });
 export const UsageDetailCursor = Schema.Struct({
   generation: UsageReportGeneration,
-  after: Schema.String.check(Schema.isMaxLength(512)),
+  after: Schema.String.check(Schema.isMaxLength(1024)),
 });
 export const AgentUsageScope = Schema.Struct({
   kind: Schema.Literal("agentUsage"),
@@ -203,6 +203,7 @@ export const UsageStatistics = Schema.Struct({
 export type UsageStatistics = typeof UsageStatistics.Type;
 export const UsageDailyDetail = Schema.Struct({
   meterVersion: Schema.optionalKey(UsageIdentity),
+  knownComponents: Schema.optionalKey(Schema.String),
   originId: UsageIdentity,
   day: UsageUtcDay,
   model: Schema.NullOr(UsageIdentity),
