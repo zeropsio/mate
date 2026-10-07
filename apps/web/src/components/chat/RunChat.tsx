@@ -84,6 +84,8 @@ import { flushSync } from "react-dom";
 import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
+import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
+import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
@@ -1995,8 +1997,44 @@ function checkHost(subject: string): string {
  * the frame its picture will stand in, so the row never changes height when
  * the picture comes. The stage with every take opens under it.
  */
-function ChecksBubble({ strip }: { readonly strip: BrowserStripModel }) {
+function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }) {
   const ctx = use(TimelineRowCtx);
+  const calls = useMemo(
+    () =>
+      recorded.checks.map((check) => ({
+        callId: check.callIds.length === 1 ? check.callIds[0]! : null,
+        turnId: check.turnId,
+      })),
+    [recorded.checks],
+  );
+  const activity = use(TimelineRowActivityCtx);
+  const frames = useMateBrowserCallFrames(
+    ctx.activeThreadEnvironmentId,
+    ctx.threadRef?.threadId ?? null,
+    calls,
+    activity.isWorking,
+  );
+  const strip = useMemo(
+    () => ({
+      ...recorded,
+      checks: recorded.checks.map((check, index): ZeropsOperation => {
+        const read = frames[index];
+        if (read === undefined || read.kind === "unknown") return check;
+        const { screenshot: _recorded, ...withoutPicture } = check;
+        return read.frame === null
+          ? withoutPicture
+          : {
+              ...check,
+              screenshot: {
+                src: frameImageSrc(read.frame),
+                width: read.frame.width,
+                height: read.frame.height,
+              },
+            };
+      }),
+    }),
+    [recorded, frames],
+  );
   const disclosure = useDisclosure();
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";

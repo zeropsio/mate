@@ -318,6 +318,7 @@ export {
 } from "./families/mateBrowserFrame.ts";
 export {
   mateBrowserFrame,
+  mateBrowserFrames,
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,

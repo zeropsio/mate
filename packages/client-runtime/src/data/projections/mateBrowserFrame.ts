@@ -51,6 +51,28 @@ export const mateBrowserFrame: Projection<
   },
   equals: sameValue,
 };
+/** A run's checks read each call's own frame; another turn's picture cannot fill its slot. */
+export const mateBrowserFrames: Projection<
+  {
+    readonly environmentId: string;
+    readonly threadId: string;
+    readonly calls: ReadonlyArray<{
+      readonly callId: string | null;
+      readonly turnId: string | null;
+    }>;
+  },
+  ReadonlyArray<MateBrowserFrameRead>
+> = {
+  name: "mateBrowserFrames",
+  keyOf: (input) => JSON.stringify(input),
+  derive: (read, { environmentId, threadId, calls }) =>
+    calls.map(({ callId, turnId }) =>
+      callId === null || turnId === null
+        ? UNKNOWN_BROWSER_FRAME
+        : mateBrowserFrame.derive(read, { environmentId, threadId, callId, turnId }),
+    ),
+  equals: sameValue,
+};
 export const mateBrowserStream: Projection<
   string,
   ZeropsBrowserStreamState | "unavailable" | undefined
