@@ -12,7 +12,7 @@
  * Closes with `4401` once the credential is revoked (enroll again), `1001` when this Core stops
  * leading or shuts down (reconnect: another Core leads), `4408` after three silent pings, `1007` for a
  * frame that is no link message, `1009` for one past {@link MATE_LINK_FRAME_MAX}, `1011` when HQ
- * cannot read the Mate's state. A frame's size is counted in UTF-8 bytes.
+ * cannot read the Mate's state, `1013` when its usage capture lane cannot open (the next link retries). A frame's size is counted in UTF-8 bytes.
  *
  * @module link
  */
@@ -93,13 +93,18 @@ export const serveMateLink = (
       const leader = yield* Leader;
       const access = yield* MateAccess;
       const usage = (yield* UsageLane).ledger;
-      const sender =
-        usage === undefined
-          ? undefined
-          : yield* usage.open(projectId, credential).pipe(Effect.catch(() => Effect.undefined));
+      const opened =
+        usage === undefined ? undefined : yield* Effect.result(usage.open(projectId, credential));
+      // A refusal (revoked, gone) leaves this link without capture.
+      const sender = opened?._tag === "Success" ? opened.success : undefined;
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
       const { close, heardClose, ending } = yield* socketEnding(writer);
       yield* (yield* LiveSockets).track(close);
+      // An unavailable lane is retried by the next link: this one ends before its first state.
+      if (opened?._tag === "Failure" && opened.failure._tag !== "UsageRefused") {
+        yield* close(1013, "usage lane unavailable");
+        return yield* ending;
+      }
       const link = yield* overviews.connect(projectId);
 
       const sent = yield* Ref.make<string | undefined>(undefined);

@@ -14,7 +14,8 @@ import { memoryStore } from "../test/harness/overviews.ts";
 import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes } from "./changes.ts";
-import { Leader } from "./leader.ts";
+import { Leader, NotLeader } from "./leader.ts";
+import { UsageLane, type UsageLedgerService } from "./usageLedger.ts";
 import { MateAccess } from "./mateAccess.ts";
 import { serveMateLink } from "./link.ts";
 import { MateCredentials } from "./mateCredentials.ts";
@@ -180,6 +181,32 @@ describe("serveMateLink: who ended a link, and with what code", () => {
       yield* send(1006);
       assert.deepStrictEqual(yield* Fiber.join(serving), { by: "client", code: 1006 });
     }).pipe(Effect.provide(services)),
+  );
+
+  /** HQ's capture lane as a link reads it: `open` answers with `opened`. */
+  const usageLane = (opened: ReturnType<UsageLedgerService["open"]>) =>
+    Layer.succeed(UsageLane, {
+      ledger: {
+        open: () => opened,
+        receive: () => Effect.die("unused"),
+        changes: Stream.never,
+        notify: Effect.void,
+      },
+    });
+
+  it.live("a link whose capture lane could not open is closed, so the next link retries it", () =>
+    Effect.gen(function* () {
+      const { socket } = yield* mateSocket;
+      const serving = yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
+      assert.deepStrictEqual(yield* Fiber.join(serving).pipe(Effect.timeout("5 seconds")), {
+        by: "hq",
+        code: 1013,
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(services, usageLane(Effect.fail(new NotLeader({ reason: "standby" })))),
+      ),
+    ),
   );
 
   it.effect("HQ, with the code it closed with", () =>
