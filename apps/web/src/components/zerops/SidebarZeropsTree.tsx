@@ -118,11 +118,7 @@ import {
 
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { cn } from "~/lib/utils";
-import {
-  formatRelativeTimeLabel,
-  formatShortTimestamp,
-  formatUpcomingTimestamp,
-} from "~/timestampFormat";
+import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
@@ -166,7 +162,7 @@ import {
   useWaitsOnViewer,
   type ZeropsMateOwner,
 } from "~/zerops/useZeropsMateOwners";
-import { compactSidebarTimeLabel } from "../Sidebar.logic";
+import { SidebarMateAge } from "./SidebarMateAge";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
@@ -3172,14 +3168,8 @@ function MateSlot({
         </Tooltip>
       );
     }
-    case "age": {
-      const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at));
-      return when.length === 0 ? null : (
-        <span className={cn(TIME_CLASS, fadeIn)} data-zerops-surface="sidebar-mate-time">
-          {when}
-        </span>
-      );
-    }
+    case "age":
+      return <SidebarMateAge at={at} className={cn(TIME_CLASS, fadeIn)} />;
   }
 }
 

@@ -219,6 +219,14 @@ describe("formatDayAwareTimestamp", () => {
   });
 });
 
+describe("relative time presentation clock", () => {
+  it("formats the supplied clock snapshot independently of wall time", () => {
+    const at = "2026-10-07T09:59:00.000Z";
+    expect(formatRelativeTimeLabel(at, Date.parse("2026-10-07T10:00:00Z"))).toBe("1m ago");
+    expect(formatRelativeTimeLabel(at, Date.parse("2026-10-07T10:31:00Z"))).toBe("32m ago");
+  });
+});
+
 describe("invalid timestamp inputs", () => {
   it("returns an empty timestamp instead of throwing", () => {
     expect(formatTimestamp("not-a-date", "12-hour")).toBe("");
