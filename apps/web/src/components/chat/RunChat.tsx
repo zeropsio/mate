@@ -84,6 +84,8 @@ import { flushSync } from "react-dom";
 import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
+import { FixAction } from "./FixAction";
+import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
@@ -1945,9 +1947,37 @@ function OperationLine({
             turnRuns={turnRuns}
             {...(regions === null ? {} : { regions })}
           />
+          {failed && !undone ? (
+            <OperationFixAction
+              environmentId={ctx.activeThreadEnvironmentId}
+              operation={operation}
+            />
+          ) : null}
         </div>
       ) : null}
     </CallRow>
+  );
+}
+
+function OperationFixAction({
+  environmentId,
+  operation,
+}: {
+  readonly environmentId: EnvironmentId | null;
+  readonly operation: ZeropsOperation;
+}) {
+  const mate = useMateOfEnvironment(environmentId);
+  return (
+    <FixAction
+      mate={mate === undefined ? undefined : { projectId: mate.projectId, groupId: undefined }}
+      problem={{
+        what: operationLineWords(operation),
+        at: operation.settledAt ?? operation.anchorAt,
+        error: operation.explanation?.reason,
+        logLines: operation.explanation?.logTail,
+        ask: "Find out why, fix it, and try again.",
+      }}
+    />
   );
 }
 
