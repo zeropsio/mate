@@ -64,6 +64,7 @@ import type * as PlatformError from "effect/PlatformError";
 import * as NodeOS from "node:os";
 
 import { ServerConfig } from "../config.ts";
+import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 import type { OrchestrationDispatchError } from "../orchestration/Errors.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -190,6 +191,29 @@ export const stopSessionsVia =
           ),
         { discard: true },
       ),
+    );
+
+/**
+ * Step (c) when the Mate engine owns the conversation: the engine stops every
+ * live session on the target's instances. An agent's own login is its default
+ * instance, under either spelling a session may carry; any other login is its
+ * own instance.
+ */
+export const stopSessionsOnEngine =
+  (engine: Pick<MateEngineService, "stopSessionsOn">) =>
+  (target: SignOutTarget): Effect.Effect<void> =>
+    engine.stopSessionsOn(
+      "agentId" in target
+        ? [
+            ...new Set([
+              defaultInstanceIdForDriver(
+                ProviderDriverKind.make(LOGIN_DRIVER_KIND[target.agentId]),
+              ),
+              target.agentId,
+            ]),
+          ]
+        : [target.loginId],
+      "sign-out",
     );
 
 export class ZeropsSignOut extends Context.Service<
@@ -379,38 +403,42 @@ export const layer = Layer.effect(
     const projection = yield* ProjectionSnapshotQuery;
     const homeDir = NodeOS.homedir();
 
-    const stopSessions = stopSessionsVia({
-      threads: projection.getShellSnapshot().pipe(
-        Effect.map((shell) => shell.threads),
-        Effect.catchCause((cause) =>
-          Effect.logWarning("zerops sign-out: could not read the shell snapshot", { cause }).pipe(
-            Effect.as([]),
-          ),
-        ),
-      ),
-      isLive: (threadId) =>
-        projection.getThreadShellById(threadId).pipe(
-          Effect.map(
-            Option.match({
-              onNone: () => false,
-              onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
-            }),
-          ),
-          Effect.catchCause(() => Effect.succeed(false)),
-        ),
-      stop: (threadId) =>
-        Effect.gen(function* () {
-          const createdAt = DateTime.formatIso(yield* DateTime.now);
-          yield* orchestration.dispatch({
-            type: "thread.session.stop",
-            commandId: CommandId.make(
-              `server:sign-out:${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`,
+    const engine = yield* MateEngine;
+    const stopSessions = engine.live
+      ? stopSessionsOnEngine(engine)
+      : stopSessionsVia({
+          threads: projection.getShellSnapshot().pipe(
+            Effect.map((shell) => shell.threads),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("zerops sign-out: could not read the shell snapshot", {
+                cause,
+              }).pipe(Effect.as([])),
             ),
-            threadId,
-            createdAt,
-          });
-        }),
-    });
+          ),
+          isLive: (threadId) =>
+            projection.getThreadShellById(threadId).pipe(
+              Effect.map(
+                Option.match({
+                  onNone: () => false,
+                  onSome: (thread) =>
+                    thread.session !== null && thread.session.status !== "stopped",
+                }),
+              ),
+              Effect.catchCause(() => Effect.succeed(false)),
+            ),
+          stop: (threadId) =>
+            Effect.gen(function* () {
+              const createdAt = DateTime.formatIso(yield* DateTime.now);
+              yield* orchestration.dispatch({
+                type: "thread.session.stop",
+                commandId: CommandId.make(
+                  `server:sign-out:${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`,
+                ),
+                threadId,
+                createdAt,
+              });
+            }),
+        });
 
     return yield* make({
       isZeropsEnvironment: isZeropsEnvironment(config),

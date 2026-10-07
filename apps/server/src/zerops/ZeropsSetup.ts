@@ -34,6 +34,7 @@ import {
   ThreadId,
   agentIdForProviderInstance,
   type ModelSelection,
+  OrchestrationDispatchCommandError,
   type OrchestrationCommand,
   type OrchestrationThreadShell,
   type ServerProvider,
@@ -56,6 +57,7 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
+import { ENGINE_MOVED } from "../engine/MateEngine.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
@@ -139,8 +141,11 @@ export class ZeropsSetup extends Context.Service<
     readonly noteStandUpCall: (call: StandUpCall) => Effect.Effect<void>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
-    /** One manual attempt, only for the recorded asker after a failed send. */
-    readonly retry: (subject: string) => Effect.Effect<boolean>;
+    /**
+     * One manual attempt, only for the recorded asker after a failed send. Refused while the Mate
+     * engine owns the conversation: V1 sends nothing then.
+     */
+    readonly retry: (subject: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -665,11 +670,21 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       }
     });
 
-    if (environment !== undefined && isZeropsEnvironment(config)) {
+    // The Mate engine owns the conversation: V1's stand-up is parked, its record left as it is
+    // for the engine's own stand-up to take up; nothing polls and nothing is sent.
+    const parked = config.mateEngine === "mate";
+    if (parked) {
+      yield* Deferred.succeed(settled, undefined);
+    } else if (environment !== undefined && isZeropsEnvironment(config)) {
       yield* Effect.forkScoped(wait);
     }
 
     const retry = (subject: string) =>
+      parked
+        ? Effect.fail(new OrchestrationDispatchCommandError({ message: ENGINE_MOVED }))
+        : retryOnV1(subject);
+
+    const retryOnV1 = (subject: string) =>
       attempts
         .withPermit(
           Effect.gen(function* () {

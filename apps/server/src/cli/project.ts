@@ -102,6 +102,17 @@ export class ProjectLiveServerRequestError extends Schema.TaggedError<ProjectLiv
   }
 }
 
+export class ProjectEngineMovedError extends Schema.TaggedError<ProjectEngineMovedError>()(
+  "ProjectEngineMovedError",
+  {
+    operation: Schema.Literal("writeOfflineProject"),
+  },
+) {
+  override get message(): string {
+    return "This Mate runs on the Mate engine, so its V1 projects are parked and can't be changed offline.";
+  }
+}
+
 export class ProjectTitleEmptyError extends Schema.TaggedError<ProjectTitleEmptyError>()(
   "ProjectTitleEmptyError",
   {
@@ -412,6 +423,11 @@ const runProjectMutation = Effect.fn("runProjectMutation")(function* (
           yield* Console.log(output);
         }),
       );
+    }
+
+    // Offline the CLI writes V1's tables directly; they are parked while the Mate engine runs.
+    if (config.mateEngine === "mate") {
+      return yield* new ProjectEngineMovedError({ operation: "writeOfflineProject" });
     }
 
     const offlineRuntimeLayer = ProjectCliRuntimeLive.pipe(

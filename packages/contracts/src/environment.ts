@@ -39,9 +39,15 @@ export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.T
 export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn"]);
 export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
 
+/** The Mate engine's wire protocol this build speaks (`capabilities.mateEngine`). */
+export const MATE_ENGINE_PROTOCOL = 1;
+
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
   accountLifecycleVersion: Schema.optionalKey(Schema.Literal(1)),
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** The conversation runs on the Mate engine, speaking this protocol.
+      Absent: the orchestration (V1) wire owns the conversation. */
+  mateEngine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
   connectionProbe: Schema.optionalKey(Schema.Boolean),
   /** The HTTP thread snapshot takes a turn window (the socket config's
       `threadSnapshotPagination`), told before any socket exists so a client

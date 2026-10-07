@@ -31,6 +31,7 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
+import { ENGINE_MOVED } from "../engine/MateEngine.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import type { HqStanding } from "./ZeropsHqLink.ts";
 import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -233,13 +234,19 @@ const FAST: ZeropsSetupTimings = {
 };
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
-const serverOn = (world: World, database: string, timings: ZeropsSetupTimings = FAST) =>
+const serverOn = (
+  world: World,
+  database: string,
+  timings: ZeropsSetupTimings = FAST,
+  mateEngine: ServerConfig.MateEngineMode = "v1",
+) =>
   Layer.effect(ZeropsSetup, makeZeropsSetup(timings)).pipe(
     Layer.provide(fakes(world)),
     Layer.provide(
       ServerConfig.layer({
         cwd: "/var/www",
         zerops: ZEROPS,
+        mateEngine,
       } as ServerConfig.ServerConfig["Service"]),
     ),
     Layer.provide(
@@ -255,11 +262,12 @@ const withServer = <A, E>(
   database: string,
   body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E>,
   timings: ZeropsSetupTimings = FAST,
+  mateEngine: ServerConfig.MateEngineMode = "v1",
 ) =>
   Effect.gen(function* () {
     const setup = yield* ZeropsSetup;
     return yield* body(setup);
-  }).pipe(Effect.provide(serverOn(world, database, timings)), Effect.scoped);
+  }).pipe(Effect.provide(serverOn(world, database, timings, mateEngine)), Effect.scoped);
 
 const freshDatabase = () =>
   NodePath.join(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-setup-")), "state.sqlite");
@@ -1260,5 +1268,58 @@ describe("standUpPollDelay", () => {
         Duration.toMillis(standUpPollDelay(Duration.toMillis(elapsed))),
         Duration.toMillis(delay),
       ));
+  }
+});
+
+describe("ZeropsSetup: parked while the Mate engine owns the conversation", () => {
+  const recordIn = (database: string, source: string) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      if (source !== "") {
+        yield* sql`INSERT INTO zerops_stand_ups
+          (project_id, thread_id, command_id, user_id, source, started_at)
+          VALUES ('project-mate', 'thread-main', 'mate-standup-thread-main-1', 'user-a',
+            ${source}, '2026-10-01T10:00:00.000Z')`;
+      }
+      return yield* sql<{ readonly source: string; readonly commandId: string }>`
+        SELECT source, command_id AS "commandId" FROM zerops_stand_ups`;
+    }).pipe(
+      Effect.provide(
+        Layer.effectDiscard(runMigrations()).pipe(
+          Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
+    );
+
+  for (const source of ["server:claimed", "server:failed"] as const) {
+    it.live(
+      `leaves a ${source} stand-up to the engine: nothing sent, its record untouched, no poll, no retry`,
+      () =>
+        Effect.gen(function* () {
+          const world = yield* makeWorld;
+          const database = freshDatabase();
+          const before = yield* recordIn(database, source);
+          yield* Ref.set(world.signers, SIGNED);
+          yield* withServer(
+            world,
+            database,
+            (setup) =>
+              Effect.gen(function* () {
+                yield* setup.awaitStandUp;
+                const reads = yield* Ref.get(world.hqReads);
+                yield* ticks;
+                assert.strictEqual(yield* Ref.get(world.hqReads), reads);
+                const refused = yield* Effect.flip(setup.retry("user-a"));
+                assert.strictEqual(refused.message, ENGINE_MOVED);
+              }),
+            FAST,
+            "mate",
+          );
+          assert.deepStrictEqual(yield* Ref.get(world.dispatched), []);
+          assert.deepStrictEqual(yield* Ref.get(world.admitted), []);
+          assert.deepStrictEqual(yield* recordIn(database, ""), before);
+        }),
+    );
   }
 });

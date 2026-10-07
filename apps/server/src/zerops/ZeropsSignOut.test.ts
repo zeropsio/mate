@@ -15,6 +15,7 @@ import type { MateLogin } from "./ZeropsLogins.ts";
 import {
   make,
   type SignOutTarget,
+  stopSessionsOnEngine,
   stopSessionsVia,
   threadsToStop,
   waitUntilNotLive,
@@ -655,5 +656,32 @@ describe("stopSessionsVia", () => {
       assert.deepStrictEqual(yield* Ref.get(stopped), ["a", "d"]);
       assert.deepStrictEqual(yield* Ref.get(polled), ["a", "d"]);
     }),
+  );
+});
+
+describe("stopSessionsOnEngine, when the Mate engine owns the conversation", () => {
+  it.effect.each([
+    [
+      "an agent's own login stops the sessions on each instance it is spelled as",
+      { agentId: "claude-code" },
+      ["claudeAgent", "claude-code"],
+    ],
+    ["Codex's own login stops the sessions on its instance", { agentId: "codex" }, ["codex"]],
+    [
+      "a login beyond the defaults stops the sessions on that login's instance",
+      { loginId: "claudeAgent-work" },
+      ["claudeAgent-work"],
+    ],
+  ] as const satisfies ReadonlyArray<readonly [string, SignOutTarget, ReadonlyArray<string>]>)(
+    "%s",
+    ([, target, expected]) =>
+      Effect.gen(function* () {
+        const calls: Array<{ instanceIds: ReadonlyArray<string>; cause: string }> = [];
+        yield* stopSessionsOnEngine({
+          stopSessionsOn: (instanceIds, cause) =>
+            Effect.sync(() => void calls.push({ instanceIds, cause })),
+        })(target);
+        assert.deepStrictEqual(calls, [{ instanceIds: expected, cause: "sign-out" }]);
+      }),
   );
 });

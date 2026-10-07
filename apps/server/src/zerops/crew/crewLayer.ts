@@ -703,9 +703,13 @@ export const crewLayerInert = Layer.succeedContext(
   ),
 );
 
-/** Crew mode runs live only inside a Zerops project, with its switch on (ARCHITECTURE §1 gates 1–2). */
+/**
+ * Crew mode runs live only inside a Zerops project, with its switch on
+ * (ARCHITECTURE §1 gates 1–2), and only while V1 owns the conversation: crew
+ * dispatches V1 commands, so it is off when the Mate engine runs.
+ */
 export const crewModeOn = (config: ServerConfig["Service"]): boolean =>
-  isZeropsEnvironment(config) && config.zeropsCrew;
+  isZeropsEnvironment(config) && config.zeropsCrew && config.mateEngine !== "mate";
 
 /** The live engine behind gates 1 and 2, with `installer` for the thread policies. */
 export const makeCrewLayer = (installer: CrewPolicyInstaller) =>

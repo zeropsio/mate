@@ -1,5 +1,6 @@
 import {
   EnvironmentId,
+  MATE_ENGINE_PROTOCOL,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   type ExecutionEnvironmentDescriptor,
 } from "@t3tools/contracts";
@@ -86,6 +87,7 @@ export const makeServerEnvironmentCapabilities = (
     readonly agentLoginCode?: boolean;
     readonly agentSignOut?: boolean;
     readonly mateLogins?: boolean;
+    readonly mateEngine?: boolean;
   },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
@@ -117,6 +119,7 @@ export const makeServerEnvironmentCapabilities = (
     ...(options?.agentLoginCode === undefined ? {} : { agentLoginCode: options.agentLoginCode }),
     ...(options?.agentSignOut === undefined ? {} : { agentSignOut: options.agentSignOut }),
     ...(options?.mateLogins === undefined ? {} : { mateLogins: options.mateLogins }),
+    ...(options?.mateEngine === true ? { mateEngine: { protocol: MATE_ENGINE_PROTOCOL } } : {}),
   };
 };
 
@@ -207,6 +210,7 @@ export const make = Effect.gen(function* () {
       agentLoginCode: isZeropsEnvironment(serverConfig),
       agentSignOut: isZeropsEnvironment(serverConfig),
       mateLogins: isZeropsEnvironment(serverConfig),
+      mateEngine: serverConfig.mateEngine === "mate",
     }),
   };
 

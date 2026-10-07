@@ -40,6 +40,8 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
+import { engineLayer } from "../engine/layer.ts";
+import { noRestartEvidence, zeropsRunAdmission } from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
@@ -541,18 +543,19 @@ export const FIXTURE_ATTENTION: MateAttention = {
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
   const auth = agentAuthLayer(scene);
   const login = agentLoginLayer(scene);
+  // The live gate, over this scene's agents and signers — a fixture admits
+  // and refuses turns exactly as a live Mate would on the same facts.
+  const admission = ZeropsTurnAdmission.layer.pipe(
+    Layer.provide(login),
+    Layer.provide(auth),
+    Layer.provide(loginsFixtureLayer),
+    Layer.provide(fixtureSignersLayer),
+    Layer.provide(providerInstancesLayer),
+  );
   return Layer.mergeAll(
     lifecycleLayer(scene),
     login.pipe(Layer.provideMerge(auth)),
-    // The live gate, over this scene's agents and signers — a fixture admits
-    // and refuses turns exactly as a live Mate would on the same facts.
-    ZeropsTurnAdmission.layer.pipe(
-      Layer.provide(login),
-      Layer.provide(auth),
-      Layer.provide(loginsFixtureLayer),
-      Layer.provide(fixtureSignersLayer),
-      Layer.provide(providerInstancesLayer),
-    ),
+    admission,
     signOutFixtureLayer,
     loginsFixtureLayer,
     browserStreamLayer(),
@@ -584,6 +587,12 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     // A fixture scene has no dev services for a crew to work on: crew mode
     // is off, the feed says so and every crew request is refused.
     crewLayerInert,
+    // The engine the switch names, as on a live Mate: its runs pass the same
+    // gate, and a scene has no platform to read a restart from.
+    engineLayer.pipe(
+      Layer.provideMerge(Layer.mergeAll(zeropsRunAdmission, noRestartEvidence)),
+      Layer.provide(admission),
+    ),
     // A fixture scene has no live env store either: the reader answers
     // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
     // is not provided here — it is supplied once, live or fixture alike, in

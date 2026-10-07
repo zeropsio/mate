@@ -19,9 +19,11 @@ import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { engineLayer } from "../engine/layer.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewLayer } from "./crew/crewLayer.ts";
 import { CrewPlatformProcesses } from "./crew/crewDeployState.ts";
+import { engineAdaptersLayer } from "./engineAdapters.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
@@ -101,6 +103,21 @@ const ZeropsCrewLive = crewLayer.pipe(
   Layer.provide(ProcessRunner.layer),
 );
 
+/**
+ * The Mate engine (`engine/`, reached only from here, ws.ts and the startup): inert unless
+ * T3CODE_MATE_ENGINE is `mate`. Its ports are Zerops's: runs are admitted through the same gate
+ * instance and the restart is read by the same own-key reader (memoized by reference). One value,
+ * so the sign-out below stops sessions on the very engine the merge runs.
+ */
+const MateEngineLive = engineLayer.pipe(
+  Layer.provideMerge(
+    engineAdaptersLayer.pipe(
+      Layer.provide(ZeropsTurnAdmissionLive),
+      Layer.provide(ZeropsRestartReadModule.layer),
+    ),
+  ),
+);
+
 /** The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. */
 const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
   Layer.provideMerge(ZeropsCliModule.layer),
@@ -156,12 +173,14 @@ const liveLayer = Layer.mergeAll(
         Layer.provide(ZeropsLoginsLive),
         Layer.provide(ZeropsAgentFlagModule.layer),
         Layer.provide(ZeropsProjectSignersModule.layer),
+        Layer.provide(MateEngineLive),
       ),
     ),
     Layer.provide(ZeropsProjectSignersModule.layer),
   ),
   ZeropsTurnAdmissionLive,
   ZeropsCrewLive,
+  MateEngineLive,
   // A new Mate's setup, reported at `/setup.json`, and its stand-up started
   // here once its asker has an agent to run — admitted through the same gate.
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.
