@@ -1838,18 +1838,6 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
-- **2026-10-03** — **The MCP servers a Mate's agents can call are a right-panel tab, and /mcp opens
-  it** (the owner: "a proper mcp management dialog … or one of the right side tabs? it feels like
-  mcp is quite like .. important"). The tab is labelled "MCP"; Zerops' own server stands first,
-  marked "Built in", shown and reconnected, never turned off or removed; a repo `.mcp.json` server
-  is shown and edited in the repo. A row's dot is the conversation's agent's state, a second line
-  only for an error, a needed sign-in or a server turned off, and a third names which agent stands
-  how when they differ. A server added there is written for every agent installed on the Mate, in
-  each one's user-scope config — not the repo, so secrets stay out of git. /mcp is Mate's own
-  command, like /model: it opens the tab and sends nothing. Signing in to an OAuth server waits
-  for its own slice; mobile has no right panel, so no tab yet.
-  - _Why:_ Claude Code's /mcp in a Mate answers with one line of text, Codex has none, and an MCP
-    server a person adds is useful only if it reaches whichever agent the conversation runs on.
 
 - **2026-10-04** — **Origin's load and agent readiness fixes use HQ's facts.** A ready agent outside
   Mate's personal sign-in flow is relayed in its overview's identity, alongside provider changes.
