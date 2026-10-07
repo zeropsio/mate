@@ -4,7 +4,8 @@ import { usageDigest } from "@t3tools/shared/agentUsage";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { readGrokTurn } from "./usageTranscripts.ts";
+import type { AntigravityGeneration } from "./antigravityUsageReader.ts";
+import { readGrokTurn, type UsageRecord } from "./usageTranscripts.ts";
 
 const Count = Schema.Number.check(
   Schema.isInt(),
@@ -444,4 +445,65 @@ export function meterGrokLine(line: string, floor?: number): MeterFacts {
     });
   }
   return { facts, gaps };
+}
+
+/** A provider database's five token counts, which its own schema always writes. */
+const databaseComponents = (totals: UsageRecord["totals"]): UsageComponents => ({
+  uncachedInput: String(totals.uncachedInputTokens),
+  cachedInput: String(totals.cachedInputTokens),
+  cacheCreation: String(totals.cacheCreationTokens),
+  output: String(totals.outputTokens),
+  reasoning: String(totals.reasoningTokens),
+  inclusiveTotal: null,
+});
+
+/** One OpenCode assistant message, as `readOpenCodeUsage` reads it, is one fact. */
+export function meterOpenCodeMessage(record: UsageRecord): MeterFacts {
+  const message = record.dedupeKey?.startsWith("opencode:")
+    ? record.dedupeKey.slice("opencode:".length)
+    : "";
+  if (!message) return { facts: [], gaps: ["opencode-missing-native-identity"] };
+  return {
+    facts: [
+      {
+        ...common([message], record.sessionId, "opencode", undefined, "database"),
+        sessionId: record.sessionId ? usageDigest(["opencode", record.sessionId]) : null,
+        model: record.model || null,
+        pricingBand: "standard",
+        components: databaseComponents(record.totals),
+        time: instant(record.timestampMs, "provider-database"),
+        evidence: "assistant-message",
+      },
+    ],
+    gaps: [],
+  };
+}
+
+/** Aliases a fact may carry; the rest of a generation's identities are dropped. */
+const ALIASES_MAX = 16;
+
+/**
+ * One Antigravity generation is one fact under its first identity, the others its aliases. One
+ * without any identity has only a position in its file, which a rewrite moves: it is no fact.
+ */
+export function meterAntigravityGeneration(generation: AntigravityGeneration): MeterFacts {
+  const [first, ...others] = generation.keys;
+  if (first === undefined) return { facts: [], gaps: ["antigravity-missing-native-identity"] };
+  const { record } = generation;
+  // Only the database file's time dates it: when it ran is unknown.
+  const dated = generation.timestampQuality > 0;
+  return {
+    facts: [
+      {
+        ...common([first], record.sessionId, "antigravity", undefined, "database"),
+        aliases: others.slice(0, ALIASES_MAX).map((key) => usageDigest(["antigravity", [key]])),
+        model: record.model === "antigravity-unknown" ? null : record.model || null,
+        pricingBand: "standard",
+        components: databaseComponents(record.totals),
+        time: dated ? instant(record.timestampMs, "provider-database") : { kind: "undated" },
+        evidence: "generation",
+      },
+    ],
+    gaps: dated ? [] : ["antigravity-file-time-only"],
+  };
 }

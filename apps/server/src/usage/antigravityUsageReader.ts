@@ -257,6 +257,16 @@ async function readDatabase(path: string, fallbackTimestamp: number): Promise<Us
   }
 }
 
+export interface AntigravityGeneration {
+  /** The conversation database that owns the generation. */
+  readonly path: string;
+  readonly record: UsageRecord;
+  /** `antigravity:<field>:<id>` identities; empty when the generation carries none. */
+  readonly keys: readonly string[];
+  /** 2: its own clock, 1: its conversation's, 0: only the database file's time. */
+  readonly timestampQuality: number;
+}
+
 /** Reads and merges aliases across every configured Antigravity store before date filtering. */
 export async function readAntigravityUsage(
   conversationsDirectories: string | readonly string[],
@@ -365,10 +375,26 @@ export async function readAntigravityUsage(
     }
   };
   for (const root of roots) await walk(root, root);
+  const groupKeys = new Map<number, string[]>();
+  for (const [key, index] of identities) {
+    const root = find(index);
+    groupKeys.set(root, [...(groupKeys.get(root) ?? []), key]);
+  }
+  /** Each kept generation with every identity it was seen under, its own first. */
+  const generations: AntigravityGeneration[] = [];
   for (const [index, group] of groups.entries()) {
     if (group.parent === index && group.record.timestampMs >= sinceMs) {
       files[group.fileIndex]!.records.push(group.record);
+      const keys = groupKeys.get(index) ?? [];
+      generations.push({
+        path: files[group.fileIndex]!.path,
+        record: group.record,
+        keys: keys.includes(group.record.dedupeKey ?? "")
+          ? [group.record.dedupeKey!, ...keys.filter((key) => key !== group.record.dedupeKey)]
+          : keys,
+        timestampQuality: group.timestampQuality,
+      });
     }
   }
-  return { files, errors };
+  return { files, errors, generations };
 }
