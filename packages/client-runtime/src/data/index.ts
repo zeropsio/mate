@@ -105,6 +105,13 @@ export type {
   VaultView,
   VaultWrite,
 } from "./projections/vaultModel.ts";
+export { vault, type VaultKey } from "./projections/vault.ts";
+export {
+  projectVariablesScope,
+  type ProjectVariablesValue,
+  type VariableRow,
+} from "./families/projectVariables.ts";
+export { serviceVariablesScope, type ServiceVariableValue } from "./families/serviceVariables.ts";
 export {
   serviceRuns,
   type ServiceRuns,
