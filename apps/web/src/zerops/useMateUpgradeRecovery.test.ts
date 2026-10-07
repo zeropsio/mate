@@ -3,6 +3,7 @@
  * `reactHookHarness`: calling the hook again after each step observes the next state the way a
  * re-render would. The restart is the account's `mate-restart` operation; a refusal is Zerops's.
  */
+import { upgradeRecoveryFromEvidence, type OperationProgress } from "@t3tools/client-runtime/data";
 import type { ContainerVerdict } from "@t3tools/client-runtime/zerops/environments";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -24,6 +25,8 @@ const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
 const KEY = "project-1:service-1";
 
 const mock = vi.hoisted(() => ({
+  data: {},
+  progress: { stage: "accepted", operationId: "proc-restart" } as OperationProgress,
   restart: vi.fn(),
   reconnect: vi.fn(),
   /** The container's initAt read before the verb. */
@@ -35,8 +38,27 @@ const mock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.restart }) }));
-vi.mock("./ZeropsAccountData", () => ({ useAccountData: () => ({ orgId: "org-1" }) }));
+vi.mock("./accountOperations", () => ({
+  useAccountOperations: () => ({
+    submit: async (...args: unknown[]) => {
+      const answer = await mock.restart(...args);
+      mock.progress = answer.progress;
+      return answer;
+    },
+  }),
+}));
+vi.mock("./ZeropsAccountData", () => ({
+  useAccountData: () => ({ orgId: "org-1", data: mock.data }),
+  useProjection: (_projection: unknown, key: unknown) =>
+    key === null
+      ? { state: "waiting" }
+      : upgradeRecoveryFromEvidence({
+          progress: mock.progress,
+          verdict: mock.container.verdict,
+          serverVersion: mock.container.serverVersion,
+          returned: mock.container.verdict.level === "ready",
+        }),
+}));
 vi.mock("./inventoryContext", () => ({
   useZeropsInventory: () => ({ error: null }),
   useInventoryCandidates: () => [
@@ -62,11 +84,11 @@ vi.mock("./zeropsContainers", () => ({
   },
 }));
 
-const { useZeropsUpgradeRestart } = await import("./useZeropsUpgradeRestart");
+const { useMateUpgradeRecovery } = await import("./useMateUpgradeRecovery");
 
 function render() {
   reactHookHarness.beginRender();
-  const recovery = useZeropsUpgradeRestart(ORIGIN, mock.reconnect);
+  const recovery = useMateUpgradeRecovery(ORIGIN, mock.reconnect);
   if (recovery === null) throw new Error("no recovery for an origin");
   return recovery;
 }
@@ -85,6 +107,7 @@ const INIT_AT = "2026-09-23T08:00:00Z";
 
 beforeEach(() => {
   reactHookHarness.reset();
+  mock.data = {};
   mock.restart.mockReset().mockResolvedValue({
     requestId: "r1",
     evidence: null,
@@ -92,12 +115,13 @@ beforeEach(() => {
   });
   mock.reconnect.mockReset();
   mock.readInitAt.mockReset().mockResolvedValue(INIT_AT);
+  mock.progress = { stage: "accepted", operationId: "proc-restart" };
   mock.intents = [];
   mock.container.verdict = { level: "ready" };
   mock.container.serverVersion = "0.10.0";
 });
 
-describe("useZeropsUpgradeRestart", () => {
+describe("useMateUpgradeRecovery", () => {
   it("our restart holds the container until it is back, then reconnects on a compatible version", async () => {
     let recovery = await restart();
     // The initAt is read before the verb is sent, and the restart is judged by it.
@@ -144,8 +168,13 @@ describe("useZeropsUpgradeRestart", () => {
     mock.container.verdict = { level: "restarting", by: "you", overdue: true };
     render();
     const recovery = render();
-    expect(recovery.state).toBe("failed");
+    expect(recovery.state).toBe("unresolved");
     expect(recovery.error).toMatch(/has not come back yet/);
+    mock.container.verdict = { level: "ready" };
+    mock.container.serverVersion = "0.12.0";
+    render();
+    expect(render().state).toBe("idle");
+    expect(mock.reconnect).toHaveBeenCalledOnce();
   });
 
   it("refuses a restart its project's access does not admit, in the refusal's words, and holds no container", async () => {
@@ -181,4 +210,35 @@ describe("useZeropsUpgradeRestart", () => {
     expect(render().error).toBe("Service stack is failed.");
     expect(mock.intents).toEqual([]);
   });
+});
+
+it("a refused restart survives surface remount through its operation identity", async () => {
+  mock.restart.mockResolvedValue({
+    requestId: "r1",
+    evidence: null,
+    progress: { stage: "refused", reason: "No restart" },
+  });
+  render().request();
+  render().confirm();
+  await vi.waitFor(() => expect(render().state).toBe("failed"));
+  reactHookHarness.reset();
+  render();
+  expect(render()).toMatchObject({ state: "failed", error: "No restart" });
+  expect(mock.restart).toHaveBeenCalledOnce();
+});
+
+it("a lost acceptance answer is unresolved and never installs a guessed restart intent", async () => {
+  mock.restart.mockResolvedValue({
+    requestId: "r1",
+    evidence: null,
+    progress: { stage: "uncertain", next: "ask-owner-again" },
+  });
+  render().request();
+  render().confirm();
+  await vi.waitFor(() => expect(render().state).toBe("unresolved"));
+  expect(mock.intents).toEqual([]);
+  reactHookHarness.reset();
+  render();
+  expect(render().state).toBe("unresolved");
+  expect(mock.restart).toHaveBeenCalledOnce();
 });

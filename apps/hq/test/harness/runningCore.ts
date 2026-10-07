@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
+// @effect-diagnostics nodeBuiltinImport:off -- the tests reach Core as a client does: over HTTP and a WebSocket.
 /**
  * A whole Core as the tests run it: on a fresh database of the test file's temp cluster (or a given
  * one), over the in-memory Zerops of a miniature rig, served by a real Node server on a free port;
@@ -8,6 +8,7 @@
  * @module test/harness/runningCore
  */
 import * as NodeHttp from "node:http";
+import * as NodeStreamConsumers from "node:stream/consumers";
 
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
@@ -268,7 +269,11 @@ export const startCore = (
     );
     const address = Context.get(context, HttpServer.HttpServer).address;
     const base = `127.0.0.1:${String("port" in address ? address.port : 0)}`;
-    const stop = Scope.close(scope, Exit.void);
+    // Each Core owns its HTTP pool; stopping the fixture closes it with the server.
+    const agent = yield* Effect.sync(() => new NodeHttp.Agent({ keepAlive: true }));
+    const stop = Scope.close(scope, Exit.void).pipe(
+      Effect.ensuring(Effect.sync(() => agent.destroy())),
+    );
     yield* Effect.addFinalizer(() => stop);
     const call = (
       method: string,
@@ -284,34 +289,48 @@ export const startCore = (
     ) =>
       Effect.promise(async () => {
         const raw = options.body instanceof Uint8Array;
-        // A redirect is an answer to see, never one to follow.
-        const response = await fetch(`http://${base}${path}`, {
-          method,
-          redirect: "manual",
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-          headers: {
-            ...(options.body === undefined || raw ? {} : { "content-type": "application/json" }),
-            ...(options.session === undefined
-              ? {}
-              : { authorization: `Bearer ${options.session}` }),
-            ...options.headers,
-          },
-          ...(options.body === undefined
-            ? {}
-            : {
-                body: raw
-                  ? new Uint8Array(options.body as Uint8Array).buffer
-                  : encodeJson(options.body),
-              }),
+        // Node's HTTP client returns each redirect as an answer, without following it.
+        const response = await new Promise<NodeHttp.IncomingMessage>((resolve, reject) => {
+          const request = NodeHttp.request(
+            `http://${base}${path}`,
+            {
+              method,
+              agent,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+              headers: {
+                ...(options.body === undefined || raw
+                  ? {}
+                  : { "content-type": "application/json" }),
+                ...(options.session === undefined
+                  ? {}
+                  : { authorization: `Bearer ${options.session}` }),
+                ...options.headers,
+              },
+            },
+            resolve,
+          );
+          request.once("error", reject);
+          request.end(
+            options.body === undefined
+              ? undefined
+              : options.body instanceof Uint8Array
+                ? options.body
+                : encodeJson(options.body),
+          );
         });
-        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (response.statusCode === undefined) throw new Error("Core's HTTP answer has no status");
+        const headers = new Headers();
+        for (let index = 0; index < response.rawHeaders.length; index += 2) {
+          headers.append(response.rawHeaders[index]!, response.rawHeaders[index + 1]!);
+        }
+        const bytes = new Uint8Array(await NodeStreamConsumers.arrayBuffer(response));
         const text = new TextDecoder().decode(bytes);
-        const isJson = response.headers.get("content-type")?.includes("json") ?? false;
+        const isJson = headers.get("content-type")?.includes("json") ?? false;
         return {
-          status: response.status,
+          status: response.statusCode,
           body: text === "" ? null : isJson ? decodeJson(text) : text,
           bytes,
-          headers: response.headers,
+          headers,
         };
       });
     /** A WebSocket to `path`: its messages one by one, its close, a pong for every ping while `answering`. */

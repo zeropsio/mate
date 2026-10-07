@@ -5,7 +5,6 @@
  * up as a restart's is (`intendContainer`), and shows restarting until it is back.
  */
 import { restartWay } from "@t3tools/client-runtime/data";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useCallback } from "react";
 
@@ -14,7 +13,7 @@ import { toastManager } from "~/components/ui/toast";
 import { useAccountOperations } from "./accountOperations";
 import { restartRefusal } from "./mateRestartRefusal";
 import { useAccountData } from "./ZeropsAccountData";
-import { useZeropsCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsCandidates } from "./useZeropsCandidates";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 
 export interface RestartTarget {
@@ -58,13 +57,13 @@ export function useRestartMate(): (target: RestartTarget) => Promise<void> {
  * has not failed — its *Try now* is the link's own retry — and for one the listing does not hold.
  */
 export function useReviveFailedMate(): (serviceId: string | undefined) => boolean {
-  const { listing } = useZeropsCandidates();
+  const rows = useHeldZeropsCandidates();
   const operations = useAccountOperations();
   const { orgId } = useAccountData();
   return useCallback(
     (serviceId) => {
       if (serviceId === undefined || orgId === null) return false;
-      const candidate = heldCandidates(listing).rows.find((row) => row.service?.id === serviceId);
+      const candidate = rows.find((row) => row.service?.id === serviceId);
       if (candidate?.service === undefined) return false;
       if (restartWay(candidate.service.status) !== "stop-then-start") return false;
       intendContainer(candidate.key, { kind: "restart" });
@@ -84,6 +83,6 @@ export function useReviveFailedMate(): (serviceId: string | undefined) => boolea
         });
       return true;
     },
-    [listing, operations, orgId],
+    [rows, operations, orgId],
   );
 }

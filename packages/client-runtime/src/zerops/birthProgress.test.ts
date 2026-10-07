@@ -13,6 +13,54 @@ import {
 
 const NOW = Date.parse("2026-09-22T10:05:00Z");
 
+describe("setup ends from process evidence", () => {
+  it.each(["FINISHED", "FAILED", "CANCELED"] as const)(
+    "a %s process never remains active",
+    (status) => {
+      const facts: BirthFacts = {
+        ...SETTLED,
+        ...NOT_YET,
+        container: { serviceId: "svc-1", status: "CREATING", hasOrigin: false },
+        processes: [
+          process({
+            actionName: "stack.create",
+            status,
+            serviceIds: ["svc-1"],
+            startedAt: "s",
+            finishedAt: "e",
+          }),
+        ],
+      };
+      const step = stepOf(facts, "container");
+      expect(step.state).not.toBe("active");
+      expect(step).toMatchObject({ startedAt: "s", endedAt: "e" });
+    },
+  );
+
+  it.each(["stack.start", "stack.restart"])(
+    "a new %s replaces an older failure, regardless of input order",
+    (actionName) => {
+      const failed = process({
+        actionName: "stack.create",
+        status: "FAILED",
+        serviceIds: ["svc-1"],
+      });
+      const retry = process({
+        actionName,
+        status: "RUNNING",
+        serviceIds: ["svc-1"],
+        createdAt: "2026-09-22T10:03:00Z",
+      });
+      for (const processes of [
+        [failed, retry],
+        [retry, failed],
+      ]) {
+        expect(stepOf({ ...SETTLED, ...NOT_YET, processes }, "container").state).toBe("active");
+      }
+    },
+  );
+});
+
 function process(
   partial: Partial<BirthProcessFact> & Pick<BirthProcessFact, "actionName" | "status">,
 ): BirthProcessFact {
@@ -244,7 +292,7 @@ describe("container step", () => {
     expect(stepOf(SETTLED, "container").state).toBe("done");
   });
 
-  it("takes its timestamps from the first stack.create", () => {
+  it("takes its timestamps from the current stack.create attempt", () => {
     const facts: BirthFacts = {
       ...SETTLED,
       processes: [
@@ -267,8 +315,8 @@ describe("container step", () => {
       ],
     };
     expect(stepOf(facts, "container")).toMatchObject({
-      startedAt: "2026-09-22T10:00:01Z",
-      endedAt: "2026-09-22T10:00:05Z",
+      startedAt: "2026-09-22T10:00:11Z",
+      endedAt: "2026-09-22T10:00:15Z",
     });
   });
 

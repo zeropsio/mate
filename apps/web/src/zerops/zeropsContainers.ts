@@ -17,12 +17,11 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { MateLinkValue } from "@t3tools/client-runtime/data";
-import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { useMemo } from "react";
 
-import { hqMatesAtom } from "~/state/zerops";
+import { hqMateVersionsAtom } from "~/state/zerops";
 import {
   accountEnvironmentsReady,
   currentAccountEnvironments,
@@ -71,7 +70,7 @@ export type MateReading = Pick<MateLinkValue, "container" | "watched">;
  */
 export function mateServerVersion(
   link: MateReading | undefined,
-  mate: MateLiveView | undefined,
+  mate: { readonly identity?: { readonly serverVersion: string } } | undefined,
 ): string | undefined {
   const probed = link?.container.reading?.reading;
   const own = probed?.kind === "ready" ? probed.descriptor.serverVersion : undefined;
@@ -82,7 +81,10 @@ export function mateServerVersion(
 /** Every Mate container in the rows' words, each server version as `mateServerVersion` reads it. */
 export function containerSnapshotWithHq(
   links: ReadonlyMap<TargetKey, MateReading>,
-  mates: HqMates | null | undefined,
+  mates:
+    | ReadonlyMap<string, { readonly identity?: { readonly serverVersion: string } }>
+    | null
+    | undefined,
 ): ContainerSnapshot {
   const serverVersions = new Map<TargetKey, string>();
   for (const [key, link] of links) {
@@ -96,7 +98,17 @@ export function containerSnapshotWithHq(
 /** One target's container as the account's store holds it now. */
 export function useTargetContainer(key: TargetKey | null): TargetContainer {
   const links = useMateLinkValues();
-  const mates = useAtomValue(hqMatesAtom)?.mates;
+  const identities = useAtomValue(hqMateVersionsAtom);
+  const mates = useMemo(
+    () =>
+      new Map(
+        Object.entries(identities).map(([id, identity]) => [
+          id,
+          identity === undefined ? {} : { identity: { serverVersion: identity } },
+        ]),
+      ),
+    [identities],
+  );
   const link = key === null ? undefined : links.get(key);
   const mate = key === null ? undefined : mates?.get(targetProject(key));
   return useMemo(
@@ -118,6 +130,16 @@ export function useEnvironmentContainer(environmentId: EnvironmentId): TargetCon
 /** Every Mate container of the account, as the account's store holds it now. */
 export function useZeropsContainers(): ContainerSnapshot {
   const links = useMateLinkValues();
-  const mates = useAtomValue(hqMatesAtom)?.mates;
+  const identities = useAtomValue(hqMateVersionsAtom);
+  const mates = useMemo(
+    () =>
+      new Map(
+        Object.entries(identities).map(([id, identity]) => [
+          id,
+          identity === undefined ? {} : { identity: { serverVersion: identity } },
+        ]),
+      ),
+    [identities],
+  );
   return useMemo(() => containerSnapshotWithHq(links, mates), [links, mates]);
 }

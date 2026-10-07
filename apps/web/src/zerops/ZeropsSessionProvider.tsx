@@ -1,3 +1,4 @@
+import { browserTransportFetch } from "@t3tools/client-runtime/data";
 /**
  * The signed-in Zerops account, available to every route.
  *
@@ -159,7 +160,7 @@ function ownerRecordIn(browser: Window) {
  */
 function makeSession(storage: ZeropsStorageAdapter) {
   // The recipe endpoint mock passes all other traffic to the platform.
-  const fetch = globalThis.fetch.bind(globalThis);
+  const fetch = browserTransportFetch;
   const browser = window;
   // Web Locks exist only in a secure context; without them each tab renews alone.
   const locks: LockManager | undefined = browser.navigator.locks;

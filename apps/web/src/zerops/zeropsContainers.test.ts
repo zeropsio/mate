@@ -26,7 +26,13 @@ vi.mock("react", async (importOriginal) => ({
 }));
 vi.mock("@effect/atom-react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@effect/atom-react")>()),
-  useAtomValue: () => ({ organizationId: "org-1", mates: held.mates, current: true }),
+  useAtomValue: () =>
+    Object.fromEntries(
+      [...(held.mates ?? [])].map(([id, mate]) => [
+        id,
+        (mate as MateLiveView).identity?.serverVersion,
+      ]),
+    ),
 }));
 vi.mock("./accountEnvironments", () => ({
   accountEnvironmentsReady: () => new Promise(() => undefined),

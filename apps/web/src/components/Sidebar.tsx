@@ -2338,7 +2338,7 @@ export default function Sidebar() {
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
   // thing in both places.
-  const zeropsAgentActivity = useMatesActivity();
+  const zeropsAgentActivity = useMatesActivity(true);
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
   // What a Mate's row says (`useMateRowActivity`): its attention, at rest
@@ -4194,6 +4194,7 @@ export default function Sidebar() {
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}
+              keyedReadings
               getConversationsRead={zeropsConversationsRead}
               onSelect={onZeropsSelect}
               onOpenCrew={onZeropsOpenCrew}

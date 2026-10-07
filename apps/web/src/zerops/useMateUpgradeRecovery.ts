@@ -9,41 +9,52 @@
  *
  * This door uses the verified platform inventory, so it also works before a Mate connection.
  */
-import { mateServerCompatibility } from "@t3tools/client-runtime/zerops/serverCompatibility";
+import { mateUpgradeRecovery, type MateUpgradeRecovery } from "@t3tools/client-runtime/data";
+import { Atom } from "effect/unstable/reactivity";
 import { useEffect, useRef, useState } from "react";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { useAccountOperations } from "./accountOperations";
 import { useInventoryCandidates, useZeropsInventory } from "./inventoryContext";
-import { restartRefusal } from "./mateRestartRefusal";
-import { useAccountData } from "./ZeropsAccountData";
+import { useAccountData, useProjection } from "./ZeropsAccountData";
 import { intendContainer, readContainerInitAt, useTargetContainer } from "./zeropsContainers";
 
 export interface UpgradeRecovery {
   readonly serverVersion?: string;
-  readonly state: "idle" | "confirm" | "waiting" | "failed";
+  readonly state: "idle" | "confirm" | "waiting" | "failed" | "unresolved";
   readonly error: string | null;
   readonly request: () => void;
   readonly confirm: () => void;
   readonly cancel: () => void;
 }
 
+type RestartReference = {
+  readonly requestId: string;
+  readonly targetKey: string;
+  readonly previousInitAt: string | null;
+};
+// Only our operation identity and its boot reference; all outcomes are read from the account store.
+const requested = new WeakMap<object, Map<string, RestartReference>>();
+const referenceKey = (orgId: string | null, origin: string) => JSON.stringify([orgId, origin]);
+const WAITING = Atom.make<MateUpgradeRecovery>({ state: "waiting" });
 const NOT_VERIFIED =
   "Project access could not be verified. Refresh your projects before restarting.";
 
-export function useZeropsUpgradeRestart(
+export function useMateUpgradeRecovery(
   origin: string | null,
   reconnect: () => void,
 ): UpgradeRecovery | null {
   const operations = useAccountOperations();
-  const { orgId } = useAccountData();
+  const { orgId, data } = useAccountData();
   const inventory = useZeropsInventory();
   const candidates = useInventoryCandidates();
   const [state, setState] = useState<UpgradeRecovery["state"]>("idle");
   const [error, setError] = useState<string | null>(null);
   /** The restart this hook is waiting on is ours to follow: the intent landed on its container. */
-  const [following, setFollowing] = useState(false);
+  const [following, setFollowing] = useState<RestartReference | null>(() =>
+    origin === null ? null : (requested.get(data)?.get(referenceKey(orgId, origin)) ?? null),
+  );
   const alive = useRef<(() => boolean) | null>(null);
   const reconnectRef = useRef(reconnect);
   useEffect(() => {
@@ -53,11 +64,13 @@ export function useZeropsUpgradeRestart(
     alive.current = null;
     setState("idle");
     setError(null);
-    setFollowing(false);
+    setFollowing(
+      origin === null ? null : (requested.get(data)?.get(referenceKey(orgId, origin)) ?? null),
+    );
     return onAccountLifetimeClose(() => {
       alive.current = null;
     });
-  }, [origin]);
+  }, [data, orgId, origin]);
   const candidate =
     origin === null
       ? undefined
@@ -68,44 +81,36 @@ export function useZeropsUpgradeRestart(
         );
   const container = useTargetContainer(candidate?.key ?? null);
 
-  // The container decides when the restart is over; the version it answers on decides the rest.
-  const level = container.verdict.level;
-  const overdue = "overdue" in container.verdict && container.verdict.overdue;
   const serverVersion = container.serverVersion;
+  const recovery = useProjection(mateUpgradeRecovery, following, WAITING);
   useEffect(() => {
-    if (!following || state !== "waiting") return;
-    if (level === "ready" && serverVersion !== undefined) {
-      setFollowing(false);
-      if (mateServerCompatibility(serverVersion) === "too-old") {
-        setState("failed");
-        setError(
-          "The container still runs an incompatible Mate version. A compatible release may not be available through zcp yet. Check the connection again after it is released.",
-        );
-        return;
-      }
-      setState("idle");
-      reconnectRef.current();
-      return;
-    }
-    if (overdue) {
-      setFollowing(false);
-      setState("failed");
-      setError(
-        "The container has not come back yet. Check it in Zerops, then try connecting again.",
-      );
-    }
-  }, [following, level, overdue, serverVersion, state]);
+    if (following === null || recovery.state !== "ready") return;
+    if (origin !== null) requested.get(data)?.delete(referenceKey(orgId, origin));
+    setFollowing(null);
+    setState("idle");
+    reconnectRef.current();
+  }, [data, following, orgId, origin, recovery]);
+  const visibleState =
+    state === "confirm"
+      ? "confirm"
+      : following === null || recovery.state === "ready"
+        ? state
+        : recovery.state;
+  const visibleError =
+    following !== null && (recovery.state === "failed" || recovery.state === "unresolved")
+      ? recovery.reason
+      : error;
 
   if (!origin) return null;
   return {
-    state,
-    error,
+    state: visibleState,
+    error: visibleError,
     ...(serverVersion ? { serverVersion } : {}),
     request: () => {
-      if (state !== "waiting") setState("confirm");
+      if (visibleState !== "waiting") setState("confirm");
     },
     cancel: () => {
-      if (state !== "waiting") setState("idle");
+      if (visibleState !== "waiting") setState("idle");
     },
     confirm: () => {
       if (state !== "confirm") return;
@@ -118,6 +123,7 @@ export function useZeropsUpgradeRestart(
       alive.current = isCurrent;
       const key = candidate.key;
       setState("waiting");
+      setFollowing(null);
       setError(null);
       const restart = {
         kind: "mate-restart",
@@ -128,23 +134,24 @@ export function useZeropsUpgradeRestart(
       } as const;
       // The container's initAt is read before the verb: the restart is over once it moves.
       void readContainerInitAt(key)
-        .then((initAt) =>
-          operations.submit(restart).then(({ progress }) => {
-            const refusal = restartRefusal(progress);
-            if (refusal !== null) throw new Error(refusal);
-            return initAt;
-          }),
-        )
-        .then((initAt) => {
+        .then(async (initAt) => {
           if (alive.current !== isCurrent || !isCurrent()) return;
-          if (intendContainer(key, { kind: "upgrade-restart", initAt })) {
-            setFollowing(true);
-            return;
+          const { requestId, progress } = await operations.submit(restart);
+          if (alive.current !== isCurrent || !isCurrent()) return;
+          if (
+            progress.stage === "accepted" ||
+            progress.stage === "reflected" ||
+            (progress.stage === "done" && progress.outcome === "succeeded")
+          )
+            intendContainer(key, { kind: "upgrade-restart", initAt });
+          const reference = { requestId, targetKey: key, previousInitAt: initAt };
+          let own = requested.get(data);
+          if (own === undefined) {
+            own = new Map();
+            requested.set(data, own);
           }
-          setState("failed");
-          setError(
-            "The container has not come back yet. Check it in Zerops, then try connecting again.",
-          );
+          own.set(referenceKey(orgId, origin), reference);
+          setFollowing(reference);
         })
         .catch((cause: unknown) => {
           if (alive.current !== isCurrent || !isCurrent()) return;

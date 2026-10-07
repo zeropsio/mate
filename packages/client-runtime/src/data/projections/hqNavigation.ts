@@ -159,53 +159,67 @@ function structureOf(
   };
 }
 
+function navigationOf(
+  read: ProjectionReads,
+  orgId: string,
+  includePeople: boolean,
+): HqNavigationRead {
+  const scope = hqAppsScope(orgId);
+  const { complete, ...freshness } = scopeFreshness(read, scope);
+  const organizationFact = read.fact("hqOrganization", orgId);
+  const organization = organizationFact.kind === "known" ? organizationFact.value : null;
+  const phase = read.stream(scope).phase;
+  const link = read.stream(linkKeys.hq(orgId));
+  const refused = [link, read.stream(scope)].find((stream) => stream.phase === "refused");
+  const protocol = read.fact("hqProtocol", orgId);
+  const declared =
+    protocol.kind === "known" && read.members(hqProtocolScope(orgId)).ids.includes(orgId)
+      ? protocol.value
+      : null;
+  return {
+    updateRequired:
+      declared !== null &&
+      (declared.protocol === undefined || declared.protocol < HQ_NAVIGATION_PROTOCOL),
+    coreBuild: declared?.build,
+    structure: structureOf(read, orgId, organization),
+    organization,
+    presses: Object.fromEntries(
+      listed(read, "hqPress", hqPressesScope(orgId)).map(({ id, value }) => [id, value]),
+    ),
+    people: includePeople
+      ? Object.fromEntries(
+          listed(read, "hqPerson", hqPeopleScope(orgId)).map(({ id, value }) => [
+            id,
+            {
+              name: value.name ?? "Unknown",
+              avatarUrl: value.avatarUrl,
+              ...(value.clientUserId === undefined ? {} : { clientUserId: value.clientUserId }),
+            },
+          ]),
+        )
+      : {},
+    read: complete ? "read" : phase === "idle" || phase === "paused" ? "unread" : "reading",
+    refusal: refused?.fault?.message ?? null,
+    capped:
+      link.phase === "recovering" && retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
+    ...freshness,
+    // What was read and is not live now is catching up, whatever step its next attempt is at.
+    reconnecting:
+      freshness.reconnecting ||
+      (complete && !freshness.live && freshness.unavailableReason === undefined),
+  };
+}
 export const hqNavigation: Projection<string, HqNavigationRead> = {
   name: "hqNavigation",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => {
-    const scope = hqAppsScope(orgId);
-    const { complete, ...freshness } = scopeFreshness(read, scope);
-    const organizationFact = read.fact("hqOrganization", orgId);
-    const organization = organizationFact.kind === "known" ? organizationFact.value : null;
-    const phase = read.stream(scope).phase;
-    const link = read.stream(linkKeys.hq(orgId));
-    const refused = [link, read.stream(scope)].find((stream) => stream.phase === "refused");
-    const protocol = read.fact("hqProtocol", orgId);
-    const declared =
-      protocol.kind === "known" && read.members(hqProtocolScope(orgId)).ids.includes(orgId)
-        ? protocol.value
-        : null;
-    return {
-      updateRequired:
-        declared !== null &&
-        (declared.protocol === undefined || declared.protocol < HQ_NAVIGATION_PROTOCOL),
-      coreBuild: declared?.build,
-      structure: structureOf(read, orgId, organization),
-      organization,
-      presses: Object.fromEntries(
-        listed(read, "hqPress", hqPressesScope(orgId)).map(({ id, value }) => [id, value]),
-      ),
-      people: Object.fromEntries(
-        listed(read, "hqPerson", hqPeopleScope(orgId)).map(({ id, value }) => [
-          id,
-          {
-            name: value.name ?? "Unknown",
-            avatarUrl: value.avatarUrl,
-            ...(value.clientUserId === undefined ? {} : { clientUserId: value.clientUserId }),
-          },
-        ]),
-      ),
-      read: complete ? "read" : phase === "idle" || phase === "paused" ? "unread" : "reading",
-      refusal: refused?.fault?.message ?? null,
-      capped:
-        link.phase === "recovering" && retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
-      ...freshness,
-      // What was read and is not live now is catching up, whatever step its next attempt is at.
-      reconnecting:
-        freshness.reconnecting ||
-        (complete && !freshness.live && freshness.unavailableReason === undefined),
-    };
-  },
+  derive: (read, orgId) => navigationOf(read, orgId, true),
+  equals: sameValue,
+};
+/** Structure and navigation standing have no dependency on individual people. */
+export const hqMenuNavigation: Projection<string, HqNavigationRead> = {
+  name: "hqMenuNavigation",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => navigationOf(read, orgId, false),
   equals: sameValue,
 };
 

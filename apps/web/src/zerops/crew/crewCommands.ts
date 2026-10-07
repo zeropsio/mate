@@ -1,37 +1,31 @@
-/**
- * The crew's commands a client may issue (ARCHITECTURE §6 *RPC shape*):
- *
- * - `command` — `zerops.crew.command`, server scope `AuthOrchestrationOperateScope`:
- *   every press on a crew surface; what it changes arrives on the crew feed.
- * - `filesGet` — `zerops.crew.files.get`, `AuthOrchestrationReadScope`: the crew
- *   home's files for the editors.
- * - `filesPut` — `zerops.crew.files.put`, `AuthOrchestrationOperateScope`: an
- *   editor's save; nothing applies until a command does.
- */
+/** Crew presses dispatch intents; file editors share the account's sampled crew-home read. */
+import { mateActionCommand, mateFeedAtom, readMateFeed } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { createEnvironmentRpcCommand } from "@t3tools/client-runtime/state/runtime";
-import { WS_METHODS } from "@t3tools/contracts";
+import { createRuntimeCommand } from "@t3tools/client-runtime/state/runtime";
+import { type EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/unstable/reactivity";
-
 import { connectionAtomRuntime } from "~/connection/runtime";
-
+export const crewFilesAtom = Atom.family((environmentId: EnvironmentId) =>
+  mateFeedAtom({ family: "mateCrewFiles", environmentId, input: {} }),
+);
 export function createCrewCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
   return {
-    command: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:zerops:crew:command",
-      tag: WS_METHODS.zeropsCrewCommand,
+    command: mateActionCommand(runtime, "crewCommand"),
+    filesGet: createRuntimeCommand(runtime, {
+      label: "mate:crew:files:get",
+      execute: (
+        target: { readonly environmentId: EnvironmentId; readonly input: Record<string, never> },
+        registry,
+      ) =>
+        readMateFeed(registry, {
+          family: "mateCrewFiles",
+          environmentId: target.environmentId,
+          input: {},
+        }),
     }),
-    filesGet: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:zerops:crew:files:get",
-      tag: WS_METHODS.zeropsCrewFilesGet,
-    }),
-    filesPut: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:zerops:crew:files:put",
-      tag: WS_METHODS.zeropsCrewFilesPut,
-    }),
+    filesPut: mateActionCommand(runtime, "crewFilesPut"),
   };
 }
-
 export const crewCommands = createCrewCommandAtoms(connectionAtomRuntime);

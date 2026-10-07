@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   usageEnvironmentIdentities,
+  usageBaselineStatus,
   usageOwnersStatus,
   type UsageEnvironmentIdentity,
 } from "./usageEnvironmentIdentities";
@@ -73,7 +74,18 @@ describe("usageEnvironmentIdentities", () => {
           environmentId: LENA,
         }),
       ],
-      expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "Lena",
+            projectId: "titan",
+            ownerState: "unknown",
+            projectName: "Imperial Titan",
+            owner: null,
+          },
+        ],
+      ],
     },
     {
       name: "one project holding two Mates of two owners, the viewer's own flagged",
@@ -100,6 +112,8 @@ describe("usageEnvironmentIdentities", () => {
           LENA,
           {
             mateName: "Lena",
+            projectId: "titan",
+            ownerState: "known",
             projectName: "Imperial Titan",
             owner: { ...JAN_OWNER, isViewer: false },
           },
@@ -108,6 +122,8 @@ describe("usageEnvironmentIdentities", () => {
           OTTO,
           {
             mateName: "Otto",
+            projectId: "titan",
+            ownerState: "known",
             projectName: "Imperial Titan",
             owner: { ...EVA_OWNER, isViewer: true },
           },
@@ -142,6 +158,8 @@ describe("usageEnvironmentIdentities", () => {
           LENA,
           {
             mateName: "Lena",
+            projectId: "titan",
+            ownerState: "known",
             projectName: "Imperial Titan",
             owner: { ...JAN_OWNER, avatarUrl: "https://img.example.test/jan.jpg", isViewer: false },
           },
@@ -150,6 +168,8 @@ describe("usageEnvironmentIdentities", () => {
           OTTO,
           {
             mateName: "Otto",
+            projectId: "titan",
+            ownerState: "known",
             projectName: "Imperial Titan",
             owner: { ...EVA_OWNER, isViewer: true },
           },
@@ -167,7 +187,18 @@ describe("usageEnvironmentIdentities", () => {
           environmentId: LENA,
         }),
       ],
-      expected: [[LENA, { mateName: "Lena", projectName: null, owner: null }]],
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "Lena",
+            projectId: "k2m9",
+            ownerState: "unknown",
+            projectName: null,
+            owner: null,
+          },
+        ],
+      ],
     },
     {
       name: "leaves out a Mate no environment reaches, and an environment nobody lives in",
@@ -191,7 +222,18 @@ describe("usageEnvironmentIdentities", () => {
         },
       ],
       registeredOrigins: new Map([["https://node-lena.runtime.zcp.zerops.app", LENA]]),
-      expected: [[LENA, { mateName: "Lena", projectName: "Imperial Titan", owner: null }]],
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "Lena",
+            projectId: "titan",
+            ownerState: "unknown",
+            projectName: "Imperial Titan",
+            owner: null,
+          },
+        ],
+      ],
     },
     {
       // In no project, so HQ records no name for it: it goes by its project's.
@@ -205,7 +247,18 @@ describe("usageEnvironmentIdentities", () => {
       ],
       owners: { "gone-dev": null },
       viewerUserId: "user-jan",
-      expected: [[LENA, { mateName: "gone-dev", projectName: null, owner: null }]],
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "gone-dev",
+            projectId: null,
+            ownerState: "unassigned",
+            projectName: null,
+            owner: null,
+          },
+        ],
+      ],
     },
     {
       name: "two people's Mates across two projects",
@@ -239,17 +292,31 @@ describe("usageEnvironmentIdentities", () => {
           LENA,
           {
             mateName: "Lena",
+            projectId: "titan",
+            ownerState: "known",
             projectName: "Imperial Titan",
             owner: { ...JAN_OWNER, isViewer: true },
           },
         ],
         [
           OTTO,
-          { mateName: "Otto", projectName: "Acme Docs", owner: { ...JAN_OWNER, isViewer: true } },
+          {
+            mateName: "Otto",
+            projectId: "docs",
+            ownerState: "known",
+            projectName: "Acme Docs",
+            owner: { ...JAN_OWNER, isViewer: true },
+          },
         ],
         [
           FEN,
-          { mateName: "Fen", projectName: "Acme Docs", owner: { ...EVA_OWNER, isViewer: false } },
+          {
+            mateName: "Fen",
+            projectId: "docs",
+            ownerState: "known",
+            projectName: "Acme Docs",
+            owner: { ...EVA_OWNER, isViewer: false },
+          },
         ],
       ],
     },
@@ -260,7 +327,12 @@ describe("usageEnvironmentIdentities", () => {
       const identities = usageEnvironmentIdentities({
         candidates: entry.candidates,
         registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
-        owners: entry.owners ?? {},
+        owners: Object.fromEntries(
+          Object.entries(entry.owners ?? {}).map(([id, owner]) => [
+            id,
+            { owner, owned: owner !== null },
+          ]),
+        ),
         viewerUserId: entry.viewerUserId ?? null,
       });
       expect([...identities]).toEqual(entry.expected);
@@ -334,4 +406,27 @@ describe("usageOwnersStatus", () => {
   ] as const)("$name", ({ input, expected }) => {
     expect(usageOwnersStatus(input)).toBe(expected);
   });
+});
+
+it.each([
+  ["new org ignores the old answer", "new", "old", true, false, "resolving"],
+  ["cold placement", "org", "org", false, false, "resolving"],
+  ["settled placement", "org", "org", true, false, "resolved"],
+  ["warm HQ outage preserves the authorized baseline", "org", "org", true, true, "resolved"],
+  ["cold HQ outage is unavailable", "org", "org", false, true, "unavailable"],
+] as const)("%s", (_, orgId, navigationOrgId, complete, capped, expected) => {
+  expect(
+    usageBaselineStatus({
+      orgId,
+      navigationOrgId,
+      placement: { complete },
+      listing: "known",
+      navigation: {
+        read: complete ? "read" : "unread",
+        refusal: null,
+        capped,
+        updateRequired: false,
+      },
+    }),
+  ).toBe(expected);
 });

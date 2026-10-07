@@ -114,6 +114,8 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
   const chipRefs = useRef(new Map<number, HTMLButtonElement>());
   const markDragRef = useRef<MarkDrag | null>(null);
   const cropDragRef = useRef<CropDrag | null>(null);
+  const undoRef = useRef<ComposerPicture[]>([]);
+  const redoRef = useRef<ComposerPicture[]>([]);
 
   // What the view draws from: the pasted file, or after a reload the copy.
   useEffect(() => {
@@ -313,7 +315,11 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
     doneRef.current?.focus({ preventScroll: true });
   }, []);
 
-  const change = (next: Partial<ComposerPicture>) => props.onChange({ ...picture, ...next });
+  const change = (next: Partial<ComposerPicture>) => {
+    undoRef.current.push(picture);
+    redoRef.current = [];
+    props.onChange({ ...picture, ...next });
+  };
 
   const commitNote = () => {
     if (noteFor < 0) return;
@@ -524,6 +530,21 @@ export function ComposerPictureView(props: ComposerPictureViewProps) {
       return;
     }
     if (event.target === noteTextRef.current) return;
+    if (editable && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      event.stopPropagation();
+      const from = event.shiftKey ? redoRef.current : undoRef.current;
+      const to = event.shiftKey ? undoRef.current : redoRef.current;
+      const previous = from.pop();
+      if (previous) {
+        to.push(picture);
+        props.onChange(previous);
+        setMode("mark");
+        setSelected(-1);
+        setPendingBox(null);
+      }
+      return;
+    }
     if ((event.key === "Backspace" || event.key === "Delete") && selected >= 0 && mode === "mark") {
       event.preventDefault();
       removeMark(selected);

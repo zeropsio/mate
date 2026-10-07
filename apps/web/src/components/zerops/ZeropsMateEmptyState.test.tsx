@@ -139,7 +139,11 @@ const readable = (markup: string) =>
 /** The stage as a person reads it: its headline, its sentence, its face, and what its slot holds. */
 const stage = (html: string) => ({
   headline: readable(/<h1[^>]*>(.*?)<\/h1>/u.exec(html)?.[1] ?? ""),
-  sentence: readable(/<p class="arrival-sentence">(.*?)<\/p>/u.exec(html)?.[1] ?? ""),
+  sentence: readable(
+    /<p[^>]*(?:class="arrival-sentence"|data-arrival-secondary="")[^>]*>(.*?)<\/p>/u.exec(
+      html,
+    )?.[1] ?? "",
+  ),
   face: /data-mate-face-state="(\w+)"/u.exec(html)?.[1],
   signIn: html.includes("data-sign-in-module"),
 });
@@ -465,7 +469,11 @@ describe("MateEmptyStateView — a Mate coming up", () => {
       phase: null,
       coming: { kind: "reaching", below: <p data-opening>Reconnecting…</p> },
     });
-    expect(stage(html)).toMatchObject({ headline: "Fen", sentence: "", face: "sleep" });
+    expect(stage(html)).toMatchObject({
+      headline: "Fen is opening the conversation.",
+      sentence: "Waiting for the conversation to be read.",
+      face: "sleep",
+    });
     expect(html).toContain("data-opening");
   });
 
@@ -480,7 +488,7 @@ describe("MateEmptyStateView — a Mate coming up", () => {
       phase: null,
       coming: { kind: "reaching", below: <p data-opening>Reconnecting…</p> },
     });
-    expect(stage(unnamed).headline.trim()).toBe("");
+    expect(stage(unnamed).headline).toBe("The Mate is opening the conversation.");
     expect(unnamed).toContain("data-mate-face-reserved");
     expect(unnamed).toContain("data-opening");
     // The same elements in the same order: nothing moves when the name arrives.

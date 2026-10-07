@@ -49,6 +49,38 @@ const CREATING: BirthFacts = {
   connection: "none",
 };
 
+describe("terminal setup process facts", () => {
+  it("shows the failed workspace's source duration, unchanged an hour later", () => {
+    const facts: BirthFacts = {
+      ...CREATING,
+      processes: CREATING.processes.map((process) =>
+        process.actionName === "stack.create"
+          ? {
+              ...process,
+              status: "FAILED",
+              finishedAt: AGO(10),
+              failReason: "CommandExec: init command failed",
+            }
+          : process,
+      ),
+    };
+    const progress = deriveBirthProgress(facts, NOW);
+    const workspace = (now: number) =>
+      arrivalSteps(progress, WREN, now).find((step) => step.id === "workspace");
+    expect(workspace(NOW)).toMatchObject({ state: "failed", time: "0:34" });
+    expect(workspace(NOW + 3_600_000)).toEqual(workspace(NOW));
+  });
+
+  it("does not invent a duration for a failure with no source end", () => {
+    const steps = [
+      { id: "container", label: "Container", state: "failed", startedAt: AGO(44) },
+    ] as const;
+    expect(
+      arrivalSteps({ steps }, WREN, NOW).find((step) => step.id === "workspace")?.time,
+    ).toBeUndefined();
+  });
+});
+
 describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)", () => {
   const ids = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
     arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).map(
@@ -233,7 +265,7 @@ describe("arrivalSteps", () => {
         id: "workspace",
         label: "Wren's workspace",
         state: "active",
-        time: "0:47",
+        time: "0:44",
         note: "about 2 min",
       },
       {
@@ -300,7 +332,7 @@ describe("arrivalSteps", () => {
     },
   );
 
-  it("never moves its workspace's clock back: it counts from its project's end, though its container starts later", () => {
+  it("shows no workspace duration before its process start is known", () => {
     // Measured live (Gita, 2026-09-30): 0:12, then 0:08 once the container's own start was read.
     const projectOnly: BirthFacts = {
       ...CREATING,
@@ -310,7 +342,7 @@ describe("arrivalSteps", () => {
     const later = NOW + 5_000;
     const before = arrivalSteps(deriveBirthProgress(projectOnly, NOW), WREN, NOW)[1]?.time;
     const after = arrivalSteps(deriveBirthProgress(CREATING, later), WREN, later)[1]?.time;
-    expect([before, after]).toEqual(["0:47", "0:52"]);
+    expect([before, after]).toEqual([undefined, "0:49"]);
   });
 
   it("says where its workspace stopped, in its own words", () => {

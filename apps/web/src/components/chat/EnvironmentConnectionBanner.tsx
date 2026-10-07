@@ -6,7 +6,8 @@ import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
 } from "@t3tools/client-runtime/state/runtime";
-import { askAgainLabel, type MateVoice } from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
+import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
 import type { ReactElement } from "react";
@@ -30,7 +31,7 @@ export function environmentConnectionBannerItem(input: {
   if (copy === null) return null;
   return {
     id: `environment-unavailable:${input.environmentId}`,
-    variant: input.connection.phase === "error" ? "error" : "warning",
+    variant: input.connection.phase === "error" ? "error" : "default",
     icon: <WifiOffIcon />,
     title: copy.title,
     ...(copy.description === null ? {} : { description: copy.description }),
@@ -70,9 +71,15 @@ export function mateVoiceBannerItem(input: {
   );
   return {
     id: `mate-link:${input.environmentId}`,
-    variant: "warning",
+    variant:
+      voice.severity === "danger"
+        ? "error"
+        : voice.severity === "attention"
+          ? "warning"
+          : "default",
     icon: <WifiOffIcon />,
-    title: voice.text,
+    title: voice.headline ?? voice.text,
+    ...(voice.secondary === undefined ? {} : { description: voice.secondary }),
     ...(askAgain !== null || toProjects
       ? {
           actions: (

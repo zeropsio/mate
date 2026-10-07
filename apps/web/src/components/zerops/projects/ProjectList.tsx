@@ -448,7 +448,10 @@ export function OtherContainers<T>({
 }) {
   const [open, setOpen] = useState(false);
   if (rows.length === 0) return null;
-  const summary = containersSummary(rows.map((row) => row.action));
+  const summary = containersSummary(
+    rows.map((row) => row.action),
+    props.placementNotice,
+  );
   const silent = rows.filter((row) => row.action === "retry-probe").map((row) => row.item);
   const mates = rows.filter((row) => props.isMate(row.item));
   const others = rows.filter((row) => !props.isMate(row.item));
@@ -470,7 +473,9 @@ export function OtherContainers<T>({
               )}
             />
             <span>
-              Other containers{" "}
+              {props.placementNotice === undefined
+                ? "Other containers"
+                : "Containers · placement unknown"}{" "}
               <span className="font-normal text-muted-foreground">{rows.length}</span>
             </span>
           </button>

@@ -5,13 +5,36 @@
  * reaches the same review: a change, the next release, a roll back, a crew task. Two doors to
  * the same thing open the same review.
  */
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { ZeropsChangeReview } from "../components/zerops/review/ZeropsChangeReview";
-import { ZeropsCrewTaskReview } from "../components/zerops/review/ZeropsCrewTaskReview";
-import { ZeropsReleaseReview } from "../components/zerops/review/ZeropsReleaseReview";
 import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
+import { SurfaceLoading } from "../components/SurfaceLoading";
 import { ReviewContext, reviewTargetKey, type OpenReview, type ReviewTarget } from "./review";
+
+const ZeropsChangeReview = lazy(() =>
+  import("../components/zerops/review/ZeropsChangeReview").then((module) => ({
+    default: module.ZeropsChangeReview,
+  })),
+);
+const ZeropsCrewTaskReview = lazy(() =>
+  import("../components/zerops/review/ZeropsCrewTaskReview").then((module) => ({
+    default: module.ZeropsCrewTaskReview,
+  })),
+);
+const ZeropsReleaseReview = lazy(() =>
+  import("../components/zerops/review/ZeropsReleaseReview").then((module) => ({
+    default: module.ZeropsReleaseReview,
+  })),
+);
 
 interface ShownReview {
   readonly target: ReviewTarget;
@@ -87,7 +110,18 @@ function ReviewBody({
   return (
     // Keyed by what it shows, so another review starts from its own state.
     <div className="contents" key={reviewTargetKey(target)}>
-      {body}
+      <Suspense
+        fallback={
+          <div className="h-96">
+            <h2 id={titleId} className="sr-only">
+              Review
+            </h2>
+            <SurfaceLoading />
+          </div>
+        }
+      >
+        {body}
+      </Suspense>
     </div>
   );
 }

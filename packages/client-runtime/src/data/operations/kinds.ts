@@ -1,6 +1,7 @@
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
 import { WORKSPACE_MUTATION_KINDS } from "./mateWorkspace.ts";
 import { mateWriteFile } from "./mateWriteFile.ts";
+import { mateAction } from "./mateActions.ts";
 import { mateUpdate } from "./mateUpdate.ts";
 import { mateSendTurn } from "./mateSendTurn.ts";
 /**
@@ -55,6 +56,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...WORKSPACE_MUTATION_KINDS,
   mateWriteFile,
   mateSendTurn,
+  mateAction,
   throwawaySweep,
   mateRestart,
   mateUpdate,

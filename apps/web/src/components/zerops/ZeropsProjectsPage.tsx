@@ -1,9 +1,12 @@
-import { creationHandoff } from "@t3tools/client-runtime/data";
+import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
+import { appReleaseRows, creationHandoff, type AppReleaseRows } from "@t3tools/client-runtime/data";
+import { Atom } from "effect/unstable/reactivity";
+import { useAccountOrgId, useProjection, useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
+import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
 /**
  * `/zerops` — the project picker for a signed-in Zerops account: an existing
  * candidate to connect to or wait on, and a way to New project (also where an
@@ -31,7 +34,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
+import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -177,7 +180,7 @@ import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
-import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
+import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 import {
   creatableRoles,
@@ -297,30 +300,6 @@ export function readContainerAfter(
   write: Promise<unknown>,
 ): Promise<void> {
   return write.then(() => readContainerAgain(candidate));
-}
-
-/**
- * Takes a project the platform failed to create off the account. The delete
- * comes first; only once the platform has accepted it is the project's birth
- * forgotten (nothing will ever connect to this project) and the list re-read.
- * A refused delete leaves both as they were, so the row keeps offering the
- * verb and says why it did not work.
- */
-export async function removeFailedZeropsProject(input: {
-  readonly projectId: string;
-  /** The organization the project was in, whose inventory is read again. */
-  readonly organization: OrganizationRef;
-  readonly deleteProject: (projectId: string) => Promise<unknown>;
-  readonly forgetCreation: (projectId: string) => void;
-}): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
-  try {
-    await input.deleteProject(input.projectId);
-  } catch (cause) {
-    return { ok: false, error: zeropsErrorMessage(cause) };
-  }
-  input.forgetCreation(input.projectId);
-  invalidateZerops({ topic: "inventory", organization: input.organization });
-  return { ok: true };
 }
 
 export function retryZeropsProjectConnection(input: {
@@ -768,7 +747,7 @@ export function useZeropsProjectConnection(): {
     });
   }, [activeOrganizationId, connectContainer, connectError, failedOrigin, organizationRef]);
 
-  const upgradeRecovery = useZeropsUpgradeRestart(
+  const upgradeRecovery = useMateUpgradeRecovery(
     connectError ? upgradeOrigin : null,
     retryProjectConnection,
   );
@@ -923,6 +902,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // press — the same placing the left menu reads.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(hqNavigationAtom);
+  const placementStatus = useAtomValue(hqPlacementStatusAtom);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
   const groupTree = buildZeropsGroupTree(candidates, {
@@ -1231,6 +1211,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             );
           case "waiting":
             return quiet("Restarting to update.");
+          case "unresolved":
+            return (
+              <>
+                {quiet(upgradeRecovery.error ?? "The restart is still unresolved.")}
+                <ZeropsMateVerb
+                  disabled={busy}
+                  label="Check connection"
+                  onClick={() => {
+                    if (candidate.containerOrigin !== undefined)
+                      void connectContainer(candidate.containerOrigin);
+                  }}
+                />
+              </>
+            );
           case "failed":
             return (
               <>
@@ -2360,19 +2354,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
     const gate = releaseGateLine(group);
     const contents = releaseContentLines(group);
-    const releases = groupDeploys.get(group.groupId)?.releases ?? [];
-    if (gate === null && contents === null && releases.length === 0) return null;
+
     return (
       <>
         {gate}
         {contents}
-        <ZeropsReleaseRows
+        <ProjectReleaseRows
           groupId={group.groupId}
+          rows={
+            groupDeploys.get(group.groupId)?.releasesKnown
+              ? groupDeploys.get(group.groupId)?.releases
+              : undefined
+          }
+          pending={verbs.pending}
           onRollBack={(tag, from) => {
             openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });
           }}
-          pending={verbs.pending}
-          releases={releases}
         />
       </>
     );
@@ -2634,6 +2631,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           if (candidate === undefined) return null;
           return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
+        placementNotice={
+          placementStatus.complete && placementStatus.unavailableReason === undefined
+            ? undefined
+            : placementStatus.unavailableReason === "expired-session"
+              ? "Placement not read — sign in again"
+              : placementStatus.unavailableReason === "forbidden"
+                ? "Placement unavailable — access denied"
+                : placementStatus.unavailableReason === "refused"
+                  ? "Placement unavailable — HQ refused this read"
+                  : hqStructure.capped || placementStatus.reconnecting
+                    ? "Placement not read — HQ is unavailable"
+                    : "Reading HQ placement…"
+        }
         ungrouped={ungroupedRows}
       />
       {mateActions.dialogs}
@@ -2758,5 +2768,57 @@ export function ZeropsProjectsPage() {
       ) : null}
       <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>
+  );
+}
+
+const UNREAD_RELEASES = Atom.make<AppReleaseRows>({ kind: "unread", reason: null });
+function ProjectReleaseRows({
+  groupId,
+  rows,
+  pending,
+  onRollBack,
+}: {
+  readonly groupId: string;
+  readonly rows: ReadonlyArray<import("@t3tools/client-runtime/zerops").FlowReleaseRow> | undefined;
+  readonly pending: ReadonlySet<string>;
+  readonly onRollBack: (tag: string, from: HTMLElement) => void;
+}) {
+  const orgId = useAccountOrgId();
+  const account = useAccountDataOptional();
+  const read = useProjection(
+    appReleaseRows,
+    orgId === null ? null : { orgId, appId: groupId },
+    UNREAD_RELEASES,
+  );
+  if (read.kind === "unread")
+    return (
+      <div role="status">
+        <span>{read.reason ?? "Reading releases."}</span>
+        <ZeropsMateVerb
+          label="Read again"
+          onClick={() => account?.retryDetail({ family: "hqAppDetail", ownerId: groupId })}
+        />
+      </div>
+    );
+  // The flow adds production evidence. Until it can, show HQ's verdict without a production verdict or rollback offer.
+  const releases =
+    rows ??
+    read.releases.map((release) => ({
+      ...release,
+      standing: undefined,
+      word: release.verdict === "approved" ? "Approved" : "Refused",
+      rollBack: false,
+      failedEntry: undefined,
+    }));
+  return (
+    <>
+      {read.live ? null : <div role="status">{read.reason ?? "Updating releases."}</div>}
+      <ZeropsReleaseRows
+        groupId={groupId}
+        releases={releases}
+        pending={pending}
+        onRollBack={onRollBack}
+      />
+    </>
   );
 }

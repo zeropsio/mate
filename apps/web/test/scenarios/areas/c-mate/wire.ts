@@ -36,12 +36,12 @@ export const TARGET_QUESTION = {
 /** One Mate's conversation on one wire: what a journey arranges, what the Mate applied. */
 export interface ChatWire {
   readonly name: "v1" | "engine";
-  /** The person said `text`; that exchange is over. */
-  history(text: string): void;
+  /** The person said `text`, in run `turnId` when given; that exchange is over. */
+  history(text: string, turnId?: string | null): void;
   /** The agent waits on approval to run `vp run build`; a response gets RESPONSE_RECEIVED. */
   approval(): void;
-  /** The agent asks TARGET_QUESTION; a response gets RESPONSE_RECEIVED. */
-  question(): void;
+  /** The agent asks TARGET_QUESTION as `requestId`, in run `turnId` when given; same reply. */
+  question(requestId?: string, turnId?: string | null): void;
   /** Every intent the Mate applied, in order. */
   intents(): ReadonlyArray<ChatIntent>;
   /** Settles once the conversation durably holds a person message reading exactly `text`. */

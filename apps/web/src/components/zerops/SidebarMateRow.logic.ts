@@ -1,3 +1,5 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { mateFailureWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
@@ -318,7 +320,7 @@ export type MateRowReply =
       readonly kind: "words";
       readonly text: string;
       /** Muted at rest, the second ink unread, full ink as a question, red as an error. */
-      readonly tone: "muted" | "ink-2" | "ink" | "failed";
+      readonly tone: "muted" | "ink-2" | "ink" | "failed" | "attention";
     }
   | { readonly kind: "live"; readonly words: string }
   | { readonly kind: "pending" }
@@ -364,6 +366,7 @@ export interface MateRowView {
 export function mateRowView(
   activity: ZeropsAgentActivity | undefined,
   face: MateMarkState,
+  name = "The Mate",
 ): MateRowView {
   if (activity === undefined) {
     const needs = face === "needs";
@@ -399,7 +402,9 @@ export function mateRowView(
     face: state === "failed" ? ("idle" as const) : face,
     slot,
     dot:
-      state === "needs"
+      state === "needs" ||
+      state === "paused" ||
+      (state === "failed" && mateStatus(activity)?.severity === "attention")
         ? ("attention" as const)
         : state === "unread"
           ? ("unread" as const)
@@ -444,12 +449,28 @@ export function mateRowView(
       return view(
         activity.errorLine === undefined
           ? said("muted")
-          : { kind: "words", text: activity.errorLine, tone: "failed" },
+          : {
+              kind: "words",
+              text: mateFailureWords(activity.errorLine, undefined, name),
+              tone: "failed",
+            },
       );
     case "unread":
       return view(asked("ink-2"));
-    case "paused":
-      return view(said("muted"), { kind: "paused", until: activity.pausedUntil ?? activity.at });
+    case "paused": {
+      const text =
+        activity.errorLine === undefined
+          ? undefined
+          : mateFailureWords(activity.errorLine, undefined, name);
+      return view(
+        activity.errorLine === undefined
+          ? said("muted")
+          : { kind: "words", text: text ?? activity.errorLine, tone: "muted" },
+        activity.pausedUntil === undefined
+          ? undefined
+          : { kind: "paused", until: activity.pausedUntil },
+      );
+    }
     case "idle":
       return view(asked("muted"));
   }
@@ -503,6 +524,7 @@ export function mateFinishingView(view: MateRowView): MateRowView {
  * conversation it was read from still stands; a word at rest is only ever at rest.
  */
 export function mateRowReading(input: {
+  readonly name?: string;
   /** Its container is connected right now. */
   readonly connected: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
@@ -520,9 +542,10 @@ export function mateRowReading(input: {
     mateFaceAwaitingReview(
       mateFaceFor(input.connected || live !== undefined, live, input.pose),
       input.reviewWaits === true,
-      activity?.pausedUntil !== undefined,
+      activity?.usageLimited === true || activity?.pausedUntil !== undefined,
       input.mine,
     ),
+    input.name,
   );
 }
 
@@ -660,7 +683,7 @@ const SETTING_UP_STOPPED = "Setting up stopped";
 const SETTING_UP_STOPPED_REPLY = {
   kind: "words",
   text: SETTING_UP_STOPPED,
-  tone: "failed",
+  tone: "attention",
 } as const satisfies MateRowReply;
 
 /** A Mate being born, as its row's one line says it (`mateBornLine`). */
@@ -668,7 +691,7 @@ export interface MateBornLine {
   readonly words: string;
   /** When its clock started, wall ms: the line counts up from it. None where nothing is held. */
   readonly since: number | undefined;
-  readonly tone: "muted" | "failed";
+  readonly tone: "muted" | "attention";
 }
 
 /**
@@ -682,7 +705,11 @@ export function mateBornLine(coming: MateComing): MateBornLine {
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
-const BORN_STOPPED: MateBornLine = { words: SETTING_UP_STOPPED, since: undefined, tone: "failed" };
+const BORN_STOPPED: MateBornLine = {
+  words: SETTING_UP_STOPPED,
+  since: undefined,
+  tone: "attention",
+};
 
 /** On its way: the clock beside it says for how long. */
 const BORN_WORDS = "Coming up";
@@ -727,10 +754,10 @@ export function mateRowOffersMenu(input: {
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
   return {
     ...view,
-    state: coming.kind === "failed" ? "failed" : "idle",
+    state: coming.kind === "failed" ? "needs" : "idle",
     face: matePose(view.face, { life: mateLifeOf(coming) }),
     slot: { kind: "none" },
-    dot: coming.kind === "failed" ? "failed" : undefined,
+    dot: coming.kind === "failed" ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
@@ -751,7 +778,8 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
   // the pause standing, and the resume picks the work up without anybody
   // (`mateMarkStateForThread`). What waits on a person still wakes it: its
   // face is not asleep then.
-  if (face === "sleep" && activity.pausedUntil !== undefined) return "paused";
+  if (face === "sleep" && (activity.usageLimited === true || activity.pausedUntil !== undefined))
+    return "paused";
   if (activity.kind === "failed") return "failed";
   if (face === "needs") return "needs";
   if (

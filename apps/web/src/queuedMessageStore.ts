@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { VaultChange } from "@t3tools/client-runtime/data";
 
 import type { ComposerSubmissionIntent } from "./composer-logic";
 import type { ComposerImageAttachment, ComposerSendIds } from "./composerDraftStore";
@@ -22,6 +23,9 @@ export interface QueuedComposerMessage {
   files?: ComposerFileAttachment[];
   terminalContexts: TerminalContextDraft[];
   reviewComments: ReviewCommentContext[];
+  /** Context selected when the person queued; later changes belong to their next message. */
+  agentNotes?: ReadonlyArray<string>;
+  vaultChanges?: ReadonlyArray<VaultChange>;
   submissionIntent: ComposerSubmissionIntent;
   /**
    * The newest completed tool activity at queue time. A different id later

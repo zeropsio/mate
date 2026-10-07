@@ -683,6 +683,13 @@ const homeOf = (): CrewFiles => {
 
 const readFiles = async () => homeOf();
 const FILES: UseCrewCommand = {
+  files: {
+    state: "known",
+    value: homeOf(),
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "settled" },
+  },
   send: async () => ({ _tag: "done" }),
   readFiles,
   writeFiles: async () => true,

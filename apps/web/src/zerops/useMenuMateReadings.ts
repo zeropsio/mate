@@ -1,3 +1,5 @@
+import { failedSetupProcess } from "@t3tools/client-runtime/data";
+import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
  * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
  * attention as the account's store holds it, at rest while that word is not of now) and
@@ -5,7 +7,6 @@
  * the platform's verdict on its creation, this tab's creation). The menu, the folded headings and
  * the waiting faces read the same answers; the projects page reads the same words.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -13,10 +14,11 @@ import {
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/unstable/reactivity";
+import { hqMateOverviewAtom, hqMatePresenceAtom } from "@t3tools/client-runtime/data";
 import { useCallback, useMemo } from "react";
 
 import { environmentsWithSnapshotAtom } from "../state/shell";
-import { hqMatesAtom } from "../state/zerops";
+import { hqMainChatsAtom } from "../state/zerops";
 import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
@@ -58,39 +60,31 @@ export function useMateRowActivity(
  * environment: what opening a Mate this page holds no socket to routes to, the route connecting it.
  */
 export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undefined {
-  const hq = useAtomValue(hqMatesAtom);
-  return useCallback(
-    (projectId: string) => {
-      const told = hq?.mates?.get(projectId);
-      return told?.identity === undefined || !told.main
-        ? undefined
-        : scopeThreadRef(told.identity.environmentId, told.main.id);
-    },
-    [hq],
-  );
+  const chats = useAtomValue(hqMainChatsAtom);
+  return useCallback((projectId: string) => chats[projectId]?.chat, [chats]);
 }
 
 /**
  * Whether HQ relays now that a Mate's link to it is open: one answer per Mate, so a row redraws
  * when its own link opens or closes, not on every word HQ relays of any Mate.
  */
-const mateLinkedInHqAtom = Atom.family((projectId: string) =>
-  Atom.make((get) => {
-    const hq = get(hqMatesAtom);
-    return hq?.current === true && hq.mates.get(projectId)?.presence.online === true;
-  }).pipe(Atom.withLabel(`mate-linked-in-hq:${projectId}`)),
-);
-
 export function useMateLinkedInHq(projectId: string): boolean {
   return useAtomValue(mateLinkedInHqAtom(projectId));
 }
+
+const mateLinkedInHqAtom = Atom.family((projectId: string) =>
+  Atom.make((get) => {
+    const read = get(hqMatePresenceAtom(projectId));
+    return read.live && read.presence?.online === true;
+  }),
+);
 
 /**
  * What HQ last told of a Mate, as its menu row reads it, at rest — the conversation its row stands
  * for and what it is on; undefined where HQ holds no overview of it, or it has no main chat yet.
  */
 export function useToldActivity(projectId: string): ZeropsAgentActivity | undefined {
-  const told = useAtomValue(hqMatesAtom)?.mates?.get(projectId);
+  const told = useAtomValue(hqMateOverviewAtom(projectId)) ?? undefined;
   return useMemo(
     () => (told === undefined ? undefined : overviewAgentActivity(told, false, {})),
     [told],
@@ -122,8 +116,8 @@ export function useMateConversationsRead(): (candidate: ZeropsCandidate) => bool
  */
 const hqMatesWithMainAtom = Atom.make((get) => {
   const ids: string[] = [];
-  for (const [projectId, mate] of get(hqMatesAtom)?.mates ?? []) {
-    if (mate.main !== undefined) ids.push(projectId);
+  for (const [projectId, mate] of Object.entries(get(hqMainChatsAtom))) {
+    if (mate.read) ids.push(projectId);
   }
   return ids.join("\n");
 }).pipe(Atom.withLabel("hq-mates-with-main"));
@@ -144,6 +138,7 @@ export function useMateComingOf(
   const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
+  const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
   const pressOf = usePressesElsewhere(candidates);
   const wokeAt = useComingClock(candidates);
   return useCallback(
@@ -152,6 +147,19 @@ export function useMateComingOf(
       // Made here, and not connected since.
       const created =
         candidate.group !== "connected" && madeOf(creations, candidate.project.id) !== undefined;
+      const unfinished = closeOffOpenOf(
+        closeOffHolds,
+        candidate.project.id,
+        presses.find((entry) => entry.projectId === candidate.project.id),
+      );
+      if (
+        candidate.group !== "connected" &&
+        (press !== undefined || created || unfinished) &&
+        failedSetupProcess(processFacts[candidate.project.id]?.processes, candidate.service?.id) !==
+          undefined
+      ) {
+        return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
+      }
       return mateComing({
         press,
         // A row says only the hold it offers Finish setup for; the others, its own view.
@@ -175,7 +183,17 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds, wokeAt],
+    [
+      presses,
+      creations,
+      firstBuilds,
+      mateLink,
+      pressOf,
+      verdicts,
+      closeOffHolds,
+      wokeAt,
+      processFacts,
+    ],
   );
 }
 

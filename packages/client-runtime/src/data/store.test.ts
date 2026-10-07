@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
 import { placementsScope, type PlacementValue } from "./families/hqNavigation.ts";
-import { matesAttention } from "./projections/mateAttention.ts";
+import { mateAttention } from "./projections/mateAttention.ts";
 import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 import { runningWork, type ProjectKey, type RunningWork } from "./projections/processes.ts";
@@ -77,15 +77,15 @@ describe("makeAccountStore", () => {
     store.dispatch(delivery(projectIds, 1));
     const derived: string[] = [];
     const published: string[] = [];
-    const counted: typeof matesAttention = {
-      ...matesAttention,
+    const counted: typeof mateAttention = {
+      ...mateAttention,
       derive: (read, key) => {
-        derived.push(key.projectIds[0]!);
-        return matesAttention.derive(read, key);
+        derived.push(key.projectId);
+        return mateAttention.derive(read, key);
       },
     };
     const releases = projectIds.map((projectId) => {
-      const atom = store.data.project(counted, { orgId: ORG, projectIds: [projectId] });
+      const atom = store.data.project(counted, { orgId: ORG, projectId });
       return registry.subscribe(
         atom,
         () => {

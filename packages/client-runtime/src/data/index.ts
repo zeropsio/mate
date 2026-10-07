@@ -31,8 +31,20 @@ export {
   hqStatus,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
-export { hqMates, type HqMatesRead } from "./projections/hqMates.ts";
-export { matesAttention, type MateAttentionRead } from "./projections/mateAttention.ts";
+export {
+  hqMateOverview,
+  hqMatePresence,
+  hqMateLogins,
+  hqMateReady,
+  hqMates,
+  type HqMatesRead,
+} from "./projections/hqMates.ts";
+export {
+  mateAttention,
+  attentionProjects,
+  matesAttention,
+  type MateAttentionRead,
+} from "./projections/mateAttention.ts";
 export {
   changeDiscussion,
   discussionGate,
@@ -190,8 +202,16 @@ export {
   vaultAtom,
   shownProjectsAtom,
   NOT_READ_HQ,
+  hqMateOverviewAtom,
+  hqMatePresenceAtom,
+  hqMateLoginsAtom,
+  hqMateReadyAtom,
+  mateAttentionAtom,
+  shownAttentionProjectsAtom,
+  shownMatesAttentionAtom,
   shownHqMatesAtom,
   shownHqNavigationAtom,
+  shownHqMenuNavigationAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -212,7 +232,7 @@ export {
   registrationRequestId,
   type MateRegistration,
 } from "./projections/mateRegistration.ts";
-export { shownHqProjectPeopleAtom } from "./personReads.ts";
+export { hqProjectPersonAtom, shownHqProjectPeopleAtom } from "./personReads.ts";
 export {
   hqProjectPeople,
   type HqMateOwner,
@@ -266,9 +286,11 @@ export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
 
 export {
   inventory,
+  inventoryContents,
   inventoryCandidates,
   NOT_READ_INVENTORY,
   inventoryPlacements,
+  inventoryPlacementStatus,
   type InventoryKey,
   type InventoryRead,
 } from "./projections/inventory.ts";
@@ -297,6 +319,7 @@ export {
 } from "./families/mateBrowserFrame.ts";
 export {
   mateBrowserFrame,
+  mateBrowserFrames,
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,
@@ -381,3 +404,43 @@ export type { SentAsk } from "./operations/mateSendTurn.ts";
 
 export { STREAM_POLICY } from "./streamMachine.ts";
 export { faceAction, NO_FACE_ACTION } from "./projections/faceAction.ts";
+
+export {
+  browserTransportFetch,
+  browserHttpClientLayer,
+  browserWebSocketLayer,
+  browserPrimaryHttpLayer,
+  makeBrowserMateDescriptors,
+} from "./adapters/mateTransport.ts";
+export { makeMateBrowserInputCommand } from "./adapters/mateBrowserFrame.ts";
+
+export { demandLocationLatency } from "./adapters/locationLatency.ts";
+export { regionRecommendation } from "./projections/regionRecommendation.ts";
+
+export { discoveryStatus, type DiscoveryStatus } from "./projections/discoveryStatus.ts";
+export { appReleaseRows, type AppReleaseRows } from "./projections/appReleaseRows.ts";
+
+export {
+  mateUpgradeRecovery,
+  upgradeRecoveryFromEvidence,
+  type MateUpgradeRecovery,
+} from "./projections/mateUpgradeRecovery.ts";
+export * from "./families/mateFeeds.ts";
+export * from "./projections/mateFeeds.ts";
+export * from "./adapters/mateFeeds.ts";
+export * from "./mateFeedReads.ts";
+export * from "./operations/mateActions.ts";
+export * from "./operations/executors/mateActions.ts";
+export * from "./mateActionReads.ts";
+export * from "./adapters/mateTerminal.ts";
+export * from "./operations/executors/mateTerminal.ts";
+export * from "./projections/mateActions.ts";
+export { makeArchiveReads, makeArchiveWire } from "./adapters/mateArchive.ts";
+export { mateArchive, type ArchiveReading } from "./projections/mateArchive.ts";
+
+export {
+  setupFailure,
+  failedSetupProcess,
+  setupFailureLogQuery,
+  setupFailureReason,
+} from "./projections/setupFailure.ts";

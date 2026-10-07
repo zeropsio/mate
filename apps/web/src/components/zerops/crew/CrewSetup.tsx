@@ -7,8 +7,8 @@
  * Mate's code, and each row says how that goes, until the crew stands and
  * the view becomes the tab.
  *
- * While the Mate writes a crew it was asked to suggest, the view reads the
- * crew home again every few seconds, so its crewmates arrive by themselves.
+ * The account samples the crew home while an editor demands it, so the
+ * Mate's suggested crewmates arrive through the shared read.
  * A crew on a login the viewer may not run does not start (D6): *Start the
  * crew* waits, saying why.
  */
@@ -53,9 +53,6 @@ import { MateFace } from "../primitives";
 import { crewGoalFields, crewGoalMarkdown, crewGoalTitleOf } from "./CrewGoal.logic";
 import { CrewPress, CrewTextButton } from "./CrewParts";
 import { CrewIssues, CrewTextArea, CrewView, CrewViewFoot } from "./CrewView";
-
-/** How often the view reads the crew home again while the Mate may be writing it. */
-const REREAD_MS = 5_000;
 
 export interface CrewSetupProps {
   readonly commands: UseCrewCommand;
@@ -104,14 +101,6 @@ export function CrewSetup(props: CrewSetupProps) {
         : null;
   const drafted = members !== null && members.length > 0;
   const busy = commands.isPending("filesPut") || commands.isPending("apply");
-
-  // While nobody is on the crew yet, the Mate may be writing one it was asked to suggest.
-  const { reload } = home;
-  useEffect(() => {
-    if (props.applied || drafted) return;
-    const timer = setInterval(() => void reload(), REREAD_MS);
-    return () => clearInterval(timer);
-  }, [drafted, props.applied, reload]);
 
   // Every copy made, the crew stands: the view becomes the tab.
   const ready =

@@ -1,3 +1,4 @@
+import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
@@ -521,49 +522,6 @@ function useOpenProjects(): () => void {
   }, [navigate]);
 }
 
-/** The release the flow offers on a group, read the way the menu row reads it. */
-function useReleaseOffer(groupId: string, flow: ZeropsProjectFlow | undefined): ReleaseOffer {
-  const { pending } = useFlowVerbs();
-  const openReview = useOpenReview();
-  const onReview = useCallback(
-    (from: HTMLElement) => {
-      openReview({ kind: "release", groupId }, { from });
-    },
-    [groupId, openReview],
-  );
-  const gate = flow?.release.gate;
-  return {
-    offered: gate?.allowed ?? false,
-    reason: gate === undefined || gate.allowed ? undefined : gate.reason,
-    releasing:
-      flow?.release.inFlight !== undefined ||
-      pending.has(flowVerbKey({ kind: "release", groupId })),
-    tag: flow?.release.suggestion,
-    onReview,
-  };
-}
-
-/**
- * The door to the next release's review where the projects page draws a project's next step:
- * the same review every other door opens (R1). `label` is the step's own words.
- */
-export function ZeropsReleaseVerb({
-  groupId,
-  label,
-}: {
-  readonly groupId: string;
-  readonly label: string;
-}) {
-  // What a release would put live is compared while the step is drawn.
-  const { flows } = useProjectFlows(
-    useMemo(() => [groupId], [groupId]),
-    COMPARED,
-  );
-  const release = useReleaseOffer(groupId, flows.get(groupId));
-  // The projects page's verbs are all one height; this one is theirs.
-  return <ReleaseAction label={label} release={release} size="compact" />;
-}
-
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
  * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: from what the
@@ -712,16 +670,47 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     COMPARED,
   );
   const flow = flows.get(groupId);
+  if (flow === undefined) return <UnreadGroupDetail groupId={groupId} />;
+  return <KnownGroupDetail groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
+}
+
+function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   const deployments = useStopDeploymentsShown();
-  const verbs = useFlowVerbs();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
-  const environments = flow?.environments ?? [];
+  const crumbs = useCrumbs();
+  const groupName = useGroupName(groupId);
+  return (
+    <DetailShell crumbs={crumbs} title={groupName}>
+      <ZeropsRuntimeStops
+        stops={runtimeStops}
+        deployments={deployments}
+        onOpen={(projectId) => {
+          void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
+        }}
+      />
+      <UnreadDetail groupId={groupId} />
+    </DetailShell>
+  );
+}
+
+function KnownGroupDetail({
+  groupId,
+  flow,
+  recipeFailure,
+}: {
+  readonly groupId: string;
+  readonly flow: ZeropsProjectFlow;
+  readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
+}) {
+  const deployments = useStopDeploymentsShown();
+  const verbs = useFlowVerbs();
+  const environments = flow.environments;
   const repo = groupRepository(environments);
-  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow?.repos });
-  const tags = useReleaseTags(flow?.releases);
+  const history = useRepositoryHistory({ appId: groupId, repo, repos: flow.repos });
+  const tags = useReleaseTags(flow.releases);
   const openChange = useOpenChange(groupId, repo);
-  const waiting = flow?.release.summary ?? releaseContentsSummary(flow?.release.contents ?? [], 20);
+  const waiting = flow.release.summary ?? releaseContentsSummary(flow.release.contents, 20);
   const groupName = useGroupName(groupId);
   const openProjects = useOpenProjects();
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
@@ -739,7 +728,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const firstDeployOf = useStageFirstDeploys(flow);
   const attention = useProjectAttention(groupId, mates, {
     environments: shown,
-    pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
+    pullRequests: flow.pullRequests,
     notLive: waiting.total,
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
@@ -752,21 +741,6 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const { halfMade, finishing } = useEnvironmentSetup(
     useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
   );
-
-  if (flow === undefined) {
-    return (
-      <DetailShell crumbs={crumbs} title={groupName}>
-        <ZeropsRuntimeStops
-          stops={runtimeStops}
-          deployments={deployments}
-          onOpen={(projectId) => {
-            void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
-          }}
-        />
-        <UnreadDetail groupId={groupId} />
-      </DetailShell>
-    );
-  }
 
   const production = environments.find((entry) => entry.tier === "production");
   const halfMadeHere = halfMade.filter((entry) => entry.groupId === groupId);
@@ -2166,7 +2140,6 @@ const STAYS = () => {};
 
 /** Nobody to name, before the flow is read. */
 const EMPTY_MATE_NAMES: ReadonlyMap<string, string> = new Map();
-const EMPTY_PULLS: ReadonlyArray<FlowPullRequest> = [];
 const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
@@ -2241,57 +2214,6 @@ function groupSubtitle(stops: number, changes: number): string {
   const stopPart = stops === 1 ? "1 environment" : `${String(stops)} environments`;
   const changePart = changes === 1 ? "1 change open" : `${String(changes)} changes open`;
   return `${stopPart} · ${changePart}`;
-}
-
-/** What *Release* is offered on a page, or that it is not offered at all. */
-export interface ReleaseOffer {
-  /** False where the stage has nothing the production lacks, or there is no production. */
-  readonly offered: boolean;
-  /** A release is on its way: its review shows how far it got. */
-  readonly releasing: boolean;
-  /** The version it would cut, where the flow suggested one. */
-  readonly tag: string | undefined;
-  /** Why it is not offered, as the flow's gate says; `undefined` while it is. */
-  readonly reason: string | undefined;
-  /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */
-  readonly onReview: (from: HTMLElement) => void;
-}
-
-/**
- * The door to the next release's review, on the page that shows what is waiting for it.
- *
- * The menu row offered *Release* and the page the row expands to did not, so the one screen
- * listing three changes merged and not live was the one screen that could not put them live.
- * Now every door to it says *Review release* and opens the same review, which carries *Release*
- * and says what it does (pass 16, R1); while one is on its way the door opens its progress.
- */
-function ReleaseAction({
-  release,
-  label = REVIEW_RELEASE_LABEL,
-  size = "sm",
-  variant,
-}: {
-  readonly release: ReleaseOffer;
-  /** The door's words where the caller has them; *Review release* otherwise. */
-  readonly label?: string;
-  /** `compact` where it stands among the projects page's verbs. */
-  readonly size?: "sm" | "compact";
-  /** `outline` in a stop's verdict, where a verb stands beside the sentence it acts on. */
-  readonly variant?: "outline";
-}) {
-  if (!release.offered && !release.releasing) return null;
-  return (
-    <Button
-      data-zerops-primary-action={REVIEW_RELEASE_LABEL}
-      onClick={(event) => {
-        release.onReview(event.currentTarget);
-      }}
-      size={size}
-      {...(variant === undefined ? {} : { variant })}
-    >
-      {release.releasing ? flowVerbLabel("release", true) : label}
-    </Button>
-  );
 }
 
 /** A section with nothing in it yet, and the way to put something there. */

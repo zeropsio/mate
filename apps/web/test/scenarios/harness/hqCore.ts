@@ -12,8 +12,13 @@ import { deadline } from "./http.ts";
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
 
-/** Driver receipt: navigation demand is registered with Core, independent of its payload shape. */
-export const openScenarioNavigation = (origin: string, ticket: string) =>
+/** Real Core navigation, through its baseline or a caller's source receipt. */
+export const openScenarioNavigation = (
+  origin: string,
+  ticket: string,
+  ready: (message: HqStreamMessage) => boolean = (message) =>
+    message.type === "scope-ready" && message.scope.kind === "navigation",
+) =>
   Effect.gen(function* () {
     const socket = yield* Effect.acquireRelease(
       Effect.sync(
@@ -38,8 +43,7 @@ export const openScenarioNavigation = (origin: string, ticket: string) =>
             const parsed = readMessage(frame.toString());
             if (Option.isNone(parsed)) return reject(new Error("Invalid Core navigation delivery"));
             if (parsed.value.type === "scope-error") return reject(new Error(parsed.value.code));
-            if (parsed.value.type === "scope-ready" && parsed.value.scope.kind === "navigation")
-              resolve();
+            if (ready(parsed.value)) resolve();
           });
         }),
         "Core navigation ready",

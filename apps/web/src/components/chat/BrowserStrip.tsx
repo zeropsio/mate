@@ -26,7 +26,7 @@ import { ImageUnavailable } from "~/assets/AssetImage";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
-import { useZeropsBrowserStream } from "../../zerops/useZeropsFeeds";
+import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   browserCheckCaption,
@@ -201,8 +201,14 @@ export function BrowserStrip({
   const picked = running
     ? undefined
     : strip.checks.find((check) => check.key === pickedKey && check !== latest);
-  const stream = useZeropsBrowserStream(running ? environmentId : null);
-  const liveFrame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  const read = useMateBrowserCallFrame(
+    environmentId,
+    latest.callIds.length === 1 ? latest.callIds[0]! : null,
+    running,
+    threadRef?.threadId ?? null,
+    latest.turnId,
+  );
+  const liveFrame = read.freshness === "live" ? read.frame : null;
   // Settled, the stage holds the newest take with a page to show — its
   // picture, else what it read of the page — else the newest take.
   const onStage =
@@ -564,7 +570,14 @@ export function BrowserTakes({
     >
       {takes.map((take) => {
         if (take.phase === "running") {
-          return <LiveTake key={take.key} environmentId={environmentId} take={take} />;
+          return (
+            <LiveTake
+              key={take.key}
+              environmentId={environmentId}
+              threadRef={threadRef}
+              take={take}
+            />
+          );
         }
         if (failedBare(take)) return <FailedTake key={take.key} take={take} />;
         const src = takeSource(take.screenshot?.src, threadRef);
@@ -607,13 +620,21 @@ export function BrowserTakes({
 function LiveTake({
   take,
   environmentId,
+  threadRef,
 }: {
   readonly take: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
+  readonly threadRef: ScopedThreadRef | null;
 }) {
   const device = browserCheckDevice(take);
-  const stream = useZeropsBrowserStream(environmentId);
-  const frame = stream !== undefined && stream !== "unavailable" ? stream.frame : undefined;
+  const read = useMateBrowserCallFrame(
+    environmentId,
+    take.callIds.length === 1 ? take.callIds[0]! : null,
+    true,
+    threadRef?.threadId ?? null,
+    take.turnId,
+  );
+  const frame = read.freshness === "live" ? read.frame : null;
   return (
     <span
       aria-label={`Checking ${browserCheckCaption(take)}`}
@@ -625,7 +646,7 @@ function LiveTake({
       data-report-take-live
       role="img"
     >
-      {frame === undefined ? null : (
+      {frame === null ? null : (
         <img
           loading="lazy"
           decoding="async"

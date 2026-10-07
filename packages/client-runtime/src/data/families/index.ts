@@ -1,3 +1,4 @@
+import { mateArchiveFamily } from "./mateArchive.ts";
 import { mateVcsFamily } from "./mateVcs.ts";
 import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
@@ -12,8 +13,11 @@ import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
 import { mateMcpServersFamily } from "./mateMcpServers.ts";
 import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
 import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { mateActionRequestFamily } from "./mateActionRequest.ts";
+import { MATE_FEED_FAMILIES } from "./mateFeeds.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { mateSetupFamily } from "./mateSetup.ts";
+import { locationLatencyFamily } from "./locationLatency.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
 /**
@@ -78,6 +82,7 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  mateArchiveFamily,
   mateVcsFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,
@@ -95,6 +100,8 @@ export const FAMILIES = defineFamilies([
 
   hqRepositorySourceFamily,
   mateSetupFamily,
+  ...Object.values(MATE_FEED_FAMILIES),
+  mateActionRequestFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,
@@ -113,6 +120,7 @@ export const FAMILIES = defineFamilies([
   usageHistoryFamily,
   organizationMembersFamily,
   organizationLocationsFamily,
+  locationLatencyFamily,
   serviceAgentsFamily,
   publicRoutingFamily,
   hqAppDetailFamily,
@@ -170,8 +178,9 @@ export function streamMode(key: string): "realtime" | "sampled" | "once" {
   if (key.startsWith("mate:image/")) return "once";
   if (key.startsWith("mate:browser-") || key.startsWith("mate:database-session-"))
     return "realtime";
-  if (key.startsWith("mate:"))
-    return bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode ?? "sampled";
+  const declaredMode = bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode;
+  if (declaredMode !== undefined) return declaredMode;
+  if (key.startsWith("mate:")) return "sampled";
   const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
   if (sampled === undefined) return "realtime";
   return sampled.freshMs === null ? "once" : "sampled";

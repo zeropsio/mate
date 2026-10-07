@@ -360,8 +360,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
       if (
         tokens.current.get(id) !== token ||
         !now?.picture ||
-        now.picture.crop !== picture.crop ||
-        now.picture.marks !== picture.marks
+        pictureNeedsNewCopy(picture, now.picture)
       ) {
         return;
       }

@@ -317,7 +317,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       hq: {
         socket: {
           drops: Effect.promise(async () => {
-            await hq.ready();
+            await hq.socketReady();
             hq.drops();
           }),
           returns: Effect.sync(() => hq.returns()),

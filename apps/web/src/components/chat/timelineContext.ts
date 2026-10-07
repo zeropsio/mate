@@ -46,6 +46,7 @@ export interface TimelineRowSharedState {
   livePauseId: string | null;
   usagePause: ServerUsagePause | null;
   onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
+  onUsageContinue?: (() => void) | null;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
   /** Stops the work that outlived the turn. */

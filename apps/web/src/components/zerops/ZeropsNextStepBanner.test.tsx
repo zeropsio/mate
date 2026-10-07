@@ -7,12 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { visitElements } from "../../test/reactElementTree";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
-import {
-  rememberComposerTop,
-  withComposerTop,
-  type ComposerTopMemory,
-  type RememberedComposerTop,
-} from "../../zerops/composerTopMemory";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import type { ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import hookSource from "../../zerops/useZeropsMateNextStep.ts?raw";
@@ -62,19 +56,6 @@ const NOTHING_PENDING: ZeropsNextStepPending = { question: false, approval: fals
 const UNANSWERED: ZeropsMateNextStep = { kind: "unknown" };
 const NOTHING: ZeropsMateNextStep = { kind: "none" };
 
-/** What the composer's top showed of #2 — and what a reload paints of it. */
-const REMEMBERED: RememberedComposerTop = {
-  groupId: "g-1",
-  repository: "app",
-  number: 2,
-  title: "Add a status page",
-  words: "Nova is waiting for your review of #2",
-  tint: "slate",
-  shape: "squircle",
-};
-
-const DISMISSED: RememberedComposerTop = { ...REMEMBERED, dismissed: true };
-
 /** Another change of the same Mate, waiting after #2 was dismissed. */
 const WAITING_3 = {
   ...WAITING,
@@ -116,17 +97,6 @@ const WAITING_TWO: ZeropsMateNextStep = {
     more: 0,
   },
   target: { kind: "change", groupId: "g-1", repository: "api", number: 2 },
-};
-
-const REMEMBERED_TWO: RememberedComposerTop = {
-  ...REMEMBERED,
-  repository: "api",
-  title: "Rebuild the API",
-  words: "Nova is waiting for your review of 2 changes",
-  lines: [
-    { repository: "api", number: 2, label: "api #2 Rebuild the API" },
-    { repository: "app", number: 2, label: "app #2 Add a status page" },
-  ],
 };
 
 const SHOWN_TWO: ZeropsNextStepStripModel = {
@@ -189,182 +159,29 @@ describe("zeropsComposerTop", () => {
       shown: null,
     },
   ])("$case", ({ nextStep, pending, shown }) => {
-    expect(zeropsComposerTop({ nextStep, remembered: undefined, pending }).strip).toEqual(shown);
+    expect(zeropsComposerTop({ nextStep, dismissed: undefined, pending }).strip).toEqual(shown);
   });
 
-  // A reload paints the strip the conversation showed last, and HQ's answer
-  // — seconds later — confirms it, changes its words, or takes it away: the
-  // composer grows 61 px only where nothing was remembered.
-  it.each<{
-    readonly case: string;
-    readonly memory: ComposerTopMemory;
-    readonly threadKey: string;
-    readonly answers: ReadonlyArray<ZeropsMateNextStep>;
-    readonly shown: ReadonlyArray<ZeropsNextStepStripModel | null>;
-    readonly remembered: RememberedComposerTop | undefined;
-  }>([
-    {
-      case: "remembered, then confirmed",
-      memory: { "env-nova:thread-1": REMEMBERED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING],
-      shown: [SHOWN, SHOWN],
-      remembered: REMEMBERED,
-    },
-    {
-      case: "remembered, then gone: merged or closed elsewhere meanwhile",
-      memory: { "env-nova:thread-1": REMEMBERED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, NOTHING],
-      shown: [SHOWN, null],
-      remembered: undefined,
-    },
-    {
-      case: "nothing remembered, then live",
-      memory: {},
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING],
-      shown: [null, SHOWN],
-      remembered: REMEMBERED,
-    },
-    {
-      case: "two waiting: remembered with their lines, so a reload paints the strip it keeps",
-      memory: { "env-nova:thread-1": REMEMBERED_TWO },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING_TWO],
-      shown: [SHOWN_TWO, SHOWN_TWO],
-      remembered: REMEMBERED_TWO,
-    },
-    {
-      case: "another conversation's memory, never used",
-      memory: { "env-nova:thread-2": REMEMBERED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED],
-      shown: [null],
-      remembered: undefined,
-    },
-    {
-      case: "dismissed, and the same change still waits: it stays away",
-      memory: { "env-nova:thread-1": DISMISSED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING],
-      shown: [null, null],
-      remembered: DISMISSED,
-    },
-    {
-      case: "dismissed, then another change waits: that one shows",
-      memory: { "env-nova:thread-1": DISMISSED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING_3],
-      shown: [
-        null,
-        {
-          ...SHOWN,
-          title: "Nova is waiting for your review of #3",
-          detail: "Fix the footer",
-          target: { ...SHOWN.target, number: 3 },
-        },
-      ],
-      remembered: {
-        ...REMEMBERED,
-        number: 3,
-        title: "Fix the footer",
-        words: "Nova is waiting for your review of #3",
-      },
-    },
-    {
-      case: "two waiting, dismissed: the strip stays away while they wait",
-      memory: { "env-nova:thread-1": { ...REMEMBERED_TWO, dismissed: true } },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING_TWO],
-      shown: [null, null],
-      remembered: { ...REMEMBERED_TWO, dismissed: true },
-    },
-    {
-      case: "dismissed, then nothing waits: forgotten",
-      memory: { "env-nova:thread-1": DISMISSED },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, NOTHING],
-      shown: [null, null],
-      remembered: undefined,
-    },
-    {
-      case: "remembered, and the change's title changed since",
-      memory: { "env-nova:thread-1": { ...REMEMBERED, title: "Add a /status page" } },
-      threadKey: "env-nova:thread-1",
-      answers: [UNANSWERED, WAITING],
-      shown: [{ ...SHOWN, detail: "Add a /status page" }, SHOWN],
-      remembered: REMEMBERED,
-    },
-  ])("$case", ({ memory, threadKey, answers, shown, remembered }) => {
-    let held = memory;
-    const drawn = answers.map((nextStep) => {
-      const top = zeropsComposerTop({
-        nextStep,
-        remembered: held[threadKey],
-        pending: NOTHING_PENDING,
-      });
-      if (top.remember !== undefined) held = withComposerTop(held, threadKey, top.remember);
-      return top.strip;
+  it("reserves an unread review without painting source text", () => {
+    expect(zeropsComposerTop({ nextStep: UNANSWERED, pending: NOTHING_PENDING })).toEqual({
+      strip: null,
+      reserved: true,
     });
-    expect(drawn).toEqual(shown);
-    expect(held[threadKey]).toEqual(remembered);
   });
-
-  it("keeps the remembered face's tint until the Mate is known", () => {
-    const top = zeropsComposerTop({
-      nextStep: { ...WAITING, tint: undefined } as ZeropsMateNextStep,
-      remembered: { ...REMEMBERED, tint: "sky" },
-      pending: NOTHING_PENDING,
-    });
-    expect(top.strip?.tint).toBe("sky");
-    expect(top.remember).toEqual({ ...REMEMBERED, tint: "sky" });
+  it("a dismissed change stays away; another change shows", () => {
+    const dismissed = JSON.stringify(["g-1", "app", 2]);
+    expect(
+      zeropsComposerTop({ nextStep: WAITING, dismissed, pending: NOTHING_PENDING }).strip,
+    ).toBeNull();
+    expect(
+      zeropsComposerTop({ nextStep: WAITING_3, dismissed, pending: NOTHING_PENDING }).strip?.target
+        .number,
+    ).toBe(3);
   });
-
-  /** A reload paints the face it will keep: the shape is remembered with the tint. */
-  it.each<{
-    readonly name: string;
-    readonly nextStep: ZeropsMateNextStep;
-    readonly remembered: RememberedComposerTop | undefined;
-    readonly shape: string | undefined;
-  }>([
-    {
-      name: "remembers the shape a Mate's person picked",
-      nextStep: { ...WAITING, tint: "rose", shape: "seal" } as ZeropsMateNextStep,
-      remembered: undefined,
-      shape: "seal",
-    },
-    {
-      name: "keeps the remembered shape until the Mate is known",
-      nextStep: { ...WAITING, tint: undefined, shape: undefined } as ZeropsMateNextStep,
-      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
-      shape: "seal",
-    },
-    {
-      name: "paints a remembered shape until HQ answers",
-      nextStep: UNANSWERED,
-      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
-      shape: "seal",
-    },
-    {
-      name: "takes the known Mate's shape over what was remembered",
-      nextStep: { ...WAITING, tint: "rose", shape: "gem" } as ZeropsMateNextStep,
-      remembered: { ...REMEMBERED, tint: "rose", shape: "seal" },
-      shape: "gem",
-    },
-  ])("$name", ({ nextStep, remembered, shape }) => {
-    const top = zeropsComposerTop({ nextStep, remembered, pending: NOTHING_PENDING });
-    expect(top.strip?.shape).toBe(shape);
-    if (top.remember !== undefined) expect(top.remember?.shape).toBe(shape);
-  });
-
-  it("holds the memory while a question waits, and leaves it as it was", () => {
-    const top = zeropsComposerTop({
-      nextStep: UNANSWERED,
-      remembered: REMEMBERED,
-      pending: { question: true, approval: false, working: false },
-    });
-    expect(top).toEqual({ strip: null, remember: undefined });
+  it("shows current source lines for several waiting changes", () => {
+    expect(zeropsComposerTop({ nextStep: WAITING_TWO, pending: NOTHING_PENDING }).strip).toEqual(
+      SHOWN_TWO,
+    );
   });
 });
 
@@ -541,36 +358,20 @@ describe("the composer's top on a reload's first render", () => {
     vi.unstubAllGlobals();
   });
 
-  // The strip is painted before HQ answers, from what the conversation
-  // showed last, so the composer never grows 61 px under a settled page.
-  it.each<{
-    readonly case: string;
-    readonly remembered: Readonly<Record<string, RememberedComposerTop>>;
-    readonly painted: boolean;
-  }>([
-    {
-      case: "remembered for this conversation",
-      remembered: { "env-nova:thread-1": REMEMBERED },
-      painted: true,
-    },
-    {
-      case: "remembered for another conversation only",
-      remembered: { "env-nova:thread-2": REMEMBERED },
-      painted: false,
-    },
-    { case: "nothing remembered", remembered: {}, painted: false },
-  ])("$case: painted $painted", ({ remembered, painted }) => {
-    for (const [threadKey, top] of Object.entries(remembered)) {
-      rememberComposerTop(threadKey, top);
-    }
+  it("reserves the cold slot and ignores a saved source strip", () => {
+    stored.set(
+      "mate:account:user-ales:mate:zerops:composer-top-memory",
+      JSON.stringify({
+        "env-nova:thread-1": { title: "Old title", words: "Old review", number: 2 },
+      }),
+    );
     const markup = renderToStaticMarkup(
       <InventoryContext value={UNREAD}>
         <ComposerTop />
       </InventoryContext>,
     );
-
-    expect(markup.includes('data-composer-top="review"')).toBe(painted);
-    expect(markup.includes("Nova is waiting for your review of #2")).toBe(painted);
-    expect(markup.includes("Add a status page")).toBe(painted);
+    expect(markup).toContain('data-composer-top="unread"');
+    expect(markup).not.toContain("Old review");
+    expect(markup).not.toContain('data-composer-top="review"');
   });
 });

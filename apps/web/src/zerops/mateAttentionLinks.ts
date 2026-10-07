@@ -19,13 +19,12 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { connectionAtomRuntime } from "../connection/runtime";
-import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
+import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { seenResultsOf } from "./mateActivity";
-import { useProjection } from "./ZeropsAccountData";
 
 /** The app's connection registry, once its runtime is built. */
 const connectionRegistryAtom = connectionAtomRuntime.atom(
@@ -89,15 +88,12 @@ const NO_ATTENTION_READ: Readonly<Record<string, MateAttentionRead>> = {};
 const NO_ATTENTION = Atom.make(NO_ATTENTION_READ);
 
 export function useMateResultsSeen(
+  store: AccountStore,
   orgId: string | null,
   seen: (projectId: string, resultIds: ReadonlyArray<string>) => void,
 ): void {
-  const hq = useAtomValue(hqMatesAtom);
-  const projectIds = useMemo(() => (hq === null ? [] : [...hq.mates.keys()].toSorted()), [hq]);
-  const attention = useProjection(
-    matesAttention,
-    orgId === null ? null : { orgId, projectIds },
-    NO_ATTENTION,
+  const attention = useAtomValue(
+    orgId === null ? NO_ATTENTION : store.data.project(matesAttention, orgId),
   );
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   /**
@@ -105,6 +101,9 @@ export function useMateResultsSeen(
    * count moves. A word told while HQ's link is down, the link tells HQ once it is up again.
    */
   const told = useRef(new Map<string, { readonly unseen: number; readonly ids: Set<string> }>());
+  useEffect(() => {
+    told.current.clear();
+  }, [orgId, store]);
   useEffect(() => {
     for (const [projectId, read] of Object.entries(attention)) {
       // Only HQ counts what is unseen; nothing to tell it while it counts nothing.

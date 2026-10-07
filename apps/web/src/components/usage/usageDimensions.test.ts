@@ -47,15 +47,35 @@ describe("usageDimensions visibility", () => {
     {
       name: "one Mate shows no dimension",
       byEnvironment: [totals("a", 10, 100)],
-      identities: identities({ a: { mateName: "Lena", projectName: "shop", owner: owner("u1") } }),
+      identities: identities({
+        a: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
+      }),
       visible: { person: false, project: false, mate: false },
     },
     {
       name: "two Mates of one person in one project show only Mate",
       byEnvironment: [totals("a", 10, 100), totals("b", 5, 50)],
       identities: identities({
-        a: { mateName: "Lena", projectName: "shop", owner: owner("u1") },
-        b: { mateName: "Otto", projectName: "shop", owner: owner("u1") },
+        a: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
+        b: {
+          mateName: "Otto",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
       }),
       visible: { person: false, project: false, mate: true },
     },
@@ -63,8 +83,20 @@ describe("usageDimensions visibility", () => {
       name: "two Mates of one person in two projects show Project and Mate",
       byEnvironment: [totals("a", 10, 100), totals("b", 5, 50)],
       identities: identities({
-        a: { mateName: "Lena", projectName: "shop", owner: owner("u1") },
-        b: { mateName: "Otto", projectName: "blog", owner: owner("u1") },
+        a: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
+        b: {
+          mateName: "Otto",
+          projectId: "blog",
+          ownerState: "known",
+          projectName: "blog",
+          owner: owner("u1"),
+        },
       }),
       visible: { person: false, project: true, mate: true },
     },
@@ -72,16 +104,36 @@ describe("usageDimensions visibility", () => {
       name: "two people show Person",
       byEnvironment: [totals("a", 10, 100), totals("b", 5, 50)],
       identities: identities({
-        a: { mateName: "Lena", projectName: "shop", owner: owner("u1") },
-        b: { mateName: "Otto", projectName: "shop", owner: owner("u2") },
+        a: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
+        b: {
+          mateName: "Otto",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u2"),
+        },
       }),
       visible: { person: true, project: false, mate: true },
     },
     {
       name: "an environment without identity counts as a Mate but not as a person or project",
       byEnvironment: [totals("a", 10, 100), totals("local", 5, 50)],
-      identities: identities({ a: { mateName: "Lena", projectName: "shop", owner: owner("u1") } }),
-      visible: { person: false, project: false, mate: true },
+      identities: identities({
+        a: {
+          mateName: "Lena",
+          projectId: "shop",
+          ownerState: "known",
+          projectName: "shop",
+          owner: owner("u1"),
+        },
+      }),
+      visible: { person: true, project: false, mate: true },
     },
     {
       name: "no activity shows no dimension",
@@ -109,9 +161,27 @@ describe("usageDimensions rows", () => {
       totals("local", 40, 10),
     ],
     identities: identities({
-      a: { mateName: "Lena", projectName: "shop", owner: owner("u1", true) },
-      b: { mateName: "Otto", projectName: "blog", owner: owner("u2") },
-      c: { mateName: "Ida", projectName: "shop", owner: owner("u2") },
+      a: {
+        mateName: "Lena",
+        projectId: "shop",
+        ownerState: "known",
+        projectName: "shop",
+        owner: owner("u1", true),
+      },
+      b: {
+        mateName: "Otto",
+        projectId: "blog",
+        ownerState: "known",
+        projectName: "blog",
+        owner: owner("u2"),
+      },
+      c: {
+        mateName: "Ida",
+        projectId: "shop",
+        ownerState: "known",
+        projectName: "shop",
+        owner: owner("u2"),
+      },
     }),
     labels: labels(["a", "b", "c", "local"]),
   };
@@ -180,8 +250,20 @@ describe("usageDimensions rows", () => {
 
 describe("usageScopeIncludes", () => {
   const known = identities({
-    a: { mateName: "Lena", projectName: "shop", owner: owner("u1") },
-    b: { mateName: "Otto", projectName: "blog", owner: owner("u2") },
+    a: {
+      mateName: "Lena",
+      projectId: "shop",
+      ownerState: "known",
+      projectName: "shop",
+      owner: owner("u1"),
+    },
+    b: {
+      mateName: "Otto",
+      projectId: "blog",
+      ownerState: "known",
+      projectName: "blog",
+      owner: owner("u2"),
+    },
   });
 
   it.each([
@@ -195,4 +277,41 @@ describe("usageScopeIncludes", () => {
       included,
     );
   });
+});
+
+it("keeps equal project names separate and follows IDs through a rename", () => {
+  const named = identities({
+    a: {
+      mateName: "A",
+      projectId: "id-a",
+      projectName: "Shop",
+      ownerState: "unknown",
+      owner: null,
+    },
+    b: {
+      mateName: "B",
+      projectId: "id-b",
+      projectName: "Shop",
+      ownerState: "unassigned",
+      owner: null,
+    },
+  });
+  const dimensions = usageDimensions({
+    byEnvironment: [totals("a", 10, 100), totals("b", 5, 50)],
+    identities: named,
+    labels: labels([]),
+    metric: "cost",
+  });
+  expect(dimensions.projects.map((row) => [row.projectId, row.costUsd])).toEqual([
+    ["id-a", 10],
+    ["id-b", 5],
+  ]);
+  expect(dimensions.people.map((row) => [row.ownerState, row.costUsd])).toEqual([
+    ["unknown", 10],
+    ["unassigned", 5],
+  ]);
+  const renamed = new Map(named);
+  renamed.set(env("a"), { ...named.get(env("a"))!, projectName: "Renamed" });
+  expect(usageScopeIncludes({ project: "id-a" }, renamed, env("a"))).toBe(true);
+  expect(usageScopeIncludes({ project: "id-a" }, renamed, env("b"))).toBe(false);
 });

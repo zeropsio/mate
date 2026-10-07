@@ -18,8 +18,8 @@ import {
   type LimitAccount,
   limitsNotice,
   limitsNoticeLine,
-  LIMITS_READ_DEADLINE_MS,
   type LimitsEntry,
+  type LimitsPresentation,
   limitsPage,
   type LimitPace,
   paceOf,
@@ -27,7 +27,7 @@ import {
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { environmentPresentations } from "../../state/presentation";
@@ -528,9 +528,7 @@ export const READING_LIMITS_LINE = "Reading subscription limits…";
 /**
  * Subscription quota windows from every connected environment's providers.
  * The page advances `now` on explicit refresh rather than ticking: a live
- * clock would repaint the page for no decision-changing gain. The cards are
- * painted once (`limitsPage`): when every environment has answered, or
- * `LIMITS_READ_DEADLINE_MS` after the section opened, least quota left first;
+ * clock would repaint the page for no decision-changing gain. The cards appear as answers arrive, least quota left first;
  * then they stand as painted, a late answer joining at the end, the reading
  * line under them while one is still on its way.
  */
@@ -538,29 +536,38 @@ export function UsageLimitsSection({
   now,
   identities,
   listed,
+  environmentIds,
+  unavailableNames = [],
 }: {
   readonly now: number;
   readonly identities: UsageEnvironmentIdentities;
   /** The environments are listed whole: none is still to be registered. */
   readonly listed: boolean;
+  readonly environmentIds?: ReadonlySet<EnvironmentId> | undefined;
+  readonly unavailableNames?: readonly string[] | undefined;
 }) {
-  const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
-  // What was painted, kept for the next read: once painted it never waits again, nothing moves.
-  const [kept, setKept] = useState<{
-    readonly painted: boolean;
-    readonly placed: readonly string[];
-  }>({ painted: false, placed: [] });
+  const available = useAtomValue(environmentPresentations.presentationsAtom);
+  const presentations = new Map<EnvironmentId, LimitsPresentation>(
+    [...available].filter(([id]) => environmentIds === undefined || environmentIds.has(id)),
+  );
+  for (const id of environmentIds ?? []) {
+    if (!presentations.has(id))
+      presentations.set(id, {
+        entry: { target: { label: identities.get(id)?.mateName ?? String(id) } },
+        connection: { phase: "offline", error: null },
+        serverConfig: null,
+      });
+  }
+  // Keep presentation order while each source answers independently.
+  const [placed, setPlaced] = useState<readonly string[]>([]);
   const page = limitsPage({
     listed,
     presentations,
-    deadlinePassed,
-    painted: kept.painted,
-    placed: kept.placed,
+    placed,
   });
   const { state, reading, entries, tellApart } = page;
-  if (page.painted !== kept.painted || page.placed.join("\n") !== kept.placed.join("\n")) {
-    setKept({ painted: page.painted, placed: page.placed });
+  if (page.placed.join("\n") !== placed.join("\n")) {
+    setPlaced(page.placed);
   }
   // One beat from the section's mount for the whole reading, the page's line and the cards' alike.
   const readingLine = useWaitLine(reading ? READING_LIMITS_LINE : null, {
@@ -580,6 +587,14 @@ export function UsageLimitsSection({
 
   if (state === "wait") {
     return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_LIMITS_LINE} />;
+  }
+  if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Subscription limits could not be read from every environment. Reconnect or retry the
+        unavailable Mates.
+      </p>
+    );
   }
   if (state === "none") {
     return (
@@ -619,6 +634,13 @@ export function UsageLimitsSection({
           <SourceLimits key={block.key} source={block.entry.source} now={now} />
         ) : null,
       )}
+      {page.unread.length > 0 || unavailableNames.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Limits unavailable from{" "}
+          {[...unavailableNames, ...placesOf(page.unread).map((place) => place.name)].join(", ")}.
+          Reconnect or retry these Mates.
+        </p>
+      ) : null}
       {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}
       {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
     </div>
@@ -644,14 +666,4 @@ function entryBlocks(entries: readonly LimitsEntry[]): readonly EntryBlock[] {
     } else blocks.push({ kind: "notices", key: entry.key, notices: [entry.notice] });
   }
   return blocks;
-}
-
-/** Whether `ms` has passed since this mounted: false, then true for good. */
-function useDeadlinePassed(ms: number): boolean {
-  const [passed, setPassed] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setPassed(true), ms);
-    return () => clearTimeout(timer);
-  }, [ms]);
-  return passed;
 }

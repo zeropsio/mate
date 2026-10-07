@@ -225,7 +225,8 @@ function fail(
     });
   if (!state.demanded)
     return settle({ ...state, phase: "paused", fault, next: { kind: "await-demand" } });
-  const failures = state.failures + 1;
+  // Losing an established root transport starts recovery; it is not a failed attempt.
+  const failures = state.failures + (state.parent === null && state.phase === "live" ? 0 : 1);
   // A child's session is its parent's: it waits for the parent's next attempt. Its own read
   // failing transiently is its own: it retries alone, on the one policy.
   if (state.parent !== null && fault.outcome !== "transient")

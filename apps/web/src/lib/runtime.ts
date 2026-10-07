@@ -1,9 +1,8 @@
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import type * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Socket from "effect/unstable/socket/Socket";
+import { browserHttpClientLayer, browserWebSocketLayer } from "@t3tools/client-runtime/data";
 
-import { remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
 import { makeRelayClientTracingLayer } from "@t3tools/shared/relayTracing";
 import * as PrimaryEnvironmentHttpClient from "../environments/primary/httpClient";
 import { primaryEnvironmentHttpLayer } from "../environments/primary/httpLayer";
@@ -17,7 +16,7 @@ function configuredRelayUrl(): string {
   return resolveCloudPublicConfig().relayUrl ?? "http://relay.invalid";
 }
 
-const httpClientLayer = remoteHttpClientLayer((input, init) => globalThis.fetch(input, init));
+const httpClientLayer = browserHttpClientLayer;
 const relayTracingLayer = makeRelayClientTracingLayer(resolveRelayTracingConfig(), {
   serviceName: "t3-web-relay-client",
   serviceVersion: import.meta.env.APP_VERSION,
@@ -28,7 +27,7 @@ const relayTracingLayer = makeRelayClientTracingLayer(resolveRelayTracingConfig(
 type RuntimeLayerSource =
   | typeof httpClientLayer
   | typeof browserCryptoLayer
-  | typeof Socket.layerWebSocketConstructorGlobal
+  | typeof browserWebSocketLayer
   | typeof relayTracingLayer
   | typeof ClientTracer.layer
   | ReturnType<typeof managedRelayClientLayer>;
@@ -57,7 +56,7 @@ export function __setPrimaryHttpRunnerForTests(runner?: PrimaryHttpEffectRunner)
 const runtimeLayer = Layer.mergeAll(
   httpClientLayer,
   browserCryptoLayer,
-  Socket.layerWebSocketConstructorGlobal,
+  browserWebSocketLayer,
   ClientTracer.layer,
   relayTracingLayer,
   managedRelayClientLayer(configuredRelayUrl()).pipe(

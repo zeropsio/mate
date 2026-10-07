@@ -265,3 +265,25 @@ describe("mergeBuildLogLines", () => {
     expect(oldest.droppedNewer).toBe(true);
   });
 });
+
+describe("failed setup log query", () => {
+  it("reads only this runtime attempt's window, without a build tag", () => {
+    const start = "2026-10-07T10:00:02Z";
+    const end = "2026-10-07T10:01:12Z";
+    const { http } = buildLogUrls(
+      { url: "https://logs.example.test/log?signature=secret" },
+      {
+        buildServiceStackId: "zcp",
+        processId: "failed-process",
+        fromIso: start,
+        tillIso: end,
+      },
+    );
+    const url = new URL(http);
+    expect(url.searchParams.get("serviceStackId")).toBe("zcp");
+    expect(url.searchParams.get("from")).toBe(start);
+    expect(url.searchParams.get("till")).toBe(end);
+    expect(url.searchParams.has("tags")).toBe(false);
+    expect(url.searchParams.get("desc")).toBe("1");
+  });
+});

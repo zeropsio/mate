@@ -26,6 +26,7 @@ export type UsageMateState = "counted" | "connecting" | "missing";
 
 export interface UsageMate {
   readonly projectId: string;
+  readonly environmentId?: EnvironmentId | undefined;
   /** The Mate's name as the left menu shows it: its project's. */
   readonly name: string;
   readonly state: UsageMateState;
@@ -78,7 +79,7 @@ export function usageMates(input: {
             : ON_ITS_WAY.has(verdict.kind) && !input.missingBefore.has(projectId)
               ? "connecting"
               : "missing";
-    read.push({ projectId, name: input.names.get(projectId) ?? projectId, state });
+    read.push({ projectId, environmentId, name: input.names.get(projectId) ?? projectId, state });
   }
   return read.toSorted((left, right) => left.name.localeCompare(right.name));
 }

@@ -1044,3 +1044,9 @@ describe("tiersAddable", () => {
     expect(ask(over)).toEqual(expected);
   });
 });
+
+it("unknown placement is not claimed to be outside a project", () => {
+  expect(containersSummary(["open"], "Placement not read — HQ is unavailable").line).toBe(
+    "Placement not read — HQ is unavailable · 1 ready",
+  );
+});

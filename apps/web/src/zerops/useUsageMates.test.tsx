@@ -119,9 +119,9 @@ describe("usageMates", () => {
 
   it("counts a connected Mate, waits on one on its way, and names the ones it cannot count", () => {
     expect(read(true)).toEqual([
-      { projectId: "p-fern", name: "Fern", state: "missing" },
-      { projectId: "p-juno", name: "Juno", state: "counted" },
-      { projectId: "p-lena", name: "Lena", state: "connecting" },
+      { projectId: "p-fern", environmentId: ENV_FERN, name: "Fern", state: "missing" },
+      { projectId: "p-juno", environmentId: ENV_JUNO, name: "Juno", state: "counted" },
+      { projectId: "p-lena", environmentId: ENV_LENA, name: "Lena", state: "connecting" },
       { projectId: "p-old", name: "Old", state: "missing" },
     ]);
   });
@@ -131,6 +131,7 @@ describe("usageMates", () => {
   it("keeps a Mate it already called missing missing while it retries", () => {
     expect(read(true, new Set(["p-lena"])).find((mate) => mate.projectId === "p-lena")).toEqual({
       projectId: "p-lena",
+      environmentId: ENV_LENA,
       name: "Lena",
       state: "missing",
     });

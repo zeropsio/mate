@@ -15,11 +15,13 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   shownHqProjectPeopleAtom,
+  hqProjectPersonAtom,
   type HqMateOwner,
   type HqProjectPeople,
 } from "@t3tools/client-runtime/data";
 import { organizationMembers, type MembersRead } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useCallback, useEffect } from "react";
 
 import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
@@ -128,15 +130,28 @@ export function zeropsMateOwnerOf(
   };
 }
 
+const mateOwnersAtom = Atom.make((get) =>
+  Object.fromEntries(
+    Object.entries(get(shownHqProjectPeopleAtom)).map(([id, person]) => [id, person.owner]),
+  ),
+).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+const matesWaitOnViewerAtom = Atom.make((get) =>
+  Object.fromEntries(
+    Object.entries(get(shownHqProjectPeopleAtom)).map(([id, person]) => [
+      id,
+      person.waitsOnViewer === true,
+    ]),
+  ),
+).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+
 /** Each Mate's owner, for the organization shown, as HQ names them (`hqProjectPeople`). */
 export function useZeropsMateOwners(): (candidate: ZeropsCandidate) => ZeropsMateOwner | undefined {
   const { user } = useZeropsSession();
-  const people = useAtomValue(shownHqProjectPeopleAtom);
+  const owners = useAtomValue(mateOwnersAtom);
   const viewerUserId = user?.id;
   return useCallback(
-    (candidate: ZeropsCandidate) =>
-      zeropsMateOwnerOf(people[candidate.project.id]?.owner, viewerUserId),
-    [people, viewerUserId],
+    (candidate: ZeropsCandidate) => zeropsMateOwnerOf(owners[candidate.project.id], viewerUserId),
+    [owners, viewerUserId],
   );
 }
 
@@ -146,8 +161,8 @@ export function useZeropsMateOwners(): (candidate: ZeropsCandidate) => ZeropsMat
  * change's review; a colleague's waits on its owner. Nobody's, before HQ says.
  */
 export function useWaitsOnViewer(): (projectId: string) => boolean {
-  const people = useAtomValue(shownHqProjectPeopleAtom);
-  return useCallback((projectId: string) => people[projectId]?.waitsOnViewer === true, [people]);
+  const waits = useAtomValue(matesWaitOnViewerAtom);
+  return useCallback((projectId: string) => waits[projectId] === true, [waits]);
 }
 
 /**
@@ -157,4 +172,9 @@ export function useWaitsOnViewer(): (projectId: string) => boolean {
 export function useHqProjectPeopleOf(): (projectId: string) => HqProjectPeople | undefined {
   const people = useAtomValue(shownHqProjectPeopleAtom);
   return useCallback((projectId: string) => people[projectId], [people]);
+}
+
+/** A row's own owner/login facts: other projects cannot invalidate it. */
+export function useHqProjectPerson(projectId: string): HqProjectPeople | undefined {
+  return useAtomValue(hqProjectPersonAtom(projectId));
 }

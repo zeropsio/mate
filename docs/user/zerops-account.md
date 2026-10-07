@@ -20,8 +20,10 @@ Opening a Mate reads its project before connecting. If that read cannot start, M
 reason and **Again**. Press **Again** to make one new attempt.
 
 If a Zerops data stream drops, Mate reconnects automatically with increasing delays. The last
-known data stays visible with **Reconnecting…**, its as-of time, and a warning that updates during
-the interruption may be missing. **Try now** starts a fresh connection immediately. Reconnecting
+known data stays visible. A connection that recovers successfully does not show an outage banner
+or disturb the open chat. If a connection or fresh-baseline attempt fails, the menu reports that
+Zerops is not answering and offers **Try now**, without moving the rows above it. **Try now**
+starts a fresh connection immediately. Reconnecting
 reads a fresh baseline; it does not repeat operations. A refused session or permission ends the
 connection visibly instead of reconnecting. Failed detail reads still need a manual check.
 
@@ -41,6 +43,9 @@ and offers a connection check instead of automatically restarting again.
 
 **Restart** in a Mate's menu asks for confirmation. When Mate knows of running chats, the
 confirmation names them and says restarting interrupts their turns. You can still restart.
+While a confirmed restart prevents the conversation from opening, the Mate shows
+its waking face and says it is restarting. An unavailable link says it is
+reconnecting or unreachable instead; it does not claim a restart without evidence.
 After boot, an interrupted chat names the completed Zerops restart, stop or deploy and who asked
 for it when that information is available. A container replacement is identified when its start
 time proves it happened during the turn; otherwise the chat gives Mate's restart time. Send a
@@ -51,6 +56,12 @@ The projects page cleans up expired temporary sign-in tokens left by an interrup
 Cleanup progress and failures stay visible. Use **Clean up sign-in tokens** to find older
 leftovers, or **Try again** after a cleanup failure. Reloading preserves a failed cleanup and
 still requires **Try again**.
+
+When a Mate's container setup fails, its view explains the cause from Zerops's process result
+and setup log. Step durations stop at the recorded process end; missing timestamps have no
+invented duration. **Details** shows the last log lines and a Zerops link identifies the process.
+**Try again** starts a new container setup attempt; **Remove** deletes the failed Mate's project.
+A DNS failure means the project cannot reach the internet: try later or contact Zerops support.
 
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking

@@ -1,3 +1,5 @@
+import { Atom } from "effect/unstable/reactivity";
+import { createEnvironmentRpcCommand } from "../../state/runtime.ts";
 /** One demanded Mate browser relay. Source identity, never the mounted card, chooses a call slot. */
 import {
   EnvironmentAuthorizationError,
@@ -276,4 +278,14 @@ export function startMateBrowserFrames(options: {
       void Effect.runFork(Fiber.interrupt(fiber));
     },
   };
+}
+
+/** Input belongs to the same typed Mate transport as frame observation; it keeps no result copy. */
+export function makeMateBrowserInputCommand<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:browserInput",
+    tag: WS_METHODS.zeropsBrowserInput,
+  });
 }

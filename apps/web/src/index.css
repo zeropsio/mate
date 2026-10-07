@@ -473,20 +473,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   -webkit-backdrop-filter: var(--glass-backdrop);
   backdrop-filter: var(--glass-backdrop);
 
-  &[data-variant="error"] {
-    --alert-glass-tint: var(--destructive);
-  }
-
   &[data-variant="info"] {
     --alert-glass-tint: var(--info);
   }
 
   &[data-variant="success"] {
     --alert-glass-tint: var(--success);
-  }
-
-  &[data-variant="warning"] {
-    --alert-glass-tint: var(--warning);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -842,8 +834,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
-    --chat-composer-attached-outline: color-mix(in srgb, var(--error) 32%, transparent);
-    --chat-composer-attached-tint: color-mix(in srgb, var(--error) 8%, transparent);
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="info"] {
@@ -857,8 +849,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="warning"] {
-    --chat-composer-attached-outline: color-mix(in srgb, var(--warning) 28%, transparent);
-    --chat-composer-attached-tint: color-mix(in srgb, var(--warning) 8%, transparent);
+    --chat-composer-attached-outline: var(--border);
+    --chat-composer-attached-tint: transparent;
   }
 
   /* The composer is the one white surface on screen, because that is where
@@ -2473,6 +2465,15 @@ code {
   border-collapse: collapse;
   font-size: calc(13em / 15);
   line-height: calc(20 / 13);
+}
+
+/* Columns size block pictures, rather than pictures sizing their columns.
+   A percentage-sized picture participating in automatic table sizing can
+   alternate the column widths and row height on each measurement. Its slot
+   excludes intrinsic image widths, including when the bytes first decode. */
+.chat-markdown :is(th, td) [data-markdown-image-block] {
+  contain: inline-size;
+  width: 100%;
 }
 
 .chat-markdown th,
@@ -8169,12 +8170,12 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 .arrival-glyph-fail-bg {
-  fill: color-mix(in oklab, var(--zerops-status-failed) 20%, transparent);
+  fill: color-mix(in oklab, var(--zerops-status-attention) 20%, transparent);
 }
 
 .arrival-glyph-fail-ink {
   fill: none;
-  stroke: var(--zerops-status-failed-text);
+  stroke: var(--zerops-status-attention-text);
   stroke-width: 1.6;
   stroke-linecap: round;
 }
@@ -9779,3 +9780,23 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 /* ==== end of the Vault tab ==== */
+
+.arrival-failure-details {
+  min-width: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.arrival-failure-details summary,
+.arrival-failure-details a {
+  cursor: pointer;
+  color: var(--zerops-status-attention-text);
+}
+
+.arrival-failure-details pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

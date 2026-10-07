@@ -158,11 +158,10 @@ import {
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { OPENING_WAIT_LINE_MS, openingConversationLine } from "~/zerops/waitLine.logic";
+import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
-import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
-import { PageWaitLine } from "../zerops/WaitLine";
+import { MateConnectionState, ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -172,11 +171,7 @@ import {
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
-import {
-  LAST_WORDS_GRACE_MS,
-  latestFinishedWordsAt,
-  settlingWithoutWordsUntil,
-} from "./conversation.logic";
+import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
@@ -367,6 +362,7 @@ interface MessagesTimelineProps {
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
+  onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -425,6 +421,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   usagePause = null,
   onUsageAutoResumeChange = null,
+  onUsageContinue = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -511,20 +508,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
     return () => clearTimeout(timer);
   }, [finishedWordsAt]);
-  // A turn the server settled before its words landed stays live for the
-  // last words' wait (`settlingWithoutWordsUntil`): derived again once it ran out.
-  const settlingUntil = useMemo(
-    () => settlingWithoutWordsUntil(timelineEntries, latestTurn ?? null, isWorking, nowMs),
-    [timelineEntries, latestTurn, isWorking, nowMs],
-  );
-  useEffect(() => {
-    if (settlingUntil === null) return;
-    const timer = setTimeout(
-      () => setNowMs(Math.max(Date.now(), settlingUntil + 1)),
-      Math.max(0, Math.min(LAST_WORDS_GRACE_MS, settlingUntil - Date.now())) + 20,
-    );
-    return () => clearTimeout(timer);
-  }, [settlingUntil]);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
@@ -1239,6 +1222,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
+      onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1268,6 +1252,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       livePauseId,
       usagePause,
       onUsageAutoResumeChange,
+      onUsageContinue,
       agentPanelModel,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1472,6 +1457,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         <TimelineLoadingPane
           loading={loading}
           openingName={openingName}
+          mate={mate ?? null}
           routeThreadKey={routeThreadKey}
         />
       );
@@ -1580,7 +1566,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           {handedOver && !listPlaced ? (
             // The line the pane on its way said, where it said it, until the
             // rows stand where they stay.
-            <OpeningLine name={openingName} />
+            <OpeningLine name={openingName} mate={mate ?? null} />
           ) : null}
         </TimelineWorkingCtx>
       </TimelineRowActivityCtx>
@@ -1588,44 +1574,46 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 });
 
-/**
- * The pane of a conversation on its way. It occupies the pane with the theme
- * surface so a thread switch cannot punch a hole through to the window chrome
- * (white in light mode), and says nothing of its own for a beat: then the
- * page's one line, "Opening Quinn's conversation…", at the page's centre —
- * at once where the Mate's own view on its way was already saying it. No
- * face: the header wears the Mate's (pass 30, D2).
- */
+/** The source is reading the conversation; its opening composition stays until rows are placed. */
 function TimelineLoadingPane({
   loading,
   routeThreadKey,
   openingName,
+  mate,
 }: {
   readonly loading: boolean;
   readonly routeThreadKey: string;
-  /** Whose conversation opens: its Mate's or crewmate's name; none for a thread without one. */
   readonly openingName: string | undefined;
+  readonly mate: ZeropsMateIdentity | null;
 }) {
   return (
     <div
-      className="flex h-full min-h-0 items-center justify-center bg-background"
+      className="relative flex h-full min-h-0 items-center justify-center bg-background"
       data-timeline-loading="true"
       data-timeline-thread={routeThreadKey}
     >
-      {loading ? <OpeningLine name={openingName} /> : null}
+      {loading ? <OpeningLine name={openingName} mate={mate} /> : null}
     </div>
   );
 }
 
-/** The page's one opening line, in its Mate's name (`openingConversationLine`). */
-function OpeningLine({ name }: { readonly name: string | undefined }) {
+function OpeningLine({
+  name,
+  mate,
+}: {
+  readonly name: string | undefined;
+  readonly mate: ZeropsMateIdentity | null;
+}) {
   return (
-    <PageWaitLine
-      delayMs={OPENING_WAIT_LINE_MS}
-      from="mount"
-      text={openingConversationLine(name)}
-      within="pane"
-    />
+    <div className="pointer-events-none absolute inset-0 z-10 flex">
+      <MateConnectionState
+        mate={mate}
+        face="idle"
+        headline={`${name || "The Mate"} is opening the conversation.`}
+        secondary="Waiting for the conversation to be read."
+        actions={null}
+      />
+    </div>
   );
 }
 
@@ -2456,6 +2444,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
     <PauseBlock
       nowMs={nowMs}
       onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
+      onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
       row={row}
       serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
       speaker={ctx.speaker}

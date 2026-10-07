@@ -200,14 +200,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/usage/UsagePage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useUsage(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
     "kind": "retired-token",
     "fingerprint": "useZeropsGitRemoteProbes",
@@ -224,94 +216,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsUpgradeRestart",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsUpgradeRestart",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsUpgradeRestart",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained separate surface boundary: upgrade restart and finish-environment hooks poll themselves; the operations adapter owns them. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
-    "kind": "retired-token",
-    "fingerprint": "REREAD_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/crew/CrewSetup.tsx",
-    "kind": "retired-token",
-    "fingerprint": "REREAD_MS",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/design/pressPage.tsx",
     "kind": "retired-token",
     "fingerprint": "settlePress(",
@@ -325,30 +229,6 @@
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
     "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/lib/archivedThreadsState.ts",
-    "kind": "retired-token",
-    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/lib/archivedThreadsState.ts",
-    "kind": "retired-token",
-    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "retired-token",
-    "fingerprint": "useMatesSettled()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -416,102 +296,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/state/terminal.ts",
-    "kind": "retired-token",
-    "fingerprint": "createTerminalEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/terminal.ts",
-    "kind": "retired-token",
-    "fingerprint": "createTerminalEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/usage.ts",
-    "kind": "retired-token",
-    "fingerprint": "createUsageByWindowAtomFamily(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/usage.ts",
-    "kind": "retired-token",
-    "fingerprint": "createUsageByWindowAtomFamily(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/usage.ts",
-    "kind": "retired-token",
-    "fingerprint": "useUsage(",
-    "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "Retained T3 workspace/conversation runtime: this atom supports shell, thread, filesystem, assets, provider usage or workspace RPC state. Inventory, database and browser result projections do not replace its state contract; removing it requires that family and all retained client consumers to migrate together.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "createZeropsFeedAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate feed host: only lifecycle, agent authentication and crew atom families remain here. Inventory joins read data projections and database/browser feeds have been removed; those remaining source protocols need their own family migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/state/zerops.ts",
-    "kind": "retired-token",
-    "fingerprint": "createZeropsFeedAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained Mate feed host: only lifecycle, agent authentication and crew atom families remain here. Inventory joins read data projections and database/browser feeds have been removed; those remaining source protocols need their own family migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:composer-top-memory",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/crew/useCrewHome.ts",
-    "kind": "retired-token",
-    "fingerprint": "void readFiles().then",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained setup/crew observation debt: this mechanism observes provider setup or crew files, outside database and browser protocols. Removing it requires source events proving readiness/file replacement and corresponding setup projections.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/feeds.ts",
-    "kind": "retired-token",
-    "fingerprint": "createZeropsFeedAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained separate surface boundary: feed atoms built in the app duplicate the Mate adapter; read the projection. Removing this mechanism requires its own owner protocol and all of its retained presentation consumers to migrate; the inventory, database and browser call-result families do not cover it.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "retired-token",
     "fingerprint": "settlePress(",
@@ -597,22 +381,6 @@
     "fingerprint": "settlePress(",
     "owner": "data-layer rewrite: operations",
     "reason": "Retained press coordination debt: creation holds and settles a server press lease with its current renewal protocol. Deleting the mechanism would abandon active creation leases; replacement needs an operation executor and an observable owner settlement contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMatesSettled.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMatesSettled()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useUsageEnvironmentIdentities.ts",
-    "kind": "retired-token",
-    "fingerprint": "useMatesSettled()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
     "expires": "never"
   },
   {
@@ -621,14 +389,6 @@
     "fingerprint": "useZeropsGitRemoteProbes",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsUpgradeRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "useZeropsUpgradeRestart",
-    "owner": "data-layer rewrite: operations",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
     "expires": "never"
   },
   {

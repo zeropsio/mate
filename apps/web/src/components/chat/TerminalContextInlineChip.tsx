@@ -27,7 +27,7 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
           <span
             className={cn(
               COMPOSER_INLINE_CHIP_CLASS_NAME,
-              expired && "border-destructive/35 bg-destructive/8 text-destructive",
+              expired && "border-border bg-muted/35 text-muted-foreground",
             )}
             data-terminal-context-expired={expired ? "true" : undefined}
           >

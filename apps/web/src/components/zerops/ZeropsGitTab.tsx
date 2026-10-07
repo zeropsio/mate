@@ -124,8 +124,33 @@ export interface ZeropsGitTabProps {
 }
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
+  const topology = useProjectTopology(props.threadRef?.environmentId ?? null);
+  const repositories = useMemo(
+    () => (topology.view === undefined ? undefined : gitCheckoutHostnames(topology.view.services)),
+    [topology.view],
+  );
+  if (repositories === undefined)
+    return (
+      <div role="status">
+        <p>{topology.error ?? "Reading repositories."}</p>
+        <ZeropsMateVerb label="Read again" onClick={topology.again} />
+      </div>
+    );
+  return (
+    <>
+      {topology.liveness === "recovering" ? (
+        <div role="status">{topology.error ?? "Updating repositories."}</div>
+      ) : null}
+      <KnownGitTab {...props} repositories={repositories} key={props.threadRef?.environmentId} />
+    </>
+  );
+}
+
+function KnownGitTab({
+  repositories,
+  ...props
+}: ZeropsGitTabProps & { readonly repositories: ReadonlyArray<string> }) {
   const environmentId = props.threadRef?.environmentId;
-  const topology = useProjectTopology(environmentId ?? null);
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
   const [generation, setGeneration] = useState(0);
   // The verb that is running, by its block: the row says so where it was
@@ -146,21 +171,15 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
   }, []);
 
   /**
-   * A codebase is a runtime service, minus the stage half of each dev/stage
-   * pair: a stage gets its partner's code deployed and is never a checkout
-   * (`gitCheckoutHostnames`). Managed data services hold no repository.
-   */
-  const repositories = useMemo(
-    () => gitCheckoutHostnames(topology.view?.services ?? []),
-    [topology.view],
-  );
-
-  /**
    * Whether each remote answers, asked here rather than passed in: the probe
    * needs the repositories, and they come from this Mate's own topology. One
    * round on open, one more after each verb (`generation`), never on a clock.
    */
-  const remotes = useZeropsGitRemoteProbes({ environmentId, repositories, generation });
+  const remotes = useZeropsGitRemoteProbes({
+    environmentId,
+    repositories,
+    generation,
+  });
 
   const blocks = useMemo(
     () =>

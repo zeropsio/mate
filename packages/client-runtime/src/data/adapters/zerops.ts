@@ -488,7 +488,6 @@ export function zeropsNavigationLink(options: {
         });
 
       yield* signal(key, { kind: "handshake" });
-      yield* signal(key, { kind: "baseline-committed" });
       const frames = yield* Effect.forkIn(Stream.runForEach(link.frames, onFrame), attemptScope);
 
       /**
@@ -908,6 +907,7 @@ export function zeropsNavigationLink(options: {
       // own scope to be registered first, so no change of its members slips between.
       const details = yield* Effect.forkIn(observeForever, attemptScope);
       yield* registerNavigation;
+      yield* signal(key, { kind: "baseline-committed" });
       navigationRegistered = true;
       wake();
       yield* Effect.raceAllFirst([Fiber.join(frames), Fiber.join(details), Deferred.await(ended)]);

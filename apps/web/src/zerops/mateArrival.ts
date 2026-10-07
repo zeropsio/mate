@@ -335,7 +335,13 @@ const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
 /** How long its workspace takes once its project stands, measured (2026-09-22: +25 s → +160 s). */
 const WORKSPACE_ABOUT = "about 2 min";
 
-const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowMs: number) => {
+const timeOf = (
+  startedAt: string | undefined,
+  endedAt: string | undefined,
+  nowMs: number,
+  active: boolean,
+) => {
+  if (endedAt === undefined && !active) return undefined;
   if (startedAt === undefined) return undefined;
   const start = Date.parse(startedAt);
   if (Number.isNaN(start)) return undefined;
@@ -389,7 +395,9 @@ export function arrivalSteps(
     state: step.state,
     ...optional(
       "time",
-      step.state === "waiting" ? undefined : timeOf(step.startedAt, step.endedAt, nowMs),
+      step.state === "waiting"
+        ? undefined
+        : timeOf(step.startedAt, step.endedAt, nowMs, step.state === "active"),
     ),
     ...optional("why", step.state === "failed" ? step.detail : undefined),
   }));
@@ -403,7 +411,9 @@ export function arrivalSteps(
       state: project.state,
       ...optional(
         "time",
-        project.state === "waiting" ? undefined : timeOf(project.startedAt, project.endedAt, nowMs),
+        project.state === "waiting"
+          ? undefined
+          : timeOf(project.startedAt, project.endedAt, nowMs, project.state === "active"),
       ),
       ...optional("why", project.state === "failed" ? project.detail : undefined),
       ...optional("services", drawnServices(progress.managed)),
@@ -420,14 +430,19 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    // From the earliest start its facts hold: its project's end, or a part's own start. Never
+    // From the earliest workspace start its facts hold. Never
     // the first one read, which a start read later can precede (0:12, then 0:08, measured).
-    const startedAt = earliest([
-      ...parts.map((step) => step.startedAt),
-      project?.state === "done" && !foldsCopy ? project.endedAt : undefined,
-    ]);
-    const time =
-      state === "active" || state === "failed" ? timeOf(startedAt, undefined, nowMs) : undefined;
+    const startedAt = earliest(parts.map((step) => step.startedAt));
+    const endedAt =
+      state === "failed"
+        ? failed?.endedAt
+        : state === "done" && parts.every((step) => step.endedAt !== undefined)
+          ? parts
+              .map((step) => step.endedAt)
+              .sort()
+              .at(-1)
+          : undefined;
+    const time = timeOf(startedAt, endedAt, nowMs, state === "active");
     steps.push({
       id: "workspace",
       label: `${mate.name}'s workspace`,

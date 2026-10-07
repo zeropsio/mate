@@ -1,3 +1,6 @@
+import { mateStatus } from "../../zerops/mateStatus.logic";
+import { MateStatusMarker } from "../zerops/MateStatusMarker";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
   type EditorId,
@@ -47,7 +50,7 @@ import { useThreadShell } from "../../state/entities";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { ZeropsMark } from "../ZeropsMark";
+import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip } from "./ConversationStrip";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
@@ -142,28 +145,6 @@ export function shouldShowOpenInPicker(input: {
   // "no SSH route" state). Non-primary local backends (e.g. WSL) keep it
   // hidden, matching pre-remote behavior.
   return input.remoteOpenMode !== "local-exec";
-}
-
-/**
- * The way into Zerops from a Mate's conversation: its project on the
- * dashboard, in a new tab. It stands where the editor picker stands in a
- * conversation on a machine of one's own — the header's one button style,
- * the Zerops loop, and the label only where the header has room for it.
- */
-export function ZeropsProjectLink({ projectUrl }: { readonly projectUrl: string }) {
-  return (
-    <Button
-      data-chat-header-ghost
-      render={
-        <a aria-label="Open in Zerops" href={projectUrl} rel="noreferrer" target="_blank">
-          <ZeropsMark className="size-3.5 shrink-0" />
-          <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
-        </a>
-      }
-      size="sm"
-      variant="ghost-muted"
-    />
-  );
 }
 
 /**
@@ -294,6 +275,8 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
+  const status = mateStatus(mateActivity);
+  const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;
   // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
@@ -582,24 +565,33 @@ export const ChatHeader = memo(function ChatHeader({
       ) : lead === "strip" ? (
         // The line of the Mate's conversations: the Mate, then its crew. What
         // the chat is about is the Mate's hover, never words on the line.
-        <ConversationStrip
-          crewChat={
-            crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
-          }
-          currentThreadId={isServerThread ? activeThreadId : null}
-          environmentId={activeThreadEnvironmentId}
-          onEditBrief={onEditBrief}
-          onEditJob={onEditCrewmateJob}
-          onRename={isServerThread && crewOrigin === null ? startRename : null}
-          renameField={
-            renamingTitle === null ? null : (
-              <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
-                {renameInput(true)}
-              </div>
-            )
-          }
-          subject={crewOrigin === null && spoken ? headline : null}
-        />
+        <>
+          <ConversationStrip
+            crewChat={
+              crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
+            }
+            currentThreadId={isServerThread ? activeThreadId : null}
+            environmentId={activeThreadEnvironmentId}
+            onEditBrief={onEditBrief}
+            onEditJob={onEditCrewmateJob}
+            onRename={isServerThread && crewOrigin === null ? startRename : null}
+            renameField={
+              renamingTitle === null ? null : (
+                <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
+                  {renameInput(true)}
+                </div>
+              )
+            }
+            subject={crewOrigin === null && spoken ? headline : null}
+          />
+          {status === null ? null : (
+            <MateStatusMarker
+              mateName={mate?.name}
+              status={status}
+              timestampFormat={settings.timestampFormat}
+            />
+          )}
+        </>
       ) : (
         <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
           {/* The project always leads the header: knowing which project a
