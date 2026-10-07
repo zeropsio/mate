@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { isModelCostUnknown, type DailyTotals, type MergedUsage } from "@t3tools/shared/usageMerge";
+import type { DailyTotals, MergedUsage } from "@t3tools/shared/usageMerge";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -24,6 +24,7 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import { UsageDailyChart } from "./UsageDailyChart";
 import { UsageLimitsSection, useRefreshLimits } from "./UsageLimitsSection";
 import type { UsageChartMetric } from "./usageChartData";
+import { usageModelRows } from "./usageModelRows";
 import { PROVIDER_LABEL, useProviderColors } from "./usageProviders";
 
 type UsageTab = "usage" | "limits";
@@ -191,7 +192,7 @@ export function UsageRouteScreen() {
                 />
                 <ProviderSection merged={merged} metric={metric} />
                 <TotalsSection merged={merged} isPast24Hours={isPast24Hours} />
-                <ModelsSection merged={merged} />
+                <ModelsSection merged={merged} metric={metric} />
               </>
             )}
           </>
@@ -448,16 +449,16 @@ function MetricCell(props: {
   );
 }
 
-function ModelsSection(props: { readonly merged: MergedUsage }) {
-  const { merged } = props;
+function ModelsSection(props: { readonly merged: MergedUsage; readonly metric: UsageChartMetric }) {
+  const { merged, metric } = props;
   const colors = useProviderColors();
   if (merged.models.length === 0) return null;
 
   return (
     <SettingsSection title="By model" card>
-      {merged.models.map((model, index) => (
+      {usageModelRows(merged.models, metric).map((row, index) => (
         <View
-          key={`${model.provider}:${model.model}`}
+          key={row.key}
           className={
             index === 0
               ? "flex-row items-center gap-3 p-4"
@@ -466,21 +467,15 @@ function ModelsSection(props: { readonly merged: MergedUsage }) {
         >
           <View
             className="size-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: colors[model.provider] }}
+            style={{ backgroundColor: colors[row.provider] }}
           />
           <View className="min-w-0 flex-1 gap-0.5">
             <Text className="text-base text-foreground" numberOfLines={1}>
-              {model.model}
+              {row.name}
             </Text>
-            <Text className="text-sm text-foreground-muted">
-              {isModelCostUnknown(model)
-                ? `no known rates · ${formatTokens(model.totalTokens)} tokens`
-                : `${formatPercent(model.costShare)} of cost · ${formatTokens(model.totalTokens)} tokens`}
-            </Text>
+            <Text className="text-sm text-foreground-muted">{row.detail}</Text>
           </View>
-          <Text className="text-base tabular-nums text-foreground">
-            {isModelCostUnknown(model) ? "Unpriced" : formatUsd(model.costUsd)}
-          </Text>
+          <Text className="text-base tabular-nums text-foreground">{row.value}</Text>
         </View>
       ))}
     </SettingsSection>
