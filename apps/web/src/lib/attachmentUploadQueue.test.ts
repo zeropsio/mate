@@ -428,7 +428,7 @@ describe("attachmentUploadQueue", () => {
   describe("a picture's original", () => {
     it.each([
       ["a picture that keeps it uploads it too", true, ["pic", "pic~original"]],
-      ["a picture that does not, only its copy", false, ["pic"]],
+      ["a picture always retains its exact source", false, ["pic", "pic~original"]],
     ])("%s", (_label, keepOriginal, keys) => {
       expect(attachmentUploadKeys(makePicture("pic", keepOriginal))).toEqual(keys);
     });
@@ -460,6 +460,7 @@ describe("attachmentUploadQueue", () => {
         {
           type: "image",
           id: "pending-environment-1-pic.png",
+          sourceAttachmentId: "pending-environment-1-home-page.png",
           name: "pic.png",
           mimeType: "image/png",
           sizeBytes: 3,
@@ -476,11 +477,13 @@ describe("attachmentUploadQueue", () => {
       ]);
     });
 
-    it("lets the original go when the picture stops keeping it", async () => {
+    it("retains the source when the extra original attachment is disabled", async () => {
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", true) });
       await Promise.resolve();
       startAttachmentUpload({ environmentId: firstEnvironment, image: makePicture("pic", false) });
-      expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toBeUndefined();
+      expect(readAttachmentUpload(pictureOriginalUploadKey("pic"))).toMatchObject({
+        status: "uploading",
+      });
       expect(readAttachmentUpload("pic")).toMatchObject({ status: "uploading" });
     });
   });

@@ -1705,10 +1705,10 @@ describe("image asset requests", () => {
     ]);
 
     expect(selectMessageImageResources(attachments)).toEqual([
-      { _tag: "attachment", attachmentId: "image" },
-      { _tag: "attachment", attachmentId: "second" },
-      { _tag: "attachment", attachmentId: "crop" },
-      { _tag: "attachment", attachmentId: "provided" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "image" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "second" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "crop" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "provided" },
     ]);
   });
 
@@ -1742,8 +1742,8 @@ describe("image asset requests", () => {
         [assistant.id]: ["blob:unused"],
       }),
     ).toEqual([
-      { _tag: "attachment", attachmentId: "image" },
-      { _tag: "attachment", attachmentId: "crop" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "image" },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: "crop" },
     ]);
   });
 
@@ -1772,7 +1772,7 @@ describe("image asset requests", () => {
     );
     expect(selectMessageImageResources(pending.attachments)).toEqual([]);
     expect(selectHandoffImageResources([message], { [message.id]: ["blob:pending"] })).toEqual([
-      { _tag: "attachment", attachmentId: image.id },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: image.id },
     ]);
 
     const ready = server(message, () => "https://server.test/image");
@@ -1781,7 +1781,7 @@ describe("image asset requests", () => {
     );
     const released = server(message, () => undefined);
     expect(selectMessageImageResources(released.attachments)).toEqual([
-      { _tag: "attachment", attachmentId: image.id },
+      { _tag: "attachment", mimeType: "image/png", attachmentId: image.id },
     ]);
     const displayed = row(released, () => "https://server.test/image");
     expect(displayed).toEqual(ready);

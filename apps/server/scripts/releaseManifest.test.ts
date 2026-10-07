@@ -88,7 +88,7 @@ describe("buildReleaseManifest", () => {
     assert.notProperty(manifest, "overrides");
   });
 
-  it("prunes the real server manifest to its three native roots", () => {
+  it("prunes the real server manifest to its native roots", () => {
     const manifest = buildReleaseManifest({
       serverPackageJson,
       catalog: {},
@@ -99,6 +99,7 @@ describe("buildReleaseManifest", () => {
       "@ff-labs/fff-node",
       "msgpackr-extract",
       "node-pty",
+      "sharp",
     ]);
   });
 });

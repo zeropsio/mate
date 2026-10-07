@@ -106,6 +106,7 @@ import {
   terminalContextsBySegment,
   unplacedMessageFiles,
 } from "./messagePictures.logic";
+import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrlStates } from "../../assets/assetUrls";
 import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
@@ -3820,6 +3821,10 @@ function QuestionAnswerHistory({
       attachments.map((attachment) => ({
         _tag: "attachment" as const,
         attachmentId: attachment.id,
+        mimeType: attachment.mimeType,
+        ...(attachment.type === "image" && "asset" in attachment && attachment.asset
+          ? { occurrenceId: attachment.asset.id }
+          : {}),
       })),
     [attachments],
   );
@@ -3847,12 +3852,13 @@ function QuestionAnswerHistory({
               const state = states[attachments.indexOf(attachment)];
               const url = state?._tag === "Success" ? state.url : undefined;
               return (
-                <a
+                <AssetDownloadLink
                   key={attachment.id}
-                  href={url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer"
+                  source={url ?? ""}
+                  download={attachment.type === "file" ? attachment.name : undefined}
                   className="text-sm underline"
+                  target={attachment.type === "image" ? "_blank" : undefined}
+                  rel="noopener noreferrer"
                 >
                   {attachment.type === "image" && state?._tag === "Failure" ? (
                     <ImageUnavailable reason={state.reason} />
@@ -3867,7 +3873,7 @@ function QuestionAnswerHistory({
                   ) : (
                     attachment.name
                   )}
-                </a>
+                </AssetDownloadLink>
               );
             })}
           </div>

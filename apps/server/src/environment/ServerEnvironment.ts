@@ -95,6 +95,7 @@ export const makeServerEnvironmentCapabilities = (
     threadSnapshotPagination: true,
     reasoningMessages: true,
     attachmentUploads: true,
+    contentAddressedImages: true,
     questionAttachments: true,
     fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
     vcsStackedActions: policy.stackedVcsActionsAllowed,

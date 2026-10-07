@@ -1,16 +1,13 @@
 import { AssetImage } from "~/assets/AssetImage";
+import { useMateImage } from "~/assets/MateImages";
+import { parseMateImageSource } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import {
-  getProjectFaviconCacheKey,
-  isProjectFaviconFallbackUrl,
-} from "@t3tools/shared/projectFavicon";
+import { isProjectFaviconFallbackUrl } from "@t3tools/shared/projectFavicon";
 import { FolderIcon } from "lucide-react";
-import type { ComponentType } from "react";
-import { useState } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useAssetUrlState } from "../assets/assetUrls";
+import { useNearViewport } from "../hooks/useNearViewport";
 import { cn } from "~/lib/utils";
-
-const loadedProjectFaviconSrcs = new Map<string, string>();
 
 export function ProjectFavicon(input: {
   environmentId: EnvironmentId;
@@ -21,22 +18,39 @@ export function ProjectFavicon(input: {
 }) {
   const state = useProjectFaviconAsset(input);
   const src = state._tag === "Success" ? state.url : null;
+  const reference = parseMateImageSource(src ?? undefined);
+  const { ref, near } = useNearViewport<HTMLSpanElement>();
+  const [drawn, setDrawn] = useState(14);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !near) return;
+    const measure = () => {
+      const box = element.getBoundingClientRect();
+      if (box.width > 0 && box.height > 0) setDrawn(Math.max(box.width, box.height));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, near]);
+  const size = Math.ceil(
+    drawn * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1),
+  );
+  const image = useMateImage(
+    reference !== null && near ? { ...reference, rendition: { width: size, height: size } } : null,
+  );
   const FallbackIcon = input.fallbackIcon ?? FolderIcon;
-
-  if (!src || isProjectFaviconFallbackUrl(src)) {
-    return <ProjectFaviconFallback className={input.className} icon={FallbackIcon} />;
-  }
-
-  const cacheKey = getProjectFaviconCacheKey(input.environmentId, input.cwd, src);
-
+  const url =
+    reference !== null ? image.url : src && !isProjectFaviconFallbackUrl(src) ? src : null;
   return (
-    <ProjectFaviconImage
-      key={cacheKey}
-      cacheKey={cacheKey}
-      src={src}
-      className={input.className}
-      fallbackIcon={FallbackIcon}
-    />
+    <span ref={ref} className={cn("inline-flex size-3.5 shrink-0", input.className)}>
+      {url ? (
+        <AssetImage src={url} alt="" className="size-full rounded-[25%] object-contain" />
+      ) : (
+        <FallbackIcon className="size-full text-icon-muted" />
+      )}
+    </span>
   );
 }
 
@@ -50,69 +64,4 @@ export function useProjectFaviconAsset(input: {
     cwd: input.cwd,
     ...(input.faviconPath ? { path: input.faviconPath } : {}),
   });
-}
-
-function ProjectFaviconFallback({
-  className,
-  icon: Icon,
-}: {
-  readonly className?: string | undefined;
-  readonly icon: ComponentType<{ className?: string }>;
-}) {
-  return <Icon className={cn("size-3.5 shrink-0 text-icon-muted", className)} />;
-}
-
-function ProjectFaviconImage({
-  cacheKey,
-  src,
-  className,
-  fallbackIcon: FallbackIcon,
-}: {
-  readonly cacheKey: string;
-  readonly src: string;
-  readonly className?: string | undefined;
-  readonly fallbackIcon: ComponentType<{ className?: string }>;
-}) {
-  const [displayedSrc, setDisplayedSrc] = useState<string | null>(
-    () => loadedProjectFaviconSrcs.get(cacheKey) ?? null,
-  );
-  const isLoading = displayedSrc !== src;
-  const handleLoadError = (failedSrc: string) => {
-    if (loadedProjectFaviconSrcs.get(cacheKey) === failedSrc) {
-      loadedProjectFaviconSrcs.delete(cacheKey);
-    }
-    setDisplayedSrc((currentSrc) => (currentSrc === failedSrc ? null : currentSrc));
-  };
-
-  return (
-    <>
-      {displayedSrc === null ? (
-        <ProjectFaviconFallback className={className} icon={FallbackIcon} />
-      ) : null}
-      {displayedSrc ? (
-        <AssetImage
-          loading="lazy"
-          decoding="async"
-          src={displayedSrc}
-          alt=""
-          className={cn("size-3.5 shrink-0 rounded-[25%] object-contain", className)}
-          onError={() => handleLoadError(displayedSrc)}
-        />
-      ) : null}
-      {isLoading ? (
-        <AssetImage
-          loading="lazy"
-          decoding="async"
-          src={src}
-          alt=""
-          className="hidden"
-          onLoad={() => {
-            loadedProjectFaviconSrcs.set(cacheKey, src);
-            setDisplayedSrc(src);
-          }}
-          onError={() => handleLoadError(src)}
-        />
-      ) : null}
-    </>
-  );
 }

@@ -65,6 +65,7 @@ import {
   FilesystemBrowseError,
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
+  AssetImageAccessError,
   RpcClientId,
   EnvironmentAuthorizationError,
   ThreadId,
@@ -116,6 +117,8 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
+import { backfillThreadMedia, captureConversationEvent } from "./assets/ConversationMedia.ts";
+import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
@@ -1827,6 +1830,16 @@ const makeWsRpcLayer = (
                     .readThreadEvents({ ...range, limit: THREAD_RESUME_MAX_EVENTS })
                     .pipe(
                       Stream.filter(isThisThreadDetailEvent),
+                      Stream.mapEffect((event) =>
+                        projectionSnapshotQuery.getCommandReadModel().pipe(
+                          Effect.flatMap((model) =>
+                            captureConversationEvent(event, model).pipe(
+                              Effect.provide(normalizerContext),
+                            ),
+                          ),
+                          Effect.map((captured) => ({ ...captured, sequence: event.sequence })),
+                        ),
+                      ),
                       Stream.map((event) => ({
                         kind: "event" as const,
                         event: projectActivityEvent(event, input.reasoningMessages === true),
@@ -1889,6 +1902,23 @@ const makeWsRpcLayer = (
                 });
               }
 
+              const project = yield* projectionSnapshotQuery
+                .getProjectShellById(snapshot.value.thread.projectId)
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new OrchestrationGetSnapshotError({
+                        message: "Failed to read image owner",
+                        cause,
+                      }),
+                  ),
+                );
+              const root =
+                snapshot.value.thread.worktreePath ??
+                (Option.isSome(project) ? project.value.workspaceRoot : undefined);
+              const compact = root
+                ? yield* backfillThreadMedia(snapshot.value, root)
+                : snapshot.value;
               const afterSnapshot =
                 input.requestCompletionMarker === true
                   ? Stream.unwrap(
@@ -1900,10 +1930,7 @@ const makeWsRpcLayer = (
               return Stream.concat(
                 Stream.make({
                   kind: "snapshot" as const,
-                  snapshot: projectThreadDetailSnapshot(
-                    snapshot.value,
-                    input.reasoningMessages === true,
-                  ),
+                  snapshot: projectThreadDetailSnapshot(compact, input.reasoningMessages === true),
                 }),
                 afterSnapshot,
               );
@@ -2559,7 +2586,37 @@ const makeWsRpcLayer = (
             WS_METHODS.assetsCreateUrl,
             Effect.gen(function* () {
               if (input.resource._tag === "attachment") {
-                return yield* issueAssetUrl({ resource: input.resource });
+                const image =
+                  input.imageMode === "reference"
+                    ? yield* resolveImageAsset(input).pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new AssetImageAccessError({
+                              code:
+                                "code" in cause &&
+                                typeof cause.code === "string" &&
+                                [
+                                  "source-missing",
+                                  "source-changed",
+                                  "storage-full",
+                                  "object-missing",
+                                  "unsupported",
+                                  "persistence-failed",
+                                  "preview-unavailable",
+                                ].includes(cause.code)
+                                  ? (cause.code as AssetImageAccessError["code"])
+                                  : "persistence-failed",
+                              status:
+                                "code" in cause && cause.code === "storage-full"
+                                  ? 507
+                                  : "code" in cause && cause.code === "object-missing"
+                                    ? 404
+                                    : 422,
+                            }),
+                        ),
+                      )
+                    : null;
+                return image ?? (yield* issueAssetUrl({ resource: input.resource }));
               }
               if (input.resource._tag === "project-favicon") {
                 const project = yield* projectionSnapshotQuery
@@ -2578,6 +2635,43 @@ const makeWsRpcLayer = (
                     resource: input.resource,
                   });
                 }
+                const image =
+                  input.imageMode === "reference"
+                    ? yield* resolveImageAsset({
+                        ...input,
+                        projectId: project.value.id,
+                        ...(project.value.faviconPath
+                          ? { projectFaviconPath: project.value.faviconPath }
+                          : {}),
+                      }).pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new AssetImageAccessError({
+                              code:
+                                "code" in cause &&
+                                typeof cause.code === "string" &&
+                                [
+                                  "source-missing",
+                                  "source-changed",
+                                  "storage-full",
+                                  "object-missing",
+                                  "unsupported",
+                                  "persistence-failed",
+                                  "preview-unavailable",
+                                ].includes(cause.code)
+                                  ? (cause.code as AssetImageAccessError["code"])
+                                  : "persistence-failed",
+                              status:
+                                "code" in cause && cause.code === "storage-full"
+                                  ? 507
+                                  : "code" in cause && cause.code === "object-missing"
+                                    ? 404
+                                    : 422,
+                            }),
+                        ),
+                      )
+                    : null;
+                if (image !== null) return image;
                 return yield* issueAssetUrl({
                   resource: input.resource,
                   ...(project.value.faviconPath
@@ -2617,6 +2711,40 @@ const makeWsRpcLayer = (
                   resource: input.resource,
                 });
               }
+              const image =
+                input.imageMode === "reference"
+                  ? yield* resolveImageAsset({
+                      ...input,
+                      workspaceRoot: thread.value.worktreePath ?? project.value.workspaceRoot,
+                    }).pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new AssetImageAccessError({
+                            code:
+                              "code" in cause &&
+                              typeof cause.code === "string" &&
+                              [
+                                "source-missing",
+                                "source-changed",
+                                "storage-full",
+                                "object-missing",
+                                "unsupported",
+                                "persistence-failed",
+                                "preview-unavailable",
+                              ].includes(cause.code)
+                                ? (cause.code as AssetImageAccessError["code"])
+                                : "persistence-failed",
+                            status:
+                              "code" in cause && cause.code === "storage-full"
+                                ? 507
+                                : "code" in cause && cause.code === "object-missing"
+                                  ? 404
+                                  : 422,
+                          }),
+                      ),
+                    )
+                  : null;
+              if (image !== null) return image;
               return yield* issueAssetUrl({
                 resource: input.resource,
                 workspaceRoot: thread.value.worktreePath ?? project.value.workspaceRoot,

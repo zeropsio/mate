@@ -3,6 +3,7 @@
  * organization's Zerops navigation observed for as long as it is shown, with the details screens
  * hold. Components read the store through projections only.
  */
+import { MateImages } from "../assets/MateImagesProvider";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import {
   buildsUnderWay,
@@ -147,11 +148,13 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   );
   return (
     <AccountStoreContext value={store}>
+      <MateImages store={store}>
       <AccountDataContext value={value}>
         <MateBrowserFrames store={store}>
           <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
         </MateBrowserFrames>
       </AccountDataContext>
+      </MateImages>
     </AccountStoreContext>
   );
 }

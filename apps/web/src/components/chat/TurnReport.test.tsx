@@ -11,6 +11,7 @@ import type { OutcomeModel, OutcomePicture } from "./conversation.logic";
 import type { ResultFacts } from "./runResult.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 import { useStripFiles } from "./resultStripFiles";
+import { AssetImage } from "~/assets/AssetImage";
 import { TurnReport } from "./TurnReport";
 
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
@@ -709,4 +710,19 @@ describe("TurnReport", () => {
     const change = rowsOf(renderer).find((row) => row.props["data-result-row"] === "waiting");
     expect(change?.props["data-rising"]).toBeUndefined();
   });
+});
+
+it("the result strip and original viewer resolve a captured tool picture by reference", () => {
+  const src = "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const source = "mate-image:reference";
+  workspace.files.set(src, { _tag: "Success", url: source });
+  const open = vi.fn();
+  const renderer = renderPictures([{ ...checkPicture("captured", "/", null, APPDEV_HOST), src }], {
+    onOpenImage: open,
+  });
+  const tile = tilesOf(renderer)[0]!;
+  expect(tile.findByType(AssetImage).props.src).toBe(source);
+  act(() => tile.props.onClick());
+  expect(open.mock.calls[0]?.[0].images[0].src).toBe(source);
+  act(() => renderer.unmount());
 });

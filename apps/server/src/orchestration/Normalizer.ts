@@ -4,6 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import {
   type ChatAttachment,
+  ThreadId,
   type ClientOrchestrationCommand,
   type UserInputAttachments,
   getProviderAttachmentLimitError,
@@ -13,6 +14,7 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 
+import { ContentAssetError, contentAssetsAt } from "../assets/ContentAssets.ts";
 import { withFittedPicture, withPictureSize } from "../attachmentFit.ts";
 import { fitPictureOffThread } from "../attachmentFitThread.ts";
 import {
@@ -184,6 +186,77 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
             normalizedAttachment.type === "image"
               ? yield* fileSystem.readFile(claim.currentPath).pipe(Effect.mapError(claimFailed))
               : null;
+          const asset =
+            pictureBytes === null
+              ? undefined
+              : yield* Effect.promise(() =>
+                  contentAssetsAt(serverConfig.stateDir).ingestBytes(pictureBytes, {
+                    threadId: ThreadId.make(threadId),
+                    ownerId: claim.finalId,
+                    name: attachment.name,
+                    mimeType: normalizedAttachment.mimeType,
+                    provenance: "upload",
+                  }),
+                );
+          let sourceAsset;
+          if (
+            attachment.type === "image" &&
+            "sourceAttachmentId" in attachment &&
+            attachment.sourceAttachmentId
+          ) {
+            const sourceClaim = planAttachmentClaim({
+              attachmentsDir: serverConfig.attachmentsDir,
+              threadId,
+              attachmentId: attachment.sourceAttachmentId,
+            });
+            if (!sourceClaim.ok)
+              return yield* new OrchestrationDispatchCommandError({
+                message: "The original image upload is unavailable.",
+              });
+            const sourceOccurrence = yield* Effect.promise(() =>
+              contentAssetsAt(serverConfig.stateDir).upload(
+                attachment.sourceAttachmentId!,
+                sourceClaim.currentPath,
+                {
+                  threadId: ThreadId.make("pending"),
+                  ownerId: attachment.sourceAttachmentId!,
+                  name: attachment.name,
+                  mimeType: normalizedAttachment.mimeType,
+                  provenance: "upload",
+                },
+              ),
+            );
+            sourceAsset = yield* Effect.tryPromise({
+              try: () =>
+                contentAssetsAt(serverConfig.stateDir).claim(sourceOccurrence, {
+                  threadId: ThreadId.make(threadId),
+                  ownerId: sourceClaim.finalId,
+                  name: attachment.name,
+                  provenance: "upload",
+                }),
+              catch: (cause) =>
+                new OrchestrationDispatchCommandError({
+                  message:
+                    cause instanceof ContentAssetError && cause.code === "storage-full"
+                      ? "Storage full"
+                      : "The original image could not be retained.",
+                  cause,
+                }),
+            });
+          }
+          const { sourceAttachmentId: _, ...claimedMetadata } = {
+            ...normalizedAttachment,
+            sourceAttachmentId:
+              "sourceAttachmentId" in attachment ? attachment.sourceAttachmentId : undefined,
+          };
+          const withOriginal =
+            asset === undefined
+              ? normalizedAttachment
+              : {
+                  ...claimedMetadata,
+                  asset,
+                  ...(sourceAsset === undefined ? {} : { sourceAsset }),
+                };
           const picture =
             pictureBytes === null
               ? null
@@ -194,7 +267,7 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
           // A fitted picture is the claimed copy, under the path its own type
           // gives it (`.png` may become `.jpg`).
           if (picture !== null) {
-            const fittedAttachment = withFittedPicture(normalizedAttachment, picture);
+            const fittedAttachment = withFittedPicture(withOriginal, picture);
             const fittedPath = resolveAttachmentPath({
               attachmentsDir: serverConfig.attachmentsDir,
               attachment: fittedAttachment,
@@ -222,7 +295,7 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
 
           return pictureBytes === null
             ? normalizedAttachment
-            : withPictureSize(normalizedAttachment, pictureBytes);
+            : withPictureSize(withOriginal, pictureBytes);
         }
 
         const parsed = parseBase64DataUrl(attachment.dataUrl);
@@ -238,6 +311,15 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
             message: `Image attachment '${attachment.name}' is empty or too large.`,
           });
         }
+        const asset = yield* Effect.promise(() =>
+          contentAssetsAt(serverConfig.stateDir).ingestBytes(decoded, {
+            threadId: ThreadId.make(threadId),
+            ownerId: "inline-upload",
+            name: attachment.name,
+            mimeType: parsed.mimeType,
+            provenance: "upload",
+          }),
+        );
         const picture = yield* fitPicture(attachment.name, {
           bytes: decoded,
           mimeType: parsed.mimeType,
@@ -251,6 +333,7 @@ export const claimMessageAttachments = Effect.fn("Normalizer.claimMessageAttachm
         }
 
         const decodedAttachment = {
+          asset,
           type: "image" as const,
           id: attachmentId,
           name: attachment.name,

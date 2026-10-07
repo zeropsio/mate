@@ -14,9 +14,11 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -39,6 +41,9 @@ import {
   type OrchestrationDispatchError,
   type OrchestrationProjectorDecodeError,
 } from "../Errors.ts";
+import { contentAssetsAt, isStorageFull } from "../../assets/ContentAssets.ts";
+import { ServerConfig } from "../../config.ts";
+import { captureConversationEvent } from "../../assets/ConversationMedia.ts";
 import { decideOrchestrationCommand } from "../decider.ts";
 import { createEmptyReadModel, projectEvent } from "../projector.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
@@ -87,6 +92,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
+  const mediaContext = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
@@ -194,7 +200,11 @@ const makeOrchestrationEngine = Effect.gen(function* () {
                 }),
           ),
         );
-        const plannedEvents = Array.isArray(eventBase) ? eventBase : [eventBase];
+        const plannedEvents = yield* Effect.forEach(
+          Array.isArray(eventBase) ? eventBase : [eventBase],
+          (event) =>
+            captureConversationEvent(event, commandReadModel).pipe(Effect.provide(mediaContext)),
+        );
         // Stamp the dispatching client's origin onto every event the command
         // produced. The decider stays pure; attribution is an engine concern.
         const eventBases =
@@ -204,7 +214,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
                 ...planned,
                 metadata: { ...planned.metadata, origin: envelope.origin },
               }));
-        const committedCommand = yield* sql
+        const transaction = sql
           .withTransaction(
             Effect.gen(function* () {
               const committedEvents: OrchestrationEvent[] = [];
@@ -253,6 +263,26 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             ),
           );
 
+        const committedCommand = yield* transaction.pipe(
+          Effect.catch((cause) =>
+            Effect.gen(function* () {
+              if (!isStorageFull(cause)) return yield* Effect.fail(cause);
+              const config = yield* Effect.serviceOption(ServerConfig);
+              if (Option.isSome(config))
+                yield* Effect.promise(() => contentAssetsAt(config.value.stateDir).reclaim());
+              return yield* transaction.pipe(
+                Effect.mapError((retry) =>
+                  isStorageFull(retry)
+                    ? new OrchestrationCommandInvariantError({
+                        commandType: envelope.command.type,
+                        detail: "Storage full",
+                      })
+                    : retry,
+                ),
+              );
+            }),
+          ),
+        );
         commandReadModel = committedCommand.nextCommandReadModel;
         for (const cleanup of committedCommand.attachmentCleanups) {
           yield* cleanup;

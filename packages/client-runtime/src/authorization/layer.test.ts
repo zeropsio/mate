@@ -333,7 +333,7 @@ describe("RemoteEnvironmentAuthorization", () => {
       });
       const harness = yield* makeHarness({
         initialToken: cached,
-        responses: [websocketTicket("cached-ticket")],
+        responses: [websocketTicket("cached-ticket"), Response.json(DESCRIPTOR)],
       });
 
       const authorized = yield* Effect.gen(function* () {
@@ -347,10 +347,14 @@ describe("RemoteEnvironmentAuthorization", () => {
       expect(authorized.socketUrl).toContain("wsTicket=cached-ticket");
       expect(authorized.socketUrl).toContain("connectionMethod=relay");
       expect(yield* Ref.get(harness.bootstrapCalls)).toBe(0);
-      expect(harness.fetch.calls).toHaveLength(1);
+      expect(harness.fetch.calls).toHaveLength(2);
       expect(String(harness.fetch.calls[0]?.[0])).toBe(
         "https://environment.example.test/api/auth/websocket-ticket",
       );
+      expect(String(harness.fetch.calls[1]?.[0])).toBe(
+        "https://environment.example.test/.well-known/t3/environment",
+      );
+      expect(authorized.contentAddressedImages).toBe(false);
     }),
   );
 

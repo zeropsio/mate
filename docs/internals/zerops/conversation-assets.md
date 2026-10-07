@@ -1,30 +1,38 @@
 # Conversation assets
 
-Uploaded attachments already live under the server's persistent state directory. Images and
-videos referenced by a conversation can also originate in disposable agent paths such as `/tmp`.
-When the server first issues an asset URL for such a file, it streams the validated file descriptor
-into `stateDir/assets`, beside `environment-id` and `mate-epoch`.
+A Mate with `capabilities.contentAddressedImages` retains still-image bytes when a message, tool
+result or upload is produced, before provider fitting and before the temporary source can disappear.
+An occurrence records its conversation owner, digest, dimensions, name and capture result. Messages
+and tool cards carry these references, rather than filesystem paths or inline image bodies. Reading
+an older conversation backfills any bytes still available; bytes already lost cannot be recovered.
 
-Media objects are keyed by their content digest and filename. A reference keyed by thread,
-resource kind and original absolute path lets a reopened conversation mint a new URL. Once bound,
-that reference always identifies the same retained content, even if the temporary source path is
-reused. A new conversation capturing different bytes at that path gets a different content key.
-Identical objects are reused. Workspace previews on persistent volumes keep their existing behavior.
+Originals live in the persistent Mate home under `userdata/assets`. SHA-256 identifies their exact
+bytes. Atomic publication puts the object before its occurrence. Reusing a pathname in another
+production creates another occurrence; it never changes a previous original. Ordinary server
+restarts preserve these files. Container redeploys do not promise preservation: provisioning an
+asset volume and migration remain separate work.
 
-Both the object and its reference publish by rename within the state filesystem, with the object
-first. A failed or interrupted write cannot expose partial bytes or replace a reference with one
-to an unpublished object. Scoped staging files are removed when the write exits. The existing
-signed `/api/assets/<token>/<name>` route serves retained media, including video byte ranges;
-URL expiration and signature checks still apply.
+A drawn slot demands one lossless preview at its contained pixel size and display DPR, clamped to
+the original. Concurrent equal demands share encoding. Nearby sufficient previews are reused.
+Lossless WebP is chosen when supported and smaller than PNG. Opening the selected image reads its
+original, retains the preview while loading, and offers an original download. Other gallery
+originals are not prefetched.
 
-Before writing a retained copy, the server reserves ten percent of the state filesystem's total
-capacity plus the incoming copy's size, using space available to its user. Under pressure it evicts
-retained objects in least-recently-served order, checking actual free space after each removal.
-Successful serves update the object's modification time; never-served objects use their capture
-time. This order survives server restarts. SQLite, attachments and logs are never eviction targets.
-If eviction cannot restore the reserve, the server declines the new copy.
+The account data layer owns reads, Blob facts, receipts and retry policy. Mounted presentations own
+Blob URLs and revoke them on release. No image facts enter browser storage. Transport outages keep
+known facts; uncertain access withholds bytes; authoritative denial purges them. A definitive
+refusal requires an explicit retry. The existing Mate authorization header protects the stable
+`/api/assets/objects/<digest>/<original|preview>` route, resolved beneath the environment base path.
+Session and owner checks run before GET, HEAD, validators and ranges. Responses use a strong digest
+ETag and `Cache-Control: private, no-cache`; cached reloads revalidate with a bodyless 304.
 
-Evicted objects return the existing missing-asset response, shown by the client as "Image unavailable".
-Their small thread/path bindings remain so a reused source cannot replace missing historical media.
-Existing signed references continue to work while their original files exist. Files already lost,
-or removed before the server first retains them, cannot be recovered.
+Only an actual ENOSPC or SQLITE_FULL starts reclamation. Regenerable previews go first, followed by
+objects proven unreferenced by the retained occurrence catalog. Hidden/restorable history keeps its
+roots. Referenced originals are never pressure victims. The failed write is retried once; a still
+failing write reports `Storage full`. A missing object is not described as expired, evicted or
+intentionally deleted without evidence.
+
+Older servers use their existing signed route, selected by the declared capability; modern reads
+do not race a signed fallback. Mobile currently retains its signed presentation path. New Mate
+servers resolve compact conversation references for that path too. Videos, non-image files and
+external Markdown image URLs retain their existing behavior.

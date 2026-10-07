@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
+import * as NodeCrypto from "node:crypto";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -21,9 +22,11 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as JpegJs from "jpeg-js";
 import { PNG } from "pngjs";
+import { vi } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import { ContentAssetError, contentAssetsAt } from "../assets/ContentAssets.ts";
 import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./Normalizer.ts";
 
 const testLayer = Layer.mergeAll(
@@ -80,7 +83,11 @@ function turnStartCommand(input: {
     (
       | { readonly id: string; readonly sizeBytes: number }
       | { readonly dataUrl: string; readonly sizeBytes: number }
-    ) & { readonly name?: string; readonly mimeType?: string }
+    ) & {
+      readonly name?: string;
+      readonly mimeType?: string;
+      readonly sourceAttachmentId?: string;
+    }
   >;
 }): ClientOrchestrationCommand {
   return {
@@ -105,6 +112,32 @@ function turnStartCommand(input: {
 }
 
 describe("normalizeDispatchCommand attachments", () => {
+  it.effect.each([
+    { code: "storage-full" as const, message: "Storage full" },
+    { code: "persistence-failed" as const, message: "The original image could not be retained." },
+  ])("refuses an original claim with its actual storage result: $code", ({ code, message }) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const bytes = encodePng(1, 1, new Uint8Array([0, 0, 255, 255]));
+      const id = `pending-${attachmentUuid}`;
+      const sourceAttachmentId = "pending-00000000-0000-4000-8000-0000000000bb";
+      for (const pending of [id, sourceAttachmentId])
+        NodeFS.writeFileSync(NodePath.join(config.attachmentsDir, `${pending}.png`), bytes);
+      const claim = vi
+        .spyOn(contentAssetsAt(config.stateDir), "claim")
+        .mockRejectedValueOnce(new ContentAssetError(code));
+      yield* Effect.gen(function* () {
+        const refused = yield* normalizeDispatchCommand(
+          turnStartCommand({
+            attachments: [{ id, sourceAttachmentId, sizeBytes: bytes.byteLength }],
+          }),
+        ).pipe(Effect.flip);
+        expect(refused.message).toBe(message);
+        expect(claim).toHaveBeenCalledOnce();
+      }).pipe(Effect.ensuring(Effect.sync(() => claim.mockRestore())));
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("accepts 100 inline images and rejects 101 before writing files", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
@@ -481,6 +514,16 @@ describe("normalizeDispatchCommand picture fitting", () => {
         NodePath.join(config.attachmentsDir, `${attachment.id}.jpg`),
       );
       expect(attachment).toEqual({
+        asset: expect.objectContaining({
+          original: expect.objectContaining({
+            status: "ready",
+            digest: NodeCrypto.hash("sha256", original),
+            sizeBytes: original.byteLength,
+            mimeType: "image/png",
+            width: 1500,
+            height: 1000,
+          }),
+        }),
         type: "image",
         id: attachment.id,
         name: "screenshot.jpg",
@@ -498,6 +541,10 @@ describe("normalizeDispatchCommand picture fitting", () => {
         false,
       );
       expect(NodeFS.readFileSync(pendingPath).equals(original)).toBe(true);
+      const retained = yield* Effect.promise(() =>
+        contentAssetsAt(config.stateDir).object(NodeCrypto.hash("sha256", original)),
+      );
+      expect(NodeFS.readFileSync(retained.path)).toEqual(original);
 
       yield* cleanupFailedUploadedAttachments(command, normalized);
       expect(NodeFS.readdirSync(config.attachmentsDir)).toEqual([`pending-${attachmentUuid}.png`]);
@@ -532,6 +579,16 @@ describe("normalizeDispatchCommand picture fitting", () => {
         NodePath.join(config.attachmentsDir, `${attachment.id}.jpg`),
       );
       expect(attachment).toEqual({
+        asset: expect.objectContaining({
+          original: expect.objectContaining({
+            status: "ready",
+            digest: NodeCrypto.hash("sha256", photo),
+            sizeBytes: photo.byteLength,
+            mimeType: "image/jpeg",
+            width: 2400,
+            height: 1800,
+          }),
+        }),
         type: "image",
         id: attachment.id,
         name: "IMG_0412.jpg",
@@ -544,6 +601,10 @@ describe("normalizeDispatchCommand picture fitting", () => {
         width: 2000,
         height: 1500,
       });
+      const retained = yield* Effect.promise(() =>
+        contentAssetsAt(config.stateDir).object(NodeCrypto.hash("sha256", photo)),
+      );
+      expect(NodeFS.readFileSync(retained.path)).toEqual(photo);
     }).pipe(Effect.provide(testLayer)),
   );
 

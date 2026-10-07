@@ -307,6 +307,10 @@
       "types": "./src/data/__fixtures__/index.ts",
       "default": "./src/data/__fixtures__/index.ts"
     },
+    "./data/mateImage": {
+      "types": "./src/data/families/mateImage.ts",
+      "default": "./src/data/families/mateImage.ts"
+    },
     "./data": {
       "types": "./src/data/index.ts",
       "default": "./src/data/index.ts"

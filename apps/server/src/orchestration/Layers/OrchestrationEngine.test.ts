@@ -1009,90 +1009,117 @@ describe("OrchestrationEngine", () => {
     await system.dispose();
   });
 
-  it("keeps processing queued commands after a storage failure", async () => {
-    type StoredEvent =
-      ReturnType<OrchestrationEventStoreShape["append"]> extends Effect.Effect<infer A, any, any>
-        ? A
-        : never;
-    const events: StoredEvent[] = [];
-    let nextSequence = 1;
-    let shouldFailFirstAppend = true;
+  it.each([
+    { cause: undefined, attempts: 1, refusal: "append failed", name: "ordinary failure" },
+    { cause: { code: "SQLITE_FULL" }, attempts: 2, refusal: "Storage full", name: "full storage" },
+  ])(
+    "keeps processing queued commands after a storage failure: $name",
+    async ({ cause, attempts, refusal }) => {
+      type StoredEvent =
+        ReturnType<OrchestrationEventStoreShape["append"]> extends Effect.Effect<infer A, any, any>
+          ? A
+          : never;
+      const events: StoredEvent[] = [];
+      let nextSequence = 1;
+      let appendFailures = 0;
 
-    const flakyStore: OrchestrationEventStoreShape = {
-      append(event) {
-        if (shouldFailFirstAppend && event.commandId === CommandId.make("cmd-flaky-1")) {
-          shouldFailFirstAppend = false;
-          return Effect.fail(
-            new PersistenceSqlError({
-              operation: "test.append",
-              detail: "append failed",
-            }),
-          );
-        }
-        const savedEvent = {
-          ...event,
-          sequence: nextSequence,
-        } as StoredEvent;
-        nextSequence += 1;
-        events.push(savedEvent);
-        return Effect.succeed(savedEvent);
-      },
-      readFromSequence(sequenceExclusive) {
-        return Stream.fromIterable(events.filter((event) => event.sequence > sequenceExclusive));
-      },
-      readAll() {
-        return Stream.fromIterable(events);
-      },
-      hasEventAfter: () => Effect.succeed(false),
-      readAggregateRange: () => Stream.die("unused aggregate replay"),
-      getAggregateReplayStats: () => Effect.die("unused aggregate replay stats"),
-    };
-
-    const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-      prefix: "t3-orchestration-engine-test-",
-    });
-
-    const runtime = ManagedRuntime.make(
-      OrchestrationEngineLive.pipe(
-        Layer.provide(OrchestrationProjectionSnapshotQueryLive),
-        Layer.provide(ThreadBackgroundLiveness.layer),
-        Layer.provide(ThreadPlanProgress.layer),
-        Layer.provide(ThreadLiveStep.layer),
-        Layer.provide(OrchestrationProjectionPipelineLive),
-        Layer.provide(Layer.succeed(OrchestrationEventStore, flakyStore)),
-        Layer.provide(OrchestrationCommandReceiptRepositoryLive),
-        Layer.provide(RepositoryIdentityResolver.layer),
-        Layer.provide(SqlitePersistenceMemory),
-        Layer.provideMerge(ServerConfigLayer),
-        Layer.provideMerge(NodeServices.layer),
-      ),
-    );
-    const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
-    const createdAt = now();
-
-    await runtime.runPromise(
-      engine.dispatch({
-        type: "project.create",
-        commandId: CommandId.make("cmd-project-flaky-create"),
-        projectId: asProjectId("project-flaky"),
-        title: "Flaky Project",
-        workspaceRoot: "/tmp/project-flaky",
-        defaultModelSelection: {
-          instanceId: ProviderInstanceId.make("codex"),
-          model: "gpt-5-codex",
+      const flakyStore: OrchestrationEventStoreShape = {
+        append(event) {
+          if (appendFailures < attempts && event.commandId === CommandId.make("cmd-flaky-1")) {
+            appendFailures++;
+            return Effect.fail(
+              new PersistenceSqlError({
+                operation: "test.append",
+                detail: "append failed",
+                cause,
+              }),
+            );
+          }
+          const savedEvent = {
+            ...event,
+            sequence: nextSequence,
+          } as StoredEvent;
+          nextSequence += 1;
+          events.push(savedEvent);
+          return Effect.succeed(savedEvent);
         },
-        createdAt,
-      }),
-    );
+        readFromSequence(sequenceExclusive) {
+          return Stream.fromIterable(events.filter((event) => event.sequence > sequenceExclusive));
+        },
+        readAll() {
+          return Stream.fromIterable(events);
+        },
+        hasEventAfter: () => Effect.succeed(false),
+        readAggregateRange: () => Stream.die("unused aggregate replay"),
+        getAggregateReplayStats: () => Effect.die("unused aggregate replay stats"),
+      };
 
-    await expect(
-      runtime.runPromise(
+      const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
+        prefix: "t3-orchestration-engine-test-",
+      });
+
+      const runtime = ManagedRuntime.make(
+        OrchestrationEngineLive.pipe(
+          Layer.provide(OrchestrationProjectionSnapshotQueryLive),
+          Layer.provide(ThreadBackgroundLiveness.layer),
+          Layer.provide(ThreadPlanProgress.layer),
+          Layer.provide(ThreadLiveStep.layer),
+          Layer.provide(OrchestrationProjectionPipelineLive),
+          Layer.provide(Layer.succeed(OrchestrationEventStore, flakyStore)),
+          Layer.provide(OrchestrationCommandReceiptRepositoryLive),
+          Layer.provide(RepositoryIdentityResolver.layer),
+          Layer.provide(SqlitePersistenceMemory),
+          Layer.provideMerge(ServerConfigLayer),
+          Layer.provideMerge(NodeServices.layer),
+        ),
+      );
+      const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
+      const createdAt = now();
+
+      await runtime.runPromise(
+        engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-project-flaky-create"),
+          projectId: asProjectId("project-flaky"),
+          title: "Flaky Project",
+          workspaceRoot: "/tmp/project-flaky",
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          createdAt,
+        }),
+      );
+
+      await expect(
+        runtime.runPromise(
+          engine.dispatch({
+            type: "thread.create",
+            commandId: CommandId.make("cmd-flaky-1"),
+            threadId: ThreadId.make("thread-flaky-fail"),
+            projectId: asProjectId("project-flaky"),
+            title: "flaky-fail",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            branch: null,
+            worktreePath: null,
+            createdAt,
+          }),
+        ),
+      ).rejects.toThrow(refusal);
+      expect(appendFailures).toBe(attempts);
+
+      const result = await runtime.runPromise(
         engine.dispatch({
           type: "thread.create",
-          commandId: CommandId.make("cmd-flaky-1"),
-          threadId: ThreadId.make("thread-flaky-fail"),
+          commandId: CommandId.make("cmd-flaky-2"),
+          threadId: ThreadId.make("thread-flaky-ok"),
           projectId: asProjectId("project-flaky"),
-          title: "flaky-fail",
+          title: "flaky-ok",
           modelSelection: {
             instanceId: ProviderInstanceId.make("codex"),
             model: "gpt-5-codex",
@@ -1103,40 +1130,21 @@ describe("OrchestrationEngine", () => {
           worktreePath: null,
           createdAt,
         }),
-      ),
-    ).rejects.toThrow("append failed");
+      );
 
-    const result = await runtime.runPromise(
-      engine.dispatch({
-        type: "thread.create",
-        commandId: CommandId.make("cmd-flaky-2"),
-        threadId: ThreadId.make("thread-flaky-ok"),
-        projectId: asProjectId("project-flaky"),
-        title: "flaky-ok",
-        modelSelection: {
-          instanceId: ProviderInstanceId.make("codex"),
-          model: "gpt-5-codex",
-        },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        branch: null,
-        worktreePath: null,
-        createdAt,
-      }),
-    );
-
-    expect(result.sequence).toBe(2);
-    const eventsAfterRetry = await runtime.runPromise(
-      Stream.runCollect(engine.readEvents(0)).pipe(
-        Effect.map((chunk): OrchestrationEvent[] => Array.from(chunk)),
-      ),
-    );
-    expect(eventsAfterRetry.map((event) => event.type)).toEqual([
-      "project.created",
-      "thread.created",
-    ]);
-    await runtime.dispose();
-  });
+      expect(result.sequence).toBe(2);
+      const eventsAfterRetry = await runtime.runPromise(
+        Stream.runCollect(engine.readEvents(0)).pipe(
+          Effect.map((chunk): OrchestrationEvent[] => Array.from(chunk)),
+        ),
+      );
+      expect(eventsAfterRetry.map((event) => event.type)).toEqual([
+        "project.created",
+        "thread.created",
+      ]);
+      await runtime.dispose();
+    },
+  );
 
   it("rolls back all events for a multi-event command when projection fails mid-dispatch", async () => {
     let shouldFailRequestedProjection = true;

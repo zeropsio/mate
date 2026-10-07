@@ -1,5 +1,6 @@
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
+import { mateImageFamily } from "./mateImage.ts";
 /**
  * The fact families this account holds. A new family is one module beside these and one line
  * here; the reducer, the store and the Zerops adapter loop over this list.
@@ -86,6 +87,7 @@ export const FAMILIES = defineFamilies([
   hqVerdictFamily,
   mateVariablesFamily,
   mateLinkFamily,
+  mateImageFamily,
   hqProtocolFamily,
   hqPictureFamily,
   hqChangeReadFamily,
@@ -133,6 +135,7 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
  * once where time never ages it; the rest realtime.
  */
 export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  if (key.startsWith("mate:image/")) return "once";
   if (key.startsWith("mate:browser-") || key.startsWith("mate:database-session-"))
     return "realtime";
   if (key.startsWith("mate:"))

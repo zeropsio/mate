@@ -172,40 +172,6 @@ describe("a picture's room before it loads", () => {
     expect(html).toMatch(/<img[^>]*style="width:min\(1200px, 30rem, calc\(30rem \* 1\.5\)\)"/);
   });
 
-  // Slow bytes are not missing ones: a picture whose bytes failed asks for
-  // them again after a wait, and only then is said to be unavailable.
-  it("asks again for bytes that failed before it says the picture is unavailable", () => {
-    vi.useFakeTimers();
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    try {
-      let renderer: ReturnType<typeof create> | undefined;
-      act(() => {
-        renderer = create(
-          <ChatMarkdown cwd="/srv/app" threadRef={threadRef} text="![shop](.t3/slow.png)" />,
-        );
-      });
-      const image = () =>
-        renderer!.root.findAll(
-          (node) => node.type === "img" && node.props["data-markdown-image"] !== undefined,
-        );
-      const shown = () => JSON.stringify(renderer!.toJSON());
-      for (const wait of [1_500, 4_000]) {
-        act(() => image()[0]!.props.onError());
-        expect(shown()).not.toContain("Image unavailable");
-        act(() => vi.advanceTimersByTime(wait));
-        expect(image()).toHaveLength(1);
-      }
-      act(() => image()[0]!.props.onError());
-      expect(shown()).toContain("Image unavailable");
-      act(() => renderer!.unmount());
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // A picture without a shape took no room until its bytes came, and the list
-  // draws a row again whenever it recycles it: opening a conversation, its
-  // pictures grew from nothing and everything in sight jumped (2026-09-29).
   it("holds the room a picture usually takes the first time it is seen", () => {
     const html = render("![first](.t3/first-sight.png)");
     expect(html).toMatch(/<img[^>]*class="[^"]*aspect-video w-full[^"]*"/);

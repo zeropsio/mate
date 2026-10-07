@@ -1,3 +1,4 @@
+import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
  * (bootstrap · deploy · import · mount · verify · subdomain · delete · scale
@@ -757,7 +758,21 @@ export function ZeropsOperationCard(props: {
     >
       {operation.kind === "browser" ? (
         <BrowserCard
-          browserScreenshot={browserScreenshot}
+          browserScreenshot={
+            browserScreenshot?.src.startsWith("mate-asset:") && threadRef
+              ? {
+                  ...browserScreenshot,
+                  src: mateImageSource({
+                    environmentId: threadRef.environmentId,
+                    resource: {
+                      _tag: "media-file",
+                      threadId: threadRef.threadId,
+                      path: browserScreenshot.src,
+                    },
+                  }),
+                }
+              : browserScreenshot
+          }
           header={header}
           live={live}
           liveFrame={liveFrame}

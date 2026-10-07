@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { ImageOccurrence } from "./assetReference.ts";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
@@ -189,6 +190,9 @@ const ChatAttachmentId = TrimmedNonEmptyString.check(
 export type ChatAttachmentId = typeof ChatAttachmentId.Type;
 
 export const ChatImageAttachment = Schema.Struct({
+  asset: Schema.optionalKey(ImageOccurrence),
+  sourceAsset: Schema.optionalKey(ImageOccurrence),
+  sourceAttachmentId: Schema.optionalKey(ChatAttachmentId),
   type: Schema.Literal("image"),
   id: ChatAttachmentId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),

@@ -28,6 +28,10 @@ import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 import { OtlpTracer, OtlpSerialization } from "effect/unstable/observability";
 
 import * as ServerConfig from "./config.ts";
+import { contentAssetsAt, ContentAssetError } from "./assets/ContentAssets.ts";
+import { contentAssetFailure, protectedContentAsset } from "./assets/ContentAssetHttp.ts";
+import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ZeropsIdentityStatus } from "./zerops/ZeropsIdentityStatus.ts";
 import { ASSET_ROUTE_PREFIX, resolveAsset } from "./assets/AssetAccess.ts";
 import { statMediaFile, streamMediaFile, type OpenMediaFile } from "./assets/MediaFile.ts";
 import {
@@ -364,6 +368,77 @@ export const assetRouteLayer = HttpRouter.add(
     }
 
     const suffix = url.value.pathname.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+    if (url.value.pathname.startsWith(`${ASSET_ROUTE_PREFIX}/objects/`)) {
+      const authorization = Effect.gen(function* () {
+        const auth = yield* Effect.serviceOption(EnvironmentAuth.EnvironmentAuth);
+        if (Option.isNone(auth)) return contentAssetFailure("session-required", 401);
+        const session = yield* auth.value.authenticateHttpRequest(request).pipe(Effect.result);
+        if (session._tag === "Failure")
+          return contentAssetFailure(
+            EnvironmentAuth.isServerAuthCredentialError(session.failure)
+              ? "session-required"
+              : "access-unverified",
+            EnvironmentAuth.isServerAuthCredentialError(session.failure) ? 401 : 503,
+          );
+        if (!session.success.scopes.includes(AuthOrchestrationReadScope))
+          return contentAssetFailure("access-denied", 403);
+        const identity = yield* Effect.serviceOption(ZeropsIdentityStatus);
+        if (Option.isSome(identity) && (yield* identity.value.current).identity === "failed")
+          return contentAssetFailure("access-unverified", 503);
+        return null;
+      });
+      const resolve = Effect.gen(function* () {
+        const match = /^objects\/([a-f0-9]{64})\/(original|preview)$/.exec(suffix);
+        if (!match) return yield* Effect.fail(contentAssetFailure("object-missing", 404));
+        const config = yield* ServerConfig.ServerConfig;
+        const store = contentAssetsAt(config.stateDir);
+        const query = yield* Effect.serviceOption(ProjectionSnapshotQuery);
+        if (Option.isNone(query))
+          return yield* Effect.fail(contentAssetFailure("access-unverified", 503));
+        const preview = match[2] === "preview";
+        const owners = yield* Effect.tryPromise({
+          try: () => store.owners(match[1]!, preview),
+          catch: () => contentAssetFailure("access-unverified", 503),
+        });
+        let readable = false;
+        for (const owner of owners) {
+          if (
+            owner.projectId &&
+            Option.isSome(
+              yield* query.value
+                .getProjectShellById(owner.projectId)
+                .pipe(Effect.mapError(() => contentAssetFailure("access-unverified", 503))),
+            )
+          ) {
+            readable = true;
+            break;
+          }
+          const thread = yield* query.value
+            .getThreadShellById(owner.threadId)
+            .pipe(Effect.mapError(() => contentAssetFailure("access-unverified", 503)));
+          if (Option.isNone(thread)) continue;
+          const project = yield* query.value
+            .getProjectShellById(thread.value.projectId)
+            .pipe(Effect.mapError(() => contentAssetFailure("access-unverified", 503)));
+          if (Option.isSome(project)) {
+            readable = true;
+            break;
+          }
+        }
+        if (!readable) return yield* Effect.fail(contentAssetFailure("object-missing", 404));
+        const object = yield* Effect.tryPromise({
+          try: () => store.object(match[1]!, preview),
+          catch: () => new ContentAssetError("object-missing"),
+        }).pipe(Effect.result);
+        if (object._tag === "Failure")
+          return yield* Effect.fail(contentAssetFailure("object-missing", 404));
+        return object.success;
+      });
+      return yield* protectedContentAsset(authorization, resolve, request).pipe(
+        Effect.orElseSucceed(() => contentAssetFailure("object-missing", 404)),
+      );
+    }
+
     const separatorIndex = suffix.indexOf("/");
     if (separatorIndex <= 0) {
       return HttpServerResponse.text("Not Found", { status: 404 });
