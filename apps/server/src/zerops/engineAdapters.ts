@@ -20,24 +20,33 @@ export const turnPrincipalOf = (principal: RunPrincipal): TurnPrincipal =>
     ? { kind: "session", subject: principal.subject }
     : { kind: principal.owner === "crew" ? "crew" : "standup", startedBy: principal.startedBy };
 
+/** Runs admitted by D6's gate, `ZeropsTurnAdmission.admitRun`: the same gate V1's turns pass. */
+export const zeropsRunAdmission = Layer.effect(
+  RunAdmission,
+  Effect.map(ZeropsTurnAdmission, (admission) =>
+    RunAdmission.of({
+      admit: ({ instanceId, principal }) =>
+        admission
+          .admitRun({ instanceId, principal: turnPrincipalOf(principal) })
+          .pipe(Effect.mapError((refusal) => new RunRefused({ message: refusal.message }))),
+    }),
+  ),
+);
+
+/** No platform to read a restart from: a fixture scene, or a process outside Zerops. */
+export const noRestartEvidence = Layer.succeed(
+  RestartEvidence,
+  RestartEvidence.of({ read: Effect.succeed(null) }),
+);
+
 /** Outside Zerops: every run is admitted, and there is no restart to read. */
 export const engineAdaptersOpen = Layer.mergeAll(
   Layer.succeed(RunAdmission, RunAdmission.of({ admit: () => Effect.void })),
-  Layer.succeed(RestartEvidence, RestartEvidence.of({ read: Effect.succeed(null) })),
+  noRestartEvidence,
 );
 
 const zeropsAdapters = Layer.mergeAll(
-  Layer.effect(
-    RunAdmission,
-    Effect.map(ZeropsTurnAdmission, (admission) =>
-      RunAdmission.of({
-        admit: ({ instanceId, principal }) =>
-          admission
-            .admitRun({ instanceId, principal: turnPrincipalOf(principal) })
-            .pipe(Effect.mapError((refusal) => new RunRefused({ message: refusal.message }))),
-      }),
-    ),
-  ),
+  zeropsRunAdmission,
   Layer.effect(
     RestartEvidence,
     Effect.map(ZeropsRestartRead, (reader) =>

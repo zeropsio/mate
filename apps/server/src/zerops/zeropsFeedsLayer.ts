@@ -110,7 +110,7 @@ const ZeropsCrewLive = crewLayer.pipe(
  * so the sign-out below stops sessions on the very engine the merge runs.
  */
 const MateEngineLive = engineLayer.pipe(
-  Layer.provide(
+  Layer.provideMerge(
     engineAdaptersLayer.pipe(
       Layer.provide(ZeropsTurnAdmissionLive),
       Layer.provide(ZeropsRestartReadModule.layer),
