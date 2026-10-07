@@ -70,6 +70,13 @@ Alongside it, a zcp-style architecture test: ported code carries no `zerops` imp
 product code reaches providers only through the SPI (§3.2); its list of violations is empty since
 SPI-1 (2026-08-29).
 
+- The Mate engine (`apps/server/src/engine/**`) is the SPI's one consumer: it reaches the drivers
+  through `ProviderService` and its bridge, and imports no other provider file. The rest of owned
+  product reaches conversations through the engine, not the drivers.
+- The engine imports nothing from `zerops/**` or V1's `orchestration/**` directly: Zerops reaches
+  it through `engine/ports.ts`. The rule is about direct imports — a neutral module the engine
+  uses (`checkpointing/WorkspaceHistory.ts`) may itself import `zerops/` modules.
+
 ### 3.2 The adapter SPI — the contract that makes porting safe
 
 Provider runtime events, persistence, orchestration, contracts and our Zerops reducers share

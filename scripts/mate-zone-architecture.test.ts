@@ -1625,7 +1625,8 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
 // `apps/server/src/engine/**` and reaches out only to its neutral seams: the
 // config, the SPI, the provider service, the workspace history, the attachment
 // store and the terminal manager; never V1's `orchestration/**`, never
-// `zerops/**` (Zerops reaches it through `ports.ts`). Outside, only the wiring
+// `zerops/**` directly (Zerops reaches it through `ports.ts`; a neutral seam
+// such as WorkspaceHistory may itself import zerops modules). Outside, only the wiring
 // files and the graft layers that branch reach in, and only to its public
 // surface: the service, the layer and the ports. Tests may reach further.
 const ENGINE_DIR = "apps/server/src/engine";
@@ -1651,6 +1652,36 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/terminal/Manager.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
+
+// The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
+// `ProviderService` and its bridge, and no other provider file.
+const ENGINE_PROVIDER_DOOR = "apps/server/src/provider/Services/ProviderService.ts";
+
+const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolations")(function* (
+  root: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const violations: Array<ImportViolation> = [];
+  for (const file of yield* collectTsFiles(path.join(root, ENGINE_DIR))) {
+    const relativeFile = path.relative(root, file).split(path.sep).join("/");
+    for (const { specifier, clause } of collectImportStatements(yield* fs.readFileString(file))) {
+      const target = specifier.startsWith(".")
+        ? path
+            .relative(root, path.resolve(path.dirname(file), specifier))
+            .split(path.sep)
+            .join("/")
+        : specifier;
+      const reachesProvider = target.includes("/provider/") || /\bProviderService\b/.test(clause);
+      if (reachesProvider && target !== ENGINE_PROVIDER_DOOR) {
+        violations.push({ file: relativeFile, specifier });
+      }
+    }
+  }
+  return violations.sort((a, b) =>
+    a.file === b.file ? a.specifier.localeCompare(b.specifier) : a.file.localeCompare(b.file),
+  );
+});
 
 const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
 
@@ -1908,6 +1939,32 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           },
         ]);
       }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "engine SPI fixture: a driver import from the engine is reported, ProviderService is not",
+    () =>
+      Effect.gen(function* () {
+        const fixtureRoot = yield* makeRepoFixture({
+          "apps/server/src/engine/outbox.ts": [
+            'import { ProviderService } from "../provider/Services/ProviderService.ts";',
+            'import { ClaudeAdapter } from "../provider/Layers/ClaudeAdapter.ts";',
+            "",
+          ].join("\n"),
+        });
+        assert.deepStrictEqual(yield* collectEngineProviderViolations(fixtureRoot), [
+          {
+            file: "apps/server/src/engine/outbox.ts",
+            specifier: "../provider/Layers/ClaudeAdapter.ts",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("the Mate engine reaches the drivers only through ProviderService", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* collectEngineProviderViolations(yield* repoRoot), []);
+    }),
   );
 
   it.effect(
