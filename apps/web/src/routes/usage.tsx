@@ -15,7 +15,8 @@ function UsageRoute() {
       void navigate({
         search: {
           ...(next.person === undefined ? {} : { person: next.person }),
-          ...(next.project === undefined ? {} : { project: next.project }),
+          ...(next.project === undefined ? {} : { app: next.project }),
+          ...(next.legacyProject === undefined ? {} : { project: next.legacyProject }),
           ...(next.mate === undefined ? {} : { mate: next.mate }),
         },
       });

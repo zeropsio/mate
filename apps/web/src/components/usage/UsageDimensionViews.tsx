@@ -45,8 +45,19 @@ function share(metric: UsageDimensionMetric, row: { costShare: number; tokenShar
   return formatPercent(metric === "cost" ? row.costShare : row.tokenShare);
 }
 
-export function OwnerName({ owner }: { readonly owner: UsageEnvironmentOwner | null }) {
-  if (owner === null) return <span className="truncate text-muted-foreground">Unassigned</span>;
+export function OwnerName({
+  owner,
+  state = "unknown",
+}: {
+  readonly owner: UsageEnvironmentOwner | null;
+  readonly state?: UsagePersonRow["ownerState"];
+}) {
+  if (owner === null)
+    return (
+      <span className="truncate text-muted-foreground">
+        {state === "unassigned" ? "Unassigned" : "Unknown owner"}
+      </span>
+    );
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <span className="truncate">{owner.name}</span>
@@ -78,7 +89,7 @@ export function UsagePeopleSplit({
       <div aria-hidden className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
         {people.map((person, index) => (
           <span
-            key={person.owner?.id ?? "unassigned"}
+            key={person.owner?.id ?? person.ownerState}
             className="h-full"
             style={{
               width: `${(metric === "cost" ? person.costShare : person.tokenShare) * 100}%`,
@@ -90,7 +101,7 @@ export function UsagePeopleSplit({
       <ul className="flex flex-col gap-2">
         {people.map((person, index) => (
           <li
-            key={person.owner?.id ?? "unassigned"}
+            key={person.owner?.id ?? person.ownerState}
             className="flex items-center justify-between gap-3 text-sm"
           >
             <span className="flex min-w-0 items-center gap-2 text-foreground">
@@ -100,7 +111,7 @@ export function UsagePeopleSplit({
                 style={{ backgroundColor: personColor(person, index) }}
               />
               <OwnerAvatar owner={person.owner} />
-              <OwnerName owner={person.owner} />
+              <OwnerName owner={person.owner} state={person.ownerState} />
             </span>
             <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
               <span className="font-medium text-foreground">{amount(metric, person)}</span>
@@ -114,7 +125,7 @@ export function UsagePeopleSplit({
 }
 
 const DIMENSION_HEADING: Record<UsageDimension, string> = {
-  person: "Person",
+  person: "Owner",
   project: "Project",
   mate: "Mate",
 };
@@ -220,9 +231,11 @@ export function UsageDimensionTable({
       <tbody>
         {dimension === "person"
           ? dimensions.people.flatMap((person) => {
-              const key = person.owner?.id ?? "unassigned";
+              const key = person.owner?.id ?? person.ownerState;
               const open = expanded.has(key);
-              const name = person.owner?.name ?? "Unassigned";
+              const name =
+                person.owner?.name ??
+                (person.ownerState === "unassigned" ? "Unassigned" : "Unknown owner");
               return [
                 <tr key={key} className={rowClass}>
                   <td className="py-2 text-foreground">
@@ -248,7 +261,7 @@ export function UsageDimensionTable({
                         }
                       >
                         <OwnerAvatar owner={person.owner} />
-                        <OwnerName owner={person.owner} />
+                        <OwnerName owner={person.owner} state={person.ownerState} />
                       </DrillButton>
                     </span>
                   </td>
@@ -276,18 +289,18 @@ export function UsageDimensionTable({
             })
           : dimension === "project"
             ? dimensions.projects.map((project) => (
-                <tr key={project.projectName ?? "unassigned"} className={rowClass}>
+                <tr key={project.projectId ?? "unknown"} className={rowClass}>
                   <td className="py-2 text-foreground">
                     <span className="flex min-w-0 items-center gap-2">
                       <DrillButton
-                        label={`Show ${project.projectName ?? "Unassigned"} usage`}
+                        label={`Show ${project.projectName ?? "Unknown project"} usage`}
                         onDrill={
-                          project.projectName === null
+                          project.projectId === null
                             ? null
                             : () =>
                                 onScopeChange({
                                   ...scope,
-                                  project: project.projectName ?? undefined,
+                                  project: project.projectId ?? undefined,
                                 })
                         }
                       >
@@ -297,7 +310,7 @@ export function UsageDimensionTable({
                             project.projectName === null && "text-muted-foreground",
                           )}
                         >
-                          {project.projectName ?? "Unassigned"}
+                          {project.projectName ?? "Unknown project"}
                         </span>
                       </DrillButton>
                       <span className="flex shrink-0 -space-x-1">

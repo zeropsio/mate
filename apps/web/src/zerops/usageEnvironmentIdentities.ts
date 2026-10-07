@@ -1,20 +1,9 @@
-/**
- * Who each usage environment belongs to: its Mate, the project the left menu
- * groups it under, and the person who owns it — so the Usage page can roll an
- * environment's spend up per Mate, per project and per person.
- *
- * Every name is the one the left menu draws: the Mate by its project's name, the
- * project by the group header `buildZeropsGroupTree` derives, the owner as HQ
- * names and pictures them (`hqProjectPeople`, drawn by `zeropsMateOwnerOf`). An
- * environment no Mate lives in is left out.
- */
-import type { HqMateOwner } from "@t3tools/client-runtime/data";
-import { buildZeropsGroupTree, hasMate, projectNameInApp } from "@t3tools/client-runtime/zerops";
+/** Current-owner attribution and stable HQ app identity for sampled agent usage. */
+import type { HqMateOwner, HqProjectPeople, HqNavigationRead } from "@t3tools/client-runtime/data";
+import { hasMate, projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId } from "@t3tools/contracts";
-
-import { groupNameUnread } from "~/components/zerops/ZeropsGroupTree.logic";
 
 import { rowEnvironment } from "./environmentOrigins";
 import { zeropsMateOwnerOf } from "./useZeropsMateOwners";
@@ -33,25 +22,15 @@ export interface UsageEnvironmentOwner {
 export interface UsageEnvironmentIdentity {
   /** The Mate's display name as the left menu shows it, e.g. "Lena". */
   readonly mateName: string;
-  /** The group's name as the left menu header shows it; null when its name could not be read. */
+  /** Stable HQ app ID; it is never inferred from a name. */
+  readonly projectId: string | null;
+  /** HQ's application name, independent of its ID; null while unread. */
   readonly projectName: string | null;
+  readonly ownerState: "known" | "unassigned" | "unknown";
   readonly owner: UsageEnvironmentOwner | null;
 }
 
 export type UsageEnvironmentIdentities = ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>;
-
-/** Each project's group header, as the left menu names it; names that could not be read left out. */
-function groupNamesByProject(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-): ReadonlyMap<string, string> {
-  const names = new Map<string, string>();
-  for (const { group, environments } of buildZeropsGroupTree(candidates, { order: "name" })
-    .groups) {
-    if (groupNameUnread(group)) continue;
-    for (const environment of environments) names.set(environment.item.project.id, group.name);
-  }
-  return names;
-}
 
 /** The owner as the Mate's corner badge draws them, keyed by person; null when HQ names nobody. */
 function usageOwner(
@@ -66,11 +45,10 @@ export function usageEnvironmentIdentities(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
   /** Each Mate's owner as HQ names them, by project (`hqProjectPeople`). */
-  readonly owners: Readonly<Record<string, HqMateOwner | null>>;
+  readonly owners: Readonly<Record<string, Pick<HqProjectPeople, "owner" | "owned">>>;
   /** The signed-in Zerops user's id; null when nobody is. */
   readonly viewerUserId: string | null;
 }): UsageEnvironmentIdentities {
-  const projectNames = groupNamesByProject(input.candidates);
   const identities = new Map<EnvironmentId, UsageEnvironmentIdentity>();
   for (const candidate of input.candidates) {
     const environmentId = rowEnvironment(candidate, input.registeredOrigins);
@@ -78,8 +56,15 @@ export function usageEnvironmentIdentities(input: {
       continue;
     identities.set(environmentId, {
       mateName: projectNameInApp(candidate.project),
-      projectName: projectNames.get(candidate.project.id) ?? null,
-      owner: usageOwner(input.owners[candidate.project.id], input.viewerUserId),
+      projectId: candidate.project.hq?.appId ?? null,
+      ownerState:
+        input.owners[candidate.project.id]?.owned === false
+          ? "unassigned"
+          : input.owners[candidate.project.id]?.owner != null
+            ? "known"
+            : "unknown",
+      projectName: candidate.project.hq?.appName?.trim() || null,
+      owner: usageOwner(input.owners[candidate.project.id]?.owner, input.viewerUserId),
     });
   }
   return identities;
@@ -121,4 +106,29 @@ export function usageOwnersStatus(input: {
   }
   if (input.people !== "ready" || input.listing !== "known") return "resolving";
   return "resolved";
+}
+
+/** An old organization's answers cannot establish the newly selected scope. */
+export function usageBaselineStatus(input: {
+  readonly orgId: string | null;
+  readonly navigationOrgId: string | null;
+  readonly navigation: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "updateRequired">;
+  readonly placement: { readonly complete: boolean; readonly unavailableReason?: string };
+  readonly listing: Shown<unknown>["state"];
+}): UsageOwnersStatus {
+  if (input.orgId === null) return "unavailable";
+  if (input.orgId !== input.navigationOrgId) return "resolving";
+  if (
+    input.placement.unavailableReason !== undefined ||
+    input.navigation.refusal !== null ||
+    (input.navigation.capped && (input.navigation.read !== "read" || !input.placement.complete)) ||
+    input.navigation.updateRequired ||
+    input.listing === "failed" ||
+    input.listing === "withheld" ||
+    input.listing === "gone"
+  )
+    return "unavailable";
+  return input.navigation.read === "read" && input.placement.complete && input.listing === "known"
+    ? "resolved"
+    : "resolving";
 }

@@ -11,11 +11,13 @@ function presentString(value: unknown): string | undefined {
 
 export function validateUsageSearch(raw: Record<string, unknown>): UsageScope {
   const person = presentString(raw.person);
-  const project = presentString(raw.project);
+  const project = presentString(raw.app);
+  const legacyProject = project === undefined ? presentString(raw.project) : undefined;
   const mate = presentString(raw.mate);
   return {
     ...(person === undefined ? {} : { person }),
     ...(project === undefined ? {} : { project }),
+    ...(legacyProject === undefined ? {} : { legacyProject }),
     ...(mate === undefined ? {} : { mate: EnvironmentId.make(mate) }),
   };
 }

@@ -27,6 +27,7 @@ import { serverEnvironment } from "./server";
 export interface EnvironmentUsageStatus {
   readonly environmentId: EnvironmentId;
   readonly label: string;
+  readonly isStale?: boolean;
   readonly isPending: boolean;
   readonly error: string | null;
   readonly summary: UsageSummary | null;
@@ -60,12 +61,27 @@ export interface UsageByWindowSources {
 export function createUsageByWindowAtomFamily(sources: UsageByWindowSources) {
   return Atom.family((windowKey: string) =>
     Atom.make((get): readonly EnvironmentUsageStatus[] => {
-      const input = JSON.parse(windowKey) as UsageSummaryInput;
+      const { input, permitted } = JSON.parse(windowKey) as {
+        input: UsageSummaryInput;
+        permitted?: readonly EnvironmentId[];
+      };
+      const previous = Option.getOrNull(get.self<readonly EnvironmentUsageStatus[]>()) ?? [];
       const presentations = get(sources.presentationsAtom);
 
       const statuses: EnvironmentUsageStatus[] = [];
       for (const [environmentId, presentation] of presentations) {
-        if (presentation.connection.phase !== "connected") continue;
+        if (permitted !== undefined && !permitted.includes(environmentId)) continue;
+        if (presentation.connection.phase !== "connected") {
+          const retained = previous.find((status) => status.environmentId === environmentId);
+          if (
+            retained?.summary !== null &&
+            retained?.summary !== undefined &&
+            presentation.connection.phase !== "error"
+          ) {
+            statuses.push({ ...retained, isPending: false, isStale: true });
+          }
+          continue;
+        }
         const result = get(sources.usageSummary({ environmentId, input }));
         statuses.push({
           environmentId,
@@ -109,18 +125,23 @@ export interface UsageView {
 export function useUsage(
   input: UsageSummaryInput,
   include?: (environmentId: EnvironmentId) => boolean,
+  permitted?: ReadonlySet<EnvironmentId>,
 ): UsageView {
   const windowKey = useMemo(
     () =>
       JSON.stringify({
-        sinceDay: input.sinceDay,
-        untilDay: input.untilDay,
-        timeZone: input.timeZone,
-        resolution: input.resolution,
-        sinceTime: input.sinceTime,
-        untilTime: input.untilTime,
+        permitted: permitted === undefined ? undefined : [...permitted].toSorted(),
+        input: {
+          sinceDay: input.sinceDay,
+          untilDay: input.untilDay,
+          timeZone: input.timeZone,
+          resolution: input.resolution,
+          sinceTime: input.sinceTime,
+          untilTime: input.untilTime,
+        },
       }),
     [
+      permitted,
       input.sinceDay,
       input.untilDay,
       input.timeZone,
@@ -136,7 +157,7 @@ export function useUsage(
   // queries within their stale window and change nothing. Refresh each
   // environment's query so the button always rescans.
   const refresh = useCallback(() => {
-    const input = JSON.parse(windowKey) as UsageSummaryInput;
+    const { input } = JSON.parse(windowKey) as { input: UsageSummaryInput };
     for (const environment of environments) {
       appAtomRegistry.refresh(
         serverEnvironment.usageSummary({ environmentId: environment.environmentId, input }),

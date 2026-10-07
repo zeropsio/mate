@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, UsageProviderKind } from "@t3tools/contracts";
+import {
+  USAGE_CONTRACT_VERSION,
+  type EnvironmentId,
+  type UsageProviderKind,
+} from "@t3tools/contracts";
 import { CheckIcon, InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
@@ -56,6 +60,7 @@ import {
   type UsageScope,
 } from "./usageDimensions";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
+import { usagePageState } from "./usagePage.logic";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
@@ -92,7 +97,7 @@ function isUsageWindowDays(value: number): value is UsagePagePreferences["window
 type UsageBreakdown = UsageDimension | "model" | "time";
 /** Who-dimensions in the order the Breakdown toggle offers them. */
 const DIMENSION_OPTIONS = [
-  { value: "person", label: "Person" },
+  { value: "person", label: "Owner" },
   { value: "project", label: "Project" },
   { value: "mate", label: "Mate" },
 ] as const satisfies readonly { value: UsageDimension; label: string }[];
@@ -121,7 +126,11 @@ function scopeOwner(
 }
 
 function withoutScope(scope: UsageScope, dimension: UsageDimension): UsageScope {
-  return { ...scope, [dimension]: undefined };
+  return {
+    ...scope,
+    [dimension]: undefined,
+    ...(dimension === "project" ? { legacyProject: undefined } : {}),
+  };
 }
 
 export function UsagePage({
@@ -145,7 +154,7 @@ export function UsagePage({
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
-  const { identities, owners, listed } = useUsageEnvironmentIdentities();
+  const { identities, owners, listed, baseline, projects } = useUsageEnvironmentIdentities();
   const { person: scopePerson, project: scopeProject, mate: scopeMate } = scope;
   const include = useMemo(() => {
     const current = { person: scopePerson, project: scopeProject, mate: scopeMate };
@@ -153,9 +162,11 @@ export function UsagePage({
       ? undefined
       : (environmentId: EnvironmentId) => usageScopeIncludes(current, identities, environmentId);
   }, [identities, scopeMate, scopePerson, scopeProject]);
+  const permitted = useMemo(() => new Set(identities.keys()), [identities]);
   const { merged, overall, environments, isPending, isPartial, refresh } = useUsage(
     window,
     include,
+    permitted,
   );
   const connected = useMemo(
     () => new Set(environments.map((environment) => environment.environmentId)),
@@ -207,9 +218,9 @@ export function UsagePage({
       ? breakdownChoice
       : (breakdownOptions[0]?.value ?? "model");
   const whoSummary = [
-    dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} Mates` : "",
+    dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} contributing Mates` : "",
     dimensions.visible.person
-      ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null).length)} people`
+      ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null).length)} owners`
       : "",
   ].join("");
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
@@ -217,18 +228,64 @@ export function UsagePage({
     reportFailure: false,
   });
 
-  // Hold the content until every environment is terminal. Rendering merged
-  // totals while devices are still answering makes every number on the page
-  // jump as each one lands.
-  // A person scope matches nobody until the owners are known; rendering it
-  // earlier shows $0 and then jumps.
-  // A Mate still connecting has not answered yet either.
-  const settling =
-    isPending ||
-    isPartial ||
-    mates.some((mate) => mate.state === "connecting") ||
-    (scopePerson !== undefined && owners === "resolving");
-  const ownersUnknown = scopePerson !== undefined && owners === "unavailable";
+  const scopedEnvironments = environments.filter(
+    (environment) => include === undefined || include(environment.environmentId),
+  );
+  const usable = scopedEnvironments.filter(
+    (environment) =>
+      environment.summary !== null &&
+      environment.summary.contractVersion === USAGE_CONTRACT_VERSION &&
+      !(
+        environment.summary.sources.length > 0 &&
+        environment.summary.sources.every((source) => source.status === "failed")
+      ),
+  );
+  const answered = usable.length;
+  const scopedMates = mates.filter((mate) => {
+    if (isUsageScopeEmpty(scope)) return true;
+    const environmentId = mate.environmentId;
+    // Unread membership cannot establish a scoped zero.
+    return (
+      environmentId === undefined ||
+      !identities.has(environmentId) ||
+      usageScopeIncludes(scope, identities, environmentId)
+    );
+  });
+  const state = usagePageState({
+    baseline,
+    owners,
+    scope,
+    projects,
+    listed,
+    scopeKnown:
+      (scopeProject === undefined || projects.has(scopeProject)) &&
+      (scopePerson === undefined || scopeOwner(identities, scopePerson) !== null) &&
+      (scopeMate === undefined || identities.has(scopeMate)),
+    answered,
+    records: merged.records,
+    pending:
+      scopedEnvironments.filter(
+        (environment) => environment.summary === null && environment.error === null,
+      ).length + scopedMates.filter((mate) => mate.state === "connecting").length,
+    unavailable:
+      scopedEnvironments.filter(
+        (environment) =>
+          environment.error !== null ||
+          (environment.summary !== null && !usable.includes(environment)),
+      ).length +
+      scopedMates.filter((mate) => mate.state === "missing").length +
+      usable.filter((environment) =>
+        environment.summary?.sources.some(
+          (source) =>
+            source.status === "partial" ||
+            source.status === "failed" ||
+            source.malformedRecords > 0,
+        ),
+      ).length,
+  });
+  const settling = state.kind === "reading" || (state.kind === "partial" && merged.records === 0);
+  const noTotals = state.kind === "unavailable" || state.kind === "invalid";
+  const sessionsLabel = `${formatCount(merged.sessions)} ${merged.sessions === 1 ? "session" : "sessions"}`;
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -278,7 +335,11 @@ export function UsagePage({
     if (showingLimits) {
       const refreshes: Promise<unknown>[] = [];
       for (const [environmentId, presentation] of presentations) {
-        if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
+        if (
+          permitted.has(environmentId) &&
+          presentation.connection.phase === "connected" &&
+          presentation.serverConfig !== null
+        ) {
           refreshes.push(refreshProviders({ environmentId, input: {} }));
         }
       }
@@ -318,6 +379,7 @@ export function UsagePage({
             <UsageScopeChips
               scope={scope}
               identities={identities}
+              projects={projects}
               dimensions={overallDimensions}
               labels={labels}
               onScopeChange={onScopeChange}
@@ -330,6 +392,7 @@ export function UsagePage({
           <UsageScopeFilters
             scope={scope}
             identities={identities}
+            projects={projects}
             dimensions={overallDimensions}
             onScopeChange={onScopeChange}
           />
@@ -448,46 +511,85 @@ export function UsagePage({
                 Not connected, so not counted: {missingMates.map((mate) => mate.name).join(", ")}.
               </p>
             ) : null}
+            <p className="text-xs text-muted-foreground">
+              {showingLimits
+                ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
+                : "Agent API-equivalent usage estimate from transcript snapshots; not subscription payments or Zerops resource charges. Attribution uses the current Mate owner."}
+            </p>
             {!showingLimits ? (
               <div className="flex justify-end">
                 <UsagePriceOverrides usage={environments} />
               </div>
             ) : null}
+            {!showingLimits ? (
+              <UsageCoverageNotice
+                environments={scopedEnvironments}
+                nameOf={nameOf}
+                duplicateSources={merged.duplicateSources}
+                staleEnvironments={merged.staleEnvironments}
+              />
+            ) : null}
             {showingLimits ? (
-              <UsageLimitsSection now={limitsNow} identities={identities} listed={listed} />
+              baseline === "unavailable" ? (
+                <p className="text-sm text-muted-foreground">
+                  Usage coverage could not be read. Restore HQ access or retry the unavailable
+                  source.
+                </p>
+              ) : (
+                <UsageLimitsSection
+                  now={limitsNow}
+                  identities={identities}
+                  environmentIds={permitted}
+                  unavailableNames={missingMates.map((mate) => mate.name)}
+                  listed={listed && baseline === "resolved"}
+                />
+              )
             ) : settling ? (
               <>
                 {(isPending || isPartial) && environments.length > 1 ? (
                   <UsageDeviceStrip environments={environments} nameOf={nameOf} />
                 ) : null}
+                <p role="status" className="text-sm text-muted-foreground">
+                  {state.message ??
+                    "No activity has been confirmed yet; Usage coverage is incomplete."}
+                </p>
                 <UsageSkeleton />
               </>
-            ) : ownersUnknown ? (
-              <p className="text-sm text-muted-foreground">
-                Can't tell whose Mates these are right now.
-              </p>
+            ) : noTotals ? (
+              <p className="text-sm text-muted-foreground">{state.message}</p>
             ) : (
               <>
-                <UsageCoverageNotice
-                  environments={environments}
-                  nameOf={nameOf}
-                  duplicateSources={merged.duplicateSources}
-                  staleEnvironments={merged.staleEnvironments}
-                />
+                {state.kind === "partial" ? (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Partial snapshot: {answered} of{" "}
+                    {Math.max(scopedMates.length, scopedEnvironments.length)} scoped Mates answered;{" "}
+                    {state.kind === "partial" && !listed
+                      ? "discovery is incomplete"
+                      : "some sources are pending or unavailable"}
+                    .
+                  </p>
+                ) : null}
+                {scopedEnvironments.some((environment) => environment.isStale) ? (
+                  <p className="text-xs text-muted-foreground">
+                    Retained snapshot from disconnected Mates; refresh after reconnecting.
+                  </p>
+                ) : null}
 
                 <section className="grid gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
                   <div className="flex min-w-0 flex-col gap-5">
                     <div className="flex flex-col gap-1">
                       <span className="text-4xl font-semibold text-foreground tabular-nums">
                         {metric === "cost"
-                          ? formatUsd(merged.costUsd)
+                          ? merged.costQuality.unpricedShare === 1
+                            ? "Unpriced"
+                            : formatUsd(merged.costUsd)
                           : formatTokens(merged.totalTokens)}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatCount(merged.sessions)} sessions
+                        {sessionsLabel}
                         {metric === "cost" && (
                           <>
-                            {" · API estimate"}
+                            {" · API-equivalent estimate"}
                             {merged.costQuality.unpricedShare > 0 && (
                               <>
                                 {" "}
@@ -500,7 +602,7 @@ export function UsagePage({
                                     <InfoIcon className="size-3" aria-hidden />
                                   </PopoverTrigger>
                                   <PopoverPopup side="top" tooltipStyle>
-                                    API estimate excludes{" "}
+                                    API-equivalent estimate excludes{" "}
                                     {formatPercent(merged.costQuality.unpricedShare)} unpriced
                                     records.
                                   </PopoverPopup>
@@ -592,7 +694,7 @@ export function UsagePage({
                     />
                     <Metric label="Output" value={formatTokens(merged.outputTokens)} />
                     <Metric
-                      label="Cache savings"
+                      label="Estimated cache savings"
                       value={formatUsd(merged.costQuality.cacheSavingsUsd)}
                     />
                   </div>
@@ -646,7 +748,9 @@ export function UsagePage({
                         {breakdownModels.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                              No activity in this window.
+                              {state.kind === "partial"
+                                ? "No activity in the answered sources yet."
+                                : "No activity in this window."}
                             </td>
                           </tr>
                         ) : (
@@ -711,7 +815,9 @@ export function UsagePage({
                               colSpan={activeProviders.length + 3}
                               className="py-6 text-center text-muted-foreground"
                             >
-                              No activity in this window.
+                              {state.kind === "partial"
+                                ? "No activity in the answered sources yet."
+                                : "No activity in this window."}
                             </td>
                           </tr>
                         ) : (
@@ -777,10 +883,7 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
 }
 
 /**
- * Says plainly when the totals are incomplete: an environment that failed, or
- * one whose transcripts another environment already reported. Environments
- * that are still answering never reach this notice; the page shows the
- * loading skeleton until every one is terminal.
+ * Labels sampled read times and incomplete scan, pricing and environment coverage.
  */
 function UsageCoverageNotice({
   environments,
@@ -793,19 +896,46 @@ function UsageCoverageNotice({
   readonly duplicateSources: readonly string[];
   readonly staleEnvironments: readonly string[];
 }) {
+  const degraded = environments.filter(
+    (environment) =>
+      environment.summary !== null &&
+      (environment.summary.sources.some(
+        (source) =>
+          source.status === "partial" || source.status === "failed" || source.malformedRecords > 0,
+      ) ||
+        environment.summary.pricing.status !== "fresh"),
+  );
   const failed = environments.filter((environment) => environment.error !== null);
   const stale = environments.filter((environment) =>
     staleEnvironments.includes(environment.environmentId),
   );
-  if (failed.length === 0 && stale.length === 0 && duplicateSources.length === 0) {
+  if (
+    environments.every((environment) => environment.summary === null) &&
+    failed.length === 0 &&
+    stale.length === 0 &&
+    duplicateSources.length === 0
+  ) {
     return null;
   }
 
   return (
     <div className="flex flex-col gap-1 border border-border px-3 py-2 text-xs text-muted-foreground">
+      {degraded.map((environment) => (
+        <span key={`scan:${environment.environmentId}`}>
+          {nameOf(environment)}: transcript scan or pricing coverage is incomplete (pricing{" "}
+          {environment.summary?.pricing.status}).
+        </span>
+      ))}
       {failed.map((environment) => (
         <span key={environment.environmentId}>{nameOf(environment)} could not report usage.</span>
       ))}
+      {environments
+        .filter((environment) => environment.summary !== null)
+        .map((environment) => (
+          <span key={`read:${environment.environmentId}`}>
+            {nameOf(environment)} snapshot read at {environment.summary?.readAt}.
+          </span>
+        ))}
       {stale.map((environment) => (
         <span key={environment.environmentId}>
           {nameOf(environment)} runs an older server version and is excluded from totals.
@@ -883,12 +1013,14 @@ function UsageDeviceStrip({
 function UsageScopeChips({
   scope,
   identities,
+  projects,
   dimensions,
   labels,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
   readonly identities: UsageEnvironmentIdentities;
+  readonly projects: ReadonlyMap<string, string>;
   readonly dimensions: UsageDimensions;
   readonly labels: ReadonlyMap<EnvironmentId, string>;
   readonly onScopeChange: (scope: UsageScope) => void;
@@ -899,8 +1031,16 @@ function UsageScopeChips({
     const owner = scopeOwner(identities, scope.person);
     chips.push({ dimension: "person", label: owner?.name ?? scope.person, owner });
   }
-  if (scope.project !== undefined) {
-    chips.push({ dimension: "project", label: scope.project, owner: null });
+  if (scope.project !== undefined || scope.legacyProject !== undefined) {
+    chips.push({
+      dimension: "project",
+      label:
+        scope.legacyProject ??
+        projects.get(scope.project ?? "") ??
+        scope.project ??
+        "Unknown project",
+      owner: null,
+    });
   }
   if (scope.mate !== undefined) {
     const mate = dimensions.mates.find((row) => row.environmentId === scope.mate);
@@ -934,35 +1074,37 @@ function UsageScopeChips({
 }
 
 /**
- * Person and Project pickers, offered only when the window has two of them to
- * choose between. A scope with no activity in the window stays among the
- * options, so the picker names what the page is filtered to.
+ * Owners are current attribution; project choices come from HQ identity rather than activity.
  */
 function UsageScopeFilters({
   scope,
   identities,
+  projects,
   dimensions,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
   readonly identities: UsageEnvironmentIdentities;
+  readonly projects: ReadonlyMap<string, string>;
   readonly dimensions: UsageDimensions;
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
   const people = dimensions.people.flatMap((person) =>
     person.owner === null ? [] : [{ value: person.owner.id, label: person.owner.name }],
   );
-  const projects = dimensions.projects.flatMap((project) =>
-    project.projectName === null
-      ? []
-      : [{ value: project.projectName, label: project.projectName }],
-  );
+  const projectOptions = [...projects].map(([id, name]) => ({
+    value: id,
+    label:
+      [...projects.values()].filter((other) => other === name).length > 1
+        ? `${name} (${id})`
+        : name,
+  }));
   const filters = [
     ...(dimensions.visible.person
-      ? [{ dimension: "person" as const, all: "All people", options: people }]
+      ? [{ dimension: "person" as const, all: "All owners", options: people }]
       : []),
-    ...(dimensions.visible.project
-      ? [{ dimension: "project" as const, all: "All projects", options: projects }]
+    ...(projects.size > 1 || scope.project !== undefined || scope.legacyProject !== undefined
+      ? [{ dimension: "project" as const, all: "All projects", options: projectOptions }]
       : []),
   ];
   return filters.map((filter) => {
@@ -977,7 +1119,7 @@ function UsageScopeFilters({
               label:
                 filter.dimension === "person"
                   ? (scopeOwner(identities, value)?.name ?? value)
-                  : value,
+                  : (projects.get(value) ?? value),
             },
           ];
     return (
@@ -988,7 +1130,11 @@ function UsageScopeFilters({
           onScopeChange(
             next === ALL || next === null
               ? withoutScope(scope, filter.dimension)
-              : { ...scope, [filter.dimension]: next },
+              : {
+                  ...scope,
+                  ...(filter.dimension === "project" ? { legacyProject: undefined } : {}),
+                  [filter.dimension]: next,
+                },
           );
         }}
       >
