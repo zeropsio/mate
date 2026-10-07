@@ -99,6 +99,10 @@ export interface SessionOpenedValue {
   readonly model: string | null;
   readonly nativeRef: string | null;
   readonly capabilities: SessionCapabilities;
+  /** The model the open asked for (its payload's), when the handler says. */
+  readonly requestedModel?: string | null;
+  /** The instance the open asked for. */
+  readonly instanceId?: string | null;
 }
 
 const ENGINE: Principal = { kind: "engine" };
@@ -332,9 +336,9 @@ const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
 };
 
 /**
- * Sends an admitted run on a fitting session, or asks for one. A session fits by the model the
- * engine asked for when it opened it, never by the driver's own spelling of it; a session just
- * opened for this run fits. One that does not fit is closed first (a model switch rotates it).
+ * Sends an admitted run on a fitting session, or asks for one. A session fits by what the engine
+ * asked for when it opened it — the model, the instance and the driver — never by the driver's own
+ * spelling of the model; a session just opened for this run fits. One that does not fit is closed first (a model switch rotates it).
  * A run whose workspace capture has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
@@ -345,7 +349,16 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   );
   if (opening) return;
   const session = b.state.session;
-  const fits = b.state.model === null || session?.requestedModel === b.state.model || justOpened;
+  const agent = b.state.agent;
+  // A session fits by what the engine asked for when it opened it: the model, and the agent's
+  // instance and driver (a session opened before the engine named its instance fits any).
+  const fits =
+    justOpened ||
+    (session !== null &&
+      session.requestedModel === b.state.model &&
+      (agent === null ||
+        session.instanceId === null ||
+        (session.instanceId === agent.instanceId && session.driver === agent.driver)));
   if (session !== null && !fits) return closeSession(b, "model");
   if (session !== null) {
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
@@ -988,7 +1001,9 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     _tag: "SessionOpened",
     sessionId: opened.sessionId,
     driver: opened.driver,
-    requestedModel: b.state.model,
+    // What the open asked for, never what the conversation says now: a switch meanwhile rotates.
+    requestedModel: opened.requestedModel !== undefined ? opened.requestedModel : b.state.model,
+    ...(opened.instanceId === undefined ? {} : { instanceId: opened.instanceId }),
     model: opened.model,
     nativeRef: opened.nativeRef,
     capabilities: opened.capabilities,

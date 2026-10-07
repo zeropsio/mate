@@ -730,6 +730,8 @@ export const SessionOpened = event("SessionOpened", {
   nativeRef: Schema.NullOr(Schema.String),
   capabilities: SessionCapabilities,
   rotatedFrom: Schema.NullOr(SessionId),
+  /** The provider instance the engine opened it on: a session fits only its own instance. */
+  instanceId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 /** The engine asked the session to close; nothing goes into it until it has. */
 export const SessionClosing = event("SessionClosing", {

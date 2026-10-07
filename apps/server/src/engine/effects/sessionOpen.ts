@@ -126,6 +126,8 @@ export const makeSessionOpen = Effect.gen(function* () {
           // The thread's binding holds the latest cursor; a later open of this thread resumes it.
           nativeRef: host.thread,
           capabilities: { steer: DRIVER_CAPABILITIES[driver].steer === "native" },
+          requestedModel: payload.model,
+          instanceId: payload.instanceId,
         };
         const outcome: EffectOutcome = { kind: "ok", value };
         // Committed before the gate opens: the session's boundaries never meet an actor that has

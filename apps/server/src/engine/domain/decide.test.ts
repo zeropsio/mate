@@ -1361,6 +1361,51 @@ describe("decide: the conversation holds the agent it belongs to", () => {
     ]);
     expect(state.agent).toEqual({ ...agent, model: "sonnet" });
   });
+  const openedAs = (
+    run: number,
+    asked: { readonly instanceId: string; readonly model: string | null },
+  ) =>
+    settled(r(run), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s1",
+        driver: "claudeAgent",
+        model: asked.model,
+        nativeRef: "native-1",
+        capabilities: { steer: false },
+        requestedModel: asked.model,
+        instanceId: asked.instanceId,
+      },
+    });
+  it("a model switched while the session opens rotates it before the next message", () => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      send("go"),
+      prepared(1),
+      { _tag: "SwitchModel", model: "sonnet" },
+      openedAs(1, { instanceId: "claude-ana", model: "opus" }),
+      ended(1),
+      send("next"),
+      prepared(2),
+    ]);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+  });
+  it.each([
+    ["another instance of its driver", { ...agent, instanceId: "claude-bo" }],
+    ["no model of its own", { ...agent, model: null }],
+  ] as const)("a conversation given %s rotates its session before the next message", (_, next) => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      send("go"),
+      prepared(1),
+      openedAs(1, { instanceId: "claude-ana", model: "opus" }),
+      ended(1),
+      { _tag: "AssignAgent", agent: next },
+      send("next"),
+      prepared(2),
+    ]);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+  });
   it("giving a conversation the agent it already has records nothing", () => {
     const scene = play([
       { _tag: "AssignAgent", agent },

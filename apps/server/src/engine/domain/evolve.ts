@@ -372,6 +372,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           id: event.sessionId,
           driver: event.driver,
           requestedModel: event.requestedModel,
+          instanceId: event.instanceId ?? null,
           model: event.model,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
@@ -388,7 +389,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         rotatingFrom: event.reason === "model" ? event.sessionId : state.rotatingFrom,
       };
     case "AgentAssigned":
-      return { ...state, agent: event.agent, model: event.agent.model ?? state.model };
+      // The agent's own model, none included: null runs its driver's default.
+      return { ...state, agent: event.agent, model: event.agent.model };
     case "ModelSwitched":
       return {
         ...state,

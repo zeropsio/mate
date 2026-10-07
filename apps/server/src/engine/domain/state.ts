@@ -30,7 +30,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -121,6 +121,8 @@ export interface SessionRecord {
   readonly driver: string;
   /** The model the engine asked for when it opened: what fit compares. */
   readonly requestedModel: string | null;
+  /** The provider instance it was opened on; null for one opened before the engine said. */
+  readonly instanceId: string | null;
   /** The model the driver reports, in its own spelling. */
   readonly model: string | null;
   readonly nativeRef: string | null;
