@@ -123,6 +123,7 @@ export const serveMateLink = (
                   capture: AGENT_USAGE_CAPTURE_PROTOCOL,
                   report: AGENT_USAGE_REPORT_PROTOCOL,
                   mateId: sender.mateId,
+                  orgId: sender.orgId,
                 },
               }),
         });

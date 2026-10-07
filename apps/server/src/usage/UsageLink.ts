@@ -24,7 +24,6 @@ import { ServerConfig } from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { codexHomeLayout, providerInstanceEnvironment } from "../spi/driverHomes.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
 import { makeUsageLedger, unknownCoverage, type UsageBinding } from "./UsageLedger.ts";
 import {
   captureSource,
@@ -46,9 +45,6 @@ export interface UsageLink {
     send: (frame: MateLinkUp) => Effect.Effect<void>,
   ) => Effect.Effect<UsageLane, never, Scope.Scope>;
 }
-const orgBody = Schema.Struct({ clientId: Schema.String });
-const decodeOrg = Schema.decodeUnknownOption(orgBody);
-const validateOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
 
@@ -66,7 +62,6 @@ export const makeUsageLink = Effect.fnUntraced(function* (
   const ledger = yield* makeUsageLedger;
   const config = yield* ServerConfig;
   const settings = yield* ServerSettingsService;
-  const orgRead = yield* ZeropsOrgRead;
   const path = yield* Path.Path;
   const host = yield* HostProcessEnvironment;
   let binding: UsageBinding | undefined;
@@ -164,20 +159,12 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         : Effect.void,
     ),
   );
+  // A home bound in this project resumes capture before HQ answers; HQ refuses another org's origin.
   const retained = yield* ledger.origins;
-  if (retained.length && config.zerops) {
-    const read = yield* orgRead.project(config.zerops);
-    const body =
-      read.kind === "answered" && read.status === 200 ? decodeOrg(read.body) : Option.none();
+  if (retained.length && config.zerops && retained[0]!.projectId === config.zerops.projectId) {
     const origin = retained[0]!;
-    if (
-      Option.isSome(body) &&
-      origin.orgId === body.value.clientId &&
-      origin.projectId === config.zerops.projectId
-    ) {
-      binding = { orgId: origin.orgId, projectId: origin.projectId, mateId: origin.mateId };
-      Queue.offerUnsafe(dirty, undefined);
-    }
+    binding = { orgId: origin.orgId, projectId: origin.projectId, mateId: origin.mateId };
+    Queue.offerUnsafe(dirty, undefined);
   }
   let active: ReturnType<typeof makeUsageReplication> | undefined;
   return {
@@ -233,11 +220,11 @@ export const makeUsageLink = Effect.fnUntraced(function* (
                 replication.stop();
                 return;
               }
-              const read = yield* orgRead.project(config.zerops);
-              if (read.kind !== "answered" || read.status !== 200) return;
-              const body = yield* validateOrg(read.body);
+              // HQ names the org; an older HQ that does not is waited out, never guessed from Zerops.
+              const orgId = message.usage.orgId;
+              if (orgId === undefined) return;
               const nextBinding = {
-                orgId: body.clientId,
+                orgId,
                 projectId: config.zerops.projectId,
                 mateId: message.usage.mateId,
               };

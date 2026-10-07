@@ -1,8 +1,9 @@
 # HQ recorded agent usage
 
 Capture protocol 1 and report protocol 1 are independent additive capabilities. HQ advertises
-capture and the HQ-issued Mate registration lifetime (`usage.mateId`) on the existing link's
-`state` frame, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
+capture, the HQ-issued Mate registration lifetime (`usage.mateId`) and its org (`usage.orgId`) on
+the existing link's `state` frame, re-sent on every new link; a link whose lane cannot open closes
+with 1013 so the next one retries, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
 An answered older declaration without the field means unsupported; an unanswered declaration
 means unknown. Clients must negotiate before sending the `agentUsage` scope. Old overview,
 attention and opened-Mate Limits remain independent. Mobile reporting is deferred.

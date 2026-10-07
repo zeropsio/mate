@@ -7,11 +7,11 @@ wait for HQ ingestion.
 
 ## Identity and capture
 
-HQ's capture capability supplies the registration lifetime (`mateId`). The Mate proves its org
-through the existing own-key project reader and freezes org/project/lifetime in the source registry.
-A home copied into another project or registration cannot export its inherited facts. An existing
-bound home resumes capture on startup independently of HQ availability after proving its project
-and org; a new home needs its first registration proof. Cross-org transfer has no automatic rebind.
+HQ's capture capability supplies the registration lifetime (`mateId`) and the org (`orgId`); the
+Mate never reads Zerops for either and captures nothing while an older HQ leaves the org out. It
+freezes org/project/lifetime in the source registry. A home copied into another project or
+registration cannot export its inherited facts. An existing bound home resumes capture on startup
+in its own project, independently of HQ availability.
 
 Each provider's container history is one origin, including multiple configured homes. Claude
 native response identity deduplicates repeated blocks and inherited/copied transcripts; a later comparable

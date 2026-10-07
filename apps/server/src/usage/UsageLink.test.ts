@@ -14,7 +14,6 @@ import * as Stream from "effect/Stream";
 import { ServerConfig } from "../config.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageLink, type UsageLinkOptions, type UsageRuntimeEvent } from "./UsageLink.ts";
 import { watchDirectory, type WatchDirectory } from "./usageCapture.ts";
@@ -40,7 +39,7 @@ const response = (id: string, amount: number) =>
 const state = {
   type: "state",
   mate: { projectId: "project" },
-  usage: { capture: AGENT_USAGE_CAPTURE_PROTOCOL, report: 1, mateId: "mate" },
+  usage: { capture: AGENT_USAGE_CAPTURE_PROTOCOL, report: 1, mateId: "mate", orgId: "org" },
 } as unknown as Extract<MateLinkDown, { type: "state" }>;
 
 const temporary = Effect.acquireRelease(
@@ -74,7 +73,12 @@ const eventually = <A, E>(read: Effect.Effect<A, E>, ok: (value: A) => boolean) 
   });
 
 /** A Mate whose HQ link negotiated capture, its Claude home under `root`, nothing from V1. */
-const mate = (options: UsageLinkOptions & { readonly projects?: boolean } = {}) =>
+const mate = (
+  options: UsageLinkOptions & {
+    readonly projects?: boolean;
+    readonly offer?: Extract<MateLinkDown, { type: "state" }>;
+  } = {},
+) =>
   Effect.gen(function* () {
     const root = yield* temporary;
     const claudeHome = NodePath.join(root, "claude");
@@ -95,11 +99,6 @@ const mate = (options: UsageLinkOptions & { readonly projects?: boolean } = {}) 
         Layer.succeed(ServerConfig, {
           zerops: { projectId: "project", apiBaseUrl: "http://zerops.invalid" },
         } as unknown as ServerConfig["Service"]),
-        Layer.succeed(ZeropsOrgRead, {
-          project: () =>
-            Effect.succeed({ kind: "answered", status: 200, body: { clientId: "org" } }),
-          members: () => Effect.succeed({ kind: "no-key" }),
-        }),
         NodeServices.layer,
       ),
     );
@@ -108,7 +107,7 @@ const mate = (options: UsageLinkOptions & { readonly projects?: boolean } = {}) 
       Effect.provide(context),
     );
     const lane = yield* link.open(() => Effect.void);
-    yield* lane.state(state);
+    yield* lane.state(options.offer ?? state);
     const reader = yield* makeUsageLedger.pipe(
       Effect.provide(yield* Layer.build(Sqlite.layer({ filename: database }))),
     );
@@ -122,6 +121,8 @@ const mate = (options: UsageLinkOptions & { readonly projects?: boolean } = {}) 
       write,
       emit: (type: UsageRuntimeEvent["type"]) => Queue.offer(runtime, { type }),
       total: recorded(reader),
+      origins: reader.origins,
+      offer: lane.state,
     };
   });
 
@@ -211,6 +212,25 @@ it.live("a watcher that keeps erroring is retried with growing delays, never in 
       // 40 + 80 + 160 ms of backoff: four attaches in the window; a tight loop makes hundreds.
       assert.isAtLeast(attempts, 2);
       assert.isAtMost(attempts, 6);
+    }),
+  ),
+);
+
+it.live("capture waits for HQ to name the org and never asks Zerops for it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { watch } = silentWatch();
+      const { orgId: _, ...older } = state.usage!;
+      const subject = yield* mate({ watch, offer: { ...state, usage: older } });
+      yield* subject.emit("session.started");
+      yield* Effect.sleep("200 millis");
+      assert.lengthOf(yield* subject.origins, 0);
+      yield* subject.offer(state);
+      yield* eventually(subject.origins, (origins) => origins.length > 0);
+      yield* subject.write("session.jsonl", response("one", 120));
+      yield* subject.emit("turn.completed");
+      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
+      assert.isTrue((yield* subject.origins).every((origin) => origin.orgId === "org"));
     }),
   ),
 );

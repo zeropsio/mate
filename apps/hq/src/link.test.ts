@@ -2,10 +2,12 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MATE_LINK_FRAME_MAX, linkFrameBytes } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
@@ -193,6 +195,62 @@ describe("serveMateLink: who ended a link, and with what code", () => {
         notify: Effect.void,
       },
     });
+
+  it.live("a link offers capture with the org HQ holds the Mate in", () =>
+    Effect.gen(function* () {
+      const written: string[] = [];
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Effect.never, upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (frame: unknown) =>
+            Effect.sync(() => {
+              written.push(String(frame));
+            }),
+          writeAll: () => Effect.void,
+        }),
+      });
+      yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
+      const state = yield* Effect.suspend(() => {
+        const found = written.map((frame) => JSON.parse(frame)).find((f) => f.type === "state");
+        return found === undefined ? Effect.fail("no state") : Effect.succeed(found);
+      }).pipe(Effect.retry(Schedule.spaced(Duration.millis(10))), Effect.timeout("5 seconds"));
+      assert.deepStrictEqual(state.usage, {
+        capture: 1,
+        report: 1,
+        mateId: "M",
+        orgId: "ORG",
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          services,
+          Layer.succeed(
+            Structure,
+            Structure.of({
+              mateState: () => Effect.succeed(Option.some({ projectId: "P_MATE" })),
+              mateChanges: Stream.make("P_MATE"),
+            } as unknown as Structure["Service"]),
+          ),
+          Layer.succeed(
+            Changes,
+            Changes.of({
+              changes: Stream.never,
+              mateChanges: () => Effect.succeed({}),
+            } as unknown as Changes["Service"]),
+          ),
+          usageLane(
+            Effect.succeed({
+              projectId: "P_MATE",
+              credential: "cred",
+              channel: "C",
+              mateId: "M",
+              orgId: "ORG",
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
 
   it.live("a link whose capture lane could not open is closed, so the next link retries it", () =>
     Effect.gen(function* () {

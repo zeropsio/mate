@@ -38,6 +38,8 @@ export interface UsageSender {
   readonly credential: string;
   readonly channel: string;
   readonly mateId: string;
+  /** The org HQ holds the Mate in, offered on its `state` so the Mate need not ask Zerops. */
+  readonly orgId: string;
 }
 export interface UsageLedgerService {
   readonly open: (
@@ -462,20 +464,22 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   });
   return {
     open: (projectId: string, credential: string) =>
-      leader.write(
-        Effect.gen(function* () {
-          yield* lockProject(sql, projectId);
-          const rows =
-            yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
-          if (rows.length !== 1) return yield* fail("credential_revoked");
-          const [mate] = yield* sql<{
-            readonly id: string;
-          }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
-          if (mate === undefined) return yield* fail("mate_gone");
-          const channel = NodeCrypto.randomUUID();
-          yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
-          return { projectId, credential, channel, mateId: mate.id };
-        }),
+      Effect.flatMap(readOrg, (orgId) =>
+        leader.write(
+          Effect.gen(function* () {
+            yield* lockProject(sql, projectId);
+            const rows =
+              yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
+            if (rows.length !== 1) return yield* fail("credential_revoked");
+            const [mate] = yield* sql<{
+              readonly id: string;
+            }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
+            if (mate === undefined) return yield* fail("mate_gone");
+            const channel = NodeCrypto.randomUUID();
+            yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
+            return { projectId, credential, channel, mateId: mate.id, orgId };
+          }),
+        ),
       ),
     receive,
     changes: Stream.fromPubSub(changed),
