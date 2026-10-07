@@ -117,7 +117,7 @@ const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as ServerConfig from "./config.ts";
 import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
-import { HTTP_ROUTER_CONFIG, makeRoutesLayer } from "./server.ts";
+import { HTTP_ROUTER_CONFIG, serveRoutes } from "./server.ts";
 import {
   isThreadDetailEvent,
   resolveAvailableEditorsForConfig,
@@ -890,7 +890,7 @@ const buildAppUnderTest = (options?: {
         ),
       ),
     );
-    const servedRoutesLayer = HttpRouter.serve(makeRoutesLayer, {
+    const servedRoutesLayer = serveRoutes({
       disableListenLog: true,
       disableLogger: true,
       routerConfig: HTTP_ROUTER_CONFIG,
