@@ -53,14 +53,15 @@ import {
 } from "~/components/zerops/ZeropsMateComingPage";
 import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
-import { RESTART_LINES } from "~/zerops/mateNoticeVoice";
+import type { Spoken } from "~/components/zerops/MateLinkLine";
+import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {
   arrivalHeaderFace,
   type ArrivalService,
   type ArrivalStepInput,
 } from "~/zerops/mateArrival";
-import { askAgainLabel, type MateVoice } from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { MateComing } from "~/zerops/mateComing";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
@@ -199,7 +200,7 @@ interface HarnessState {
   readonly phase: MateStandUpPhase | null;
   readonly coming?: "coming" | "coming-new" | "not-created" | "reaching";
   /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
-  readonly voice?: MateVoice;
+  readonly voice?: Spoken;
   /** Its container restarting: the stage speaks for it and its face plays the restart. */
   readonly restarting?: boolean;
   readonly logins?: Logins;
@@ -250,7 +251,15 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: { ...WREN, connected: false },
     phase: null,
     coming: "reaching",
-    voice: { surface: "stage", text: RESTART_LINES[1], actions: [], processes: false },
+    voice: mateNoticeVoice({
+      reachability: {
+        kind: "container",
+        container: { level: "restarting", by: "platform", overdue: false },
+      },
+      conversationShown: false,
+      nowMs: 0,
+      mateName: WREN.name,
+    }) as Spoken,
     restarting: true,
   },
   {
@@ -530,11 +539,16 @@ const PROCESSES: ReadonlyArray<ArrivalService> = [
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
   if (state.coming === "reaching") {
-    const voice = state.voice?.surface === "stage" ? state.voice : SILENT;
+    const voice: Spoken = state.voice?.surface === "stage" ? state.voice : SILENT;
     // A restart speaks on the stage as the Mate (`MateLinkStage`): its line is the headline.
     const restart =
       state.restarting === true
-        ? { face: "waking" as const, headline: voice.text ?? undefined, restarting: true }
+        ? {
+            face: "waking" as const,
+            headline: voice.headline ?? voice.text ?? undefined,
+            sentence: voice.secondary,
+            restarting: true,
+          }
         : {};
     return {
       ...restart,

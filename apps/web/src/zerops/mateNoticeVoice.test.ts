@@ -19,7 +19,7 @@ describe("the web Mate's link notice", () => {
       face: "waking",
       text:
         level === "restarting"
-          ? "Rosa is restarting. A little stretch, then back to work."
+          ? "Rosa is restarting. Rosa is trying the classic off-and-on trick."
           : "Rosa is updating. The conversation will open once the update finishes.",
     });
   });
@@ -50,7 +50,7 @@ describe("the web Mate's link notice", () => {
   });
   it("an unread conversation has a visible opening state immediately", () => {
     expect(say(null)).toMatchObject({
-      text: "Rosa is opening the conversation. Waiting for the conversation to be read.",
+      text: "Rosa is opening the conversation. Picking up where you left off.",
       face: "idle",
     });
   });

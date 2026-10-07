@@ -1,5 +1,7 @@
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import { recoveryNotice } from "./mateRecovery.logic";
+import { restartLine } from "./restartLine";
+
 import {
   reachabilityPhrase,
   type MateVoice,
@@ -16,18 +18,6 @@ export type WebMateVoice =
       /** Its container is restarting: its face plays the restart for as long as it lasts. */
       readonly restarting?: true;
     });
-
-/**
- * What a Mate says while it restarts: one line per restart, picked once (`restartLineFor`) and
- * kept until it is back.
- */
-export const RESTART_LINES = [
-  "A little stretch, then back to work.",
-  "Splashing some cold water on its face.",
-  "Turning itself off and on again, like the professionals do.",
-  "Shaking off the cobwebs.",
-  "Back before your coffee cools.",
-] as const;
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
@@ -99,11 +89,7 @@ export function mateNoticeVoice(
     if (!("overdue" in notice && notice.overdue)) {
       return notice.level === "restarting"
         ? {
-            ...say(
-              `${name} is restarting.`,
-              RESTART_LINES[(input.restartLine ?? 0) % RESTART_LINES.length]!,
-              "waking",
-            ),
+            ...say(`${name} is restarting.`, restartLine(name, input.restartLine ?? 0), "waking"),
             restarting: true,
           }
         : say(
@@ -122,7 +108,7 @@ export function mateNoticeVoice(
       ? { surface: "none" }
       : say(
           `${name} is opening the conversation.`,
-          "Waiting for the conversation to be read.",
+          "Picking up where you left off.",
           "idle",
           [],
           false,

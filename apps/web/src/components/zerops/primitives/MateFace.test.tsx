@@ -232,7 +232,7 @@ describe("MateFace", () => {
       watch(true);
       let renderer: ReturnType<typeof create> | undefined;
       act(() => {
-        renderer = create(<MateFace greets state="working" tint="sky" />);
+        renderer = create(<MateFace greets="detail" state="working" tint="sky" />);
       });
       act(() => renderer!.update(<MateFace cues={[failed]} greets state="done" tint="sky" />));
       expect(momentOf(renderer!)).toBeUndefined();
@@ -249,10 +249,22 @@ describe("MateFace", () => {
       watch();
       let renderer: ReturnType<typeof create> | undefined;
       act(() => {
-        renderer = create(<MateFace greets state={previous} tint="rose" />);
+        renderer = create(<MateFace greets="detail" state={previous} tint="rose" />);
       });
-      act(() => renderer!.update(<MateFace greets state={next} tint="rose" />));
+      act(() => renderer!.update(<MateFace greets="detail" state={next} tint="rose" />));
       expect(momentOf(renderer!)).toBe(moment);
+      act(() => renderer!.unmount());
+    });
+
+    it("keeps a menu face still when its Mate falls asleep", () => {
+      watch();
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(<MateFace greets state="idle" tint="rose" />);
+      });
+      act(() => renderer!.update(<MateFace greets state="sleep" tint="rose" />));
+      expect(momentOf(renderer!)).toBeUndefined();
+      expect(faceOf(renderer!).props["data-mate-face-state"]).toBe("sleep");
       act(() => renderer!.unmount());
     });
 
@@ -260,7 +272,7 @@ describe("MateFace", () => {
       watch();
       let renderer: ReturnType<typeof create> | undefined;
       act(() => {
-        renderer = create(<MateFace greets state="working" tint="rose" />);
+        renderer = create(<MateFace greets="detail" state="working" tint="rose" />);
       });
       act(() => renderer!.update(<MateFace cues={[failed]} greets state="needs" tint="rose" />));
       expect(momentOf(renderer!)).toBe("doubletake");
@@ -273,10 +285,10 @@ describe("MateFace", () => {
       watch();
       let renderer: ReturnType<typeof create> | undefined;
       act(() => {
-        renderer = create(<MateFace greets state="working" tint="rose" />);
+        renderer = create(<MateFace greets="detail" state="working" tint="rose" />);
       });
-      act(() => renderer!.update(<MateFace greets state="done" tint="rose" />));
-      act(() => renderer!.update(<MateFace greets state="sleep" tint="rose" />));
+      act(() => renderer!.update(<MateFace greets="detail" state="done" tint="rose" />));
+      act(() => renderer!.update(<MateFace greets="detail" state="sleep" tint="rose" />));
       expect(momentOf(renderer!)).toBe("dance");
       finish(renderer!, "dance");
       expect(momentOf(renderer!)).toBe("nod");
@@ -287,11 +299,11 @@ describe("MateFace", () => {
       watch();
       let renderer: ReturnType<typeof create> | undefined;
       act(() => {
-        renderer = create(<MateFace greets state="idle" tint="sand" />);
+        renderer = create(<MateFace greets="detail" state="idle" tint="sand" />);
       });
       const zzz = () => renderer!.root.findAll((node) => node.props["data-mate-face-zzz"] === "");
       expect(zzz()).toHaveLength(0);
-      act(() => renderer!.update(<MateFace greets state="sleep" tint="sand" />));
+      act(() => renderer!.update(<MateFace greets="detail" state="sleep" tint="sand" />));
       expect(zzz()).toHaveLength(1);
       finish(renderer!, "nod");
       expect(zzz()).toHaveLength(0);

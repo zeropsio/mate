@@ -1610,7 +1610,7 @@ function OpeningLine({
         mate={mate}
         face="idle"
         headline={`${name || "The Mate"} is opening the conversation.`}
-        secondary="Waiting for the conversation to be read."
+        secondary="Picking up where you left off."
         actions={null}
       />
     </div>

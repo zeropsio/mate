@@ -77,7 +77,7 @@ type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
    * reused from one Mate to the next (a header) or first drawn asleep
    * until its Mate connects would greet arrivals that never happened.
    */
-  readonly greets?: boolean;
+  readonly greets?: boolean | "detail";
   /**
    * Whether the state is the Mate's as read, or a pose standing in until it
    * is: a change from a stand-in is no arrival to greet, and plays nothing. Known by default.
@@ -93,6 +93,8 @@ type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
    * and boots again, calmly, in a slow loop. With reduced motion, the still state.
    */
   readonly restarting?: boolean | undefined;
+  /** One completed restart loop, for the words alongside it. Never a readiness signal. */
+  readonly onRestartCycle?: (() => void) | undefined;
   /**
    * It works on something it was asked to stand up: it paces back and forth, as far either way
    * as its caller's `--mate-face-pace` says. With reduced motion, the still state.
@@ -170,7 +172,7 @@ function useGaze(face: React.RefObject<HTMLSpanElement | null>, tracks: boolean)
 function useMoment(input: {
   readonly state: MateMarkState;
   readonly known: boolean;
-  readonly greets: boolean;
+  readonly greets: boolean | "detail";
   readonly cues: ReadonlyArray<MateFaceCue>;
 }): { readonly player: MateMomentPlayer; readonly end: (moment: MateMoment) => void } {
   const { state, known, greets, cues } = input;
@@ -186,10 +188,12 @@ function useMoment(input: {
     // Reduced motion turned on mid-moment: its animation is gone, and so is the moment.
     setSeen({ ...seen, player: { ...seen.player, playing: undefined, next: undefined } });
   } else if (seen.state !== state || seen.known !== known || seen.cueKeys !== cueKeys) {
-    const arrival =
+    const change =
       greets && seen.known && known && seen.state !== state
         ? mateFaceArrival(seen.state, state)
         : undefined;
+    // Nodding off belongs in a detail view; a list keeps its sleeping face still.
+    const arrival = change === "nod" && greets !== "detail" ? undefined : change;
     const handed =
       arrival === undefined
         ? cues
@@ -240,6 +244,7 @@ function MateFace({
   known = true,
   cues = NO_CUES,
   restarting = false,
+  onRestartCycle,
   paces = false,
   tracks = false,
   style,
@@ -298,6 +303,10 @@ function MateFace({
       data-mate-face-tint={tint}
       data-zerops-primitive="mate-face"
       onAnimationEnd={ended}
+      onAnimationIteration={(event) => {
+        if (restarting && !prefersStill() && event.animationName === "mate-face-restart-shake")
+          onRestartCycle?.();
+      }}
       ref={root}
       style={faceStyle}
     >

@@ -67,7 +67,7 @@ export function arrivedCue(
 
 /** A stand-up finishing under the face that watched it: a satisfied little dance. */
 export function standUpDoneCue(previous: string, next: string): MateFaceCue | undefined {
-  return previous === "standing-up" && next !== "standing-up"
+  return previous === "standing-up" && next === "question"
     ? { moment: "dance", key: "stood-up" }
     : undefined;
 }

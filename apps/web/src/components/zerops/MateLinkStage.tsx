@@ -65,7 +65,7 @@ function MateLinkWords({ voice }: { readonly voice: Spoken }) {
         face: voice.face,
         severity: voice.severity,
         headline: voice.headline ?? voice.text ?? "The Mate is opening the conversation.",
-        sentence: voice.secondary ?? "Waiting for the conversation to be read.",
+        sentence: voice.secondary ?? "Picking up where you left off.",
         below: null,
       }}
       mate={null}

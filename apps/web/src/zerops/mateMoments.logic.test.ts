@@ -114,6 +114,9 @@ describe("which events a Mate's faces greet", () => {
   it.each([
     ["standing-up", "question", "dance"],
     ["standing-up", "standing-up", undefined],
+    ["standing-up", "coming-failed", undefined],
+    ["standing-up", "unreachable", undefined],
+    ["standing-up", "sign-in", undefined],
     ["sign-in", "question", undefined],
   ])("greets a stand-up %s → %s with %s", (previous, next, moment) => {
     expect(standUpDoneCue(previous, next)?.moment).toBe(moment);
