@@ -715,6 +715,8 @@ export type AccountUpdatedPayload = typeof AccountUpdatedPayload.Type;
 const AccountRateLimitsUpdatedPayload = Schema.Struct({
   limits: ProviderUsageLimitsUpdate,
   blocked: Schema.optional(ProviderUsageLimitBlock),
+  /** A running turn is refused, or the provider confirms all its rejected windows recovered. */
+  refused: Schema.optional(Schema.Boolean),
 });
 export type AccountRateLimitsUpdatedPayload = typeof AccountRateLimitsUpdatedPayload.Type;
 

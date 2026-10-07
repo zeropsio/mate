@@ -1,3 +1,5 @@
+import { useProjectsPageRows } from "~/zerops/projectsPageRows";
+import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { appReleaseRows, creationHandoff, type AppReleaseRows } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
@@ -20,7 +22,6 @@ import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import { type OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -31,7 +32,6 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { environmentsWithSnapshotAtom } from "~/state/shell";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -68,7 +68,6 @@ import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
-import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -119,15 +118,12 @@ import {
   changeKindTag,
   changeState,
   assignCandidateMateTints,
-  buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
   deployWord,
-  rankZeropsCandidateForListing,
   readZeropsToolKind,
   defaultAgentForRole,
   hasMate,
-  groupFlow,
   pullRequestLineWith,
   releaseContentsCommits,
   type FlowPullRequest,
@@ -167,14 +163,17 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
-import { useProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
+import {
+  useCompactProjectFlows,
+  useProjectFlows,
+  useStopDeploymentsShown,
+} from "~/zerops/projectFlows";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
@@ -191,23 +190,12 @@ import {
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
   changeRowVerb,
-  changesUnknownOf,
-  flowStepsAwaiting,
-  groupFlowInputOf,
-  groupMemberFactsOf,
-  lastMergedCode,
   parseProjectsSearch,
-  rowMateActivitiesOf,
   withoutOfficialHq,
   shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
-import {
-  applicationContents,
-  deleteOffered,
-  emptyApplications,
-  groupIsEmpty,
-} from "./projects/emptyApps.logic";
+import { applicationContents, deleteOffered, groupIsEmpty } from "./projects/emptyApps.logic";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -905,21 +893,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
-  const groupTree = buildZeropsGroupTree(candidates, {
-    rank: rankZeropsCandidateForListing,
-    ...projectOrder,
-    births: placedPressesIn(
+  const groupTree = useProjectsInventory(
+    candidates,
+    projectOrder,
+    placedPressesIn(
       presses,
       activeOrganization?.id,
       placedNewProjects(made, activeOrganization?.id),
     ),
-    apps: emptyApplications(hqStructure, activeOrganization?.id),
-  });
+  );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());
   const updates = useMateUpdateStates();
-  const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
   const viewer =
@@ -1519,11 +1505,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
   // This gates another Mate; HQ's own offers decide stage and production.
   const addsOfferedFor = useCallback(
-    (group: ZeropsGroup) =>
-      groupAddsOffered(
-        groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ?? [],
-        candidateHealth,
-      ),
+    (group: ZeropsGroup) => {
+      const entry = groupTree.groups.find((entry) => entry.group.groupId === group.groupId);
+      return entry !== undefined && groupAddsOffered(entry.environments, candidateHealth);
+    },
     [candidateHealth, groupTree.groups],
   );
 
@@ -1544,8 +1529,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
   const registryState = useZeropsRegistry();
-  // What each application released and landed is its detail: held while the page draws it.
-  useHqAppDetailHold(registryState.registry.groups.map(({ groupId }) => groupId));
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
@@ -1568,12 +1551,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // Every group's flow — its declared environments and what they run, what
   // is waiting to land, what was released — read while the page is drawn.
   // What a release would put live is compared on the project's own page.
-  const projectFlow = useProjectFlows("every");
+  const projectFlow = useCompactProjectFlows("every");
   const verbs = useFlowVerbs();
   const deployments = useStopDeploymentsShown();
   // What HQ's rule shows this person of each project's changes: a project listed to them whose
   // changes it does not says so in their steps, never "None yet".
-  const changeOffersOf = useChangeOffers();
 
   /**
    * The face a Mate wears (`mateFaceOf`): the state of its conversation while a word of now says
@@ -1987,6 +1969,30 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       harden: true,
     });
   }, [accountHq, clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
+
+  // Every group's flow, from the one derivation the thread and the left menu
+  // read too (`groupFlow`): what each step holds and the one next step.
+  const groupLines = useMemo(
+    () =>
+      new Map(
+        groupTree.groups.map(({ group }) => [
+          group.groupId,
+          projectsGroupLine({
+            placeholder: groupNameUnread(group),
+            unfinished: finishing.unfinished.get(group.groupId),
+            finishing: finishing.finishing.get(group.groupId),
+            halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
+          }),
+        ]),
+      ),
+    [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade],
+  );
+  const flowGroups = useProjectsPageRows({
+    groups: groupTree.groups,
+    flows: projectFlow,
+    deployments,
+    lines: groupLines,
+  });
 
   // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
   if (status === "loading") return null;
@@ -2440,79 +2446,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     }
   };
 
-  // Every group's flow, from the one derivation the thread and the left menu
-  // read too (`groupFlow`): what each step holds and the one next step.
-  const flowGroups = groupTree.groups.map(
-    ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
-      const reads = groupDeploys.get(group.groupId);
-      const changesUnknown = changesUnknownOf({
-        offers: changeOffersOf(group.groupId),
-        changesFailure: reads?.changesFailure,
-      });
-      const awaiting = flowStepsAwaiting({
-        read: reads !== undefined,
-        changesKnown: reads?.changesKnown === true,
-        changesUnknown,
-        // Out and expected back: an HQ is open, whose stream tells its changes.
-        readOut: projectFlow.hqAddress !== undefined,
-      });
-      const conversationsRead = (item: ZeropsCandidatePresentation) =>
-        item.environmentId !== undefined && withConversations.has(item.environmentId);
-      const members = groupMemberFactsOf(
-        environments,
-        activityOf,
-        conversationsRead,
-        (projectId) => projectPeople[projectId]?.waitsOnViewer === true,
-      );
-      const isStop = (role: ZeropsEnvironmentRole | undefined) =>
-        role === "stage" || role === "prod";
-      const placeholder = groupNameUnread(group);
-      return {
-        group,
-        contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
-        flow: groupFlow(
-          groupFlowInputOf({
-            groupId: group.groupId,
-            members,
-            flow: reads,
-            deployments,
-            pending: group.pending,
-          }),
-        ),
-        activities: rowMateActivitiesOf(
-          environments.flatMap(({ item }, index) => {
-            const name = members[index]?.mate?.name;
-            return name === undefined ? [] : [{ item, name }];
-          }),
-          activityOf,
-        ),
-        awaiting: awaiting.steps,
-        changesAwaiting: awaiting.changes,
-        changesUnknown,
-        mates: new Map(
-          environments
-            .filter(({ item }) => hasMate(item))
-            .map(({ item }) => [item.project.id, item] as const),
-        ),
-        stops: new Map(
-          environments
-            .filter(({ role }) => isStop(role))
-            .map((entry) => [entry.item.project.id, entry] as const),
-        ),
-        others: environments.filter(({ item, role }) => !hasMate(item) && !isStop(role)),
-        lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
-        // Visible rather than a tooltip: a name HQ holds that could not be
-        // read is a read problem, said where the name would be.
-        line: projectsGroupLine({
-          placeholder,
-          unfinished: finishing.unfinished.get(group.groupId),
-          finishing: finishing.finishing.get(group.groupId),
-          halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
-        }),
-        placeholder,
-      };
-    },
-  );
   // Where each stage's first deploy stands, as its cell in the flow says it (`groupFlow`): the
   // expanded environment row says the same.
   const firstDeployOf = (projectId: string) =>

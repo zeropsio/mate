@@ -13,7 +13,7 @@ import { lifecycleReceipt } from "../families/hqLifecycle.ts";
  * the cursor is not committed: the scope is asked again whole.
  *
  * The adapter only translates and classifies: a scope HQ refuses is that scope's definitive
- * refusal; a socket the session no longer holds (`4401`) is the session to repair once; HQ
+ * refusal; a socket the session no longer holds (`4401`) retries with a fresh session; HQ
  * refusing the source outright (`4403`) is the link's refusal; any other ending is transient.
  * Retrying belongs to the supervisor and the stream machine.
  *
@@ -86,9 +86,15 @@ export function classifyHqClose(code: number): StreamFault {
   const message = `HQ's stream closed (${failure.code}).`;
   switch (failure.disposition) {
     case "refused":
-      return { outcome: "definitive-refusal", message };
+      return {
+        outcome: "definitive-refusal",
+        code: failure.code,
+        message: "Zerops refused HQ's access. Check HQ's access in Zerops, then try again.",
+      };
     case "session-ended":
-      return { outcome: "recoverable-session", message };
+      // The API already forgets this session. The next ticket enters its door; a close code
+      // proves only that this session ended, never that a newly authenticated read is denied.
+      return { outcome: "transient", message };
     case "transient":
       return { outcome: "transient", message };
   }

@@ -217,7 +217,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     expect(text(tree)).toContain("hq · Active");
     expect(text(tree)).toContain("db · Active");
     expect(text(tree)).not.toContain("core · Active");
-    expect(text(tree)).toContain("Updating");
+    expect(text(tree)).toContain("Healthy");
     expect(text(tree)).toContain(
       "HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.",
     );
@@ -231,7 +231,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     const tree = await mount();
     await press(tree);
     await act(async () => historyRead([BUILDING]));
-    expect(text(tree)).toContain("Updating");
+    expect(text(tree)).toContain("Healthy");
 
     await act(async () => {
       serving(CARRIED);
@@ -239,6 +239,26 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     expect(text(tree)).toContain("Healthy");
     expect(text(tree)).not.toContain("Updating");
     expect(held).toEqual(["hq1"]);
+  });
+
+  it("opening history cannot change the headline of a serving HQ during a service transition", async () => {
+    account(
+      SERVICES.map((service) =>
+        service.name === "hq" ? { ...service, status: "UPGRADING" } : service,
+      ),
+    );
+    const tree = await mount();
+    const headline = () =>
+      tree.root.findByProps({ "data-zerops-surface": "hq-card" }).props["data-hq-state"];
+    expect(headline()).toBe("transitioning");
+    expect(text(tree)).not.toContain("Needs attention");
+    await press(tree);
+    await act(async () => historyRead([BUILDING]));
+    expect(headline()).toBe("transitioning");
+    expect(text(tree)).toContain("hq · Upgrading");
+    await press(tree);
+    expect(headline()).toBe("transitioning");
+    expect(held).toEqual([]);
   });
 
   it("a services listing Zerops refused says so", async () => {

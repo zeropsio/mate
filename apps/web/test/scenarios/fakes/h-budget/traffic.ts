@@ -1,10 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- loopback-only transport instrumentation.
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
 import * as NodeEvents from "node:events";
 import { WebSocket, type RawData } from "ws";
-import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
+import { HqStreamRequest, HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
 import { deadline, serve } from "../../harness/http.ts";
 import { settled } from "./activity.ts";
 import type { Page } from "puppeteer-core";
+
+const decodeRequest = Schema.decodeUnknownOption(HqStreamRequest);
 
 const bytesOf = (data: RawData) =>
   Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
@@ -22,6 +26,7 @@ export async function observeTraffic(origin: string) {
   const stateEvents = new NodeEvents.EventEmitter();
   const links = new Map<WebSocket, WebSocket>();
   const requests = new Map<string, number>();
+  const appDetails = new Map<WebSocket, Set<string>>();
   const segments: {
     open: boolean;
     firstDataMs: number | null;
@@ -69,9 +74,23 @@ export async function observeTraffic(origin: string) {
         new URL(url.pathname + url.search, origin.replace(/^http/u, "ws")),
       );
       links.set(client, upstream);
+      appDetails.set(client, new Set());
       const queued: { bytes: Buffer; binary: boolean }[] = [];
       client.on("message", (data, binary) => {
         const bytes = bytesOf(data);
+        if (!binary) {
+          const decoded = decodeRequest(JSON.parse(bytes.toString()));
+          if (Option.isSome(decoded)) {
+            const message = decoded.value;
+            if (message.type === "subscribe")
+              for (const { scope } of message.scopes)
+                if (scope.kind === "app-detail") appDetails.get(client)!.add(scope.appId);
+            if (message.type === "unsubscribe")
+              for (const scope of message.scopes)
+                if (scope.kind === "app-detail") appDetails.get(client)!.delete(scope.appId);
+            events.emit("scope");
+          }
+        }
         if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes, { binary });
         else queued.push({ bytes, binary });
       });
@@ -96,17 +115,42 @@ export async function observeTraffic(origin: string) {
         if (client.readyState === WebSocket.OPEN)
           client.close(code === 1006 ? 1011 : code === 1005 ? 1000 : code, reason);
         links.delete(client);
+        appDetails.delete(client);
       });
       upstream.on("error", () => client.close(1011));
       client.on("close", () => {
         upstream.close();
         links.delete(client);
+        appDetails.delete(client);
       });
     },
   );
   return {
     ...server,
     segments,
+    appDetails: () => [...new Set([...appDetails.values()].flatMap((ids) => [...ids]))].sort(),
+    async appDetailsAre(ids: ReadonlyArray<string>) {
+      const expected = [...ids].sort().join("\n");
+      const ready = () =>
+        [...new Set([...appDetails.values()].flatMap((set) => [...set]))].sort().join("\n") ===
+        expected;
+      let check = () => {};
+      try {
+        await deadline(
+          new Promise<void>((resolve) => {
+            check = () => {
+              if (ready()) resolve();
+            };
+            events.on("scope", check);
+            check();
+          }),
+          `app detail scopes: ${expected || "none"}`,
+          15_000,
+        );
+      } finally {
+        events.off("scope", check);
+      }
+    },
     requests: () => ({
       http: [...requests.values()].reduce((total, count) => total + count, 0),
       sockets: segments.length,

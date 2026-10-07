@@ -14,7 +14,7 @@ import type { HqNavigationApp } from "@t3tools/shared/hqStream";
 import type { Release, ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import { joinProjectFlows } from "./projectFlowJoin";
+import { joinProjectFlows } from "./projectFlowJoin.ts";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },

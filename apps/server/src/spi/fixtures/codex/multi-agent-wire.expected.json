@@ -1,33 +1,63 @@
 [
   {
+    "type": "config.warning",
     "eventId": "evt-0",
     "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "configWarning",
+      "payload": {
+        "summary": "Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.",
+        "details": null
+      }
+    },
+    "payload": {
+      "summary": "Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime."
+    }
+  },
+  {
+    "eventId": "evt-1",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/started",
       "payload": {
         "thread": {
-          "id": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "id": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+          "environments": [
+            {
+              "environmentId": "local",
+              "cwd": "/tmp/mate-chat3",
+              "runtimeWorkspaceRoots": ["/tmp/mate-chat3"]
+            }
+          ],
           "extra": null,
-          "sessionId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "sessionId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
           "forkedFromId": null,
           "parentThreadId": null,
           "preview": "",
-          "projectId": null,
           "ephemeral": false,
-          "historyMode": "legacy",
+          "section": null,
+          "sectionEnteredAt": null,
+          "projectId": null,
+          "historyMode": "paginated",
           "modelProvider": "openai",
-          "createdAt": 1785898342,
-          "updatedAt": 1785898342,
-          "recencyAt": 1785898342,
+          "model": "gpt-6-luna",
+          "reasoningEffort": "low",
+          "createdAt": 1791412973,
+          "updatedAt": 1791412973,
+          "recencyAt": 1791412973,
           "status": {
             "type": "idle"
           },
-          "path": "/fixtures/codex/rollout.jsonl",
-          "cwd": "/workspace/repo",
-          "cliVersion": "0.145.0",
+          "path": "/home/zerops/.codex/sessions/2026/10/07/rollout-2026-10-07T22-42-53-01a11888-b06d-70d0-9a9a-1c60284d165a.jsonl",
+          "cwd": "/tmp/mate-chat3",
+          "cliVersion": "0.160.0",
+          "originator": "mate_spi_recorder",
           "source": "vscode",
           "canAcceptDirectInput": true,
           "threadSource": null,
@@ -35,26 +65,48 @@
           "agentRole": null,
           "gitInfo": null,
           "name": null,
+          "daybreakEnabled": null,
           "turns": []
         }
       }
     },
     "type": "thread.started",
     "payload": {
-      "providerThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5"
+      "providerThreadId": "01a11888-b06d-70d0-9a9a-1c60284d165a"
+    }
+  },
+  {
+    "type": "account.updated",
+    "eventId": "evt-2",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/updated",
+      "payload": {
+        "authMode": "chatgpt",
+        "planType": "prolite"
+      }
+    },
+    "payload": {
+      "account": {
+        "authMode": "chatgpt",
+        "planType": "prolite"
+      }
     }
   },
   {
     "type": "thread.state.changed",
-    "eventId": "evt-1",
+    "eventId": "evt-3",
     "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/status/changed",
       "payload": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "status": {
           "type": "active",
           "activeFlags": []
@@ -64,7 +116,7 @@
     "payload": {
       "state": "active",
       "detail": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "status": {
           "type": "active",
           "activeFlags": []
@@ -73,9 +125,9 @@
     }
   },
   {
-    "eventId": "evt-2",
+    "eventId": "evt-4",
     "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "providerRefs": {
@@ -85,14 +137,14 @@
       "source": "codex.app-server.notification",
       "method": "turn/started",
       "payload": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turn": {
           "id": "turn-0",
           "items": [],
           "itemsView": "notLoaded",
           "status": "inProgress",
           "error": null,
-          "startedAt": 1785898342,
+          "startedAt": 1791412974,
           "completedAt": null,
           "durationMs": null
         }
@@ -102,338 +154,9 @@
     "payload": {}
   },
   {
-    "type": "thread.state.changed",
-    "eventId": "evt-3",
-    "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/status/changed",
-      "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "status": {
-          "type": "idle"
-        }
-      }
-    },
-    "payload": {
-      "state": "idle",
-      "detail": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "status": {
-          "type": "idle"
-        }
-      }
-    }
-  },
-  {
-    "type": "thread.token-usage.updated",
-    "eventId": "evt-4",
-    "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-0",
-    "providerRefs": {
-      "providerTurnId": "turn-0"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/tokenUsage/updated",
-      "payload": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-        "turnId": "turn-0",
-        "tokenUsage": {
-          "total": {
-            "totalTokens": 18261,
-            "inputTokens": 18228,
-            "cachedInputTokens": 11008,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 33,
-            "reasoningOutputTokens": 0
-          },
-          "last": {
-            "totalTokens": 18261,
-            "inputTokens": 18228,
-            "cachedInputTokens": 11008,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 33,
-            "reasoningOutputTokens": 0
-          },
-          "modelContextWindow": 258400
-        }
-      }
-    },
-    "payload": {
-      "usage": {
-        "usedTokens": 18261,
-        "maxTokens": 258400,
-        "inputTokens": 18228,
-        "cachedInputTokens": 11008,
-        "outputTokens": 33,
-        "reasoningOutputTokens": 0,
-        "lastUsedTokens": 18261,
-        "lastInputTokens": 18228,
-        "lastCachedInputTokens": 11008,
-        "lastOutputTokens": 33,
-        "lastReasoningOutputTokens": 0,
-        "compactsAutomatically": true
-      }
-    }
-  },
-  {
-    "type": "thread.state.changed",
     "eventId": "evt-5",
     "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/status/changed",
-      "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "status": {
-          "type": "active",
-          "activeFlags": []
-        }
-      }
-    },
-    "payload": {
-      "state": "active",
-      "detail": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "status": {
-          "type": "active",
-          "activeFlags": []
-        }
-      }
-    }
-  },
-  {
-    "eventId": "evt-6",
-    "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-1",
-    "providerRefs": {
-      "providerTurnId": "turn-1"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "turn/started",
-      "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "turn": {
-          "id": "turn-1",
-          "items": [],
-          "itemsView": "notLoaded",
-          "status": "inProgress",
-          "error": null,
-          "startedAt": 1785898346,
-          "completedAt": null,
-          "durationMs": null
-        }
-      }
-    },
-    "type": "turn.started",
-    "payload": {}
-  },
-  {
-    "type": "thread.state.changed",
-    "eventId": "evt-7",
-    "provider": "codex",
-    "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/status/changed",
-      "payload": {
-        "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-        "status": {
-          "type": "idle"
-        }
-      }
-    },
-    "payload": {
-      "state": "idle",
-      "detail": {
-        "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-        "status": {
-          "type": "idle"
-        }
-      }
-    }
-  },
-  {
-    "type": "thread.state.changed",
-    "eventId": "evt-8",
-    "provider": "codex",
-    "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/status/changed",
-      "payload": {
-        "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-        "status": {
-          "type": "active",
-          "activeFlags": []
-        }
-      }
-    },
-    "payload": {
-      "state": "active",
-      "detail": {
-        "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-        "status": {
-          "type": "active",
-          "activeFlags": []
-        }
-      }
-    }
-  },
-  {
-    "eventId": "evt-9",
-    "provider": "codex",
-    "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-2",
-    "providerRefs": {
-      "providerTurnId": "turn-2"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "turn/started",
-      "payload": {
-        "threadId": "019fcfd6-2ef7-7932-9ff5-dea6ad6f4daf",
-        "turn": {
-          "id": "turn-2",
-          "items": [],
-          "itemsView": "notLoaded",
-          "status": "inProgress",
-          "error": null,
-          "startedAt": 1785898348,
-          "completedAt": null,
-          "durationMs": null
-        }
-      }
-    },
-    "type": "turn.started",
-    "payload": {}
-  },
-  {
-    "type": "thread.token-usage.updated",
-    "eventId": "evt-10",
-    "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-0",
-    "providerRefs": {
-      "providerTurnId": "turn-0"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/tokenUsage/updated",
-      "payload": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-        "turnId": "turn-0",
-        "tokenUsage": {
-          "total": {
-            "totalTokens": 36576,
-            "inputTokens": 36510,
-            "cachedInputTokens": 28160,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 66,
-            "reasoningOutputTokens": 0
-          },
-          "last": {
-            "totalTokens": 18315,
-            "inputTokens": 18282,
-            "cachedInputTokens": 17152,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 33,
-            "reasoningOutputTokens": 0
-          },
-          "modelContextWindow": 258400
-        }
-      }
-    },
-    "payload": {
-      "usage": {
-        "usedTokens": 18315,
-        "totalProcessedTokens": 36576,
-        "maxTokens": 258400,
-        "inputTokens": 18282,
-        "cachedInputTokens": 17152,
-        "outputTokens": 33,
-        "reasoningOutputTokens": 0,
-        "lastUsedTokens": 18315,
-        "lastInputTokens": 18282,
-        "lastCachedInputTokens": 17152,
-        "lastOutputTokens": 33,
-        "lastReasoningOutputTokens": 0,
-        "compactsAutomatically": true
-      }
-    }
-  },
-  {
-    "type": "thread.token-usage.updated",
-    "eventId": "evt-11",
-    "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-1",
-    "providerRefs": {
-      "providerTurnId": "turn-1"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "thread/tokenUsage/updated",
-      "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
-        "turnId": "turn-1",
-        "tokenUsage": {
-          "total": {
-            "totalTokens": 20756,
-            "inputTokens": 20713,
-            "cachedInputTokens": 5888,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 43,
-            "reasoningOutputTokens": 11
-          },
-          "last": {
-            "totalTokens": 20756,
-            "inputTokens": 20713,
-            "cachedInputTokens": 5888,
-            "cacheWriteInputTokens": 0,
-            "outputTokens": 43,
-            "reasoningOutputTokens": 11
-          },
-          "modelContextWindow": 258400
-        }
-      }
-    },
-    "payload": {
-      "usage": {
-        "usedTokens": 20756,
-        "maxTokens": 258400,
-        "inputTokens": 20713,
-        "cachedInputTokens": 5888,
-        "outputTokens": 43,
-        "reasoningOutputTokens": 11,
-        "lastUsedTokens": 20756,
-        "lastInputTokens": 20713,
-        "lastCachedInputTokens": 5888,
-        "lastOutputTokens": 43,
-        "lastReasoningOutputTokens": 11,
-        "compactsAutomatically": true
-      }
-    }
-  },
-  {
-    "eventId": "evt-12",
-    "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-0",
@@ -446,49 +169,50 @@
       "method": "item/started",
       "payload": {
         "item": {
-          "type": "collabAgentToolCall",
+          "type": "userMessage",
           "id": "item-0",
-          "tool": "wait",
-          "status": "inProgress",
-          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "receiverThreadIds": [],
-          "prompt": null,
-          "model": null,
-          "reasoningEffort": null,
-          "agentsStates": {}
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
         },
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turnId": "turn-0",
-        "startedAtMs": 1785898349931
+        "startedAtMs": 1791412975424
       }
     },
     "type": "item.started",
     "payload": {
-      "itemType": "collab_agent_tool_call",
+      "itemType": "user_message",
       "status": "inProgress",
+      "title": "User message",
       "data": {
         "item": {
-          "type": "collabAgentToolCall",
+          "type": "userMessage",
           "id": "item-0",
-          "tool": "wait",
-          "status": "inProgress",
-          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "receiverThreadIds": [],
-          "prompt": null,
-          "model": null,
-          "reasoningEffort": null,
-          "agentsStates": {}
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
         },
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turnId": "turn-0",
-        "startedAtMs": 1785898349931
+        "startedAtMs": 1791412975424
       }
     }
   },
   {
-    "eventId": "evt-13",
+    "eventId": "evt-6",
     "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-0",
@@ -501,50 +225,134 @@
       "method": "item/completed",
       "payload": {
         "item": {
-          "type": "collabAgentToolCall",
+          "type": "userMessage",
           "id": "item-0",
-          "tool": "wait",
-          "status": "completed",
-          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "receiverThreadIds": [],
-          "prompt": null,
-          "model": null,
-          "reasoningEffort": null,
-          "agentsStates": {}
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
         },
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turnId": "turn-0",
-        "completedAtMs": 1785898349931
+        "completedAtMs": 1791412975424
       }
     },
     "type": "item.completed",
     "payload": {
-      "itemType": "collab_agent_tool_call",
+      "itemType": "user_message",
       "status": "completed",
+      "title": "User message",
       "data": {
         "item": {
-          "type": "collabAgentToolCall",
+          "type": "userMessage",
           "id": "item-0",
-          "tool": "wait",
-          "status": "completed",
-          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "receiverThreadIds": [],
-          "prompt": null,
-          "model": null,
-          "reasoningEffort": null,
-          "agentsStates": {}
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
         },
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turnId": "turn-0",
-        "completedAtMs": 1785898349931
+        "completedAtMs": 1791412975424
       }
     }
   },
   {
-    "type": "thread.token-usage.updated",
-    "eventId": "evt-14",
+    "type": "thread.state.changed",
+    "eventId": "evt-7",
     "provider": "codex",
-    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/status/changed",
+      "payload": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "status": {
+          "type": "idle"
+        }
+      }
+    },
+    "payload": {
+      "state": "idle",
+      "detail": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "status": {
+          "type": "idle"
+        }
+      }
+    }
+  },
+  {
+    "type": "thread.state.changed",
+    "eventId": "evt-8",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/status/changed",
+      "payload": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "status": {
+          "type": "active",
+          "activeFlags": []
+        }
+      }
+    },
+    "payload": {
+      "state": "active",
+      "detail": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "status": {
+          "type": "active",
+          "activeFlags": []
+        }
+      }
+    }
+  },
+  {
+    "eventId": "evt-9",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-1",
+    "providerRefs": {
+      "providerTurnId": "turn-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "turn/started",
+      "payload": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turn": {
+          "id": "turn-1",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791412976,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    },
+    "type": "turn.started",
+    "payload": {}
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-10",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "providerRefs": {
@@ -554,23 +362,23 @@
       "source": "codex.app-server.notification",
       "method": "thread/tokenUsage/updated",
       "payload": {
-        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
         "turnId": "turn-0",
         "tokenUsage": {
           "total": {
-            "totalTokens": 54933,
-            "inputTokens": 54846,
-            "cachedInputTokens": 45312,
+            "totalTokens": 13600,
+            "inputTokens": 13565,
+            "cachedInputTokens": 11008,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 87,
+            "outputTokens": 35,
             "reasoningOutputTokens": 0
           },
           "last": {
-            "totalTokens": 18357,
-            "inputTokens": 18336,
-            "cachedInputTokens": 17152,
+            "totalTokens": 13600,
+            "inputTokens": 13565,
+            "cachedInputTokens": 11008,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 21,
+            "outputTokens": 35,
             "reasoningOutputTokens": 0
           },
           "modelContextWindow": 258400
@@ -579,19 +387,236 @@
     },
     "payload": {
       "usage": {
-        "usedTokens": 18357,
-        "totalProcessedTokens": 54933,
+        "usedTokens": 13600,
         "maxTokens": 258400,
-        "inputTokens": 18336,
-        "cachedInputTokens": 17152,
-        "outputTokens": 21,
+        "inputTokens": 13565,
+        "cachedInputTokens": 11008,
+        "outputTokens": 35,
         "reasoningOutputTokens": 0,
-        "lastUsedTokens": 18357,
-        "lastInputTokens": 18336,
-        "lastCachedInputTokens": 17152,
-        "lastOutputTokens": 21,
+        "lastUsedTokens": 13600,
+        "lastInputTokens": 13565,
+        "lastCachedInputTokens": 11008,
+        "lastOutputTokens": 35,
         "lastReasoningOutputTokens": 0,
         "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-11",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "eventId": "evt-12",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "commandExecution",
+          "id": "item-1",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/zsh -lc 'printf native-ok'",
+          "cwd": "/tmp/mate-chat3",
+          "processId": "47292",
+          "source": "unifiedExecStartup",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "printf native-ok"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412977640
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "inProgress",
+      "title": "Ran command",
+      "detail": "/usr/bin/zsh -lc 'printf native-ok'",
+      "data": {
+        "item": {
+          "type": "commandExecution",
+          "id": "item-1",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/zsh -lc 'printf native-ok'",
+          "cwd": "/tmp/mate-chat3",
+          "processId": "47292",
+          "source": "unifiedExecStartup",
+          "status": "inProgress",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "printf native-ok"
+            }
+          ],
+          "aggregatedOutput": null,
+          "exitCode": null,
+          "durationMs": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412977640
+      }
+    }
+  },
+  {
+    "eventId": "evt-13",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/commandExecution/outputDelta",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "itemId": "item-1",
+        "delta": "native-ok"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "command_output",
+      "delta": "native-ok"
+    }
+  },
+  {
+    "eventId": "evt-14",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "commandExecution",
+          "id": "item-1",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/zsh -lc 'printf native-ok'",
+          "cwd": "/tmp/mate-chat3",
+          "processId": "47292",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "printf native-ok"
+            }
+          ],
+          "aggregatedOutput": "native-ok",
+          "exitCode": 0,
+          "durationMs": 131
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412977774
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "command_execution",
+      "status": "completed",
+      "title": "Ran command",
+      "detail": "/usr/bin/zsh -lc 'printf native-ok'",
+      "data": {
+        "item": {
+          "type": "commandExecution",
+          "id": "item-1",
+          "pluginId": null,
+          "scriptPath": null,
+          "command": "/usr/bin/zsh -lc 'printf native-ok'",
+          "cwd": "/tmp/mate-chat3",
+          "processId": "47292",
+          "source": "unifiedExecStartup",
+          "status": "completed",
+          "commandActions": [
+            {
+              "type": "unknown",
+              "command": "printf native-ok"
+            }
+          ],
+          "aggregatedOutput": "native-ok",
+          "exitCode": 0,
+          "durationMs": 131
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412977774
       }
     }
   },
@@ -599,7 +624,260 @@
     "type": "thread.token-usage.updated",
     "eventId": "evt-15",
     "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 27260,
+            "inputTokens": 27187,
+            "cachedInputTokens": 24064,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 73,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 13660,
+            "inputTokens": 13622,
+            "cachedInputTokens": 13056,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 38,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 13660,
+        "totalProcessedTokens": 27260,
+        "maxTokens": 258400,
+        "inputTokens": 13622,
+        "cachedInputTokens": 13056,
+        "outputTokens": 38,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 13660,
+        "lastInputTokens": 13622,
+        "lastCachedInputTokens": 13056,
+        "lastOutputTokens": 38,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-16",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "eventId": "evt-17",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-1",
+    "itemId": "item-2",
+    "providerRefs": {
+      "providerTurnId": "turn-1",
+      "providerItemId": "item-2"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-2",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "startedAtMs": 1791412978576
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress",
+      "title": "Assistant message",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-2",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "startedAtMs": 1791412978576
+      }
+    }
+  },
+  {
+    "eventId": "evt-18",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-1",
+    "providerRefs": {
+      "providerTurnId": "turn-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "itemId": "item-2",
+        "delta": "helper"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "helper"
+    }
+  },
+  {
+    "eventId": "evt-19",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-1",
+    "providerRefs": {
+      "providerTurnId": "turn-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "itemId": "item-2",
+        "delta": "-ok"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "-ok"
+    }
+  },
+  {
+    "eventId": "evt-20",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-1",
+    "itemId": "item-2",
+    "providerRefs": {
+      "providerTurnId": "turn-1",
+      "providerItemId": "item-2"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-2",
+          "text": "helper-ok",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "completedAtMs": 1791412978598
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed",
+      "title": "Assistant message",
+      "detail": "helper-ok",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-2",
+          "text": "helper-ok",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
+        "turnId": "turn-1",
+        "completedAtMs": 1791412978598
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-21",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-1",
     "providerRefs": {
@@ -609,23 +887,23 @@
       "source": "codex.app-server.notification",
       "method": "thread/tokenUsage/updated",
       "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
         "turnId": "turn-1",
         "tokenUsage": {
           "total": {
-            "totalTokens": 41529,
-            "inputTokens": 41481,
-            "cachedInputTokens": 26112,
+            "totalTokens": 14832,
+            "inputTokens": 14826,
+            "cachedInputTokens": 11008,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 48,
-            "reasoningOutputTokens": 11
+            "outputTokens": 6,
+            "reasoningOutputTokens": 0
           },
           "last": {
-            "totalTokens": 20773,
-            "inputTokens": 20768,
-            "cachedInputTokens": 20224,
+            "totalTokens": 14832,
+            "inputTokens": 14826,
+            "cachedInputTokens": 11008,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 5,
+            "outputTokens": 6,
             "reasoningOutputTokens": 0
           },
           "modelContextWindow": 258400
@@ -634,33 +912,79 @@
     },
     "payload": {
       "usage": {
-        "usedTokens": 20773,
-        "totalProcessedTokens": 41529,
+        "usedTokens": 14832,
         "maxTokens": 258400,
-        "inputTokens": 20768,
-        "cachedInputTokens": 20224,
-        "outputTokens": 5,
+        "inputTokens": 14826,
+        "cachedInputTokens": 11008,
+        "outputTokens": 6,
         "reasoningOutputTokens": 0,
-        "lastUsedTokens": 20773,
-        "lastInputTokens": 20768,
-        "lastCachedInputTokens": 20224,
-        "lastOutputTokens": 5,
+        "lastUsedTokens": 14832,
+        "lastInputTokens": 14826,
+        "lastCachedInputTokens": 11008,
+        "lastOutputTokens": 6,
         "lastReasoningOutputTokens": 0,
         "compactsAutomatically": true
       }
     }
   },
   {
-    "type": "thread.state.changed",
-    "eventId": "evt-16",
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-22",
     "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "thread.state.changed",
+    "eventId": "evt-23",
+    "provider": "codex",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/status/changed",
       "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
         "status": {
           "type": "idle"
         }
@@ -669,7 +993,7 @@
     "payload": {
       "state": "idle",
       "detail": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
         "status": {
           "type": "idle"
         }
@@ -677,9 +1001,9 @@
     }
   },
   {
-    "eventId": "evt-17",
+    "eventId": "evt-24",
     "provider": "codex",
-    "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+    "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-1",
     "providerRefs": {
@@ -689,16 +1013,702 @@
       "source": "codex.app-server.notification",
       "method": "turn/completed",
       "payload": {
-        "threadId": "019fcfd6-2883-77e0-9013-4410ede70371",
+        "threadId": "01a11888-bb19-7ab0-85a7-27907772fcc0",
         "turn": {
           "id": "turn-1",
-          "items": [],
-          "itemsView": "notLoaded",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "item-2",
+              "text": "helper-ok",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
           "status": "completed",
           "error": null,
-          "startedAt": 1785898346,
-          "completedAt": 1785898350,
-          "durationMs": 3792
+          "startedAt": 1791412976,
+          "completedAt": 1791412978,
+          "durationMs": 2181
+        }
+      }
+    },
+    "type": "turn.completed",
+    "payload": {
+      "state": "completed"
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-25",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 40976,
+            "inputTokens": 40872,
+            "cachedInputTokens": 37120,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 104,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 13716,
+            "inputTokens": 13685,
+            "cachedInputTokens": 13056,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 31,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 13716,
+        "totalProcessedTokens": 40976,
+        "maxTokens": 258400,
+        "inputTokens": 13685,
+        "cachedInputTokens": 13056,
+        "outputTokens": 31,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 13716,
+        "lastInputTokens": 13685,
+        "lastCachedInputTokens": 13056,
+        "lastOutputTokens": 31,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-26",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "eventId": "evt-27",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-3",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-3"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "mcpToolCall",
+          "id": "item-3",
+          "server": "zerops",
+          "tool": "zerops_discover",
+          "status": "inProgress",
+          "arguments": {},
+          "appContext": null,
+          "mcpAppUi": null,
+          "pluginId": null,
+          "readOnlyHint": true,
+          "result": null,
+          "error": null,
+          "durationMs": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412979989
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "mcp_tool_call",
+      "status": "inProgress",
+      "title": "zerops · zerops_discover",
+      "data": {
+        "item": {
+          "type": "mcpToolCall",
+          "id": "item-3",
+          "server": "zerops",
+          "tool": "zerops_discover",
+          "status": "inProgress",
+          "arguments": {},
+          "appContext": null,
+          "mcpAppUi": null,
+          "pluginId": null,
+          "readOnlyHint": true,
+          "result": null,
+          "error": null,
+          "durationMs": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412979989
+      }
+    }
+  },
+  {
+    "eventId": "evt-28",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-3",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-3"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "mcpToolCall",
+          "id": "item-3",
+          "server": "zerops",
+          "tool": "zerops_discover",
+          "status": "completed",
+          "arguments": {},
+          "appContext": null,
+          "mcpAppUi": null,
+          "pluginId": null,
+          "readOnlyHint": true,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"project\":{\"id\":\"fixture-project\",\"name\":\"Fixture Mate\",\"status\":\"ACTIVE\"},\"services\":[{\"hostname\":\"appstage\",\"serviceId\":\"fixture-stage-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://stage.example.test\",\"domains\":[\"stage.example.test\"]}},{\"hostname\":\"appdev\",\"serviceId\":\"fixture-dev-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"mountPath\":\"/var/www/appdev\",\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://dev.example.test\",\"domains\":[\"dev.example.test\"]}},{\"hostname\":\"zcp\",\"serviceId\":\"fixture-zcp-service\",\"type\":\"zcp@1\",\"status\":\"ACTIVE\",\"adoptionState\":\"zcp-self\",\"isInfrastructure\":false,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://mate.example.test\",\"domains\":[\"mate.example.test\"]}}],\"warnings\":[\"Services with adoptionState=\\\"adoptable\\\" (they exist, but ZCP does not track them): appstage, appdev. Run `zerops_workflow action=\\\"start\\\" workflow=\\\"bootstrap\\\" route=\\\"adopt\\\"` before any service-scoped MUTATING or PROMOTING call — `zerops_deploy`, the `develop` / `build-integration` workflows, AND `launch-production` (promote-to-prod) all reject with ADOPT_REQUIRED until adoption completes. NOTE: appstage and appdev share the same runtime stack (nodejs@24) — a bare `scope=[...]` adopt can't tell a standard dev/stage pair from two independent dev containers and WILL reject; on the discover-complete call submit an explicit `plan=[...]` (one entry for a standard pair, two for independent devs), not `scope`. Read-only diagnostics work pre-adopt — for a reported URL/HTTP problem run `zerops_verify` FIRST (it carries the exact Recovery call), and `zerops_discover` / `zerops_events` / `zerops_logs` are all usable before adopting.\"]}"
+              }
+            ],
+            "structuredContent": null,
+            "_meta": null
+          },
+          "error": null,
+          "durationMs": 222
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412980212
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "mcp_tool_call",
+      "status": "completed",
+      "title": "zerops · zerops_discover",
+      "data": {
+        "item": {
+          "type": "mcpToolCall",
+          "id": "item-3",
+          "server": "zerops",
+          "tool": "zerops_discover",
+          "status": "completed",
+          "arguments": {},
+          "appContext": null,
+          "mcpAppUi": null,
+          "pluginId": null,
+          "readOnlyHint": true,
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "{\"project\":{\"id\":\"fixture-project\",\"name\":\"Fixture Mate\",\"status\":\"ACTIVE\"},\"services\":[{\"hostname\":\"appstage\",\"serviceId\":\"fixture-stage-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://stage.example.test\",\"domains\":[\"stage.example.test\"]}},{\"hostname\":\"appdev\",\"serviceId\":\"fixture-dev-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"mountPath\":\"/var/www/appdev\",\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://dev.example.test\",\"domains\":[\"dev.example.test\"]}},{\"hostname\":\"zcp\",\"serviceId\":\"fixture-zcp-service\",\"type\":\"zcp@1\",\"status\":\"ACTIVE\",\"adoptionState\":\"zcp-self\",\"isInfrastructure\":false,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://mate.example.test\",\"domains\":[\"mate.example.test\"]}}],\"warnings\":[\"Services with adoptionState=\\\"adoptable\\\" (they exist, but ZCP does not track them): appstage, appdev. Run `zerops_workflow action=\\\"start\\\" workflow=\\\"bootstrap\\\" route=\\\"adopt\\\"` before any service-scoped MUTATING or PROMOTING call — `zerops_deploy`, the `develop` / `build-integration` workflows, AND `launch-production` (promote-to-prod) all reject with ADOPT_REQUIRED until adoption completes. NOTE: appstage and appdev share the same runtime stack (nodejs@24) — a bare `scope=[...]` adopt can't tell a standard dev/stage pair from two independent dev containers and WILL reject; on the discover-complete call submit an explicit `plan=[...]` (one entry for a standard pair, two for independent devs), not `scope`. Read-only diagnostics work pre-adopt — for a reported URL/HTTP problem run `zerops_verify` FIRST (it carries the exact Recovery call), and `zerops_discover` / `zerops_events` / `zerops_logs` are all usable before adopting.\"]}"
+              }
+            ],
+            "structuredContent": null,
+            "_meta": null
+          },
+          "error": null,
+          "durationMs": 222
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412980212
+      }
+    },
+    "toolCall": {
+      "name": "zerops_discover",
+      "rawName": "zerops_discover",
+      "server": "zerops",
+      "arguments": {},
+      "result": {
+        "text": "{\"project\":{\"id\":\"fixture-project\",\"name\":\"Fixture Mate\",\"status\":\"ACTIVE\"},\"services\":[{\"hostname\":\"appstage\",\"serviceId\":\"fixture-stage-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://stage.example.test\",\"domains\":[\"stage.example.test\"]}},{\"hostname\":\"appdev\",\"serviceId\":\"fixture-dev-service\",\"type\":\"ubuntu/nodejs@24\",\"status\":\"ACTIVE\",\"adoptionState\":\"adoptable\",\"isInfrastructure\":false,\"deployed\":true,\"mountPath\":\"/var/www/appdev\",\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://dev.example.test\",\"domains\":[\"dev.example.test\"]}},{\"hostname\":\"zcp\",\"serviceId\":\"fixture-zcp-service\",\"type\":\"zcp@1\",\"status\":\"ACTIVE\",\"adoptionState\":\"zcp-self\",\"isInfrastructure\":false,\"subdomainEnabled\":true,\"publicAccess\":{\"intent\":\"domain\",\"subdomain\":\"on\",\"url\":\"https://mate.example.test\",\"domains\":[\"mate.example.test\"]}}],\"warnings\":[\"Services with adoptionState=\\\"adoptable\\\" (they exist, but ZCP does not track them): appstage, appdev. Run `zerops_workflow action=\\\"start\\\" workflow=\\\"bootstrap\\\" route=\\\"adopt\\\"` before any service-scoped MUTATING or PROMOTING call — `zerops_deploy`, the `develop` / `build-integration` workflows, AND `launch-production` (promote-to-prod) all reject with ADOPT_REQUIRED until adoption completes. NOTE: appstage and appdev share the same runtime stack (nodejs@24) — a bare `scope=[...]` adopt can't tell a standard dev/stage pair from two independent dev containers and WILL reject; on the discover-complete call submit an explicit `plan=[...]` (one entry for a standard pair, two for independent devs), not `scope`. Read-only diagnostics work pre-adopt — for a reported URL/HTTP problem run `zerops_verify` FIRST (it carries the exact Recovery call), and `zerops_discover` / `zerops_events` / `zerops_logs` are all usable before adopting.\"]}",
+        "failed": false
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-29",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 55045,
+            "inputTokens": 54912,
+            "cachedInputTokens": 50176,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 133,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 14069,
+            "inputTokens": 14040,
+            "cachedInputTokens": 13056,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 29,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 14069,
+        "totalProcessedTokens": 55045,
+        "maxTokens": 258400,
+        "inputTokens": 14040,
+        "cachedInputTokens": 13056,
+        "outputTokens": 29,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 14069,
+        "lastInputTokens": 14040,
+        "lastCachedInputTokens": 13056,
+        "lastOutputTokens": 29,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-30",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "eventId": "evt-31",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-4",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-4"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-4",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412980753
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress",
+      "title": "Assistant message",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-4",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412980753
+      }
+    }
+  },
+  {
+    "eventId": "evt-32",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "itemId": "item-4",
+        "delta": "trace"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "trace"
+    }
+  },
+  {
+    "eventId": "evt-33",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "itemId": "item-4",
+        "delta": "-ok"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "-ok"
+    }
+  },
+  {
+    "eventId": "evt-34",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-4",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-4"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-4",
+          "text": "trace-ok",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412980770
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed",
+      "title": "Assistant message",
+      "detail": "trace-ok",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-4",
+          "text": "trace-ok",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412980770
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-35",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 69795,
+            "inputTokens": 69656,
+            "cachedInputTokens": 63232,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 139,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 14750,
+            "inputTokens": 14744,
+            "cachedInputTokens": 13056,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 6,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 14750,
+        "totalProcessedTokens": 69795,
+        "maxTokens": 258400,
+        "inputTokens": 14744,
+        "cachedInputTokens": 13056,
+        "outputTokens": 6,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 14750,
+        "lastInputTokens": 14744,
+        "lastCachedInputTokens": 13056,
+        "lastOutputTokens": 6,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "account.rate-limits.updated",
+    "eventId": "evt-36",
+    "provider": "codex",
+    "threadId": "spi-replay-codex-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "account/rateLimits/updated",
+      "payload": {
+        "rateLimits": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": 1791989632
+          },
+          "secondary": null,
+          "credits": {
+            "hasCredits": false,
+            "unlimited": false,
+            "balance": "0"
+          },
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "prolite",
+          "rateLimitReachedType": null
+        }
+      }
+    },
+    "payload": {
+      "limits": {
+        "windows": [
+          {
+            "id": "primary",
+            "kind": "weekly",
+            "label": "Weekly",
+            "usedPercent": 66,
+            "windowDurationMins": 10080,
+            "resetsAt": "2026-10-14T14:53:52.000Z"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "thread.state.changed",
+    "eventId": "evt-37",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/status/changed",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "idle"
+        }
+      }
+    },
+    "payload": {
+      "state": "idle",
+      "detail": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "idle"
+        }
+      }
+    }
+  },
+  {
+    "eventId": "evt-38",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "turn/completed",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turn": {
+          "id": "turn-0",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "item-4",
+              "text": "trace-ok",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791412974,
+          "completedAt": 1791412980,
+          "durationMs": 6913
         }
       }
     },

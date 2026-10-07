@@ -84,6 +84,7 @@ export type AgentActivityThread = Pick<
   readonly session: {
     readonly status: OrchestrationSession["status"];
     readonly lastError: string | null;
+    readonly providerName?: string | null;
   } | null;
   readonly latestTurn: Pick<
     OrchestrationLatestTurn,
@@ -163,6 +164,12 @@ export interface ZeropsAgentActivity {
   readonly pausedUntil: string | undefined;
   /** A provider refusal can prove a limit without knowing its reset. */
   readonly usageLimited?: boolean;
+  readonly limitProvider?: string | undefined;
+  /** Held source state is distinct from the current activity; it grants no actions. */
+  readonly lastKnown?: Pick<
+    ZeropsAgentActivity,
+    "kind" | "at" | "usageLimited" | "pausedUntil" | "limitProvider" | "errorLine"
+  >;
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
   /**
@@ -412,8 +419,7 @@ function readThreadAgentActivity(
   const resolved = resolveThreadStatus({ ...thread, ...visited });
   const pause = thread.usagePause ?? undefined;
   const usageLimited =
-    pause !== undefined ||
-    (resolved.kind === "failed" && usageLimitProvider(thread.session?.lastError) !== null);
+    pause !== undefined || usageLimitProvider(thread.session?.lastError) !== null;
   return {
     threadId: thread.id,
     kind: resolved.kind,
@@ -426,6 +432,14 @@ function readThreadAgentActivity(
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
     pausedUntil: pause?.resetsAt,
     usageLimited,
+    limitProvider: usageLimited
+      ? (usageLimitProvider(thread.session?.lastError) ??
+        (pause && thread.session?.providerName === "claudeAgent"
+          ? "Claude"
+          : pause && thread.session?.providerName === "codex"
+            ? "Codex"
+            : undefined))
+      : undefined,
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
     ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
@@ -491,7 +505,7 @@ export function agentActivityErrorLine(
   thread: Pick<AgentActivityThread, "session">,
   kind: ThreadStatusKind,
 ): { readonly errorLine?: string } {
-  if (kind !== "failed") return {};
+  if (kind !== "failed" && usageLimitProvider(thread.session?.lastError) === null) return {};
   const first = thread.session?.lastError
     ?.split("\n")
     .map((line) => line.trim())
@@ -531,7 +545,11 @@ export function deriveZeropsAgentActivity(
  * error, no pause — so no clock ticks and no *Stop* is offered from it. Its last-known question
  * stays readable beside the source's stale indication until a newer answer replaces it.
  */
-export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActivity {
+export function restingActivity(
+  activity: ZeropsAgentActivity,
+  at = activity.at,
+): ZeropsAgentActivity {
+  if (activity.remembered === true) return activity;
   const { liveStep: _step, waitsOnHelpers: _helpers, errorLine: _error, ...words } = activity;
   return {
     ...words,
@@ -541,6 +559,15 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
     pausedUntil: undefined,
     usageLimited: false,
     remembered: true,
+    limitProvider: undefined,
+    lastKnown: {
+      kind: activity.kind,
+      at,
+      usageLimited: activity.usageLimited === true,
+      pausedUntil: activity.pausedUntil,
+      limitProvider: activity.limitProvider,
+      errorLine: activity.errorLine,
+    },
   };
 }
 
@@ -575,5 +602,5 @@ export function overviewAgentActivity(
     { ...mate.main, environmentId },
     lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, mate.main.id))],
   );
-  return live ? activity : restingActivity(activity);
+  return live ? activity : restingActivity(activity, mate.main.updatedAt);
 }

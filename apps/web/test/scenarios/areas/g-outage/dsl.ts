@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import type { Page } from "puppeteer-core";
+import { startCore, untilHealth } from "../../../../../hq/test/harness/runningCore.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import {
   installArea,
@@ -10,6 +11,8 @@ import {
   refusedZeropsRetry,
   installSilentSleep,
   stallSleepSocket,
+  newerHqProtocol,
+  endHqStream,
 } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -21,6 +24,50 @@ export const givenOutage = Effect.fn("outage.given")(function* () {
   yield* Effect.promise(() => s.clock.install());
   yield* Effect.promise(() => installSilentSleep(s.page));
   return s;
+});
+
+export const stopHq = (s: Scenario) => s.drivers.core.stop;
+
+export const declareNewerProtocol = (s: Scenario) => Effect.sync(() => newerHqProtocol(s.drivers));
+export const endHqSession = (s: Scenario) => Effect.sync(() => endHqStream(s.drivers, 4401));
+export const refuseHq = (s: Scenario) => Effect.sync(() => endHqStream(s.drivers, 4403));
+export const resumeTab = (s: Scenario, trigger: "online" | "focus" | "visibilitychange") =>
+  Effect.promise(() =>
+    s.page.evaluate((trigger) => {
+      (trigger === "visibilitychange" ? document : window).dispatchEvent(new Event(trigger));
+    }, trigger),
+  );
+
+export const hqRefusalShown = (s: Scenario) =>
+  Effect.promise(() =>
+    s.page.waitForFunction(
+      () => {
+        const line = document.querySelector('[data-zerops-surface="sidebar-hq-outage"]');
+        return (
+          line?.textContent?.includes("Zerops refused HQ's access") === true &&
+          !line.textContent.includes("not reachable")
+        );
+      },
+      { timeout: 10_000, polling: "raf" },
+    ),
+  );
+
+export const retryHq = (s: Scenario) =>
+  Effect.promise(() => s.page.click('[data-zerops-surface="sidebar-hq-outage"]'));
+
+export const startHq = Effect.fn("outage.startHq")(function* (s: Scenario, build?: string) {
+  const previous = s.drivers.core;
+  const core = yield* startCore(true, {
+    zeropsHttp: { baseUrl: `${s.drivers.zerops.origin}/api/rest/public`, world: previous.fake },
+    url: previous.url,
+    gitRoot: previous.gitRoot,
+    storeDir: previous.storeDir,
+    stagingDir: previous.stagingDir,
+    ...(build === undefined ? {} : { build }),
+  });
+  yield* untilHealth(core.call, "active");
+  s.drivers.core = core;
+  s.drivers.hq.replaceCore(core.origin);
 });
 
 export const reportsWork = (s: Scenario, name: string, subject: string, question?: string) =>

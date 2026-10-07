@@ -481,3 +481,27 @@ it("relays the last signer for display while a signed-out login vouches for nobo
     token: false,
   });
 });
+
+it("HQ learns which provider paused the Mate, with the provider's reset", () => {
+  const overview = overviewOf([
+    shell("main", {
+      session: {
+        threadId: "main",
+        status: "running",
+        providerName: "claudeAgent",
+        activeTurnId: "turn",
+        lastError: null,
+        updatedAt: "2026-10-08T14:20:00Z",
+      },
+      usagePause: {
+        resetsAt: "2026-10-08T16:00:00Z",
+        window: "5-hour",
+        held: 0,
+        pausedAt: "2026-10-08T14:20:00Z",
+        autoResume: true,
+      },
+    }),
+  ]);
+  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached.");
+  expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-08T16:00:00Z" });
+});

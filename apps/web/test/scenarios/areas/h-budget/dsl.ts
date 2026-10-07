@@ -90,6 +90,40 @@ export function budgets(s: Scenario) {
           .setTimeout(15_000)
           .wait();
       }),
+      projectsReady: Effect.promise(async () => {
+        await s.page.locator('[data-zerops-surface="project-rows"]').setTimeout(15_000).wait();
+      }),
+      projectsAre: (count: number) =>
+        Effect.promise(() =>
+          s.page.waitForFunction(
+            (expected) =>
+              document.querySelectorAll('[data-zerops-surface="project-rows"] [data-zerops-group]')
+                .length === expected,
+            {},
+            count,
+          ),
+        ),
+      togglesProject: (name: string) =>
+        Effect.promise(async () => {
+          const id = s.appIds.get(name);
+          if (id === undefined) throw new Error(`No application fixture ${name}`);
+          await s.page.locator(`[data-zerops-group="${id}"] [data-zerops-row-toggle]`).click();
+        }),
+      appDetailsAre: (names: ReadonlyArray<string>) =>
+        Effect.promise(() =>
+          observation.hq.appDetailsAre(
+            names.map((name) => {
+              const id = s.appIds.get(name);
+              if (id === undefined) throw new Error(`No application fixture ${name}`);
+              return id;
+            }),
+          ),
+        ),
+      opensUsage: Effect.promise(async () => {
+        await s.page.locator('[data-zerops-surface="sidebar-account"]').click();
+        await s.page.locator('[data-zerops-account-destination="usage"]').click();
+        await s.page.waitForFunction(() => location.pathname === "/usage");
+      }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
       browserSettled: Effect.promise(() => observation.browser.settled()),
       hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
@@ -124,6 +158,7 @@ export function budgets(s: Scenario) {
         ),
       /** The organization's Mate variables read by key, `POST /user-data/search`. */
       variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
+      appDetails: observation.hq.appDetails,
       hqSegments: () => observation.hq.segments,
       hqRequests: observation.hq.requests,
       firstData: (after = 0) => {

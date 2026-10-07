@@ -47,8 +47,8 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
       read({ refusal: "Zerops refused HQ." }),
       at(14, 5),
       {
-        kind: "last-known",
-        line: "Zerops refused HQ. HQ is not reachable since 14:05 — showing what it last said.",
+        kind: "refused",
+        line: "Zerops refused HQ. Showing what HQ last said.",
         again: true,
       },
     ],
@@ -56,7 +56,7 @@ describe("hqOutage: what the menu says while HQ does not answer", () => {
       "refused before it ever read",
       { ...NOT_READ_HQ, read: "reading", refusal: "Zerops refused HQ." },
       at(14, 5),
-      { kind: "unavailable", line: "Zerops refused HQ. HQ unavailable since 14:05.", again: true },
+      { kind: "refused", line: "Zerops refused HQ.", again: true },
     ],
   ])("%s", (_case, navigation, downSince, said) => {
     expect(hqOutage(navigation, downSince, "24-hour", at(14, 20))).toEqual(said);

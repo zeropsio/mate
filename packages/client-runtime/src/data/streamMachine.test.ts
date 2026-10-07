@@ -86,6 +86,7 @@ describe("transition", () => {
     expect(refused).toMatchObject({ phase: "refused", next: { kind: "await-input-change" } });
 
     const incidental: ReadonlyArray<StreamEvent> = [
+      { kind: "resume" },
       { kind: "demand", demanded: false },
       { kind: "demand", demanded: true },
       { kind: "retry-due" },

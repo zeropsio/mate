@@ -11,6 +11,106 @@ import { mateChat } from "./dsl.ts";
 // These are reported provider facts; the fake never executes commands or git.
 describe("C: calls, results and crew actions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // The current Codex trace finishes a helper before its parent returns its MCP result.
+    it.effect("J11: an idle helper does not settle its parent's work", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        const wire = chat.fixture();
+        wire.history("Inspect with trace_helper", "run-one");
+        wire.run("run-one", "running");
+        wire.tool(
+          "helper-launch",
+          "tool.updated",
+          {
+            toolName: "Agent",
+            input: { description: "trace_helper", prompt: "Reply helper-ok" },
+          },
+          "run-one",
+          { itemType: "collab_agent_tool_call" },
+        );
+        wire.activity(
+          "task.started",
+          "Helper began",
+          {
+            taskId: "trace-helper",
+            toolUseId: "helper-launch",
+            agentKind: "agent",
+            title: "trace_helper",
+            role: "trace_helper",
+            agentPath: "/root/trace_helper",
+          },
+          "run-one",
+        );
+        wire.tool("native", "tool.completed", {
+          toolName: "Bash",
+          command: "printf native-ok",
+          rawOutput: { content: "native-ok" },
+        });
+        wire.tool(
+          "discover",
+          "tool.started",
+          {
+            toolName: "mcp__zerops__zerops_discover",
+            input: {},
+          },
+          "run-one",
+          { itemType: "mcp_tool_call" },
+        );
+        yield* s.given.signedIn;
+        yield* chat.when.open("Ada", "Inspect with trace_helper");
+        wire.activity(
+          "task.updated",
+          "Helper returned",
+          {
+            taskId: "trace-helper",
+            toolUseId: "helper-launch",
+            agentKind: "agent",
+            title: "trace_helper",
+            role: "trace_helper",
+            agentPath: "/root/trace_helper",
+            status: "idle",
+          },
+          "run-one",
+        );
+        yield* chat.when.press("Started a helper. Show them");
+        yield* chat.then.text("trace_helper");
+        yield* chat.then.text("Idle");
+        yield* chat.then.control("Stop generation");
+        yield* chat.then.noText("trace-ok");
+        yield* chat.when.type("Keep this draft while the parent works");
+        yield* chat.when.press("printf native-ok. Show what it returned");
+        yield* chat.then.text("native-ok");
+        wire.tool(
+          "discover",
+          "tool.completed",
+          {
+            toolName: "mcp__zerops__zerops_discover",
+            input: {},
+            result: {
+              content: [{ type: "text", text: "Discovery returned the fixture services" }],
+            },
+          },
+          "run-one",
+          { itemType: "mcp_tool_call" },
+        );
+        wire.message("parent-answer", "assistant", "trace-ok", "run-one");
+        wire.run("run-one", "completed", null, "parent-answer");
+        yield* chat.then.once("trace-ok");
+        yield* chat.then.control("Stop generation", "button", false);
+        yield* chat.then.draft("Keep this draft while the parent works");
+        yield* chat.when.reload("Ada", "Inspect with trace_helper");
+        yield* chat.then.once("trace-ok");
+        yield* chat.when.activate("Show work");
+        yield* chat.when.press("Started a helper. Show them");
+        yield* chat.then.text("trace_helper");
+        yield* chat.then.text("Idle");
+        yield* chat.when.press("printf native-ok. Show what it returned");
+        yield* chat.then.text("native-ok");
+      }),
+    );
+
     // J06 · Z12/Z13/Z16–Z19/Z21/Z25/Z29/Z33: distinct calls retain their recorded outputs.
     it.effect("J06: concurrent calls stay readable through settlement and reload", () =>
       Effect.gen(function* () {

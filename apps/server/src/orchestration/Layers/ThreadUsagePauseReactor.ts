@@ -61,7 +61,8 @@ type Work =
 // Only these runtime events can change a pause; the rest never reach the worker.
 function concernsUsagePause(event: ProviderRuntimeEvent): boolean {
   return (
-    (event.type === "account.rate-limits.updated" && event.payload.blocked !== undefined) ||
+    (event.type === "account.rate-limits.updated" &&
+      (event.payload.blocked !== undefined || event.payload.refused === false)) ||
     event.type === "task.completed" ||
     event.type === "turn.completed"
   );
@@ -136,7 +137,9 @@ const make = Effect.gen(function* () {
       event.type === "account.rate-limits.updated" ? event.payload.blocked : undefined;
     if (blocked === undefined && !resets.has(event.threadId)) return;
     const heldResult = isHeldBackgroundResult(event);
-    const lifted = liftsUsagePause(event);
+    const lifted =
+      liftsUsagePause(event) ||
+      (event.type === "account.rate-limits.updated" && event.payload.refused === false);
     if (blocked === undefined && !heldResult && !lifted) return;
 
     const shell = yield* readShell(event.threadId);
