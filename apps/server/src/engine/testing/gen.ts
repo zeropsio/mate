@@ -199,9 +199,9 @@ export class Gen {
         const when = Math.max(at, wake.dueAt);
         return {
           envelope: this.env(
-            { _tag: "WakeFired", wakeId: wake.id },
+            { _tag: "WakeFired", wakeId: wake.id, armedSeq: wake.armedSeq },
             ENGINE,
-            wakeFiredCommandId(wake.id, wake.dueAt),
+            wakeFiredCommandId(wake.id, wake.armedSeq),
           ),
           now: when,
         };

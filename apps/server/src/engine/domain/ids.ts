@@ -30,9 +30,13 @@ export {
   wakeId,
 } from "@t3tools/contracts";
 
-/** A wake's firing: one per occurrence, so a recurring wake fires again at its next due time. */
-export const wakeFiredCommandId = (wake: WakeId, dueAt: number): CommandId =>
-  CommandId.make(`wake:${wake}@${dueAt}`);
+/**
+ * A wake's firing: one per arming (the sequence of its `WakeArmed`), so a wake armed again — for a
+ * recurring wake's next time, or for a moment it already fired at — fires again, and a fire read
+ * before a re-arm can never fire the newer arming.
+ */
+export const wakeFiredCommandId = (wake: WakeId, armedSeq: number): CommandId =>
+  CommandId.make(`wake:${wake}#${armedSeq}`);
 
 /** An effect's terminal outcome: settled once, whoever reports it. */
 export const effectSettledCommandId = (effect: EffectId): CommandId =>

@@ -24,9 +24,13 @@ interface DueWake {
   readonly wakeId: WakeId;
   readonly owner: ConversationId;
   readonly dueAt: number;
+  readonly armedSeq: number;
 }
 
 const ENGINE = { kind: "engine" } as const;
+
+/** How many due wakes one `fireDue` fires at most before it yields. */
+const FIRE_BATCH = 100;
 
 export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -37,8 +41,9 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
     readonly wake_id: string;
     readonly owner_conversation_id: string;
     readonly due_at: number;
+    readonly armed_seq: number;
   }>`
-    SELECT wake_id, owner_conversation_id, due_at FROM engine_wake
+    SELECT wake_id, owner_conversation_id, due_at, armed_seq FROM engine_wake
     WHERE state = 'armed' ORDER BY due_at, wake_id LIMIT 1
   `.pipe(
     Effect.map((rows) =>
@@ -46,6 +51,7 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
         wakeId: row.wake_id as WakeId,
         owner: row.owner_conversation_id as ConversationId,
         dueAt: row.due_at,
+        armedSeq: row.armed_seq,
       })),
     ),
     Effect.mapError((cause) => new EngineStoreError({ operation: "wakes.earliest", cause })),
@@ -53,29 +59,42 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
 
   const fire = Effect.fnUntraced(function* (wake: DueWake) {
     const result = yield* conversations.tell({
-      commandId: wakeFiredCommandId(wake.wakeId, wake.dueAt),
+      commandId: wakeFiredCommandId(wake.wakeId, wake.armedSeq),
       conversationId: wake.owner,
       principal: ENGINE,
-      command: { _tag: "WakeFired", wakeId: wake.wakeId },
+      command: { _tag: "WakeFired", wakeId: wake.wakeId, armedSeq: wake.armedSeq },
     });
-    // The owner does not hold it armed: drop the row so it cannot fire in a loop.
+    // The owner does not hold this arming: drop it so it cannot fire in a loop. A newer arming of
+    // the same wake has another sequence and stays armed.
     if (result._tag === "Rejected") {
       const now = yield* Clock.currentTimeMillis;
       yield* sql`
         UPDATE engine_wake SET state = 'dropped', fired_at = ${now}
-        WHERE wake_id = ${wake.wakeId} AND state = 'armed' AND due_at = ${wake.dueAt}
+        WHERE wake_id = ${wake.wakeId} AND state = 'armed' AND armed_seq = ${wake.armedSeq}
       `.pipe(Effect.mapError((cause) => new EngineStoreError({ operation: "wakes.drop", cause })));
     }
   });
 
-  /** One turn of the loop: fire the earliest wake if due, else sleep until it is or a ring. */
+  /** Fires every armed wake due by `now`, earliest first; returns how many it fired. */
+  const fireDue = Effect.fnUntraced(function* (now: number) {
+    let fired = 0;
+    while (fired < FIRE_BATCH) {
+      const next = yield* earliest;
+      if (Option.isNone(next) || next.value.dueAt > now) break;
+      yield* fire(next.value);
+      fired++;
+    }
+    return fired;
+  });
+
+  /** One turn of the loop: fire what is due, else sleep until the earliest is or a ring. */
   const turn = Effect.gen(function* () {
     yield* signals.wakes.arm;
+    const now = yield* Clock.currentTimeMillis;
+    if ((yield* fireDue(now)) > 0) return;
     const next = yield* earliest;
     if (Option.isNone(next)) return yield* signals.wakes.wait;
-    const now = yield* Clock.currentTimeMillis;
-    if (next.value.dueAt <= now) return yield* fire(next.value);
-    yield* Effect.raceFirst(Effect.sleep(next.value.dueAt - now), signals.wakes.wait);
+    yield* Effect.raceFirst(Effect.sleep(Math.max(0, next.value.dueAt - now)), signals.wakes.wait);
   });
 
   const loop = turn.pipe(
@@ -88,6 +107,8 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
   );
 
   return {
+    /** Fires what is due by `now`, as the loop does: boot and tests drive it directly. */
+    fireDue,
     /** Starts the scheduler's fiber in the caller's scope. */
     start: Effect.asVoid(Effect.forkScoped(loop)) as Effect.Effect<void, never, Scope.Scope>,
   };

@@ -187,7 +187,7 @@ const handle = (b: StepBuilder, command: Command): void => {
       b.emit({ _tag: "WakeCancelled", wakeId: command.wakeId, reason: "cancelled" });
       return;
     case "WakeFired":
-      return wakeFired(b, command.wakeId);
+      return wakeFired(b, command.wakeId, command.armedSeq);
     case "EffectSettled":
       return effectSettled(b, command.effectId, command.outcome);
     case "ProviderSignals":
@@ -488,9 +488,16 @@ const armWake = (b: StepBuilder, command: Extract<Command, { _tag: "ArmWake" }>)
   b.result = { ...b.result, wakeId: id };
 };
 
-const wakeFired = (b: StepBuilder, id: Extract<Command, { _tag: "WakeFired" }>["wakeId"]) => {
+const wakeFired = (
+  b: StepBuilder,
+  id: Extract<Command, { _tag: "WakeFired" }>["wakeId"],
+  armedSeq: number | undefined,
+) => {
   const wake = b.state.wakes[id];
   if (wake === undefined) throw new Rejected("wake-not-armed");
+  if (armedSeq !== undefined && armedSeq !== wake.armedSeq) {
+    throw new Rejected("wake-not-armed", "armed again since");
+  }
   b.emit({ _tag: "WakeFired", wakeId: id, dueAt: wake.dueAt });
   b.result = { ...b.result, wakeId: id };
   if (wake.cron !== null) {

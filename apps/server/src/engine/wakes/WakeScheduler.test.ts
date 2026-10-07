@@ -273,7 +273,7 @@ describe("WakeScheduler: a wake fires once per arming", () => {
         // The scheduler read the row before the cancel committed; its fire is refused.
         yield* conversations.tell({
           ...env({ _tag: "WakeFired", wakeId: w }),
-          commandId: wakeFiredCommandId(w, 1_000),
+          commandId: wakeFiredCommandId(w, 1), // the first arming's sequence
         });
         yield* conversations.ask(
           env({ _tag: "ArmWake", kind: "standup", key: "daily", dueAt: 1_000 }),

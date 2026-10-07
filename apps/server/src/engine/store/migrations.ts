@@ -8,10 +8,14 @@ import * as Effect from "effect/Effect";
 import * as Migrator from "effect/unstable/sql/Migrator";
 
 import Migration0001 from "./Migrations/0001_EngineCore.ts";
+import Migration0002 from "./Migrations/0002_EngineWakeArming.ts";
 
 export const ENGINE_MIGRATIONS_TABLE = "engine_migrations";
 
-const migrations = { "1_EngineCore": Migration0001 } as const;
+const migrations = {
+  "1_EngineCore": Migration0001,
+  "2_EngineWakeArming": Migration0002,
+} as const;
 
 const run = Migrator.make({});
 

@@ -255,15 +255,16 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       case "WakeArmed":
         return sql`
           INSERT INTO engine_wake (
-            wake_id, owner_conversation_id, kind, due_at, cron, state, principal_json, payload_json
+            wake_id, owner_conversation_id, kind, due_at, cron, state, principal_json, payload_json,
+            armed_seq
           ) VALUES (
             ${event.wakeId}, ${c}, ${event.kind}, ${event.dueAt}, ${event.cron}, 'armed',
             ${JSON.stringify(event.principal)},
-            ${JSON.stringify({ joins: event.joins, text: event.text })}
+            ${JSON.stringify({ joins: event.joins, text: event.text })}, ${event.seq}
           )
           ON CONFLICT (wake_id) DO UPDATE SET kind = excluded.kind, due_at = excluded.due_at,
             cron = excluded.cron, state = 'armed', principal_json = excluded.principal_json,
-            payload_json = excluded.payload_json, fired_at = NULL
+            payload_json = excluded.payload_json, fired_at = NULL, armed_seq = excluded.armed_seq
         `.pipe(Effect.asVoid);
       case "WakeFired":
         return sql`

@@ -703,6 +703,18 @@ const rejections: ReadonlyArray<{
     reason: "wake-not-armed",
   },
   {
+    name: "a fire of an arming the wake has been armed again since",
+    given: [
+      { _tag: "ArmWake", kind: "schedule", key: "k", dueAt: T0 },
+      { _tag: "ArmWake", kind: "schedule", key: "k", dueAt: T0 + MINUTE },
+    ],
+    when: {
+      command: { _tag: "WakeFired", wakeId: wakeId(conversation, "schedule", "k"), armedSeq: 1 },
+      at: T0 + MINUTE,
+    },
+    reason: "wake-not-armed",
+  },
+  {
     name: "cancelling a wake that is not armed",
     given: [],
     when: { _tag: "CancelWake", wakeId: WakeId.make("mate/w/schedule/none") },

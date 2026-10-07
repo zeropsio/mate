@@ -17,7 +17,6 @@ import {
   type ConversationId,
   type EffectOutcome,
   type KnownEngineEvent,
-  type WakeId,
 } from "@t3tools/contracts";
 
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
@@ -25,7 +24,6 @@ import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.ts";
 import { fold } from "../domain/evolve.ts";
-import { wakeFiredCommandId } from "../domain/ids.ts";
 import { initialState } from "../domain/state.ts";
 import * as EngineSignals from "../EngineSignals.ts";
 import * as EffectOutboxModule from "../outbox/EffectOutbox.ts";
@@ -38,6 +36,7 @@ import {
 } from "../outbox/EffectWorker.ts";
 import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
 import { runEngineMigrations } from "../store/migrations.ts";
+import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
 import { Violation } from "./invariants.ts";
 
 /** A fresh database file; `ENGINE_PROOF_TMP` picks the directory. */
@@ -174,43 +173,20 @@ export class World {
 
 // ── the scheduler's fire, as one deterministic turn ─────────────────────────────────────────
 
-/**
- * Fires every armed wake due by `now`, earliest first, exactly as `WakeScheduler`'s loop does
- * (same query, same command id, same drop on a refusal). The built scheduler has no such seam:
- * it only offers `start`, a forever loop on the clock.
- */
+/** Fires every armed wake due by `now` through the scheduler's own `fireDue`. */
 export const fireDue = (now: number) =>
   Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    const conversations = yield* Conversations;
-    let fired = 0;
-    for (let guard = 0; guard < 100; guard++) {
-      const [row] = yield* sql<{
-        readonly wake_id: string;
-        readonly owner_conversation_id: string;
-        readonly due_at: number;
-      }>`
-        SELECT wake_id, owner_conversation_id, due_at FROM engine_wake
-        WHERE state = 'armed' ORDER BY due_at, wake_id LIMIT 1
-      `;
-      if (row === undefined || row.due_at > now) return fired;
-      const result = yield* conversations.tell({
-        commandId: wakeFiredCommandId(row.wake_id as WakeId, row.due_at),
-        conversationId: row.owner_conversation_id as ConversationId,
-        principal: { kind: "engine" },
-        command: { _tag: "WakeFired", wakeId: row.wake_id as WakeId },
-      });
-      if (result._tag === "Rejected") {
-        yield* sql`UPDATE engine_wake SET state = 'dropped' WHERE wake_id = ${row.wake_id} AND state = 'armed' AND due_at = ${row.due_at}`;
-      }
-      fired++;
+    const scheduler = yield* makeWakeScheduler();
+    const fired = yield* scheduler.fireDue(now);
+    if (fired >= 100) {
+      return yield* Effect.die(
+        new Violation(
+          "a wake fires at most once",
+          "the scheduler fired 100 times without the wake leaving 'armed'",
+        ),
+      );
     }
-    return yield* Effect.die(
-      new Violation(
-        "a wake fires at most once",
-        "the scheduler fired 100 times without the wake leaving 'armed'",
-      ),
-    );
+    return fired;
   });
 
 // ── the audit: what must hold in the file after any step, crash or boot ─────────────────────

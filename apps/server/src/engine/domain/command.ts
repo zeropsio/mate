@@ -133,7 +133,12 @@ export type Command =
       readonly joins?: RunId | null;
     }
   | { readonly _tag: "CancelWake"; readonly wakeId: WakeId }
-  | { readonly _tag: "WakeFired"; readonly wakeId: WakeId }
+  | {
+      readonly _tag: "WakeFired";
+      readonly wakeId: WakeId;
+      /** The arming the scheduler read; a fire of an older arming is refused. */
+      readonly armedSeq?: number;
+    }
   | { readonly _tag: "EffectSettled"; readonly effectId: EffectId; readonly outcome: EffectOutcome }
   | {
       readonly _tag: "ProviderSignals";
