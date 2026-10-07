@@ -224,54 +224,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained update/handoff debt: the current action still uses this state or timing to present an upgrade or next step. Removing it requires owner receipts proving update/restart completion and a projection covering every action entry point.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
     "kind": "retired-token",
     "fingerprint": "useZeropsUpgradeRestart",
@@ -469,30 +421,6 @@
     "fingerprint": "createZeropsFeedAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Retained Mate feed host: only lifecycle, agent authentication and crew atom families remain here. Inventory joins read data projections and database/browser feeds have been removed; those remaining source protocols need their own family migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:composer-top-memory",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/composerTopMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedComposerTop",
-    "owner": "data-layer rewrite: changes/review",
-    "reason": "Retained change-strip debt: this remembered composer selection needs its change projection and selection lifecycle migrated before the stored copy can be deleted; the database and browser families do not provide its source.",
     "expires": "never"
   },
   {

@@ -81,6 +81,7 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/themePalette.ts",
   "apps/web/src/uiStateStore.ts",
   "apps/web/src/zerops/collapsedProjects.ts",
+  "apps/web/src/zerops/composerReviewDismissal.ts",
   "apps/web/src/zerops/mateScope.ts",
   "apps/web/src/zerops/mutedMates.ts",
   "apps/web/src/zerops/projectOrderPreference.ts",
