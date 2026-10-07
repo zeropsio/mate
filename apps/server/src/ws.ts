@@ -108,6 +108,7 @@ import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ProviderMaintenance from "./provider/providerMaintenance.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
+import * as DefectReporter from "./observability/DefectReporter.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
@@ -2964,6 +2965,14 @@ const makeWsRpcLayer = (
     }),
   );
 
+// A defect in a handler's effect fails only its own request. RpcServer's default
+// sends a socket-level Defect frame instead, and the client ends every pending
+// request on the socket with it. DefectReporter logs these defects.
+export const WS_RPC_SERVER_OPTIONS = {
+  disableTracing: true,
+  disableFatalDefects: true,
+} as const;
+
 export const websocketRpcRouteLayer = HttpRouter.add(
   "GET",
   "/ws",
@@ -2988,7 +2997,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small
       // window, so each chunk no longer costs a round trip.
-      yield* RpcServer.make(WsRpcGroup, { disableTracing: true }).pipe(
+      yield* RpcServer.make(WsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.forkScoped,
       );
@@ -2998,6 +3007,9 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       Effect.provide(
         makeWsRpcLayer(session, clientOrigin, clientAnalyticsProps).pipe(
           Layer.provideMerge(RpcSerialization.layerJson),
+          // Request fibers run in the handlers' context, so this reporter sees
+          // their defects, not the rest of the server's.
+          Layer.provide(DefectReporter.layer),
           Layer.provide(ProviderMaintenanceRunner.layer),
           Layer.provide(ProcessRunner.layer),
           Layer.provide(
