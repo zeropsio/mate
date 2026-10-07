@@ -286,7 +286,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       rollBack,
       editVersion,
     },
-    // oxlint-disable-next-line unicorn/no-thenable
+    // oxlint-disable-next-line unicorn/no-thenable -- `then` is the DSL's assertion step, never awaited.
     then: {
       text,
       rowShows,
