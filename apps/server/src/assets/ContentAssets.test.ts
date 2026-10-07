@@ -6,15 +6,11 @@ import * as NodePath from "node:path";
 
 import { ThreadId } from "@t3tools/contracts";
 import sharp from "sharp";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, expect, it } from "vite-plus/test";
 
 import { ContentAssets } from "./ContentAssets.ts";
 
 const roots: string[] = [];
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof NodeFSP>();
-  return { ...actual, mkdir: vi.fn(actual.mkdir) };
-});
 async function fixture(write?: (file: string, bytes: Uint8Array) => Promise<void>) {
   const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-assets-"));
   roots.push(root);
@@ -69,67 +65,6 @@ it("reusing a pathname creates a new occurrence and preserves both originals", a
   const second = await store.ingestFile(source, owner);
   expect(first.id).not.toBe(second.id);
   expect(first.original).not.toEqual(second.original);
-});
-it("serializes original publication and its occurrence with a reclamation already scanning", async () => {
-  const trace: string[] = [];
-  let armed = false;
-  const { store } = await fixture(async (file, value) => {
-    if (armed && file.includes("/occurrences/")) trace.push("publication");
-    await NodeFSP.writeFile(file, value, { flag: "wx" });
-  });
-  const bytes = await image();
-  const orphan = await store.ingestBytes(bytes, owner);
-  if (orphan.original.status !== "ready") throw new Error("not retained");
-  const retained = await store.object(orphan.original.digest);
-  await NodeFSP.unlink(NodePath.join(store.directory, "occurrences", `${orphan.id}.json`));
-  const entered = Promise.withResolvers<void>();
-  const resume = Promise.withResolvers<void>();
-  let scanning = true;
-  let first = true;
-  const actualObject = store.object.bind(store);
-  const object = vi.spyOn(store, "object").mockImplementation(async (digest, preview) => {
-    if (first) {
-      first = false;
-      trace.push("scan");
-      entered.resolve();
-      await resume.promise;
-      scanning = false;
-      trace.push("scan complete");
-      return retained;
-    }
-    return scanning ? retained : actualObject(digest, preview);
-  });
-  const actualMkdir = NodeFSP.mkdir;
-  const mkdir = vi
-    .spyOn(NodeFSP, "mkdir")
-    .mockImplementation((...args) =>
-      String(args[0]).startsWith(store.directory)
-        ? Promise.resolve(undefined)
-        : actualMkdir(...args),
-    );
-  const metadata = vi.spyOn(sharp.prototype, "metadata").mockResolvedValue({
-    format: "png",
-    width: 320,
-    height: 200,
-  });
-  armed = true;
-  const reclaiming = store.reclaim();
-  await entered.promise;
-  const incoming = store.ingestBytes(bytes, owner);
-  // All mocked publication prerequisites settle through microtasks, without a clock or I/O race.
-  for (let step = 0; step < 16; step++) await Promise.resolve();
-  resume.resolve();
-  try {
-    const [, kept] = await Promise.all([reclaiming, incoming]);
-    expect(trace).toEqual(["scan", "scan complete", "publication"]);
-    if (kept.original.status !== "ready") throw new Error("not retained");
-    expect(await NodeFSP.readFile((await actualObject(kept.original.digest)).path)).toEqual(bytes);
-    expect((await store.occurrence(kept.id)).original).toEqual(kept.original);
-  } finally {
-    object.mockRestore();
-    mkdir.mockRestore();
-    metadata.mockRestore();
-  }
 });
 it("shares a demanded lossless preview, records its dimensions, and never upscales", async () => {
   const { store } = await fixture();
@@ -197,26 +132,49 @@ it("an actual full write reclaims disposable previews, retries once, and cleans 
   if (kept.original.status !== "ready") throw new Error("not retained");
   expect((await store.object(kept.original.digest)).sizeBytes).toBe(kept.original.sizeBytes);
 });
-it("reclaims a proven unreferenced object and preserves every remaining occurrence root", async () => {
-  const { store } = await fixture();
-  const orphan = await store.ingestBytes(await image(), owner);
-  const kept = await store.ingestBytes(
-    await sharp({ create: { width: 12, height: 12, channels: 4, background: "blue" } })
+it.each(["cleanup", "pressure"] as const)(
+  "never reclaims any original, including an unreferenced object: %s",
+  async (mode) => {
+    let full = false;
+    const { store } = await fixture(async (file, bytes) => {
+      if (full) {
+        full = false;
+        throw Object.assign(new Error("full"), { code: "ENOSPC" });
+      }
+      await NodeFSP.writeFile(file, bytes, { flag: "wx" });
+    });
+    const orphanBytes = await image();
+    const keptBytes = await sharp({
+      create: { width: 12, height: 12, channels: 4, background: "blue" },
+    })
       .png()
-      .toBuffer(),
-    owner,
-  );
-  await NodeFSP.unlink(NodePath.join(store.directory, "occurrences", `${orphan.id}.json`));
-  await store.reclaim();
-  if (orphan.original.status !== "ready" || kept.original.status !== "ready")
-    throw new Error("not retained");
-  await expect(store.object(orphan.original.digest)).rejects.toMatchObject({
-    code: "object-missing",
-  });
-  expect((await store.object(kept.original.digest)).sizeBytes).toBe(kept.original.sizeBytes);
-});
+      .toBuffer();
+    const orphan = await store.ingestBytes(orphanBytes, owner);
+    const kept = await store.ingestBytes(keptBytes, owner);
+    const preview = await store.preview(orphan.id, 80, 50);
+    await NodeFSP.unlink(NodePath.join(store.directory, "occurrences", `${orphan.id}.json`));
+    if (mode === "cleanup") await store.reclaim();
+    else {
+      full = true;
+      const incoming = await store.ingestBytes(keptBytes, owner);
+      expect(incoming.original.status).toBe("ready");
+    }
+    for (const [occurrence, bytes] of [
+      [orphan, orphanBytes],
+      [kept, keptBytes],
+    ] as const) {
+      if (occurrence.original.status !== "ready") throw new Error("not retained");
+      expect(await NodeFSP.readFile((await store.object(occurrence.original.digest)).path)).toEqual(
+        bytes,
+      );
+    }
+    await expect(store.object(preview.digest, true)).rejects.toMatchObject({
+      code: "object-missing",
+    });
+  },
+);
 it.each(["ingest", "claim"] as const)(
-  "a pressure retry roots the original before reclamation may see it: %s",
+  "a pressure retry preserves the exact original while recording its occurrence: %s",
   async (operation) => {
     let full = false;
     const { store } = await fixture(async (file, bytes) => {

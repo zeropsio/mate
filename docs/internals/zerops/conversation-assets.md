@@ -26,9 +26,10 @@ refusal requires an explicit retry. The existing Mate authorization header prote
 Session and owner checks run before GET, HEAD, validators and ranges. Responses use a strong digest
 ETag and `Cache-Control: private, no-cache`; cached reloads revalidate with a bodyless 304.
 
-Only an actual ENOSPC or SQLITE_FULL starts reclamation. Regenerable previews go first, followed by
-objects proven unreferenced by the retained occurrence catalog. Hidden/restorable history keeps its
-roots. Referenced originals are never pressure victims. The failed write is retried once; a still
+Only an actual ENOSPC or SQLITE_FULL starts reclamation, and only regenerable previews may be
+removed. Originals are never reclaimed, including objects without occurrence references. Preview
+publication and cleanup exclude each other; a pressure retry preserves its in-flight representation.
+There is no capacity accounting or disk-space reservation. The failed write is retried once; a still
 failing write reports `Storage full`. A missing object is not described as expired, evicted or
 intentionally deleted without evidence.
 

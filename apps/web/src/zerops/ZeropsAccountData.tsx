@@ -149,11 +149,11 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   return (
     <AccountStoreContext value={store}>
       <MateImages store={store}>
-      <AccountDataContext value={value}>
-        <MateBrowserFrames store={store}>
-          <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
-        </MateBrowserFrames>
-      </AccountDataContext>
+        <AccountDataContext value={value}>
+          <MateBrowserFrames store={store}>
+            <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+          </MateBrowserFrames>
+        </AccountDataContext>
       </MateImages>
     </AccountStoreContext>
   );

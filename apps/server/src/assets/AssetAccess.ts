@@ -56,7 +56,6 @@ import { AssetSigningKey } from "./AssetSigningKey.ts";
 import {
   findRetainedMedia,
   isTemporaryMediaPath,
-  openRetainedMedia,
   retainedMediaDirectory,
   retainMedia,
 } from "./RetainedMedia.ts";
@@ -894,7 +893,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     if (!canonicalFile) return null;
     const mimeType = claims.mimeType ?? mediaMimeTypeFromExtension(path.extname(canonicalFile));
     if (!mimeType) return null;
-    const file = yield* openRetainedMedia(canonicalFile).pipe(
+    const file = yield* openMediaFile(canonicalFile).pipe(
       Effect.tapError((cause) => Effect.logError("Failed to open retained media.", { cause })),
       Effect.orElseSucceed(() => null),
     );
