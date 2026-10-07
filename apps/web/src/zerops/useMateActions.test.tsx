@@ -1200,6 +1200,16 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
     expect(finishVerb()?.label).toBe("Finish setup");
   });
 
+  it("waits for services before finishing an accepted, unregistered birth", () => {
+    const { missingContainer: _read, ...unread } = DAN;
+    mount(known());
+    expect(
+      actions()
+        .actionsFor(unread as ZeropsCandidatePresentation, { mate: true } as never)
+        .some((entry) => "id" in entry && entry.id === "finish-setup"),
+    ).toBe(false);
+  });
+
   it("finishes Dan into his application, under his name and face, and writes no new Mate", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     mount(known());

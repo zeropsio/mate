@@ -128,6 +128,8 @@ export function finishMateSetupVerb(input: {
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
   readonly hasContainer: boolean;
+  /** Its services have proved whether a container is present, even while a press holds it. */
+  readonly containerKnown: boolean;
   /**
    * HQ offers the viewer writing the registry (`create_app`); `undefined` while HQ has not said,
    * or does not answer: then what the viewer finishes is not known, and nothing is offered.
@@ -151,6 +153,9 @@ export function finishMateSetupVerb(input: {
    */
   readonly mayEditRecord?: boolean;
 }): string | undefined {
+  // An unread service listing proves neither a container nor its absence. Finishing then could
+  // register and close off the birth while silently skipping its container import.
+  if (!input.containerKnown) return undefined;
   if (input.keyWider === true && input.mayEditRecord === true) return FINISH_MATE_SETUP_VERB;
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
   if (

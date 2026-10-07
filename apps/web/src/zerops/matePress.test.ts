@@ -1363,6 +1363,7 @@ describe("finishMateSetup — the harden path", () => {
         pressedElsewhere: false,
         viewerIsAdder: false,
         hasContainer: true,
+        containerKnown: true,
         writer: false,
         recordMissing: true,
         mayCreateRecord: true,

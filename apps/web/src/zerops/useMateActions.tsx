@@ -868,6 +868,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           projectPeople[candidate.project.id]?.waitsOnViewer === true,
         ),
         hasContainer: candidate.service !== undefined,
+        containerKnown: candidate.service !== undefined || candidate.missingContainer === true,
         writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
@@ -893,6 +894,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const finishSetup = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
+      if (candidate.service === undefined && candidate.missingContainer !== true) return;
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
       const press = readMatePress(projectId);

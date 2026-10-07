@@ -92,9 +92,26 @@ describe("finishMateSetupVerb", () => {
     pressedElsewhere: false,
     viewerIsAdder: false,
     hasContainer: true,
+    containerKnown: true,
     recordMissing: false,
     mayCreateRecord: false,
   };
+  it.each([
+    { registration: "unplaced" as MateRegistration },
+    { recordMissing: true, mayCreateRecord: true },
+    { pressStopped: true },
+    { keyWider: true, mayEditRecord: true },
+  ])("waits for the container read before finishing $registration", (reason) => {
+    expect(
+      finishMateSetupVerb({
+        ...HALF_MADE,
+        ...reason,
+        writer: true,
+        hasContainer: false,
+        containerKnown: false,
+      }),
+    ).toBeUndefined();
+  });
   it.each([
     {
       name: "an owner, on a Mate nobody has registered",
@@ -261,6 +278,7 @@ describe("finishMateSetupVerb while HQ has not said who writes the registry", ()
     pressedElsewhere: false,
     viewerIsAdder: false,
     hasContainer: true,
+    containerKnown: true,
     recordMissing: false,
     mayCreateRecord: false,
   };
