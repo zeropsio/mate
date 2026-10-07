@@ -40,6 +40,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
+import { engineLayerInert } from "../engine/layer.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
@@ -584,6 +585,8 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     // A fixture scene has no dev services for a crew to work on: crew mode
     // is off, the feed says so and every crew request is refused.
     crewLayerInert,
+    // A fixture scene runs V1: the Mate engine is built inert.
+    engineLayerInert,
     // A fixture scene has no live env store either: the reader answers
     // `undefined` explicitly, never a hidden default. `ZeropsIdentityStatus`
     // is not provided here — it is supplied once, live or fixture alike, in
