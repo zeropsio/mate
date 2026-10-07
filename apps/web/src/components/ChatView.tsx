@@ -319,6 +319,7 @@ import {
   type TerminalContextSelection,
 } from "../lib/terminalContext";
 import {
+  drainGenerationOf,
   isQueuedMessageDue,
   queuedSendAttemptIds,
   latestCompletedToolActivityId,
@@ -6758,7 +6759,7 @@ export default function ChatView(props: ChatViewProps) {
     // Stop drains the queue. A queued send whose upload was still running at
     // that moment must not start a turn afterwards; it checks this before
     // dispatch and hands the message back to the composer instead.
-    const drainGenerationAtTake = useQueuedMessageStore.getState().drainGeneration;
+    const drainGenerationAtTake = activeThreadKey ? drainGenerationOf(activeThreadKey) : 0;
     // A queued send always knows its ids: a retry after an interruption goes with the same ones.
     const attemptIds =
       queuedMessage === undefined
@@ -6848,7 +6849,8 @@ export default function ChatView(props: ChatViewProps) {
     }
     if (
       queuedMessage &&
-      useQueuedMessageStore.getState().drainGeneration !== drainGenerationAtTake
+      activeThreadKey &&
+      drainGenerationOf(activeThreadKey) !== drainGenerationAtTake
     ) {
       sendInFlightRef.current = false;
       restoreQueuedMessagesToComposer([queuedMessage]);

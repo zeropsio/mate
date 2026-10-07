@@ -147,7 +147,7 @@ describe("backgroundQueuedMessageDue", () => {
   beforeEach(() => {
     useQueuedMessageStore.setState({
       queuesByThreadKey: {},
-      drainGeneration: 0,
+      drainGenerationByThreadKey: {},
       openThreadKeys: {},
       backgroundSendByThreadKey: {},
     });
@@ -272,7 +272,7 @@ describe("sendQueuedMessageInBackground", () => {
   beforeEach(() => {
     useQueuedMessageStore.setState({
       queuesByThreadKey: {},
-      drainGeneration: 0,
+      drainGenerationByThreadKey: {},
       openThreadKeys: {},
       backgroundSendByThreadKey: {},
     });
@@ -403,6 +403,37 @@ describe("sendQueuedMessageInBackground", () => {
     expect(queued()).toEqual([
       expect.objectContaining({ prompt: "with a picture", holdUntilUserAction: true }),
     ]);
+  });
+
+  it("Stop in another conversation never holds this one's message", async () => {
+    const message = queue("with a picture", {
+      images: [
+        {
+          type: "image",
+          id: "image-1",
+          name: "shot.png",
+          mimeType: "image/png",
+          sizeBytes: 10,
+          previewUrl: "blob:1",
+          file: new File(["x"], "shot.png"),
+        } as QueuedComposerMessage["images"][number],
+      ],
+    });
+    const deps = makeDeps(endedThread, {
+      uploads: {
+        start: vi.fn(),
+        settle: async () => {
+          useQueuedMessageStore.getState().drain("env-1:thread-other");
+        },
+        uploaded: () => [],
+        release: vi.fn(),
+      },
+    });
+
+    await sendQueuedMessageInBackground(threadKey, message.id, deps);
+
+    expect(deps.startTurn).toHaveBeenCalledTimes(1);
+    expect(queued()).toEqual([]);
   });
 
   it("a message whose only content expired leaves the queue without a turn", async () => {

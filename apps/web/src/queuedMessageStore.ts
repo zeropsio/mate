@@ -77,11 +77,12 @@ export interface QueuedComposerMessage {
 interface QueuedMessageStoreState {
   queuesByThreadKey: Record<string, QueuedComposerMessage[]>;
   /**
-   * Bumped by `drain`. A send that took a message before a drain and finishes
-   * its upload after it compares this to the value it captured and gives up,
-   * so Stop cannot be followed by a queued message starting a new turn.
+   * Bumped per thread by `drain`. A send that took a message before its thread's drain and
+   * finishes its upload after it compares this to the value it captured and gives up, so Stop
+   * cannot be followed by a queued message starting a new turn. Per thread: Stop in one
+   * conversation never holds another's send.
    */
-  drainGeneration: number;
+  drainGenerationByThreadKey: Record<string, number>;
   /**
    * How many views of each conversation are on screen. An open conversation sends its own
    * queue; the root sender sends the others'.
@@ -141,7 +142,7 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
   };
   return {
     queuesByThreadKey: {},
-    drainGeneration: 0,
+    drainGenerationByThreadKey: {},
     openThreadKeys: {},
     backgroundSendByThreadKey: {},
     holdOpen: (threadKey) => {
@@ -252,16 +253,20 @@ export const useQueuedMessageStore = create<QueuedMessageStoreState>()((set, get
     },
     drain: (threadKey) => {
       const queue = get().queuesByThreadKey[threadKey];
+      const bumped = (state: QueuedMessageStoreState) => ({
+        ...state.drainGenerationByThreadKey,
+        [threadKey]: (state.drainGenerationByThreadKey[threadKey] ?? 0) + 1,
+      });
       // Bumped even with nothing left queued: the one message a send already took and is
       // still uploading must not start a turn after Stop either.
       if (!queue || queue.length === 0) {
-        set((state) => ({ drainGeneration: state.drainGeneration + 1 }));
+        set((state) => ({ drainGenerationByThreadKey: bumped(state) }));
         return EMPTY_QUEUE;
       }
       set((state) => {
         const queuesByThreadKey = { ...state.queuesByThreadKey };
         delete queuesByThreadKey[threadKey];
-        return { queuesByThreadKey, drainGeneration: state.drainGeneration + 1 };
+        return { queuesByThreadKey, drainGenerationByThreadKey: bumped(state) };
       });
       return queue;
     },
@@ -382,4 +387,9 @@ onAccountLifetimeClose(() => {
 
 export function useQueuedMessages(threadKey: string): QueuedComposerMessage[] {
   return useQueuedMessageStore((state) => state.queuesByThreadKey[threadKey] ?? EMPTY_QUEUE);
+}
+
+/** The thread's drain count: a send captures it at its take and gives up if Stop moved it. */
+export function drainGenerationOf(threadKey: string): number {
+  return useQueuedMessageStore.getState().drainGenerationByThreadKey[threadKey] ?? 0;
 }

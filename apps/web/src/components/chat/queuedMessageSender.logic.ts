@@ -18,6 +18,7 @@ import type { ComposerFileAttachment } from "../../lib/composerFiles";
 import { materializePicturePrompt } from "../../lib/composerPictures";
 import { appendTerminalContextsToPrompt } from "../../lib/terminalContext";
 import {
+  drainGenerationOf,
   isQueuedMessageDue,
   latestCompletedToolActivityId,
   queuedSendAttemptIds,
@@ -207,7 +208,7 @@ export async function sendQueuedMessageInBackground(
   );
   if (taken === null) return;
   store().setBackgroundSend(threadKey, { phase: "preparing" });
-  const drainGenerationAtTake = store().drainGeneration;
+  const drainGenerationAtTake = drainGenerationOf(threadKey);
   const ids = queuedSendAttemptIds({
     given: undefined,
     stored: message.sendIds,
@@ -256,7 +257,7 @@ export async function sendQueuedMessageInBackground(
   }
   // Stop drained the queue while this one uploaded: no turn starts after a Stop. It waits at
   // the head for the person's Send now instead of going anywhere by itself.
-  if (store().drainGeneration !== drainGenerationAtTake) {
+  if (drainGenerationOf(threadKey) !== drainGenerationAtTake) {
     store().setBackgroundSend(threadKey, null);
     store().holdAtFront(threadKey, message);
     return;
