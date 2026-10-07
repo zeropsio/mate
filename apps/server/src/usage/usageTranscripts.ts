@@ -369,36 +369,38 @@ function grokTotalsToUsage(totals: GrokUsageTotals): UsageTokenTotals {
   };
 }
 
-/**
- * Parses one line of a Grok Build `updates.jsonl` session log.
- *
- * Usage lands on `turn_completed` session updates. Per-model breakdowns live
- * under `usage.modelUsage`; when present each model becomes its own record.
- *
- * Returns every record for the line (0 or more). Callers stream line-by-line
- * and flatten.
- */
-export function parseGrokLine(line: string): readonly UsageRecord[] {
+/** A Grok Build `turn_completed` update: its identity, its clock and its raw meters per model. */
+export interface GrokTurn {
+  readonly sessionId: string;
+  readonly promptId: string | null;
+  readonly timestampMs: number;
+  readonly usage: Readonly<Record<string, unknown>>;
+  /** Per-model meters under `usage.modelUsage`, in the order the record lists them. */
+  readonly models: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]>;
+}
+
+/** Reads one `updates.jsonl` line as a completed turn, or null for any other update. */
+export function readGrokTurn(line: string): GrokTurn | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line);
   } catch {
-    return [];
+    return null;
   }
-  if (typeof parsed !== "object" || parsed === null) return [];
+  if (typeof parsed !== "object" || parsed === null) return null;
 
   const record = parsed as Record<string, unknown>;
   const params = record["params"];
-  if (typeof params !== "object" || params === null) return [];
+  if (typeof params !== "object" || params === null) return null;
   const paramsRecord = params as Record<string, unknown>;
 
   const update = paramsRecord["update"];
-  if (typeof update !== "object" || update === null) return [];
+  if (typeof update !== "object" || update === null) return null;
   const updateRecord = update as Record<string, unknown>;
-  if (updateRecord["sessionUpdate"] !== "turn_completed") return [];
+  if (updateRecord["sessionUpdate"] !== "turn_completed") return null;
 
   const usage = updateRecord["usage"];
-  if (typeof usage !== "object" || usage === null) return [];
+  if (typeof usage !== "object" || usage === null) return null;
   const usageRecord = usage as Record<string, unknown>;
 
   const sessionId = typeof paramsRecord["sessionId"] === "string" ? paramsRecord["sessionId"] : "";
@@ -419,20 +421,41 @@ export function parseGrokLine(line: string): readonly UsageRecord[] {
       timestampMs = timestamp > 1e12 ? timestamp : timestamp * 1000;
     }
   }
-  if (timestampMs === null) return [];
-
-  const topLevel = readGrokUsageTotals(usageRecord);
-  if (topLevel === null) return [];
+  if (timestampMs === null) return null;
 
   const modelUsage = usageRecord["modelUsage"];
-  const modelEntries: Array<{ model: string; totals: GrokUsageTotals }> = [];
+  const models: Array<readonly [string, Record<string, unknown>]> = [];
   if (typeof modelUsage === "object" && modelUsage !== null) {
     for (const [model, raw] of Object.entries(modelUsage as Record<string, unknown>)) {
-      if (model.length === 0) continue;
-      const totals = readGrokUsageTotals(raw);
-      if (totals === null) continue;
-      modelEntries.push({ model, totals });
+      if (model.length === 0 || typeof raw !== "object" || raw === null) continue;
+      models.push([model, raw as Record<string, unknown>]);
     }
+  }
+  return { sessionId, promptId, timestampMs, usage: usageRecord, models };
+}
+
+/**
+ * Parses one line of a Grok Build `updates.jsonl` session log.
+ *
+ * Usage lands on `turn_completed` session updates. Per-model breakdowns live
+ * under `usage.modelUsage`; when present each model becomes its own record.
+ *
+ * Returns every record for the line (0 or more). Callers stream line-by-line
+ * and flatten.
+ */
+export function parseGrokLine(line: string): readonly UsageRecord[] {
+  const turn = readGrokTurn(line);
+  if (turn === null) return [];
+  const { sessionId, promptId, timestampMs } = turn;
+
+  const topLevel = readGrokUsageTotals(turn.usage);
+  if (topLevel === null) return [];
+
+  const modelEntries: Array<{ model: string; totals: GrokUsageTotals }> = [];
+  for (const [model, raw] of turn.models) {
+    const totals = readGrokUsageTotals(raw);
+    if (totals === null) continue;
+    modelEntries.push({ model, totals });
   }
 
   if (modelEntries.length === 0) {

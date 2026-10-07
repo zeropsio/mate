@@ -8,7 +8,13 @@ import { type UsageCoverage } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { CodexMeterState, initialMeterState, meterLine } from "./usageMeters.ts";
+import {
+  CodexMeterState,
+  initialMeterState,
+  meterGrokLine,
+  meterLine,
+  type MeterFacts,
+} from "./usageMeters.ts";
 import {
   UsageLedgerError,
   unknownCoverage,
@@ -37,9 +43,11 @@ const bytesDigest = (bytes: Uint8Array) =>
   NodeCrypto.createHash("sha256").update(bytes).digest("hex");
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 export interface CaptureSource {
-  readonly provider: "claude" | "codex";
+  readonly provider: "claude" | "codex" | "grok";
   readonly directory: string;
 }
+/** Grok keeps a session's records in one log beside files that are not usage. */
+const SOURCE_FILE: Partial<Record<CaptureSource["provider"], string>> = { grok: "updates.jsonl" };
 export interface CaptureOptions {
   /** When capture began (epoch ms): a record from before it is never a fact. */
   readonly floor?: number;
@@ -52,13 +60,16 @@ export interface CaptureOptions {
 }
 
 /** Fails on incomplete listings, rather than certifying a swallowed IO error as an empty source. */
-async function listFiles(directory: string): Promise<string[]> {
+async function listFiles(directory: string, fileName: string | undefined): Promise<string[]> {
   const files: string[] = [];
   const walk = async (dir: string): Promise<void> => {
     for (const entry of await NodeFSP.readdir(dir, { withFileTypes: true })) {
       if (files.length >= CAPTURE_FILES_MAX) throw new Error("transcript-file-budget");
       if (entry.isDirectory()) await walk(NodePath.join(dir, entry.name));
-      else if (entry.isFile() && entry.name.endsWith(".jsonl"))
+      else if (
+        entry.isFile() &&
+        (fileName === undefined ? entry.name.endsWith(".jsonl") : entry.name === fileName)
+      )
         files.push(NodePath.join(dir, entry.name));
     }
   };
@@ -87,7 +98,9 @@ export const captureSource = Effect.fnUntraced(function* (
     return;
   }
   const sourceId = usageDigest([source.provider, directory.value]);
-  const files = yield* Effect.tryPromise(() => listFiles(directory.value)).pipe(
+  const files = yield* Effect.tryPromise(() =>
+    listFiles(directory.value, SOURCE_FILE[source.provider]),
+  ).pipe(
     Effect.catch(() =>
       ledger
         .coverage(origin.originId, unknownCoverage("source-listing-unavailable"))
@@ -122,7 +135,7 @@ export const captureSource = Effect.fnUntraced(function* (
         const stamp = usageDigest([stats.dev, stats.ino, stats.size, stats.mtimeMs, stats.ctimeMs]);
         // Unchanged files need no IO. This cache never changes a fact or declares coverage.
         if (saved && checkpoint.offset === stats.size && checkpoint.stamp === stamp) return false;
-        if (!saved && options.baseline && source.provider === "claude") {
+        if (!saved && options.baseline && source.provider !== "codex") {
           // Capture begins after the last complete record; nothing before it is read.
           let end = stats.size;
           let newline = -1;
@@ -179,10 +192,18 @@ export const captureSource = Effect.fnUntraced(function* (
         let offset = start;
         for (const line of utf8.decode(consumed).split("\n").slice(0, -1)) {
           offset += Buffer.byteLength(line, "utf8") + 1;
-          const result = meterLine(source.provider, line, checkpoint.meter, options.floor);
-          if (result.gap) gaps.add(result.gap);
-          if (result.fact)
-            yield* ledger.capture({ ...result.fact, originId: origin.originId }, key, offset);
+          let metered: MeterFacts;
+          if (source.provider === "grok") metered = meterGrokLine(line, options.floor);
+          else {
+            const result = meterLine(source.provider, line, checkpoint.meter, options.floor);
+            metered = {
+              facts: result.fact ? [result.fact] : [],
+              gaps: result.gap ? [result.gap] : [],
+            };
+          }
+          for (const gap of metered.gaps) gaps.add(gap);
+          for (const fact of metered.facts)
+            yield* ledger.capture({ ...fact, originId: origin.originId }, key, offset);
         }
         // What was parsed must still be on disk: a rewrite during capture rolls the chunk back.
         const after = yield* Effect.tryPromise(() => handle.stat());

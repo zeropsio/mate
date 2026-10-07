@@ -1,8 +1,10 @@
 /** Transcript evidence normalized before replication; no heuristic payload dedup or fork timers. */
 import { UsageComponents, type UsageFact } from "@t3tools/contracts";
 import { usageDigest } from "@t3tools/shared/agentUsage";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { readGrokTurn } from "./usageTranscripts.ts";
 
 const Count = Schema.Number.check(
   Schema.isInt(),
@@ -81,6 +83,13 @@ const time = (at: string | undefined): UsageFact["time"] => {
     return { kind: "instant", at, provenance: "provider-transcript" };
   return { kind: "undated" };
 };
+/** An instant a provider wrote as epoch milliseconds, or undated when it is no instant at all. */
+const instant = (ms: number, provenance: string): UsageFact["time"] => {
+  const at = DateTime.make(ms);
+  return Option.isSome(at)
+    ? { kind: "instant", at: DateTime.formatIso(at.value), provenance }
+    : { kind: "undated" };
+};
 export type MeterFact = Omit<UsageFact, "originId" | "revision">;
 export interface MeterResult {
   readonly fact?: MeterFact;
@@ -130,8 +139,9 @@ const COPY_BURST_MS = 1000;
 const common = (
   native: unknown,
   sessionId: string,
-  provider: "claude" | "codex",
+  provider: UsageFact["provider"],
   parent: string | undefined,
+  source = "transcript",
 ) => {
   const id = usageDigest([provider, native]);
   return {
@@ -144,7 +154,7 @@ const common = (
     runId: null,
     // The native parent session, hashed as its own `sessionId`, so HQ can nest the two.
     parentId: parent === undefined ? null : usageDigest([provider, parent]),
-    meterVersion: `${provider}-transcript-v1`,
+    meterVersion: `${provider}-${source}-v1`,
     state: "provisional" as const,
   };
 };
@@ -352,4 +362,86 @@ export function meterLine(
     },
     gap: "codex-request-allocation-unavailable",
   };
+}
+
+/** Every fact one native record holds, and why any part of it is not one. */
+export interface MeterFacts {
+  readonly facts: ReadonlyArray<MeterFact>;
+  readonly gaps: ReadonlyArray<string>;
+}
+const isCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const count = (record: Readonly<Record<string, unknown>>, key: string) => {
+  const value = record[key];
+  return isCount(value) ? value : undefined;
+};
+
+/**
+ * One Grok `updates.jsonl` line: a completed turn is one fact per model it used, identified by its
+ * session, prompt and model; a turn without a prompt id cannot be told from a repeat and is none.
+ */
+export function meterGrokLine(line: string, floor?: number): MeterFacts {
+  if (Option.isNone(decodeJson(line))) return { facts: [], gaps: ["damaged-transcript"] };
+  const turn = readGrokTurn(line);
+  if (turn === null) return { facts: [], gaps: [] };
+  const at = instant(turn.timestampMs, "provider-transcript");
+  if (before(at, floor)) return { facts: [], gaps: [] };
+  if (!turn.sessionId || !turn.promptId)
+    return { facts: [], gaps: ["grok-missing-native-identity"] };
+  const entries: ReadonlyArray<readonly [string | null, Readonly<Record<string, unknown>>]> =
+    turn.models.length > 0 ? turn.models : [[null, turn.usage]];
+  const facts: MeterFact[] = [];
+  const gaps: string[] = [];
+  for (const [model, meter] of entries) {
+    const input = count(meter, "inputTokens");
+    const output = count(meter, "outputTokens");
+    const cached = count(meter, "cachedReadTokens");
+    const written = count(meter, "cacheCreationTokens");
+    const thinking = count(meter, "reasoningTokens");
+    const total = count(meter, "totalTokens");
+    if (!input && !output && !total) continue;
+    // Grok's input includes its cached reads and writes; more cache than input is no split at all.
+    const uncached =
+      input !== undefined && cached !== undefined && written !== undefined
+        ? input - cached - written
+        : undefined;
+    if (uncached !== undefined && uncached < 0) {
+      gaps.push("grok-invalid-cache-subset");
+      continue;
+    }
+    const split = [uncached, cached, written, output];
+    const known = split.every((part) => part !== undefined);
+    const components: UsageComponents = {
+      uncachedInput: quantity(uncached),
+      cachedInput: quantity(cached),
+      cacheCreation: quantity(written),
+      output: quantity(output),
+      reasoning:
+        thinking !== undefined && (output === undefined || thinking <= output)
+          ? String(thinking)
+          : null,
+      inclusiveTotal:
+        total !== undefined && (!known || split.reduce((sum, part) => sum! + part!, 0) === total)
+          ? String(total)
+          : null,
+    };
+    if (Option.isNone(decodeComponents(components))) {
+      gaps.push("grok-inconsistent-meter");
+      continue;
+    }
+    facts.push({
+      ...common(
+        [`${turn.sessionId}:${turn.promptId}:${model ?? "grok"}`],
+        turn.sessionId,
+        "grok",
+        undefined,
+      ),
+      model,
+      pricingBand: "standard",
+      components,
+      time: at,
+      evidence: "turn-completed",
+    });
+  }
+  return { facts, gaps };
 }

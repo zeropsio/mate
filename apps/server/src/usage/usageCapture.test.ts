@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { usageCanonical, type UsageLinkUp } from "@t3tools/shared/agentUsage";
+import { usageCanonical, usageDigest, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageReplication } from "./usageReplication.ts";
 import { captureSource, CAPTURE_READ_BYTES } from "./usageCapture.ts";
@@ -342,6 +342,162 @@ it.effect(
               });
               assert.equal(yield* consume(ledger), 150n);
               assert.isBelow(read, prefix.length / 4);
+            }),
+          ),
+          Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+        );
+      }),
+    ),
+);
+
+/** The latest revision of every fact the ledger journaled, by native id. */
+const journaled = (ledger: UsageLedger) =>
+  Effect.gen(function* () {
+    const frame = yield* ledger.batch("0", "test");
+    const facts = new Map<
+      string,
+      Extract<UsageLinkUp, { type: "usage-batch" }>["entries"][number]["facts"][number]
+    >();
+    for (const entry of frame?.entries ?? [])
+      for (const fact of entry.facts) facts.set(fact.nativeId, fact);
+    return facts;
+  });
+
+/** Shaped after a real Grok Build `turn_completed` session update. */
+const grokTurn = (turn: {
+  readonly promptId?: string;
+  readonly at?: number;
+  readonly usage: Record<string, unknown>;
+}) =>
+  usageCanonical({
+    timestamp: Math.floor((turn.at ?? Date.parse("2026-10-07T12:00:00.000Z")) / 1000),
+    method: "_x.ai/session/update",
+    params: {
+      sessionId: "grok-session",
+      update: {
+        sessionUpdate: "turn_completed",
+        ...(turn.promptId === undefined ? {} : { prompt_id: turn.promptId }),
+        stop_reason: "end_turn",
+        usage: turn.usage,
+      },
+      _meta: { agentTimestampMs: turn.at ?? Date.parse("2026-10-07T12:00:00.000Z") },
+    },
+  }) + "\n";
+
+it.effect(
+  "a Grok turn is one fact per model, and a turn without a prompt id or with more cache than input is none",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* temporary;
+        const session = NodePath.join(directory, "sessions", "grok-session");
+        const meter = (input: number, cached: number, output: number, reasoning: number) => ({
+          inputTokens: input,
+          outputTokens: output,
+          totalTokens: input + output,
+          cachedReadTokens: cached,
+          cacheCreationTokens: 0,
+          reasoningTokens: reasoning,
+        });
+        yield* Effect.tryPromise(async () => {
+          await NodeFSP.mkdir(session, { recursive: true });
+          await NodeFSP.writeFile(
+            NodePath.join(session, "updates.jsonl"),
+            [
+              grokTurn({
+                promptId: "before",
+                at: Date.parse("2026-10-07T11:00:00.000Z"),
+                usage: { ...meter(900, 0, 9, 0), modelUsage: { "grok-4": meter(900, 0, 9, 0) } },
+              }),
+              grokTurn({
+                promptId: "p1",
+                usage: {
+                  ...meter(1300, 400, 70, 30),
+                  modelUsage: {
+                    "grok-4.5-build": meter(1000, 400, 50, 30),
+                    "grok-code-fast": meter(300, 0, 20, 0),
+                  },
+                },
+              }),
+              grokTurn({ promptId: "p2", usage: meter(200, 50, 10, 0) }),
+              grokTurn({ usage: meter(500, 0, 5, 0) }),
+              grokTurn({ promptId: "p3", usage: meter(100, 200, 5, 0) }),
+              usageCanonical({ params: { update: { sessionUpdate: "agent_message_chunk" } } }),
+              "",
+            ].join("\n"),
+          );
+          // Only the session log is Grok's usage source.
+          await NodeFSP.writeFile(
+            NodePath.join(session, "other.jsonl"),
+            grokTurn({ promptId: "p9", usage: meter(1, 0, 1, 0) }),
+          );
+        });
+        yield* makeUsageLedger.pipe(
+          Effect.flatMap((ledger) =>
+            Effect.gen(function* () {
+              yield* captureSource(
+                ledger,
+                binding,
+                { provider: "grok", directory: NodePath.join(directory, "sessions") },
+                { floor: Date.parse("2026-10-07T11:30:00.000Z") },
+              );
+              const facts = yield* journaled(ledger);
+              const id = (native: string) => usageDigest(["grok", [native]]);
+              assert.deepEqual(
+                [...facts.values()].map((fact) => [fact.nativeId, fact.model, fact.components]),
+                [
+                  [
+                    id("grok-session:p1:grok-4.5-build"),
+                    "grok-4.5-build",
+                    {
+                      uncachedInput: "600",
+                      cachedInput: "400",
+                      cacheCreation: "0",
+                      output: "50",
+                      reasoning: "30",
+                      inclusiveTotal: "1050",
+                    },
+                  ],
+                  [
+                    id("grok-session:p1:grok-code-fast"),
+                    "grok-code-fast",
+                    {
+                      uncachedInput: "300",
+                      cachedInput: "0",
+                      cacheCreation: "0",
+                      output: "20",
+                      reasoning: "0",
+                      inclusiveTotal: "320",
+                    },
+                  ],
+                  [
+                    id("grok-session:p2:grok"),
+                    null,
+                    {
+                      uncachedInput: "150",
+                      cachedInput: "50",
+                      cacheCreation: "0",
+                      output: "10",
+                      reasoning: "0",
+                      inclusiveTotal: "210",
+                    },
+                  ],
+                ],
+              );
+              const fact = facts.get(id("grok-session:p1:grok-4.5-build"))!;
+              assert.equal(fact.sessionId, usageDigest(["grok", "grok-session"]));
+              assert.deepEqual(fact.time, {
+                kind: "instant",
+                at: "2026-10-07T12:00:00.000Z",
+                provenance: "provider-transcript",
+              });
+              assert.isNull(fact.nativeCost);
+              const [origin] = yield* ledger.origins;
+              assert.equal(origin!.provider, "grok");
+              assert.includeMembers(
+                [...origin!.coverage.gaps],
+                ["grok-missing-native-identity", "grok-invalid-cache-subset"],
+              );
             }),
           ),
           Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
