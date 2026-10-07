@@ -29,9 +29,8 @@ export type HqPlacement =
       /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null | undefined;
       /**
-       * Placed by its press's record alone (`hq_press`): a stage's or a production's press that
-       * Zerops took and that never registered it — HQ holds it nowhere yet. Its setup is finished
-       * as its tier, into this application.
+       * Placed by an accepted birth or an environment press, before its registration.
+       * The exact project is retained at HQ; Finish setup registers it in this application.
        */
       readonly unregistered?: true;
     }
@@ -108,6 +107,19 @@ export function placementsOf(
       kind: "mate",
       mate: withLogins(projectId, mate),
     });
+  }
+  // The accepting HQ retains the exact project before setup registers its Mate.
+  for (const app of structure.apps) {
+    for (const birth of app.births ?? []) {
+      if (birth.projectId == null || placements.has(birth.projectId)) continue;
+      placements.set(birth.projectId, {
+        appId: app.id,
+        appName: app.name,
+        kind: "mate",
+        mate: null,
+        unregistered: true,
+      });
+    }
   }
   for (const [projectId, press] of Object.entries(presses ?? {})) {
     if (placements.has(projectId) || press.kind === "mate" || press.appId === undefined) continue;

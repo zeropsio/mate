@@ -129,6 +129,47 @@ describe("placementsOf — a press's record of a project HQ holds nowhere", () =
   });
 });
 
+describe("placementsOf — an accepted birth awaiting registration", () => {
+  it.each([
+    { projectId: "p-birth", expected: true },
+    { projectId: null, expected: false },
+    { projectId: undefined, expected: false },
+  ])("keeps only an accepted project visible: $projectId", ({ projectId, expected }) => {
+    const structure = {
+      ...STRUCTURE,
+      apps: STRUCTURE.apps.map((app) => ({
+        ...app,
+        births: [
+          { id: "birth-1", face: "rose:seal", ...(projectId === undefined ? {} : { projectId }) },
+        ],
+      })),
+    };
+    const placements = placementsOf(structure);
+    expect(placements.has("p-birth")).toBe(expected);
+    if (expected) {
+      expect(placements.get("p-birth")).toEqual({
+        appId: "app-1",
+        appName: "Acme CRM",
+        kind: "mate",
+        mate: null,
+        unregistered: true,
+      });
+      expect(heldOf({ hq: placements.get("p-birth") })).toBe("none");
+    }
+  });
+  it("a retained birth cannot overwrite an already registered placement", () => {
+    const placements = placementsOf({
+      ...STRUCTURE,
+      apps: STRUCTURE.apps.map((app) => ({
+        ...app,
+        births: [{ id: "birth-1", face: "rose:seal", projectId: "p-stage" }],
+      })),
+    });
+    expect(placements.get("p-stage")?.kind).toBe("stage");
+    expect(heldOf({ hq: placements.get("p-stage") })).toBe("stage");
+  });
+});
+
 describe("placeProjects", () => {
   it("joins each project HQ places, leaves the rest as they are, and takes back a placement HQ dropped", () => {
     const placements = placementsOf(STRUCTURE);
