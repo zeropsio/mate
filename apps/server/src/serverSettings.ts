@@ -6,10 +6,12 @@
  * text generation model selection).
  *
  * Follows the same pattern as `keybindings.ts`: JSON file + Cache + PubSub +
- * Semaphore + FileSystem.watch for concurrency and external edit detection.
+ * Semaphore + scoped native watchers for concurrency and external edit detection.
  *
  * @module ServerSettings
  */
+// @effect-diagnostics nodeBuiltinImport:off -- native watch acquisition exposes attachment readiness.
+import * as NodeFS from "node:fs";
 import {
   DEFAULT_TEXT_GENERATION_MODEL,
   DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER,
@@ -40,6 +42,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
@@ -895,20 +898,39 @@ const make = Effect.gen(function* () {
     }),
   );
 
-  const watchFileChanges = (filePath: string) => {
+  const attachFileWatcher = (
+    filePath: string,
+    scope: Scope.Scope,
+    changes: Queue.Queue<void, ServerSettingsError>,
+  ) => {
     const directory = pathService.dirname(filePath);
     const fileName = pathService.basename(filePath);
     const resolvedFilePath = pathService.resolve(filePath);
-    return fs
-      .watch(directory)
-      .pipe(
-        Stream.filter(
-          (event) =>
-            event.path === fileName ||
-            event.path === filePath ||
-            pathService.resolve(directory, event.path) === resolvedFilePath,
+    return Effect.gen(function* () {
+      const watcher = yield* Effect.acquireRelease(
+        Effect.try({
+          try: () =>
+            NodeFS.watch(directory, (_event, name) => {
+              if (
+                name !== null &&
+                (name === fileName ||
+                  name === filePath ||
+                  pathService.resolve(directory, name) === resolvedFilePath)
+              )
+                Queue.offerUnsafe(changes, undefined);
+            }),
+          catch: (cause) =>
+            new ServerSettingsError({ settingsPath, operation: "watch-file", cause }),
+        }),
+        (watcher) => Effect.sync(() => watcher.close()),
+      );
+      watcher.on("error", (cause) =>
+        Queue.failCauseUnsafe(
+          changes,
+          Cause.fail(new ServerSettingsError({ settingsPath, operation: "watch-file", cause })),
         ),
       );
+    }).pipe(Scope.provide(scope));
   };
 
   const startWatcher = Effect.gen(function* () {
@@ -944,32 +966,33 @@ const make = Effect.gen(function* () {
       return Option.some(linkTargetPath);
     }).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 
-    const initialLinkTarget = yield* watchLinkTarget;
-    const linkTargetEvents = Stream.make(initialLinkTarget).pipe(
-      Stream.concat(watchFileChanges(settingsPath).pipe(Stream.mapEffect(() => watchLinkTarget))),
-      Stream.changes,
-      Stream.switchMap(
-        Option.match({
-          onNone: () => Stream.empty,
-          onSome: (linkTargetPath) =>
-            watchFileChanges(linkTargetPath).pipe(Stream.ignore({ log: true })),
-        }),
-      ),
-    );
+    const changes = yield* Queue.unbounded<void, ServerSettingsError>();
+    yield* Scope.addFinalizer(watcherScope, Queue.shutdown(changes));
+    yield* attachFileWatcher(settingsPath, watcherScope, changes);
+    let currentTarget = Option.none<string>();
+    let targetScope: Scope.Closeable | undefined;
+    const attachLinkTarget = Effect.gen(function* () {
+      const target = yield* watchLinkTarget;
+      if (Equal.equals(target, currentTarget)) return;
+      if (targetScope !== undefined) yield* Scope.close(targetScope, Exit.void);
+      if (Option.isSome(target)) {
+        targetScope = yield* Scope.fork(watcherScope);
+        yield* attachFileWatcher(target.value, targetScope, changes);
+      } else targetScope = undefined;
+      currentTarget = target;
+    });
+    yield* attachLinkTarget;
 
     // Debounce watch events so the file is fully written before we read it.
     // Editors emit multiple events per save (truncate, write, rename) and
     // `fs.watch` can fire before the content has been flushed to disk.
-    const debouncedSettingsEvents = Stream.merge(
-      watchFileChanges(settingsPath),
-      linkTargetEvents,
-    ).pipe(Stream.debounce(Duration.millis(100)));
-
-    yield* Stream.runForEach(debouncedSettingsEvents, () => revalidateAndEmitSafely).pipe(
-      Effect.ignoreCause({ log: true }),
-      Effect.forkIn(watcherScope),
-      Effect.asVoid,
+    const debouncedSettingsEvents = Stream.fromQueue(changes).pipe(
+      Stream.debounce(Duration.millis(100)),
     );
+
+    yield* Stream.runForEach(debouncedSettingsEvents, () =>
+      attachLinkTarget.pipe(Effect.andThen(revalidateAndEmitSafely)),
+    ).pipe(Effect.ignoreCause({ log: true }), Effect.forkIn(watcherScope), Effect.asVoid);
   });
 
   const start = Effect.gen(function* () {

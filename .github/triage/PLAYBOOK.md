@@ -63,7 +63,7 @@ published mate client.
 
 Work in roughly this order:
 
-- Inspect the server log and `server.trace.ndjson` around the failure.
+- Inspect the server output named in the context and `server.trace.ndjson` around the failure.
 - Inspect the provider event log for Claude or Codex session failures.
 - Read the SQLite database when needed. Ask for explicit permission before any write.
 - For Zerops, inspect the `zerops@mate` unit and whether nginx answers `/mate/`. For standalone, inspect

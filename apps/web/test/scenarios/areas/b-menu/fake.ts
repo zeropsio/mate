@@ -167,26 +167,6 @@ export const denyProjectRead = (drivers: ScenarioDrivers, name: string) =>
       code: "insufficientPermissions",
     });
   });
-export const settleProjectRefusal = (
-  drivers: ScenarioDrivers,
-  name: string,
-  advance: (ms: number) => Promise<void>,
-  paint: () => Promise<void>,
-) =>
-  Effect.promise(async () => {
-    const key = `GET /project/${name}`;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const reads = drivers.zerops.requests.get(key) ?? 0;
-      await advance(60_000);
-      try {
-        await drivers.zerops.waitForRequest(key, reads + 1);
-      } catch (error) {
-        if (error instanceof Error && error.message === `Timed out: ${key} request receipt`) break;
-        throw error;
-      }
-      await paint();
-    }
-  });
 export const startStageBuild = (drivers: ScenarioDrivers, name: string) =>
   Effect.sync(() => {
     drivers.zerops.writes.autoComplete = false;

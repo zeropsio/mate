@@ -1176,6 +1176,90 @@ it.layer(
     }),
   );
 
+  it.effect("closes only a thread's idle shells, ignoring a helper forked from the shell", () =>
+    Effect.gen(function* () {
+      // FakePtyAdapter assigns pids from 9000 in open order.
+      const psStdout = [
+        " 9000     1 zsh",
+        // An async prompt worker: a copy of the shell with no children.
+        "  100  9000 zsh",
+        " 9001     1 zsh",
+        "  200  9001 node",
+        " 9002     1 zsh",
+        // A subshell with a child is real work.
+        "  300  9002 zsh",
+        "  301   300 sleep",
+        " 9003     1 zsh",
+      ].join("\n");
+      const processRunner: ProcessRunner.ProcessRunner["Service"] = {
+        run: () =>
+          Effect.succeed({
+            stdout: psStdout,
+            stderr: "",
+            code: ChildProcessSpawner.ExitCode(0),
+            timedOut: false,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            stdoutInvalidUtf8: false,
+            stderrInvalidUtf8: false,
+          }),
+      };
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        subprocessPollIntervalMs: 60_000,
+      }).pipe(
+        Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+        Effect.provide(withHostPlatform("linux")),
+      );
+      yield* manager.open(openInput({ terminalId: "idle" }));
+      yield* manager.open(openInput({ terminalId: "dev-server" }));
+      yield* manager.open(openInput({ terminalId: "subshell" }));
+      yield* manager.open(openInput({ threadId: "thread-2" }));
+
+      yield* manager.closeIdle({ threadId: "thread-1" });
+
+      expect(ptyAdapter.processes.map((process) => process.killed)).toEqual([
+        true,
+        false,
+        false,
+        false,
+      ]);
+    }),
+  );
+
+  it.effect("keeps terminals that get input or output while closeIdle checks them", () =>
+    Effect.gen(function* () {
+      const ptyAdapter = new FakePtyAdapter();
+      // The typed command's process misses the snapshot, but its input or echo lands.
+      let duringCheck: (pid: number) => Effect.Effect<void> = () => Effect.void;
+      const { manager, getEvents } = yield* createManager(5, {
+        ptyAdapter,
+        subprocessPollIntervalMs: 60_000,
+        subprocessInspector: (pid) =>
+          duringCheck(pid).pipe(
+            Effect.as({ hasRunningSubprocess: false, childCommand: null, processIds: [] }),
+          ),
+      });
+      yield* manager.open(openInput({ terminalId: "typed" }));
+      yield* manager.open(openInput({ terminalId: "echoed" }));
+      const [typed, echoed] = ptyAdapter.processes;
+      duringCheck = (pid) =>
+        pid === typed!.pid
+          ? manager
+              .write({ threadId: "thread-1", terminalId: "typed", data: "make build\r" })
+              .pipe(Effect.orDie)
+          : Effect.gen(function* () {
+              echoed!.emitData("make build\r\n");
+              yield* waitFor(
+                Effect.map(getEvents, (events) => events.some((event) => event.type === "output")),
+              );
+            }).pipe(Effect.orDie);
+
+      yield* manager.closeIdle({ threadId: "thread-1" });
+
+      expect(ptyAdapter.processes.map((process) => process.killed)).toEqual([false, false]);
+    }),
+  );
+
   it.effect("caps persisted history to configured line limit", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(3);

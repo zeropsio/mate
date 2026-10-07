@@ -98,7 +98,9 @@ focus. See [Organizing threads](./thread-sidebar.md) for how pinned threads are 
 The command palette searches active thread titles, projects, branches, user messages, and final
 agent responses across connected environments. Message matches show one labeled excerpt while
 keeping the thread's project, branch, and machine context visible. Message search begins after two
-characters and uses SQLite's ASCII case-insensitive matching.
+characters and uses SQLite's ASCII case-insensitive matching. If some conversations could not be
+searched, the palette and sidebar say so beside the available results; an unavailable search never
+means those conversations contain no matches.
 
 The full command list and the current defaults are shown in **Settings** → **Keybindings**, which
 always matches the build you are running. Use that rather than a copied list.

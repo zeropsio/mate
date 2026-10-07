@@ -108,6 +108,33 @@ describe("stageNodePty", () => {
 });
 
 describe("bundleNodePtyIntoTarball", () => {
+  it("ships the kernel health helper as an executable after unpacking", () => {
+    const packageDir = NodePath.join(root, "package");
+    NodeFS.mkdirSync(NodePath.join(packageDir, "dist"), { recursive: true });
+    NodeFS.writeFileSync(
+      NodePath.join(packageDir, "dist", "health-events"),
+      "#!/bin/sh\necho health-events\n",
+      { mode: 0o644 },
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(packageDir, "package.json"),
+      JSON.stringify({ name: "zerops-mate", dependencies: { "node-pty": "1.1.0" } }),
+    );
+    const tarballPath = NodePath.join(root, "zerops-mate-0.0.0.tgz");
+    NodeChildProcess.execFileSync("tar", ["-czf", tarballPath, "-C", root, "package"]);
+    const nodePtyDir = NodePath.join(root, "node-pty");
+    fakeNodePty(nodePtyDir);
+    bundleNodePtyIntoTarball({ tarballPath, nodePtyDir, linuxPrebuildDir: undefined });
+    const extracted = NodePath.join(root, "installed");
+    NodeFS.mkdirSync(extracted);
+    NodeChildProcess.execFileSync("tar", ["-xzf", tarballPath, "-C", extracted]);
+    assert.strictEqual(
+      NodeChildProcess.execFileSync(NodePath.join(extracted, "package", "dist", "health-events"), {
+        encoding: "utf8",
+      }),
+      "health-events\n",
+    );
+  });
   it("rewrites the tarball with the manifest field and node_modules/node-pty", () => {
     const packageDir = NodePath.join(root, "package");
     NodeFS.mkdirSync(NodePath.join(packageDir, "dist"), { recursive: true });

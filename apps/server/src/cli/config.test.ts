@@ -21,12 +21,14 @@ import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { deriveServerPaths } from "../config.ts";
+import { PersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { type CliServerFlags, resolveServerConfig } from "./config.ts";
 
 const deriveExplicitServerPaths = (baseDir: string, devUrl: URL | undefined) =>
   deriveServerPaths(baseDir, devUrl, { baseDirIsExplicit: true });
 
 const encodeDesktopBootstrap = Schema.encodeEffect(Schema.fromJsonString(DesktopBackendBootstrap));
+const encodeRuntimeState = Schema.encodeEffect(Schema.fromJsonString(PersistedServerRuntimeState));
 
 const makeDesktopBootstrap = (
   overrides: Partial<DesktopBackendBootstrapValue> = {},
@@ -72,6 +74,54 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     autoBootstrapProjectFromCwd: Option.none(),
     logWebSocketEvents: Option.none(),
   } as const;
+
+  it.effect("keeps stale records and supervised startup out of the manual launch preflight", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-cli-preflight-" });
+      for (const [name, pid, mode, rejectRunningServer] of [
+        ["stale", 2_147_483_647, "web", true],
+        ["desktop", process.pid, "desktop", true],
+        ["serve", process.pid, "web", false],
+      ] as const) {
+        const baseDir = path.join(root, name);
+        const stateDir = path.join(baseDir, "userdata");
+        yield* fs.makeDirectory(stateDir, { recursive: true });
+        yield* fs.writeFileString(
+          path.join(stateDir, "server-runtime.json"),
+          yield* encodeRuntimeState({
+            version: 1,
+            pid,
+            port: 3773,
+            origin: "http://127.0.0.1:3773",
+            startedAt: "2026-10-01T00:00:00.000Z",
+          }),
+        );
+        const cwd = path.join(root, `${name}-project`);
+        const config = yield* resolveServerConfig(
+          {
+            ...noFlags,
+            mode: Option.some(mode),
+            port: Option.some(8788),
+            baseDir: Option.some(baseDir),
+            cwd: Option.some(cwd),
+          },
+          Option.none(),
+          { rejectRunningServer },
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+              NetService.layer,
+            ),
+          ),
+        );
+        expect(config.cwd).toBe(cwd);
+        expect(yield* fs.exists(cwd)).toBe(true);
+      }
+    }).pipe(Effect.scoped),
+  );
 
   it.effect.each([
     ["is on when the environment says nothing", {}, true],
@@ -591,7 +641,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         resolved.terminalLogsDir,
         resolved.attachmentsDir,
         resolved.worktreesDir,
-        path.dirname(resolved.serverLogPath),
         path.dirname(resolved.serverTracePath),
       ]) {
         expect(yield* fs.exists(directory)).toBe(true);

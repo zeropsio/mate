@@ -34,6 +34,7 @@ vi.mock("react", async (importOriginal) => {
   return {
     ...actual,
     useCallback: reactHookHarness.useCallback,
+    useEffect: reactHookHarness.useEffect,
     useSyncExternalStore: (
       subscribe: (listener: () => void) => () => void,
       getSnapshot: () => unknown,

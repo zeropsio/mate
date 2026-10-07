@@ -1,5 +1,5 @@
 /**
- * A rename whose write waits on a door (M04, e2e 2026-10-03): the form holds its verbs while the
+ * A rename whose write waits on a door (M04, e2e 2026-10-03): the form allows dismissal and prevents another rename while the
  * answer comes and says a refusal where the press was made.
  */
 import type { ReactElement } from "react";
@@ -35,9 +35,9 @@ describe("ZeropsRenameForm", () => {
     expect(html).toMatch(/role="alert"[^>]*>HQ did not answer\.</u);
   });
 
-  it("holds its verbs while the answer comes", () => {
+  it("allows dismissal and prevents another rename while the answer comes", () => {
     const html = renderToStaticMarkup(form({ pending: true }));
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Cancel/u);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*>Cancel/u);
     expect(html).toMatch(/<button type="submit"[^>]*aria-busy="true"/u);
   });
 });

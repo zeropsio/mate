@@ -1,5 +1,6 @@
+import { mateFeedAsyncAtom } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
-import { createEnvironmentSessionAtoms } from "@t3tools/client-runtime/state/session";
+import { createPreparedConnectionAtoms } from "@t3tools/client-runtime/state/session";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/unstable/reactivity";
@@ -7,7 +8,11 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 
-export const environmentSession = createEnvironmentSessionAtoms(connectionAtomRuntime);
+const prepared = createPreparedConnectionAtoms(connectionAtomRuntime);
+const sessionAtoms = Atom.family((environmentId: EnvironmentId) =>
+  mateFeedAsyncAtom({ family: "mateClientSession", environmentId, input: {} }),
+);
+export const environmentSession = { ...prepared, sessionStateAtom: sessionAtoms };
 
 const EMPTY_PREPARED_CONNECTION_ATOM = Atom.make(Option.none()).pipe(
   Atom.withLabel("web-prepared-connection:empty"),

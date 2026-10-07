@@ -1,3 +1,4 @@
+import { creationPress } from "./creationPress.ts";
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
 import { WORKSPACE_MUTATION_KINDS } from "./mateWorkspace.ts";
 import { mateWriteFile } from "./mateWriteFile.ts";
@@ -51,6 +52,7 @@ export function defineOperationKinds(
 }
 
 export const OPERATION_KINDS = defineOperationKinds([
+  creationPress,
   issueGitCredential,
   revokeGitCredential,
   ...WORKSPACE_MUTATION_KINDS,

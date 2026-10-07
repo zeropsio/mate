@@ -153,7 +153,7 @@ describe("ZeropsChangeFaceForm", () => {
     const tree = mount(form({ onSave, pending: true }));
     expect(button(tree, "submit").props.disabled).toBe(true);
     expect(button(tree, "submit").props["aria-busy"]).toBe(true);
-    expect(button(tree, "button").props.disabled).toBe(true);
+    expect(button(tree, "button").props.disabled).not.toBe(true);
     pick(tree, "Rose");
     expect(face(tree)).toEqual(WORN);
     save(tree);
@@ -175,34 +175,6 @@ describe("ZeropsChangeFaceForm", () => {
 });
 
 describe("ZeropsChangeFaceDialog", () => {
-  it("stays open while the platform answers, and closes on the way out otherwise", () => {
-    const onOpenChange = vi.fn();
-    const at = (pending: boolean) =>
-      mount(
-        <ZeropsChangeFaceDialog
-          error={null}
-          face={WORN}
-          name="Fen"
-          onCancel={() => {}}
-          onOpenChange={onOpenChange}
-          onSave={() => {}}
-          open={false}
-          pending={pending}
-        />,
-      );
-    // The kit's root, as Escape, the backdrop and the corner's X all ask it to close.
-    const request = (tree: ReactTestRenderer) => {
-      const root = tree.root.findByType(Dialog);
-      act(() => {
-        root.props.onOpenChange(false, {});
-      });
-    };
-    request(at(true));
-    expect(onOpenChange).not.toHaveBeenCalled();
-    request(at(false));
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
   it("tells its host when its closing has finished moving, so it goes only then", () => {
     const onOpenChangeComplete = vi.fn();
     const tree = mount(

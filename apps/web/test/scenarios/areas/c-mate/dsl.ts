@@ -3,7 +3,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { visibleText } from "../../harness/browser.ts";
+import { visibleText, sendConversationMessage } from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -95,6 +95,8 @@ export function mateChat(
         .setTimeout(8000)
         .click();
     });
+  const send = (message: string, waitForReady: boolean) =>
+    Effect.promise(() => sendConversationMessage(page, message, waitForReady));
   return {
     step: <A, E, R>(name: string, action: Effect.Effect<A, E, R>) =>
       action.pipe(
@@ -313,22 +315,8 @@ export function mateChat(
           });
           await page.mouse.up();
         }),
-      send: (message: string) =>
-        Effect.promise(async () => {
-          const input = page.locator(composer).setTimeout(8000);
-          await (await input.waitHandle()).focus();
-          await page.keyboard.down(modifier);
-          await page.keyboard.press("a");
-          await page.keyboard.up(modifier);
-          await page.keyboard.press("Backspace");
-          await page.keyboard.type(message);
-          await page.waitForFunction(
-            (message) => document.activeElement?.textContent === message,
-            { timeout: 8000, polling: "raf" },
-            message,
-          );
-          await page.keyboard.press("Enter");
-        }),
+      send: (message: string) => send(message, true),
+      attemptSend: (message: string) => send(message, false),
     },
     // The scenario DSL exposes assertions, never a Promise callback.
     // oxlint-disable-next-line unicorn/no-thenable
@@ -487,6 +475,25 @@ export function mateChat(
                 (element instanceof HTMLButtonElement && element.disabled),
             ),
           ).toBe(true);
+        }),
+      enabledControl: (name: string) =>
+        Effect.promise(async () => {
+          const control = await page
+            .locator(`::-p-aria([name="${name}"][role="button"])`)
+            .setTimeout(8000)
+            .waitHandle();
+          try {
+            await page.waitForFunction(
+              (element) =>
+                element instanceof HTMLButtonElement &&
+                !element.disabled &&
+                element.getBoundingClientRect().height > 0,
+              { timeout: 8000, polling: "raf" },
+              control,
+            );
+          } finally {
+            await control.dispose();
+          }
         }),
       sent: (message: string) =>
         Effect.gen(function* () {

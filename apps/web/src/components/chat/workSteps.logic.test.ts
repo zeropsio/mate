@@ -895,6 +895,31 @@ describe("stepOf — every driver", () => {
       words: "Started a helper",
     },
     {
+      name: "a Claude MCP call, by the title Claude Code gives it",
+      partial: {
+        label: "MCP tool call",
+        itemType: "mcp_tool_call",
+        toolName: "mcp__claude_ai_Firecrawl__firecrawl_scrape",
+        toolPresentation: {
+          title: "Firecrawl scrape",
+          source: { key: "mcp:claude_ai_firecrawl", name: "Firecrawl" },
+        },
+      },
+      kind: "tool",
+      words: "Used Firecrawl scrape",
+    },
+    {
+      name: "an OpenCode skill, by the skill it loads",
+      partial: {
+        label: "skill",
+        itemType: "dynamic_tool_call",
+        toolName: "skill",
+        callInput: { skill: "zerops-deploy" },
+      },
+      kind: "tool",
+      words: "Used the zerops-deploy skill",
+    },
+    {
       name: "a Zerops tool with no card, from any driver",
       partial: {
         label: "Running zerops_knowledge",

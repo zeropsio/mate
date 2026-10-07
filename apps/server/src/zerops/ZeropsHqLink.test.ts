@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
+  MateHealth,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -13,6 +14,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -45,6 +47,7 @@ class FakeSocket implements LinkSocket {
   readonly sent: Array<Sent> = [];
   readonly listeners = new Map<string, Array<(event: { readonly data: unknown }) => void>>();
   closed = false;
+  onSent: (message: Sent) => void = () => {};
   /** The address family it went over; unknown unless a test says. */
   over: "IPv4" | "IPv6" | undefined = undefined;
   family() {
@@ -57,7 +60,9 @@ class FakeSocket implements LinkSocket {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
   }
   send(data: string) {
-    this.sent.push(decodeJson(data) as Sent);
+    const message = decodeJson(data) as Sent;
+    this.sent.push(message);
+    this.onSent(message);
   }
   close() {
     this.closed = true;
@@ -134,6 +139,8 @@ const rig = (
     readonly everyMs?: number;
     /** The attention the link sends up; nothing unless a test says. */
     readonly attention?: Stream.Stream<MateAttention>;
+    readonly health?: Stream.Stream<MateHealth>;
+    readonly overview?: Effect.Effect<Option.Option<MateOverview>>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -148,6 +155,7 @@ const rig = (
     const reads = { count: 0 };
     const changes = yield* PubSub.unbounded<void>();
     const sockets: Array<FakeSocket> = [];
+    const connected = yield* Queue.unbounded<FakeSocket>();
     const asked: Array<string | undefined> = [];
     const hq = { refusing: false, tickets: 0 };
     /** What HQ relayed of the project's access, as the link handed it on. */
@@ -174,13 +182,17 @@ const rig = (
       connect: (url) => {
         const socket = new FakeSocket(url);
         sockets.push(socket);
+        Queue.offerUnsafe(connected, socket);
         return socket;
       },
-      overview: Effect.sync(() => {
-        reads.count += 1;
-      }).pipe(Effect.andThen(Ref.get(current)), Effect.map(Option.some)),
+      overview:
+        options.overview ??
+        Effect.sync(() => {
+          reads.count += 1;
+        }).pipe(Effect.andThen(Ref.get(current)), Effect.map(Option.some)),
       changes: Stream.fromPubSub(changes),
       attention: options.attention ?? Stream.never,
+      ...(options.health === undefined ? {} : { health: options.health }),
       relayAccess: (access) =>
         Effect.sync(() => {
           relayed.push(access);
@@ -205,6 +217,7 @@ const rig = (
       current,
       changes,
       sockets,
+      connected,
       asked,
       hq,
       until,
@@ -628,6 +641,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       domainEvents: Stream.never,
     });
     const sockets: Array<FakeSocket> = [];
+    const connected = yield* Queue.unbounded<FakeSocket>();
     const http = HttpClient.make((request) =>
       Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ ticket: "t1" }))),
     );
@@ -637,6 +651,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       connect: (url) => {
         const socket = new FakeSocket(url);
         sockets.push(socket);
+        Queue.offerUnsafe(connected, socket);
         return socket;
       },
       relayAccess: () => Effect.void,
@@ -748,3 +763,38 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
     ),
   );
 });
+
+it.effect("sends measured health even when the conversation overview cannot answer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const health = yield* Schema.decodeUnknownEffect(MateHealth)({
+        source: { environmentId: "env-1", epoch: 1, incarnation: "run", revision: 1 },
+        sampledAt: "2026-10-07T12:00:00Z",
+        evidence: {
+          status: "strained",
+          severity: "critical",
+          resources: ["memory"],
+          memory: null,
+          cpu: null,
+          io: null,
+          disk: null,
+          unavailable: [],
+        },
+      });
+      const { connected } = yield* rig({
+        enrolled: true,
+        overview: Effect.never,
+        health: Stream.make(health),
+      });
+      const sent = yield* Queue.unbounded<Sent>();
+      const socket = yield* Queue.take(connected);
+      socket.onSent = (message) => {
+        Queue.offerUnsafe(sent, message);
+      };
+      socket.emit("open");
+      const message = yield* Queue.take(sent);
+      assert.deepStrictEqual(message, { type: "health", health });
+      yield* decodeMateLinkUp(message);
+    }),
+  ),
+);

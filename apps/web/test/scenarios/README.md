@@ -25,15 +25,23 @@ The hosted production bundle is cached at `node_modules/.cache/mate-scenario-web
 within this worktree. Git discovers tracked and new non-ignored source files, including Tailwind's
 `design*.html` inputs. Ignored build environment files and the public build environment also join
 the key. This conservative source set can invalidate on unrelated edits; vendored reference
-repositories and generated routes are excluded. Concurrent runs await the builder, failed builds
-never publish, and unchanged invocations reuse the bundle.
-Each run launches headless Chrome and starts real HQ Core with disposable Postgres/git roots
+repositories and generated routes are excluded. A kernel file lock elects one builder per key;
+other processes wait for its release and reuse the atomically published bundle. The lock file
+stays in place, and the kernel releases ownership if its process dies. Failed builds never publish.
+Each run launches headless Chrome and starts real HQ Core with isolated databases on the
+[shared host test PostgreSQL](../../../../docs/internals/test-postgres.md) and disposable git roots
 through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
 its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
 Core's established test infrastructure remains reusable by its own tests.
 
-Prerequisites: workspace dependencies, installed Chrome and local Postgres binaries. Override
-Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core never downloads Chrome.
+Prerequisites: workspace dependencies, a provisioned test browser, `flock` and local Postgres binaries. Run
+`vp run test:browser` once per host to install the pinned Chrome for Testing into
+`~/.cache/mate-test-browser`; subsequent invocations reuse it across worktrees without downloading.
+Tests never download browsers or fall back to an installed personal Chrome. Google-signed Chrome
+on macOS creates keychain-backed unexportable keys even with `--use-mock-keychain` and
+`--password-store=basic`; the test binary must have no Google keychain entitlement. Override the
+binary with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. An invalid browser override fails
+immediately.
 Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
 HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
 are disabled. Both unmapped HTTP and WebSocket destinations fail the suite, even if the app catches

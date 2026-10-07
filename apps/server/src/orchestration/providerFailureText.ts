@@ -32,6 +32,11 @@ const KNOWN: Record<
   ProviderAdapterValidationError: { code: "invalid-request", field: "issue" },
   ProviderValidationError: { code: "invalid-request", field: "issue" },
   ProviderWorkspaceMissingError: { code: "workspace-missing", field: "message" },
+  BackgroundWorkBlocksModelChangeError: {
+    code: "background-work",
+    sentence:
+      "Claude is still running background work, and this model change needs a new session that would end it. Wait for it to finish or stop it, or keep the current model, then send the message again.",
+  },
 };
 
 const codeOfTag = (tag: string) =>

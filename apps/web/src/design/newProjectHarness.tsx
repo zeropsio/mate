@@ -94,6 +94,7 @@ function click(selector: string): void {
 }
 
 function Harness() {
+  const [open, setOpen] = useState(true);
   // Create pressed: the dialog gives way to the first Mate's page, at once.
   const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
@@ -133,7 +134,7 @@ function Harness() {
           {landed === null ? null : <HarnessPressPage birthId={landed} />}
         </main>
       </SidebarProvider>
-      {landed !== null ? null : (
+      {landed !== null || !open ? null : (
         <ZeropsNewProjectDialog
           closed={
             STATE === "closed"
@@ -147,7 +148,7 @@ function Harness() {
           locationId="prg1"
           loading={false}
           locations={LOCATIONS}
-          onCancel={() => {}}
+          onCancel={() => setOpen(false)}
           onCreate={(choice) => {
             created.push(choice);
             setLanded(
@@ -159,7 +160,7 @@ function Harness() {
             );
           }}
           onLocation={() => {}}
-          onOpenChange={() => {}}
+          onOpenChange={setOpen}
 
           proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
           takenBotNames={{

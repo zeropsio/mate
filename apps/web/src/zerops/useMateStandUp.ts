@@ -1,3 +1,5 @@
+import { useAtomValue } from "@effect/atom-react";
+import { mateActionsForEnvironmentAtom } from "@t3tools/client-runtime/data";
 /**
  * What the conversation view shows of a Mate's stand-up (`mateStandUp.ts`): the composer held back
  * while its person waits on it, and the quiet line its ask is drawn as. The Mate's own server
@@ -63,7 +65,9 @@ export function useMateStandUp(input: {
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const marker = whoLivesHere?.kind === "mate" ? whoLivesHere.mate.standUp : undefined;
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  const session = useZeropsSessionOptional();
+  const viewer = session?.user?.id;
+  const orgId = session?.activeOrganization?.id;
   const threads = useThreadShells();
   // The stand-up goes into the Mate's main conversation, the one opening the Mate lands on.
   const main = useMemo(
@@ -87,13 +91,23 @@ export function useMateStandUp(input: {
     setup?.standup === "failed" &&
     conversation !== "started";
   const sendFailed = failed && setup?.standupFailure === "send_failed";
-  const [retrying, setRetrying] = useState(false);
+  const [submitting, setRetrying] = useState(false);
+  const actions = useAtomValue(mateActionsForEnvironmentAtom(environmentId ?? ""));
+  const retrying =
+    submitting || actions.some((action) => action.action === "standUpRetry" && action.pending);
   const sendAgain = useAtomCommand(zeropsCommands.standUpRetry, "stand-up retry");
   const retry = async () => {
-    if (!sendFailed || environmentId === null || retrying) return;
+    if (
+      !sendFailed ||
+      environmentId === null ||
+      retrying ||
+      origin === undefined ||
+      orgId === undefined
+    )
+      return;
     setRetrying(true);
     try {
-      await sendAgain({ environmentId, input: {} });
+      await sendAgain({ environmentId, input: { orgId, origin } });
       if (origin !== undefined) refreshMateSetup(origin);
     } finally {
       setRetrying(false);

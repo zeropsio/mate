@@ -23,6 +23,7 @@
  * behaviour rather than the runtime details of each provider.
  */
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   type ClaudeSettings,
@@ -44,6 +45,7 @@ import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
+import { claudeTestProcessSuite } from "../../testing/claudeTestProcess.ts";
 import type { BuiltInDriversEnv } from "../builtInDrivers.ts";
 import { AntigravityInstallation } from "../AntigravityInstallation.ts";
 import { ServerConfig } from "../../config.ts";
@@ -59,6 +61,9 @@ import { OpenCodeRuntimeLive } from "../opencodeRuntime.ts";
 import * as ResetCreditCoordinator from "./resetCreditCoordinator.ts";
 import { NoOpProviderEventLoggers, ProviderEventLoggers } from "./ProviderEventLoggers.ts";
 import { makeProviderInstanceRegistry } from "./ProviderInstanceRegistryLive.ts";
+
+vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
+const ownClaudeTestProcesses = claudeTestProcessSuite();
 
 const TestHttpClientLive = Layer.succeed(
   HttpClient.HttpClient,
@@ -181,6 +186,7 @@ const makeTildeProviderFixtures = Effect.fn(
     claudePath,
   );
   yield* fileSystem.chmod(claudePath, 0o755);
+  yield* ownClaudeTestProcesses(claudePath);
   yield* fileSystem.makeDirectory(claudeHomePath);
 
   const asTildePath = (filePath: string) => `~/${path.relative(homePath, filePath)}`;

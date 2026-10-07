@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog as CommandDialogPrimitive } from "@base-ui/react/dialog";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, XIcon } from "lucide-react";
 import type * as React from "react";
 import { cn } from "~/lib/utils";
 import {
@@ -66,6 +66,13 @@ function CommandDialogPopup({
           {...props}
         >
           {children}
+          <CommandDialogPrimitive.Close
+            aria-label="Close"
+            className="absolute end-2 top-2"
+            render={<Button size="icon" variant="ghost" />}
+          >
+            <XIcon />
+          </CommandDialogPrimitive.Close>
         </CommandDialogPrimitive.Popup>
       </CommandDialogViewport>
     </CommandDialogPortal>
@@ -94,7 +101,7 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof AutocompleteInput>) {
   return (
-    <div className="px-[var(--command-shell-inset)] py-1.5 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
+    <div className="px-[var(--command-shell-inset)] py-1.5 pe-12 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
       <AutocompleteInput
         autoFocus
         className={cn(

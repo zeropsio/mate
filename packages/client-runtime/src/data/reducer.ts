@@ -83,6 +83,7 @@ export type AccountInput =
   /** The owner proved the entity gone: the one input that deletes a fact. */
   | {
       readonly kind: "proven-deletion";
+      readonly scope?: ScopeKey;
       readonly family: Family;
       readonly id: string;
       readonly evidence: string;
@@ -90,6 +91,7 @@ export type AccountInput =
   /** The owner's word on the viewer's access; denial withholds and purges, never deletes. */
   | {
       readonly kind: "access";
+      readonly scope?: ScopeKey;
       readonly family: Family;
       readonly id: string;
       readonly access: Access;
@@ -317,7 +319,9 @@ function reduceRows(
       keepUnsaid === undefined
         ? merged
         : keepUnsaid(held?.value, merged, scopeListing(input.scope).detail?.member === true);
+    const label = (spec.labelOf as ((value: unknown) => string) | undefined)?.(value);
     const fact: Fact<unknown> = {
+      ...(label === undefined ? {} : { label }),
       content: { kind: "value", value },
       revision: row.revision,
       // The family's owner, whichever path delivered it: HQ's relay of attention stays the Mate's.
@@ -390,7 +394,10 @@ function reduceMembership(
     members ??= new Map(membership.members);
     members.set(id, leaving);
   }
-  const unresolved = delta.add.filter((id) => !state.facts.has(factKey(family, id)));
+  const unresolved = delta.add.filter((id) => {
+    const fact = state.facts.get(factKey(family, id));
+    return fact === undefined || fact.content.kind === "purged";
+  });
   if (unresolved.length > 0) directives.push({ kind: "resolve-rows", key: scope, ids: unresolved });
   if (leaving === "absent-unverified" && removed.length > 0)
     directives.push({ kind: "verify-absence", key: scope, ids: removed });
@@ -513,7 +520,19 @@ function reduceEvidence(
   changed: Set<ReadKey>,
 ): AccountState {
   const key = factKey(input.family, input.id);
-  const current = state.facts.get(key);
+  const current =
+    state.facts.get(key) ??
+    (input.scope === undefined || (input.kind === "access" && input.access !== "denied")
+      ? undefined
+      : ({
+          content: { kind: "purged" },
+          revision: { kind: "zerops", version: null },
+          authority: familySpec(input.family).authority,
+          via: "zerops-read",
+          method: "read",
+          scope: input.scope,
+          access: "denied",
+        } satisfies Fact<unknown>));
   if (current === undefined) return state;
   const fact: Fact<unknown> =
     input.kind === "proven-deletion"

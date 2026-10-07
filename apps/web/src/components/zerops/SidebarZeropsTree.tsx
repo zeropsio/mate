@@ -273,9 +273,7 @@ import {
 } from "./SidebarHeadingLine";
 import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
 
-const menuPlacementLiveAtom = Atom.make(
-  (get) => get(hqPlacementsAtom) !== null && get(hqNavigationAtom).live,
-);
+const menuPlacementKnownAtom = Atom.make((get) => get(hqPlacementsAtom) !== null);
 const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
     Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
@@ -2613,10 +2611,10 @@ function MateRowView<T extends RosterCandidate>({
   const press = useMatePress(candidate.project.id);
   const linkedInHq = useMateLinkedInHq(candidate.project.id);
   const linkedNow = candidate.group === "connected" || linkedInHq;
-  const placedLive = useAtomValue(menuPlacementLiveAtom);
+  const placedKnown = useAtomValue(menuPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
-    placedLive,
+    placedKnown,
     coming !== undefined || press !== undefined,
   );
   const finishing =

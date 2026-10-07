@@ -39,22 +39,48 @@ function optimisticProjectFileKey(target: OptimisticProjectFileTarget): string {
   return JSON.stringify([target.environmentId, target.cwd, target.relativePath]);
 }
 
-export function createProjectEnvironmentAtoms<R, E>(
+export function createProjectCommands<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
 ) {
   const projectScheduler = createAtomCommandScheduler();
-  const fileScheduler = createAtomCommandScheduler();
-  const optimisticFileFamily = Atom.family((key: string) =>
-    Atom.make<OptimisticProjectFile | null>(null).pipe(
-      Atom.withLabel(`environment-data:projects:optimistic-file:${key}`),
-    ),
-  );
   const projectConcurrency = {
     mode: "serial" as const,
     key: ({ environmentId, input }: { environmentId: string; input: { projectId: string } }) =>
       JSON.stringify([environmentId, input.projectId]),
   };
   return {
+    create: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:create",
+      execute: (input: CreateProjectInput) => createProject(input),
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    update: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:update",
+      execute: (input: UpdateProjectInput) => updateProject(input),
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+    delete: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:project:delete",
+      execute: (input: DeleteProjectInput) => deleteProject(input),
+      scheduler: projectScheduler,
+      concurrency: projectConcurrency,
+    }),
+  };
+}
+
+export function createProjectEnvironmentAtoms<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
+) {
+  const fileScheduler = createAtomCommandScheduler();
+  const optimisticFileFamily = Atom.family((key: string) =>
+    Atom.make<OptimisticProjectFile | null>(null).pipe(
+      Atom.withLabel(`environment-data:projects:optimistic-file:${key}`),
+    ),
+  );
+  return {
+    ...createProjectCommands(runtime),
     searchEntries: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:projects:search-entries",
       tag: WS_METHODS.projectsSearchEntries,
@@ -74,24 +100,6 @@ export function createProjectEnvironmentAtoms<R, E>(
     }),
     optimisticFile: (target: OptimisticProjectFileTarget) =>
       optimisticFileFamily(optimisticProjectFileKey(target)),
-    create: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:create",
-      execute: (input: CreateProjectInput) => createProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
-    update: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:update",
-      execute: (input: UpdateProjectInput) => updateProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
-    delete: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:delete",
-      execute: (input: DeleteProjectInput) => deleteProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
     writeFile: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:projects:write-file",
       tag: WS_METHODS.projectsWriteFile,

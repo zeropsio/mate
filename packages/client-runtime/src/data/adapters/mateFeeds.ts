@@ -2,6 +2,9 @@
 import {
   CrewFrameUndecodable,
   EnvironmentAuthorizationError,
+  EnvironmentAuthInvalidError,
+  EnvironmentScopeRequiredError,
+  EnvironmentOperationForbiddenError,
   WS_METHODS,
   type EnvironmentId,
   type ThreadId,
@@ -17,9 +20,10 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/unstable/reactivity";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
-import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentRegistry } from "../../connection/registry.ts";
 import { applyTerminalMetadataStreamEvent } from "../../state/terminalSession.ts";
 import {
   MATE_FEED_FAMILIES,
@@ -29,16 +33,27 @@ import {
   type MateFeedKey,
   type MateFeedValues,
 } from "../families/mateFeeds.ts";
+import { applyServerConfigProjection } from "../../state/serverConfigProjection.ts";
+import { fetchEnvironmentSessionState } from "./mateClientAccess.ts";
+import { ManagedRelayDpopSigner } from "../../relay/managedRelay.ts";
 import { streamOf, type Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
+const isHttpAuthInvalid = Schema.is(EnvironmentAuthInvalidError);
+const isHttpDenied = Schema.is(
+  Schema.Union([EnvironmentScopeRequiredError, EnvironmentOperationForbiddenError]),
+);
 const isAuthorization = Schema.is(EnvironmentAuthorizationError);
 const isUndecodable = Schema.is(CrewFrameUndecodable);
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 export function classifyMateFeedFailure(cause: Cause.Cause<unknown>): StreamFault {
   for (const reason of cause.reasons) {
+    if (Cause.isFailReason(reason) && isHttpAuthInvalid(reason.error))
+      return { outcome: "access-unverified", message: reason.error.message };
+    if (Cause.isFailReason(reason) && isHttpDenied(reason.error))
+      return { outcome: "authoritative-denial", message: reason.error.message };
     if (Cause.isFailReason(reason) && isAuthorization(reason.error))
       return { outcome: "definitive-refusal", message: reason.error.message };
     if (Cause.isDieReason(reason) && messageOf(reason.defect).startsWith("Unknown request tag"))
@@ -51,6 +66,7 @@ export function classifyMateFeedFailure(cause: Cause.Cause<unknown>): StreamFaul
   return { outcome: "transient", message: messageOf(Cause.squash(cause)) };
 }
 export type MateFeedEvent =
+  | { readonly kind: "session-unavailable" }
   | { readonly kind: "session" }
   | { readonly kind: "value"; readonly value: MateFeedValues[keyof MateFeedValues] };
 export interface MateFeedWire {
@@ -61,7 +77,10 @@ export interface MateFeedWire {
   ) => Effect.Effect<void>;
 }
 /** Session rotation cancels the previous stream before asking for the replacement baseline. */
-export function makeMateFeedWire(registry: EnvironmentRegistry["Service"]): MateFeedWire {
+export function makeMateFeedWire(
+  registry: EnvironmentRegistry["Service"],
+  httpClient?: HttpClient.HttpClient,
+): MateFeedWire {
   return {
     watch: (environmentId, receive) =>
       registry.stateChanges(environmentId as EnvironmentId).pipe(
@@ -100,13 +119,86 @@ export function makeMateFeedWire(registry: EnvironmentRegistry["Service"]): Mate
               SubscriptionRef.changes(supervisor.session).pipe(
                 Stream.switchMap((session) => {
                   if (Option.isNone(session))
-                    return Stream.fail<StreamFault>({
-                      outcome: "transient",
-                      message: "The Mate's socket is not connected.",
-                    });
+                    return Stream.make({ kind: "session-unavailable" } as const);
                   const client = session.value.client;
                   let values: Stream.Stream<MateFeedValues[keyof MateFeedValues], unknown>;
                   switch (key.family) {
+                    case "mateServerConfig":
+                      values = Stream.concat(
+                        Stream.fromEffect(session.value.initialConfig).pipe(
+                          Stream.map(
+                            (config) => ({ version: 1, type: "snapshot", config }) as const,
+                          ),
+                        ),
+                        client[WS_METHODS.subscribeServerConfig]({
+                          usageLimitSources: true,
+                          usageLimitsCommand: true,
+                        }),
+                      ).pipe(
+                        Stream.mapAccum(
+                          () =>
+                            Option.none<
+                              import("../../state/serverConfigProjection.ts").ServerConfigProjection
+                            >(),
+                          (current, event) => {
+                            const next = applyServerConfigProjection(current, event);
+                            return [next, Option.toArray(next)] as const;
+                          },
+                        ),
+                      );
+                      break;
+                    case "mateWelcome":
+                      values = client[WS_METHODS.subscribeServerLifecycle]({}).pipe(
+                        Stream.filter((event) => event.type === "welcome"),
+                        Stream.map(
+                          (event) =>
+                            event.payload as import("@t3tools/contracts").ServerLifecycleWelcomePayload,
+                        ),
+                      );
+                      break;
+                    case "mateProviderAuth":
+                      values = client[WS_METHODS.providerAuthSubscribe](
+                        key.input as unknown as import("../../rpc/client.ts").EnvironmentRpcInput<
+                          typeof WS_METHODS.providerAuthSubscribe
+                        >,
+                      );
+                      break;
+                    case "mateProviderInstall":
+                      values = client[WS_METHODS.providerInstallSubscribe](
+                        key.input as unknown as import("../../rpc/client.ts").EnvironmentRpcInput<
+                          typeof WS_METHODS.providerInstallSubscribe
+                        >,
+                      );
+                      break;
+                    case "mateResourceTelemetry":
+                      values = client[WS_METHODS.subscribeResourceTelemetry]({});
+                      break;
+                    case "mateProjectClone":
+                      values = client[WS_METHODS.subscribeProjectClones]({});
+                      break;
+                    case "mateClientSession":
+                      if (httpClient === undefined) {
+                        values = Stream.fail<StreamFault>({
+                          outcome: "definitive-refusal",
+                          message: "The authenticated HTTP transport is unavailable.",
+                        });
+                        break;
+                      }
+                      values = Stream.fromEffect(
+                        Effect.gen(function* () {
+                          const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+                          if (Option.isNone(prepared))
+                            return yield* Effect.fail<StreamFault>({
+                              outcome: "access-unverified",
+                              message: "The Mate session is not verified.",
+                            });
+                          return yield* fetchEnvironmentSessionState({
+                            prepared: prepared.value,
+                            signer: yield* Effect.serviceOption(ManagedRelayDpopSigner),
+                          });
+                        }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
+                      );
+                      break;
                     case "mateLifecycle":
                       values = client[WS_METHODS.subscribeZeropsLifecycle]({
                         threadId: key.input?.threadId as ThreadId,
@@ -230,8 +322,15 @@ export function makeMateFeeds(options: {
         });
         held.get(scope)?.fault(fault);
       }
-    } else if (withheld.delete(environmentId)) {
+    } else {
+      const verified = withheld.delete(environmentId);
       for (const [scope, key] of seen.get(environmentId) ?? []) {
+        if (
+          !verified &&
+          streamOf(store.state(), mateFeedLink(key)).fault?.outcome !== "access-unverified" &&
+          streamOf(store.state(), mateFeedScope(key)).fault?.outcome !== "access-unverified"
+        )
+          continue;
         store.dispatch({
           kind: "access",
           family: key.family,
@@ -287,11 +386,17 @@ export function makeMateFeeds(options: {
           if (access) return yield* Effect.fail(access);
           for (;;) {
             let based = false;
-            let generation = 0;
+            let generation: number | undefined;
             let crewSeq = -1;
             yield* Stream.runForEach(wire.open(key), (event) =>
               Effect.gen(function* () {
                 if (closed || withheld.has(key.environmentId)) return;
+                if (event.kind === "session-unavailable") {
+                  based = false;
+                  generation = undefined;
+                  yield* signal(scope, { kind: "parent-lost" });
+                  return;
+                }
                 if (event.kind === "session") {
                   based = false;
                   crewSeq = -1;
@@ -301,7 +406,12 @@ export function makeMateFeeds(options: {
                   generation = streamOf(store.state(), scope).generation;
                   return;
                 }
-                if (generation !== streamOf(store.state(), scope).generation) return;
+                if (
+                  generation === undefined ||
+                  generation !== streamOf(store.state(), scope).generation
+                )
+                  return;
+                const observationGeneration = generation;
                 if (key.family === "mateCrew" && "seq" in event.value) {
                   if (event.value.seq <= crewSeq) return;
                   crewSeq = event.value.seq;
@@ -323,11 +433,15 @@ export function makeMateFeeds(options: {
                     access: "allowed",
                   });
                   if (!based) {
-                    store.dispatch({ kind: "baseline-begin", scope, generation });
+                    store.dispatch({
+                      kind: "baseline-begin",
+                      scope,
+                      generation: observationGeneration,
+                    });
                     store.dispatch({
                       kind: "baseline-commit",
                       scope,
-                      generation,
+                      generation: observationGeneration,
                       via: "mate-direct",
                       rows: [row],
                       members: [row.id],
@@ -337,7 +451,7 @@ export function makeMateFeeds(options: {
                     store.dispatch({
                       kind: "rows",
                       scope,
-                      generation,
+                      generation: observationGeneration,
                       method: "push",
                       via: "mate-direct",
                       rows: [row],
@@ -459,3 +573,8 @@ export function makeMateFeeds(options: {
     },
   };
 }
+
+/** Hosts obtain transport services here; they only bind account lifecycle. */
+export const mateFeedServices = Effect.gen(function* () {
+  return { registry: yield* EnvironmentRegistry, httpClient: yield* HttpClient.HttpClient };
+});

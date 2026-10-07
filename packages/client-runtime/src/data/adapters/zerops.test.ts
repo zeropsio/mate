@@ -788,6 +788,9 @@ describe("a demanded detail", () => {
       yield* settle;
       expect(reads()).toBe(1);
       expect(store.state().streams.get(scope)?.phase).toBe("refused");
+      expect(readsOfState(store.state()).fact("project", PROBE_PROJECT_ID)).toMatchObject(
+        status === 404 ? { kind: "deleted" } : { kind: "withheld", reason: "denied" },
+      );
 
       // Neither the former five-second confirmation nor drawing the same Mate retries it.
       yield* TestClock.adjust(5_000);

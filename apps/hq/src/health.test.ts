@@ -223,6 +223,22 @@ describe("GET /health", () => {
       );
     }
 
+    it.effect("ignores leadership locks in another database when deciding readiness", () =>
+      Effect.gen(function* () {
+        const postgres = yield* TempPostgres;
+        const foreignUrl = yield* postgres.createDatabase;
+        const foreign = yield* PgConnection.make({ url: Redacted.make(foreignUrl) });
+        yield* foreign.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
+        const ownUrl = yield* postgres.createDatabase;
+        const response = yield* getHealth(
+          { state: "standby", epoch: null },
+          "anchor_elsewhere",
+          ownUrl,
+        );
+        assert.strictEqual(response.status, 200);
+      }),
+    );
+
     // A Core holding the lock over records and git that disagree says why (`reconcile.ts`).
     it.effect("names why a held Core serves nothing", () =>
       Effect.gen(function* () {
