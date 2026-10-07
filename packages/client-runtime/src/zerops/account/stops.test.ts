@@ -420,11 +420,11 @@ describe("a stop's services as the account's store and listing say them", () => 
     summary();
   });
 
-  it("holds the data-layer services demand and releases detail history independently", () => {
+  it("reads the navigation services without a project detail demand and releases history independently", () => {
     const { stops, acquired, histories } = rig();
     const release = stops.demand(STAGE);
     const detail = stops.demand(STAGE, "detail");
-    expect(acquired.every((scope) => scope === "services")).toBe(true);
+    expect(acquired).toEqual([]);
     expect(histories()).toEqual([STAGE.projectId]);
     detail();
     expect(histories()).toEqual([]);

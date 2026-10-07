@@ -185,6 +185,7 @@ describe("reduceAccount", () => {
       access: "denied",
     });
     expect(denied.memberships.get(scope)?.members.has("p1")).toBe(false);
+    expect(denied.memberships.get(scope)?.excluded).toEqual(new Set(["p1"]));
   });
 
   describe("the project roster", () => {
@@ -259,6 +260,14 @@ describe("reduceAccount", () => {
           rows: [project("p2", 1)],
         });
         expect(again.directives).toEqual([]);
+        expect(again.state.memberships.get(projects)?.excluded).toEqual(new Set(["p1"]));
+        const removal = reduceAccount(again.state, {
+          kind: "membership",
+          scope: projects,
+          generation: 1,
+          delta: { add: [], remove: ["p1"] },
+        });
+        expect(removal.directives).toEqual([]);
       },
     );
   });

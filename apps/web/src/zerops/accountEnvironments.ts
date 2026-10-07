@@ -207,8 +207,7 @@ export function useMateDetailRead(
       ? null
       : { message: "Zerops refused this project's services." };
   const again = useCallback(() => {
-    if (project !== null)
-      account?.retryDetail({ family: "service", listing: "services", ownerId: project });
+    if (project !== null) account?.retry();
   }, [account, project]);
   return { failure, again };
 }

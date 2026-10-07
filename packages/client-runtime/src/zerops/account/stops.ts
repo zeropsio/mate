@@ -1,6 +1,6 @@
 /**
  * A stop's deployments join the account store's services, work and version projections.
- * A drawn stop holds its services, an opened one also its process history; versions absent
+ * A drawn stop reads the navigation services; an opened one holds its process history; versions absent
  * from the active listing are read by id. Closing the account releases every demand.
  */
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
@@ -12,12 +12,7 @@ import {
 } from "../../data/projections/serviceRuns.ts";
 import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
 import type { DetailDemand } from "../../data/demand.ts";
-import {
-  accountReadsAtom,
-  projectServicesAtom,
-  holdProjectServices,
-  type AccountReads,
-} from "../../data/reads.ts";
+import { accountReadsAtom, projectServicesAtom, type AccountReads } from "../../data/reads.ts";
 import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
 import {
   listedVersions,
@@ -28,7 +23,7 @@ import {
 import type { Known, Shown } from "../knowledge/known.ts";
 
 export interface Stops {
-  /** The stop's runtime services and what each runs; `unread` while nobody demands it. */
+  /** The stop's services and what each runs; `unread` while nobody demands it. */
   readonly services: (project: ProjectRef) => Atom.Atom<Shown<ReadonlyArray<StopService>>>;
   /** Shows the stop until the returned release; `detail` adds its project's topology. */
   readonly demand: (project: ProjectRef, scope?: "summary" | "detail") => () => void;
@@ -42,8 +37,6 @@ export interface Stops {
    * long as a surface draws them; the release lets them go.
    */
   readonly holdVersions: (services: ReadonlyArray<ServiceRef>) => () => void;
-  /** One manual attempt for a stop a view still shows. */
-  readonly again: (project: ProjectRef) => void;
   /** The account closed: every demand is let go. */
   readonly dispose: () => void;
 }
@@ -58,7 +51,6 @@ interface Entry {
   readonly project: ProjectRef;
   leases: number;
   detailLeases: number;
-  unfollow: () => void;
 }
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
@@ -286,17 +278,6 @@ export function makeStops(atomRegistry: AtomRegistry.AtomRegistry): Stops {
     { immediate: true },
   );
 
-  /** Asks for the stop's demand; a refusal fails the stop until it is asked for again. */
-  const follow = (entry: Entry): void => {
-    entry.unfollow = holdProjectServices(atomRegistry, entry.project.projectId);
-  };
-
-  const refollow = (key: string, entry: Entry): void => {
-    entry.unfollow();
-    follow(entry);
-    publish(key, entry);
-  };
-
   return {
     services: (project) => servicesAtom(projectKeyOf(project)),
     version: (service) => {
@@ -333,16 +314,13 @@ export function makeStops(atomRegistry: AtomRegistry.AtomRegistry): Stops {
           project,
           leases: 0,
           detailLeases: scope === "detail" ? 1 : 0,
-          unfollow: () => undefined,
         };
-        // Held before it is followed: a demand refused as it is taken reaches the entry.
         entries.set(key, created);
-        follow(created);
         publish(key, created);
         entry = created;
       } else if (scope === "detail") {
         entry.detailLeases += 1;
-        if (entry.detailLeases === 1) refollow(key, entry);
+        if (entry.detailLeases === 1) publish(key, entry);
       }
       const held = entry;
       held.leases += 1;
@@ -353,32 +331,19 @@ export function makeStops(atomRegistry: AtomRegistry.AtomRegistry): Stops {
         held.leases -= 1;
         if (scope === "detail") held.detailLeases -= 1;
         if (held.leases > 0) {
-          if (scope === "detail" && held.detailLeases === 0) refollow(key, held);
+          if (scope === "detail" && held.detailLeases === 0) publish(key, held);
           return;
         }
-        held.unfollow();
         entries.delete(key);
         publish(key, undefined);
       };
-    },
-    again: (project) => {
-      if (disposed) return;
-      const key = projectKeyOf(project);
-      const entry = entries.get(key);
-      if (entry === undefined) return;
-      entry.unfollow();
-      follow(entry);
-      publish(key, entry);
     },
     dispose: () => {
       if (disposed) return;
       disposed = true;
       stopWanting();
       releaseReads();
-      for (const [key, entry] of entries) {
-        entry.unfollow();
-        publish(key, undefined);
-      }
+      for (const key of entries.keys()) publish(key, undefined);
       entries.clear();
     },
   };

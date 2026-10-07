@@ -393,25 +393,3 @@ export const hqMateSetupAtom = Atom.family((projectId: string) =>
     return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
   }),
 );
-
-/** A project's services held while its detail is drawn. */
-export function holdProjectServices(
-  registry: AtomRegistry.AtomRegistry,
-  projectId: string,
-): () => void {
-  let release: (() => void) | null = null;
-  const unsubscribe = registry.subscribe(
-    accountReadsAtom,
-    (account) => {
-      release?.();
-      release =
-        account?.demandDetail({ family: "service", listing: "services", ownerId: projectId }) ??
-        null;
-    },
-    { immediate: true },
-  );
-  return () => {
-    unsubscribe();
-    release?.();
-  };
-}

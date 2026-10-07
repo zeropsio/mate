@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { liveProjects } from "../__fixtures__/account.ts";
+import { liveProjects, projectValue, zeropsVersion } from "../__fixtures__/account.ts";
 import { emptyAccount } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { projectsScope } from "../families/project.ts";
@@ -7,6 +7,30 @@ import { readsOfState } from "../store.ts";
 import { platformInventory } from "./platformInventory.ts";
 
 const viewer = { id: "org", name: "Org", membershipId: "member", roleCode: "ADMIN" };
+const deniedProject: ReadonlyArray<AccountInput> = [
+  ...liveProjects("org", [{ id: "p" }]),
+  { kind: "access", family: "project", id: "p", access: "denied" },
+];
+const projectBaseline = (restored: boolean): ReadonlyArray<AccountInput> => [
+  { kind: "baseline-begin", scope: projectsScope("org"), generation: 1 },
+  {
+    kind: "baseline-commit",
+    scope: projectsScope("org"),
+    generation: 1,
+    via: "zerops-realtime",
+    members: restored ? ["p"] : [],
+    rows: restored
+      ? [
+          {
+            family: "project",
+            id: "p",
+            value: projectValue({ id: "p" }),
+            revision: zeropsVersion(1),
+          },
+        ]
+      : [],
+  },
+];
 it.each([
   { name: "unread", inputs: [], projects: [], denied: [], read: "unread", trouble: null },
   {
@@ -47,12 +71,69 @@ it.each([
     trouble: "retrying",
   },
   {
-    name: "owner denial",
+    name: "owner denial remains visible to protection guards",
     inputs: [
       ...liveProjects("org", [{ id: "p" }]),
       { kind: "access", family: "project", id: "p", access: "denied" },
     ],
     projects: [],
+    denied: ["p"],
+    read: "read",
+    trouble: null,
+  },
+  {
+    name: "denial survives an outage and an empty authoritative baseline",
+    inputs: [
+      ...deniedProject,
+      { kind: "stream", key: projectsScope("org"), now: 0, event: { kind: "parent-lost" } },
+      ...projectBaseline(false),
+    ],
+    projects: [],
+    denied: ["p"],
+    read: "read",
+    trouble: "retrying",
+  },
+  {
+    name: "a newer realtime row cannot reopen a revoked project",
+    inputs: [
+      ...deniedProject,
+      {
+        kind: "rows",
+        scope: projectsScope("org"),
+        generation: 1,
+        method: "push",
+        via: "zerops-realtime",
+        rows: [
+          {
+            family: "project",
+            id: "p",
+            value: projectValue({ id: "p" }),
+            revision: zeropsVersion(2),
+          },
+        ],
+      },
+    ],
+    projects: [],
+    denied: ["p"],
+    read: "read",
+    trouble: null,
+  },
+  {
+    name: "an explicit owner baseline restores access at the same revision",
+    inputs: [...deniedProject, ...projectBaseline(true)],
+    projects: ["p"],
+    denied: [],
+    read: "read",
+    trouble: null,
+  },
+  {
+    name: "another organization's denial does not enter this inventory",
+    inputs: [
+      ...liveProjects("other", [{ id: "other-project" }]),
+      { kind: "access", family: "project", id: "other-project", access: "denied" },
+      ...liveProjects("org", [{ id: "p" }]),
+    ],
+    projects: ["p"],
     denied: [],
     read: "read",
     trouble: null,

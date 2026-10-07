@@ -1,6 +1,6 @@
 /**
  * Where a host demands the topology of the project its environment belongs to (DESIGN §2.C C11).
- * The topology itself is derived from the account's runtime and store (`projectTopologyAtom`), so
+ * The topology itself is derived from the account's store (`projectTopologyAtom`), so
  * every reader — this host, and the protected roots through `useZeropsTopology` — sees one value
  * with nobody writing it. A host that shows the project's resources demands its current use and
  * its last day from the account's store while it shows them in a visible tab.
@@ -27,7 +27,6 @@ export function useProjectTopology(
   const tabVisible = useSyncExternalStore(subscribeVisibility, visibleSnapshot, () => true);
   const project = useEnvironmentProjectRef(environmentId);
   const account = useAccountDataOptional();
-  useDetailDemand("service", "services", project?.projectId ?? null);
   // The project's own organization, whichever is shown: a thread's Mate may run in another.
   const shownOwner =
     metrics && tabVisible && project !== null
@@ -39,12 +38,6 @@ export function useProjectTopology(
   return {
     ...snapshot,
     again: () => {
-      if (project !== null)
-        account?.retryDetail({
-          family: "service",
-          listing: "services",
-          ownerId: project.projectId,
-        });
       account?.retry();
     },
   };

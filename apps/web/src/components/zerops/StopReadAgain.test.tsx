@@ -8,7 +8,6 @@ import { StopReadAgain } from "./StopReadAgain";
 const calls = vi.hoisted(() => [] as string[]);
 const drawn = vi.hoisted(() => [] as string[]);
 vi.mock("~/zerops/accountForge", () => ({
-  againStopDeployment: () => calls.push("demand"),
   useStopDeploymentDemand: (ref: ProjectRef | null) => {
     if (ref !== null) drawn.push(ref.projectId);
   },
@@ -79,7 +78,9 @@ it.each(["transport", "access-denied", "access-lapsed", "unread"])(
     } as ProjectRef;
     const inventory = { projectRefs: new Map([["prod", project]]) } as unknown as Inventory;
     const data = {
-      retryDetail: (demand: { readonly ownerId: string }) => calls.push(demand.ownerId),
+      retry: () => calls.push("navigation"),
+      retryDetail: (demand: { readonly ownerId: string }) =>
+        calls.push(`invalid detail:${demand.ownerId}`),
     } as unknown as AccountData;
     await act(async () =>
       root.render(
@@ -99,7 +100,7 @@ it.each(["transport", "access-denied", "access-lapsed", "unread"])(
     expect(calls).toEqual([]);
     if (failure !== "unread") {
       await act(async () => press(buttonsLabelled(container, "Again")[0]!));
-      expect(calls).toEqual(["demand", "prod"]);
+      expect(calls).toEqual(["navigation"]);
     }
     await act(async () => root.unmount());
   },

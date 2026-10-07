@@ -2,7 +2,7 @@ import { DEPLOYMENT_SURFACE } from "@t3tools/client-runtime/zerops/flow";
 import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import { useContext, useMemo, useState } from "react";
 
-import { againStopDeployment, useStopDeploymentDemand } from "~/zerops/accountForge";
+import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
@@ -40,8 +40,7 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
         if (running) return;
         setRunning(true);
         if (renewAccess) invalidateZerops({ topic: "access", change: "renew-now" });
-        againStopDeployment(project);
-        data.retryDetail({ family: "service", listing: "services", ownerId: project.projectId });
+        data.retry();
         setRunning(false);
       }}
     >

@@ -35,7 +35,6 @@ import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
   holdProjectHistory,
   holdServiceRead,
-  holdProjectServices,
   projectProcessesAtom,
   readMateFlag,
 } from "../../data/reads.ts";
@@ -357,7 +356,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** What runs in each booting target's project, as the account's store holds it: followed. */
   const activity = new Map<string, { readonly stop: () => void }>();
   const listeners = new Set<() => void>();
-  const detailLeases = new Map<string, () => void>();
   /**
    * The processes each project of the active organization is read for while a container of it is
    * ACTIVE without its address — the listing reads from them whether the platform is turning its
@@ -684,14 +682,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       detailProjects = wanted;
       updateAddressWatch();
     }
-    for (const [id, release] of detailLeases) {
-      if (wanted.has(id)) continue;
-      detailLeases.delete(id);
-      release();
-    }
-    for (const id of wanted) {
-      if (!detailLeases.has(id)) detailLeases.set(id, holdProjectServices(atomRegistry, id));
-    }
     const shown = rows.flatMap((row) => (row.project.id === onScreen ? [row.key] : []));
     if (route === null) {
       routeKey = null;
@@ -715,7 +705,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     for (const [key, machine] of adapter.containers()) {
       if (machine.state.level !== "booting") continue;
       const projectId = targetProject(key);
-      if (!detailLeases.has(projectId)) continue;
+      if (!detailProjects.has(projectId)) continue;
       const ref = projectRefOf(projectId);
       if (ref !== undefined) booting.set(projectId, ref);
     }
@@ -1065,8 +1055,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         recent?.disarm();
         actions.clear();
-        for (const release of detailLeases.values()) release();
-        detailLeases.clear();
         for (const stop of addressWatch.values()) stop();
         addressWatch.clear();
         detailProjects = new Set();

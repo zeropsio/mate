@@ -106,6 +106,8 @@ export interface Membership {
    */
   readonly coverage: Coverage;
   readonly members: ReadonlyMap<string, MemberState>;
+  /** Owner-proven denial or deletion: ids retained for guards, without their payloads. */
+  readonly excluded: ReadonlySet<string>;
   /** While a baseline is under way: the ids known when it began, and the deltas since. */
   readonly baseline: {
     readonly knownAtBegin: ReadonlySet<string>;

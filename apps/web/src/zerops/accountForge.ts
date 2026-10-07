@@ -195,8 +195,3 @@ export function useStatedVersions(
   }, [stops, serviceKeys]);
   return useAtomValue(versions);
 }
-
-/** Restarts a refused visible demand only when the person asks. The runtime refresh is the caller's. */
-export function againStopDeployment(project: ProjectRef): void {
-  bound?.again(project);
-}
