@@ -4082,6 +4082,12 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   still holds: the menu says since when, and how old its rows are.
   - _Why:_ every reconnect and every reload pushed the whole menu down and back; syncing belongs in
     the header, and a reload paints nothing it takes back.
+  - **2026-10-07 amendment (Mate 0.14.26):** During an outage after HQ has answered, the header says
+    "HQ is not reachable — showing what it last said" and HQ facts are marked last-known, including
+    the production chip's menu. The tooltip names when reachability was lost; _Try again_ remains
+    where offered. Before any HQ answer the header says "HQ unavailable". A spinner alone cannot
+    describe retained facts as current (`SidebarZeropsTree.tsx`, `SidebarProductionChip.logic.ts`).
+
 - **2026-10-05** — **Every project of an application is named in full in Zerops; under its
   application the client shows a Mate or a stop by its own name** (the owner, of Aleš's report that
   a new Mate's project read only `Sage` in the organization's project list while older ones read

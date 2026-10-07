@@ -91,18 +91,29 @@ T14) and its code is gone.
 ## 2. The parts and where they live
 
 - **The app — web, desktop, mobile** — this repo (`zeropsio/mate`): `apps/web/src/zerops`,
-  `apps/web/src/components/zerops`, `packages/client-runtime/src/zerops` (HQ's client in its `hq/`)
+  `apps/web/src/components/zerops`, `packages/client-runtime/src/data` (the account data layer),
+  `packages/client-runtime/src/zerops` (HQ wire/client utilities in its `hq/`)
   - _Does:_ sign-in; HQ's birth and the gate in front of the product (`hqBirth.ts`, `hqGate.ts`);
-    the menu from HQ's stream (`hqStructure.ts`); _New project_, _Add Mate_, _Add stage_, _Add
-    production_ written into HQ, with an environment's deploy token minted and handed over; a Mate's
+    the menu from HQ navigation projections (`data/projections/hqNavigation.ts`); _New project_,
+    _Add Mate_, _Add stage_, _Add production_ written into HQ, with an environment's deploy token minted and handed over; a Mate's
     change, its review, _Merge_ and _Close_, the Git tab and the Git page `/git`, from HQ;
     _Release_, _Roll back to this_, a repository's history and what each release carried, from HQ;
     what the stage and production run, as HQ records it; every verb HQ owns drawn from what HQ offers
-    the person beside its structure (`useHqOffers.ts`, `useChangeOffers.ts`), the client deciding no
-    permission
+    the person in scoped facts, the client deciding no permission
+  - _Data flow (Mate 0.14.26):_ adapter → reducer → keyed account store → projection → component.
+    One Zerops socket per account carries organization-wide membership/update registrations for
+    projects, processes, services, active versions and public HTTP routings (10 registrations,
+    independent of the Mate count). Detail is demanded while drawn. Remote facts live in account
+    memory, with no browser-storage caches and no fixed-interval polling for live facts. Sources
+    without realtime use a declared sampled policy while demanded. The old Zerops runtime, query
+    cells, grant driver and second socket are removed; inventory's presentation join remains D03,
+    database catalog/query reads D57 and versioned browser frames D47 ([data layer](data-layer.md)).
+    HQ writes are operations with receipts: accepted, reflected and completed are distinct; a lost
+    answer is recovered from identity or proven effect, never a blind resend
 - **HQ Core** — `apps/hq`, the service `hq`, deployed by HQ's birth from the build the app came with
   - _Does:_ the leader lock and its epoch, the official check, `/health`; the door and its sessions;
-    the structure and its stream; the Mate credential and the Mate's link; git at `/git/*`; changes,
+    the scoped HQ protocol (navigation, app-detail, change, discussion, operation and attention);
+    the Mate credential and the Mate's link; git at `/git/*`; changes,
     merges, comments and pictures; the recipe; environments and their deploy tokens; stage and
     production deploys; releases; backup sets and their restore; and what each reader may do, its
     one rule `can` (`permissions.ts`) streamed as offers (`offers.ts`)
@@ -283,9 +294,14 @@ still to come says so.
     `accountHq.test.ts`, `ZeropsHqGate.test.tsx`
 - **T5** — The structure in HQ, and the menu from its stream
   - _State:_ live on the rig — _New project_, _Add Mate_, an environment's attach and a Mate's
-    registration write HQ; the menu draws from one stream (the whole structure, then its changes, a
-    ping every 20 s); HQ follows Zerops by itself — a deleted project leaves, a lost role hides —
-    and reconciles every 60 s. The client writes no structure tag: its one tag is the `mate` marker
+    registration write HQ through operations with receipts. One HQ socket per renderer and organization
+    carries revisioned navigation, with app-detail, change, discussion, operation and attention
+    scopes demanded separately. Reconnect resumes each scope by incarnation/revision and known keys;
+    retained deltas or a scope reset end at `scope-ready`. Navigation never hydrates detail.
+    Explicit removals distinguish deletion from lost access; outages retain last-known facts.
+    HQ follows Zerops by itself — a deleted project leaves, a lost role hides — and its server
+    reconciliation is separate from client demand ([HQ scopes](hq-scopes.md)). The client writes no
+    structure tag: its one tag is the `mate` marker
     (`tagPatch.ts`), written for the Zerops GUI and read by nothing — a Mate exists where HQ places
     it, its container the only other evidence (`groups.ts`); a project carrying only the marker is
     no Mate row, no _Set up Mate_ and no taken name. Every press — a Mate's, a stage's or a
@@ -307,7 +323,7 @@ still to come says so.
     `finishSetup.logic.test.ts`
 - **TP** — Who may: one pure rule, `can`, HQ's alone, and what HQ offers by it
   - _State:_ built — HQ asks `can` (`apps/hq/src/permissions.ts`) for every structure, change,
-    deploy and release verb, and streams what each reader may do beside its structure
+    deploy and release verb, and streams what each reader may do in its navigation facts
     (`offers.ts`): the organization's verbs in the org message, a `can` record beside each
     application, environment and Mate, and a Mate's `moveTo` choices — decided over the target the
     write is enforced with, over the org as HQ last read it. The client decides no permission: it
@@ -344,7 +360,8 @@ still to come says so.
     s. Up goes its overview (`zeropsHqOverview.ts`): its main chat as a menu row reads it, a digest
     of its other chats, its logins and its crew — whole first on every link, then only the sections
     that changed, on its own events. HQ keeps it, stored across a restart (`mateOverviews.ts`), and
-    hands each Mate's view to whoever may observe it on the structure socket; the menu, the rows,
+    hands each Mate's view and source-ordered attention to whoever may observe it through HQ scopes;
+    the menu, the rows,
     notifications, the palette and the crew line draw from that, with no socket to the Mate (step
     A, A0–A8, A12). Who
     asked for a Mate's stand-up and its close-off are HQ's record; whose a login is, the server's
@@ -575,131 +592,14 @@ still to come says so.
 ### Historical release backbone (origin facts; replaced by HQ above)
 
 - **0.10** — A Mate's project isolated, the key moved onto `zcp`
-  - _State:_ partial — a `createEnvironment` step only; `planProjectIsolation` has no caller on the
-    projects page, so a Mate made by _New project_ runs `envIsolation: none` with its key at project
-    level
-  - _Built in:_ mate 0.11.0 `0e75042bf`
-  - _Proven by:_ ledger _Isolation flipped live…_; `projectIsolation.test.ts`; the gap measured
-    2026-09-17 on Zane
-- **1.1** — The hardened recipe
-  - _State:_ built; `start.sh` serves only with the zerops login source (v3.2, after the 2026-09-17
-    gap); `gitea dump` scripted, the restore not written
-  - _Built in:_ gitea-mate `gitea/app.ini`, `admin-init.sh`, `start.sh`, `dump.sh`
-  - _Proven by:_ ledger _The backbone's first live run_ (Gitea up in under three minutes; sign-in
-    only through the broker); _The owner's run through localhost on 0.11.7_ (the source left for a
-    boot that never came); `TestStartRefusesToServeWithoutTheZeropsSource`
-- **1.2** — Gitea for the org; the registry
-  - _State:_ live — Gitea comes with the first _New project_, not at sign-up (§6, D18)
-  - _Built in:_ mate 0.11.0 `dbfc3d03f` `665c88395`; 0.11.1 `7ea884702`
-  - _Proven by:_ ledger _The first Mate on an emptied org…_, _D20 driven end to end_
-- **1.3** — The broker — its shape
-  - _State:_ live — its own repository (§6, D4); catch-up after downtime measured
-  - _Built in:_ gitea-mate v1 `6663cbb` …
-  - _Proven by:_ ledger _The backbone's first live run_ (broker down, a merge, broker up → one
-    deploy)
-- **1.4** — The rights mirror and the shared role function
-  - _State:_ live on the broker's side; the app's _Remove member_ flow (Mate keys replaced, the
-    leaver's tokens) **open**
-  - _Built in:_ gitea-mate `44b9e63` `706a484`; fork `08538e37e`; Go twin `fba66c3`
-  - _Proven by:_ ledger _The backbone's first live run_ (a group in 80 s, a sign-in in the right
-    teams); `TestAReadThatFailsWritesNothing`, `TestAPlanOverTheCapIsReportedNotApplied`,
-    `TestDeparturesAreDisabledNotDeleted`
-- **1.5** — A Mate's Gitea access
-  - _State:_ live — delivered by the rights loop (D20); bot restricted in its readers; repositories
-    on request; token generations with a grace
-  - _Built in:_ gitea-mate v2 `3c64092` `8bffe09`, v2.1 `47752ff`; mate 0.11.5 `fe4552b46`
-    `648df9a8a`
-  - _Proven by:_ ledger _D20 driven end to end_ (328 s, no restart; the bot, the group repo, a
-    repository made with the delivered token); `TestPassDeliversAMatesAccessOnceAndNeverRestarts`
-- **1.6** — The runner pool
-  - _State:_ partial — imported on a group's first workflow and removed with the group (live); woken
-    and slept on `workflow_job` (built); a runner whose build failed is replaced within bounds and
-    every download in its build retries (gitea-mate #7, live on the test org's broker 2026-10-02;
-    run 5's new runner built at the first try in 103 s, so the replacement is proven by its tests
-    only); the cross-org `runs-on` proof not measured
-  - _Built in:_ gitea-mate `6933c4d`, `runnerPool`; #7 `76f259c`
-  - _Proven by:_ ledger _The backbone's first live run_ (a runner in 117 s, the job green in 71 s),
-    _Run 4 as measured_ (the failed download, never rebuilt); `TestWorkflowJobWakesAndSleepsTheRunner`,
-    `TestABuildThatAlwaysFailsIsBoundedAndStops`, `TestARunnerDeletedButNotImportedIsOwedOne`
-- **2.1** — Git per dev pair, as early as possible
-  - _State:_ live
-  - _Built in:_ zcp v9.176.0 `3e344982` `0daca3f1` `d85814ed`
-  - _Proven by:_ ledger _A real Mate through the backbone_; `e2e/gitea_backbone_live_test.go`
-    (tag-gated)
-- **2.2** — The recipe proposed to the group repo, kept current
-  - _State:_ live — proposed by zcp as a pull request; merged by the broker on arrival (D23,
-    gitea-mate v3.4; on the owner's first run of 2026-09-17 PR #1 waited for a releaser; on the
-    second, PR #1 merged nine seconds after it opened, 13:18:23Z → 13:18:32Z)
-  - _Built in:_ zcp v9.176.0 `96a7d864` `83bd6a75` `979d4510`; gitea-mate v3.3
-  - _Proven by:_ ledger _A real Mate through the backbone_ (PR #1 with three tiers; "already
-    current" on a second call), _The owner's second run on 0.11.11_ (merged in nine seconds);
-    `TestAMatesRecipePullRequestIsMergedByThePass`
-- **2.3** — Gitea as a forge kind; the `.gitea` workflow that asks the broker
-  - _State:_ live
-  - _Built in:_ zcp v9.176.0 `6cbc99e4` `cba561ad` `ed7081c9`
-  - _Proven by:_ the e2e test asserts the workflow carries no secret, no Zerops token, no zcli
-- **2.4** — Joining from the recipe
-  - _State:_ live — Fen, the owner's from-scratch run of 2026-09-17: made from the AI Agent tier,
-    registered, its bot a collaborator on `todo/appdev` (D24), its branch cut from `main` (the
-    zcp-init commit over the merge), the code deployed to its own pair, a feature ("Add a due date
-    to each todo.") committed, delivered by its stage deploy, merged from its Git tab and on the
-    group's stage 56 s later
-  - _Built in:_ zcp `c5953c0a`, v9.179.1; gitea-mate v3.5 `aadc0c5`; fork `31258c172`, `e5135ce25`,
-    `0efb6c98a`
-  - _Proven by:_ ledger _The whole chain through the UI, from a wiped org_; gitea-mate
-    `TestASecondMateJoinsAServiceRepositoryOfItsGroup`; `brokerGrant.test.ts` "registerMateInGroup"
-
-### Continuing release features
-
-- **3.1** — The app mints and deletes throwaways
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `83a082e1d`
-  - _Proven by:_ `zeropsThrowaway.test.ts`, `doorThrowaway.test.ts`
-- **3.2** — The door accepts only a throwaway
-  - _State:_ live — `zerops-throwaway` is the one bootstrap method in Zerops mode
-  - _Built in:_ mate 0.11.0 `e430e9838`; the member-list key, 0.11.1 `7e57be0e3`
-  - _Proven by:_ ledger _The first Mate on an emptied org…_; `ZeropsThrowawayIdentity.test.ts`,
-    `ZeropsIdentityGate.test.ts`
-- **3.3** — The Mate re-checks roles itself
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `f2d80d23e`
-  - _Proven by:_ `ZeropsMembershipWatch.test.ts`
-- **3.4** — `READ_ONLY` sees a Mate, cannot open it
-  - _State:_ live
-  - _Built in:_ mate 0.11.0 `9af8881fd`
-  - _Proven by:_ `mateAccess.test.ts`
-- **3.5** — No Zerops token to a container; the 15-minute re-mint gone
-  - _State:_ live — minimum server 0.11.0
-  - _Built in:_ mate 0.11.0 `e816562f5`
-  - _Proven by:_ `credentialRenewal.ts` — nothing renews a Zerops session
-- **4.2, 4.3** — _New project_ and _Add Mate_: a name, a face, a Mate registered at birth
-  - _State:_ live — the press writes the Mate's record into HQ; _Add Mate_ reads its tier from HQ's
-    recipe and converts it to `startWithoutCode`; since pass 19 _New Mate_ opens over the view on
-    screen and lands on the new Mate's own view
-  - _Built in:_ mate 0.11.0 `311546d8d`, `b296a0139`; pass 19 `132306274` `26be501e6`; HQ, T5 and
-    T10a
-  - _Proven by:_ `newProject.test.ts`, `newMate.test.ts`, `recipeTier.test.ts`,
-    `recipeTierImport.test.ts`, `ZeropsNewMateForm.test.tsx`
-- **4.5** — The Git tab, the project's flow
-  - _State:_ live — the Git tab is the Mate's own leg (D26): its checkout, the remote probed live,
-    its change as _Review_; the project's flow is the left menu's (Mates, their changes, the stage
-    and production chips) and the projects screen's rows, read from HQ for the account; the Git
-    page `/git` from the footer
-  - _Built in:_ mate 0.11.0 `253c402ca` `9223ddf02` `be946f5b0`; 0.11.16; HQ, T7c and T11
-  - _Proven by:_ `gitTab.test.ts`, `projectFlow.test.ts`, `SidebarZeropsTree.test.tsx`,
-    `ZeropsGitPanel.test.tsx`, `ZeropsGitPage.test.tsx`
-- **—** — The projects page and _New project_ rebuilt from the owner's notes
-  - _State:_ live; the design pass **open** (§7)
-  - _Built in:_ mate 0.11.2 `68634f145` `e090a363b` `7abefe78f` `938de7167`; 0.11.3 `682ce19ed`
-  - _Proven by:_ ledger _A project creation that the platform failed after answering 200_
-- **—** — The client state model: fact owners, machines, lifetimes
-  - _State:_ partial — Phases 0 to 3 built except 2.5; of Phase 4 the one tag writer
-    (`data/tagWriter.ts`), the registry now HQ's structure (`hq/registry.ts`), and the forge store
-    gone with the Gitea session (T12); Phase 5 open. Item by item:
-    [`client-state-model.md`](client-state-model.md#status-by-phase)
-  - _Built in:_ mate `main`, merged wave by wave from `e22e38db0`
-  - _Proven by:_ the sign-in guards (`ZeropsInventoryProvider.lifecycle.test.tsx`); the zone tests
-    (`scripts/mate-zone-architecture.test.ts`)
+  - _State:_ superseded by the shipped account data layer in Mate 0.14.26. Its source adapters,
+    reducer, keyed store, projections and operations replace the old Zerops runtime, query cells,
+    grant driver, duplicate transport and browser-storage remote caches. The remaining presentation
+    and source-contract work is D03, D57 and D47, listed in [data-layer.md](data-layer.md).
+    [`client-state-model.md`](client-state-model.md#status-by-phase) records the earlier phases.
+  - _Built in:_ Mate 0.14.26, following the data-layer waves
+  - _Proven by:_ `packages/client-runtime/src/data` tests; hosted scenarios in
+    `apps/web/test/scenarios/areas/{a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget}`
 - **—** — Pass 16: the left menu — rows, the production chip, crews, the band, search
   - _State:_ **live** at the owner's size on the localhost pair, 2026-09-29: at 435 and 256 px the
     faces at 16 px and every word at 56, rows of 76, 58 and 48 px, 30 px from one Mate's words to
