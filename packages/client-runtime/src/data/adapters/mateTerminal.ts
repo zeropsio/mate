@@ -20,7 +20,7 @@ export function makeTerminalByteAtoms<R, E>(runtime: Atom.AtomRuntime<Environmen
         environmentId,
         Stream.suspend(() =>
           subscribe(WS_METHODS.terminalAttach, input).pipe(
-            Stream.scan(nextTerminalAttachSeedState(), applyTerminalAttachStreamEvent),
+            Stream.scan(nextTerminalAttachSeedState, applyTerminalAttachStreamEvent),
           ),
         ),
       ),
