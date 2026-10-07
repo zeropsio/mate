@@ -231,6 +231,9 @@ function initRepo(
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     yield* runGit(cwd, ["init", "--initial-branch=main"]);
+    // Await maintenance before the scoped fixture removes its repository.
+    yield* runGit(cwd, ["config", "maintenance.autoDetach", "false"]);
+    yield* runGit(cwd, ["config", "gc.autoDetach", "false"]);
     yield* runGit(cwd, ["config", "user.email", "test@example.com"]);
     yield* runGit(cwd, ["config", "user.name", "Test User"]);
     yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "hello\n");
@@ -247,6 +250,8 @@ function createBareRemote(): Effect.Effect<
   return Effect.gen(function* () {
     const remoteDir = yield* makeTempDir("t3code-git-remote-");
     yield* runGit(remoteDir, ["init", "--bare"]);
+    yield* runGit(remoteDir, ["config", "maintenance.autoDetach", "false"]);
+    yield* runGit(remoteDir, ["config", "gc.autoDetach", "false"]);
     return remoteDir;
   });
 }
@@ -2012,6 +2017,8 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     Effect.gen(function* () {
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* runGit(repoDir, ["init", "--initial-branch=main"]);
+      yield* runGit(repoDir, ["config", "maintenance.autoDetach", "false"]);
+      yield* runGit(repoDir, ["config", "gc.autoDetach", "false"]);
       yield* runGit(repoDir, ["config", "user.email", "test@example.com"]);
       yield* runGit(repoDir, ["config", "user.name", "Test User"]);
       const agentInstructions = "Use lowercase source control text.";
@@ -3142,6 +3149,8 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
       const peerDir = yield* makeTempDir("t3code-git-peer-");
       yield* runGit(peerDir, ["clone", remoteDir, "."]);
+      yield* runGit(peerDir, ["config", "maintenance.autoDetach", "false"]);
+      yield* runGit(peerDir, ["config", "gc.autoDetach", "false"]);
       yield* runGit(peerDir, ["config", "user.email", "peer@example.com"]);
       yield* runGit(peerDir, ["config", "user.name", "Peer User"]);
       NodeFS.writeFileSync(NodePath.join(peerDir, "remote.txt"), "remote\n");
