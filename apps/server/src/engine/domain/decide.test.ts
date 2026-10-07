@@ -868,6 +868,27 @@ const rejections: ReadonlyArray<{
     reason: "invalid-wake",
   },
   {
+    name: "a message whose principal is the engine itself",
+    given: [],
+    when: { command: send("from nobody"), by: { kind: "engine" } },
+    reason: "invalid-principal",
+  },
+  {
+    name: "a wake armed to run as the engine",
+    given: [],
+    when: {
+      command: { _tag: "ArmWake", kind: "standup", key: "daily", dueAt: T0 },
+      by: { kind: "engine" },
+    },
+    reason: "invalid-principal",
+  },
+  {
+    name: "a steer whose principal is the engine itself",
+    given: runningWithSteer,
+    when: { command: { _tag: "Steer", runId: r(1), text: "faster" }, by: { kind: "engine" } },
+    reason: "invalid-principal",
+  },
+  {
     name: "a watchdog armed from outside the engine",
     given: [],
     when: { _tag: "ArmWake", kind: "watchdog", key: "k", dueAt: T0 },
@@ -1577,5 +1598,25 @@ describe("decide: pictures go by reference", () => {
     expect(play([{ _tag: "Send", text: " ", attachments: [picture] }]).decision._tag).toBe(
       "Accept",
     );
+  });
+});
+
+describe("decide: every run acts for someone", () => {
+  it("a self-started run and a wake's run act for a person or the wake's principal", () => {
+    const { state } = playAll([
+      ...running,
+      turnEnded,
+      signal({
+        kind: "turn-started",
+        turn: "bg" as TurnHandle,
+        origin: "self",
+        providerTurnId: "bg",
+      }),
+      {
+        command: { _tag: "ArmWake", kind: "standup", key: "daily", dueAt: T0 },
+        by: { kind: "standup", startedBy: "ana" },
+      },
+    ]);
+    expect(Object.values(state.runs).every((run) => run.principal.kind !== "engine")).toBe(true);
   });
 });

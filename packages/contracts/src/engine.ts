@@ -845,6 +845,7 @@ const rejectionReasons = [
   "wake-not-armed",
   "invalid-wake",
   "invalid-signal",
+  "invalid-principal",
   "unknown",
 ] as const;
 const knownRejectionReasons = new Set<string>(rejectionReasons);

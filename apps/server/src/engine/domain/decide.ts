@@ -479,7 +479,18 @@ const markStarted = (
 
 // ── people ──────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Every run's principal is a person or the principal a wake names (wakes run as the Mate's
+ * signer): the engine may write items and markers, never be the one a run acts for.
+ */
+const actsForSomeone = (b: StepBuilder): void => {
+  if (b.envelope.principal.kind === "engine") {
+    throw new Rejected("invalid-principal", "the engine is never a run's principal");
+  }
+};
+
 const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void => {
+  actsForSomeone(b);
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
@@ -578,6 +589,7 @@ const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
 };
 
 const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): void => {
+  actsForSomeone(b);
   if (b.state.archived) throw new Rejected("archived");
   const run = b.state.runs[command.runId];
   if (run === undefined) throw new Rejected("unknown-run");
@@ -619,6 +631,7 @@ const nextCronTime = (expression: string, now: number): number => {
 };
 
 const armWake = (b: StepBuilder, command: Extract<Command, { _tag: "ArmWake" }>): void => {
+  actsForSomeone(b);
   const cron = command.cron ?? null;
   const cronNext = cron === null ? undefined : nextCronTime(cron, b.now);
   const dueAt = command.dueAt ?? cronNext;
@@ -1009,6 +1022,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         return;
       }
       if (signal.origin !== "self") return;
+      const joined = selfJoins(b, signal.reportsOn ?? null);
+      // Nobody to act for (no run before it): the turn is not the engine's to record as a run.
+      if (joined === undefined) return;
       const active = activeRun(b.state);
       // A run still being prepared has sent nothing: it goes back to the head of the queue and
       // is sent when the agent's own turn ends.
@@ -1019,7 +1035,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           reason: "the agent started a turn of its own",
         });
       } else if (active !== undefined) return;
-      return selfStarted(b, signal.turn, signal.providerTurnId, signal.reportsOn ?? null);
+      return selfStarted(b, signal.turn, signal.providerTurnId, joined);
     }
     case "activity": {
       const run = routed(b, signal.turn);
@@ -1297,19 +1313,27 @@ const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
 };
 
 /** A turn the agent started on its own: a run that joins the run whose work it reports. */
+/** The run a self turn joins (the bridge's word, else the latest that ran) and its principal. */
+const selfJoins = (
+  b: StepBuilder,
+  reportsOn: RunId | null,
+): { readonly joins: RunId; readonly principal: Principal } | undefined => {
+  const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId;
+  const joined = joins === null ? undefined : b.state.runs[joins];
+  if (joined === undefined || joined.principal.kind === "engine") return undefined;
+  return { joins: joined.id, principal: joined.principal };
+};
+
 const selfStarted = (
   b: StepBuilder,
   turn: TurnHandle,
   providerTurnId: string | null,
-  reportsOn: RunId | null,
+  joined: { readonly joins: RunId; readonly principal: Principal },
 ) => {
-  // The run whose work it reports: the bridge's word, else the latest that ran.
-  const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId;
-  const joined = joins === null ? undefined : b.state.runs[joins];
   const run = queueRun(b, {
     trigger: () => ({ kind: "wake", cause: "self", wakeId: null }),
-    joins,
-    principal: joined?.principal ?? ENGINE,
+    joins: joined.joins,
+    principal: joined.principal,
     maintenance: false,
     text: "",
   });

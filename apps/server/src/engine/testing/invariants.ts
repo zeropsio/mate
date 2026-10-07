@@ -235,6 +235,12 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
         );
       }
       model.nextOrdinal = event.ordinal + 1;
+      if (event.principal.kind === "engine") {
+        fail(
+          "every run acts for someone",
+          `${event.runId} queued with the engine as its principal`,
+        );
+      }
       move(event.runId, "queued");
       model.runs.set(event.runId, {
         state: "queued",
