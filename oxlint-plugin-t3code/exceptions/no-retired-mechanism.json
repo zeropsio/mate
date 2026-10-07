@@ -992,54 +992,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedRef",
-    "owner": "data-layer rewrite: running work/processes",
-    "reason": "Mate browser-stream frames omit revision and completeness; the last partial frame cannot move into a fact family until the source contract identifies replacement, absence and deletion. This lane does not change that contract.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "retired-token",
     "fingerprint": "mate:zerops:composer-top-memory",

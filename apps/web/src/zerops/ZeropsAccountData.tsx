@@ -26,6 +26,7 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import { MateBrowserFrames } from "./browserStreamLinks";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -141,7 +142,9 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   return (
     <AccountStoreContext value={store}>
       <AccountDataContext value={value}>
-        <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+        <MateBrowserFrames store={store}>
+          <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+        </MateBrowserFrames>
       </AccountDataContext>
     </AccountStoreContext>
   );

@@ -66,6 +66,8 @@ describe("the registries", () => {
     { key: "mate:env:database:panel/query", mode: "once" },
     { key: "mate:database-session-env", mode: "realtime" },
     { key: "mate:database-session-env:database-session", mode: "realtime" },
+    { key: "mate:browser-env", mode: "realtime" },
+    { key: "mate:browser-env:browser-frame", mode: "realtime" },
   ])("observe $key as $mode", ({ key, mode }) => {
     expect(streamMode(key)).toBe(mode);
   });

@@ -255,6 +255,23 @@ export {
   type DatabaseCatalogRead,
 } from "./projections/database.ts";
 export { emptyDatabasePanel, databaseTreeTarget } from "./families/database.ts";
+export {
+  mateBrowserFrameFamily,
+  mateBrowserFrameScope,
+  mateBrowserFrameId,
+  mateBrowserStreamId,
+} from "./families/mateBrowserFrame.ts";
+export {
+  mateBrowserFrame,
+  mateBrowserStream,
+  UNKNOWN_BROWSER_FRAME,
+  type MateBrowserFrameRead,
+} from "./projections/mateBrowserFrame.ts";
+export {
+  makeMateBrowserFrameWire,
+  startMateBrowserFrames,
+  makeMateBrowserFrameSink,
+} from "./adapters/mateBrowserFrame.ts";
 
 export {
   inventoryTopology,

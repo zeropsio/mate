@@ -3002,7 +3002,13 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
   row: Extract<TimelineRow, { kind: "operation" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const regions = useOperationCard(row.operation, ctx.activeThreadEnvironmentId);
+  const regions = useOperationCard(
+    row.operation,
+    ctx.activeThreadEnvironmentId,
+    undefined,
+    true,
+    ctx.threadRef?.threadId ?? null,
+  );
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />

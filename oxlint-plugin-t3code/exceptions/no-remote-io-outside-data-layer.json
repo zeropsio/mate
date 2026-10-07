@@ -328,14 +328,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/feeds.ts",
-    "kind": "CallExpression",
-    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/mateDescriptors.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",

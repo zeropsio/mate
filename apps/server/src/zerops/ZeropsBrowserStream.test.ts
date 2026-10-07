@@ -1,5 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import {
+  EventId,
+  ThreadId,
+  TurnId,
+  RuntimeItemId,
+  ProviderDriverKind,
+  type SpiEvent,
+  type ZeropsBrowserStreamEvent,
+} from "@t3tools/contracts";
+import * as Queue from "effect/Queue";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -54,6 +64,100 @@ const fakeConnect = (sockets: Array<FakeBrowserSocket>): ConnectSocket => {
 };
 
 describe("ZeropsBrowserStream", () => {
+  it.effect(
+    "keeps the daemon viewport unidentified and publishes only source-owned SPI call images",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const sockets: Array<FakeBrowserSocket> = [];
+          const service = yield* make({
+            readStreamPort: Effect.succeed(44831),
+            connect: fakeConnect(sockets),
+            reconnectDelaysMs: [0],
+          });
+          const events = yield* Queue.unbounded<ZeropsBrowserStreamEvent>();
+          const stream = yield* service.subscribe;
+          yield* Stream.runForEach(stream, (event) => Queue.offer(events, event)).pipe(
+            Effect.forkChild,
+          );
+          let current = yield* Queue.take(events);
+          while (current.type !== "state" || current.status !== "live")
+            current = yield* Queue.take(events);
+          const call = (type: "item.started" | "item.completed", id: string): SpiEvent => ({
+            type,
+            eventId: EventId.make(`${id}:${type}`),
+            threadId: ThreadId.make("thread"),
+            turnId: TurnId.make("turn"),
+            provider: ProviderDriverKind.make("codex"),
+            itemId: RuntimeItemId.make(id),
+            createdAt: "2026-10-07T00:00:00Z",
+            payload: { itemType: "mcp_tool_call" },
+            toolCall: {
+              name: "zerops_browser",
+              rawName: "zerops_browser",
+              ...(type === "item.completed" && id === "first"
+                ? {
+                    result: {
+                      text: "done",
+                      failed: false,
+                      images: [{ data: "OWNED", mimeType: "image/png" }],
+                    },
+                  }
+                : {}),
+            },
+          });
+          yield* service.ingestCall(call("item.started", "first"));
+          sockets[0]!.onmessage?.({
+            data: encodeJsonUnknown({
+              type: "frame",
+              seq: 1,
+              data: "JPEG",
+              metadata: { deviceWidth: 10, deviceHeight: 20 },
+            }),
+          });
+          const frame = yield* Queue.take(events);
+          expect(frame).toMatchObject({ type: "frame", data: "JPEG" });
+          expect(frame).not.toHaveProperty("callId");
+          sockets[0]!.onmessage?.({
+            data: encodeJsonUnknown({
+              type: "frame",
+              seq: 2,
+              data: "IDENTIFIED",
+              callId: "first",
+              threadId: "thread",
+              turnId: "turn",
+              revision: 5,
+              completeness: "complete",
+              metadata: { deviceWidth: 10, deviceHeight: 20 },
+            }),
+          });
+          expect(yield* Queue.take(events)).toMatchObject({
+            type: "frame",
+            callId: "first",
+            threadId: "thread",
+            turnId: "turn",
+            revision: 5,
+            completeness: "complete",
+          });
+          yield* service.ingestCall(call("item.completed", "first"));
+          expect(yield* Queue.take(events)).toMatchObject({
+            type: "call-result",
+            callId: "first",
+            revision: 6,
+            frame: { data: "OWNED", mimeType: "image/png" },
+          });
+          yield* service.ingestCall(call("item.started", "second"));
+          yield* service.ingestCall(call("item.completed", "second"));
+          expect(yield* Queue.take(events)).toMatchObject({
+            type: "call-result",
+            callId: "second",
+            revision: 1,
+            completeness: "partial",
+          });
+        }),
+      ),
+  );
+
   it.effect("connects on first subscriber and disconnects on last", () =>
     Effect.gen(function* () {
       const sockets: Array<FakeBrowserSocket> = [];

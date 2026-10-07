@@ -19,6 +19,7 @@
  * the last-read error reads it instead of through this thin view-only read.
  */
 import { useDatabaseSession } from "./useDatabaseSession";
+import { useMateBrowserStream } from "./browserStreamLinks.tsx";
 
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -27,12 +28,9 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
 } from "@t3tools/contracts";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/unstable/reactivity";
 
-import {
-  INITIAL_BROWSER_STREAM_STATE,
-  type ZeropsBrowserStreamState,
-} from "@t3tools/client-runtime/zerops/browserStream";
+import { type ZeropsBrowserStreamState } from "@t3tools/client-runtime/zerops/browserStream";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
@@ -124,16 +122,7 @@ export type ZeropsBrowserStreamRead = ZeropsBrowserStreamState | "unavailable" |
 export function useZeropsBrowserStream(
   environmentId: EnvironmentId | null,
 ): ZeropsBrowserStreamRead {
-  const result = useAtomValue(
-    environmentId === null ? EMPTY_ATOM : zeropsFeeds.browserStream({ environmentId, input: {} }),
-  );
-  if (environmentId === null || result === undefined) {
-    return undefined;
-  }
-  if (AsyncResult.isFailure(result)) {
-    return "unavailable";
-  }
-  return AsyncResult.getOrElse(result, () => INITIAL_BROWSER_STREAM_STATE);
+  return useMateBrowserStream(environmentId);
 }
 
 /** The console process's status through its account projection and shared detail demand. */

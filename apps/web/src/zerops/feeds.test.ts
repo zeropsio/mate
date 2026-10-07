@@ -338,22 +338,6 @@ describe("createZeropsFeedAtoms", () => {
     }).pipe(Effect.scoped),
   );
 
-  /**
-   * The daemon connection stays open server-side for as long as any client
-   * subscriber is mounted (S8b brief: "disconnects on last unsubscribe") —
-   * so this atom must drop its subscription promptly once the panel
-   * unmounts, unlike the knowledge feeds, which are cheap to keep warm at
-   * the family's five-minute default.
-   */
-  it.live("keeps the browser stream's idle TTL short", () =>
-    Effect.gen(function* () {
-      const rig = yield* makeHarness();
-      const browserAtom = rig.feeds.browserStream({ environmentId: ENVIRONMENT_ID, input: {} });
-
-      expect(browserAtom.idleTTL).toBeLessThanOrEqual(10_000);
-    }).pipe(Effect.scoped),
-  );
-
   it.live("delivers the crew snapshot as a live value, whatever its status", () =>
     Effect.gen(function* () {
       const rig = yield* makeHarness();
