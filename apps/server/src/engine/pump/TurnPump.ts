@@ -33,6 +33,9 @@ import { Conversations } from "../Conversations.ts";
 import { LiveBus } from "../LiveBus.ts";
 import { makeSessionHost, type SessionHost } from "./SessionHost.ts";
 
+/** How often the pump looks for hosts to let go. */
+export const HOST_SWEEP_MS = 5 * 60_000;
+
 /** How long `quiet` lets the bus run: at least a few turns of the scheduler, at most many. */
 const QUIET_MIN_ROUNDS = 8;
 const QUIET_ROUNDS = 256;
@@ -123,12 +126,35 @@ export const makeTurnPump = Effect.gen(function* () {
       return Effect.void;
     });
 
+  /**
+   * Lets go of a host idle at two sweeps in a row (its session closed, nothing waiting): a
+   * conversation's next open makes a new one, so hosts never pile up with conversations.
+   */
+  const idleBefore = new Set<SessionHost>();
+  const sweep = Effect.gen(function* () {
+    for (const [conversation, host] of hosts) {
+      if (!(yield* host.idle)) {
+        idleBefore.delete(host);
+        continue;
+      }
+      if (!idleBefore.has(host)) {
+        idleBefore.add(host);
+        continue;
+      }
+      idleBefore.delete(host);
+      hosts.delete(conversation);
+      if (byThread.get(host.thread) === host) byThread.delete(host.thread);
+      yield* host.close;
+    }
+  });
+
   return TurnPump.of({
     hostFor,
     existing: (conversation) => Effect.sync(() => hosts.get(conversation)),
-    start: Effect.asVoid(
-      Effect.forkScoped(Effect.forever(Effect.flatMap(Queue.take(queue), route))),
-    ),
+    start: Effect.gen(function* () {
+      yield* Effect.forkScoped(Effect.forever(Effect.flatMap(Queue.take(queue), route)));
+      yield* Effect.forkScoped(Effect.forever(Effect.andThen(Effect.sleep(HOST_SWEEP_MS), sweep)));
+    }),
     foreign: Effect.sync(() => new Map(foreign)),
   });
 });

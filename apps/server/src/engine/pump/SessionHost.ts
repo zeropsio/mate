@@ -22,7 +22,7 @@
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import type * as Fiber from "effect/Fiber";
+import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -82,6 +82,10 @@ export interface SessionHost {
   readonly liveWork: Effect.Effect<number>;
   /** Runs a driver call that outlives the handler that made it (a send that holds its turn). */
   readonly forkInSession: <A, E>(call: Effect.Effect<A, E>) => Effect.Effect<Fiber.Fiber<A, E>>;
+  /** Nothing of it is live: no session, no send waiting, no Stop waiting on a turn. */
+  readonly idle: Effect.Effect<boolean>;
+  /** Lets it go: its fold and its fiber end (the pump evicts an idle host). */
+  readonly close: Effect.Effect<void>;
   /** Takes one provider event (the pump's demux). */
   readonly offer: (event: SpiEvent) => Effect.Effect<void>;
   /** Returns once everything offered or recorded so far has been folded and told. */
@@ -233,6 +237,8 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     for (const { session, words } of closed) {
       yield* closeWaiting(session, words);
       if (current === session) current = null;
+      // Its boundaries are all told: nothing more of a closed session goes to the actor.
+      gates.delete(session);
     }
     // 3. the live plane.
     yield* Effect.all(live, { discard: true });
@@ -277,7 +283,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     );
   });
 
-  yield* Queue.takeAll(inbox).pipe(
+  const loop = yield* Queue.takeAll(inbox).pipe(
     Effect.flatMap((mail) =>
       lock.withPermits(1)(
         Effect.gen(function* () {
@@ -356,6 +362,16 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     nativeRequest: (key) => Effect.sync(() => translator.nativeRequest(key)),
     liveWork: Effect.sync(() => toCore.liveWork()),
     forkInSession: (call) => Effect.forkIn(call, deps.scope),
+    idle: lock.withPermits(1)(
+      Effect.sync(
+        () =>
+          current === null &&
+          waiting.size === 0 &&
+          deferredInterrupts.size === 0 &&
+          [...gates.values()].every((gate) => gate.state === "dropped"),
+      ),
+    ),
+    close: Effect.asVoid(Fiber.interrupt(loop)),
     offer: (event) => enqueue({ _tag: "input", input: { kind: "event", event } }),
     settled: Effect.gen(function* () {
       const done = yield* Deferred.make<void>();

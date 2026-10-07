@@ -878,4 +878,21 @@ describe("the running engine", () => {
         }),
       ),
   );
+
+  it.effect("a conversation's host is let go once its session closed and nothing waits on it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.advance(30 * MINUTE);
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        yield* w.advance(10 * MINUTE);
+        assert.isUndefined(yield* (yield* w.pump).existing(mate));
+        yield* send(w, "back");
+        assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "back"));
+        yield* w.shutdown;
+      }),
+    ),
+  );
 });
