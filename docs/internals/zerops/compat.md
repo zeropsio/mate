@@ -97,6 +97,16 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   - _Fixture set:_ row 5; no replay golden moved (chat-gate A byte-identical)
   - _Goldens/driver:_ unchanged from row 5
   - _Notes:_ See below
+- **8** — 2026-10-07
+  - _Ported upstream SHA:_ `10f39eb9a` (row 7's) — intake row 6b, lane conv: V1 re-implementations
+    of V2 fixes plus 3 ports, see `intake.md`
+  - _Claude CLI:_ unchanged from row 5
+  - _Claude Agent SDK:_ unchanged from row 5
+  - _Codex CLI:_ floor `0.155.1` unchanged
+  - _Effect:_ unchanged from row 5
+  - _Fixture set:_ row 5; `claude/zerops-workflow-envelope` regenerated (see notes)
+  - _Goldens/driver:_ unchanged from row 5
+  - _Notes:_ See below
 
 ## Row 0 notes
 
@@ -270,3 +280,22 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   live turn passes and the manifest range moves to `=1.3.0`.
 - **SPI stays at 2.6.** The interim effect-acp guard (`81ebf0815`) wraps every session-update
   handler in `AcpSessionRuntime.ts` with a logged defect catch; it changes no event member.
+
+## Row 8 notes
+
+- **SPI 2.7: `presentation` on an item's lifecycle payload.** Claude reads Claude Code's
+  `tool_use_meta` (the call's display name, its server's display name and icon) through the
+  provider-neutral `mcpToolPresentation` / `claudeToolUseMeta` (`@t3tools/shared/toolActivity`), in
+  an `item.updated` once the assistant frame names a running call and on every later step of it.
+  The other drivers do not emit it yet.
+- **SPI 2.8: `stopped` in an item's `status`.** Claude ends a call its `tool_result_meta` marks
+  `non_execution_kind: "cancelled"` as `stopped`, told apart from failed or declined. The other
+  drivers do not emit it yet.
+- **One golden moved.** The `zerops-workflow-envelope` recording carries `tool_use_meta`, so each
+  of its two MCP calls gains one `item.updated` with its presentation (38 → 40 events), and the
+  call's later steps repeat it; nothing else moved.
+- **What a port must carry.** `ClaudeAdapter.ts`: `presentation` on `ToolInFlight`,
+  `claudeCallPresentation`, `presentCalls` in `handleAssistantMessage`, the presentation at a
+  helper call's start and on the result update, completion and unreturned close; the
+  `non_execution_kind` read on a tool result. `CodexSessionRuntime.ts`: the unarchive-and-resume
+  retry on an archived session.
