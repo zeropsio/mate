@@ -1,0 +1,359 @@
+/**
+ * The command generator: from a conversation's state, the next thing that could enter its actor
+ * — a person's command, an effect outcome (oldest first, as the outbox claims them), a batch of
+ * driver signals, a due wake, a restart's recovery — or time passing. State-aware, so a run of a
+ * few hundred steps reaches deep states (waiting runs, usage limits, continuations, rotations).
+ */
+import {
+  CommandId,
+  type ConversationId,
+  type EffectId,
+  type ItemBody,
+  type Principal,
+  type RequestId,
+  type RunId,
+  SessionId,
+  BootId,
+  type WakeId,
+} from "@t3tools/contracts";
+
+import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
+import {
+  effectSettledCommandId,
+  recoveredCommandId,
+  signalsCommandId,
+  wakeFiredCommandId,
+} from "../domain/ids.ts";
+import { activeRun, type ConversationState } from "../domain/state.ts";
+import type { Rng } from "./rng.ts";
+
+export const ana: Principal = { kind: "person", subject: "ana" };
+export const bo: Principal = { kind: "person", subject: "bo" };
+const ENGINE: Principal = { kind: "engine" };
+
+export interface Played {
+  readonly envelope: Envelope;
+  readonly now: number;
+}
+
+const isLive = (state: string) => state === "sending" || state === "running" || state === "waiting";
+
+const bodies = (rng: Rng, n: number): ItemBody =>
+  rng.weighted<ItemBody>([
+    [{ kind: "note", text: `note ${n}`, streaming: rng.chance(0.5), answer: false }, 3],
+    [{ kind: "thought", preview: `thinking ${n}`, length: n, streaming: true }, 1],
+    [
+      {
+        kind: "call",
+        step: `step ${n}`,
+        tool: { name: "Bash" },
+        words: `ls ${n}`,
+        state: "running",
+        endedAt: null,
+      },
+      2,
+    ],
+  ]);
+
+export interface GenOptions {
+  /** Out-of-order effect outcomes (the real outbox settles a lane oldest first). */
+  readonly unorderedSettles?: boolean;
+}
+
+/** One conversation's generator; holds the counters ids are made from. */
+export class Gen {
+  private commands = 0;
+  private batches = 0;
+  private turns = 0;
+  private sessions = 0;
+  private boots = 0;
+  private keys = 0;
+
+  readonly rng: Rng;
+  readonly conversation: ConversationId;
+  readonly options: GenOptions;
+
+  constructor(rng: Rng, conversation: ConversationId, options: GenOptions = {}) {
+    this.rng = rng;
+    this.conversation = conversation;
+    this.options = options;
+  }
+
+  private env(command: Command, by: Principal = ana, id?: CommandId): Envelope {
+    return {
+      commandId: id ?? CommandId.make(`c${++this.commands}`),
+      conversationId: this.conversation,
+      principal: by,
+      command,
+    };
+  }
+
+  /** The next input and the time it arrives. */
+  next(state: ConversationState, now: number): Played {
+    const rng = this.rng;
+    const at =
+      now +
+      rng.weighted([
+        [0, 2],
+        [rng.int(1, 5_000), 6],
+        [rng.int(60_000, 6 * 60_000), 1],
+        [11 * 60_000, 0.3],
+      ]);
+    const active = activeRun(state);
+    const effects = Object.values(state.effects);
+    const wakes = Object.values(state.wakes).sort(
+      (a, b) => a.dueAt - b.dueAt || (a.id < b.id ? -1 : 1),
+    );
+    const due = wakes.filter((wake) => wake.dueAt <= at);
+    const kind = rng.weighted<string>([
+      ["send", 3],
+      ["stop", active === undefined ? 0.2 : 1],
+      ["answer", Object.keys(state.requests).length > 0 ? 2 : 0.1],
+      ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
+      ["model", 0.3],
+      ["archive", 0.15],
+      ["unarchive", state.archived ? 1 : 0.05],
+      ["arm", 0.4],
+      ["cancel", wakes.length > 0 ? 0.2 : 0.02],
+      ["fire", due.length > 0 ? 4 : wakes.length > 0 ? 0.5 : 0],
+      ["settle", effects.length > 0 ? 5 : 0.1],
+      ["signals", state.session !== null ? 5 : 0.2],
+      ["recover", 0.15],
+    ]);
+    switch (kind) {
+      case "send": {
+        const text = rng.chance(0.05) ? "   " : `message ${this.commands + 1}`;
+        return {
+          envelope: this.env(
+            { _tag: "Send", text, ...(rng.chance(0.05) ? { maintenance: true } : {}) },
+            rng.chance(0.8) ? ana : bo,
+          ),
+          now: at,
+        };
+      }
+      case "stop": {
+        const ids = Object.keys(state.runs) as Array<RunId>;
+        const target =
+          active !== undefined && rng.chance(0.7)
+            ? undefined
+            : ids.length > 0 && rng.chance(0.8)
+              ? rng.pick(ids)
+              : undefined;
+        return {
+          envelope: this.env(
+            target === undefined ? { _tag: "Stop" } : { _tag: "Stop", runId: target },
+            rng.chance(0.5) ? ana : bo,
+          ),
+          now: at,
+        };
+      }
+      case "answer": {
+        const open = Object.values(state.requests);
+        const requestId =
+          open.length > 0 && rng.chance(0.9)
+            ? rng.pick(open).id
+            : (`${this.conversation}/r/1/q/9` as RequestId);
+        return {
+          envelope: this.env({ _tag: "Answer", requestId, answer: { ok: true }, summary: "yes" }),
+          now: at,
+        };
+      }
+      case "steer": {
+        const runId = active?.id ?? (`${this.conversation}/r/1` as RunId);
+        return { envelope: this.env({ _tag: "Steer", runId, text: "also this" }), now: at };
+      }
+      case "model":
+        return {
+          envelope: this.env({ _tag: "SwitchModel", model: rng.pick(["m1", "m2"]) }),
+          now: at,
+        };
+      case "archive":
+        return { envelope: this.env({ _tag: "Archive" }), now: at };
+      case "unarchive":
+        return { envelope: this.env({ _tag: "Unarchive" }), now: at };
+      case "arm": {
+        const cron = rng.chance(0.15) ? "0 */5 * * * *" : null;
+        return {
+          envelope: this.env({
+            _tag: "ArmWake",
+            kind: rng.pick(["standup", "report"]),
+            key: rng.pick(["k1", "k2"]),
+            ...(cron === null ? { dueAt: at + rng.int(0, 10 * 60_000) } : { cron }),
+            text: "wake up",
+          }),
+          now: at,
+        };
+      }
+      case "cancel": {
+        const wakeId =
+          wakes.length > 0 ? rng.pick(wakes).id : (`${this.conversation}/w/x/y` as WakeId);
+        return { envelope: this.env({ _tag: "CancelWake", wakeId }), now: at };
+      }
+      case "fire": {
+        // The scheduler: the earliest armed wake, once it is due.
+        const wake = due[0] ?? wakes[0]!;
+        const when = Math.max(at, wake.dueAt);
+        return {
+          envelope: this.env(
+            { _tag: "WakeFired", wakeId: wake.id },
+            ENGINE,
+            wakeFiredCommandId(wake.id, wake.dueAt),
+          ),
+          now: when,
+        };
+      }
+      case "settle":
+        return { envelope: this.settle(state, at), now: at };
+      case "signals":
+        return { envelope: this.signals(state, at), now: at };
+      case "recover": {
+        const boot = BootId.make(`boot-${++this.boots}`);
+        return {
+          envelope: this.env(
+            { _tag: "Recovered", bootId: boot, cutEffects: effects.map((effect) => effect.id) },
+            ENGINE,
+            recoveredCommandId(boot, this.conversation),
+          ),
+          now: at,
+        };
+      }
+      default:
+        throw new Error(`unknown kind ${kind}`);
+    }
+  }
+
+  private settle(state: ConversationState, _now: number): Envelope {
+    const rng = this.rng;
+    const effects = Object.values(state.effects);
+    const effect =
+      effects.length === 0
+        ? { id: `${this.conversation}/r/1/e/provider.send/1` as EffectId, kind: "provider.send" }
+        : this.options.unorderedSettles
+          ? rng.pick(effects)
+          : effects[0]!;
+    const failed = rng.chance(0.12);
+    let value: unknown;
+    if (effect.kind === "session.open") {
+      value = {
+        sessionId: `s${++this.sessions}`,
+        driver: "claude",
+        model: rng.chance(0.9) ? state.model : "alias-of-" + String(state.model),
+        nativeRef: `native-${this.sessions}`,
+        capabilities: { steer: rng.chance(0.5) },
+      };
+    } else if (effect.kind === "provider.send") {
+      value = { providerTurnId: `t${++this.turns}` };
+    }
+    return this.env(
+      {
+        _tag: "EffectSettled",
+        effectId: effect.id,
+        outcome: failed
+          ? { kind: "failed", reason: "boom" }
+          : value === undefined
+            ? { kind: "ok" }
+            : { kind: "ok", value },
+      },
+      ENGINE,
+      effectSettledCommandId(effect.id),
+    );
+  }
+
+  private signals(state: ConversationState, _now: number): Envelope {
+    const rng = this.rng;
+    const session =
+      state.session !== null && rng.chance(0.95) ? state.session.id : SessionId.make("s-stale");
+    const items = Object.values(state.items);
+    const requests = Object.values(state.requests);
+    const count = rng.int(1, 3);
+    const signals: Array<ProviderSignal> = [];
+    for (let i = 0; i < count; i++) {
+      const kind = rng.weighted<string>([
+        ["turn-started", 1.5],
+        ["item-opened", 3],
+        ["item-updated", items.length > 0 ? 1 : 0],
+        ["item-closed", items.length > 0 ? 2 : 0.3],
+        ["request-opened", 0.8],
+        ["request-closed", requests.length > 0 ? 0.6 : 0],
+        ["turn-ended", 2],
+        ["usage-limit", 0.3],
+        ["session-exited", 0.15],
+        ["activity", 1],
+      ]);
+      const n = ++this.keys;
+      switch (kind) {
+        case "turn-started": {
+          const ended = state.endedRuns;
+          signals.push({
+            kind: "turn-started",
+            providerTurnId: `t${++this.turns}`,
+            ...(ended.length > 0 && rng.chance(0.3) ? { reportsOn: rng.pick(ended) } : {}),
+          });
+          break;
+        }
+        case "item-opened":
+          signals.push({
+            kind: "item-opened",
+            key: items.length > 0 && rng.chance(0.2) ? (rng.pick(items).key ?? `k${n}`) : `k${n}`,
+            by: { kind: "mate" },
+            body: bodies(rng, n),
+          });
+          break;
+        case "item-updated":
+          signals.push({
+            kind: "item-updated",
+            key: rng.pick(items).key ?? `k${n}`,
+            body: bodies(rng, n),
+          });
+          break;
+        case "item-closed":
+          signals.push({
+            kind: "item-closed",
+            key: items.length > 0 ? (rng.pick(items).key ?? `k${n}`) : `k${n}`,
+            body: bodies(rng, n),
+            ...(rng.chance(0.2) ? { detail: `full body ${n}` } : {}),
+          });
+          break;
+        case "request-opened":
+          signals.push({
+            kind: "request-opened",
+            key: `q${n}`,
+            ask: { kind: "approval", requestKind: "command", detail: "rm -rf build" },
+            answerable: rng.chance(0.85),
+          });
+          break;
+        case "request-closed":
+          signals.push({
+            kind: "request-closed",
+            key: rng.pick(requests).key,
+            state: rng.pick(["answered", "declined", "dismissed", "lapsed"] as const),
+          });
+          break;
+        case "turn-ended":
+          signals.push({
+            kind: "turn-ended",
+            outcome: rng.chance(0.8)
+              ? { kind: "completed" }
+              : { kind: "failed", reason: "tool crashed", next: null },
+          });
+          break;
+        case "usage-limit":
+          signals.push({
+            kind: "usage-limit",
+            resetsAt: rng.chance(0.75) ? _now + rng.int(1, 90) * 60_000 : null,
+          });
+          break;
+        case "session-exited":
+          signals.push({ kind: "session-exited", reason: "exit 137" });
+          break;
+        default:
+          signals.push({ kind: "activity" });
+      }
+    }
+    return this.env(
+      { _tag: "ProviderSignals", sessionId: session, signals },
+      ENGINE,
+      signalsCommandId(session, ++this.batches),
+    );
+  }
+}

@@ -703,3 +703,216 @@ describe("decide: results", () => {
     });
   });
 });
+
+// ── the rules the proof found broken (round 3: review 2, 6, 7, 9, 10; F2, F5) ─────────────────
+
+/** Plays every input and keeps the whole log, as the actor folds it. */
+const playAll = (steps: ReadonlyArray<Step>) => {
+  let state = initialState(conversation);
+  const log: Array<KnownEngineEvent> = [];
+  let now = T0;
+  steps.forEach((step, index) => {
+    const input: Input = "_tag" in step ? { command: step } : step;
+    now = input.at ?? now;
+    const envelope = {
+      commandId: CommandId.make(`p${index}`),
+      conversationId: conversation,
+      principal: input.by ?? ana,
+      command: input.command,
+    };
+    const decision = decide(state, envelope, now);
+    if (decision._tag === "Reject") return;
+    const events = stampEvents(state.headSeq, envelope, decision.step.events, now);
+    log.push(...events);
+    state = fold(state, events);
+  });
+  return { state, log };
+};
+const ends = (log: ReadonlyArray<KnownEngineEvent>) =>
+  log.flatMap((e) =>
+    e._tag === "RunEnded" ? [`${e.runId.split("/").at(-1)}:${e.end.kind}/${e.source}`] : [],
+  );
+/** The person message's delivery as the record shows it: its latest event. */
+const delivery = (log: ReadonlyArray<KnownEngineEvent>) =>
+  log
+    .flatMap((e) =>
+      (e._tag === "ItemOpened" || e._tag === "ItemUpdated") && e.body.kind === "person"
+        ? [e.body.delivery.state]
+        : [],
+    )
+    .at(-1);
+const sentTurn = (run: number) =>
+  settled(r(run), "provider.send", { kind: "ok", value: { providerTurnId: `t${run}` } });
+const proofRunning: ReadonlyArray<Step> = [send("go"), opened(1), sentTurn(1)];
+
+describe("decide: a turn's signals land on its own run", () => {
+  it("the provider's own end of a stopped turn never ends the next run", () => {
+    const { log, state } = playAll([
+      ...proofRunning,
+      send("next"),
+      stop(),
+      settled(r(1), "provider.interrupt", { kind: "ok" }),
+      turnEnded,
+    ]);
+    expect(ends(log)).toEqual(["1:stopped/stop-confirmed"]);
+    expect(state.runs[r(2)]?.state).toBe("sending");
+  });
+  it("the provider's end of a turn whose interrupt failed never ends the next run", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      send("next"),
+      stop(),
+      settled(r(1), "provider.interrupt", { kind: "failed", reason: "timeout" }),
+      turnEnded,
+    ]);
+    expect(ends(log)).toEqual(["1:stopped/stop-asked"]);
+  });
+  it("the end of a turn a usage limit parked never ends the resume run", () => {
+    const reset = T0 + 3_600_000;
+    const { log } = playAll([
+      ...proofRunning,
+      signal({ kind: "usage-limit", resetsAt: reset }),
+      fired("usage-resume", r(1), reset),
+      turnEnded,
+    ]);
+    expect(ends(log)).toEqual(["1:usage-limit/agent"]);
+  });
+  it("an item after its turn's end is never filed under the next run", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      send("next"),
+      turnEnded,
+      signal({
+        kind: "item-closed",
+        key: "late",
+        body: { kind: "note", text: "x", streaming: false, answer: false },
+      }),
+    ]);
+    const filed = log.flatMap((e) =>
+      e._tag === "ItemOpened" && e.by.kind === "mate" ? [e.runId] : [],
+    );
+    expect(filed).toEqual([]);
+  });
+  it("a turn the bridge says ended by a crash ends the run inferred, not said by the agent", () => {
+    const end = {
+      kind: "turn-ended",
+      outcome: { kind: "failed", reason: "process exited" },
+      source: "inferred-from-crash",
+    } as unknown as ProviderSignal;
+    const { log } = playAll([...proofRunning, signal(end)]);
+    expect(ends(log)).toEqual(["1:failed/inferred"]);
+  });
+});
+
+describe("decide: a usage limit with an unknown reset", () => {
+  it("queued work waits instead of walking into the limit", () => {
+    const { state, log } = playAll([
+      ...proofRunning,
+      send("queued"),
+      signal({ kind: "usage-limit", resetsAt: null }),
+    ]);
+    expect({
+      queued: state.runs[r(2)]?.state,
+      resume:
+        Object.values(state.wakes).some((w) => w.kind === "usage-resume") ||
+        state.pausedUntil !== null,
+    }).toEqual({ queued: "queued", resume: true });
+    expect(ends(log)).toEqual(["1:usage-limit/agent"]);
+  });
+});
+
+describe("decide: a session fits by the model the engine asked for", () => {
+  it.each([
+    ["a differently spelled model", "opus", "claude-opus-4-5"],
+    ["a session that reports no model", "opus", null],
+  ] as const)("%s: two runs share one session", (_name, chosen, reported) => {
+    const { log } = playAll([
+      { _tag: "SwitchModel", model: chosen },
+      send("one"),
+      settled(r(1), "session.open", {
+        kind: "ok",
+        value: {
+          sessionId: "s1",
+          driver: "claude",
+          model: reported,
+          nativeRef: "native",
+          capabilities: { steer: false },
+        },
+      }),
+      sentTurn(1),
+      turnEnded,
+      send("two"),
+    ]);
+    expect(
+      log.filter((e) => e._tag === "EffectRequested" && e.kind === "session.open").length,
+    ).toBe(1);
+  });
+});
+
+describe("decide: the watchdog watches a running run only", () => {
+  const silent: Input = {
+    command: { _tag: "WakeFired", wakeId: wakeId(conversation, "watchdog", r(1)) },
+    at: T0 + WATCHDOG_SILENCE_MS,
+  };
+  it("a run waiting on a person is not marked unresponsive", () => {
+    const { state } = playAll([...proofRunning, requestOpened("q"), silent]);
+    expect(state.runs[r(1)]?.unresponsiveSince).toBeNull();
+  });
+  it("an answer clears the mark", () => {
+    const { state } = playAll([
+      ...proofRunning,
+      requestOpened("q"),
+      silent,
+      {
+        command: { _tag: "Answer", requestId: requestId(r(1), 1), answer: "y", summary: "y" },
+        at: T0 + WATCHDOG_SILENCE_MS + 1,
+      },
+    ]);
+    expect({ state: state.runs[r(1)]?.state, mark: state.runs[r(1)]?.unresponsiveSince }).toEqual({
+      state: "running",
+      mark: null,
+    });
+  });
+  it("a run that spoke again is watched again", () => {
+    const { state } = playAll([
+      ...proofRunning,
+      silent,
+      { command: signal({ kind: "activity" }), at: T0 + WATCHDOG_SILENCE_MS + 1 },
+    ]);
+    expect(Object.values(state.wakes).some((w) => w.kind === "watchdog")).toBe(true);
+  });
+});
+
+describe("decide: a person's message never reads queued once its run has ended", () => {
+  it.each([
+    [
+      "a send that failed",
+      [settled(r(1), "provider.send", { kind: "failed", reason: "socket closed" })],
+    ],
+    ["a restart that cut the send", [recovered([effectId(r(1), "provider.send", 1)])]],
+    [
+      "a session that exited before the turn",
+      [signal({ kind: "session-exited", reason: "exit 137" })],
+    ],
+    ["a usage limit before the turn", [signal({ kind: "usage-limit", resetsAt: T0 + 60_000 })]],
+    ["a turn that ended before it was seen to start", [turnEnded]],
+  ] as const)("%s settles the message's delivery", (_name, last) => {
+    const { state, log } = playAll([send("go"), opened(1), ...last]);
+    expect(state.runs[r(1)]?.state).toBe("ended");
+    expect(delivery(log)).not.toBe("queued");
+  });
+});
+
+describe("decide: an answer the provider refused", () => {
+  it("a failed answer leaves the run waiting on its request", () => {
+    const { state } = playAll([
+      send("go"),
+      opened(1),
+      sent(1),
+      requestOpened("q"),
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: "yes", summary: "yes" },
+      settled(requestId(r(1), 1), "provider.respond", { kind: "failed", reason: "callback gone" }),
+    ]);
+    expect(state.runs[r(1)]?.state).toBe("waiting");
+  });
+});

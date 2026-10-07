@@ -1,5 +1,6 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { CommandId, ConversationId, type SessionId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -19,7 +20,11 @@ import {
   sqliteWithEngineTables,
   turnEnded,
 } from "../testing/fixtures.ts";
-import { EngineStoreError, makeEngineStore, type CommitStage } from "./EngineStore.ts";
+import { Conversations } from "../Conversations.ts";
+import { signalsCommandId } from "../domain/ids.ts";
+import { makeEffectWorker } from "../outbox/EffectWorker.ts";
+import { World, engineLayer, newBoot, tempDb } from "../testing/world.ts";
+import { EngineStore, EngineStoreError, makeEngineStore, type CommitStage } from "./EngineStore.ts";
 
 const TABLES = [
   "engine_receipt",
@@ -296,3 +301,58 @@ describe("EngineStore", () => {
 
 const note = (key: string) =>
   ({ kind: "note", text: `note ${key}`, streaming: true, answer: false }) as const;
+
+describe("EngineStore: what it writes, it can read back", () => {
+  it.effect(
+    "a signal body the contracts refuse is refused at the step, and the conversation still loads",
+    () =>
+      Effect.gen(function* () {
+        const file = tempDb("f3");
+        const world = new World();
+        const mate = ConversationId.make("mate");
+        const ana = { kind: "person", subject: "ana" } as const;
+        const written = yield* Effect.gen(function* () {
+          const conversations = yield* Conversations;
+          const worker = yield* makeEffectWorker(newBoot());
+          yield* conversations.ask({
+            commandId: CommandId.make("f3-send"),
+            conversationId: mate,
+            principal: ana,
+            command: { _tag: "Send", text: "go" },
+          });
+          yield* worker.runOnce;
+          yield* worker.runOnce;
+          // The bridge's item status `cut` passed through as a call state this build does not know.
+          const body = {
+            kind: "call",
+            step: "build",
+            tool: { name: "Bash" },
+            words: null,
+            state: "cut",
+            endedAt: null,
+          };
+          return (yield* Effect.exit(
+            conversations.tell({
+              commandId: signalsCommandId("w1" as SessionId, 1),
+              conversationId: mate,
+              principal: { kind: "engine" },
+              command: {
+                _tag: "ProviderSignals",
+                sessionId: "w1" as SessionId,
+                signals: [
+                  { kind: "item-opened", key: "k1", by: { kind: "mate" }, body: body as never },
+                ],
+              },
+            }),
+          ))._tag;
+        }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+        const reloaded = yield* Effect.flatMap(EngineStore, (store) =>
+          Effect.exit(store.load(mate)),
+        ).pipe(Effect.provide(engineLayer(file, world.handlers())));
+        expect({ written, reloaded: reloaded._tag }).toEqual({
+          written: written,
+          reloaded: "Success",
+        });
+      }),
+  );
+});

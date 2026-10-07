@@ -10,9 +10,11 @@ import { ConversationId, type EngineEvent } from "@t3tools/contracts";
 import { makeConversationActor } from "./ConversationActor.ts";
 import * as ConversationsModule from "./Conversations.ts";
 import { Conversations } from "./Conversations.ts";
+import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { envelope, r, send, sqliteWithEngineTables } from "./testing/fixtures.ts";
 import * as EngineSignals from "./EngineSignals.ts";
-import { EngineStore, makeEngineStore } from "./store/EngineStore.ts";
+import { EngineStore, EngineStoreError, makeEngineStore } from "./store/EngineStore.ts";
+import { runEngineMigrations } from "./store/migrations.ts";
 
 let loads = 0;
 const countingStore = Layer.effect(
@@ -160,4 +162,39 @@ describe("Conversations", () => {
       }),
     );
   });
+});
+
+describe("Conversations: a failed build", () => {
+  it.effect("an actor whose build failed once is built again on the next command", () =>
+    Effect.gen(function* () {
+      let failingLoads = 0;
+      const store = Layer.effect(
+        EngineStore,
+        Effect.map(makeEngineStore(), (s) => ({
+          ...s,
+          load: (conversation: ConversationId) =>
+            ++failingLoads === 1
+              ? Effect.fail(
+                  new EngineStoreError({ operation: "load", cause: new Error("SQLITE_BUSY") }),
+                )
+              : s.load(conversation),
+        })),
+      );
+      const layer = ConversationsModule.layer().pipe(
+        Layer.provideMerge(Layer.mergeAll(store, EngineSignals.layer)),
+        Layer.provideMerge(
+          Layer.effectDiscard(runEngineMigrations()).pipe(
+            Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
+          ),
+        ),
+      );
+      const exits = yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const first = yield* Effect.exit(conversations.ask(envelope(send("a"))));
+        const second = yield* Effect.exit(conversations.ask(envelope(send("b"))));
+        return { exits: [first._tag, second._tag], loads: failingLoads };
+      }).pipe(Effect.provide(layer));
+      expect(exits).toEqual({ exits: ["Failure", "Success"], loads: 2 });
+    }),
+  );
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Exit from "effect/Exit";
 import * as Schema from "effect/Schema";
 
 import {
@@ -7,6 +8,7 @@ import {
   EngineEvent,
   ENGINE_EVENT_VERSION,
   Item,
+  Run,
   RunEnd,
   effectId,
   itemId,
@@ -119,5 +121,126 @@ describe("forward-compatible members", () => {
         rejection: { reason: "moon-phase" },
       }),
     ).toEqual({ _tag: "Rejected", rejection: { reason: "unknown" } });
+  });
+});
+
+const decodeEventExit = Schema.decodeUnknownExit(EngineEvent);
+const decodeRunExit = Schema.decodeUnknownExit(Run);
+
+describe("a stored event from a newer build still decodes (rule 10)", () => {
+  const header = { v: 1, conversationId: "mate", seq: 1, at: 0, commandId: "x" };
+  const queued = {
+    ...header,
+    _tag: "RunQueued",
+    runId: "mate/r/1",
+    ordinal: 1,
+    trigger: { kind: "person", itemId: "mate/r/1/i/1" },
+    joins: null,
+    principal: { kind: "person", subject: "ana" },
+    maintenance: false,
+    text: "go",
+  };
+  const person = {
+    kind: "person",
+    text: "go",
+    attachments: [],
+    sendId: "x",
+    delivery: { state: "queued", at: null },
+  };
+  const call = {
+    kind: "call",
+    step: "s",
+    tool: { name: "Bash" },
+    words: null,
+    state: "running",
+    endedAt: null,
+  };
+  const opened = (body: object, by: object = { kind: "mate" }) => ({
+    ...header,
+    _tag: "ItemOpened",
+    runId: "mate/r/1",
+    itemId: "mate/r/1/i/1",
+    key: null,
+    by,
+    body,
+  });
+  const decodes = (raw: unknown) => Exit.isSuccess(decodeEventExit(raw));
+  it.each([
+    ["Principal", { ...queued, principal: { kind: "hq", relay: "x" } }],
+    ["RunTrigger", { ...queued, trigger: { kind: "schedule", id: "x" } }],
+    [
+      "ItemActor",
+      opened(
+        { kind: "note", text: "x", streaming: false, answer: false },
+        { kind: "crewmate", id: "x" },
+      ),
+    ],
+    [
+      "RunEndSource",
+      {
+        ...header,
+        _tag: "RunEnded",
+        runId: "mate/r/1",
+        end: { kind: "completed" },
+        source: "inferred-from-next-turn",
+      },
+    ],
+    [
+      "RequestState",
+      {
+        ...header,
+        _tag: "RequestClosed",
+        runId: "mate/r/1",
+        requestId: "mate/r/1/q/1",
+        state: "expired",
+      },
+    ],
+    ["SessionCloseReason", { ...header, _tag: "SessionClosed", sessionId: "s1", reason: "idle" }],
+    [
+      "EffectOutcome",
+      {
+        ...header,
+        _tag: "EffectOutcomeRecorded",
+        effectId: "e",
+        kind: "provider.send",
+        outcome: { kind: "adopted" },
+      },
+    ],
+    [
+      "delivery.state",
+      opened(
+        { ...person, delivery: { state: "edited", at: null } },
+        { kind: "person", principal: { kind: "person", subject: "ana" } },
+      ),
+    ],
+    ["call.state", opened({ ...call, state: "cut" })],
+  ] as const)("an event with a newer %s still decodes", (_name, raw) => {
+    expect(decodes(raw)).toBe(true);
+  });
+  it("a run with a newer state still decodes", () => {
+    const run = {
+      id: "mate/r/1",
+      conversationId: "mate",
+      ordinal: 1,
+      seq: 1,
+      rev: 1,
+      trigger: { kind: "person", itemId: "mate/r/1/i/1" },
+      joins: null,
+      principal: { kind: "person", subject: "ana" },
+      state: "paused",
+      maintenance: false,
+      waitingOn: null,
+      stopAsked: null,
+      end: null,
+      endSource: null,
+      sessionId: null,
+      providerTurnId: null,
+      queuedAt: 0,
+      admittedAt: null,
+      startedAt: null,
+      endedAt: null,
+      unresponsiveSince: null,
+    };
+    expect(Exit.isSuccess(decodeRunExit(run))).toBe(true);
   });
 });

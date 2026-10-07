@@ -1,4 +1,5 @@
 import { assert, describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -8,16 +9,27 @@ import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   BootId,
+  CommandId,
   ConversationId,
   EffectId,
   effectId,
   wakeId,
   type EffectOutcome,
+  type SessionId,
 } from "@t3tools/contracts";
 
 import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
-import type { Decision, EffectClass, EffectLane } from "../domain/command.ts";
+import type {
+  Command,
+  Decision,
+  EffectClass,
+  EffectLane,
+  Envelope,
+  ProviderSignal,
+} from "../domain/command.ts";
+import { CONTINUE_TEXT } from "../domain/decide.ts";
+import { signalsCommandId } from "../domain/ids.ts";
 import {
   drive,
   envelope,
@@ -29,7 +41,8 @@ import {
 } from "../testing/fixtures.ts";
 import * as EngineSignals from "../EngineSignals.ts";
 import * as EngineStoreModule from "../store/EngineStore.ts";
-import { EngineStore } from "../store/EngineStore.ts";
+import { EngineStore, EngineStoreError } from "../store/EngineStore.ts";
+import { World, audit, engineLayer, fireDue, newBoot, tempDb } from "../testing/world.ts";
 import * as EffectOutboxModule from "./EffectOutbox.ts";
 import { EffectOutbox } from "./EffectOutbox.ts";
 import {
@@ -345,4 +358,215 @@ describe("EffectWorker", () => {
       }),
     );
   });
+});
+
+// ── what the proof found at the worker and at boot (round 3: review 1, 3, 4; F1, F4) ─────────
+
+const mate = ConversationId.make("mate");
+const ana = { kind: "person", subject: "ana" } as const;
+let proofIds = 0;
+const env = (command: Command, id?: string): Envelope => ({
+  commandId: CommandId.make(id ?? `w-${++proofIds}`),
+  conversationId: mate,
+  principal: ana,
+  command,
+});
+let proofBatches = 0;
+const signalsFrom = (session: string, ...list: ReadonlyArray<ProviderSignal>) =>
+  env(
+    { _tag: "ProviderSignals", sessionId: session as SessionId, signals: list },
+    signalsCommandId(session as SessionId, ++proofBatches),
+  );
+const ended: ProviderSignal = { kind: "turn-ended", outcome: { kind: "completed" } };
+const yieldMany = Effect.forEach(Array.from({ length: 300 }), () => Effect.yieldNow, {
+  discard: true,
+});
+
+describe("EffectWorker: a restart", () => {
+  it.effect("the first message after a restart opens a new session and reaches the agent", () =>
+    Effect.gen(function* () {
+      const file = tempDb("r1");
+      const world = new World();
+      yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* conversations.ask(env({ _tag: "Send", text: "first" }));
+        yield* worker.runOnce;
+        yield* worker.runOnce;
+        yield* conversations.tell(signalsFrom("w1", ended));
+      }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+      world.crash();
+      const after = yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* worker.reconcileAtBoot;
+        yield* conversations.ask(env({ _tag: "Send", text: "after the restart" }));
+        for (let i = 0; i < 4; i++) yield* worker.runOnce;
+        const { state, events } = yield* audit(mate);
+        return {
+          asked: events
+            .filter((e) => e._tag === "EffectRequested")
+            .map((e) => (e as { kind: string }).kind)
+            .slice(2),
+          run: state.runs[r(2, mate)]?.end?.kind ?? state.runs[r(2, mate)]?.state,
+          received: world.received.map((x) => x.text),
+        };
+      }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+      expect(after).toEqual({
+        asked: ["session.open", "provider.send"],
+        run: "running",
+        received: ["first", "after the restart"],
+      });
+    }),
+  );
+
+  it.effect("a message accepted on an open session reaches the agent across a restart", () =>
+    Effect.gen(function* () {
+      const file = tempDb("f1");
+      const world = new World();
+      yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* conversations.ask(env({ _tag: "Send", text: "first" }));
+        yield* worker.runOnce;
+        yield* worker.runOnce;
+        yield* conversations.tell(signalsFrom("w1", ended));
+        yield* conversations.ask(env({ _tag: "Send", text: "second" }));
+      }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+      world.crash();
+      const received = yield* Effect.gen(function* () {
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* worker.reconcileAtBoot;
+        for (let i = 0; i < 6; i++) {
+          yield* fireDue(yield* Clock.currentTimeMillis);
+          yield* worker.runOnce;
+        }
+        return world.received.map((x) => x.text);
+      }).pipe(Effect.provide(engineLayer(file, world.handlers())));
+      expect(received).toEqual(["first", "second"]);
+      expect(CONTINUE_TEXT).toBe("Continue where you left off.");
+    }),
+  );
+});
+
+describe("EffectWorker: the worker", () => {
+  it.effect("a lane held by a running effect lets the worker sleep, not spin", () =>
+    Effect.gen(function* () {
+      const file = tempDb("r3");
+      const world = new World();
+      const claims = yield* Effect.gen(function* () {
+        const outbox = yield* EffectOutbox;
+        const store = yield* EngineStore;
+        let count = 0;
+        const state = yield* store.load(mate);
+        const rows = ["a/e/test.replay/1", "a/e/test.replay/2"].map((id) => ({
+          effectId: EffectId.make(id),
+          kind: "test.replay",
+          lane: "turn" as const,
+          class: "replay-safe" as const,
+          runId: null,
+          payload: {},
+        }));
+        yield* store.commit({
+          envelope: env({ _tag: "Archive" }),
+          decision: {
+            _tag: "Accept",
+            step: {
+              events: rows.map((row) => ({
+                _tag: "EffectRequested" as const,
+                effectId: row.effectId,
+                kind: row.kind,
+                runId: null,
+              })),
+              effects: rows,
+              details: [],
+              result: { _tag: "Accepted", seq: 2 },
+            },
+          },
+          state,
+          now: 0,
+        });
+        const boot = newBoot();
+        yield* outbox.claim(boot, 0);
+        const counting = {
+          ...outbox,
+          claim: (b: typeof boot, now: number) =>
+            Effect.andThen(
+              Effect.sync(() => count++),
+              outbox.claim(b, now),
+            ),
+        };
+        const worker = yield* makeEffectWorker(boot).pipe(
+          Effect.provideService(EffectOutbox, counting),
+        );
+        yield* worker.start;
+        yield* yieldMany;
+        return count;
+      }).pipe(Effect.scoped, Effect.provide(engineLayer(file, world.handlers())));
+      expect(claims).toBeLessThanOrEqual(8);
+    }),
+  );
+
+  it.effect("an outcome that failed to record is recorded later, and its lane moves on", () =>
+    Effect.gen(function* () {
+      const file = tempDb("r4");
+      const world = new World();
+      let failing = 0;
+      const fault = () =>
+        failing > 0
+          ? Effect.suspend(
+              () => (
+                failing--,
+                Effect.fail(
+                  new EngineStoreError({ operation: "commit", cause: new Error("SQLITE_BUSY") }),
+                )
+              ),
+            )
+          : Effect.void;
+      const result = yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* conversations.ask(env({ _tag: "Send", text: "go" }));
+        failing = 4; // the first try and the worker's three immediate retries
+        yield* Effect.exit(worker.runOnce);
+        for (let i = 0; i < 3; i++) {
+          yield* TestClock.adjust(60_000);
+          yield* worker.runOnce;
+        }
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{
+          readonly kind: string;
+          readonly state: string;
+        }>`SELECT kind, state FROM engine_effect ORDER BY rowid`;
+        return {
+          run: (yield* audit(mate)).state.runs[r(1, mate)]?.state,
+          rows: rows.map((x) => `${x.kind}:${x.state}`),
+        };
+      }).pipe(Effect.provide(engineLayer(file, world.handlers(), { fault: () => fault() })));
+      expect(result).toEqual({ run: "running", rows: ["session.open:done", "provider.send:done"] });
+    }),
+  );
+
+  it.effect("a send whose handler died after the message went out is not sent again", () =>
+    Effect.gen(function* () {
+      const world = new World();
+      const dying = handlersOf(...world.handlers().values(), {
+        kind: "provider.send",
+        run: (row) =>
+          Effect.sync(() => world.act(row)).pipe(Effect.andThen(Effect.die("reply did not parse"))),
+      });
+      const acts = yield* Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        yield* conversations.ask(env({ _tag: "Send", text: "deploy" }));
+        yield* worker.runOnce; // session.open
+        for (let i = 0; i < 6; i++) {
+          yield* worker.runOnce;
+          yield* TestClock.adjust(30_000);
+        }
+        return [...world.acts].filter(([id]) => id.includes("provider.send")).map(([, n]) => n);
+      }).pipe(Effect.provide(engineLayer(tempDb("f4"), dying)));
+      expect(acts).toEqual([1]);
+    }),
+  );
 });
