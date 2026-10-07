@@ -22,6 +22,7 @@ export const RIGHT_PANEL_KINDS = [
   "git",
   "crew",
   "mcp",
+  "vault",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -161,6 +162,16 @@ export const RIGHT_PANEL_KIND_META = {
     },
     // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
     availability: () => "available",
+  },
+  vault: {
+    launcher: {
+      label: "Vault",
+      description: "See and change the project's variables.",
+      // V is Data's; E stands in for the environment's variables.
+      shortcut: "E",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
