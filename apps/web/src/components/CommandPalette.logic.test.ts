@@ -812,7 +812,7 @@ describe("palette list settlement includes HQ and stays with its organization", 
 });
 
 describe("restartCodingAgentPlan", () => {
-  const session = (status: "running" | "idle" | "stopped") => ({
+  const session = (status: "running" | "starting" | "idle" | "ready" | "stopped") => ({
     threadId: ThreadId.make("thread-1"),
     status,
     providerName: "claudeAgent",
@@ -822,44 +822,58 @@ describe("restartCodingAgentPlan", () => {
     lastError: null,
     updatedAt: "2026-03-01T00:00:00.000Z",
   });
+  const rescan = (instanceId: string, cwd = "/workspace/project") => ({
+    instanceId,
+    cwd,
+    fresh: true,
+  });
   it.each([
     {
-      name: "a live session stops, and its own coding agent rescans the Mate's copy",
-      thread: makeThread({ session: session("running"), worktreePath: "/workspace/copy" }),
+      name: "an idle session stops, and its own coding agent rescans the Mate's copy",
+      thread: makeThread({ session: session("idle"), worktreePath: "/workspace/copy" }),
       plan: {
+        available: true,
         stop: true,
-        rescan: { instanceId: "claude-work", cwd: "/workspace/copy", fresh: true },
+        rescan: rescan("claude-work", "/workspace/copy"),
       },
     },
     {
-      name: "an idle session still stops: its process holds the old skills",
-      thread: makeThread({ session: session("idle") }),
-      plan: {
-        stop: true,
-        rescan: { instanceId: "claude-work", cwd: "/workspace/project", fresh: true },
-      },
+      name: "a ready session stops: its process holds the old skills",
+      thread: makeThread({ session: session("ready") }),
+      plan: { available: true, stop: true, rescan: rescan("claude-work") },
     },
     {
       name: "a stopped session is not stopped again",
       thread: makeThread({ session: session("stopped") }),
-      plan: {
-        stop: false,
-        rescan: { instanceId: "claude-work", cwd: "/workspace/project", fresh: true },
-      },
+      plan: { available: true, stop: false, rescan: rescan("claude-work") },
     },
     {
       name: "without a session the selected coding agent rescans",
       thread: makeThread(),
-      plan: {
-        stop: false,
-        rescan: { instanceId: "codex", cwd: "/workspace/project", fresh: true },
-      },
+      plan: { available: true, stop: false, rescan: rescan("codex") },
     },
-  ])("restarting the coding agent: $name", ({ thread, plan }) => {
-    expect(restartCodingAgentPlan(thread, "/workspace/project")).toEqual(plan);
-  });
+    {
+      name: "nothing is rescanned when the Mate's folder is unknown",
+      thread: makeThread(),
+      workspaceRoot: null,
+      plan: { available: true, stop: false, rescan: null },
+    },
+  ])(
+    "restarting the coding agent is offered while it is idle: $name",
+    ({ thread, plan, workspaceRoot }) => {
+      expect(
+        restartCodingAgentPlan(thread, workspaceRoot === null ? undefined : "/workspace/project"),
+      ).toEqual(plan);
+    },
+  );
 
-  it("restarting the coding agent rescans nothing when the Mate's folder is unknown", () => {
-    expect(restartCodingAgentPlan(makeThread(), undefined)).toEqual({ stop: false, rescan: null });
-  });
+  // Stopping would end the run and cancel the messages still starting.
+  it.each(["running", "starting"] as const)(
+    "restarting the coding agent is unavailable while it works (%s), with the reason",
+    (status) => {
+      expect(
+        restartCodingAgentPlan(makeThread({ session: session(status) }), "/workspace/project"),
+      ).toEqual({ available: false, reason: "It is working. Stop the run first." });
+    },
+  );
 });

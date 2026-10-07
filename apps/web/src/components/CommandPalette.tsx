@@ -1889,16 +1889,18 @@ function OpenCommandPaletteDialog(props: {
 
   if (activeThread) {
     const thread = activeThread;
+    const plan = restartCodingAgentPlan(thread, projectCwdById.get(thread.projectId));
     actionItems.push({
       kind: "action",
       value: "action:restart-coding-agent",
       searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
       title: "Restart the coding agent",
       icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
+      ...(plan.available ? {} : { disabled: true, description: plan.reason }),
       // Failures throw into executeItem's error toast.
       run: async () => {
+        if (!plan.available) return;
         const { environmentId } = thread;
-        const plan = restartCodingAgentPlan(thread, projectCwdById.get(thread.projectId));
         if (plan.stop) {
           const stopped = await stopThreadSession({
             environmentId,

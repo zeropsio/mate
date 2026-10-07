@@ -699,26 +699,39 @@ export function paletteNoMatchMessage(input: {
   return input.listsRead ? "No matching commands, projects, or threads." : "";
 }
 
+/** Why "Restart the coding agent" waits: stopping would end the run. */
+export const RESTART_CODING_AGENT_WHILE_WORKING = "It is working. Stop the run first.";
+
 /**
  * What "Restart the coding agent" does to a Mate's chat. Stopping the process
  * keeps the conversation: the next message starts a fresh one that resumes it
  * with new skills, plugins and MCP servers loaded. The fresh rescan updates
- * the composer's slash menu at once. `workspaceRoot` is the project's folder.
+ * the composer's slash menu at once. While a turn runs or starts, stopping
+ * would end it and cancel the messages still starting, so it is unavailable.
+ * `workspaceRoot` is the project's folder.
  */
 export function restartCodingAgentPlan(
   thread: Pick<Thread, "session" | "modelSelection" | "worktreePath">,
   workspaceRoot: string | undefined,
-): {
-  readonly stop: boolean;
-  readonly rescan: {
-    readonly instanceId: ProviderInstanceId;
-    readonly cwd: string;
-    readonly fresh: true;
-  } | null;
-} {
+):
+  | {
+      readonly available: true;
+      readonly stop: boolean;
+      readonly rescan: {
+        readonly instanceId: ProviderInstanceId;
+        readonly cwd: string;
+        readonly fresh: true;
+      } | null;
+    }
+  | { readonly available: false; readonly reason: string } {
+  const status = thread.session?.status;
+  if (status === "running" || status === "starting") {
+    return { available: false, reason: RESTART_CODING_AGENT_WHILE_WORKING };
+  }
   const cwd = thread.worktreePath ?? workspaceRoot;
   return {
-    stop: thread.session !== null && thread.session.status !== "stopped",
+    available: true,
+    stop: thread.session !== null && status !== "stopped",
     rescan:
       cwd === undefined
         ? null
