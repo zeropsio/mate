@@ -332,6 +332,9 @@ export const makeZeropsHqLink = (
                   members: message.value.members,
                   ageMs: message.value.ageMs,
                 });
+              default:
+                // Usage has its own negotiated journal consumer; legacy links ignore this lane.
+                return Effect.void;
             }
           }),
         );
