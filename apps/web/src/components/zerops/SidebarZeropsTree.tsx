@@ -2840,6 +2840,7 @@ function MateRowView<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
+        aria-label={dot === undefined ? undefined : `${name}, ${mateDotLabel(dot)}`}
         aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
@@ -3255,6 +3256,13 @@ function MateWorkingTime({
  * (T6); what the menu opened onto, or what this browser remembered, is
  * simply there.
  */
+const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
+  tone === "unread"
+    ? "Unseen reply"
+    : tone === "failed"
+      ? "Stopped on an error"
+      : "Waiting for you";
+
 function MateDot({
   tone,
   known,
