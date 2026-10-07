@@ -5,10 +5,12 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
   ChevronRightIcon,
+  CodeIcon,
   CopyIcon,
   GlobeIcon,
   PlayIcon,
   TriangleAlertIcon,
+  WorkflowIcon,
   WrapTextIcon,
 } from "lucide-react";
 import type {
@@ -90,6 +92,8 @@ import { GitHubIcon } from "./Icons";
 import { createIncrementalHighlightedDocument } from "../lib/incrementalHighlighting";
 import { HighlightedCodeLines } from "./chat/HighlightedCodeLines";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
+import { MermaidSvg, useMermaidDiagram } from "./chat/MermaidDiagram";
+import { mermaidFrame } from "./chat/mermaidDiagram.logic";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
 import {
@@ -711,6 +715,8 @@ function MarkdownCodeBlock({
   theme,
   onRunShellCommand,
   isStreaming,
+  leadingActions,
+  canWrap = true,
   children,
 }: {
   code: string;
@@ -719,6 +725,9 @@ function MarkdownCodeBlock({
   theme: "light" | "dark";
   onRunShellCommand?: ((command: string) => void) | undefined;
   isStreaming: boolean;
+  /** Actions before the block's own, on its toolbar. */
+  leadingActions?: ReactNode;
+  canWrap?: boolean;
   children: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
@@ -791,23 +800,26 @@ function MarkdownCodeBlock({
           />
         </span>
         <span className="flex items-center gap-0.5" role="toolbar" aria-label="Code block actions">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant={wrapped ? "secondary" : "ghost-muted"}
-                  size="icon-xs"
-                  aria-pressed={wrapped}
-                  onClick={() => setWrapped((value) => !value)}
-                  aria-label={wrapLabel}
-                />
-              }
-            >
-              <WrapTextIcon className="size-3" />
-            </TooltipTrigger>
-            <TooltipPopup side="top">{wrapLabel}</TooltipPopup>
-          </Tooltip>
+          {leadingActions}
+          {canWrap ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant={wrapped ? "secondary" : "ghost-muted"}
+                    size="icon-xs"
+                    aria-pressed={wrapped}
+                    onClick={() => setWrapped((value) => !value)}
+                    aria-label={wrapLabel}
+                  />
+                }
+              >
+                <WrapTextIcon className="size-3" />
+              </TooltipTrigger>
+              <TooltipPopup side="top">{wrapLabel}</TooltipPopup>
+            </Tooltip>
+          ) : null}
           {canRun ? (
             <Tooltip>
               <TooltipTrigger
@@ -846,6 +858,94 @@ function MarkdownCodeBlock({
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * A Mermaid fence: its diagram once the answer settles, its source while it
+ * streams or when asked. Every state sits in one fixed frame, so the answer
+ * never moves when the diagram is drawn, on a reload, or when a diagram that
+ * cannot be drawn falls back to its source.
+ */
+function MarkdownMermaidCodeBlock({
+  code,
+  fenceTitle,
+  theme,
+  isStreaming,
+  children,
+}: {
+  code: string;
+  fenceTitle: string | null;
+  theme: "light" | "dark";
+  isStreaming: boolean;
+  children: ReactNode;
+}) {
+  const [showCode, setShowCode] = useState(false);
+  const open = use(MarkdownImageOpenerContext);
+  const drawable = !isStreaming && code.trim().length > 0;
+  const result = useMermaidDiagram(code, theme, drawable);
+  const frame = mermaidFrame({ streaming: isStreaming, showCode, source: code, result });
+  const toggleLabel = showCode ? "Show diagram" : "Show code";
+  return (
+    <MarkdownCodeBlock
+      code={code}
+      language="mermaid"
+      fenceTitle={fenceTitle}
+      theme={theme}
+      isStreaming={isStreaming}
+      canWrap={frame === "source" || frame === "fallback"}
+      leadingActions={
+        drawable && result?.status !== "error" ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost-muted"
+                  size="icon-xs"
+                  onClick={() => setShowCode((value) => !value)}
+                  aria-label={toggleLabel}
+                />
+              }
+            >
+              {showCode ? <WorkflowIcon className="size-3" /> : <CodeIcon className="size-3" />}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{toggleLabel}</TooltipPopup>
+          </Tooltip>
+        ) : result?.status === "error" && frame === "fallback" ? (
+          // The cause, on the header's own line, so the frame keeps its height.
+          <Tooltip>
+            <TooltipTrigger
+              render={<span className="me-1 truncate text-2xs text-muted-foreground" />}
+            >
+              Could not draw this diagram
+            </TooltipTrigger>
+            <TooltipPopup side="top">{result.message}</TooltipPopup>
+          </Tooltip>
+        ) : null
+      }
+    >
+      <div className="h-112 overflow-auto" data-diagram-frame={frame}>
+        {frame === "diagram" && result?.status === "rendered" ? (
+          <div className="size-full p-3">
+            <RenderErrorBoundary fallback={children}>
+              <MermaidSvg
+                svg={result.svg}
+                onExpand={
+                  open === null
+                    ? null
+                    : (src) => open({ images: [{ src, name: "Mermaid diagram" }], index: 0 })
+                }
+              />
+            </RenderErrorBoundary>
+          </div>
+        ) : frame === "drawing" ? (
+          <div className="size-full" aria-busy />
+        ) : (
+          children
+        )}
+      </div>
+    </MarkdownCodeBlock>
   );
 }
 
@@ -2421,6 +2521,38 @@ const CHAT_MARKDOWN_COMPONENTS = {
 
     const language = extractFenceLanguage(codeBlock.className);
     const fenceTitle = extractFenceTitle(extractPreCodeMeta(node));
+    const highlightedCode = (
+      <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
+        {/* Reserve the block's height but stay hidden until Shiki has colored
+            it, so plain text never flashes before the highlighted version. */}
+        <Suspense
+          fallback={
+            <pre {...props} className="invisible" aria-hidden>
+              {children}
+            </pre>
+          }
+        >
+          <SuspenseShikiCodeBlock
+            className={codeBlock.className}
+            code={codeBlock.code}
+            themeName={diffThemeName}
+            isStreaming={isStreaming}
+          />
+        </Suspense>
+      </RenderErrorBoundary>
+    );
+    if (language === "mermaid") {
+      return (
+        <MarkdownMermaidCodeBlock
+          code={codeBlock.code}
+          fenceTitle={fenceTitle}
+          theme={resolvedTheme}
+          isStreaming={isStreaming}
+        >
+          {highlightedCode}
+        </MarkdownMermaidCodeBlock>
+      );
+    }
     return (
       <MarkdownCodeBlock
         code={codeBlock.code}
@@ -2434,24 +2566,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         }
         isStreaming={isStreaming}
       >
-        <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
-          {/* Reserve the block's height but stay hidden until Shiki has colored
-              it, so plain text never flashes before the highlighted version. */}
-          <Suspense
-            fallback={
-              <pre {...props} className="invisible" aria-hidden>
-                {children}
-              </pre>
-            }
-          >
-            <SuspenseShikiCodeBlock
-              className={codeBlock.className}
-              code={codeBlock.code}
-              themeName={diffThemeName}
-              isStreaming={isStreaming}
-            />
-          </Suspense>
-        </RenderErrorBoundary>
+        {highlightedCode}
       </MarkdownCodeBlock>
     );
   },
