@@ -199,7 +199,7 @@ export interface ChatsSource<E> {
 export const chatsSource = <E>(engine: MateEngineService, v1: ChatsSource<E>): ChatsSource<E> =>
   engine.live
     ? {
-        threads: Effect.map(engine.conversations, (views) => views.map(engineShellOf)),
+        threads: Effect.map(engine.conversations, (list) => list.views.map(engineShellOf)),
         domainEvents: engine.changes,
       }
     : v1;
@@ -210,7 +210,7 @@ export const chatsSource = <E>(engine: MateEngineService, v1: ChatsSource<E>): C
  */
 export const engineAttentionReads = (engine: MateEngineService) => ({
   project: Effect.succeed(Option.some(ENGINE_PROJECT_ID)),
-  threadsOf: () => Effect.map(engine.conversations, (views) => views.map(engineShellOf)),
+  threadsOf: () => Effect.map(engine.conversations, (list) => list.views.map(engineShellOf)),
   thread: (id: ThreadId) =>
     Effect.map(engine.conversation(ConversationId.make(id)), (view) =>
       view === undefined || view.archived ? Option.none() : Option.some(engineShellOf(view)),

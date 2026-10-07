@@ -33,7 +33,7 @@ import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import * as LiveBusModule from "./LiveBus.ts";
-import { MateEngine, WakeRefused, type MateEngineService } from "./MateEngine.ts";
+import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
@@ -323,19 +323,22 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),
         Effect.provideService(SqlClient.SqlClient, sql),
-        Effect.tapCause((cause) =>
-          Effect.logWarning("Mate engine: a view could not be read", cause),
+        // The listing itself failed: nothing is known, nothing is "none".
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Mate engine: the conversations could not be listed", cause).pipe(
+            Effect.as({ views: [], unread: [], complete: false }),
+          ),
         ),
-        Effect.orElseSucceed(() => []),
       ),
       conversation: (id) =>
         readConversationView(id).pipe(
           Effect.provideService(Conversations, conversations),
           Effect.provideService(SqlClient.SqlClient, sql),
-          Effect.tapCause((cause) =>
-            Effect.logWarning("Mate engine: a view could not be read", cause),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Mate engine: a view could not be read", cause).pipe(
+              Effect.andThen(Effect.fail(new ViewUnreadable({ conversationId: id }))),
+            ),
           ),
-          Effect.orElseSucceed(() => undefined),
         ),
       changes: Stream.fromPubSub(signals.commits),
       stopSessionsOn,

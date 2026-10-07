@@ -161,6 +161,8 @@ interface World {
   readonly dispatchFailure: Ref.Ref<boolean>;
   /** The engine's conversations, the agents it was given and the wakes it armed. */
   readonly engineViews: Ref.Ref<ReadonlyArray<ConversationView>>;
+  /** Whether the engine could read every conversation. */
+  readonly engineComplete: Ref.Ref<boolean>;
   readonly assigned: Ref.Ref<ReadonlyArray<readonly [string, unknown]>>;
   readonly wakes: Ref.Ref<ReadonlyArray<WakeRequest>>;
   /** The run each wake started, by wake id, once it has. */
@@ -191,6 +193,7 @@ const makeWorld = Effect.gen(function* () {
     dispatchHangs: yield* Ref.make(false),
     dispatchFailure: yield* Ref.make(false),
     engineViews: yield* Ref.make<ReadonlyArray<ConversationView>>([]),
+    engineComplete: yield* Ref.make(true),
     assigned: yield* Ref.make<ReadonlyArray<readonly [string, unknown]>>([]),
     wakes: yield* Ref.make<ReadonlyArray<WakeRequest>>([]),
     wokenRuns: yield* Ref.make<
@@ -264,7 +267,14 @@ const fakes = (world: World) =>
     Layer.mock(ServerCommandReadiness)({ await: Effect.void, complete: Effect.void }),
     Layer.succeed(MateEngine, {
       ...inertMateEngine,
-      conversations: Ref.get(world.engineViews),
+      conversations: Effect.map(
+        Effect.all([Ref.get(world.engineViews), Ref.get(world.engineComplete)]),
+        ([views, complete]) => ({
+          views,
+          unread: complete ? [] : [ConversationId.make("unread")],
+          complete,
+        }),
+      ),
       conversation: (id) =>
         Effect.map(Ref.get(world.engineViews), (views) =>
           views.find((view) => view.conversationId === id),
@@ -1634,6 +1644,32 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
         }),
       );
     }),
+  );
+
+  it.live(
+    "a conversation the engine cannot read is never taken for none: the stand-up and the flip wait",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const database = freshDatabase();
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.engineComplete, false);
+        yield* onEngine(world, database, () =>
+          Effect.gen(function* () {
+            yield* ticks;
+            assert.deepStrictEqual(yield* Ref.get(world.assigned), []);
+            assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
+            assert.deepStrictEqual(yield* recordIn(database, ""), []);
+            // Readable again: the flip and the stand-up go, into the main conversation.
+            yield* Ref.set(world.engineComplete, true);
+            yield* eventually(Ref.get(world.wakes), (wakes) => wakes.length === 1);
+          }),
+        );
+        assert.deepStrictEqual(
+          (yield* Ref.get(world.wakes)).map((wake) => wake.conversationId),
+          ["thread-main"],
+        );
+      }),
   );
 
   it.live("the setup document reads the stand-up's run from the engine", () =>

@@ -245,14 +245,40 @@ export const readConversationView = (conversationId: ConversationId) =>
     return view;
   });
 
-/** Every conversation the engine holds a record of, the oldest first. */
+/** Every conversation's view, and the conversations whose view could not be read. */
+export interface ConversationList {
+  readonly views: ReadonlyArray<ConversationView>;
+  /** Conversations the engine holds whose view could not be read now: never "none". */
+  readonly unread: ReadonlyArray<ConversationId>;
+  /** Every conversation was listed and read: only then is a conversation not listed none. */
+  readonly complete: boolean;
+}
+
+/**
+ * Every conversation the engine holds a record of, the oldest first. One that cannot be read is
+ * named as unread (and logged), never dropped silently, and never keeps the others from the list;
+ * the next read tries it again.
+ */
 export const readConversationViews = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const ids = yield* sql<{ readonly conversation_id: string }>`
     SELECT conversation_id FROM engine_conversation ORDER BY rowid
   `;
-  const views = yield* Effect.forEach(ids, (row) =>
-    readConversationView(ConversationId.make(row.conversation_id)),
-  );
-  return views.filter((view): view is ConversationView => view !== undefined);
+  const views: Array<ConversationView> = [];
+  const unread: Array<ConversationId> = [];
+  for (const row of ids) {
+    const id = ConversationId.make(row.conversation_id);
+    const view = yield* readConversationView(id).pipe(
+      Effect.map((found) => ({ found })),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Mate engine: a conversation's view could not be read", {
+          conversationId: id,
+          cause,
+        }).pipe(Effect.as(undefined)),
+      ),
+    );
+    if (view === undefined) unread.push(id);
+    else if (view.found !== undefined) views.push(view.found);
+  }
+  return { views, unread, complete: unread.length === 0 } satisfies ConversationList;
 });

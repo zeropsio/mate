@@ -17,6 +17,7 @@ import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 import {
   inertMateEngine,
+  ViewUnreadable,
   type ConversationView,
   type MateEngineService,
   type ViewRequest,
@@ -92,7 +93,7 @@ const overviewOf = (threads: ReadonlyArray<OrchestrationThreadShell>) =>
 const liveEngine = (views: ReadonlyArray<ConversationView>): MateEngineService => ({
   ...inertMateEngine,
   live: true,
-  conversations: Effect.succeed(views),
+  conversations: Effect.succeed({ views, unread: [], complete: true }),
   conversation: (id) => Effect.succeed(views.find((one) => one.conversationId === id)),
   changes: Stream.make(c),
 });
@@ -308,6 +309,19 @@ describe("the Mate's attention on the engine", () => {
       const archived = engineAttentionReads(liveEngine([{ ...done, archived: true }]));
       assert.isTrue(Option.isNone(yield* archived.thread(thread)));
     }),
+  );
+
+  it.effect(
+    "a conversation it cannot read now is a failed read, never gone: the attention keeps it",
+    () =>
+      Effect.gen(function* () {
+        const reads = engineAttentionReads({
+          ...liveEngine([view()]),
+          conversation: (id) => Effect.fail(new ViewUnreadable({ conversationId: id })),
+        });
+        const failed = yield* Effect.flip(reads.thread(thread));
+        assert.strictEqual(failed._tag, "ViewUnreadable");
+      }),
   );
 
   it.effect("hears of a conversation whose record moved as its thread's event", () =>

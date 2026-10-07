@@ -58,6 +58,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
@@ -710,10 +711,17 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     /* ---------------------------------------------------------- the stand-up on the engine */
 
-    /** The Mate's own conversation on the engine: the one its agent is the Mate's. */
-    const mateConversation = Effect.map(engine.conversations, (views) =>
-      views.find((view) => view.agent?.profile.kind === "mate"),
-    );
+    /**
+     * The Mate's own conversation on the engine (the one its agent is the Mate's), or the one
+     * named; `unknown` while the engine cannot read every conversation — never taken for none.
+     */
+    const engineConversation = (id?: ConversationId) =>
+      Effect.map(engine.conversations, (list) => {
+        const found = list.views.find((view) =>
+          id === undefined ? view.agent?.profile.kind === "mate" : view.conversationId === id,
+        );
+        return found !== undefined || list.complete ? found : ("unknown" as const);
+      });
 
     /** Whether the conversation has heard from the person, or run anything at all. */
     const spokenIn = (view: ConversationView | undefined) => view?.lastPerson != null;
@@ -799,10 +807,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
                   userId !== "" &&
                   (standUpSigners(signers, userId).length > 0 || ready !== undefined),
               );
-        const main =
-          resuming === undefined
-            ? yield* mateConversation
-            : yield* engine.conversation(ConversationId.make(resuming.threadId));
+        const read = yield* engineConversation(
+          resuming === undefined ? undefined : ConversationId.make(resuming.threadId),
+        );
+        // A conversation the engine cannot read now may be the Mate's: look again later.
+        if (read === "unknown") return false;
+        const main = read;
         // Resumed, and its wake is in the engine already: it went out before.
         if (resuming !== undefined && (yield* recordedRun(resuming)) !== undefined) {
           yield* confirm(resuming.commandId);
@@ -914,7 +924,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      * engine holds none yet. V1's projections are only read.
      */
     const adoptAtFlip = Effect.gen(function* () {
-      if (yield* Effect.map(mateConversation, (view) => view !== undefined)) return;
+      const held = yield* engineConversation();
+      // Unread is not none: adopting now could give a conversation that exists a second agent.
+      if (held === "unknown") return yield* Effect.fail("unread" as const);
+      if (held !== undefined) return;
       const project = Option.getOrUndefined(
         yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
       );
@@ -934,6 +947,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           conversationId: main.id,
         });
     }).pipe(
+      Effect.retry({
+        while: (error) => error === "unread",
+        schedule: Schedule.spaced(timings.poll),
+      }),
       Effect.catchCause((cause) =>
         Effect.logWarning(
           "zerops setup: the main conversation could not move to the engine",

@@ -3,7 +3,8 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import { runId } from "@t3tools/contracts";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { ConversationId, runId } from "@t3tools/contracts";
 
 import { conversationRowOf } from "./conversationRow.ts";
 import { makeEngineWorld, mate } from "../testing/pump/engineWorld.ts";
@@ -73,10 +74,11 @@ describe("a conversation's view", () => {
         const w = yield* makeEngineWorld({ driver: "codex" });
         yield* w.boot;
         assert.strictEqual(yield* viewOf(w), undefined);
-        assert.deepStrictEqual(
-          yield* Effect.flatMap(w.engine, (engine) => engine.conversations),
-          [],
-        );
+        assert.deepStrictEqual(yield* Effect.flatMap(w.engine, (engine) => engine.conversations), {
+          views: [],
+          unread: [],
+          complete: true,
+        });
         yield* w.shutdown;
       }),
     ),
@@ -326,5 +328,39 @@ describe("whether a woken run's words reached the agent", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+});
+
+describe("the views of every conversation", () => {
+  it.effect(
+    "a conversation that cannot be read is named as unread, and every other one is listed",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const broken = ConversationId.make("broken");
+          yield* w.tell({ _tag: "Send", text: "hello" });
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`INSERT INTO engine_conversation (conversation_id, head_seq, updated_at)
+              VALUES (${broken}, 1, 0)`;
+              // A known event with its body damaged: the conversation cannot be loaded.
+              yield* sql`INSERT INTO engine_event
+              (conversation_id, seq, type, v, at, command_id, run_id, payload_json)
+              VALUES (${broken}, 1, 'SessionClosed', 1, 0, 'x', NULL, '{"sessionId":"s"}')`;
+            }),
+          );
+          const engine = yield* w.engine;
+          const list = yield* engine.conversations;
+          assert.deepStrictEqual(
+            list.views.map((view) => view.conversationId),
+            [mate],
+          );
+          assert.deepStrictEqual(list.unread, [broken]);
+          assert.isFalse(list.complete);
+          yield* w.shutdown;
+        }),
+      ),
   );
 });
