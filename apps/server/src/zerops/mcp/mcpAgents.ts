@@ -43,7 +43,7 @@ import {
   printParseErrorCode,
   type JSONPath,
   type ParseError,
-} from "jsonc-parser/lib/esm/main.js";
+} from "jsonc-parser";
 
 import {
   appendTomlServer,

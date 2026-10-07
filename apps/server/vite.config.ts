@@ -1,4 +1,6 @@
 import "vite-plus/test/config";
+import * as NodeURL from "node:url";
+
 import { defineConfig, mergeConfig } from "vite-plus";
 
 import baseConfig from "../../vite.config.ts";
@@ -39,6 +41,13 @@ export default mergeConfig(
       entry: ["src/bin.ts", "src/claudeHistoryWorker.ts", "src/attachmentFitWorker.ts"],
       outDir: "dist",
       sourcemap: true,
+      // jsonc-parser's main is a UMD wrapper that requires its own files at run
+      // time, which a bundle cannot carry; its ES build has extensionless
+      // imports Node's loader rejects, so source imports the package and only
+      // the bundle swaps in the ES build.
+      alias: {
+        "jsonc-parser": NodeURL.fileURLToPath(import.meta.resolve("jsonc-parser/lib/esm/main.js")),
+      },
       clean: true,
       deps: {
         // Both halves are required. `alwaysBundle` forces the JS dependencies in
