@@ -50,7 +50,14 @@ import type {
   ProviderSignal,
 } from "./command.ts";
 import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
-import { activeRun, runOfTurn, type ConversationState, type RunRecord } from "./state.ts";
+import {
+  activeRun,
+  contentDigest,
+  runOfTurn,
+  type ClosedItem,
+  type ConversationState,
+  type RunRecord,
+} from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
@@ -801,12 +808,25 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
     case "item-opened":
-    case "item-closed": {
-      const owner = routed(b, signal.turn);
-      if (owner === undefined) return;
-      const run = isLive(owner) ? awaken(b, owner) : owner;
-      if (run.state !== "ended" && !isLive(run)) return;
+    case "item-closed":
+    case "item-updated": {
+      // Idempotent by content: a signal delivered again (a new batch, the same turn, key and body)
+      // changes nothing; an item closed before only ever changes in place.
+      const closed = b.state.closedItems[signal.key];
+      if (closed !== undefined) {
+        // Never back to open: only a closing signal, or one after its turn's end, can change it.
+        if (signal.kind === "item-closed" || signal.afterEnd === true) {
+          updateClosed(b, closed, signal.body);
+        }
+        return;
+      }
       const open = Object.values(b.state.items).find((item) => item.key === signal.key);
+      const owner = routed(b, signal.turn);
+      if (owner === undefined || (owner.state !== "ended" && !isLive(owner))) return;
+      const same = open !== undefined && contentDigest(open.body) === contentDigest(signal.body);
+      if (signal.kind !== "item-closed" && same) return;
+      if (signal.kind === "item-updated" && (open === undefined || !isLive(owner))) return;
+      const run = isLive(owner) ? awaken(b, owner) : owner;
       let id = open?.id;
       if (id === undefined) {
         id = deriveItemId(run.id, run.nextItemOrdinal);
@@ -815,11 +835,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           runId: run.id,
           itemId: id,
           key: signal.key,
-          by: signal.by ?? { kind: "mate" },
+          by: (signal.kind === "item-updated" ? undefined : signal.by) ?? { kind: "mate" },
           body: signal.body,
         });
-      } else if (signal.kind === "item-opened") {
-        b.emit({ _tag: "ItemUpdated", runId: run.id, itemId: id, body: signal.body });
+      } else if (!same && signal.kind !== "item-closed") {
+        b.emit({ _tag: "ItemUpdated", runId: open!.runId, itemId: id, body: signal.body });
       }
       // A run that has ended never holds an open item: what arrives after its end is filed closed.
       if (signal.kind === "item-closed" || run.state === "ended") {
@@ -830,21 +850,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           body: run.end === null ? signal.body : settledBody(signal.body, run.end),
         });
       }
-      if (signal.detail !== undefined) b.details.push({ itemId: id, body: signal.detail });
-      return;
-    }
-    case "item-updated": {
-      const owner = routed(b, signal.turn);
-      const open = Object.values(b.state.items).find((item) => item.key === signal.key);
-      if (owner === undefined || open === undefined || !isLive(owner)) return;
-      awaken(b, owner);
-      b.emit({ _tag: "ItemUpdated", runId: open.runId, itemId: open.id, body: signal.body });
+      if (signal.kind !== "item-updated" && signal.detail !== undefined) {
+        b.details.push({ itemId: id, body: signal.detail });
+      }
       return;
     }
     case "request-opened": {
+      // A request is asked once: one delivered again, open or answered, is the same request.
+      if (b.state.askedKeys[signal.key] !== undefined) return;
       const owner = routed(b, signal.turn);
       if (owner === undefined) return;
-      if (Object.values(b.state.requests).some((request) => request.key === signal.key)) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
       const live = isLive(run);
@@ -931,6 +946,14 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
   }
+};
+
+/** A closed item's key again: the same content changes nothing, new content updates it in place. */
+const updateClosed = (b: StepBuilder, closed: ClosedItem, body: ItemBody): void => {
+  const run = closed.runId === null ? undefined : b.state.runs[closed.runId];
+  const settled = run?.end == null ? body : settledBody(body, run.end);
+  if (contentDigest(settled) === closed.digest) return;
+  b.emit({ _tag: "ItemUpdated", runId: closed.runId, itemId: closed.itemId, body: settled });
 };
 
 /** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */

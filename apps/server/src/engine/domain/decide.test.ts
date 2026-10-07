@@ -1114,3 +1114,45 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
     expect(delivery(playAll([send("go"), opened(1), last]).log)).toBe(expected);
   });
 });
+
+describe("decide: a signal delivered again changes nothing", () => {
+  const batch = signal(
+    { kind: "item-opened", turn: T(1), key: "k", by: { kind: "mate" }, body: note("k") },
+    { kind: "item-closed", turn: T(1), key: "k", body: { ...note("k"), streaming: false } },
+    { kind: "request-opened", turn: T(1), key: "q", ask },
+  );
+  it("a batch delivered again under a new batch id records nothing", () => {
+    const once = playAll([...proofRunning, batch]);
+    const twice = playAll([...proofRunning, batch, batch]);
+    expect(twice.log).toEqual(once.log);
+  });
+  it("a request delivered again after it was answered is not asked again", () => {
+    const answered = playAll([
+      ...proofRunning,
+      requestOpened("q"),
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: "yes", summary: "yes" },
+      requestOpened("q"),
+    ]);
+    expect(answered.log.filter((e) => e._tag === "RequestOpened")).toHaveLength(1);
+    expect(answered.state.runs[r(1)]?.state).toBe("running");
+  });
+  it("an item whose content changed after it closed is updated in place, never opened twice", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      batch,
+      signal({
+        kind: "item-closed",
+        turn: T(1),
+        key: "k",
+        body: { ...note("k"), text: "the full note", streaming: false },
+        afterEnd: true,
+      }),
+    ]);
+    expect(log.filter((e) => e._tag === "ItemOpened" && e.key === "k")).toHaveLength(1);
+    expect(log.at(-1)).toMatchObject({
+      _tag: "ItemUpdated",
+      itemId: `${r(1)}/i/2`,
+      body: { text: "the full note" },
+    });
+  });
+});

@@ -14,7 +14,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
-import { KEPT_ENDED_RUNS, type ConversationState, type RunRecord } from "./state.ts";
+import { KEPT_ENDED_RUNS, contentDigest, type ConversationState, type RunRecord } from "./state.ts";
 
 /** Stamps drafts with the header the store writes: gapless seq after the head, one time. */
 export const stampEvents = (
@@ -174,13 +174,16 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       const dropped = kept.length > KEPT_ENDED_RUNS ? kept.shift() : undefined;
       const prune = dropped !== undefined && dropped !== state.latestRunId;
       const runs = prune ? without(ended.runs, dropped) : ended.runs;
-      const turns = prune
-        ? Object.fromEntries(Object.entries(ended.turns).filter(([, run]) => run !== dropped))
-        : ended.turns;
+      const keep = <V>(record: Readonly<Record<string, V>>, runOf: (value: V) => RunId | null) =>
+        prune
+          ? Object.fromEntries(Object.entries(record).filter(([, v]) => runOf(v) !== dropped))
+          : record;
       return {
         ...ended,
         runs,
-        turns,
+        turns: keep(ended.turns, (run) => run),
+        closedItems: keep(ended.closedItems, (item) => item.runId),
+        askedKeys: keep(ended.askedKeys, (run) => run),
         queue: state.queue.filter((id) => id !== event.runId),
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         endedRuns: kept,
@@ -261,13 +264,42 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
                 : run,
             )
           : touch(state, event.runId, event.at);
-      return item === undefined
+      if (item !== undefined) {
+        return {
+          ...touched,
+          items: { ...touched.items, [item.id]: { ...item, body: event.body } },
+        };
+      }
+      // An item closed before: its body changed in place (an upsert after its turn's end).
+      const closed = Object.entries(touched.closedItems).find(([, c]) => c.itemId === event.itemId);
+      return closed === undefined
         ? touched
-        : { ...touched, items: { ...touched.items, [item.id]: { ...item, body: event.body } } };
+        : {
+            ...touched,
+            closedItems: {
+              ...touched.closedItems,
+              [closed[0]]: { ...closed[1], digest: contentDigest(event.body) },
+            },
+          };
     }
     case "ItemClosed": {
       const touched = touch(state, event.runId, event.at);
-      return { ...touched, items: without(touched.items, event.itemId) };
+      const item = touched.items[event.itemId];
+      return {
+        ...touched,
+        items: without(touched.items, event.itemId),
+        closedItems:
+          item === undefined || item.key === null
+            ? touched.closedItems
+            : {
+                ...touched.closedItems,
+                [item.key]: {
+                  itemId: event.itemId,
+                  runId: event.runId,
+                  digest: contentDigest(event.body),
+                },
+              },
+      };
     }
     case "RequestOpened": {
       const counted = withRun(state, event.runId, (run) => ({
@@ -277,6 +309,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       }));
       return {
         ...counted,
+        askedKeys: { ...counted.askedKeys, [event.key]: event.runId },
         requests: {
           ...counted.requests,
           [event.requestId]: {

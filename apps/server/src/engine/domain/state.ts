@@ -28,7 +28,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -74,6 +74,14 @@ export interface OpenItem {
   readonly key: string | null;
   readonly by: ItemActor;
   readonly body: ItemBody;
+}
+
+/** An item the driver closed, kept by its key so a signal delivered again changes nothing. */
+export interface ClosedItem {
+  readonly itemId: ItemId;
+  readonly runId: RunId | null;
+  /** `contentDigest` of its body as recorded. */
+  readonly digest: string;
 }
 
 export interface OpenRequest {
@@ -144,6 +152,10 @@ export interface ConversationState {
   /** The last usage probe's delay: the next one waits twice as long, up to an hour. */
   readonly usageProbeMs: number | null;
   readonly items: Readonly<Record<string, OpenItem>>;
+  /** Closed items of the kept runs, by the driver's key. */
+  readonly closedItems: Readonly<Record<string, ClosedItem>>;
+  /** Every request key the kept runs were asked, and its run: a request is asked once. */
+  readonly askedKeys: Readonly<Record<string, RunId>>;
   readonly requests: Readonly<Record<string, OpenRequest>>;
   /** Answered requests whose answer the provider has not taken yet, by the answer's effect. */
   readonly answering: Readonly<Record<string, OpenRequest>>;
@@ -169,6 +181,8 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   pausedUntil: null,
   usageProbeMs: null,
   items: {},
+  closedItems: {},
+  askedKeys: {},
   requests: {},
   answering: {},
   wakes: {},
@@ -177,6 +191,17 @@ export const initialState = (conversationId: ConversationId): ConversationState 
 
 export const activeRun = (state: ConversationState): RunRecord | undefined =>
   state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+
+/** A short digest of a body's content: a signal delivered again carries the same one. */
+export const contentDigest = (value: unknown): string => {
+  const text = JSON.stringify(value) ?? "";
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${(hash >>> 0).toString(16)}:${text.length}`;
+};
 
 /** The run a turn belongs to, while the state still keeps it. */
 export const runOfTurn = (state: ConversationState, turn: string): RunRecord | undefined => {
