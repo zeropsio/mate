@@ -240,10 +240,59 @@ function orderedListGutterStyle(
 
 type MarkdownHtmlAstNode = {
   type?: string;
+  value?: string;
   tagName?: string;
   properties?: Record<string, unknown>;
   children?: MarkdownHtmlAstNode[];
 };
+
+/** Keep unmatched inline `<A>` placeholders from opening an HTML link over later blocks. */
+function rehypePreserveBareAnchorPlaceholders() {
+  return (tree: MarkdownHtmlAstNode) => {
+    const anchors: Array<MarkdownHtmlAstNode | null> = [];
+    let rawTextTag: string | undefined;
+    const visit = (node: MarkdownHtmlAstNode) => {
+      if (node.type === "raw" && typeof node.value === "string") {
+        // Raw blocks can contain several tags. Consume whole tags, quoted attributes,
+        // and comments so text resembling a closing anchor cannot pair a placeholder.
+        const tags = /<!--[\s\S]*?(?:-->|$)|<\/?[A-Za-z](?:[^"'<>]|"[^"]*"|'[^']*')*>/g;
+        let offset = 0;
+        while (rawTextTag !== "plaintext") {
+          // Raw text ends at its closing tag even inside comment-looking text.
+          const matcher = rawTextTag ? new RegExp(`</${rawTextTag}\\s*>`, "gi") : tags;
+          matcher.lastIndex = offset;
+          const match = matcher.exec(node.value);
+          if (!match) break;
+          const [tag] = match;
+          offset = matcher.lastIndex;
+          if (rawTextTag) {
+            rawTextTag = undefined;
+            continue;
+          }
+          if (tag.startsWith("<!--")) continue;
+          const closing = /^<\/([a-z]+)\s*>$/i.exec(tag)?.[1]?.toLowerCase();
+          const opening = /^<([a-z]+)(?:\s|\/?>)/i.exec(tag)?.[1]?.toLowerCase();
+          if (
+            opening &&
+            /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|plaintext)$/.test(opening)
+          ) {
+            rawTextTag = opening;
+          } else if (opening === "a") {
+            anchors.push(node.value === tag && /^<a\s*\/?>$/i.test(tag) ? node : null);
+          } else if (closing === "a") {
+            anchors.pop();
+          }
+        }
+      }
+      node.children?.forEach(visit);
+    };
+
+    visit(tree);
+    for (const anchor of anchors) {
+      if (anchor) anchor.type = "text";
+    }
+  };
+}
 
 /** Preserve Windows drive paths through the protocol allowlist in rehype-sanitize. */
 function rehypeNormalizeWindowsImageSrc() {
@@ -301,6 +350,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const CHAT_MARKDOWN_REHYPE_PLUGINS = [
+  rehypePreserveBareAnchorPlaceholders,
   rehypeRaw,
   rehypeNormalizeWindowsImageSrc,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
