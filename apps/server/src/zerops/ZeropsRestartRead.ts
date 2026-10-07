@@ -118,6 +118,18 @@ export function interruptedTurnMessage(input: {
   readonly lastActivityAt: string;
   readonly bootAt: string;
 }): string {
+  return `${restartCause(input)}; its running turn was interrupted. Send a message to continue.`;
+}
+
+/**
+ * What happened to the Mate between a turn's last sign of life and the boot: the newest completed
+ * container action in that window, its container's replacement, or a plain restart.
+ */
+export function restartCause(input: {
+  readonly evidence: MateRestartEvidence | null;
+  readonly lastActivityAt: string;
+  readonly bootAt: string;
+}): string {
   const { evidence, bootAt } = input;
   const after = Date.parse(input.lastActivityAt);
   const before = Date.parse(bootAt);
@@ -155,7 +167,6 @@ export function interruptedTurnMessage(input: {
     })
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
   const name = evidence?.name ?? "Mate";
-  const continuation = "its running turn was interrupted. Send a message to continue.";
   if (matched !== undefined) {
     const verb =
       matched.action === "stack.stop"
@@ -163,10 +174,10 @@ export function interruptedTurnMessage(input: {
         : matched.action.startsWith("stack.deploy")
           ? "redeployed"
           : "restarted";
-    return `${name} was ${verb}${matched.person === null ? "" : ` by ${matched.person}`} at ${matched.at}; ${continuation}`;
+    return `${name} was ${verb}${matched.person === null ? "" : ` by ${matched.person}`} at ${matched.at}`;
   }
   if (inWindow(evidence?.containerStartedAt ?? null)) {
-    return `${name}'s container was replaced at ${evidence!.containerStartedAt}; ${continuation}`;
+    return `${name}'s container was replaced at ${evidence!.containerStartedAt}`;
   }
-  return `${name} restarted at ${bootAt}; ${continuation}`;
+  return `${name} restarted at ${bootAt}`;
 }

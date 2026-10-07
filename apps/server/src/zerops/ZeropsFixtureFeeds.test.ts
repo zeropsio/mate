@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  ItemId,
   MessageId,
   ProviderInstanceId,
   ThreadId,
@@ -386,6 +387,7 @@ it.effect(
         .admit({
           instanceId: "claudeAgent",
           principal: { kind: "person", subject: `${ZEROPS_SUBJECT_PREFIX}jan-user-id` },
+          trigger: { kind: "person", itemId: ItemId.make("mate/r/1/i/1") },
         })
         .pipe(Effect.flip);
       assert.equal(
