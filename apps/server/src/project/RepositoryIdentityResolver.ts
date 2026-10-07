@@ -4,6 +4,7 @@ import {
   normalizeGitRemoteUrl,
 } from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
+import * as Data from "effect/Data";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -13,11 +14,11 @@ import * as Layer from "effect/Layer";
 import * as ProcessRunner from "../processRunner.ts";
 
 const DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY = 512;
-// Background sweeps resolve every project each minute. A long TTL keeps them
-// from spawning git each time. Clone, publish, and PR discovery (after a turn
-// and before it saves links) resolve with `refresh: true`.
-const DEFAULT_POSITIVE_CACHE_TTL = Duration.minutes(15);
-// Short, so a folder that gains a repository or a remote shows up quickly.
+// A Mate's agent runs `git init` and adds or changes remotes in its services
+// all the time, and only clone and publish resolve with `refresh: true`. So a
+// found identity and a repository without a remote are kept for a minute, a
+// folder with no repository is never kept, and neither is a git failure.
+const DEFAULT_POSITIVE_CACHE_TTL = Duration.minutes(1);
 const DEFAULT_NEGATIVE_CACHE_TTL = Duration.minutes(1);
 
 export interface RepositoryIdentityResolverOptions {
@@ -119,11 +120,14 @@ const resolveRepositoryIdentityCacheKey = Effect.fn("RepositoryIdentityResolver.
   },
 );
 
+// `git remote -v` failed or timed out: unlike "no remote", this is not kept.
+class RemoteLookupFailed extends Data.TaggedError("RemoteLookupFailed") {}
+
 const resolveRepositoryIdentityFromCacheKey = Effect.fn(
   "RepositoryIdentityResolver.resolveFromCacheKey",
 )(function* (
   cacheKey: string,
-): Effect.fn.Return<RepositoryIdentity | null, never, ProcessRunner.ProcessRunner> {
+): Effect.fn.Return<RepositoryIdentity | null, RemoteLookupFailed, ProcessRunner.ProcessRunner> {
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const remoteResult = yield* processRunner
     .run({
@@ -133,7 +137,7 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
     })
     .pipe(Effect.option);
   if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {
-    return null;
+    return yield* new RemoteLookupFailed();
   }
 
   const remote = pickPrimaryRemote(parseRemoteFetchUrls(remoteResult.value.stdout));
@@ -146,14 +150,11 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
   const processRunner = yield* ProcessRunner.ProcessRunner;
   const cacheCapacity = options.cacheCapacity ?? DEFAULT_REPOSITORY_IDENTITY_CACHE_CAPACITY;
   const refine = options.refine ?? Effect.succeed;
-  // Git errors and timeouts resolve to null, so they use the negative TTL like
-  // "no repository" or "no remote". Only interrupts and defects skip the cache.
-  const timeToLive = (exit: Exit.Exit<unknown>) =>
+  // `missTtl` is how long a null answer is kept; failures are never kept.
+  const timeToLive = (missTtl: Duration.Input) => (exit: Exit.Exit<unknown, unknown>) =>
     Exit.match(exit, {
       onSuccess: (value) =>
-        value === null
-          ? (options.negativeCacheTtl ?? DEFAULT_NEGATIVE_CACHE_TTL)
-          : (options.positiveCacheTtl ?? DEFAULT_POSITIVE_CACHE_TTL),
+        value === null ? missTtl : (options.positiveCacheTtl ?? DEFAULT_POSITIVE_CACHE_TTL),
       onFailure: () => Duration.zero,
     });
 
@@ -162,10 +163,15 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
       resolveRepositoryIdentityCacheKey(cwd).pipe(
         Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
       ),
-    { capacity: cacheCapacity, timeToLive },
+    // No repository: not kept, so `git init` shows on the next resolve.
+    { capacity: cacheCapacity, timeToLive: timeToLive(Duration.zero) },
   );
 
-  const repositoryIdentityCache = yield* Cache.makeWith<string, RepositoryIdentity | null>(
+  const repositoryIdentityCache = yield* Cache.makeWith<
+    string,
+    RepositoryIdentity | null,
+    RemoteLookupFailed
+  >(
     (cacheKey) =>
       resolveRepositoryIdentityFromCacheKey(cacheKey).pipe(
         Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
@@ -174,7 +180,11 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
           (identity) => refine(identity).pipe(Effect.orElseSucceed(() => identity)),
         ),
       ),
-    { capacity: cacheCapacity, timeToLive },
+    // No remote: kept for the negative TTL.
+    {
+      capacity: cacheCapacity,
+      timeToLive: timeToLive(options.negativeCacheTtl ?? DEFAULT_NEGATIVE_CACHE_TTL),
+    },
   );
 
   // Untraced because almost every call is a cache hit. The lookups that spawn
@@ -185,7 +195,9 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
       const cacheKey = yield* Cache.get(repositoryRootCache, cwd);
       if (cacheKey === null) return null;
       if (options?.refresh) yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
-      return yield* Cache.get(repositoryIdentityCache, cacheKey);
+      return yield* Cache.get(repositoryIdentityCache, cacheKey).pipe(
+        Effect.catchTag("RemoteLookupFailed", () => Effect.succeed(null)),
+      );
     },
   );
 
