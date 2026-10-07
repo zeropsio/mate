@@ -32,6 +32,8 @@ const RESTRICTED_UI_VARIANT_PATTERNS = [
   },
 ];
 
+const workerBudget = testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism());
+
 export default defineConfig({
   assetsInclude: ["**/*.wasm"],
   resolve: {
@@ -40,7 +42,7 @@ export default defineConfig({
     },
   },
   test: {
-    maxWorkers: testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism()),
+    ...(workerBudget === undefined ? {} : { maxWorkers: workerBudget }),
     environment: "node",
     exclude: [
       "**/.repos/**",
