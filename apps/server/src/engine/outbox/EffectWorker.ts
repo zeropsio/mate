@@ -19,7 +19,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import type { BootId, EffectOutcome } from "@t3tools/contracts";
+import type { BootId, ConversationId, EffectOutcome } from "@t3tools/contracts";
 
 import { Conversations } from "../Conversations.ts";
 import { effectSettledCommandId, recoveredCommandId } from "../domain/ids.ts";
@@ -188,34 +188,41 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
 
   /**
    * Boot: requeue replay-safe rows, tell each conversation the restart touched what it cut and
-   * what never started, and close those rows.
+   * what never started (with the platform's words for the restart, when it has some), and close
+   * those rows.
    */
-  const reconcileAtBoot = Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis;
-    const requeued = yield* outbox.requeueReplaySafe(boot, now);
-    // Outcomes decided before the restart are recorded before anything is cut.
-    for (let told = 0; told < 10_000; told++) {
-      if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break;
-    }
-    const owners = yield* outbox.recoveryOwners(boot);
-    for (const owner of owners) {
-      yield* conversations.tell({
-        commandId: recoveredCommandId(boot, owner.conversationId),
-        conversationId: owner.conversationId,
-        principal: ENGINE,
-        command: {
-          _tag: "Recovered",
-          bootId: boot,
-          cutEffects: owner.cut,
-          unstartedEffects: owner.unstarted,
-        },
-      });
-      for (const effect of [...owner.cut, ...owner.unstarted]) {
-        yield* outbox.close(effect, "cut", "the server restarted");
+  const reconcileAtBoot = (
+    wordsFor: (conversation: ConversationId) => Effect.Effect<string | undefined> = () =>
+      Effect.succeed(undefined),
+  ) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const requeued = yield* outbox.requeueReplaySafe(boot, now);
+      // Outcomes decided before the restart are recorded before anything is cut.
+      for (let told = 0; told < 10_000; told++) {
+        if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break;
       }
-    }
-    return { requeued, recovered: owners.length };
-  });
+      const owners = yield* outbox.recoveryOwners(boot);
+      for (const owner of owners) {
+        const words = yield* wordsFor(owner.conversationId);
+        yield* conversations.tell({
+          commandId: recoveredCommandId(boot, owner.conversationId),
+          conversationId: owner.conversationId,
+          principal: ENGINE,
+          command: {
+            _tag: "Recovered",
+            bootId: boot,
+            cutEffects: owner.cut,
+            unstartedEffects: owner.unstarted,
+            ...(words === undefined ? {} : { words }),
+          },
+        });
+        for (const effect of [...owner.cut, ...owner.unstarted]) {
+          yield* outbox.close(effect, "cut", "the server restarted");
+        }
+      }
+      return { requeued, recovered: owners.length };
+    });
 
   return {
     runOnce,

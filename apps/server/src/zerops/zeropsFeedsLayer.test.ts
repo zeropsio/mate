@@ -17,6 +17,7 @@ import { ProviderInstanceRegistryTest, ProviderRegistryTest } from "../spi/Provi
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { loadFixtureScene } from "./ZeropsFixtureFeeds.ts";
 import { selectZeropsFeedsLayer, ZeropsLayerLive } from "./zeropsFeedsLayer.ts";
+import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
 
 const encodeScene = Schema.encodeSync(Schema.fromJsonString(ShowcaseSceneJson));
 
@@ -28,6 +29,7 @@ const hostLayer = Layer.mergeAll(
   Layer.mock(ProjectionSnapshotQuery)({}),
   ProviderRegistryTest.empty(),
   ProviderInstanceRegistryTest.empty(),
+  engineHostDoubles,
 );
 
 it.layer(NodeServices.layer)("zerops feed layer selection", (it) => {

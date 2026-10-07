@@ -504,7 +504,7 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
     const lifetime = (budget: number) =>
       Effect.gen(function* () {
         const worker = yield* makeEffectWorker(newBoot());
-        if (!firstLife) yield* worker.reconcileAtBoot;
+        if (!firstLife) yield* worker.reconcileAtBoot();
         firstLife = false;
         for (let i = 0; i < budget; i++) {
           step++;

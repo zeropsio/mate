@@ -361,7 +361,7 @@ describe("EffectWorker", () => {
         yield* outbox.claim(boot1, 0);
 
         const worker = yield* makeEffectWorker(boot2);
-        const report = yield* worker.reconcileAtBoot;
+        const report = yield* worker.reconcileAtBoot();
         const [liveRun] = yield* sql<{ readonly state: string; readonly end_kind: string }>`
           SELECT state, json_extract(end_json, '$.kind') AS end_kind FROM engine_run WHERE run_id = ${r(1, live)}
         `;
@@ -435,7 +435,7 @@ describe("EffectWorker: a restart", () => {
       const after = yield* Effect.gen(function* () {
         const conversations = yield* Conversations;
         const worker = yield* makeEffectWorker(newBoot());
-        yield* worker.reconcileAtBoot;
+        yield* worker.reconcileAtBoot();
         yield* conversations.ask(env({ _tag: "Send", text: "after the restart" }));
         for (let i = 0; i < 6; i++) yield* worker.runOnce;
         const { state, events } = yield* audit(mate);
@@ -473,7 +473,7 @@ describe("EffectWorker: a restart", () => {
       world.crash();
       const received = yield* Effect.gen(function* () {
         const worker = yield* makeEffectWorker(newBoot());
-        yield* worker.reconcileAtBoot;
+        yield* worker.reconcileAtBoot();
         for (let i = 0; i < 6; i++) {
           yield* fireDue(yield* Clock.currentTimeMillis);
           yield* worker.runOnce;
@@ -610,7 +610,7 @@ describe("EffectWorker: the worker", () => {
       world.crash();
       const opening = yield* Effect.gen(function* () {
         const worker = yield* makeEffectWorker(newBoot());
-        yield* worker.reconcileAtBoot;
+        yield* worker.reconcileAtBoot();
         const { events, problems } = yield* audit(mate);
         const recorded = events.find(
           (e) => e._tag === "EffectOutcomeRecorded" && e.kind === "session.open",

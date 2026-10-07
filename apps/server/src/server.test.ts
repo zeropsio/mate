@@ -241,6 +241,7 @@ import {
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 import { DEFAULT_SIGNAL_EXPORT, otlpSerializationLayer } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import { engineHostDoubles } from "./engine/testing/hostDoubles.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -6304,7 +6305,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const scene = loadShowcaseScene("web:agent-auth-attention");
       yield* buildAppUnderTest({
         config: { zeropsFixtures: scene.id, zerops: undefined },
-        fixtureZeropsLayer: makeFixtureZeropsLayer(scene),
+        fixtureZeropsLayer: makeFixtureZeropsLayer(scene).pipe(Layer.provide(engineHostDoubles)),
       });
 
       const wsUrl = yield* getWsServerUrl("/ws");

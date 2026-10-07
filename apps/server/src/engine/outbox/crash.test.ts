@@ -213,7 +213,7 @@ const reboot = (file: string, world: World) =>
     const conversations = yield* Conversations;
     const boot: BootId = newBoot();
     const worker = yield* makeEffectWorker(boot);
-    yield* worker.reconcileAtBoot;
+    yield* worker.reconcileAtBoot();
     let batch = 1000;
     for (let round = 0; round < 30; round++) {
       const now = yield* Clock.currentTimeMillis;
@@ -361,7 +361,7 @@ describe("crash injection: what holds", () => {
         world.crash();
         const result = yield* Effect.gen(function* () {
           const worker = yield* makeEffectWorker(newBoot());
-          const boot = yield* worker.reconcileAtBoot;
+          const boot = yield* worker.reconcileAtBoot();
           yield* worker.runOnce;
           const { events, problems } = yield* audit(c);
           const outcome = events.find((e) => e._tag === "EffectOutcomeRecorded");
@@ -406,7 +406,7 @@ describe("crash injection: what holds", () => {
       world.crash();
       const result = yield* Effect.gen(function* () {
         const worker = yield* makeEffectWorker(newBoot());
-        yield* worker.reconcileAtBoot;
+        yield* worker.reconcileAtBoot();
         yield* fireDue(0);
         yield* fireDue(0);
         const { events, problems } = yield* audit(c);

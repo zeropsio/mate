@@ -29,6 +29,7 @@ import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { RunAdmission } from "../engine/ports.ts";
+import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
 
 const serviceMapScene = loadShowcaseScene("web:service-map-live");
 const noZeropsScene = loadShowcaseScene("web:no-zerops");
@@ -113,6 +114,7 @@ const fixtureHost = (
     Layer.mock(ProjectionSnapshotQuery)({}),
     ProviderRegistryTest.empty(),
     ProviderInstanceRegistryTest.empty(),
+    engineHostDoubles,
   );
 
 const fixtureLayer = (
