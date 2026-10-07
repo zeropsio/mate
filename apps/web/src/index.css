@@ -9443,20 +9443,19 @@ button.rv-relrow:hover .rv-relrow-go {
   --vault-row-open: color-mix(in oklab, var(--foreground) 2.5%, var(--card));
   --vault-mark: color-mix(in oklab, var(--foreground) 7%, var(--card));
   --vault-row-bg: var(--card);
-  --vault-canvas: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
   --vault-hairline: color-mix(in oklab, var(--border) 70%, transparent);
+  --vault-edge: var(--border);
   container-type: inline-size;
 }
 
 .dark .vault-panel {
-  --vault-canvas: color-mix(in oklab, black 28%, var(--card));
   --vault-row-hover: color-mix(in oklab, var(--foreground) 5%, var(--card));
   --vault-row-open: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
 }
 
-/* The page under the cards: a quiet grey, so each card reads as one thing. */
+/* The page under the cards: the panel's own surface, so the vault sits in Mate, not inside it. */
 .vault-canvas {
-  background: var(--vault-canvas);
+  background: var(--card);
 }
 
 /* One card: a group of values, an app list, what an app reads. */
@@ -9464,9 +9463,7 @@ button.rv-relrow:hover .rv-relrow-go {
   overflow: hidden;
   border-radius: 12px;
   background: var(--card);
-  box-shadow:
-    0 0 0 1px var(--vault-hairline),
-    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+  box-shadow: 0 0 0 1px var(--vault-edge);
 }
 
 .vault-box-head + .vault-rows,
@@ -9500,6 +9497,15 @@ button.rv-relrow:hover .rv-relrow-go {
   color: var(--foreground);
 }
 
+.vault-switch-item:focus {
+  outline: none;
+}
+
+.vault-switch-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
 .vault-switch-item[aria-selected="true"] {
   background: var(--card);
   color: var(--foreground);
@@ -9517,9 +9523,7 @@ button.rv-relrow:hover .rv-relrow-go {
   padding: 14px;
   border-radius: 12px;
   background: var(--card);
-  box-shadow:
-    0 0 0 1px var(--vault-hairline),
-    0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+  box-shadow: 0 0 0 1px var(--vault-edge);
 }
 
 .vault-callout-icon {

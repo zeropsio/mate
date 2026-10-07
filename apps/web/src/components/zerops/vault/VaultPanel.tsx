@@ -721,12 +721,12 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         className={
           scrolled
             ? "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/70 [scrollbar-width:thin]"
-            : "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-border/40 [scrollbar-width:thin]"
+            : "vault-canvas min-h-0 flex-1 overflow-y-auto border-t border-transparent [scrollbar-width:thin]"
         }
         onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
         ref={scroller}
       >
-        <div className="grid gap-3 px-3 pt-3 pb-12" data-vault-list={app?.id ?? page.kind}>
+        <div className="grid gap-3 px-3 pt-1 pb-12" data-vault-list={app?.id ?? page.kind}>
           {view.status === "failed" ? (
             <p className="px-1 text-line text-muted-foreground" data-vault-failed role="alert">
               Couldn't read the vault
