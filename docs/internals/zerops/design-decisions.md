@@ -24,26 +24,12 @@ here (the owner decides only what the orchestrator brief §6 lists).
   reference (number + url from `thread.linkedPullRequest`, no live state on web or mobile, excluded
   from auto-settle keying); the checkout's own `status.pr` keeps its real state.
   - _Why:_ no owner answer arrived; a fabricated `state:"open"` would feed auto-settle
-- **2026-08-30** — W1-D-STAGE is its own deletion slice: `SidebarStageBackdrop` is the visual half
-  of the `environmentIdentificationMode` setting (contract field, settings control, hook chain, 145
-  CSS custom properties, a user-doc section), deleted whole; `APP_STAGE_LABEL` stays for the window
-  title.
-  - _Why:_ the plan's F4 row already deletes the Appearance artwork row; deleting the feature now
-    spares F4 the seam
 - **2026-08-30** — Exception reconciliation is a multiset: one ledger entry consumes exactly one
   occurrence (identical entries repeated, adjacent), candidates matched specificity-first (exact
   path, longer suffix, shorter suffix; active before expired) so the result is order-independent;
   rule-time suppression stays a membership test (a rule sees one finding at a time).
   - _Why:_ one entry was suppressing every identical occurrence in a file (19 R6 entries covered 23;
     95 R4 entries covered 110)
-- **2026-08-30** — R3: the named status consumers (`Sidebar.tsx`, `Sidebar.logic.ts`,
-  `ThreadStatusIndicators.tsx`, `AgentActivity.tsx`, `threadListV2.ts`, `thread-list-v2-items.tsx`)
-  are widened sinks — every palette/appearance/raw-colour literal there is a finding — carried as an
-  `F3` baseline, not zero tolerance; the widget's inline hex tints stay until F4/F5. On
-  `apps/mobile/src` an appearance variant in any literal is a finding; on web the class-like
-  predicate applies.
-  - _Why:_ the sinks alone missed 79 status-table literals; the widget's `"widget"` serialization
-    forbids tokens before the projector exists
 - **2026-08-30** — R4: persisted identifiers that spell a legacy name (the desktop
   `legacyUserDataDirName`) are ledgered `never` with a migration reason, never excluded from the
   predicate; the sink list stays closed (attribute names as object-property keys, JSX
@@ -113,11 +99,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   - _Why:_ a `never` entry asserts a correct-by-design colour; `current` follows the parent token
     and `transparent` has no theme role; Tailwind separates arbitrary values with `_`, URL fragments
     and quoted content are not colours, and malformed composite candidates emit no utility
-- **2026-08-30** — F3-STATUS bridge tail: a thread with background liveness but neither a session
-  nor a latest turn publishes awareness phase `null` (the old server answer); background liveness
-  alone is not an awareness state — the kind may still be `working` for the sidebar.
-  - _Why:_ ruling 1's rationale was "a lingering liveness must not flip a finished state back to
-    active", not "liveness alone is a state"
 - **2026-08-30** — W3-F5c-DOOR is re-scoped: nothing in the client reads `bootstrapMethods` to
   choose a door today (the door is `isHostedStaticApp()` + `/api/auth/session`), so the slice
   introduces one pure `resolveDoor(gate, { pathname, environmentCount })` over a named four-way gate
@@ -255,15 +236,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `reduceZeropsOperations` (R5-R9, one `phaseFor`), `composeSession` — strip, map and every card
   read its single `ZeropsThreadModel`, never their own derivation. Concept:
   `../../../../zcp/plans/mate-session-model-2026-09-05.md`.
-- **2026-09-05** — **Superseded 2026-10-03 in part by "In UI copy an HQ application is a project"
-  below: the layer above is a "project", never a "group".**
-  In the group model (spec §10) a Zerops project is an **environment** and the tag
-  layer above it is a **group**; user-facing copy says "environment" for the former (menu rows,
-  "Creating the environment", "No environment has Mate yet") and "group" for the latter. The
-  glossary's `environment → project` row is about T3's connected-server sense and does not apply to
-  these surfaces; R4 does not flag the word.
-  - _Why:_ the user's "project" (the CRM) is the group, and calling a Zerops project "project" too
-    would make one word mean two things on the same screen
 - **2026-09-05** — Row actions on `/zerops` use the primary pill only for verbs that change state
   (Connect, Enable Zerops Mate, Set up Mate, Wait for it); navigation (Open) is the secondary pill.
   Blue acts; a screen of six identical blue Open pills says nothing.
@@ -273,11 +245,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `Connecting` while a registered socket comes up; the dot keeps the connected tone (teal). The
   socket is the client's business; the row answers what the agent is up to.
   - _Why:_ "Connected" on every row answered a question nobody on the roster was asking
-- **2026-09-05** — The creation form is a dialog with three fields (name, agent on/off + name,
-  application as radio cards) and one primary action named for what it does ("Add stage to Acme
-  Docs"); the radio card for the application carries a one-line detail (the services it brings).
-  - _Why:_ the previous one-click creation gave no choice and imported the wrong application for
-    every live group
 - **2026-09-05** — The product's name is set once, by the lockup: the still mark beside the "mate"
   wordmark from identity v1 §06 (Sora SemiBold, lowercase, −0.015 em, outlined into `MATE_WORDMARK`
   so no page waits on a webfont; x-height three eighths of the mark's height, its band centred on
@@ -288,14 +255,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   mark — the favicon's — so the frame before React and the first frame after it agree.
   - _Why:_ the first screen a person saw had "Zerops" three times (header, eyebrow, copy) and no
     product mark; a Zerops logo flashed before the Mate mark on every reload
-- **2026-09-05** — Every Zerops page stands in `ZeropsHostedFrame`: one top bar, one content width
-  (`wide`). Standing alone (bare shell, account gate) the bar carries the lockup as the way home,
-  then the page's breadcrumb; inside the app shell the sidebar carries the lockup and the bar holds
-  only the breadcrumb. The right side is the scope: the organization switcher once one is chosen,
-  then the account (email + Sign out) whenever someone is signed in — leaving never depends on first
-  choosing an organization.
-  - _Why:_ the sign-in shell, the picker, the list, the wizard and the callback each drew their own
-    header; the way out lived only in Settings
 - **2026-09-05** — Choosing an organization is a page (`h1`, one sentence, a 1/2/3-column grid of
   cards), not a section under an "Environments" title that does not apply yet. The chosen
   organization is a control in the bar, with no "Organization" label of its own.
@@ -312,13 +271,6 @@ here (the owner decides only what the orchestrator brief §6 lists).
   "Environments / New environment" and a one-line description; the form's first field is "Name".
   - _Why:_ a "New project" outline button sat below a 19-row list, and the wizard said "New project"
     three times before the form
-- **2026-09-05** — In the bar and the sidebar the lockup is 24 px tall (`h-6`) — identity v1's
-  minimum — since the word reads small beside the mark (the 18 px `h-4.5` of the first cut was a fix
-  for the old proportion, in which a 24 px lockup read as a 29 px wordmark). The bar's content sits
-  in the page's own column (`workspacePageWidthClass`), so the lockup shares the title's left edge
-  and the account the title-row action's right edge at every width.
-  - _Why:_ at 1786 px the 24 px lockup and the far-right account read as a different page from the
-    centred content
 - **2026-09-05** — On a list, blue is for the one verb that reaches an agent right now (`Connect`)
   and for the page's own action (`New environment`); a setup chore (`Enable Zerops Mate`, `Set up
 Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pills are the `sm`
@@ -336,15 +288,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   "container" gets its article, the line ends as a sentence. `candidates.ts` keeps writing reasons
   for the log.
   - _Why:_ "container is STOPPED" sat under "The container is not answering." on the same list
-- **2026-09-05** — The account in the bar is the person, the way Zerops shows them: their picture
-  (`avatar.smallAvatarUrl`, then the external one, then the large) or their initials, and their
-  first name, as one menu trigger. The menu holds the full name, the email and `Sign out`; a failed
-  sign-out is said in the menu item, which stays open for it (`closeOnClick={false}`). `GET
-/user/info` carries `fullName`, `firstName`, `lastName` and
-  `avatar.{small,large,external}AvatarUrl`; every URL may be null, so initials are the floor.
-  Settings › Zerops shows the same line.
-  - _Why:_ the bar carried a 26-character email and a ghost button; an address is for a form, not
-    for a bar, and the platform already knows the person's name and face
 - **2026-09-05** — The pairing pages — the token form, the hosted pairing states, the pending link —
   stand in `ZeropsLandingShell`: the lockup in the bar, the live mark, a title, one sentence, a card
   with one full-width action; the supporting note and `Reload app` are one small line under the
@@ -410,140 +353,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
     card shows history"), figure-over-graph columns ("unnecessarily huge"). The Zerops card is graph
     and chips; Mate's side panel has a third of its width, so the chips go behind hover and the
     graph goes inline
-- **2026-09-06** — The lockup is drawn as two boxes at one height — the mark's (`0 0 44 52`) and the
-  word's (`MATE_LOCKUP.word.viewBox`, which starts at the mark's right edge and carries the gap) —
-  so the sidebar's lockup can hand the mark to `MateMark` and be live: it looks about, blinks, turns
-  toward the pointer and falls asleep as the Zerops mark while the letters hold still. The sign-in
-  bar keeps the still one.
-  - _Why:_ the owner: "the main mate logo should be interactive and the name a bit closer"
-- **2026-09-06** — A Mate has a colour and a face. Eight tints (`MATE_TINTS`, none the brand teal —
-  teal identifies the product, a Mate is somebody in it), assigned from the name by
-  `assignCandidateMateTints` account-wide so the left menu and the projects screen agree; the face
-  (`MateFace`) is the eyes on a disc of that colour, on the mark's own grid, posed from
-  `MATE_MARK_LIDS` per state — idle, working (narrowed, dropped), needs you (wide, the "o"), done
-  (happy arcs, the smile), asleep (shut, for a container that is not connected). Still by design: a
-  menu of faces must not blink. Which face a thread status wears is `mateMarkStateForThreadStatus`,
-  beside the resolver (R5): approval · input · plan · woke · failed → needs; connecting · working ·
-  monitoring → working; done → done; idle → idle.
-  - _Why:_ the owner asked for every state the mark has, "the eyes in a dot with the colour",
-    instead of a plain status dot
-- **2026-09-06** — The projects screen is **Projects**: no sentence under the title, New project and
-  a Refresh glyph in the title row, and one table per project with a row per environment in role
-  order. The **seat** leads a row: a Mate's face and name where one lives (a connected Mate's row is
-  the way into its conversation — the name stretches over the row, the controls sit above it), "+
-  Set up Mate" on a dev environment without one, a dash where a Mate is not for. Then the tag, the
-  environment's name, its **public access as one chip per service** (the developer's name for it;
-  the host is a tooltip, several ports a menu — never a hostname column, never one Open pill), and
-  **activity** as one phrase: the status word · what the Mate is on · the one verb, in the acting
-  colour ("Ready · Connect"). The columns are fixed page-wide (`ZEROPS_ENVIRONMENT_GRID`), every
-  table names them once, rows are 40 px, menus show on hover. Tools are the same table with "Tool"
-  in the seat's column.
-  - _Why:_ the owner rejected two cuts — two registers (Mate cards, environment rows) with different
-    geometries — as "clunky, junior… no visual hierarchy, the widths, the alignments, the layout
-    shifts", and pointed out that inline hostnames cannot carry many services
-- **2026-09-06** — An environment is one row, never two: a Mate's environment is its Mate's row.
-  Stage and production are never offered a Mate (`mateSetupOffered`: dev, dev/stage and untagged
-  only) — they get their code from dev, not from an agent typing into them. The row verbs are text
-  in the acting colour, not pills: this supersedes the 2026-09-05 pill-tone rule (blue Connect ·
-  grey chore · outlined Open); Open is the row itself.
-  - _Why:_ the owner: "environments shouldn't include those that have mates", "stage and prod
-    shouldn't even have setup mate button"
-- **2026-09-06** — What each Mate is doing is one derivation both surfaces read (`agentActivity.ts`,
-  `useZeropsAgentActivity`): the environment's one conversation through the one resolver and the one
-  phrase producer, plus its face and its **subject** — the running plan step when the server reports
-  one, else the conversation's title, absent when idle. The left menu shows it as a second line
-  under the Mate while it is on something; the projects screen after the status word. Idle has no
-  phrase of its own and the rows say "Idle" themselves.
-  - _Why:_ the owner: "each mate should in both places show what it's working on"
-- **2026-09-06** — The left menu lists Mates — face-dot (14 px), name, tag, one word — and folds the
-  environments under each project ("3 environments", a chevron): a row each, role and name, and one
-  glyph that opens the public route or offers them. A project appears when somebody lives in it.
-  - _Why:_ the owner: "the left column should also reflect… primarily mates, but expandable show
-    environments with some quick way to show public routings, mates here just as color dots"
-- **2026-09-06** — **A Mate is declared, not inferred.** The bare `mate` tag on a Zerops project
-  says a Mate lives there (`MATE_MARKER_TAG`, `readZeropsGroupTags().mate`, `withZeropsMateTag`):
-  written at birth by the wizard and by an agent-bearing "Add", by "Set up Mate" through naming the
-  agent, kept across regroups and leaves, visible in the Zerops GUI. Membership (`hasMate`) reads
-  the tag, falls back to a Mate container for projects from before it, and **never counts stage or
-  production** — a container found there is a platform fact, not a Mate, and the row is an
-  environment's. A declared Mate whose container is gone keeps its card, asleep, with "No container
-  · Set up Mate" on it.
-  - _Why:_ the owner: "use tag mate where there is mate", "production and stage can never have a
-    mate", "fix the source" — the account was fixed to match, see `verified.md`
-- **2026-09-06** — **The projects screen is Mate cards and an environment list** — this supersedes
-  the one-table row above. A project is its name (15 px semibold, its menu at the far end on hover),
-  then its Mates as cards (`ZeropsMateCard`, 320 × 64: the 28 px face in the Mate's colour wearing
-  the conversation's state, the name, one line — status word · what it is on · the one verb in the
-  acting colour; nothing about the environment, whose name and tag are not what a Mate is about),
-  then its other environments as a list (`ZeropsEnvironmentRow`, 36 px hairline-divided rows: the
-  name, its tag as a pill trailing it — `ZeropsRoleTag`, the tag's own spelling `dev` · `stage` ·
-  `prod` in the one `MicroLabel` — and at the far end only what is worth saying: a `StatusDot` when
-  the project is not simply there, "Set up Mate" on a dev box without one, the menu). No table, no
-  header row, no count line, no dash for an absent thing. The card does what its line says: opens a
-  connected Mate's conversation, connects to a ready one. Tools are the same rows without a pill
-  under a heading that already says Tools.
-  - _Why:_ the owner rejected the one table — "when you mix two things and each has half of the
-    columns not filled, it means you are doing something wrong… I stand by the cards, just the env
-    table needed to be done more smartly"
-- **2026-09-06** — **Public access lives in the menu.** Every `…` on the screen (a Mate's, an
-  environment's, a tool's) opens with a _Public access_ group: one item per route — the service as
-  the developer names it, its port when one service answers on several, the host in a muted hand, a
-  click that opens it (`ZeropsRouteMenuItems`, `routeMenuEntries`) — then a separator and the quiet
-  actions. Known-empty says "None yet"; unknown (services unread) leaves the group out. Many routes
-  are many items in a menu that scrolls, never chips in a row and never a hostname column. The left
-  menu's fold keeps its one glyph.
-  - _Why:_ the owner: "public access can easily be hidden in more menu, where it can be handled
-    properly"
-- **2026-09-06** — **The left menu's Mates are cards under project names written as names** — this
-  supersedes the left-menu row above. A project's name is a small heading (12 px semibold, the
-  sidebar's foreground, sentence case), never an uppercase label; "Ungrouped" is the same in the
-  muted hand. A Mate is a card (`bg-card` on the sidebar's surface, a hairline border that darkens
-  on hover, `active:scale-[0.99]`, 36 px, 52 px while it is on something): the 20 px face, the name
-  at 13 px, the one word, the subject on a second line. No tag on a Mate. The fold counts the
-  _other_ environments only — a Mate's own is the Mate — and its rows carry the tag as a pill after
-  the name.
-  - _Why:_ the owner: "bots on the left should be more clickable", "project group names on the left
-    should not be uppercase and should be more visible", "tags should be like a trailing pill after
-    name, not a column", "mate doesn't need a tag listed"
-- **2026-09-06** — **A Mate's state is its face; no word repeats it.** On every surface a Mate's
-  face (`MateFace`) wears the conversation's state — open eyes idle, narrowed working, wide with the
-  "o" when it needs you, happy when done, shut when its socket is down — and nothing beside it says
-  "Idle", "Working" or "Ready" (`ZeropsMateWord` is gone). What is written beside the name is the
-  **subject** — what the Mate is on, or was last on: the running plan step while it works, else the
-  conversation's title, which stays up while idle (`agentActivitySubject`); a conversation nobody
-  has spoken into (`latestUserMessageAt === null`) has a placeholder for a title, not a subject, so
-  the line is left out.
-  - _Why:_ the owner: "the 'idle' 'working' etc state can be reflected by the eyes state, no need to
-    have it by word", "the menu should keep showing the desc of what the agent last worked on"
-- **2026-09-06** — **A Mate's row quotes the last thing said.** Under the name (with the time at the
-  right) and what the Mate is on, a third line in the muted hand: the conversation's last completed
-  user or assistant message, as a messenger's row quotes it — the Mate's words plain, the person's
-  prefixed "You:" (`agentActivitySnippet`). The words come from the thread shell's **server-kept
-  preview** (`OrchestrationThreadShell.latestMessagePreview`: role, text, when —
-  `projection_threads.latest_message_preview_json`, folded in per completed message like
-  `latestUserMessageAt`, refreshed with the summary, backfilled by migration 045), quoted by
-  `@t3tools/shared/messagePreview` (markdown marks dropped, one line, cut at a word within 160
-  characters), so a menu of conversations never loads a message. Absent until something has been
-  said, and on a server from before the preview.
-  - _Why:_ the owner: "maybe it should show summary of the last task + snippet of last message and
-    date?"
-- **2026-09-06** — **A reload paints nothing the next frame replaces, and a conversation catching up
-  moves nothing.** Who lives where is known from the project's tags and the container's registered
-  origin — not its socket — derived by `zeropsMatesAtom` from the candidate listing, so the header
-  names the Mate as soon as the list reaches its environment; an environment no read row reaches is
-  unknown (one whose server runs outside Zerops holds nobody), and a surface that looks different
-  for a Mate waits on that rather than guess: the git toolbar (`BranchToolbar`) renders only for an
-  environment known not to be a Mate's, the left menu's roster says nothing on its first read
-  instead of "No Zerops projects yet", and T3's project tree hides every environment until it is
-  known which are Zerops. The composer's joined glass exists only for a strip
-  (`:has(.chat-composer-context-strip)`), so a shell told to expect one whose toolbar has nothing to
-  say keeps the plain 22 px glass. **Syncing is a small spinner in the header's sync slot**
-  (`threadSyncSlot.ts`: 16 × 16, always there, the phrase on hover), never a drawer above the
-  composer.
-  - _Why:_ the owner: "even when you refresh page there is some intermittent state with the shit at
-    the bottom then the 'syncing' at the top… both causing layout shift… syncing should be some
-    small spinner fixed somewhere decently", "some transparent things at bottom right and left
-    corners"
 - **2026-09-06** — **A Mate's subject is the last task as the person put it, never the first.** With
   one conversation per environment the conversation's title names the first task forever, so the
   row's second line and the header's crumb after the Mate read the shell's **preview of the person's
@@ -562,31 +371,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   - _Why:_ the owner: "'reconnect' and status is still popping up from the top of the chat bar and
     it's still causing layout shift of the chat history… can it at least not be like absolutely
     positioned or something?"
-- **2026-09-06** — **The left menu's Mates are the menu's own rows** — this supersedes the cards row
-  above. A Mate is the surface every thread row in the menu has (`rounded-md`, transparent,
-  `hover:bg-sidebar-row-hover`, `bg-sidebar-row-active` when it is the open one), the whole row the
-  button, laid out the way a messenger lists people: the 20 px face, the name at 14 px medium with
-  when the Mate last did something at the right edge (`agentActivityAt`: the last turn's end, its
-  start while it works, else the last message; `compactSidebarTimeLabel` over
-  `formatRelativeTimeLabel` — "3h", "2d", "now"), the subject under it at 12 px in the muted hand;
-  36 px without a subject, 52 px with one. A snippet of the last message is not shown: the thread
-  shell carries no message preview, and reading every Mate's messages for a row is not the left
-  menu's business — a preview field on the shell is the next step. No border, no card — "more
-  clickable" meant a bigger area, not a box.
-  - _Why:_ the owner: "the background border in menu sucks, more clickable meant giving it bigger
-    area, not making it shit"
-- **2026-09-06** — **Environment rows say what they hold, and the page reads at reading width** —
-  this refines the cards-and-list row above. The projects screen is the frame's `readable` width
-  (`max-w-4xl`, 848 px of content at 1786), Mate cards are a two-column grid (`grid gap-3
-sm:grid-cols-2`, 60 px tall, the name alone when there is nothing to say), and every environment
-  row is one grid of three places page-wide — the name with its pill, what the environment holds,
-  the end — so every `…` on the page sits in one column 848 px from the names, not at the far edge
-  of a 976 px void. What an environment holds is one muted line: the developer's services by
-  hostname and when code last landed (`summarizeEnvironmentServices` in client-runtime over the same
-  service list the routes come from; `environmentSummaryLine` phrases it: `app, db · deployed 2h
-ago`, `No services yet`); the platform's core, build runtimes and the Mate's container are left
-  out. Tools are the same row. On a phone the summary drops under the name.
-  - _Why:_ the owner: "there is no info in the table and the more menu is five kms away"
 - **2026-09-06** — **A conversation is headed by its Mate.** Where a Mate lives, the thread header's
   leading crumb is the Mate — its 20 px face wearing the conversation's state and its name — not a
   folder and a container name; the thread's title follows only once somebody has spoken into the
@@ -645,19 +429,6 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
     well + the row should have hostname port + type", "I'd add state like this [the dashboard's ●
     ACTIVE over the name] … and use the right position for the external link, as button, better
     clickable"
-- **2026-09-06** — **The panel carries its own controls, and the mark holds the corner either way.**
-  Open, the sidebar's header is the lockup alone at the panel's own glyph column
-  (`max(var(--workspace-controls-left),1rem)` — 16 px, the column the search icon and the footer's
-  controls stand on; macOS traffic lights push it right) and the collapse control is the last item
-  of the footer's utility row, at its right edge, drawn as the row's other icons are. Closed, the
-  mark keeps the top-left corner — a link home, live, centred in a titlebar-control box so it lands
-  on the same pixel the lockup started from (15.84 vs 16.0, top 14 in both) — and the expand control
-  takes the box the Settings icon had at the panel's foot (8, 960 → 40, 992 at 1000 px tall). The
-  titlebar carries no toggle.
-  - _Why:_ the owner: "I'd move the logo to the left and put the compaction to the right side of
-    this bottom row", "leave the logo with just the icon on top left even when the panel is closed",
-    "the expand should be visible at bottom left when its closed", "logo shouldn't work as expand,
-    it should link to / as the expanded does"
 - **2026-09-06** — **The wordmark reads smaller and closer** — this supersedes the proportion in the
   2026-09-05 lockup row. `MATE_WORDMARK` is the same shaping (Sora SemiBold, −0.015 em, outlined) at
   x-height 0.35 of the mark's height (18.2 of 52, baseline 35.1) with the first stem's ink two
@@ -691,14 +462,6 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
     card's other one-line state — so a running stage read as never deployed; the owner: "why is the
     pair without its graphs?", then "why is the active on different place and there is no link to
     the appstage?"
-- **2026-09-07** — **A project holds as many Mates and stages as its people want, and exactly one
-  production.** "New project" creates the project _and_ its first Mate, so the account-level action
-  keeps that name on every surface (sidebar, title row, wizard, first run); every Mate after the
-  first is added from inside the project — "Add Mate" in the Mate grid, "Add stage"/"Add production"
-  under the table. `creatableRoles` caps production only.
-  - _Why:_ naming the account action "New Mate" made one word mean the group on one screen and its
-    first member on the next, and capping all three roles left a complete project offering nothing
-    at all
 - **2026-09-07** — **A created environment opens on its job, and that one prompt mate sends
   itself.** A creation writes down what the environment is, where its application came from and
   which services the clone could not build (`creationHandoff.ts`), keyed on the project; the connect
@@ -726,258 +489,19 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
   the feature says so, with the update line beside it.** `capabilities.dataConsole` gates the Data
   surface: absent, the panel renders one muted line ("This Mate doesn't include the data console
   yet.") and `ZeropsMateUpdateControl`'s line and verb, and never issues `zerops.dataConsole.call` —
-  never a generic "Something went wrong." from an older server's unknown request tag. The Mate menu
-  always offers "Check for updates" wherever `capabilities.mateUpdate` is true ("Checking…" while it
-  runs, disabled); it calls `zerops.mate.checkUpdate`, the descriptor's `update` re-read with the
-  manifest cache bypassed, and the answer repaints the same line and verb — the client still
-  compares nothing.
+  never a generic "Something went wrong." from an older server's unknown request tag.
   - _Why:_ spec-mate.md §2.9 steps 5–6; a release stayed invisible for up to two hours behind two
     caches, and an older server answered the Data panel with a defect
-- **2026-09-10** — **Every listing has one explicit, total order; nothing is left to the order the
-  API returned.** The comparator is `compareZeropsHostnames` (locale-aware, case-insensitive,
-  numeric-aware: `db` < `db2` < `db10`). Service map: sections Runtimes → Data → Infrastructure;
-  inside a section the control plane first, then hostname, then `serviceId`; a stage row is nested
-  under its dev partner. Projects screen and left menu: groups by name then `groupId`; environments
-  in a group by role, name, `project.id`; the ungrouped list by tier
-  (`rankZeropsCandidateForListing`: a Mate that is connected or ready, then provisioning, then an
-  ACTIVE project without a reachable Mate, then a stopped project) and by name within a tier — a
-  tier changes only on the user's own action (Start, Enable), so the list never reshuffles on its
-  own. Rows keep what they knew while a read is in flight: a health verdict survives a probe refresh
-  and a resolved service list survives a transient re-projection miss, so a refresh never blanks a
-  row and brings it back.
-  - _Why:_ The listings flickered and reordered on every refresh;
-    `packages/client-runtime/src/zerops/listingOrder.ts`, `environments/containerStore.ts` (a
-    re-probe never moves a level on its own), `ZeropsInventoryProvider.carryForwardServiceOutcome`
-- **2026-09-17** — **Superseded 2026-10-02 in part by the HQ row below: a change is a Mate's, kept
-  in HQ without checks, and `#N title` is the way to its page, not into Gitea.**
-  **The left menu draws each project as a timeline, the way its code travels**
-  (D26): the Mates as the menu's own rows; under each Mate its open pull requests — `#4 title` as
-  the way into Gitea, the checks as a dot with the word as its title (`StatusDot dotOnly`), _Merge_
-  where Gitea says it merges — folded behind "N pull requests" past three (`pullRequestsFolded`); a
-  person's own pull requests after the Mates; then the other environments unfolded, stage before
-  production, each `name [PILL] ● ⧉` with the last deploy as a dot and _Release_ on the production
-  when there is something to release. The "N environments" fold is gone. Whose a pull request is, is
-  `projectFlow.ts` (zcp's branch `mate/{login}`, else the bot that opened it), so the projects
-  screen agrees.
-  - _Why:_ the owner: "in the menu I imagine each group as a timeline: mates, their open PRs, stage,
-    production"
-- **2026-09-17** — **Superseded 2026-10-02 in part by the HQ row below: the Git tab reads the Mate's
-  change from HQ, with no checks and no sign-in line, and a project's changes and environments come
-  down HQ's stream (`hqChangesAtom`, `hqEnvironmentsAtom`).**
-  **The Git tab is the Mate's own leg; the projects screen carries the project's
-  flow** (D26). The right-panel Git tab keeps only the Mate's repositories — branch, pull request,
-  checks, one verb — and the sign-in line; no environments, releases or recipe changes. The projects
-  screen's list under the Mate cards reads: the Mates' open pull requests (`ZeropsPullRequestRow`,
-  tag `pr`, the title a link, `appdev #4 · Vera`, the checks' dot, _Merge_), the environments with
-  what they follow and run, one muted line with the release gate's reason when a production is
-  declared and _Release_ is not offered, the releases (`v0.1.0 [RELEASE] · app 0db51c0 · Approved`,
-  _Roll back to this_ on an earlier approved one), then the recipe changes. _Release_ is the
-  production row's verb. One provider (`ZeropsProjectFlowProvider`) reads the whole account once a
-  minute, so the menu, the screen and the tab never disagree.
-  - _Why:_ the owner: "this seems like git for the whole project, shouldn't it be git for this Mate
-    and have project git somewhere else"
-- **2026-09-17** — **Superseded 2026-10-02 by the HQ row below: _Git_ opens `/git`, every
-  application's repositories and the changes open on them as HQ holds them (`gitOverview.ts`).**
-  **The footer's Gitea button opens the Gitea overview** (`/gitea`,
-  `GitPullRequestIcon`, lit like the Zerops button on its page): one section per owner (a project's
-  org), a row per repository — its name the way into Gitea, "2 open pull requests" as its line — and
-  the pull requests under it, newest first, the title the way to the pull request's page. The page
-  changes nothing; _Open Gitea_ in the title row. Every line is `giteaOverview.ts`'s.
-  - _Why:_ the owner: "at the bar down I imagine a 'gitea' button, where I'll see overview of all
-    repos I have access to and their open PR"
-- **2026-09-19** — **A state's word is written the way `client-runtime` wrote it.** `deployWord`
-  answers "Deployed" and `changeState` capitalises its first letter on purpose; drawn through the
-  `MicroLabel` that was a `StatusDot`'s only form, the projects screen and the Git page said NEEDS A
-  REBASE where the left menu and the project's own page said "Needs a rebase". The list row now sets
-  the hand for its status column (`ZeropsEnvironmentRow`, `ZeropsPullRequestRow`: 12 px, muted), so
-  no caller carries a size; the `MicroLabel` form stays for a state's name over a card.
-  - _Why:_ the owner, 2026-09-19: "all pages are unified in how they look work feel have ux and
-    abilities"
-- **2026-09-23** — **Every surface draws a project as its flow, and a project has one next step**
-  (spec-mate D29). The order is the one the code travels — Mates (each with its _Preview_) → pull
-  requests → `main` → production — and a group stage is one line under `main` — `↳ ● Deployed
-e014b0e` on the page, `↳ {name} · follows main` in the left menu — drawn only where one exists.
-  What each step holds and the next step are `groupFlow`'s (client-runtime); the projects page
-  (`ZeropsProjectsFlow`, `projectsView.logic.ts`), the left menu (`SidebarZeropsTree`) and a Mate's
-  conversation (`useZeropsMateNextStep`) only lay it out. The projects screen is `expanded` width
-  and has two views, _Next step first_ the default order: **Overview** — a _Next steps_ strip, each
-  item a project's step in words that jump to its row and, at the item's end, the row's own verb
-  (_Merge_, _Release v0.1.0_, _+ Add production_); a step with no verb to press is not listed. Then
-  one row per project with the four steps as columns (`Mates`, `Pull requests`, `main`, `Production`
-  — no arrows, no "· preview"), at most two lines to a cell, and one verb to a row, at the end of
-  the cell it acts on; a row opening to the Mate cards, the pull requests, the environments and the
-  project's rows; a project with only a Mate nobody has spoken to is a tile that opens the Mate as a
-  whole, with no _Open_ button; the containers no project holds are one line with _Try again (N)_;
-  tools are one quiet line at the end. **Projects** — every project as a card, the next step named
-  in its header without its verb, its steps side by side with the verb in its step, a "+" beside the
-  `Mates` label adding a Mate, and no footer links. An empty step is its word in the muted hand at a
-  filled step's height (`None open`, `Nothing merged`, `Not set up`) — never a dashed place, never a
-  row that says "not set up yet". A Mate opens its conversation from wherever it is drawn: its chip
-  in a row, the whole tile, its card. _Release_ is the next step's verb in the production cell, and
-  beside a failed production when a release is offered; _Add production_ is the next step's verb,
-  "Production is added here, not by the Mate." its tooltip, and a menu item while the role is
-  creatable; _Add stage — optional_ is a menu item and nothing else. In the left menu production
-  comes before the stage, and the stage is one muted line with no pill, menu or verb; a project's
-  heading carries a dot only where its next step waits on somebody — never for a first task or where
-  nothing is left. A Mate's conversation offers, in the composer banner, its own merge (since
-  2026-09-29 its own change as _Review_ at the composer's top: it opens the review, whose _Merge_ is
-  the one way to merge it), then the release with its confirm dialog, then _Add production_ as a
-  link to the project's card (`/zerops?view=projects&group=`). **Supersedes:** of the 2026-09-06
-  _Mate cards and an environment list_ row, the project laid out as Mate cards over an environment
-  list — Mate cards stay, inside the Mates step and an opened row, and environment rows stay for
-  what is not a step; of the 2026-09-06 _reading width_ row, the `readable` width and "tools are the
-  same row"; of the 2026-09-07 row, "Add stage"/"Add production" under the table; of the 2026-09-17
-  left-menu row, "stage before production, each `name [PILL] ● ⧉`" — production still is, the stage
-  is not; of the 2026-09-17 projects-screen row, the pull requests as list rows under the Mate cards
-  and _Release_ as the production row's verb. Everything else in those rows stands.
-  - _Why:_ the owner, 2026-09-23, after a walk of the page on which 9 of 10 groups said "Nothing
-    needs you here." and the one merge and one release waiting sat ~4000 px down, the menu and the
-    page disagreed about what a production ran, and "+ Add stage" read as a step before production:
-    "these are extremely important findings the whole UI should be built around"; then, 2026-09-24,
-    of a strip that named steps without their verbs: "why is it there when I can't click it?"
-- **2026-09-24** — **Superseded 2026-10-02 in part by the HQ row below: the signer is the one the
-  Mate's server recorded, as HQ relays it, not a `mate:signer` tag (`mateOwnerRecords`).**
-  **In the left menu a Mate wears the card's face, and its owner rides on the
-  corner.** The Mate row's `MateFace` is `md` (28 px) in the spine's unchanged 20 px column — the
-  face overhangs it, so the spine keeps its x and the row's gap widens to `gap-3.5`. The Mate's
-  owner — its project's `OWNER` entry where there is one, else whoever signed its agent in
-  (`mate:signer`), resolved by `resolveMateOwner` against `GET /client/{org}/user/list`, whose rows
-  carry `user.avatar` like `/user/info`, is an `Avatar size="xs"` (14 px) pinned bottom-right, cut
-  out by a ring of the sidebar's ground: their picture as the account bar picks it, else their
-  initials; a tooltip and a screen-reader line say "Jan's Mate". An owner the member list cannot
-  name gets no badge.
-  - _Why:_ a teammate: the face was too small to read as the project's anchor, and the menu never
-    said whose Mate a row is
 - **2026-09-24** — **An empty conversation opens on an empty composer.** Nothing writes into a
   Zerops environment's composer on its own: a creation leaves no opening job on its birth
   (`birthStore.ts` keeps births only, and reads an older build's `handoff` and `jobs` as nothing),
-  and neither the landing, the left menu nor a new-thread request composes an introduction.
+  and neither the landing nor a new-thread request composes an introduction.
   **Supersedes:** the 2026-09-07 row whole, and of the 2026-09-06 _one environment is one
   conversation_ row the sentence that composes zcp's introduction into an unspoken conversation.
   Everything else in that row stands.
   - _Why:_ the owner, 2026-09-24: "When I enter an empty conversation there must be no prefilled
     text in the composer" — the hand-off ("You were just created as …") sat in front of whatever the
     person typed
-- **2026-09-24** — **A projects listing never moves on its own, and what the person started is drawn
-  from the click.** The projects page and the left menu share one order, the tree's (_Newest first_
-  or _Name_, `useProjectOrderPreference`); what waits on somebody is the _Next steps_ strip's to
-  lift, never the rows' order. A group moves between a row and an _Only a Mate so far_ tile only on
-  settled facts — its flow read, and every Mate's talk known (a Mate not connected is unknown, not
-  untalked); unsettled, it keeps where it was last drawn (`groupPlacementMemory.ts`). A creation is
-  drawn from its birth (`BirthRecord.placement`) the moment the platform accepts it, in its group,
-  before the listing holds it — a Mate being created after the listed ones, a sleeping slate face
-  that opens nothing, its line "Coming up. A few minutes."; a production being created reads
-  _Setting up production…_ and offers no _Add production_; a stage being created is `↳ Setting up a
-stage…`; a new project's group is placed by the birth's start — and the listed project takes its
-  place by id, never drawn twice. A production the platform is building reads _Deploying…_ (busy),
-  never green. An in-flight word — _Setting up…_, _Deploying…_, _Releasing vX…_ — is production's
-  line 1, so a narrow row keeps it. A pressed verb stays in flight until the flow read shows its
-  effect, not only while its request runs: _Merging…_ until the forge lists the pull request closed,
-  _Releasing…_ until the tag is read back, _Redeploying…_ until the new run is read (each capped at
-  30 s for a read that never answers); a refused verb is said on the page's error line.
-  **Supersedes:** of the 2026-09-23 _flow_ row, "_Next step first_ the default order". Everything
-  else in that row stands.
-  - _Why:_ the owner, 2026-09-24, of the projects page: an added Mate did not show, the order "se
-    různě přehazuje" as a project was added, and after _Add production_ nothing showed that anything
-    was happening; `projectOrderPreference.ts`, `projectsView.logic.ts`, `groups.ts` (`pending`),
-    `groupFlow.ts` (`creating`, `deploying`), `ZeropsProjectFlowProvider.tsx`
-- **2026-09-25** — **Superseded 2026-10-02 in part by the HQ row below: Core tags and records
-  releases (T9a), and the client reads them from HQ and rolls back there (T9b); what each release
-  carried and a repository's history are HQ's comparisons (`carriedReads`, `useZeropsHistory`),
-  where `useZeropsRepositoriesCommits` and its 30-commit read of Gitea are gone.**
-  **A stop's page says what the stop runs in one sentence, in the words the left
-  menu and the projects page use, and lists everything else in one card.** The detail pages
-  (project, stop, change) stand in `ZeropsHostedFrame` `expanded` with the /zerops bar: the
-  breadcrumb in the bar, the organization switcher and the account on its right; the header and
-  every block after it — the verdict, the card, a section — are spaced by the frame's one page gap,
-  as on /zerops, with no margin of their own. The header is the h1 (`environmentNameUnderGroup`),
-  the `ZeropsRoleTag`, one muted meta line (`stopMetaLine`: _Moves on release · 2 services_,
-  _Follows main_, _Nothing yet_ — the count is the code services') and the shared `ZeropsStopMenu` —
-  the same menu the left menu opens for that stop, and no other header verb. The page opens with
-  `VerdictPanel`: one sentence from `stopVerdict` (client-runtime `flow/stopDetail.ts`), its tone,
-  its muted detail inside the panel after the sentence (on a phone on its own line, set in under the
-  sentence's text), and at most one outline verb (_Release vX_ on a production behind, or on an
-  empty one main has something for; _Run again_ on a failed deploy whose job is known). Its states:
-  _Checking what runs here…_; _Nothing deployed yet._ (a stage adds _The next merge to main deploys
-  here._); _Deploying…_ and _Releasing vX…_; _The deploy of vX failed on {service}._ with _{label}
-  still runs · {age}_; _N changes not live._ with _Production runs {label}_; _Production already
-  runs what is merged._ with _{label} · released {age}_; _Stage runs the head of main._ or _Stage
-  runs {label}._ with _{short sha} · {age}_, or _{age}_ alone where the sentence already names the
-  commit. The grey "Nothing needs you here." and the `AttentionPanel` are gone from the stop page.
-  Below it one `FlatCard` holds `MicroLabel` groups, each group's rows on one grid of their own, so
-  a group's status dots form one column, the first group 12 px under the card's edge and each later
-  one 24 px under the hairline over it: _Waiting for release · N_; _Services · N_ — the stop's code
-  services only, those a tier builds from a repository, so a database, cache or bucket has no row
-  and is not counted — each row its chevron opening that service's own build, the short commit it
-  runs and _deployed with {name}_, else _head of main_ on a stage whose commit is main's head (while
-  a build runs, what ran before it, never what the build deploys, and no commit while nothing states
-  what ran before), its word and age — none where it runs nothing, which its commit's place says
-  once as _Nothing deployed yet_ — and its address, the _Open to the internet_ offer, or _Not public
-  yet_; under it HQ's newest job of the service where that is not what runs (`jobOf`): _{sha}
-  queued_, _Submitting {sha}_, _Building {sha}_, _{sha} failed 1h ago_, _HQ refused {sha} 1h ago_
-  or _HQ skipped {sha} 1h ago_ — nothing is tried twice — HQ's reason under the line unless the
-  verdict already says it; where the service runs a version HQ did not put there while no job of
-  HQ's is under way (`driftOf`), _{service} runs “{name}”, which HQ did not deploy_ in the
-  attention tone, with _Deploy {sha} again_ — HQ's live commit, to whoever may _Run again_, while
-  the service's newest job is of that commit — and _Open in Zerops_: HQ never overwrites it by
-  itself (the deploy-jobs design, 2026-10-03); after the services, each one the stop's tier
-  declares and its project lacks (`notInZerops`, audit D2): _{service} · declared in the recipe,
-  not in Zerops_, with _Add {service}_ to whoever may _Run again_ — HQ never adds one by itself.
-  A verb pressed here, and a merge's or a release's review once pressed, says under its verdict
-  where HQ answered the deploys it asked for stand, by environment (`deployAnswerSaid`): _api
-  b21d904 building · web 5c3ea18 queued behind api b21d904_; "Tagged by" is dropped; _Releases · N_ on a production; _Deploys · N_ on a stage, muted _on
-  main_, the running commit marked _Running here_ and a release tag drawn as the role-tag pill. A
-  group with nothing in it says _None yet_. Releases are drawn by the shared `ZeropsReleaseRows`,
-  the rows /zerops draws: the release production runs reads `Live`, one whose deploy failed reads
-  `Deploy failed`, and _Roll back to this_ is offered on an earlier approved release only — never on
-  one listing exactly the commits production runs (the live one, or an older tag a roll-back left
-  listing the same); the first five, then _Show N earlier releases_. On a production's page each
-  release row says what it carried, worded by `releaseDescription` (client-runtime
-  `releaseCarried.ts`): line 1 is the chevron, the tag and its _RELEASE_ pill in a column of one
-  width on every row (a longer tag truncates), then the subject of the newest commit it carried in
-  the row's flexible middle, truncated only at that column's end — per service it moved, the service
-  named only where more than one moved, _, +N more_ for the commits after the first; line 2, muted
-  12 px under the tag, is the author, the age and the per-service shas (_Lena · 1h · titan
-  96985a7_). The status and the verb stand in two columns of one fixed width on every release row,
-  the status left-aligned and the verb right-aligned, so the descriptions, the dots and the verbs
-  each run down one column — the `Live` row's dot is where the others' are, its verb column empty;
-  on a phone the description, its byline and the verb drop under the tag. A release is measured per
-  service against the nearest older release that is not refused (a refused release never deployed)
-  and lists that service (a tag that could not be read lists nothing and is passed over); a service
-  no older release lists is measured on its repository's older commit — the older release's commit
-  of another service built from the same repository — so a service added to a group carries only
-  what its repository did, not the whole branch; a roll back carried nothing new. The rows are
-  measured over the whole list, so the fifth row shown is against the sixth release, and the oldest
-  carries what the 30-commit read holds. A leading chevron opens what it carried: each moved
-  service's commits on its repository's default branch after the older commit, up to its own, drawn
-  by `ZeropsHistoryView` with each commit's files, beside the note of each repository still being
-  read or whose read failed. A release with no description — its commits unread or failed, nothing
-  new carried, or a refused one, whose broker reason stays its line — stands on the same columns as
-  the described rows: tag and pill, its line — the shas, or the broker's reason — muted in the
-  description's column with no byline, its chevron saying the history's note. The reads are
-  `useZeropsRepositoriesCommits` — one `listCommits` per code repository, when the page opens, never
-  polled. /zerops keeps that row, the shas alone: its card view mounts every group's rows, so
-  reading each group's repositories there would be unbounded. A stop running several releases is
-  named — in the menu, the verdict and the /zerops cell — by the newest release whose every listed
-  commit its services run (`releaseRunBy`), else by its first labelled service. A state has one word
-  everywhere (`stopView`): `Deploying…`, `Deployed`, `Nothing deployed yet`. On /zerops the
-  production cell, the `↳` stage line and the stop names in an opened project link to the stop
-  (`/group/$groupId/$projectId`) and say _Open production_ or _Open stage_ on hover
-  (`openStopLabel`). **Supersedes:** of the 2026-09-05 _hosted frame_ row, "one content width
-  (`wide`)" — the detail pages are `expanded`, as the projects screen is; of the 2026-09-17
-  projects-screen row, "_Roll back to this_ on an earlier approved one" where that release is the
-  one production runs. Everything else in those rows stands.
-  - _Why:_ the owner approved the concept boards on 2026-09-25, after a walk of the stop page on
-    which the page's own tone disagreed with the stop's menu, "Tagged by" named the broker instead
-    of a person, Beviro's production read v0.1.9 while nextstore ran v0.1.13 (medusa, its first
-    service, had not moved since v0.1.9), and the build shown under the page was the first service's
-    whatever service was opened; then, the same day, a live walk on which Beviro's production listed
-    db, redis and storage as services with nothing deployed, a service being released lost the
-    version it ran, and the verdict's detail sat under its panel; `ZeropsGroupDetail.tsx`
-    (`ZeropsStopPane`, `DetailShell`), `primitives/VerdictPanel.tsx`, `ZeropsStopMenu.tsx`,
-    `ZeropsReleaseRows.tsx`, `releaseCarried.ts`, `useZeropsRepositoryCommits.ts`,
-    `flow/stopDetail.ts`, `flow/deployment.ts` (`stopView`), `release.ts` (`releaseRunBy`,
-    `releaseRow`), `ZeropsProjectsPage.tsx`
 - **2026-09-25** — **A card is correct at every instant of a live turn, and reads the same after a
   reload.** Nothing on a card moves, shrinks or is merged away because something newer arrived: a
   same-turn retry is its own card (the R8 fold is gone); an attempt number appears only once it can
@@ -993,46 +517,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   card's own `operationTone`.
   - _Why:_ a live page and a reload must agree, and an older card changing under the reader is the
     one thing the conversation must never do; three spellings of one process status broke R5
-- **2026-09-25** — **In the left menu every stop is one row that answers where the newest change is,
-  measured against `main`.** The order is Mates (their pull requests as forks) → other people's pull
-  requests → every stage (listed, then being created) → production (listed, or being created), and
-  the rail ends on the last stop; `main` is not a row but the reference each stop measures itself
-  against. A stage and a production are the same one-line row (see the _one text column_ row below),
-  ending in the shared `ZeropsStopMenu`. In sync with `main` and healthy, it says only what the stop
-  runs; otherwise a state word leads, first match wins — _Failed on_ · _Setting up…_ · _Deploying
-  vX_ / _Releasing vX…_ · _Nothing deployed yet_ on both tiers · _Checking_ — and while a word shows
-  the distance is hidden. The distance means one thing on every stop: changes on `main` this stop
-  does not run yet, so a stage with none and a production at `+3` say all three have run on the
-  stage; a stage whose source is not exactly `main` shows its source in front (`feat/cart ·
-3f9c1b2`) and no distance, and a distance that cannot be known is not shown, never guessed. The
-  distance is a `+N` chip (`aria-expanded`, named and tooltipped "N changes on main not here yet",
-  closed by default, closing itself when the distance goes to 0 or unknown) that lists those changes
-  under the stop, newest first by commit subject; under production each carries where it stands on
-  the main-following stage — `on stage` ✓, `deploying on stage` ↑, `failed on stage` ▲, or no mark.
-  A stop is named by its version, else its commit — the same on both tiers
-  (`DeployedVersion.label`); a change's title never names a stop, since a stage deploys whatever is
-  pushed to the branch its trigger watches and is not any Mate's. A verb only where a person can
-  act: production keeps _Release_ and its confirm; a stage has none. A failed stage is a failed
-  stop, so `fix-deploy` names it after production's own failure. A project folds as the sidebar's
-  usual gesture, one level: its title toggles it (`aria-expanded`, a small muted
-  `ChevronRight`/`ChevronDown` after the title text, shown on hover and focus and always while
-  collapsed), _Open project_ is the heading's ⋯ item, a collapsed project is its heading and
-  next-step dot alone, the state is kept per group in the browser, and opening a Mate's conversation
-  expands its project once. **Supersedes:** the stops fold kept only in the menu's code — "a full
-  row becomes one line" (the owner, 2026-09-19) and its 2026-09-24 rule leaving the stage outside it
-  — with `collapsedStops.ts` and its storage key, unmigrated; of the 2026-09-23 _flow_ row, "in the
-  left menu production comes before the stage, and the stage is one muted line with no pill, menu or
-  verb" and `↳ {name} · follows main`; of the 2026-09-24 _projects listing_ row, "a stage being
-  created is `↳ Setting up a stage…`"; the list of what a release carries as the _Release_ verb's
-  hover card and the stop menu's waiting group, on the left menu and the stop's page alike — the
-  opened distance is now the one place the changes are listed. **Stands:** D28 (a release never
-  waits on a stage), D29 (one next step per project, the heading's dot), and _Add stage — optional_
-  as a menu item only; everything else in those rows stands.
-  - _Why:_ the owner, 2026-09-25, approving page v3 of the _Stage row redesign_ canvas: the stage
-    drawn as one muted line said nothing about whether it ran what `main` holds, and a fold inside
-    the project was a second design of the same row; `SidebarZeropsTree.tsx`, `stopDistance.ts`
-    (client-runtime: the distance, the stage marks, the name of what runs), `collapsedProjects.ts`,
-    `groupFlow.ts` (a failed stage in `fix-deploy`)
 - **2026-09-25** — **Cards carry no attempt number.** A repeated deploy, verify or browser check on
   one target is a card of its own with nothing counting it: `ZeropsOperation.attempts`,
   `attemptWord` and the whole-thread gate (`historyComplete`) are gone. **Supersedes:** of the
@@ -1040,35 +524,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   longer change …" and "with the attempt and the duration at the right" (the duration stays); of the
   2026-09-05 row, the `attemptWord` ("attempt N") rendering.
   - _Why:_ the owner, 2026-09-25: "attempt N" on a card was more confusing than useful
-- **2026-09-25** — **The left menu has one text column, and a stop is one line.** Nodes — a Mate's
-  face, a stop's badge — sit centred on the rail; every row's text starts at the Mate's column, one
-  `gap-3.5` after the 20 px rail cell: Mates, stops listed and being created, and the changes an
-  opened distance lists (their stage mark trails the title). A project heading's title starts at the
-  rail cell's left edge. Pull-request forks keep their own branch indent. Every stop — stage or
-  production — is one `h-7` line, with no second design and no switch: the badge on the rail; the
-  role as a pill (`ZeropsRoleTag`: `stage`, `prod`) and the stop's own name after it only where the
-  name says more than the role (`qa`, `stage 2`, `eu-west`; never `production` beside `prod`) — the
-  pill and name are the button that opens the stop; what runs (the version's tag, else its short
-  commit, the state word in front where something differs); the distance as a `+N` chip right after
-  it; then at the row's end _Release_ (no count — the chip carries it; the tag and what it carries
-  are its accessible name and its confirm) and two 20 px slots that are always there, the globe and
-  ⋯ — the shared `ZeropsStopMenu`, the menu the stop's page header opens, with no second menu in the
-  left menu. The globe slot keeps its width without routes, so globes stand in one column across
-  stops; one route is the globe alone, several put a count bubble on the globe's corner (adding no
-  width) and open the menu of every domain. ⋯ is invisible at rest, fading in on row hover and
-  focus-within (its slot's opacity, not the menu's), always in the tab order; it changes only its
-  opacity, so nothing moves on hover. What runs truncates first; the state word only after it; the
-  pill, the chip, the verb and the two slots never give way. A stop being created is its badge, its
-  pill (and name, by the same rule) and its word. Mates, headings, pull-request rows and the
-  distance list keep their own designs. **Supersedes:** the two-line stop row of the row above; the
-  role pill dropped where the name says the role (`environmentRoleTagIsRedundant`, deleted); the
-  globe's `1` beside it; _Deploying vX…_ with an ellipsis.
-  - _Why:_ the owner, 2026-09-25, reviewing the stop rows live: the heading title at x 37, Mate text
-    at 53 and stop text at 49 — "everything jumps around differently" — then a stop as one line with
-    the role as its pill, and "the globe jumping because of the dots is exactly the problematic
-    detail to solve properly"; `SidebarZeropsTree.tsx`, `SidebarZeropsTree.logic.ts`
-    (`stopNameSaysOnlyRole`), `ZeropsPublicRoutes.tsx` (the globe and its bubble),
-    `ZeropsStopMenu.tsx` (⋯), `stopDistance.ts` (the deploying word)
 - **2026-09-26** — The conversation reads as the person's messages, one work line per stretch of
   work, the answer and one outcome card; the turn header card and the fold of a settled turn are
   gone.
@@ -1099,14 +554,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   project's flow — not a row of the outcome card.
   - _Why:_ a live action frozen into a turn's history goes stale; the banner already answers from
     the flow, not from what the agent said
-- **2026-09-26** — **A Mate's conversation offers only its own merge.** The composer banner is the
-  merge of this Mate's own mergeable code pull request, read from the flow's open changes
-  (`mateNextStep`), and nothing else: a release carries every Mate's merges and a production is the
-  project's, so _Release_ and _Add production_ stay with the project on the left menu and the
-  projects page. **Supersedes:** of the 2026-09-23 _flow_ row, "a Mate's conversation offers … then
-  the release with its confirm dialog, then _Add production_".
-  - _Why:_ the owner, 2026-09-26, of "Release v0.1.34 to production" above Cleo's composer: "merges
-    could be coming from different mates, let's keep it on the left"
 - **2026-09-26** — One clock (today "9:14 PM", "Yesterday 9:14 PM", "Sep 24 9:14 PM") and one
   duration format ("42s", "1m 12s", "13m", "2h 6m" — seconds only under ten minutes, nothing under a
   second).
@@ -1171,11 +618,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   off.
   - _Why:_ the browser drawer opened a few hundred pixels in a few frames, past LegendList's tenth
     of a viewport, and slid out under the composer
-- **2026-09-26** — A Mate's version and its Update live on its home card, under its name and outside
-  the hover pop, with the same control the project page's menus read.
-  - _Why:_ the conversation header's version line was removed in 0.11.46 on the claim that the right
-    panel carried it; it did not, and Update was reachable only from the project page's menu — the
-    owner: "is it just me or the update button disappeared?"
 - **2026-09-26** — **What the Mate is on is said once, beside its face.** The live line keeps its
   clock and its chevron; the words for the call running now — in words, never its arguments — stand
   under the newest bubble, and a deploy's bar or the browser's drawer says its own.
@@ -1214,16 +656,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   - _Why:_ the empty state's banner covered the heading, "send follow-ups" invited follow-ups to
     nothing, the arrow came back for 1.5 s between Sending and Stop, and the toast said "Thread
     archived"
-- **2026-09-26** — **An update is asked in the app's confirm dialog and said on the Mate's card.**
-  Wherever _Update_ is pressed — a Mate's menu on the projects page or its project's page, the home
-  card's line — the app's confirm dialog asks "Update Nova to 0.11.49?" and says that running work
-  stops and the conversations stay; a check that finds a newer version asks the same at once. While
-  it runs and for a moment after, the Mate's card and row say it over the subject ("Checking for
-  updates…", "Updating to 0.11.49…", "Updated to 0.11.49", "Up to date", a failure in the failed
-  tone). The confirm drawn on the update line is gone.
-  - _Why:_ the owner, 2026-09-26: "I pressed that update button on all of them, there is no
-    indication and nothing seems to be happening" — the menus' _Update to x.y.z_ armed a confirm
-    drawn only on the update line, which no menu surface draws, so no update ever started
 - **2026-09-26** — **The conversation is one column.** Every box sits on the composer's edges, every
   line of text on its text edge (its 1 px frame and 16 px padding); a mark leads its words on that
   edge.
@@ -1301,7 +733,7 @@ stage…`; a new project's group is placed by the birth's start — and the list
   ran without a turn stands alone as its event line, done once nothing runs, and what the person
   sent while it ran is drawn as its own run.
   - _Why:_ Juno: every message and all the work after a /compact vanished from the log while the
-    title and the sidebar showed them
+    title showed them
 - **2026-09-26** — **The Mate's question is the one ask while it waits**: the next-step banner steps
   aside while a question or an approval waits and comes back once it is answered; the composer says
   "Waiting for you" in sentence case in the attention colour, not as a `MicroLabel`; the question
@@ -1497,76 +929,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   the record.
   - _Why:_ the owner, of a message sent mid-run: "I still find this state completely confusing"; of
     the two ways the run card study drew it, they chose "the card breaks around it"
-- **2026-09-27** — **One jump box finds what the left menu holds and writes to a Mate without
-  opening it** (`JumpBox`). It extends the app's palette: ⌘K keeps its one binding and `/` joins it
-  wherever nothing is being typed — the conversation's type-to-focus leaves `/` to it, and a slash
-  command starts in the focused composer; signed in, the palette's root is the jump box, `>` hands
-  over to its commands and taking the `>` away hands back; files and contents keep their own modes.
-  What it finds is what the menu draws: the tree publishes its Mates, projects, changes and stops in
-  its own order and scope, collapsed projects included, data only, and the box reads each Mate's
-  conversation afresh over it; a conversation's words are what its row says, then the server's
-  thread search, which covers whole histories. A stop is revealed in the menu, not opened: its row
-  carries what runs, the distance, _Release_, the routes and its menu, and its page is ↵ away from
-  the focused row. A Mate's change focuses its Mate and pins its peek on that change, flashing the
-  change's row. A phone's menu steps aside for the box and comes back to show a find
-  (`SidebarRevealBridge`); on the settings pages a find opens its page. `@` never offers a Mate
-  another member signed in (D6). A send carries the conversation's model and modes and the notes of
-  changes that landed since the Mate last spoke; a question it waits on takes the words as its
-  answer (several, or options only: ↵ opens it); a first message goes through the composer's
-  send-on-open; a message during a run is steered in at once — the composer's
-  hold-until-the-next-step queue is there to edit a message before it goes, and the box has no
-  composer. The composer's `formatOutgoingPrompt` reduces to the trimmed words here: a
-  prompt-injected effort lives in the prompt's own text, never in the conversation's model options.
-  The hints: "Nova reads it now", "Nova is working — it reads this at its next step", "Nova is
-  waiting for your answer — this answers it", and in the same voice an approval, a plan, a pause and
-  a first message. The match is the search's bold, not the prototype's amber, which is the attention
-  colour.
-  - _Why:_ the owner approved the jump box in the integrated sidebar prototype (feature 4: "One jump
-    box"); the palette already owned ⌘K, a second listener would have raced it, and a Mate the
-    person may not write to has no composer in its own conversation either
-- **2026-09-27** — **The left menu is where a Mate is acted on, not only opened**: the Mates waiting
-  on you as faces in its header (`WaitingFaces`), a peek (`MatePeek`) that answers, approves and
-  stops, a menu on every Mate (`MateMenu`), rows that say more without a word (`MateRow`), a long
-  menu kept scannable — quiet Mates fold, _Mine_ / _Everyone_, keys — and projects in the viewer's
-  order. Nothing adds a status word or moves a row: the header's slot is reserved, the peek and the
-  menu float, the clock, the ring and the pause take the time slot and the face that were there, and
-  a draft only stands where the last words stood. One thing floats at a time: a Mate's menu opening
-  puts its peek away, which stood in the same place and covered the menu's first items. The member
-  list that names the owners is read again when a remount put its read away unanswered, so a face
-  keeps its owner and _Mine_ keeps meaning mine. The owner's answers (2026-09-27): health on a
-  production stop and mute on every device wait for now; nobody writes to a colleague's Mate (D6
-  stands, and `@` leaves those Mates out); a Mate is quiet after a week, and _Mine_ keeps the Mates
-  whose owner is unknown.
-  - _Why:_ the owner took every item of the menu review but snooze and pin, and added projects
-    ordered by name, by creation or by hand; built in the design harness, then read live signed in
-    at 1786 and 390, light and dark
-- **2026-09-27** — **A preview never quotes a credential** (`maskSecrets`, `messagePreview.ts`).
-  What people paste into a conversation — a password, a token, an API key — showed in plain text
-  wherever a conversation is quoted: a Mate's row and its peek, the conversation's header, the jump
-  box and its search hits, a toast and a desktop notification. Each now masks what is a credential
-  by its shape (a GitHub, GitLab, Slack, AWS, Stripe, OpenAI or Anthropic token, a Google key, a
-  JSON web token, a private key, a bearer's token, a password in a URL) and every value that follows
-  a credential's name — after `=` or `:`, after a name like `SHOP_API_PASSWORD` or `apiKey`, or in a
-  sentence ("the password is …", "heslo je …") — as `••••••`, keeping the name. A server stores its
-  previews masked and masks a search hit before cutting it, so no cut parts a credential from its
-  name; the client masks what an older server stored. The conversation itself shows what was
-  written.
-  - _Why:_ the owner, on the finding that the menu showed a colleague's pasted admin password: "yes"
-- **2026-09-27** — **Superseded 2026-10-02 in part: a project's change rows stand until HQ answers,
-  not Gitea (`changesKnown`), and a stop's line reads its releases from HQ (T9b).**
-  **A reload paints the left menu as it stood** (`menuMemory.ts`). Measured on a
-  live account, a reload painted each Mate as its name alone and grew the rows to three lines as
-  each socket connected — 74 moves in 9 seconds — change rows arrived with Gitea ten seconds in, a
-  production was named twice (the platform's version, then its release), and _Mine_ painted every
-  Mate before the members were read. The menu remembers what it drew, per account in this browser,
-  and each piece stands until its own read replaces it: a Mate's row (what was asked, its last
-  words, when, unread) at rest — no clock, ring or _Stop_ from memory, its face asleep until its
-  socket opens; a project's change rows until Gitea answers (the flow's `changesKnown`), titles
-  only; a stop's line until the platform and Gitea have both answered; the organization's members.
-  It quotes conversations, masked, so it is forgotten when the account closes. The same reload moves
-  no row, with _Everyone_ and with _Mine_.
-  - _Why:_ the owner: "yes" to remembering each row's last task and last words on the device; layout
-    shift is the cardinal sin
 - **2026-09-27** — **A run reads as a chat, in its card** (`RunChat`; supersedes the record of lines
   and `RunDetail`). The card keeps its heading, its own scroll and the bars under it; inside the
   scroll, everything the Mate said and did is a bubble in the order it happened, its kind in its
@@ -1605,32 +967,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   - _Why:_ the owner: "what we already had, which shown the user message in short inside the working
     group, printed it in the chat at the same time and moved the working group below was imo better
     … these split working groups have no chance to stay like this when the work is done"
-- **2026-09-28** — **A project without production waits on nobody.** Production is not required: a
-  project whose main has code and no production wears no dot in the left menu and no step in the
-  projects page's strip; adding one stays its row's own offer on the projects page.
-  - _Why:_ the owner, of "main has code, no production yet": "production not required, this
-    shouldn't be there"
-- **2026-09-28** — **The left menu breathes.** A Mate's row is 80 px — its words on taller lines
-  with room between the name and the rest; a change, a stop and the quiet Mates' fold are 32 px
-  rows; a project's heading is 36 px and stands off its first row; projects stand 24 px apart. The
-  account menu is the approved prototype's: Show and Order as switches (the menu's own radio items
-  on one track, the chosen one raised, the menu open while they change), the viewer's role under
-  their name ("Owner of …"), and a check on the organization the list shows.
-  - _Why:_ the owner: "the left menu needs to be more airy, more spaces, whitespaces, line-heights,
-    it's extremely crammed together"; of the account menu: "much more shit … I asked you to improve
-    upon the artifact"
-- **2026-09-28** — **Calls are one card; the menu's headings stand on their rows** (`CallGroup`,
-  `RailGap`; supersedes each call's own box in "The run's chat is written in three hands" and the
-  row sizes and gaps in "The left menu breathes"). A run of calls, one after another, is one
-  outlined card: each call a row, a hairline between them, its time and a chevron on the card's one
-  right edge; a call opens as one thing, its whole code and what it printed in a well on the code's
-  own edge; 16 px between the chat's lines. In the left menu a heading is 28 px and stands on its
-  first row; each block of a project — a Mate with its changes, the quiet fold, the stops — stands 8
-  px from the next with the spine carried through the gap; a Mate's row is 76 px; a full 36 px above
-  a project, 4 px between collapsed ones, which close up into a list of their names.
-  - _Why:_ the owner: "the gap between project name and under project is the same", "there is no
-    spacing between items, no spacing between items in the chat itself", "the way result is shown
-    with the expand / collapse suck as well"
 - **2026-09-28** — **A browser check is its row of the chat, from its start** (supersedes the
   browser drawer under the run's chat). While a run is live, a check is "Checking /health" with a
   busy clock, the takes so far, and the page as the browser streams it in the frame its picture will
@@ -1645,19 +981,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   thought's own faint ink, no chip; a file name still opens its file.
   - _Why:_ a command's code stood as dark as its headline; in the quietest hand, every code span and
     file name was a bordered or bold chip, the loudest thing in it
-- **2026-09-28** — **A Mate's row holds its last line for words still to come.** From the message
-  sent to the first words back — the second before the run starts included — the line under the task
-  is three still dots, the messenger's "is typing" (`agentActivityAwaitsWords`), and the menu's
-  memory keeps it, so a reload mid-run paints the row at its height.
-  - _Why:_ measured on Nova: every message sent made the row lose that line and grow it back, 76 →
-    58 → 76 px, moving every row under it twice
-- **2026-09-28** — **A stop's globe stands on the menu's right edge; its route count is a soft
-  chip.** The stop's menu slot comes first and the globe last, in the column every time, Merge and
-  project dot end in; the menu still shows beside it on hover, in a kept slot. The count is a chip
-  in the row's hover grey, not the menu's full ink.
-  - _Why:_ the globes stood a slot, 20 px, short of that column; after, at 435 px, times, globes and
-    Merge all end at 416 px; a black count read as unread notifications and outshouted the dots of
-    what waits on the person
 - **2026-09-28** — **An empty run card stands its face in its middle; a narrow card gives the face's
   column to the chat.** Before anything is in the chat, it keeps 12 px, so the face has 20 px above
   and 20 below. Under 28 rem (a phone) the chat's lines drop the face's column.
@@ -1678,16 +1001,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   markdown, a read-only step is a ring and a done one the to-do list's green dot; a list the person
   may tick keeps its checkboxes.
   - _Why:_ disabled checkboxes looked pressable and never were (Nova's plan of nine)
-- **2026-09-28** — **A Mate stopped on an error is said as one, in the failure red.** Its face waits
-  as a question's does, but the flow gives it its own step (`fix-mate`): "Wren stopped on an error",
-  opening the Mate, after a Mate waiting on an answer and before a failed deploy; the heading's dot
-  and the project page's list wear the failure red.
-  - _Why:_ the approved menu draws a failed Mate's dot red; it was the attention amber, saying "is
-    waiting on an answer" of a Mate that asks nothing
-- **2026-09-28** — **An unsent draft takes the line kept for a Mate's words to come**, led by
-  _Draft:_, as it takes the last words' line.
-  - _Why:_ a draft written to a working Mate showed nowhere in the menu ("Draft shows only with last
-    words")
 - **2026-09-28** — **A row of checks names its two pages** ("Checked / and /health") when they are
   one host's; more than two, or pages of two hosts, keep their count.
   - _Why:_ "Checked 2 pages · 2 checks passed" said a count twice; a path names a page on one host
@@ -1701,16 +1014,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   no picture stands in its row's takes outlined red, with an x and what went wrong; a phone's frame
   keeps the mark alone.
   - _Why:_ a row saying "1 check failed" showed only the picture of the page that passed
-- **2026-09-28** — **A change's title starts on the menu's one text column.** Its cell — the spine,
-  its branch and dot — is 28 px, so its gap is 6: every name, title and pill starts 34 px into its
-  row.
-  - _Why:_ a change's title stood 4 px right of the Mates' names and the stops' pills (57 against 53
-    px)
-- **2026-09-28** — **Work left running in the background counts up as a run does.** A Mate wearing
-  the working face for a watch loop or a background task counts its time up in the busy blue, from
-  the run that left it running.
-  - _Why:_ its slot said a grey age beside a working face and a Stop; the approved menu counts every
-    working face up
 - **2026-09-28** — **Loading earlier turns keeps the row being read in place.** The first row of the
   conversation in sight, never a day's seam, is taken back to where it stood as the earlier turns
   are laid out above it, before each paint; a gesture hands the page back at once.
@@ -1766,9 +1069,7 @@ stage…`; a new project's group is placed by the birth's start — and the list
   (`mateFaceArrival`: never marking a Mate unread, never on a first paint or a remount, never from a
   pose that stood in until the Mate's state was read, `known`); idle and asleep it is still. Each
   Mate keeps its own beat, offset inside each loop's rest so work starts still; reduced motion
-  leaves only the morph. A Mate's menu row turns its face's eyes up at the pointer, and its face
-  gives under the press (92 %, back on a spring). Only the menu row and the run's status line greet
-  (`greets`); a face reused across Mates or drawn asleep until its Mate connects does not. Its own
+  leaves only the morph. Its own
   motion is transform and opacity, the morph easing the eyes' and mouth's geometry; the turn and the
   glance are R6 exceptions.
   - _Why:_ the owner, 2026-09-29: "give each mate a different shape, more expressive current state";
@@ -1808,11 +1109,6 @@ stage…`; a new project's group is placed by the birth's start — and the list
   helper's words, task or error comes in over 220 ms, opacity and 4 px only; its room opens at once,
   so the chat still brings its end into sight.
   - _Why:_ the detail appeared in one frame
-- **2026-09-29** — **A Mate's newest words rise into its menu row.** The snippet and the subject
-  rise into place when they change, as the status line's do; never on a first paint, never as
-  remembered words give way to read ones, and never a draft, which changes with every key (the words
-  keep their node under it).
-  - _Why:_ a reply landing swapped the row's last line in one frame
 - **2026-09-29** — **The Mate's question stands clear of the person's words.** A question's row
   after the person's own message takes a change of speaker's room (`block`, 19 px of air).
   - _Why:_ it took the 4 px meant for two messages of the person's and hung under their bubble as if
@@ -1856,28 +1152,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   first and history landing after it never rise in; a message risen once stays put when the list
   redraws its row.
   - _Why:_ the person's message on send and the answer at a run's end cut in whole in one frame
-- **2026-09-29** — **One type scale: 16, 14, 13 and 12 px** (pass 16, S1). 16/600 a project's
-  heading; 14/500 names and titles; 14/400 everything anyone wrote; 13/400 secondary lines, times
-  and code; 12/500 small labels — counts, keys, the production chip. 11, 10, 9 and 7 px leave the
-  menu, the run's card, the composer and the review, and every time and count is tabular; weight and
-  colour carry rank, and size changes only between kinds. A mark is no text: the owner's 9 px
-  initial inside its 16 px disc stays. `composerTypeScale.test.ts` keeps nine composer files off the
-  sizes that went.
-  - _Why:_ the menu used eight sizes in a 435 px column (16, 14, 13, 12, 11, 10, 9 and 7 px), which
-    read as noise rather than rank
-- **2026-09-29** — **Two text edges per surface, and one right edge** (S2). In the menu every mark —
-  a face, a glyph — stands at 16 px and every word at 56; in the run's card the marks keep a 28 px
-  column, the words start one column in, and times, chevrons and actions end on one right edge.
-  - _Why:_ one settled card had five text edges (384, 395, 398, 422 and 436 px); where a line starts
-    should say what kind of thing it is
-- **2026-09-29** — **One meaning per colour** (S3). A Mate's tint says who; blue says something to
-  click, and unread; amber says it needs you or did not go through; red says it is broken; green
-  says healthy or passed. Everything else is neutral: the person's bubble, a running clock, the
-  composer's top. **Supersedes:** the busy-blue count of the 2026-09-28 _work left running in the
-  background_ row: a running clock counts in ink. A live dot and a running segment of a status bar
-  keep the busy tone.
-  - _Why:_ blue meant the person, links, buttons, running clocks and the waiting strip at once,
-    while the menu said the same wait in amber
 - **2026-09-29** — **Corners run parallel** (S4). A container's radius is its child's plus the room
   between them: the run's card is 30 px round with 12 px of room around its 18 px bubbles.
   - _Why:_ 22 px around 18 px bubbles at 16 px of padding bulged at every inner corner
@@ -1888,33 +1162,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   banners keep their raised glass.
   - _Why:_ the run's card, the machinery, was the brightest thing on screen, pure white on the grey
     canvas
-- **2026-09-29** — **Every problem offers its fix** (S6). Wherever something shows broken —
-  production down, a release that failed, a service a run left that stopped since, a change that
-  cannot merge — "Ask Nova to fix it" opens the Mate's conversation with the problem written into
-  its composer, not sent: what failed, when, the error, the log's last lines where the client has
-  them (30 at most), and the ask. Only the person's own Mates, and only ones the app is connected to
-  — one whose owner nobody can name counts as theirs, as _Mine_ keeps it — the one used last in that
-  project first, a chevron for another; none of theirs, no action (`fixRequest.ts`, `fixMates.ts`).
-  - _Why:_ a failure the person could see but not act on sent them to find the Mate, the log and the
-    words themselves; nobody writes to a colleague's Mate
-- **2026-09-29** — **Production is one chip on its project's heading** (the owner's D1). It says
-  that a production exists, which release it serves, whether it is healthy and what waits to go out;
-  it stays on the heading while the project is folded; it changes itself when production is in
-  trouble; a press opens its menu, the fix in it while production is in trouble. Production's and
-  the stages' rows leave the list, and with them `stopDistance`. **Supersedes:** the stops of the
-  2026-09-17 _left menu draws each project as a timeline_ row, the 2026-09-25 _every stop is one
-  row_ and _one text column_ rows, and the 2026-09-28 _stop's globe_ row.
-  - _Why:_ a production row spoke another language than the Mates around it (a badge, a 10 px
-    uppercase tag at 45 %, a version, a globe with a 9 px count), read as one of the Mates, and
-    vanished with a folded project
-- **2026-09-29** — **Whose Mate it is stands before its name** (the owner's D2): the owner's
-  picture, 16 px round, left of the name on every row, off the face; their initial on a hue of their
-  own where there is no picture — the hue read off their name, the same on every row and every
-  reload, since an owner carries no id — and a plain disc where nobody can name them, so every name
-  starts on one edge and nothing moves when the owner is read. **Supersedes:** the owner on the
-  face's corner of the 2026-09-24 _Mate wears the card's face_ row.
-  - _Why:_ the owner's photo covered a quarter of every face with 7 px initials, hiding the shapes
-    the faces had just been given; a face recognised before a name answers "whose" fastest
 - **2026-09-29** — **A run the person comes back to opens folded, keeping what it said** (the
   owner's D3). Its worked line on top; then everything it said to them, its questions and their
   answers, what they said into the run, anything it could not do, a change that landed; only its
@@ -1931,27 +1178,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   control to see the rest. **Supersedes:** the chat's own scroll of the 2026-09-27 _run reads as a
   chat_ row and the 2026-09-29 _page scrolls on past a run's chat_ row.
   - _Why:_ two scrollbars in one view is where most of the earlier passes' scroll bugs lived
-- **2026-09-29** — **A working Mate's row says the step it is on** (the owner's D5). The Mate server
-  relays each running thread's current step on its shell, and the row's third line reads what the
-  card's now line reads — "Build the app", "Reading `index.ts`", "Checking /status in the browser",
-  "Running 2 commands", "Thinking" — under a sweep of light, changing at most twice a second; until a
-  Mate's server carries it, the dots. A command reads as its words, never with its code after them
-  (the owner, 2026-10-05, of "Download every product page · mkdir -p prod && pytho…"); one that says
-  nothing of itself — every command of an agent that writes no descriptions — reads as its code.
-  - _Why:_ "is working" said nothing the turning face did not; the step is what a glance at the menu
-    wants
-- **2026-09-29** — **A row that needs you shows the question itself** (the owner's D6), in ink on
-  its third line — the oldest open question's first words, one line, credentials masked, as the
-  thread's shell carries them. An approval waiting keeps the row's last words.
-  - _Why:_ a question is content, not a status word, and all the person needs to decide whether to
-    answer now
-- **2026-09-29** — **The menu opens 304 px wide** (the owner's D7); a width the person set stays
-  theirs.
-  - _Why:_ at 256 px both lines of a row cut at about 25 characters
-- **2026-09-29** — **_Review_ on every change row, as a blue word** (the owner's D8): shown whether
-  the pointer is on the row or not, on every open change, a change drawn from memory included.
-  - _Why:_ the outlined pill repeated on every change as the menu's only outlined control; a verb
-    shown only on hover is found by accident
 - **2026-09-29** — **Composer pictures in this pass** (the owner's D9), after the composer's top and
   its one control: a picture sits in the text where it is pasted, takes notes and a crop, goes
   fitted, and is sent as placed (P1–P5).
@@ -1963,158 +1189,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ in AI chat the person's bubble is a neutral grey and the assistant has none; blue for
     "me" is a messenger's, set against a grey "them" — here the Mate's words have no bubble, so blue
     contrasted with nothing and borrowed the colour that means "click me"
-- **2026-09-29** — **_New project_ is the list's last row, and one of ⌘K's finds** (the owner's
-  D11): a row like the others, a + in the faces' column and the words at 56, and the last item of
-  the palette's projects.
-  - _Why:_ beside the jump row, ⌘K read as the new-project button's shortcut; a + in the logo row
-    would bring that back
-- **2026-09-29** — **_Review_ opens as a dialog over the conversation** (the owner's D12), grown
-  from what was pressed; the right panel stays the app's preview and its diff.
-  - _Why:_ a decision deserves focus; the panel is better for long diffs and weaker as a moment of
-    decision
-- **2026-09-29** — **The menu has no spine** (M1). No line joins a project's Mates, its changes and
-  its production; a project is grouped by its heading and the air around it. `RailCell`, `RailFork`,
-  `RailGap` and `RailCap` go; the history views keep their own timelines (`rail.ts`).
-  **Supersedes:** the rail of the 2026-09-17 _timeline_, the 2026-09-25 _one text column_ and the
-  2026-09-28 _calls are one card; the menu's headings stand on their rows_ and _change's title
-  starts on the menu's one text column_ rows.
-  - _Why:_ a line from face to face says "this leads to that"; Mates work side by side, and neither
-    leads to production
-- **2026-09-29** — **A Mate's row is a messenger's row with one even leading** (M4–M6, M16). The
-  face stands on the name's line in every row, 28 px at 16 px from the menu's edge, every word at
-  56; the name 14/20, the ask 13/18 in the second ink, the answer 13/18 muted, no gaps; a row is as
-  tall as what it says — 76 px with three lines, 58 with an ask and no answer, 48 never asked — and
-  while words are coming the dots keep the third line. 30 px from one Mate's words to the next's, 58
-  from a project's last row to the next heading. **Supersedes:** the 80 px row, the 36 px heading
-  and the 24 px between projects of the 2026-09-28 _left menu breathes_ row.
-  - _Why:_ the face sat beside the question in a three-line row, beside the name in a one-line row
-    and between them in a two-line one, and the name floated on a 22 px line over a paragraph on 18
-- **2026-09-29** — **A row's state lives in its right slot and its third line, never in a word**
-  (M7). Idle: its age, its last words muted. Working: the run's clock in ink, the step. Needs you:
-  an amber dot, the question in ink. Finished unseen: a blue dot, the name at 600, its words in the
-  second ink (the approved mock's, where the plan's table said ink). Stopped on an error: a red dot
-  and the error's first line in red, the face still. Paused at a usage limit: the pause and when it
-  picks up, the face asleep — a limit's failed turn never reads as an error. The dot is 8 px and no
-  `StatusDot`: the row's own words say the state; it scales in only when it arrives while the person
-  watches (T6). The second line is always the person's last ask, never the plan's step.
-  - _Why:_ the face, a dot and the content already say the state; the question, the error and the
-    step are what the person acts on
-- **2026-09-29** — **A working Mate's face wears no ring.** The plan drawn as a ring of segments
-  round the face goes, with the activity's `progress`, its only reader; the third line's step says
-  where the Mate is. One commit, `cf210626b`, brings it back.
-  - _Why:_ its busy blue broke S3, the approved mock draws none, the room above it was the spine's,
-    and the live step says the same thing in words
-- **2026-09-29** — **Superseded 2026-10-02 in part: a change has no checks, so its mark is muted or
-  amber, and one drawn from memory stays untinted until HQ answers (`changeMarkTone`).**
-  **A change row says _Review_ and merges nothing** (M8). Under its Mate, 28 px:
-  the pull-request mark in the faces' column — muted, red where its checks fail, amber where it fell
-  behind `main` — `#N title` at 56, the way to its page, and _Review_ in blue on the right edge. No
-  _Merge_, no _Ask_, no check dot: the verdict is the review's. A change drawn from memory stays
-  untinted until Gitea says it again, and keeps its _Review_, so nothing appears when Gitea answers.
-  - _Why:_ merging happens in the review, where the change can be read first (R1); a dot on the row
-    said the verdict without its reason
-- **2026-09-29** — **A heading never moves when it is pressed** (M9, T3). The room between projects
-  belongs to the end of an open project — 44 px, 16 at the list's end, none while folded — so a
-  project's rows and their room unfold below its heading over 220 ms as they fade in, and fold into
-  it in 160 ms, turning round from wherever they stand when pressed again; a paint nobody asked for
-  never animates, and reduced motion fades in and folds at once. Folding the list's last project
-  keeps its room until the person scrolls, so the heading stays under the pointer. Measured every
-  frame for 400 ms on five projects: 0 px.
-  - _Why:_ the room above a heading depended on its own project's state (4 px folded, 36 open), so
-    opening one dropped its heading 32 px under the pointer (166 → 198)
-- **2026-09-29** — **A project's heading is its name, one chevron and two verbs.** 32 px, the name
-  at 16/600 on the marks' edge with −0.2 px tracking, the whole heading its toggle; one chevron
-  after the name that turns a quarter (220 ms) and shows on hover, on focus and always while
-  folded; + and ⋯ as 28 px buttons in a slot that is always there, muted until pointed at. Under a
-  300 px heading the + gives its room to the name, and _Add a Mate_ is in ⋯ too.
-  - _Why:_ a verb that appears must not move the name, and a narrow menu should keep "Imperial
-    Titan" whole before it keeps a +
-- **2026-09-29** — **The peek is gone** (M10). `SidebarMatePeek`, its live part and `sidebarPeek.ts`
-  are deleted. A reveal — the waiting faces, the jump box — focuses its row and flashes it once, and
-  a change's reveal lands on its _Review_; a finger held on a row opens the Mate's menu, which a
-  phone reached only through the peek; the Mate's menu loses _Peek_, and Space presses the row.
-  **Supersedes:** the peek of the 2026-09-27 _left menu is where a Mate is acted on_ row.
-  - _Why:_ it repeated the row and the conversation and covered what the person was reading;
-    answering and merging are on the row and in the conversation
-- **2026-09-29** — **One selected band slides to the Mate opened** (M11, T2). A single surface in
-  the list, the row's inset and 12 px corners, placed by transform and height after every draw;
-  opening another Mate slides it there on a spring over 300 ms, a reflow it follows at once, and
-  rows paint no fill of their own for being open. Measured: 0 px off its row on every frame through
-  an 86 px reflow.
-  - _Why:_ one row going dark and another lighting up loses the eye; a band that travels says where
-    it went
-- **2026-09-29** — **Search is one ⌕ ⌘K control in the logo row, and the jump row goes** (M12). 28
-  px, the key inside the control, at the row's end after the waiting faces — which give way first
-  where the row is narrow (a 304 px menu keeps three faces and a count, a 256 px one a single face)
-  so the lockup and the search stay whole. The list starts 6 px under the row.
-  - _Why:_ _Jump to_ and ⌘K beside the new-project button read as that button's shortcut, and the
-    row of height belongs to the list
-- **2026-09-29** — **A crew is one line under its Mate** (M14). The crew's mark in the faces'
-  column, every crewmate's face whole at 20 px — the lead first, each opening its chat and wearing
-  its state — then one fact, who needs you before how many tasks wait for _Land_, and _Review_ in
-  blue while a task waits. A crewmate needs you when its face says so or the crew's _Waiting on you_
-  names it for anything but a task ready to land. In a narrow menu the faces keep their place and
-  the fact gives way to its tooltip and _Review_'s name.
-  - _Why:_ a crew hung outside its row as overlapping slivers of faces with a "+1", narrowing both
-    of the row's lines to about 30 characters
-- **2026-09-29** — **A folded project shows who is busy in it; the heading's dot goes** (M15). After
-  the folded name, up to three of its Mates that need you, stopped on an error, finished unseen or
-  work — most urgent first — each its row's face and pose at 18 px with a 7 px dot for what is not
-  work. **Supersedes:** the heading's dot of the 2026-09-23 _flow_ row and of the 2026-09-28 _Mate
-  stopped on an error_ row.
-  - _Why:_ a lone amber dot said "something here needs you" without saying what, and beside a globe
-    it read as production in trouble
-- **2026-09-29** — **A reload paints the rows, crews and chips it will keep.** The menu's memory
-  keeps a row's third line whatever held it — an error's line, a question, a step, the dots — a
-  crew's faces, drawn at rest until the crew's feed answers, and each project's production chip in
-  place of the stops it kept (an older memory reads as nothing, once). Neither the live step nor the
-  question is remembered: both are only true now.
-  - _Why:_ a row stopped before any words, and a crew line, grew on every reload as their reads
-    answered
-- **2026-09-29** — **Superseded the same day by the two chips below.** **The production chip reads
-  worst first, and each colour says one thing.** Setting up, a spinner; down, red "prod down", and
-  stopped, a hollow dot "prod stopped" — from the platform alone and at once, a release on its way
-  or changes waiting beside them, since those are true too; a release on its way, a spinner stepping
-  eight times a second and `v1.2.0 → v1.2.1`; a release that failed, amber "· release failed", the
-  old one still serving; not released yet; changes waiting, green with "· 1 waiting", since nothing
-  is wrong; healthy, a green dot and the version. Stage is the chip only where there is no
-  production, its branch where the version stands; otherwise the stages live in the chip's menu,
-  since the Mates' runs report the stage themselves.
-  - _Why:_ trouble lives where the release is, loudest when production is down; amber for "waiting"
-    beside amber for "failed" would say two things
-- **2026-09-29** — **Production is down or stopped by what serves its routes.** Down: a runtime
-  behind its public routes (every runtime where none is public) whose platform status carries FAIL;
-  stopped: the project stopped, or every serving runtime stopped. A database whose upgrade failed,
-  or a worker no route reaches, takes no page down. The chip's note says only what the client knows
-  ("Down: app failed on the platform. v2.3.0 was the last release."): no container health, no time
-  it went down and no production runtime log are read.
-  - _Why:_ the plan's note ("down since 09:12, both containers stopped, exit 137") needs reads the
-    client does not make
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
-  and the chip reads them from HQ (T9b); it waits while HQ's releases are coming, never on Gitea.
-  Superseded 2026-10-05 in part: with HQ mandatory, `releasesComing` and the chip settling on the
-  platform's facts alone are gone — until HQ's releases are read the chip is only partial
-  (`asReleasesStand`, `SidebarProductionChip.logic.ts`).**
-  **A chip is drawn only once what decides it is read.** Until then the menu draws
-  the chip it remembers, else — while only Gitea's answer is missing — what the platform alone says,
-  never remembered, else nothing; down and stopped settle at once, and without a Gitea session the
-  chip settles on the platform's facts. Its menu dates the stages as of the moment it opens.
-  - _Why:_ a reload paints nothing it takes back
-- **2026-09-29** — **Superseded the same day by the two chips below.** **The chip's words drop
-  before the project's name does.** Under a 340 px heading the chip keeps its dot, `prod` and the
-  version; under 260 only the dot and `prod`, or "prod down".
-  - _Why:_ at 256 px a long project name beside the whole chip cut to four letters
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
-  and a failed release is HQ's record, said in HQ's words (T9b).**
-  **What the stops' rows held lives in the chip's menu.** Production's row, which
-  opens the environment's page; a note of what went wrong; "Ask Nova to fix it" while in trouble,
-  whose first press shows what will be written and whose second opens the conversation; the public
-  links; the stages and how long ago each was deployed; "N changes wait for production" with
-  _Review_; _Open in Zerops_, now the project's own page there. A release promotes the stage's
-  artifact and the menu reads no production process, so production's fix request carries what
-  failed, when, the broker's words and the ask, but no build log. The jump box lists a stop only
-  where its chip is drawn, and a stop it finds opens that chip's menu, leaving the project folded.
-  - _Why:_ the stop rows left the list with the chip; nothing they offered may leave with them
 - **2026-09-29** — **The run's card is a quiet tray** (K11, K2). One small step above the canvas
   (`--run-tray`), a 1 px edge of 7 % ink, 30 px corners with 12 px of room around 18 px bubbles;
   calls are outlined at 9 % ink, never filled white. A run's line with nothing under it keeps the
@@ -2245,17 +1319,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   a sentence is marked_ row.
   - _Why:_ text scrolled half visible under the header; commas stood apart from the code before
     them; the brand mark said nothing of who lives there
-- **2026-09-29** — **Superseded 2026-10-02 in part: HQ, not Gitea, says whether the change merges,
-  and the strip waits on HQ's answer (`changesKnown`).**
-  **The Mate's own change waits at the composer's top, as _Review_** (C3, R1). The
-  strip is the composer's first section, on its edges and corners: the Mate's face asking, "Nova is
-  waiting for your review of #2", the change's title, and _Review_, its one blue button, which opens
-  the review — nothing merges from here. It keeps the old rule (this Mate's own code change that
-  Gitea says merges; one that conflicts or is still checked waits on the Mate or on Gitea and gets
-  none), steps aside while a question or an approval waits, and has no entrance of its own.
-  **Supersedes:** the merge of the 2026-09-26 _Mate's conversation offers only its own merge_ row.
-  - _Why:_ a blue banner, inset 22 px from the composer, merged on one click and said in blue what
-    the menu said in amber
 - **2026-09-29** — **Superseded 2026-10-02 in part: HQ's answer, not Gitea's, confirms the
   remembered strip.**
   **A reload paints the composer's top it will keep.** Each conversation's strip is
@@ -2306,64 +1369,11 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   and its adapter is ported code that stays upstream's, so the labels alone tie each picture to its
   place there; the server's fit covers its limits.
   - _Why:_ a diverged port is an expensive port next time, and Codex reads no base64 limit
-- **2026-09-29** — **Every merge, landing, release and roll back goes through one _Review_** (R1).
-  Every door says _Review_ — the pages say _Review release_ for a release — and opens the same
-  dialog; nothing merges, lands, releases or rolls back from a row, a banner or a page. The merge
-  dialog and the release dialog are deleted.
-  - _Why:_ the same act had five doors that behaved differently — two asked first, three merged on
-    one click, a roll back asked nothing — and nowhere could a pull request's diff be read before it
-    merged
-- **2026-09-29** — **Superseded 2026-10-02 in part: a change has no checks; merging waits only until
-  HQ knows the change merges cleanly (`reviewVerdict.ts`).**
-  **The verdict comes first, and blocks where it must** (R2). One line under the
-  title says whether it is safe and why ("Ready to merge · checks passed · no conflicts with main"),
-  in its tone, red where checks fail — a failure is red (S3) where the plan drew amber. Failing
-  checks block even where Gitea would merge, and so do checks still running and Gitea still
-  checking; a change nothing checked is grey, not green, and its review shows no checks section.
-  - _Why:_ the button must be off exactly when the verdict can say why
-- **2026-09-29** — **"Behind main" is amber, and _Merge_ stays on.** A change that still merges
-  cleanly though changes landed on `main` since it branched says so and offers "Ask Nova to update
-  it", its consequence naming what it was not checked with. One that no longer merges is blocked:
-  "Conflicts with main in index.ts", and the change on `main` that touched the file, found from
-  where `main`'s head stands.
-  - _Why:_ blocking it would make every merge force the other Mates to rebase
-- **2026-09-29** — **Superseded 2026-10-02 in part: HQ answers a change's files, diffs and commits
-  in one read (`changeReadout.ts`), a diff past 2,000 lines links nowhere, and there are no checks
-  to list.**
-  **The change can be read** (R3, R4). What it does, in two to four sentences of
-  the Mate's newest answer that links this change, and a link to that run. Its files with a letter
-  and +/− each, a file's diff opening in place, read from Gitea only when a file first opens and
-  never past 2 MiB; 400 lines, then "Show all N lines" up to 2,000, past that a link to the rest on
-  Gitea. Its checks by name with their words; _Try it_ opens the stage half's preview first, since
-  it runs the change's head, else the dev service. No pictures in the checks — a commit status
-  carries none — and no "about 3 minutes", which nothing reads yet.
-  - _Why:_ the person starts from the intent, not the files, and a pull request's diff could be read
-    nowhere before it merged
-- **2026-09-29** — **Superseded 2026-10-02 in part: HQ, not Gitea, refuses a merge whose head moved
-  (`head_moved`).**
-  **_Merge_ takes only the head the review showed.** It stays off while the head's
-  files are read, its keys and its sentence kept in place; it sends that head, and Gitea refuses one
-  pushed since. A change closed without merging reviews as closed, with nothing to press.
-  - _Why:_ Gitea cannot pin a pull request's files or diff to a commit, but a merge's head can be
-    pinned
-- **2026-09-29** — **The button says what will happen; production's buttons take a deliberate
-  press** (R5). Its consequence stands beside it ("Squash-merges 1 commit into main. Production
-  isn't touched until you release."). The focus lands on it, and ⌘↵ presses it, only while it is
-  safe; _Release_ and _Roll back_ never are — no focus, no ⌘↵ — and a key held down presses once.
-  - _Why:_ a release or a roll back reaches production and must never happen on a stray Enter
-- **2026-09-29** — **After the press, the next step, in place** (R6, R7). The review stays: "Merged
-  into main", then "1 change now waits for production" with _Review release_, which hands over
-  without closing; a release shows its progress with a clock and ends "Released" or with the failure
-  and its fix; a roll back names the version it goes back to and the tag it makes, and says "Rolled
-  back" once production runs it. It grows from what was pressed in 200 ms and closes in about 150,
-  gives the focus back, and while it is open nothing typed reaches what is behind it.
-  - _Why:_ a decision's outcome belongs where the decision was made
 - **2026-09-29** — **A fix request joins an unsent draft.** Written into a composer that holds the
   person's words, the request goes after them, a blank line apart, the caret where it continues; the
   same request twice changes nothing. A change's fix goes only to the Mate that wrote it, which
   alone can push its branch; a run's only to the run's own Mate, whose services it found the problem
-  in (2026-09-29: "'ask lena to fix' when im at iris"); a failed release's to the person's own Mate
-  they used last in the project.
+  in (2026-09-29: "'ask lena to fix' when im at iris").
   - _Why:_ a request must never take the person's own words away
 - **2026-09-29** — **A crew task lands from its review.** The board's task, the lead's plan, the
   crew section's _Waiting on you_ and a crew task's result row say _Review_; the review's button is
@@ -2377,7 +1387,7 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   its step. The client phrases it with the card's own rules, skips a call the card draws nothing for
   yet, and changes a row's step at most once per 500 ms; a step is bounded to about 19.5 KB. An
   older server sends neither a step nor a question, and the row keeps its dots or its last words.
-  - _Why:_ a pace on the server would need an event per step, and the menu and the card must never
+  - _Why:_ a pace on the server would need an event per step, and consumers of the same step must never
     say different words
 - **2026-09-29** — **Switching Mates never shows an empty pane** (T1; superseded 2026-09-30: a
   switch is at once). The conversation being left
@@ -2414,7 +1424,7 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
 - **2026-09-29** — **Superseded the same day by the one-line conversation top below.** **The top of
   a conversation is one line** (the owner, of the crew strip on 0.11.63: "this whole design of the
   crew above is pretty poor"). With a crew or a second chat, the strip takes the header's line: the
-  Mate's face and name are its first entry, on the menu's band colour while its chat is open, then
+  Mate's face and name are its first entry, then
   its other chats with a quiet "+", then the crew 16 px apart, each a 20 px face and a 14/500 name —
   the crewmate's display name, never its `@handle`. Faces carry state and no status words stand
   beside them; a name is in ink when its chat is open, needs the person or finished unseen, else
@@ -2425,33 +1435,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   Mate_ row's crumb — the Mate is the strip's first entry.
   - _Why:_ the Mate stood twice (the header and the strip's pill), names were cut to six characters
     behind status words, "+ New chat" was the loudest thing on the line, and a compass meant nothing
-- **2026-09-29** — **_New project_ stands at the menu's foot, over the account** (the owner: "not
-  sure if this shouldn't be stuck to the bottom somehow"). It is drawn after the menu's scroll and
-  above the account row, in the same place however long the list: a + in the faces' column, its
-  words at 56 px. While the list is scrolled under it, the list fades out above it and a hairline
-  shows; at the list's end, neither. It is there from the first paint, and still one of ⌘K's finds.
-  **Supersedes:** the 2026-09-29 _New project is the list's last row_ row (D11's place; ⌘K stays).
-  - _Why:_ at the list's end it floated wherever the last project ended, with empty menu under it
-- **2026-09-29** — **Folded projects stand 40 px apart and light under the pointer** (the owner:
-  "increase the spacing between a little + maybe very slight grey bg on the hover"). A folded
-  project keeps 8 px under its heading; the 58 px after an open project stays, and a pressed heading
-  still moves 0 px (M9). A heading that folds lights at 3.5 % of the ink on hover, lighter than a
-  Mate row's, in a band with 16 px corners; its chip and buttons keep their own, stronger hover.
-  - _Why:_ folded headings stood 32 px apart, touching, and a heading gave no sign it could be
-    pressed
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: the signer is the one the
-  Mate's server recorded, as HQ relays it, not a `mate:signer` tag.**
-  **A Mate nobody owns sits on an empty seat, and a Mate nobody signed in says so**
-  (the owner: "mate without auth / owner should have the state specially handled"). Two facts the
-  menu reads from the first paint: the project's `OWNER` entry and the `mate:signer` tag written
-  when someone signs its agent in (`mateOwnerRecords`, `mateOwnerView`). No owner: a dashed 16 px
-  ring in the owner's place, "No owner yet. Whoever signs in its coding agent owns it." on hover. No
-  signer: a never-asked row's second line says "Nobody has signed in yet" — pressing the row opens
-  the Mate, where its sign-in is (2026-09-29: the row's own _Sign in_ did nothing and stood on the
-  row's edge; removed). Not read yet, or not in the member list: the neutral disc, as before.
-  **Supersedes:** the plain disc for an owner nobody could name, where the data says nobody.
-  - _Why:_ a grey disc read as a person without a picture, and a Mate that could not work looked
-    like any other
 - **2026-09-29** — **A popover opens at its own height** (the owner, of the model menu: "this
   brutally overshots height on open before the scrollbar takes effect"). Kit popovers no longer sit
   in Base UI's Viewport part, which exists to morph one popup between several triggers and measured
@@ -2468,28 +1451,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   (`cardAlone`, `.run-tray-alone`).
   - _Why:_ a box around one line read as an odd shape; the line kept its place in both states,
     measured at 0 px on open and close
-- **2026-09-29** — **A change's page is its review** (the owner: "shouldn't we unify what we have in
-  the dialog with this page? and while we are at it improve the design and ux and loading states of
-  both?"). One review in two frames — the dialog, with _Open as page_, and the change's page, the
-  same sections in the same order and words in the conversation's column under its breadcrumb,
-  nothing over it, its foot a card pinned to the view's bottom. The description leads (the pull
-  request's body, its pictures in it); the conversation and the commits close it; _Try it_ is gone,
-  since nothing records which version a stage runs and it could run anything but the change ("this
-  could very much be stale"); a read that fails says so and offers _Try again_ in place, and what
-  was read stays while the rest arrives.
-  - _Why:_ the dialog and the page had drifted into two designs of one thing; the title, the
-    verdict, the section headings and _Merge_ measured 0 px from the first frame to the settled one
-    in both frames; nothing wider than its column with a 400-character diff line open
-- **2026-09-29** — **The menu's end edge stands 16 px in, as its start edge** (the owner: "padding
-  around this whole column feels a little inconsistent"). ⌘K, each production chip and a Mate row's
-  time end 16 px short of the divider, as every start edge stands 16 px in from the window; before,
-  ⌘K and the chips ended at 12.
-  - _Why:_ two end edges read as a ragged column
-- **2026-09-29** — **A Mate and its crew light as one** (the owner: "why isn't crew included in the
-  hover?"). Hover, an open menu and the selected band cover the Mate's row and its crew line as one
-  rounded shape; the change rows under them keep their own. A Mate without a crew is unchanged to
-  the pixel, and a crew line read after a reload is taken into the band without a slide.
-  - _Why:_ the crew line stood outside its own Mate's band
 - **2026-09-29** — **Each tile of a run's strip takes its picture's own shape** (the owner: "why
   these has different ration than the result?"). One height, 96 px; the width follows the picture, a
   phone's screenshot whole and narrow, a desktop's whole and wide, clamped to 0.45–2.4; the shape is
@@ -2518,105 +1479,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   crewmate, without the job saves dated before its first message.
   - _Why:_ a menu of engine nouns meant nothing to the person it was for
 - **2026-09-29** — **The Crew tab is the crew's one home** (the owner: "shouldn't we put the 'setup
-  crew' screen from the zerops tab to the 'crew' tab? and allow setting up crew from more menu in
-  the left col?"). For a Mate without a crew it offers _Set up a crew_; a crew is its section above
+  crew' screen from the zerops tab to the 'crew' tab? "). For a Mate without a crew it offers _Set up a crew_; a crew is its section above
   its board in one column. The Zerops tab keeps the map and the coding agents' card, and no crew
-  section. A Mate's own menu offers _Set up a crew_ or _Crew_ on the viewer's own Mate with crew
-  mode on.
+  section.
   - _Why:_ setting up a crew lived on the project map's tab
-- **2026-09-29** — **A project's heading wears two chips, `stage` and `prod`, each its word alone**
-  (the owner, of the production chip: "I'm not sure version here is needed, not sure the status icon
-  is needed either, the whole tag shuld get like reddish when something is wrong.. so you'd have two
-  badges one for prod, one for stage(s)"). The stages' chip first, production's on the end edge,
-  each only where the project has it, open or folded; several stages are one chip in the worst state
-  any of them is in — down, then a failed deploy, then one deploying. No version, no dot, no extra
-  words: the chip's whole ground and ink say what is wrong (S3) — amber while the last release or
-  deploy did not go through and the old one still serves, red while it is down, a hollow ring while
-  it is stopped on purpose, neutral otherwise. Every tone keeps one 20 px box and a change
-  cross-fades in 150 ms, so the heading never moves, and a long name truncates before either chip;
-  the accessible name still says the whole state, the version with it. Production's menu keeps what
-  it held, less the stages; the stages' menu says each stage as production's says production — its
-  state, version and when it was deployed, what broke and the fix naming the stage, its links, its
-  own _Open in Zerops_ among several — then what waits to go to production. A find in the jump box
-  lands on its stop's chip, with the dot that chip's menu gives it, and the menu's memory keeps both
-  chips per project (one kept when a project wore one chip reads as none, once). **Supersedes:** the
-  one chip, its version and the stages in its menu of the 2026-09-29 _Production is one chip_, _What
-  the stops' rows held_ and _A reload paints the rows, crews and chips_ rows.
-  - _Why:_ the version and the dot said what the menu says, and where a project had a production its
-    stages had no place on the heading, even while down
-- **2026-09-29** — **A chip in trouble takes a strong ground; a chip whose release runs shows
-  nothing.** Amber is a 34 % ground of the status colour and red a 26 % one, each ink leaning toward
-  the foreground, so the word reads at 4.9:1 and 4.7:1 in light and 6.1:1 and 5.6:1 in dark; the
-  neutral and hollow chips are as they were. A release or a deploy on its way leaves its chip
-  neutral — its menu says "Releasing v1.2.1" or "Deploying…" — and the tone cross-fades to amber or
-  red only if it did not go through. Amber rather than red for a release that failed while the old
-  one serves, the hollow ring for a production stopped on purpose, and nothing on the chip while a
-  release runs were put to the owner, who kept them (2026-09-29: "just use your recommendation").
-  - _Why:_ on their first grounds amber's and red's words fell under 4.5:1 in light (3.8 and 3.9); a
-    spinner or a shimmer on a chip drawn only once its state is read would say it is still loading,
-    S3 keeps work in progress neutral, and what the heading owes the person is the outcome
-- **2026-09-29** — **A heading's band stands 10 px from either side, and everything in it 6 px in**
-  (the owner, of the menu at 435 px: "it's too squeezed on left, the tag no properly aligned on the
-  left with border radius looking bad"). The title keeps the menu's mark edge (x = 16); the chips
-  end on the band's end edge, 16 px short of the divider with ⌘K and the rows' times, 6 px from its
-  top and bottom, 20 px pills of radius 10, so the band's 16 px corners run parallel to theirs (S4).
-  The heading stays 32 px tall: the band moved, not the title or the chips. A Mate row's band keeps
-  the list's 9 and 8 px.
-  - _Why:_ the band stood 9 px from the window and 8 from the divider around a 24 px chip 8 px from
-    its end and 4 from its top: two gaps, and two radii that could not run parallel
-- **2026-09-29** — **In the _Custom_ order the grip leads the heading's verbs.** A 28 px verb
-  before + and ⋯, in their slot and shown whenever they are — under the pointer, on focus, while a
-  menu of the heading's is open, always to a finger — inside the band (the owner's "handle out of
-  hover bg" holds) and clear of its rounded ends; a drag starts from it and the arrow keys move the
-  project from it, as before. The name keeps the mark edge in either order, so nothing moves when
-  the grip shows.
-  - _Why:_ in the 7 px between the band's start and the name, the grip sat squeezed into the band's
-    rounded end, which reached 8 px past the menu's inset to hold it
-- **2026-09-29** — **The logo stands as far from the top as from the left, and the projects clear of
-  it** (the owner: "visually logo has smaller padding on top than on the left", "first project is
-  too close to logo"). On the web the logo row is 65 px, so the 33 px mark, centred in it, stands 16
-  px from the top as from the left, and ⌘K and the waiting faces share its centre; beside a
-  desktop's traffic lights the row stays the title bar's, centred on them. The list starts 16 px
-  under the row, the first project's name 43 px under the mark's foot. **Supersedes:** "the list
-  starts 6 px under the row" of the 2026-09-29 _Search is one ⌕ ⌘K control_ row.
-  - _Why:_ the mark stood 16.3 px from the left and 9.8 from the top in the 52 px title-bar row, and
-    the first name started 26 px under it, closer than one folded heading stood to the next (29 px)
-- **2026-09-29** — **The list steps 20, 30 and 50 px from one text to the next** (the owner, of the
-  menu at 435 px: "slightly decrease the space between open project and next project", "slightly
-  increase the space between project title and first mate", "slightly increase the space between
-  closed projects"). One rule, from one text's foot to the next text's head (`projectRoom`): a
-  heading's words stand 20 from the next words under it — its first Mate's name, or while it is
-  folded the next project's — Mates follow one another at 30 as before, and an open project's last
-  words stand 50 from the next heading's, the folded 20 and one Mate's 30. So a heading takes 6 px
-  before its first row (was 2), a folded project keeps 12 under it (was 8) and an open one 36 (was
-  44); a pressed heading still stays put while the next one glides to where a fresh layout puts it.
-  **Supersedes:** the 44 px of the 2026-09-29 _heading never moves when it is pressed_ row, the 58
-  px of the _Mate's row is a messenger's row_ row, and the 8 px and 40 px of the _Folded projects
-  stand 40 px apart_ row.
-  - _Why:_ a heading stood 16 from its first Mate's name and 16 from the next folded one, and an
-    open project's last words 58 from the next heading: three steps in no order; now heading to
-    row < row to row < project to project
-- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: a Mate's name and face are
-  HQ's, their only writer, not project tags (`groups.ts`).**
-  **A Mate's face is picked at its birth and rides on its project as
-  `mate:face:<tint>:<shape>`.** The person who adds a Mate picks its colour and its shape apart, and
-  the pair is one project tag, written at birth beside the agent's name on whichever call creates
-  the project; every other tag write keeps it — a move, a leave, a role change, a rename, a signer —
-  since the face is the Mate's, not its group's. It is read permissively: a tint or a shape this
-  client does not know is left out and the derived one stands in for that part, and parts past the
-  shape are ignored. Every surface that draws a Mate draws that face — the menu's rows and folded
-  headings, the waiting faces, the chips' menus, the jump box, the conversation's line, card and
-  empty state, the composer's top, whose memory keeps the shape, the projects page, the map and a
-  review, where a Mate's remark now wears its face rather than its name's tint. A Mate nobody picked
-  a face for keeps the one it had, its name's tint and that tint's shape; crewmates keep their
-  tint's shape, and the mobile app draws no Mate faces. `@t3tools/shared/brand` joins the pure
-  shared modules a pure zone may import (zone rule 3, `6fc64532a`): `groups.ts` reads the tag
-  against the brand's tint and shape ids, and the module imports nothing and runs nothing.
-  **Supersedes:** "one per tint" of the 2026-09-29 _Each Mate wears its own shape_ row and, for a
-  Mate whose face was picked, the name's tint of the 2026-09-06 _A Mate has a colour and a face_
-  row.
-  - _Why:_ picked apart, a colour and a shape must live where every client reads them, with the
-    Mate's name on its project
 - **2026-09-29** — **A picked tint recolours nobody.** A Mate that picked its tint wears it; the
   rest share the tints their names give them among themselves alone, exactly as before any Mate
   could pick, so two Mates may wear one tint and their shapes tell them apart. The New Mate dialog
@@ -2762,49 +1628,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ at the owner's 1.58× the strip, hung a pixel outside the tray's padding box, snapped to
     another device pixel than the tray's sides, and a square slice's side took two device columns
     where a rounded one's took one: the side jogged at every joint, a notch under the run's line
-- **2026-09-29** — **A Mate can be deleted from its menus, its name typed to confirm.** _Delete
-  {name}…_ stands last in a Mate's menus — the left menu's, its card's on the projects screen and a
-  project's page — in red, after _Stop the run_, where the viewer's role on the Mate's project is
-  OWNER or ADMIN: its own person, who made it, or an org owner or admin; with the viewer's role
-  unread, no _Delete_. Only on a Mate — never a stage, a production, the account's Gitea project or
-  a creation the platform failed, whose row keeps its own _Remove_ — and never on one already going.
-  The dialog, 448 px as _Rename_ and _Move_ are, says what goes in one paragraph: "The environment
-  Acme Docs - Quinn goes from Zerops with its 3 services and everything in them, and Quinn's
-  conversations go with it. Anything Quinn hasn't pushed is lost. This can't be undone.", a
-  colleague's Mate first named as theirs ("Quinn is Ada's Mate."), and no number it cannot back
-  while the services are unread. "Type Quinn to confirm": _Delete Quinn_ opens only when the typed
-  name matches exactly, as spelled, and Enter only then. Pressed, it says "Deleting…", both buttons
-  and the field hold, and nothing closes the dialog until the platform answers; a refusal stands
-  under the field on a line always kept for it, and the button opens again. Nothing in the dialog
-  moves between its states.
-  - _Why:_ a Mate is its environment — a Zerops project, its services and everything in them, its
-    conversations — so deleting one takes all of that for good; the gate is the one the app keeps
-    for writes to the project itself
-- **2026-09-29** — **A Mate on its way off Zerops reads "Deleting…" and opens nothing.** Once the
-  platform takes the delete, its row keeps its height and says "Deleting…" for its last line, its
-  face asleep, with no time, no dot and no menu, and neither a press nor the jump box opens it; the
-  platform's own `DELETING` or `DELETED` reads the same, so another tab's or a colleague's delete
-  shows too. Its remembered row and crew leave the menu's memory, and a viewer in its conversation
-  is taken to the next Mate of its project they may open, else to the projects. Sampled in the
-  harness as it turns: 62 frames, no row moving.
-  - _Why:_ a Mate going away must not look ready, nor hand the person a conversation that is about
-    to go
-- **2026-09-29** — **The top bar stands 65 px beside the menu, one line with its logo row** (the
-  owner took the recommendation: the whole top bar on the logo row's line). The height is the
-  workspace's one top-bar token, `--workspace-topbar-height`: from md up on the web it is 65 px, in
-  rem (4.0625) as the logo row's own height was, so both scale with the interface's font size, and
-  the logo row reads it like every other top row. The conversation's header — the Mate's line or its
-  crew, its actions and the panel toggles — every page's header, the right panel's tab bar and the
-  closed menu's corner mark share the logo's centre (32.5 px) and its bottom edge; what stands under
-  a header — the timeline and its top fade, the minimap, the toasts at the top — moves down with it
-  by the same 13 px, and a conversation held at its end stays there. On a phone, where the menu is a
-  sheet over the page, and in a desktop window at every width the bar keeps 52: the title bar the
-  desktop centres macOS's traffic lights on, the overlay's own on Windows. **Supersedes:** the 65 px
-  as the logo row's alone, of the 2026-09-29 _logo stands as far from the top as from the left_ row,
-  and "top 14 in both" of the 2026-09-06 _panel carries its own controls, and the mark holds the
-  corner either way_ row: the closed menu's mark now centres on 32.5 with the open one's.
-  - _Why:_ the conversation's line stood 6.5 px above the logo and ⌘K, and the two rows' bottom
-    edges 13 px apart
 - **2026-09-29** — **A Mate's session that reached its end reads as reconnecting, never as a
   refusal.** A Mate ends a session after a day and the door mints the next by itself, so nothing is
   wrong: the conversation's banner waits out its 2 s grace and then says only "Reconnecting to
@@ -2816,68 +1639,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ at a session's day boundary the banner said "Couldn't connect to Fen. Fen refused the
     connection." until the door minted the next, and a tab left open presented its ended sessions to
     every Mate at once on each wake
-- **2026-09-30** — **_Add a Mate_ opens its dialog over the view on screen, and lands on the new
-  Mate** (the owner, trying the flow: the + on a project's heading "leaves the conversation"). Every
-  _Add a Mate_ — the heading's +, its ⋯, the projects page, a project's own page — asks one host
-  above every view (`ZeropsNewMateHost`), and nothing navigates. _Add_ stays in the dialog, busy,
-  until the platform has taken the Mate's project, about a second: the quiet line says "Adding
-  Quinn…", the name reads and the picks hold, _Cancel_ and Esc wait, and a refusal is said beside
-  the button, only a refused name marking the field. Then the dialog closes and the person lands on
-  the new Mate's own view (`/mate/$projectId`), its row lit in the menu. The view is its empty
-  conversation before the conversation exists — the header line with its face and name, the face
-  asleep a third of the way down, "Quinn is coming up on Acme Docs." over the projects page's own
-  birth line, its step in words, its time and its meter. Once the Mate is up the view hands over in
-  place — the face wakes, the headline cross-fades into the stand-up's (180 ms, 4 px), the progress
-  leaves and the _Authorize_ buttons fade in — and 220 ms later the conversation takes the route
-  with that same frame, its thread and its sign-in kept read across the change. A step past its cap
-  offers _Keep waiting_; a creation the platform refused, or a step that failed after it took the
-  project, says so with _Remove_. Sampled in the harness through the hand-over: the face and the
-  headline in one place over 37 frames.
-  - _Why:_ the + went to the projects page to show the dialog, and the person stayed there after
-    _Add_ while the new Mate came up somewhere else
-- **2026-09-30** — **A Mate in its first minutes says so in its row and opens its own view** (the
-  owner, of a new Mate the menu drew as an ordinary row while the projects page said "Almost
-  there.": "on the left it looks like its ready to be opened, but it's not"). One reading of a
-  Mate's first minutes (`mateComing`) speaks for its row, its view and the projects page, in the
-  projects page's words: "Coming up. A few minutes.", "Almost there." once its Mate is waited on,
-  "Taking longer than usual." past a step's cap, "Could not be created." in red. The row is asleep
-  in the face its person picked, under the Mate's own name, the owner's seat empty and no menu;
-  drawn from the birth before the listing holds the project, it is the same row as the listed one —
-  face, name, seat, words and height — so nothing changes as the listing catches up. Pressed, or
-  found by the jump box, it opens its own view. Sampled in the harness from the birth to its first
-  job: 115 frames, its top and its face in one place. **Supersedes:** "a sleeping slate face that
-  opens nothing" of the 2026-09-24 _projects listing never moves on its own_ row and, for a Mate
-  coming up, "Nobody has signed in yet" of the 2026-09-29 _Mate nobody owns sits on an empty seat_
-  row.
-  - _Why:_ a row that looked ready and did nothing when pressed, beside a page saying it was almost
-    there, told the person two things
-- **2026-09-30** — **A Mate's face and its words in the menu come from one reading.** The row read
-  its words from this browser's memory whenever its socket was not connected that instant — three
-  dots, a reply on its way — and its face from that instant, asleep, so a socket that blinked, or a
-  listing re-read, left "Working on a reply" under a sleeping face while the Mate worked. Both now
-  come from one reading (`mateRowReading`): its conversation's while its socket is up or only
-  reconnecting — found by the project its server says it runs — else memory, at rest: a line held
-  for words still to come keeps its room, empty, never dots under an asleep face. The folded
-  heading's faces read the same.
-  - _Why:_ in the live trial a working Mate's face slept in the menu under "Working on a reply"
-- **2026-09-30** — **A Mate's face can be changed after its birth: _Change face…_, where _Rename_
-  is** (the owner, 2026-09-29: "just use your recommendation"). The verb stands right after _Rename_
-  in every Mate menu — the left menu's, the projects screen's and a project's page — offered where
-  _Rename_ is (the viewer's effective role on the project OWNER or ADMIN) and only on a Mate. Its
-  dialog is New Mate's picker, shared, not copied (`MateFacePicker`): "Change Fen's face", "Everyone
-  sees Fen with this face.", opened on the face the Mate wears, a colour and a shape picked apart —
-  the shape no longer follows the colour here — the big face cross-fading per pick. _Save_ writes
-  nothing when the face is the one worn; else one patch through the tag writer, inside the project's
-  lock, every other tag kept, and the read that confirms it is what every surface redraws from — the
-  menu, the conversation and the projects page change together, and a reload reads the tag. While
-  the platform answers, the button says "Saving…" in its own room and nothing can be pressed or
-  picked; a refusal stands beside the buttons on a line always kept for it, the pick still picked.
-  Taken, the dialog closes the way a dialog does, kept mounted and fading with its backdrop over 200
-  ms, and the rows take the new face under the backdrop's veil, revealed by the fade. Nothing in the
-  dialog moves between its states. **Supersedes:** birth as the only moment a face is picked, of the
-  2026-09-29 _Mate's face is picked at its birth_ row.
-  - _Why:_ a face picked in a hurry could not be changed, and a Mate born before the picker kept the
-    face its name gave it
 - **2026-09-30** — **A face changed after birth recolours nobody either**
   (`mate:face:<tint>:<shape>:named`). A Mate nobody picked a face for wears its name's tint, shared
   out over every such name in name order; changing its face took its name out of that sharing, and
@@ -2908,12 +1669,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   that holds them had wrapped them in the sign-in rows' white card; in the stand-up it only ever
   shows the buttons, so they stand on the page as they are.
   - _Why:_ seen live on a new Mate in the test org: a white bar behind two blue pills
-- **2026-09-30** — **A Mate opened from elsewhere stands in view in the menu.** Whenever the open
-  Mate changes during the session — _Add_ landing on it, a link, a page — its row is scrolled to the
-  menu's nearest edge once it is drawn, smoothly unless motion is reduced; never the one open at
-  mount, so a reload leaves the menu where it was.
-  - _Why:_ seen live: a new Mate opened at once, its row selected but drawn below the menu's fold,
-    1025 px down a 1000 px window
 - **2026-09-30** — **The Crew tab is one column in the person's words, as the approved "Mate Crew
   Tab" board draws it** (the owner, 2026-09-29: "im fine with the crew tab design"). Its head is the
   crew's goal and one line saying how the crew works right now, with one press; then one composer
@@ -2941,21 +1696,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ _Start run_, _Pause_ beside _Stop_ and _Resume_ were four controls for one question — is
     the crew working on its own — and a figure typed on resuming could be under what the crew had
     already spent
-- **2026-09-30** — **A crewmate's row says what it is on and what it needs from you, and answers in
-  place.** As the menu's Mate row: its face wearing its state, its name and a time; what it is on,
-  as you or the lead put it, or its job, muted; its step while it works (the thread's live step,
-  D5), else where its task stands ("Done · the lead is checking it", "Done, in its own copy · not in
-  Fen's code yet"); then what it needs, a line each in ink — red only for something broken — its
-  face asking and an amber dot, with the presses that settle it: a question and _Answer_, whose box
-  unfolds in the row (a 220 ms clip, the rows below sliding to their places, a fade under reduced
-  motion); finished work and _Review_, _Try it_; "Stopped mid-way when the $20 ran out." and
-  _Continue_, _Review what it has_, _Drop it_; "The lead sent it back: …" and _Ask it to rework_,
-  _Drop it_; a clash with Fen's code and _Ask it to sort it out_; failing checks and _Ask it to fix
-  them_; "Wants to show its work at Fen's dev address." and _Let it_, _Not now_; "Waits for Season
-  clock, which was dropped." and _Start it anyway_, _Drop it_; then "Next" and what waits. Rows
-  never reorder.
-  - _Why:_ a crewmate's state was spread over a board's five columns, a _Waiting on you_ list and a
-    sheet, each naming the task by its number
 - **2026-09-30** — **The lead's plan stands in the lead's row, and its _Start_ lets the crew work on
   its own, going on first where it stopped.** A line per task — whose it is, what it is, what it
   waits for ("after Season clock") — then "Start lets the crew work on its own: up to $20, for up to
@@ -2966,19 +1706,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   goes on only with more.
   - _Why:_ a plan accepted while the crew was paused waited unseen: the lead's tasks start only
     while the crew works on its own
-- **2026-09-30** — **Finished work goes into Fen's code from its review, and _In Fen's code_ lists
-  what went in.** The review's button is _Add to Fen's code_ — "Adds Bo's work to Fen's code as one
-  commit. Nothing is shipped until Fen ships it." — or _Add what it has_ while it is still worked
-  on; once in, the review says "In Fen's code" and "Fen ships it with its own work". The tab's list:
-  newest first, the crewmate's face at 20 px, what the work was and when it went in (`landedAt`),
-  the last three and _Show all N_; a line opens that work's review; while some is unshipped, "Fen
-  hasn't shipped these yet · Ask Fen to ship them", which asks Fen to ship what the crew added, like
-  its own work. The left menu's crew line says whose work is ready ("Bo's work is ready", "2 pieces
-  of work are ready"). **Supersedes:** _Land_, _Land now_ and "Landed" of the 2026-09-29 _crew task
-  lands from its review_ row, and "how many tasks wait for _Land_" of the _crew is one line under
-  its Mate_ row.
-  - _Why:_ "land", "your tree" and "deliver" were the engine's words for the Mate's code and for
-    shipping it
 - **2026-09-30** — **Setup, the crew's goal and a crewmate's job are views in the tab's place, each
   with one Save.** A view takes the column's place — "‹ Crew" back, a heading, its fields, and a
   footer in reach with one line and its presses — sliding 24 px in from the right and back from the
@@ -3024,14 +1751,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   list's layout. **Supersedes** "a line with nothing under it is no card".
   - _Why:_ a bare line floated between bubbles; the pill read as a stadium; a leftover 75 px stood
     under the live line
-- **2026-09-30** — **A colleague's Mate wears its owner's picture on its face's corner; your own
-  wear nothing** (the owner, of the picture before each name: "it looks like the avatar person is
-  named cleo / wren"; option A of the board they chose from). The picture is a badge cut out of
-  the 28 px face's corner (`.menu-face-cut`, `ownerBadge`) — 16 px since the entry below; a Mate
-  nobody has signed in wears the empty seat there; a Mate whose owner is not named yet wears nothing
-  until the badge arrives in its box, so nothing moves. Nothing stands before a Mate's name.
-  - _Why:_ "(face) Cleo" read as a person named Cleo, and the viewer's own face repeated on every
-    Mate
 - **2026-09-30** — **The crew is as closed as the conversation to a viewer who may not run it** (the
   owner: "its not guarded against use by non authed people"). The crew's door on the server refuses
   what runs or changes the crew for whoever admission would refuse on the logins it reaches; the
@@ -3048,29 +1767,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   finished work under it, and _Change its job_ only where the crew's door would take it; a later
   conversation links the one before. Name and face stay empty until the crew is read.
   - _Why:_ a face in a void, a sentence that read as nobody's, and a fake "Message Lead…"
-- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the owner is named from the
-  signer HQ relays, not a signer tag.**
-  **A Mate that is not yours wears a 16 px badge on a paler face** (the owner, of
-  the 12 px badge: "the not yours should have the avatar bigger and maybe some other small visual
-  diff also"; option A of the board "Colleague's Mate badge", taken with "paler face won't work
-  because it will simply look like a different shade of color, but I guess do it along the avatar
-  of 16px"). A colleague's Mate and one nobody has signed in wear the badge at 16 px, centred 25 px
-  across and 29 px down the face — level with the ask, since a bigger badge in the corner met the
-  done face's smile — over a face at 55 % of its colour with its eyes and mouth in full ink
-  (`mateNotYours`, `.menu-face-pale`). Your own Mates are unchanged. Whose a Mate is comes from the
-  member list this browser remembers, or before it names the owner from the signer tag against the
-  viewer's id, so the paler face is there from the first paint.
-  - _Why:_ a 12 px picture was too small to say "not yours" down a menu of Mates
-- **2026-09-30** — **A recipe change is never released** (the owner, of _Review release_ on a merged
-  change to the group repo: "review release on the group doesn't make sense, the group repo are
-  just the 'recipes' imports"). A change to the group repo's recipe offers no release, before or
-  after its merge; its review says what its merge does, from the tiers its files touch and the
-  environments made from them (`recipeReach`): the stage and production get any service added to
-  their recipe, created empty, and keep the services they have; a recipe nothing in the project is
-  made from changes no environment. Merged: "Merged into main · no environment changes" with only
-  _Close_.
-  - _Why:_ a merged recipe offered _Review release_ and said "the environments change to match" of
-    a change no environment is made from
 - **2026-09-30** — **A project whose Mates haven't written its recipe takes no other Mate** (the
   owner: "we need to deal with states where you are trying to add a second mate but the first
   haven't created the group's imports yet - shouldn't be possible with explanation"). A new Mate is
@@ -3083,15 +1779,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   A project with no Mates still takes its first. A failed read is never taken for "no recipe", so
   a quick Add no longer makes an empty Mate.
   - _Why:_ Add quietly made an empty Mate beside one that had set the project up
-
-- **2026-09-30** — **New project lands on its first Mate** (the owner: "you should add the project
-  and the first mate in the same step, then you should go to the mate detail and the only diff
-  would be the progress, which would include the project creation as well"). Create goes straight
-  to the first Mate's own view (`/mate/new/$birthId`, then `/mate/$projectId` once the platform
-  takes the project). Its progress starts with the project's own steps: "Git hosting" only when the
-  account has none, then the project. The Mate's six steps follow, and the menu draws both from the
-  press.
-  - _Why:_ Git hosting blocked the page and Create landed on the projects list, not the Mate
 
 - **2026-09-30** — **A new project's first Mate gets no stand-up; its person says what to build.**
   _New project_ no longer writes `mate:standup:`, so its Mate's sign-in reads "Once it's signed
@@ -3115,16 +1802,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
     and faded over the next one for 150 ms, two texts at once; the composer's frame faded three
     times during one first open, showing the page through it
 
-- **2026-09-30** — **A return shows the conversation as it stood** (the owner, on the switch at
-  once: "the transition between chats still suck, sometimes the text area still flashed because
-  old one is gone sooner than new one is in"). The pane keeps the last four conversations' lists
-  mounted, hidden where the open one stands, so a return shows its rows in place in the press
-  frame, with no fade and nothing moving after. Resting on a menu row for 100 ms, focusing it or
-  touching it warms that conversation into the same keep. Only a cold open places its rows out of
-  sight and brings them in over 140 ms. A run in a kept conversation folds when its list leaves the
-  keep, not when the person leaves it.
-  - _Why:_ measured, a return blanked the list 150–210 ms and a first open 270–500 ms before the
-    rows faded in: the text went, nothing stood, and text came back
 - **2026-09-30** — **The composer never leaves the screen across a switch.** A Mate's own view
   while it is reached, and a reload's stage before its conversation arrives, draw the composer
   standing where the conversation's will stand, and the conversation header's subject, ··· menu and
@@ -3191,70 +1868,23 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   until the browser lets go of it; zcp tells static apps to send HTML with `Cache-Control:
 no-cache`.
   - _Why:_ an app that routes on the exact address answered "Not found" to `/?_mate_preview=…`
-- **2026-09-30** — **"Waits for your review" is one rule on every face.** A Mate whose own change
-  waits for the person's review wears the needs face and the amber dot on its row, its folded
-  heading, the waiting stack and the projects pages, by the rule the composer's card uses; a Mate
-  at work still shows its work. "Waiting on an answer" stays the conversation's question.
-  - _Why:_ the card showed the surprised face while the row kept the plain one, and folded
-    headings lost the faces of Mates waiting on a review
-- **2026-09-30** — **Data never vanishes because its source blinked.** The account's Gitea answer
-  holds for 60 s within the same organisation while its project is missing from the inventory, so
-  projects keep their reads; a project's pull requests and main show nothing until its changes are
-  read, never "Nothing merged".
-  - _Why:_ rows claimed "None yet" / "Nothing merged" for 11–28 s per project on a reload
-- **2026-09-30** — **A menu verb opens what it names.** "Set up stage" and "Set up production" open
-  the projects page's own form for that environment.
-  - _Why:_ both only landed on the projects page
-- **2026-09-30** — **A version is named for people** (the owner: "these crazy long version names").
-  App versions read `main 7e2d4c1` (a stage, or a Mate's push), `v0.1.0 7e2d4c1` (a release),
-  `HEAD 7e2d4c1`, `commit 7e2d4c1`; `-dirty` names no commit. Readers read old names too and resolve
-  a short sha against the commits they know before comparing.
-  - _Why:_ the name is the platform's evidence of what runs, and people read it in Zerops
 - **2026-09-30** — **The Mate being opened connects first, and paints before its socket.** Other
   Mates' sockets wait until the route's is open (5 s at most); the Mate's descriptor names what
   the thread's snapshot needs, so the conversation paints over HTTP while the socket connects and
   the socket resumes from the snapshot.
   - _Why:_ the route's socket queued 4th–6th behind the others (one socket connects at a time to
     the one Zerops address); measured p50 9.8 s, worst 15 s to the conversation
-- **2026-09-30** — **A project's release lives under its name (D′)** (the prod/stage board, picked
-  by the owner). The pills say only whether each place serves: dashed before it serves anything, the
-  stepped spinner inside it while it comes up, green for 4 s as it lands. The open heading's second
-  line says one thing at a time, in this order: a release that didn't go out (amber, Review), a
-  place that didn't come up (amber, Details), a place coming up ("Stage coming up · building the
-  app"), a landing this tab watched ("v2.4.0 is live · just now", 4 s), a release on its way
-  ("Releasing v2.4.0…"), changes waiting ("3 changes not released · all on stage"), each with its
-  door at the line's end in the column of the pull requests' Review. A folded heading carries the
-  release's mark after its faces. The line opens and folds as a 220 ms height reveal the Mates ride.
-  Where the board is silent: "coming up" only within 15 minutes of the place being made; a
-  production's first build is its first release; "all on stage" means the stage runs main's head.
-  - _Why:_ a row after the Mates read as the last Mate's, and Heron's stage pill sat plain for the
-    two minutes it took to come up
 - **2026-09-30** — **An empty conversation keeps its row, and a draft shows on the person's line**
   (the owner: "empty conversation not showing draft and has weird position of the name without the
   questions and response under it"). Every Mate row is three lines tall; the second line is the
   person's — the sign-in, else _Draft:_ and the unsent words, else the ask, else "Nothing asked
   yet" once the conversations are read; a draft never covers the Mate's line.
   - _Why:_ a lone name floated mid-row, and the row grew 48 → 76 px when the first message landed
-- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: a Mate is the viewer's when
-  the signer HQ relays names them, not a signer tag (`mateIsViewers`).**
-  **A colleague's Mate waits on its owner, not on the viewer** (the owner: "sana
-  doesn't wait for me, it waits for karlos" / "but I can merge that's true"). The needs face, the
-  amber dot, the stack, folded headings, the jump box, the crew line and the projects pages count
-  only the viewer's own Mates — those whose signer tag names the viewer (`mateIsViewers`); another's
-  waiting Mate rests with its question muted, and its change keeps its _Review_, since anyone with
-  write can merge.
-  - _Why:_ a colleague's Mate waited on the owner too
 - **2026-09-30** — **The run card keeps one radius** (the owner: "I'd just keep one constant border
   raidus, the 'expansion' doesn't work with the stuff on bottom"). Every state wears
   `--composer-radius` (20 px), the background-work card too, and nothing eases between radii; the
   16 px edge slice takes corners 20 across by 16 down.
   - _Why:_ 34 px pill tops sat over 16 px bottoms once rows stood in the card, animated between
-- **2026-09-30** — **A live line stands a second** (the owner: "stuff sometimes switches extremely
-  fast, makes it look jittery"). The card's now line, the folded heading, the menu row and the
-  header hold each step 1 s: the latest of a burst wins, the same words coming back drop what
-  waited, a change after idle and the run's end show at once, and the clock never counts back. A
-  change crossfades — out 140 ms, in 180 ms, 3 px, strong ease-out; a cut under reduced motion.
-  - _Why:_ a burst every 150 ms changed the line about 40 times in 6 s; now 6
 - **2026-09-30** — **A docked operation names itself and says its state once** (the owner: "this is
   pretty poorly designed"). Stand-up, import and deploy share one model: the label names the
   operation and never truncates ("Development", "Import · 2 services", "Deploy · appdev"); one
@@ -3299,20 +1929,6 @@ no-cache`.
   only of a list known in part, after 1.5 s, and over existing rows for 20 s at most.
   - _Why:_ a project created by someone else stayed out of the grant until its renewal, up to about
     12 minutes
-- **2026-09-30** — **The release line has room and presence, and the folded tag says it** (the
-  owner: "the release is too squeezed here and too blending with background", "there is no visual
-  conneciton or tooltip here to connect it with the line below"). The line is 13/18 like the rows,
-  13 px under the name and 33 px above the first Mate; the fact in ink, the rest muted, _Review_ in
-  the change rows' blue. A release's line leads with the tag the folded heading's badge wears, and
-  the badge's tooltip says the line's words.
-  - _Why:_ at 12/16 in the muted ink, 10 px under the name, the line read as the heading's shadow,
-    and the folded count had nothing tying it to the line
-- **2026-09-30** — **A release's changes open inside its dialog** (the owner: "you should be able to
-  clickthrough to those prs inside the dialog"). The whole row presses, a › at its end; the change's
-  review shows merged — "✓ Merged" where the button stands, "← Release" in the kind line — and
-  slides in over the release in 220 ms as the height eases; the first Esc steps back to the release
-  where it was, the second closes, and ⌘↵ never reaches the release underneath.
-  - _Why:_ the rows were plain text, so checking what a release carries meant leaving it
 - **2026-09-30** — **A stand-up's bar is the whole environment** (the owner: "why doesnt this show
   dbs etc?"). Data services first, as the platform says, then utilities (development only), then
   the half's runtimes filling from their builds; the figure counts "5 of 7 up", and opened each
@@ -3352,26 +1968,6 @@ no-cache`.
   the person's own next turn.
   - _Why:_ the stand-up sends on the local signer the moment the sign-in succeeds, while the client
     writes the tag after it
-- **2026-09-30** — **The account speaks from one line at the menu's foot** (the owner, of
-  "Project access could not be verified. Try again Sign out": "at very least the placement is wrong
-  … so is the copy"). A read failing while the grant still holds never covers or freezes the
-  product: it is silent for 20 s, then "Zerops isn't answering. Trying again…" with _Try now_; a
-  lapse speaks from the same line — "Checking your Zerops access…", then "Zerops isn't answering."
-  with _Try now_ — with _Sign out_; only the organization on screen speaks, and the projects page
-  shows what it has without repeating the line; the settings pages carry the same line.
-  - _Why:_ one stalled read in any of the account's organizations covered the whole product and
-    made it inert until a retry landed
-- **2026-09-30** — **Stopping a run from its row takes a second press** (the owner: "this has
-  confirm, right?"). ■ or x arms the row — a red "Stop?" crossfades in where the clock stood — and a
-  second press within 3 s stops; the pointer leaving, Esc, the focus leaving, 3 s or the run ending
-  puts it back. The ⋯ menu's _Stop the run_ stays one press, opening the menu being the first.
-  - _Why:_ one press on a hover control cut a run short, with nothing to take it back
-- **2026-09-30** — **A run's clock looks live** (the owner: "the timer here could have an extra
-  icon, be bold, have some color in color of mate"). 600, tabular figures, the Mate's own hue mixed
-  into the ink (5:1 or more on the menu and on the selected row, in both themes), after a 6 px dot
-  of the same hue breathing slowly and still under reduced motion; when the run ends, the relative
-  time fades in where it stood.
-  - _Why:_ "0:50" read as a timestamp beside "4h" and "7m"
 - **2026-10-01** — **A queued message whose send failed says why** (Milo's follow-up stayed queued
   after the turn ended). A send cut off — the link dropped, the command interrupted, the account's
   wait out — goes back unheld and is retried, at most three times, with the same message and
@@ -3379,13 +1975,6 @@ no-cache`.
   reason in the clock's place and ↑ becomes Retry (fresh ids); the ones behind it say "Waits for the
   message above"; while a question is open the next says "Waits for your answer above".
   - _Why:_ a held message never went again, blocked the queue and looked like a waiting one
-- **2026-10-01** — **A Mate's changes name their repository when it has more than one** (the owner:
-  two rows read "#1"). "appdev #1 …", "apidev #1 …" in the menu, the jump box and the project page;
-  the composer's top lists every waiting change — one as before, two or three a line each with its
-  own Review under "… of 2 changes", more as the newest three and "and N more". A change's review
-  reads the change itself, by the group's slug, and spins only while a read is in flight.
-  - _Why:_ the dialog waited for the group's whole flow (74 requests in 97 s for one group) and spun
-    even when no request had gone out
 - **2026-10-01** — **A row opens only when opening adds something** (a colleague: "you don't need an
   arrow if it doesn't show anything"). A docked operation's chevron shows only for its services'
   lines or a reason cut short; a cut-short reason opens whole, wrapped, in place.
@@ -3418,12 +2007,6 @@ no-cache`.
     Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
     and left each dropped session live on its Mate for a day, while the same storage keeps the
     Zerops token that can open every Mate
-- **2026-10-02** — **Superseded 2026-10-03 by "A Mate is connected while something holds it" below.**
-  **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
-  twelfth that sat asleep and empty until clicked: "that's stupid, no?"). Auto-connect wants every
-  ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
-  - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
-    a reconnect mints nothing, and the first connect of the day waits on the door's mint pace
 - **2026-10-01** — **Superseded 2026-10-02 in part by "A Mate's key reaches only its own project"
   below: the key holds no grant on its siblings, and the press gives no sibling reach.**
   **A new Mate's setup needs no browser after the press** (the owner: "never ever be
@@ -3453,13 +2036,7 @@ no-cache`.
 - **2026-10-02** — **HQ replaces Gitea and its broker** (the owner, 2026-10-02). Every organization
   has one HQ, and the app waits for it: an owner or an admin sees it born, anybody else is told whom
   to ask (`ZeropsHqGate`). The organization's structure — its applications, their Mates and
-  environments — is HQ's and comes down its stream. A Mate's push opens a change in HQ; a person
-  merges or closes it there, as themselves through HQ's own door, and HQ refuses a merge whose head
-  moved since the review (`head_moved`). A change carries no checks. HQ keeps each environment and
-  its deploy token: Core deploys each stage from the archive of the commit `main` moved to, and each
-  production from the newest approved release (`apps/hq/src/deploys.ts`). Core tags and records a
-  release, and a roll back is a new release (T9a, `apps/hq/src/releases.ts`); the client releases,
-  rolls back and reads releases there (T9b). A Mate's birth is HQ's record — its name and face, who
+  environments — is HQ's and comes down its stream. A Mate's birth is HQ's record — its name and face, who
   asked for its stand-up (`standupRequestedBy`) and that its project is closed off — and whose a
   login is stays the Mate's server's own record (`~/.mate/signed-in.json`), which HQ relays. The Git
   page is `/git`, every application's repositories and the changes open on them. An agent reaches
@@ -3500,98 +2077,12 @@ no-cache`.
   2026-10-02 _A Mate's key reaches only its own project_ row; the key's reach there stands.
   - _Why:_ the lowering read the organization's token list on every load, to find the keys only an
     adoption leaves `ADMIN`
-- **2026-10-03** — **A Mate is connected while something holds it** (step A, A9). A load connects
-  the route's Mate alone. A Mate is connected while the route names it, while it is on screen — its
-  own view, its birth — while it is the one left last, for 5 minutes, while an action from outside
-  its view holds it until the action answers, or while a Connect runs; with nothing holding it, it
-  is parked: its socket closed, its registration, kept session and cached data kept, and unparked
-  through no door. Rows, faces, notifications, the palette and the crew line read HQ's overview of
-  a Mate this tab has not opened. A command on a parked Mate is sent once it connects, or after
-  30 s regardless.
-  **Supersedes:** the 2026-10-02 _Every Mate in the menu connects on its own_ row, and the
-  auto-connect ceiling in the 2026-10-01 _A coming-up Mate hands over the moment it answers_ row.
-  - _Why:_ a load of the 20-odd-Mate account opened a socket per Mate in every tab, each through a
-    door, for surfaces HQ's overview now feeds
-- **2026-10-03** — **In UI copy an HQ application is a project** (F29). The layer above Zerops
-  projects — HQ's application, the code's _group_ or _app_ — is a "project" wherever the person
-  reads it: "Move to project…", "New project", "No project", "Leave the project"; never _group_ or
-  _application_. A Zerops project shown beside one, a Mate's or a stage's, is called by its name, as
-  its row in the left menu draws it, and never "project" in the same dialog (glossary,
-  `design-system.md` §2). **Supersedes:** the word "group" in the 2026-09-05 group-model row.
-  - _Why:_ the menus that open the Move dialog already said "project", and the dialog spoke of
-    groups and explained that a group is what you call the application
-- **2026-10-02** — **Superseded 2026-10-05 in part: no `mate:by:` tag is written; who made a Mate
-  is HQ's record of it (`madeBy`).** **A Mate names who made it** (the owner, on pass 34's open choices: "use
-  recommended"; the entries below take the same answer). New project and Add a Mate tag a
-  development Mate's project `mate:by:<userId>` at birth; the tag is never cleared and shows in the
-  Zerops dashboard. The Mate's row reads "Waiting for your sign-in" to its maker and "Waiting for
-  sign-in" to anyone else. Stage and production Mates name nobody and keep "Nobody has signed in
-  yet"; Mates made before 0.11.87 are not backfilled. The maker of a half-made New-project Mate gets
-  Finish setup on it, as Add a Mate already allowed.
-  - _Why:_ the two flows made the same Mate and said two things about it; the service's
-    `createdByUser` is on the REST record but not on the socket's, and a tag reaches every window
-    through the store the sockets feed
-- **2026-10-02** — **Superseded 2026-10-05: no window lists Gitea; a merge reaches every window on
-  HQ's structure stream. The goal stands.** **A merge reaches the other window within 15 s.** While a group has an open pull
-  request, each window lists that group's Gitea org every 15 s (`PULL_WATCH_MS`), one org a tick, at
-  most +4 requests a minute per window; a pull request that hasn't moved for 30 min leaves the
-  watch. Nothing runs while none is open or the page is hidden. The clock sits in the web forge hook
-  beside the 60 s Gitea refresh; the rule lives in client-runtime.
-  - _Why:_ a merge took 48 s to clear the Mate's "needs you" face in another window (run 4); run 5
-    measured 10.0 s
-- **2026-10-02** — **Superseded 2026-10-05: an environment is coming up while HQ's birth of it
-  runs or the platform makes something of it; the 15 min bound and the inference from `main` are
-  gone.** **A stage's first deploy counts as asked for once the stage is declared and `main` has
-  code**, bounded at 15 min from the later of the stage's making and `main`'s last code
-  landing; past the bound the line reads "Nothing deployed yet". No new request.
-  - _Why:_ no reader held the broker's pending status on `main`, and the broker deploys exactly when
-    a declaration lands on a `main` with code
-- **2026-10-02** — **A release review holds the facts of its press.** From the press, or from the
-  first look at a release already on its way, the dialog keeps what it showed ("replaces v0.1.0 · 1
-  change" and its roll back) through the landing or the failure. A roll back that landed heads
-  "replaces v0.1.1", the shape of a release's; a production that no single release runs in full
-  reads "replaces what production runs", with the generic roll-back line.
-  - _Why:_ read from the project, "production runs v0.1.1" turned false the moment the release
-    landed, and the review turned to the next offer without saying how its own release ended
-- **2026-10-02** — **Superseded 2026-10-05 in part: the 30 min cutoff is gone; a review ends when
-  HQ ends the release's rollout (`ReleaseRollout.ended`, `releaseEnded`), never by a client
-  clock.** **Every release review ends.** A tag with neither a landing nor a failure 30 min
-  after it was tagged reads "v0.1.1 hasn't landed · Tagged … · production doesn't run it", its next
-  step "find out why", and its clock stops. A newer tag above it reads "v0.1.2 was tagged after
-  v0.1.1", and the project's line in the menu follows the newer one.
-  - _Why:_ a release with no final state kept "Releasing" and its clock running for as long as the
-    dialog was open
-- **2026-10-02** — **Superseded 2026-10-05: no broker marks a version; a deploy's verdict is HQ's
-  job for a build HQ made, the build's Zerops process otherwise.** **A failure on the version a stop
-  runs still reads Failed.** Until the broker
-  marks that version live, a rare Deployed → Failed → Deployed flicker stays; reading the failure on
-  the version the broker tried is a new read, for later.
-  - _Why:_ reading it as Deployed would switch off the failed deploy's next step (2026-09-25),
-    production's deploy-failed state and the stage chip's failed state
 - **2026-10-02** — **A reload during a Mate's arrival paints the asleep row.** A reload in the ~15 s
   between ACTIVE and the Mate's first answer shows the asleep row with its sign-in line; the arrival
   window stays 2 min from first seen ACTIVE. A Mate whose close-off is still pending arrives like
   any other: "Coming up", Finish setup hidden, until its server answers its first probe.
   - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
     the asleep row back for a normal press
-- **2026-10-03** — **Superseded 2026-10-05: no status on `main` is read; a first deploy fails by
-  its owner's word — HQ's job, or the build's Zerops process — and the reads' schedule is gone.**
-  **A stage's first deploy that fails says so** (run 5: a group workflow's own step
-  failed, and both windows said "first deploy on its way" for 4.3 min). While a declared stage runs
-  nothing, the group's deploy reader reads `main`'s head of each repository the stage builds from,
-  and its statuses, and takes the newest status of each context. The broker's own
-  `mate/deploy/<env>/<svc>` saying `failed: …` (the job's report) is failed, with its reason, and
-  final. The same context saying `deploying` or success is not failed. The deploy workflow's own
-  context failing, whenever it was posted, is failed until the broker says `deploying`: the
-  broker's dispatched run leaves no status and runs the same workflow on the same commit. A refusal
-  the broker retries is never failed. The menu reads "Stage didn't come up · its first deploy
-  failed", the cell "First deploy failed"; a new head starts again. Reads: one a minute for 15 min
-  after the later of the stage's making and the head's newest status, one every 5 min to 35 min,
-  then none until a push; nothing for a deployed stage, production, or a group with no stage
-  declared. This supersedes the 2026-10-02 entry's "no new request" for the failure.
-  - _Why:_ the broker's pending status on the merge commit was the only thing read, and a job that
-    fails before it asks the broker for its grant never touches it; the exact signal, the broker
-    writing `failed: <step>` when the run it dispatched fails, is a gitea-mate change for later
 - **2026-10-03** — **The live card shows the moment whole, then plops it into the history** (the
   owner: "always show the things that is happening in full, at least up to some height … when this
   thing is done, it would animatedly 'plop' to the history"; "question what we show in the 'live'
@@ -3646,17 +2137,6 @@ no-cache`.
   open through the plop.
   - _Why:_ 0.11.88 moved a running deploy from the band into the slot, whose row read only the
     call's placeholder steps; a page-held memory of the read would tie the details to one tab.
-- **2026-10-03** — **A Mate on its way up wears its waking face; asleep is for a Mate at rest**
-  (run 6: each coming-up Mate wore the asleep face in the other window until its sign-in; the owner
-  left the call to the lead: "for my calls do whats best"). While a Mate arrives — from the press
-  until it is signed in, at most 30 minutes from its creation (the existing bound past which a first
-  build is not coming up) — it wears `waking`: closed eyes that breathe, a slow swell of the whole
-  face as one composited box, still under reduced motion. Failed, deleting, or a container that is
-  down: asleep, as before; past the window an unsigned Mate rests with its sign-in line and dot. One
-  face function applies the rule for every surface (rows, ⌘K, the projects page and overview, the
-  conversation header, the panel, the arrival page), reading one fact from the Mate's own records.
-  - _Why:_ asleep also means a Mate at rest or going away, so a Mate on its way up read like one that
-    stopped; a breath that never ended would make a menu of faces fidget.
 - **2026-10-03** — **One screen for a Mate coming up** (the owner, run 6: "why are these two screens
   separate?"). Create and Add close their dialog at once and the person is on the Mate's coming-up
   page. The steps the browser runs with the person's session (registered, created, closed off, the
@@ -3679,26 +2159,6 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
-- **2026-10-03** — **Superseded 2026-10-05 in part: a Mate's project is `<application> - <Mate>`,
-  and under its application the client cuts that prefix.** **A Mate's name is its Zerops project's
-  name** (D3, the owner: Zerops is the
-  source of truth, HQ stores only what Zerops lacks, and a name's source is Zerops). A Mate is called
-  what its project is, wherever it is drawn; HQ keeps no name of a Mate or of a Mate on its way
-  (migration `0030`), only its face, its place and its birth. _Rename Mate_ renames the project
-  (`renameProject`, by the TagWriter that puts back the tags a fresh read holds), offered where the
-  platform takes it — effective `OWNER` or `ADMIN` there; a rename in Zerops reaches every surface by
-  the project's own update. A new Mate's project is named as the Mate is, typed in one field;
-  _Set up Mate_ derives only a face. A stage or a production is offered `<project> - stage` or
-  `<project> - production`, numbered once taken, a suggestion nothing reads back; it has one name,
-  and an agent in it goes by it. A stop's row, its page, its line in a history and its find in the
-  jump box name it whole, as Zerops has it — no prefix is cut. An application's title stays HQ's.
-  **Supersedes:** the 2026-09-29 _New Mate_ row's "called what the project calls its Mates ('Acme
-  Docs - Quinn')", and the name in "A Mate's birth is HQ's record — its name and face" of the
-  2026-10-02 HQ row.
-  - _Why:_ HQ's name drew over the project's, so a rename in HQ left the project's, a rename in
-    Zerops changed nothing on screen, and a moved Mate kept its old project's prefix; and a stop's
-    name read back for its project's prefix cut `Shopper - stage` to `per - stage` under `Shop`
-
 - **2026-10-03** — **The MCP servers a Mate's agents can call are a right-panel tab, and /mcp opens
   it** (the owner: "a proper mcp management dialog … or one of the right side tabs? it feels like
   mcp is quite like .. important"). The tab is labelled "MCP"; Zerops' own server stands first,
@@ -3716,7 +2176,7 @@ no-cache`.
   Mate's personal sign-in flow is relayed in its overview's identity, alongside provider changes.
   HQ's placement joins it onto the Mate's record: the signer comes first, else the maker of a Mate
   with that ready agent. No `mate:runs:` tag is written. The server's stand-up reads its asker from
-  HQ and still admits the turn through project access. Cold menus remember candidate rows only as
+  HQ and still admits the turn through project access. Candidate rows are remembered only as
   a standing-in tree and join HQ's placement; unread detail pages say HQ's failure or an earned
   missing project, without a Gitea session or another account read.
 
@@ -3735,26 +2195,6 @@ no-cache`.
   - _Supersedes:_ only "later" in the 2026-10-02 HQ and own-project key rows. Their key scope and
     legacy-grant removal rules still stand.
 
-- **2026-10-04** — **The projects page is one dense list, a row per project** (pass 39). A row's
-  first line is the project's name and its Mates as faces with whole names (two named, then "+N"),
-  with production's version only where production runs one. Its second line is the one thing that
-  needs the person, as a sentence, with its one action at the row's right edge. Without that, it is
-  a running Mate's step, a deploy or release on its way, or the newest fact. Nothing is drawn for
-  "nothing" (no "None open", "Not set up", "Nothing waiting to release"). Preview, Rename, Add Mate,
-  Add stage and Add production are in the row's ··· menu. Rows that need the person rise first,
-  keeping the person's order within each group. A row holds the place it was last drawn while a
-  Mate reconnects or a read is out (`rowRiseMemory.ts`). Where its changes are not known it says
-  why: "HQ didn't answer", or "Needs Basic user access" where HQ's rule withholds them. Every row
-  holds the reads of its stops (production and stages), opened or not; a stop whose read failed
-  is named on the first line beside its one Again, and what HQ still holds of a project (a deletion
-  under way, records left) stands beside its name. The page has one tab, and the containers
-  outside a project are one folded group.
-  **Supersedes:** of the 2026-09-24 _projects listing_ row, the _Next steps_ strip, the _Only a Mate
-  so far_ tiles and `groupPlacementMemory.ts`. Creations drawn from their birth and the in-flight
-  words stand.
-  - _Why:_ the owner, 2026-10-04: "this projects page is insanely bad - ux, design, information
-    density, everything". Names were cut to "Ru…" and "Experime…", every row repeated filler, and
-    the strip repeated the rows' own actions.
 - **2026-10-04** — **The home decides where it lands before it paints.** `homeDoor` answers
   _landing_, _wait_ or _projects_. The projects page shows when no Mate is counted and the Mates are
   settled, or when nothing will list them: no organization chosen, the grant failed, or the catalog
@@ -3762,11 +2202,6 @@ no-cache`.
   - _Why:_ the owner: "when you go to mate.zerops.io it first redirect you to this page briefly for
     whatever reason then redirecting you elsewhere". A cold load painted the projects page from
     1.3 s to 2.7 s; it now never does.
-- **2026-10-04** — **On a phone the composer is the screen's last thing; the menu opener stands in
-  the top bar's corner,** below the status bar with the header. There is no edge swipe: it fights
-  the system's back gesture in iOS Safari and on gesture-navigation Android.
-  - _Why:_ the owner: "you can only open the left panel with something under the composer.. on
-    mobile the composer should be the very last thing".
 - **2026-10-04** — **A site opens only when the person asks.**
   - Picking Browser lists the Mate's sites (dev, stage, production, by role) above the agent's own
     browser.
@@ -3840,10 +2275,6 @@ no-cache`.
     face.
   - **Supersedes:** the current-signer-only arrival from the 0.12.2 port.
   - _Why:_ the waking face means "waiting on a first sign-in", and nothing else.
-- **2026-10-04** — **A Mate's face follows one rule in the menu and on its project page**
-  (`mateAwake`). It is awake when its container runs, its socket is up, or HQ has it online.
-  - _Why:_ the port kept the rule in the menu only, so a running Mate looked asleep on its page
-    whenever HQ's word wasn't live.
 - **2026-10-04** — **`/` decides before it paints and lands nowhere dead** (`homeTarget`, `homeView`).
   - An empty organization, no chosen organization, and a failed catalog with no Mate named all land
     on the projects page, which offers the way on.
@@ -3853,18 +2284,6 @@ no-cache`.
   - **Supersedes:** upstream's "What should we work on?" hero as the empty-org home (deleted).
   - _Why:_ the hero's Add project led nowhere in Mate, and with no organization chosen `/` waited
     forever.
-- **2026-10-04** — **A stopped Finish setup is said, then gone; nobody is let into a Mate before its
-  project is closed off.**
-  - On a Mate with its container, "Setup stopped" stands for 10 s. It never hides a connected Mate's
-    sign-in line, amber dot or last message, and is still never retried on its own.
-  - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen,
-    whatever its container's age. It reads "Closing off its project…" until HQ says it is closed
-    off, with Finish setup in its menu — offered on HQ's word whenever its container's marker is not
-    read absent, so a marker that cannot be read never leaves it without a way out. HQ's streamed word alone says closed off: no project tag,
-    no clock (2026-10-05). While HQ says nothing, only this browser's own knowledge that its
-    close-off has not happened holds it.
-  - _Why:_ the stop hid a working Mate's state until reload, and leases had dropped 0.12.3's
-    close-off gate, so an unisolated project could be used.
 - **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
   its owner's own tags.**
   - A project is plain on HQ's word alone (ADR 0002): HQ's structure is read and holds no record of
@@ -3934,9 +2353,6 @@ no-cache`.
     trusted the tag the same way.
   - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
     refused for everyone, its signer too.
-- **2026-10-04** — **A change's conversation holds its comments' room while it reads them** (HQ counts a
-  change's comments), and **a stage HQ holds for a deploy key says that, never "coming up"**.
-  - _Why:_ layout shift; and "coming up" for a stage nothing will bring up.
 - **2026-10-04** — **Crew work carries on after a restart, from the stage it recorded.**
   - 0.13's operations persist their stage before each side effect. At boot the engine carries each
     interrupted one on from that stage:
@@ -3984,9 +2400,6 @@ no-cache`.
     _Why:_ one verdict has one owner. HQ holds the inputs — the org as it reads it, the target as it
     holds it — and enforces the write, so a client's copy could only offer what HQ then refused, and
     it read project access only to feed itself.
-  - **A release ends with HQ's rollout.** On its way until HQ ends its rollout in every production;
-    stalled only where HQ ended it without landing. _Why:_ the 30 min cutoff called a release over
-    while HQ still followed its build, and offered _Release_ again.
   - **Coming up is HQ's birth of an environment**, or the platform making something of it — never
     its age. _Why:_ an environment's age says nothing about whether anyone is still bringing it up;
     HQ, which runs its first deploy, knows.
@@ -4014,46 +2427,6 @@ no-cache`.
     build's end); a stand-up's quiet file (its zcp process by PID and start, and its turn); a Mate's
     retry cap kept across loads (the connection's own ladder, which a load starts over). Faces keep
     their own clocks: a pose is never a verdict.
-- **2026-10-05** — **An application's environments are progressive: nothing, a stage, a production or
-  both, in any order, and release exists only with a production.**
-  - **Merge is a finished act.** It asks nothing further; an absent stage or production is never a
-    dot, a count or a next step — a quiet slot with **Add** in the application's Environments section.
-  - **Stage and production are peers.** "Add stage" and "Add production" everywhere, neither
-    optional-labelled; a production needs no stage, a stage is never a gate.
-  - **One question, once, at the moment of intent:** right after a person's own merge of the
-    application's first code change (HQ's `firstCodeMerge`), when it has no production and the person
-    may add an environment — "where should it run?" with the missing tiers and **Not now**. Never on
-    reopen, never again.
-  - **No production, no release:** no Review release, no waiting count, no rollback, no snapshot (the
-    2026-10-04 snapshot exception is withdrawn; old snapshot rows stay as history). HQ refuses the
-    verb for everyone.
-  - **Adding a production is the intent to release:** it deploys nothing by itself — a production
-    attached from now on follows only releases made after it (its release floor) — and the client
-    hands over to the first release's review; the release is a person's press.
-  - **Supersedes** the "matches main's broker" half of SPEC §3.3a's release rule (main let an org
-    admin tag without a production): its "no release without production" half stands.
-  - _Why:_ the owner: "kdyz ji nemam tak by to nic z toho delat nemelo dokud ji nepridam … snapshot by
-    bez produkce nemel vzniknout"; "na poprve se zeptat jeslti chci tu produkci udelat … aby me to
-    pokaze neotravovalo pri jakemkoliv mergi"; "mel bych umet pridat produkci bez stage … kdyz nic
-    nemam tak bych mel mit moznost pridat bud stage, nebo rovnou produkci"; "UI a chovani ma byt
-    nejak progresivni, umoznovat vsechny mozne situace, efektivne a jasne je resit a propisovat do
-    ui".
-- **2026-10-05** — **A merge ends its review, with a production too** (the owner, of _Review release_
-  on a merged change: "after mergin, it directly opens release to prod (even when there is no
-  prod).. and it shouldnt even when there is prod"). Completes "Merge is a finished act" above: with
-  a production, a merged change still offered _Review release_ as its one button. It now says what it
-  did and what waits for production, and offers nothing to press but the first merge's question; the
-  release opens from its own doors — the menu row, the project's strip and page. This reverses the
-  2026-09-29 hand-off (R6) for a change.
-  - _Why:_ the button that merged turned, in the same place and under the same ⌘↵, into the way to
-    production, so the second press of one gesture reached a different decision.
-- **2026-10-05** — **The review's button never takes the focus.** The review opens with the focus on
-  itself, and a button that turns safe later doesn't take it either; ⌘↵ presses the button while it
-  is safe, as before. Replaces the focus half of the 2026-09-29 R5 rule ("The focus lands on it, and
-  ⌘↵ presses it, only while it is safe"); decided by the lead under the owner's delegation ("take the
-  best possible and the most recommended solution").
-  - _Why:_ with the focus on a safe _Merge_, a plain Enter merged (found in pass 39, T6); ⌘↵ is the
-    deliberate press, Enter is not.
 - **2026-10-05** — **D10 (the owner): a new conversation starts on Extra High, wherever its model
   offers it.**
   - **Every new conversation:** a new Mate's first (the bootstrap thread and its stand-up) and every
@@ -4074,63 +2447,6 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
     what its first turn ran on, so a reload reads it back.
   - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
-- **2026-10-05** — **HQ's standing is said in the menu's header, never above the list** (the owner,
-  of "Last known · as of 8:35 PM · Updating…" above the Mates: "what is this layout shifting …
-  here"). While HQ is read again or its stream reconnects, a spinner stands before the waiting
-  faces, the whole line in its tooltip; once HQ does not answer, "HQ unavailable" stands there, with
-  _Try again_ where it is offered. The boot menu drawn from memory says nothing of it. SPEC §6.2.3
-  still holds: the menu says since when, and how old its rows are.
-  - _Why:_ every reconnect and every reload pushed the whole menu down and back; syncing belongs in
-    the header, and a reload paints nothing it takes back.
-  - **2026-10-07 amendment (Mate 0.14.26):** During an outage after HQ has answered, the header says
-    "HQ is not reachable — showing what it last said" and HQ facts are marked last-known, including
-    the production chip's menu. The tooltip names when reachability was lost; _Try again_ remains
-    where offered. Before any HQ answer the header says "HQ unavailable". A spinner alone cannot
-    describe retained facts as current (`SidebarZeropsTree.tsx`, `SidebarProductionChip.logic.ts`).
-
-- **2026-10-05** — **Every project of an application is named in full in Zerops; under its
-  application the client shows a Mate or a stop by its own name** (the owner, of Aleš's report that
-  a new Mate's project read only `Sage` in the organization's project list while older ones read
-  `SPN - Rune`). A Mate's project is `<application> - <Mate>`, a stage's or a production's
-  `<application> - stage` as before; New Mate, New project and _Rename Mate_ send the full name,
-  the person types and sees only the Mate's own. Wherever a Mate or a stop is drawn with its
-  application at hand, the exact `<application> - ` prefix is cut (`nameUnderApp`): a separator is
-  required, so `Shopper - stage` under `Shop` stays whole, and a name without the prefix — a project
-  renamed in Zerops, a moved Mate, a renamed application — is drawn whole. A Mate's name is unique
-  and capped at 24 characters on its own part. The name's source stays Zerops; HQ still keeps none.
-  Projects named before this were renamed once to the full form. **Supersedes** in the 2026-10-03
-  D3 row: "a new Mate's project is named as the Mate is" and "no prefix is cut".
-  - _Rule:_ renaming an application or moving a Mate renames its projects in Zerops. Each target is
-    planned before anything is written, from the application's old name (`<old> - X` becomes
-    `<new> - X`; a name without the old prefix is its own as a whole, so `Sage` becomes `<new> - Sage`),
-    then HQ's write goes first — refused, nothing else happens — and the projects follow, the
-    dialog or the move waiting for all of them. A project Zerops refuses is said with why and
-    retried with the same targets, never planned again from the new name (`New - Old - Rune`).
-    Leaving every application renames the project to the Mate's own name (`SPN - Rune` becomes
-    `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
-  - _Why:_ the organization's project list in Zerops is where the projects of every application
-    stand side by side; without the prefix a Mate's project says nothing of whose it is.
-- **2026-10-06** — **Every list of a Mate's changes reads D7 by one rule** (pass 43: the menu's rows
-  hid a change's _Review_ while its Mate worked, the projects page did not). `changeShowsReview` —
-  described at its head, and its Mate not working in any of its chats, a turn or helpers it
-  started — is read by the menu's change rows, the projects page's change rows, the group's next
-  step and the composer's top (`mateNextStep`; the composer gives way by its own hold, which keeps
-  a dismissed strip remembered). A rule by HQ's `updatedAt` against the run's start was tried and
-  dropped: a person's comment moves a change, a change the run will amend could be merged
-  mid-edit, and two clocks would decide it.
-  - _Why:_ 0fc8a2eca's D7 — "While the Mate works in any of its chats … its rows carry no Review,
-    and the group's next step passes its changes by" — and the surfaces disagreed.
-- **2026-10-06** — **A sign-in failure is the Mate's, said in its words** (F7: the reason read
-  "Claude's sign-in has expired. Sign Claude in again, …" under Sage). Where a Mate is named, its
-  sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
-  subject, the agent only what the person signs in to; on the Mate's own menu row, under its name,
-  "Signed out of Claude. Sign in again to continue." The driver's words stay the driver's
-  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`: each agent
-  driver's own sentence from its first word — Claude's "could not authenticate. For subscription
-  login" and "'s sign-in has expired.", Antigravity's — and only the conversation's own driver's
-  where it is known; Git's "could not authenticate with the remote" is no agent signed out) and
-  says them (`mateErrorWords`) in the conversation's banner, the menu row and the jump box.
-  - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.
 - **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
   deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
   Claude's Agent `name`, kept by the activity projection for an agent launch only — every place

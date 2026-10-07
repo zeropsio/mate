@@ -12,6 +12,18 @@ when the owner fixes its flow, through the surface-round loop. A field an entry 
 
 ## 1. Vocabulary
 
+### Shared principles
+
+- Content does not move by itself. Transient state stays in a fixed frame.
+- A list has an explicit order. Background arrivals do not rearrange the order the person chose.
+- Related words share a text edge; related actions share an end edge.
+- Say a state once in a row. Its mark and words belong together.
+- A problem gives its cause and the action that can fix it. Do not offer an action the source refused.
+- An action's label says what it opens or changes. A different decision needs a separate press.
+- Condensed text never quotes credentials.
+
+### Vocabulary
+
 Fixed by the accepted principles (concept P1–P8): depth by tint, one `MicroLabel`, `StatusDot` +
 word (never a bare dot), pills and chips, blue acts / teal identifies, native containers on
 mobile. Everything else in a row is filled by the slice that builds it.
@@ -519,73 +531,14 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     order they were written, each picture where it was put, at most 300 px tall, its notes under it
     at 14/20 with 18 px numbered badges (12/500) in the note colour, and "Original kept · 4.4 MB"
     (13/400) where the untouched file went along. A message that holds no labels (an older one, one
-    from a phone) keeps its pictures above its words; the menu's last ask and a conversation's title
-    read a picture's notes, never its label
+    from a phone) keeps its pictures above its words; a conversation's title
+    reads a picture's notes, never its label
   - _Phrase source:_ `messagePictures.logic.ts`; `@t3tools/shared/composerPictures`
     (`splitPictureText`, `pictureWords`)
   - _Lands:_ landed 2026-09-29 (pass 16)
-- **Review** — web
-  - _Anatomy (fixed part):_ one dialog for every merge, landing, release and roll back (R1, D12).
-    Every door says _Review_ — a change's row in the menu, the composer's top, a result row, the
-    crew line, the chips' menus, the projects page and a change's, a project's and a stop's pages
-    (_Review release_ there), the Git tab, the release rows' _Roll back to this_, the Crew tab's
-    rows and its _In Fen's code_, and a crew task's result row, where _Try it_ stands before it —
-    and opens the same review over the conversation (`openReview`, one provider); two doors to one
-    thing open one review. 768 px wide, the conversation's column (its text 720), radius 20, the
-    card's ground in a 12 % ink ring with a deep shadow, over an 18 % backdrop (40 % in dark), hung
-    from a fixed line near the top so what arrives grows it downward; in a short window only its
-    body scrolls. Top to bottom: a kind line (13/500 muted, its glyph — "Review · change", "Review ·
-    recipe change", "Release", "Roll back", "Crew task") with _Open as page_ and a 28 px × at its
-    end, the title (16 px), a meta line ("(face) Nova · appdev → main · #2 · 1d", 13, tabular — the
-    size stays in the Changes heading); the verdict first (R2), one 12 px-round box in its tone —
-    green ready, amber attention, red failing, ink quiet, busy or done — saying whether it is safe
-    and why, its fix in blue beside it ("Ask Nova to resolve it"); its description — the
-    change's body as its author wrote it, in the chat's markdown, its pictures in it (one it cannot
-    read settles on one line with its words) — else what the run that made it said, under
-    "What it does", with a link to that run where one names the change (R3); its files with a letter
-    and +/− each, a file's diff opening in place (12/19 mono, hunk headers, one number column; 400
-    lines, then "Show all N lines" up to 2,000, past that a line saying the rest is too long to
-    show here) (R4); its conversation — one box that grows as it is
-    typed in ("Comment, or tell Nova what to change…") with _Comment_ and _Ask Nova_, the ask only
-    to the person's own Mate and both only with words, the dialog showing the newest three comments;
-    its commits, one line each with its age and hash on the column's right edge, more than 7 folded
-    to 5 with "Show all N"; and a foot on a 2 % fill saying what the one button does beside it
-    ("Squash-merges 1 commit into main. Production isn't touched until you release."), a change's
-    _Close without merging…_ where HQ's rule offers it — the review then its one confirmation,
-    "Close #2 without merging?" in the verdict and _Keep it open_ beside the button — _Cancel_ or
-    _Close_, and the button (34 px, radius 10): _Merge_, _Add to Fen's code_, _Release v0.1.57_,
-    _Roll back to v0.1.55_ (R5), none where HQ's rule does not offer it, the foot saying what it
-    takes. After the press it stays and says what happened — "Merged into main", "1 change now
-    waits for production", and nothing more to press: a merge ends its review, and the release opens
-    from its own doors (2026-10-05); a release's progress with its clock, then "Released" or the
-    failure and its fix (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
-    about 150 ms; Esc or a press outside closes it and gives the focus back; the focus lands on the
-    review, never on its button, and ⌘↵ presses the button only while it is safe — never for
-    _Release_ or _Roll back_ (2026-10-05); reduced
-    motion keeps only the fade; what is typed in it reaches nothing behind it (R7); a release's change rows press through to that
-    change's review inside the dialog — the whole row presses, a › at its end, none on a commit no
-    review carried — shown merged ("✓ Merged" where the button stands, "← Release" in the kind line),
-    sliding in from the right in 220 ms as the release moves 30 % left and fades and the height
-    eases; the first Esc steps back to the release where it was, the focus on the pressed row, the
-    second closes, and ⌘↵ never reaches the release underneath (`ZeropsReleaseSteps.logic.ts`)
-  - _States:_ a change: ready · HQ checking · behind main (amber, still merges) · conflicts
-    with main · its files still read · not offered · merging · merged · refused · close asked ·
-    closing · close refused · closed without merging; a release: ready · blocked · releasing · released ·
-    failed; a roll back: ready · rolling back · rolled back · refused; a crew task: ready · add what
-    it has · conflict · check failed · in Fen's code
-  - A release offered to the person has a Version field after the verdict. It defaults to the
-    next patch; a typed version updates the title, consequence and release button together. A
-    root `VERSION` or `package.json` declaration from main is an optional suggestion, with its
-    source. Invalid or existing versions explain the problem at the field and disable Release.
-    The field leaves when the release starts; the reviewed changes and prior production version
-    are captured at the press. Harness: `release-version`, `release-version-invalid`.
-  - _Phrase source:_ client-runtime `reviewVerdict.ts` (`changeReview`, `releaseReview`,
-    `rollbackReview`, `crewTaskReview`)
-  - _Lands:_ landed 2026-09-29 (pass 16)
 - **Ask to fix** — web
   - _Anatomy (fixed part):_ the fix every problem offers (S6): "Ask Nova to fix it" as a blue text
-    action — on a broken or not-done row of a run's result, in a chip's menu while production or a
-    stage is in trouble, in a review's verdict ("Ask Nova to resolve it", "… to update it") — with a
+    action — on a broken or not-done row of a run's result, in a review's verdict ("Ask Nova to resolve it", "… to update it") — with a
     chevron for another of the person's Mates. It opens the Mate's conversation with the problem
     written into its composer, not sent: what failed, when, the error, the log's last lines where
     the client has them (30 at most, in a code block), and the ask ("Find out why, fix it, and
@@ -593,176 +546,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     blank line apart. Only the person's own Mates — one whose owner nobody can name counts as
     theirs, as _Mine_ keeps it — and only ones the app is connected to, the one they used last in
     that project first; a change's fix goes only to the Mate that wrote it, and a run's only to the
-    run's own Mate (a colleague's run offers none). None of theirs, no action. In a chip's menu the
-    first press shows what will be written, and the second opens the conversation
+    run's own Mate (a colleague's run offers none). None of theirs, no action.
   - _States:_ offered · several Mates (a chevron) · none (no action)
   - _Phrase source:_ `fixRequest.ts` (`useAskMateToFix`, `fixRequestPrompt`); `fixMates.ts`
     (`fixMatesOf`); `useAskMate.ts`
   - _Lands:_ landed 2026-09-29 (pass 16)
-- **`JumpBox`** — web
-  - _Anatomy (fixed part):_ the way into it is one small control at the end of the menu's logo row
-    (`SidebarJumpButton`, M12): 28 px, the search glyph and the palette's key inside it in 12 px
-    mono, on a 5.5 % ink fill; it, ⌘K (the palette's own binding) and `/` wherever nothing is being
-    typed open the box in the palette's own chrome; signed in, it is the palette's root, and `>`
-    hands over to the commands. Nothing typed: the menu's first six Mates — face, name, "project ·
-    subject" — then its projects, the last of them _New project_ (D11). Typed: Mates by name,
-    projects and _New project_, changes ("#12 title"), stops ("Shop production" and
-    what it runs, the dot its chip's menu gives it — only where its chip is drawn), in conversations
-    (the task, the last words, then the server's search of whole histories), each group capped, the
-    match in the search's bold. A Mate, or its words, opens its conversation; a project, a change or
-    a stop is shown in the menu — its project opened, its row focused and flashed once, a change
-    landing on its _Review_, a stop on its chip — production's, or the stages' — whose menu opens
-    while the project stays folded — and opens its own page where the menu shows no tree (the
-    settings); a phone's menu steps aside for the box and comes back to show a find. `@` lists the
-    Mates the viewer may write to (D6) under _Free now_ and _Busy_; Tab or ↵ puts the Mate's chip
-    (face and name) in the field, placeholder "Write to Nova", and a line under it says who reads it
-    and when; ↵ sends without opening, then a toast "Sent to Nova" with _Open_; ⌫ on an empty field
-    goes back to `@nova`; Esc drops the chip, then closes
-  - _States:_ finding · writing (the list, the chip) · sending · not sent (the reason under the
-    line, the words kept)
-  - _Phrase source:_ `JumpBox.logic.ts` (`jumpGroups`, `jumpWritePlan`); the menu's index
-    (`sidebarJump.ts`)
-  - _Lands:_ landed 2026-09-27; its button in the logo row 2026-09-29
-- **Project heading** — web
-  - _Anatomy (fixed part):_ a project's heading in the left menu, 32 px tall, a band 10 px from
-    either side of the menu with everything in it 6 px in, lit at 3.5 % of the ink under the pointer
-    and while a menu of its is open: its name on the marks' edge (16 px in), 16/600 on 24 with −0.2
-    px tracking — the menu's only 16 px words (S1) — the whole heading folding and unfolding the
-    project; one chevron after the name that turns a quarter (220 ms) and shows on hover, on focus
-    and always while folded; while folded, the faces of its busiest Mates after it (M15: three at
-    most, 18 px, each its row's face and pose, a 7 px dot for what is not work — amber needs you,
-    red stopped on an error, blue finished unseen — scaling in only when it arrives while
-    watched); + (_Add a Mate_, its dialog over the view on screen) and ⋯ as 28 px buttons, muted
-    until pointed at, in a slot that is always there (at rest on a coarse pointer), the grip before
-    them in the _Custom_ order — under a 300 px heading the + gives its room to the name, and _Add a
-    Mate_ is in ⋯ too; at its end its chips, `stage` then `prod` (D1), before which a long name
-    truncates. An open heading's second line (D′) sits 13/18 under the name, 13 px letter to
-    letter and 33 px above its first Mate, the band growing over it (32 → 56 px): the fact in ink, the
-    rest muted, its door in the change rows' blue; a release's line leads with the tag the folded
-    heading's badge wears, and the badge's tooltip says the line's words ("3 changes not released ·
-    since v1.4.0"). ⋯ holds _Open project_, _Add a Mate_, _Move up_ and _Move down_, _Set up …_ for a
-    tier it lacks, _All projects_. A heading never moves when pressed (M9, T3): the project's rows
-    and the room after them — 36 px, 16 at the list's end; 6 px from the heading to its first row —
-    unfold below it over 220 ms as they fade in and fold into it in 160 ms, turning round from
-    wherever they stand when pressed again, a folded project keeping 12 px under its heading (none
-    at the list's end); a paint nobody asked for never animates, and folding the list's last project
-    keeps its room until the person scrolls. From one text to the next (M16): 20 px from a heading's
-    words to its first Mate's name, or, folded, to the next heading's; 30 from one Mate's words to
-    the next's; 50 from an open project's last words to the next heading's. The list starts 16 px
-    under the logo row; _New project_ stands at the menu's foot, over the account (D11): a + in the
-    faces' column, the words at 56; between them, only when the account has something to say, one line — 13/18
-    muted words and quiet text buttons (`AccountVoiceLine`, `accountFootLine`): a lapse ("Checking
-    your Zerops access…", then "Zerops isn't answering." with _Try now_, both with _Sign out_) or
-    trouble lasting 20 s in the organization on screen ("Zerops isn't answering. Trying again…"
-    with _Try now_); nothing ever covers the product
-  - _States:_ open · folded (its busy faces) · unnamed (italic, muted) · the ungrouped heading (no
-    toggle, no verbs)
-  - _Phrase source:_ `SidebarProjects.logic.ts` (`projectRoom`, `headingFaces`, `slackForFold`);
-    `SidebarProjectFold.tsx`
-  - _Lands:_ landed 2026-09-29 (pass 16); its band, chips and rhythm 2026-09-29 (pass 18)
-- **Prod and stage chips** — web
-  - _Anatomy (fixed part):_ a project's production and its stages as up to two chips at its
-    heading's end, open or folded (M2, D1): `stage` first and `prod` on the end edge, each only
-    where the project has it, several stages one chip. A chip is its word alone — 20 px, radius 10,
-    12/500, 6 px inside the heading's band, the muted ink on a 5.5 % ink fill (9 % under the pointer
-    and while open) — and its whole ground and ink say what is wrong (S3): amber (a 34 % ground)
-    while the last release or deploy did not go through and the old one still serves, red (26 %)
-    while it is down, their inks leaning toward the foreground so the word reads at 4.7:1 or better
-    in either theme; a hollow ring (a 1 px edge at 18 % ink, no fill) while it is stopped on
-    purpose; neutral otherwise, a release or a deploy on its way included. Every tone keeps one box
-    and a change cross-fades in 150 ms, so the heading never moves; a long name truncates before
-    either chip. Its accessible name says the whole state, the version with it ("Production v2.3.0,
-    the last release failed", "Stages: qa is down, stage is healthy"). A press opens its menu (330
-    px, radius 14, grown from its corner in 160 ms; Esc or a press outside closes it): the project's
-    name, then each stop as a group — its row, opening the environment's page: a dot, the name, the
-    version and the state in words ("Healthy", "Releasing v1.2.1", "Release failed", "Deployed 40
-    min ago", "Deploy failed", "Down", "Stopped", "Setting up…"); a note of what went wrong, as far
-    as the platform and HQ's deploys and releases say; "Ask Nova to fix it"
-    while it is in trouble, a stage's fix naming the stage (S6); the public links, each led by the
-    service it reaches (`app`, `api:3000` where one service answers on several ports); among several
-    stages, each its own _Open in Zerops_ — then "N changes wait for production" with _Review_, the
-    release's review, where there is a production; a menu of one stop ends on _Open in Zerops_
-  - _States:_ a chip: neutral (healthy, changes waiting, releasing or deploying, setting up, nothing
-    released or deployed yet) · amber (the last release or deploy did not go through) · red (down) ·
-    hollow (stopped on purpose) · unknown (the remembered chip, or what the platform alone says
-    while HQ's releases are coming, or nothing) · unlit (production serves, but what a service
-    runs cannot be told: "Production v0.1.44, can't tell what api runs" where it would say healthy,
-    changes waiting or a release that did not go out) · none (no such tier); several
-    stages wear the worst of them: down, then a failed deploy, then one deploying
-  - _Phrase source:_ `SidebarProductionChip.logic.ts` (`projectChips`, `productionChip`,
-    `stageChip`, `chipFace`, `productionMenu`, `stageMenu`, `stopServing`)
-  - _Lands:_ landed 2026-09-29 (pass 16); two chips, each its word alone, 2026-09-29 (pass 18)
-- **`MateRow`** — web
-  - _Anatomy (fixed part):_ a Mate in the left menu, a messenger's row: a 28 px column for its face
-    and the words 12 px after it — faces at 16 px from the menu's edge, every word at 56 — the face
-    on the name's line however many lines follow (M4), whole: the card's face, nothing ringing it
-    and nothing on its corner. The name's line: the owner's mark before the name (`MateOwnerMark`,
-    16 px round — their picture, or their initial on a hue of their own read off their name; a plain
-    disc where nobody can name them, so every name starts on one edge), the name 14/20, 600 while
-    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer, as HQ relays it, names
-    them: `mateIsViewers`; another's waiting Mate rests, its question muted, its change keeping its
-    _Review_), blue finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
-    something, or the run's clock counting up (600, tabular, in the Mate's own hue after a 6 px dot of it
-    breathing; the time fades back in where it stood when the run ends), or a pause glyph and when a usage limit lets
-    it go on. Under it the person's last ask, 13/18 in the second ink, then the third line (M7): its
-    last words muted — in the second ink while unread; the question itself in ink while it needs you
-    (D6); the error's first line in red where it stopped on one; while it works, the step it is on,
-    in its words — a command's code only where it says nothing of itself — under a sweep of light
-    (D5), or three still dots while words are to come; the
-    second line is the person's — the sign-in, else _Draft:_ and the unsent words over the ask, else
-    the ask, else "Nothing asked yet" once its conversations are read; a draft never covers the
-    Mate's line. One even leading, no gaps (M5): every row three lines, 76 px, its third blank while
-    nothing is said (M6); 30 px from one
-    Mate's words to the next's (M16). A new ask or new words rise into their line, never on a first
-    paint. On hover _Stop_ while it works — a first press turns it into a red "Stop?" in its place, a
-    second within 3 s stops, and leaving, Esc or 3 s puts it back — and ⋯; a right-click or a finger held opens its menu; ⌥
-    held puts each row's number in its time slot, and ⌥1–9 opens that Mate; j and k move between
-    rows, x arms a stop and a second x stops, e marks it read or unread. A Mate resting for more than a week, with nothing
-    unread and not open, folds into its project's "3 quiet Mates". Its face and its words come from
-    one reading (`mateRowReading`): HQ's live overview of it, or its conversation's while its socket
-    is up or only reconnecting, else this browser's memory, at rest (step A, A4) — a line held for
-    words still to come stays empty, never dots under an asleep face. In its first minutes it says so in the projects page's words
-    (`mateComing`), asleep in the face its person picked, the owner's seat empty, no menu, and a
-    press opens its own view (`/mate/$projectId`)
-  - _States:_ idle · working · needs you · finished, unread · stopped on an error (its face still) ·
-    paused (a usage limit: asleep) · asleep (neither HQ nor a socket holds it live) · quiet (folded) ·
-    remembered (a reload, until HQ's view or its socket answers: its lines as they stood, a reply to
-    come held empty) · coming up
-    ("Coming up. A few minutes.", "Almost there.", "Taking longer than usual.", or in red "Could not
-    be created.") · deleting ("Deleting…" for its last line, asleep, no time, no dot, no menu; a
-    press opens nothing)
-  - _Phrase source:_ `SidebarMateRow.logic.ts` (`mateRowView`, `ownerMark`); `agentActivity.ts`;
-    `SidebarZeropsTree.logic.ts`
-  - _Lands:_ landed 2026-09-27; rebuilt 2026-09-29 (pass 16); deleting 2026-09-29 (pass 18); coming
-    up 2026-09-30 (pass 19)
-- **Change row** — web
-  - _Anatomy (fixed part):_ one of a Mate's open changes, 2 px under its row (M8): 28 px tall,
-    radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, and amber where it
-    fell behind `main` (S3); `#N title` on the words' edge, the way
-    to the change's page; _Review_ as a blue word on the right edge, the one door to merging it
-    (R1, D8). No _Merge_, no _Ask_ and no check dot on the row: the verdict is the review's. Past
-    three, a Mate's changes fold behind "N changes"
-  - _States:_ open · behind main (amber mark) · remembered (a reload,
-    until HQ answers: its title untinted, _Review_ already there)
-  - _Phrase source:_ `SidebarMateRow.logic.ts` (`changeMarkTone`); client-runtime
-    `sidebarChangeLabel`, `pullRequestsFolded`
-  - _Lands:_ landed 2026-09-29 (pass 16)
-- **Crew line** — web
-  - _Anatomy (fixed part):_ a crew as one line under its Mate's row (M14), 2 px under it and 30 px
-    tall, inside its Mate's band — hover, an open menu and the selected band light the row and the
-    line as one: the crew's mark (14 px) in the faces' column; every crewmate's face whole at 20 px
-    in a 24 px button, the lead first, each opening that crewmate's chat and wearing its state; then
-    the crew's one most urgent fact in the second ink — who needs you ("Bo needs you", "Bo and Cy
-    need you", "Bo and 2 others need you") before whose finished work waits for the person's review
-    ("Bo's work is ready", "2 pieces of work are ready"), or nothing; and _Review_ in blue on the
-    right edge while a task waits, opening the first ready task's review. The Mate's row keeps its
-    full width above it. In a narrow menu the faces keep their place and the fact gives way, still
-    in its tooltip and in _Review_'s name. A reload draws the faces this browser last read, at rest,
-    with no fact and no _Review_ until the crew's feed answers
-  - _States:_ needs you · work ready · nothing to say · remembered · no crew (no line)
-  - _Phrase source:_ `SidebarCrewLine.logic.ts` (`crewLine`); `crew/phrases.ts`
-    (`crewLineNeedsWord`, `crewLineReadyWord`)
-  - _Lands:_ landed 2026-09-29 (pass 16); its words 2026-09-30 (pass 20)
 - **Crew tab** — web
   - _Anatomy (fixed part):_ the crew's one home, in the right panel (`CrewPanel`), one column as the
     approved "Mate Crew Tab" board draws it. Its head: the goal's title — its first lines on hover,
@@ -774,8 +562,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     going…_ (for its time only while something is left to do; a refused turn, _Try again_);
     "Wrapping up". Then one composer, "Give the crew something to do…", to the lead ("To Lead") —
     or, with none, to the faces picked, each getting a task of its own — its `@` finding the Mate's
-    files; while a plan waits, "Tell the lead what to change…". Then a row per crewmate, as the
-    menu's Mate row: its face wearing its state, its name and a time; what it is on, or its job,
+    files; while a plan waits, "Tell the lead what to change…". Then a row per crewmate: its face wearing its state, its name and a time; what it is on, or its job,
     muted; its step while it works (the thread's live step, D5), else where its task stands ("Done ·
     the lead is checking it", "Done, in its own copy · not in Fen's code yet"); what it needs from
     you, a line each in ink — red only for something broken — with the presses that settle it, the
@@ -799,53 +586,6 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _Phrase source:_ client-runtime `crew/phrases.ts`; `CrewHead.logic.ts` (`crewModeLine`),
     `CrewRows.logic.ts`, `CrewLeadPlan.logic.ts`, `CrewRunDialog.logic.ts`
   - _Lands:_ landed 2026-09-30 (pass 20)
-- **Selected band** — web
-  - _Anatomy (fixed part):_ the menu's one selected band (M11): a single surface in the list
-    (`--sidebar-row-active`, radius 12, the row's own inset) behind the open Mate's unit — its row
-    and its crew line, one shape (`MateUnit`), the change rows outside it — placed by transform and
-    height — never `top` — after every draw and whenever the list changes size, so it never lags its
-    row. Opening another Mate slides it there on a spring over 300 ms (T2); a draw in the middle of
-    a slide turns it smoothly to the new row; a reflow it follows at once. Clipped by its project's
-    fold, it shrinks as the project folds and is gone once its row is; the first paint and a row
-    coming back into view place it without a move; reduced motion only places it. A Mate opened from
-    elsewhere during the session — _Add_ landing on it, a link, a page — has its row scrolled to the
-    menu's nearest edge once it is drawn, smoothly unless motion is reduced; never the one open at
-    mount, so a reload leaves the menu where it was. Rows paint no fill of their own for being open
-  - _States:_ placed · sliding · folded away (none)
-  - _Phrase source:_ `SidebarSelectedBand.logic.ts` (`bandPlacement`, `bandMove`)
-  - _Lands:_ landed 2026-09-29 (pass 16); scrolled into view 2026-09-30 (pass 19)
-- **`WaitingFaces`** — web
-  - _Anatomy (fixed part):_ the Mates waiting on you — anything that wears the "needs you" face: a
-    question, an approval, a plan, a failure — as up to four overlapping faces, then "+2", in the
-    logo row's slot before ⌘K, which stays reserved while it is empty; where the row is narrow the
-    faces give way first (`waitingFacesThatFit`: a 304 px menu keeps three and a count, a 256 px one
-    a single face), so the lockup and ⌘K stay whole; its tooltip names them ("Kai and Juno wait on
-    you"). A press, or ⌥↓, goes to the next one below the Mate in view: its project opens, its row
-    takes the focus and flashes once, the question on its last line
-  - _Phrase source:_ `sidebarReveal.ts` (`nextWaitingMate`); `SidebarWaitingStack.tsx`
-    (`waitingFacesThatFit`)
-  - _Lands:_ landed 2026-09-27; in the logo row 2026-09-29
-- **`MateMenu`** — web
-  - _Anatomy (fixed part):_ a Mate's own menu, from ⋯ on its row, a right-click, a finger held on
-    the row, or Shift+F10: _Open_ ↵, then _Set up a crew_ or _Crew_ on the viewer's own Mate with
-    crew mode on (its conversation on the Crew tab; for _Set up a crew_ its setup view), _Open app_,
-    _Copy link_; _Mute notifications_ (this browser's), _Mark as unread_ E, _Rename_ (in place,
-    where the name stands, never to nothing), _Change face…_ where _Rename_ is offered; _Restart_
-    (_Start_ when stopped), _Register in …_, _Hand over…_, _Move to project…_; _Stop the run_ while
-    it works; last, in red, _Delete {name}…_ where the viewer's role on the Mate's project is OWNER
-    or ADMIN, on a Mate only. Space presses the row, as any button
-  - _Phrase source:_ `SidebarMateMenu.tsx`; `useMateActions`
-  - _Lands:_ landed 2026-09-27; _Delete_ 2026-09-29 (pass 18); _Change face…_ 2026-09-30 (pass 19)
-- **Project order** — web
-  - _Anatomy (fixed part):_ the account menu's _Show_ (_Mine_ · _Everyone_) and _Order_ (_Name_ ·
-    _Creation date_ · _Custom_), radio items. _Custom_ starts from the order on screen: a project's
-    grip — the first of its heading's verbs, a 28 px button before + and ⋯ inside the heading's
-    band, shown whenever they are (at rest on a coarse pointer) — drags it with a drop line, or
-    moves it with the arrow keys, announced ("Links moved to 3 of 5."); a new project comes after
-    the arranged ones, newest first. Kept per account in this browser. _Mine_ keeps the Mates the
-    viewer owns, the ones whose owner is unknown and the one open, and the jump box finds within it
-  - _Phrase source:_ `SidebarProjectReorder.tsx`; `SidebarZeropsAccount.logic.ts`
-  - _Lands:_ landed 2026-09-27; the grip among the verbs 2026-09-29 (pass 18)
 - **HQ card** — web
   - _Anatomy (fixed part):_ the organization's HQ as the projects page's quiet end, a `FlatCard`
     in place of the old Tools line. Its header line: _HQ_ (for an owner or an admin a button with
@@ -882,7 +622,7 @@ left.
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | environment                                                                             | **project**                                                                                     |
 | HQ's application, the layer above Zerops projects (the code's _group_, _app_)           | **project** — "Move to project…", "New project", "No project"; never _group_, _application_     |
-| a Zerops project shown beside one (a Mate's, a stage's)                                 | **its name**, as its row in the left menu draws it; never _project_ in the same dialog          |
+| a Zerops project shown beside one (a Mate's, a stage's)                                 | **its name**; never _project_ in the same dialog                                                |
 | pull request, PR                                                                        | **change** — "Change #4 waits for your merge", "2 open changes"; HQ's word for a Mate's work    |
 | rebase (a change behind or in conflict with `main`)                                     | **merge `main` into it** — "Conflicts with main"; HQ takes a Mate's push only forward           |
 | provider                                                                                | **coding agent**                                                                                |
