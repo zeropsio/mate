@@ -20,31 +20,40 @@ import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import type { RunPrincipal, WakeOwner } from "./ports.ts";
+import type {
+  ConversationId,
+  ConversationRow,
+  Principal,
+  RunEnd,
+  RunEndSource,
+  RunId,
+  WakeId,
+} from "@t3tools/contracts";
+
+import type { Command } from "./domain/command.ts";
+import type { WakeKind } from "./ports.ts";
 
 /** What a V1 door answers once the Mate engine owns the conversation. */
 export const ENGINE_MOVED =
   "This Mate's conversation moved to the new engine. Update Zerops Mate to keep talking to it.";
 
-/** A wake's id, derived from its cause: `${owner}/w/${kind}/${key}`. */
-export type WakeId = string;
-
 /** Why the engine stops a live session. */
 export type StopCause = "sign-out";
 
-/** The conversation as the grafts read it (HQ overview, attention). */
-export interface ConversationView {
-  readonly conversationId: string;
-}
-
-/** A run asked for with no person at the keyboard. */
-export interface WakeRequest {
-  readonly owner: WakeOwner;
-  /** Dedups a wake: the same owner and key arm one wake. */
-  readonly key: string;
-  readonly principal: Extract<RunPrincipal, { readonly kind: "wake" }>;
+/**
+ * A run asked for with no person at the keyboard: the conversation's `ArmWake`, with the
+ * principal it runs for (a continuation inherits the principal of the run it `joins`). The
+ * same conversation, kind and key arm one wake (`wakeId`).
+ */
+export type WakeRequest = Omit<
+  Extract<Command, { readonly _tag: "ArmWake" }>,
+  "_tag" | "kind" | "text"
+> & {
+  readonly conversationId: ConversationId;
+  readonly kind: WakeKind;
+  readonly principal: Principal;
   readonly text: string;
-}
+};
 
 export interface WakeReceipt {
   readonly wakeId: WakeId;
@@ -55,10 +64,12 @@ export class WakeRefused extends Data.TaggedError("WakeRefused")<{
   readonly message: string;
 }> {}
 
-/** How a woken run ended, once it has. */
+/** How a woken run ended, once it has, and who said so. */
 export interface RunOutcome {
   readonly wakeId: WakeId;
-  readonly end: "completed" | "stopped" | "failed" | "usage-limit" | "cut-by-restart";
+  readonly runId: RunId;
+  readonly end: RunEnd;
+  readonly source: RunEndSource;
 }
 
 export interface MateEngineService {
@@ -66,7 +77,8 @@ export interface MateEngineService {
   readonly live: boolean;
   /** Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. */
   readonly start: () => Effect.Effect<void, never, Scope.Scope>;
-  readonly view: Effect.Effect<ConversationView | undefined>;
+  /** The conversation as the grafts read it (HQ overview, attention): its menu row. */
+  readonly view: Effect.Effect<ConversationRow | undefined>;
   /** Emits once whenever the view may have changed. */
   readonly changes: Stream.Stream<void>;
   /** Stops every live session on these instances (a sign-out); best-effort, never fails. */

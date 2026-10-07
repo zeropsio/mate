@@ -11,8 +11,17 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
 
-/** What started a wake: today's triggers that start a run with no person at the keyboard. */
-export type WakeOwner = "standup" | "usage-resume" | "restart" | "report" | "self" | "crew";
+/**
+ * A wake's kind: today's triggers that start a run with no person at the keyboard. The
+ * engine's own `watchdog` is never asked for; stored wakes keep any kind a newer build wrote.
+ */
+export type WakeKind =
+  | "standup"
+  | "usage-resume"
+  | "restart-continuation"
+  | "report"
+  | "self"
+  | "crew";
 
 /**
  * Whom a run is for. A person sends from their session (`subject` as the auth
@@ -21,7 +30,7 @@ export type WakeOwner = "standup" | "usage-resume" | "restart" | "report" | "sel
  */
 export type RunPrincipal =
   | { readonly kind: "person"; readonly subject: string }
-  | { readonly kind: "wake"; readonly owner: WakeOwner; readonly startedBy: string };
+  | { readonly kind: "wake"; readonly owner: WakeKind; readonly startedBy: string };
 
 /** A run its principal may not start, in the sentence the person reads. */
 export class RunRefused extends Data.TaggedError("RunRefused")<{
