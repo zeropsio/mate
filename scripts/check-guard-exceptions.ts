@@ -26,6 +26,8 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
+import { rewriteImportPaths } from "./effect-401-codemod.ts";
+
 /**
  * The reviewed source roots scanned by every oxlint-side guard: the client sources, and HQ for the
  * guards that reach it (each rule still decides from a file's path whether it applies).
@@ -171,7 +173,8 @@ export const ratchetAdditions = (
 ): ReadonlyArray<string> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
-    const identity = identityOf(entry);
+    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/ path.
+    const identity = identityOf({ ...entry, fingerprint: rewriteImportPaths(entry.fingerprint) });
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }
   const additions: Array<string> = [];
