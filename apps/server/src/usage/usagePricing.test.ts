@@ -128,6 +128,14 @@ describe("usage pricing", () => {
     }
   });
 
+  it("prices a bracketed context-tier variant at the base model's rate", () => {
+    const table = parseRateTable({ "claude-opus-4-6": rate(1e-5, 2.5e-7) });
+
+    expect(lookupRate(table, "claude-opus-4-6[1m]")).toEqual(lookupRate(table, "claude-opus-4-6"));
+    expect(lookupRate(table, "claude-opus-4-6[1m]")).not.toBeNull();
+    expect(lookupRate(table, "anthropic/Claude-Opus-4-6[1m]")).toBeNull();
+  });
+
   it("adds a bare alias when every qualified entry has the same rate", () => {
     const table = parseRateTable({
       "provider-a/example-model": rate(1),
