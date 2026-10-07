@@ -63,6 +63,62 @@ export function creation(s: Scenario) {
     if (expanded !== "true") await toggle.click();
   };
   return {
+    holdProjectCreation: () => {
+      control.holdCreation = true;
+    },
+    completeProjectCreation: Effect.sync(() => {
+      const process = drivers.zerops.rows("process").find((row) => row.id === "created-1-creation");
+      if (!process) throw new Error("The original creation was not accepted");
+      drivers.zerops.put("process", { ...process, status: "FINISHED" });
+    }),
+    projectBound: () => {
+      const bound = page.waitForResponse(
+        (response) =>
+          response.request().method() === "PUT" &&
+          /^\/api\/births\/[^/]+\/project$/u.test(new URL(response.url()).pathname) &&
+          response.status() === 200,
+        { timeout: 15_000 },
+      );
+      return Effect.promise(() => bound);
+    },
+    noSetupYet: Effect.sync(() => {
+      expect(control.mateKeys).toEqual([]);
+      expect(
+        drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1"),
+      ).toBe(false);
+    }),
+    stopAfterContainer: () => {
+      control.blockIsolation = true;
+    },
+    allowSetup: () => {
+      control.blockIsolation = false;
+    },
+    failProject: () => {
+      control.creationStatus = "FAILED";
+    },
+    reload: Effect.promise(() => page.reload()),
+    finishSetup: click("Finish setup"),
+    originalSetupOnly: Effect.sync(() => {
+      expect(control.accepted).toEqual([{ id: "created-1", name: "Garden - Nova" }]);
+      expect(
+        drivers.zerops.requests.get(
+          "PUT /project/created-1/first-class-recipe/development-container",
+        ),
+      ).toBe(1);
+      expect(control.mateKeys).toEqual(["zcp-Garden - Nova"]);
+    }),
+    failedProjectRemoved: Effect.sync(() => {
+      expect(control.deleted).toEqual(["created-1"]);
+      expect(drivers.zerops.rows("project").some((row) => row.id === "Ada")).toBe(true);
+      expect(drivers.zerops.rows("project").some((row) => row.id === "created-1")).toBe(false);
+    }),
+    noAgentImported: Effect.sync(() => {
+      expect(
+        drivers.zerops.requests.get(
+          "PUT /project/created-1/first-class-recipe/development-container",
+        ) ?? 0,
+      ).toBe(0);
+    }),
     loseCreationReply: () => {
       control.outcome = "lost";
     },

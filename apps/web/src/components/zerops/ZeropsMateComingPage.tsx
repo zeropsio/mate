@@ -249,10 +249,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Held by the close-off gate: its view says why — and, where its project is known not closed
   // off, offers Finish setup.
   const closeOffHolds = useCloseOffHolds();
+  const closeOffHold = closeOffHoldOf(closeOffHolds, projectId, press);
   // A press of it in another browser, as HQ holds it: no container yet is that press at work.
   const pressOf = usePressesElsewhere(held.rows);
   const coming = mateComing({
-    closeOffHold: closeOffHoldOf(closeOffHolds, projectId, press),
+    closeOffHold,
     press:
       press === undefined
         ? undefined
@@ -531,7 +532,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // offered to an owner or an admin in any browser — and at once, where this tab's press saw its
   // registration refused.
   const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
-  const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
+  const halfMade =
+    (coming?.kind === "failed" && coming.verb === "finish-setup") ||
+    closeOffHold === "open" ||
+    unregistered;
   const registryState = useZeropsRegistry();
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =
@@ -1026,9 +1030,8 @@ export function ComingBelow({
     (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
       ? null
       : note;
-  const left = pressRead?.kind === "unfinished" ? pressRead : null;
   const finishVerb =
-    left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
+    coming?.kind === "coming" && onFinishSetup !== undefined ? (
       <Button disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>

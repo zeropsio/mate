@@ -244,11 +244,13 @@ vi.mock("../ui/button", () => ({
     children,
     onClick,
     inert,
+    disabled,
   }: {
     readonly children?: ReactNode;
     readonly onClick?: () => void;
     readonly inert?: boolean;
-  }) => h("button", { onClick, inert }, children),
+    readonly disabled?: boolean;
+  }) => h("button", { onClick, inert, disabled }, children),
 }));
 vi.mock("./ZeropsProjectsPage", () => ({ removeFailedZeropsProject: async () => ({ ok: true }) }));
 
@@ -837,6 +839,39 @@ describe("ComingBelow — a Mate half made", () => {
 
   it("offers nothing to anyone else", () => {
     expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
+  });
+
+  it.each([
+    { permitted: true, finishing: false },
+    { permitted: true, finishing: true },
+    { permitted: false, finishing: false },
+  ])("recovers a Mate waiting for isolation: %o", ({ permitted, finishing }) => {
+    const finish = vi.fn();
+    let rendered: ReactTestRenderer;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: { kind: "coming", line: "Closing off its project…" },
+          progress: undefined,
+          nowMs: undefined,
+          mate: { name: "Quinn", project: "Acme" },
+          you: null,
+          finishing,
+          ...(permitted ? { onFinishSetup: finish } : {}),
+        }),
+      );
+    });
+    const buttons = rendered!.root.findAllByType("button");
+    expect(buttons).toHaveLength(permitted ? 1 : 0);
+    if (permitted) {
+      expect(buttons[0]!.children).toEqual(["Finish setup"]);
+      expect(buttons[0]!.props.disabled).toBe(finishing);
+      if (!finishing) {
+        act(() => buttons[0]!.props.onClick());
+        expect(finish).toHaveBeenCalledOnce();
+      }
+    }
+    act(() => rendered!.unmount());
   });
 
   // F6b (e2e, 2026-10-03): Dan's view said he could not be added while his workspace's clock ran

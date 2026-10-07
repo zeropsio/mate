@@ -40,30 +40,50 @@ export function useRunNewProject(): (held: CreationAsk) => void {
           // The project alone, born a Mate under its birth intent (its marker on before anything
           // else): its press attaches it to its application, then imports its container (F6b). In
           // flight as a press: the background mints no throwaway while it reads the token list.
-          createProject: (requestId, { name: projectName, location }) =>
-            whilePressing(
-              () =>
-                new Promise<{ readonly projectId: string }>((resolve, reject) => {
-                  // Taken the moment Zerops takes its project; the project's own end is its press's.
-                  operations
-                    .run(
-                      {
-                        kind: "create-project",
-                        orgId: organizationId,
-                        name: projectName,
-                        tagList: withZeropsMateTag([]),
-                        ...(location === undefined ? {} : { location }),
-                      },
-                      {
-                        orgId: organizationId,
-                        unobserved: PRESS_MAY_HAVE_LANDED,
-                        requestId,
-                        accepted: resolve,
-                      },
-                    )
-                    .catch(reject);
-                }),
-            ),
+          // The projection shows acceptance immediately; setup waits for project.create to finish.
+          createProject: (requestId, { name: projectName, location, appId, birth }) =>
+            whilePressing(async () => {
+              let binding: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
+              return operations
+                .run(
+                  {
+                    kind: "create-project",
+                    orgId: organizationId,
+                    name: projectName,
+                    tagList: withZeropsMateTag([]),
+                    ...(location === undefined ? {} : { location }),
+                  },
+                  {
+                    orgId: organizationId,
+                    unobserved: PRESS_MAY_HAVE_LANDED,
+                    requestId,
+                    accepted: ({ projectId }) => {
+                      if (!isCurrent()) return;
+                      // Hold the exact handle at HQ even if this tab closes before setup starts.
+                      binding = operations
+                        .run(
+                          {
+                            kind: "bind-birth",
+                            orgId: organizationId,
+                            appId,
+                            birthId: birth,
+                            projectId,
+                          },
+                          hqStep,
+                        )
+                        // Observe a refusal now; creation may still be running for minutes.
+                        .then(
+                          () => null,
+                          (error: unknown) => ({ error }),
+                        );
+                    },
+                  },
+                )
+                .finally(async () => {
+                  const stopped = await binding;
+                  if (stopped !== null) throw stopped.error;
+                });
+            }),
           accepted: (projectId, { hq, appId, intent }) => {
             // A step still running when the person signs out lands nowhere.
             if (!isCurrent()) return;

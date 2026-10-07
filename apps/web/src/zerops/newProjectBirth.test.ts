@@ -531,13 +531,13 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       // face are HQ's, which the press's registration writes.
       case: "named in full under its application, under its birth intent",
       ask: {},
-      args: { name: "Acme CRM - Vera", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", appId: "app-acme", birth: "b-1" },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Acme CRM - Vera", location: "prg1", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", location: "prg1", appId: "app-acme", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made, read: now } = ports(
