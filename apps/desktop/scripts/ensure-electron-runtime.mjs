@@ -3,6 +3,7 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeChildProcess from "node:child_process";
+import * as NodeURL from "node:url";
 
 const require = NodeModule.createRequire(import.meta.url);
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone repair script has no Effect runtime.
@@ -43,7 +44,10 @@ function repairPathFile(electronDir, platformPath) {
 }
 
 function getRequiredRuntimePaths(electronDir, platformPath) {
-  const paths = [NodePath.join(electronDir, "dist", platformPath)];
+  const paths = [
+    NodePath.join(electronDir, "dist", platformPath),
+    NodePath.join(electronDir, "dist", "version"),
+  ];
 
   if (hostPlatform === "darwin") {
     paths.push(
@@ -115,68 +119,117 @@ function runChecked(command, args) {
   );
 }
 
-function installElectronRuntime(electronDir, version) {
-  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-electron-"));
-  const zipPath = NodePath.join(tempDir, `electron-v${version}-${hostPlatform}-${hostArch}.zip`);
-
+async function installElectronRuntime(electronDir, version, offline) {
+  const electronRequire = NodeModule.createRequire(NodePath.join(electronDir, "package.json"));
+  const { downloadArtifact } = electronRequire("@electron/get");
+  const zipPath = await downloadArtifact({
+    version,
+    artifactName: "electron",
+    platform: hostPlatform,
+    arch: hostArch,
+    cacheRoot: process.env.electron_config_cache,
+    checksums: electronRequire("./checksums.json"),
+    ...(offline
+      ? {
+          downloader: {
+            download() {
+              throw new Error(
+                "Electron archive is missing or invalid in the cache; run pnpm rebuild electron to populate it, then prepare again.",
+              );
+            },
+          },
+        }
+      : {}),
+  });
+  // Stage on the same filesystem, then publish only a complete runtime under the kernel lock.
+  const staging = NodeFS.mkdtempSync(NodePath.join(electronDir, ".runtime-stage-"));
   try {
-    runChecked("curl", [
-      "-fsSL",
-      `https://github.com/electron/electron/releases/download/v${version}/electron-v${version}-${hostPlatform}-${hostArch}.zip`,
-      "-o",
-      zipPath,
-    ]);
+    const dist = NodePath.join(staging, "dist");
     if (hostPlatform === "darwin") {
-      runChecked("ditto", ["-x", "-k", zipPath, NodePath.join(electronDir, "dist")]);
+      runChecked("ditto", ["-x", "-k", zipPath, dist]);
     } else {
       runChecked("python3", [
         "-c",
         "import os, sys, zipfile; os.makedirs(sys.argv[2], exist_ok=True); zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])",
         zipPath,
-        NodePath.join(electronDir, "dist"),
+        dist,
       ]);
     }
+    const platformPath = getPlatformPath();
+    const invalid = [
+      ...missingRuntimePaths(staging, platformPath),
+      ...invalidRuntimePaths(staging, platformPath),
+    ];
+    if (invalid.length) throw new Error(`Electron archive is incomplete: ${invalid.join(", ")}`);
+    ensureExecutable(NodePath.join(dist, platformPath));
+    NodeFS.rmSync(NodePath.join(electronDir, "dist"), { recursive: true, force: true });
+    NodeFS.renameSync(dist, NodePath.join(electronDir, "dist"));
   } finally {
-    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    NodeFS.rmSync(staging, { recursive: true, force: true });
   }
 }
 
-export function ensureElectronRuntime() {
-  const electronPackageJsonPath = require.resolve("electron/package.json");
-  const electronPackageJson = JSON.parse(NodeFS.readFileSync(electronPackageJsonPath, "utf8"));
-  const electronDir = NodePath.dirname(electronPackageJsonPath);
+async function ensureLocked(electronDir, offline) {
+  const electronPackageJson = JSON.parse(
+    NodeFS.readFileSync(NodePath.join(electronDir, "package.json"), "utf8"),
+  );
   const platformPath = getPlatformPath();
   const electronPath = NodePath.join(electronDir, "dist", platformPath);
-  const missingBeforeInstall = missingRuntimePaths(electronDir, platformPath);
-  const invalidBeforeInstall = invalidRuntimePaths(electronDir, platformPath);
-
-  if (missingBeforeInstall.length > 0 || invalidBeforeInstall.length > 0) {
-    if (NodeFS.existsSync(NodePath.join(electronDir, "dist"))) {
-      NodeFS.rmSync(NodePath.join(electronDir, "dist"), { recursive: true, force: true });
-    }
-    NodeFS.rmSync(NodePath.join(electronDir, "path.txt"), { force: true });
-    installElectronRuntime(electronDir, electronPackageJson.version);
+  const versionPath = NodePath.join(electronDir, "dist", "version");
+  const versionMatches =
+    NodeFS.existsSync(versionPath) &&
+    NodeFS.readFileSync(versionPath, "utf8").trim().replace(/^v/u, "") ===
+      electronPackageJson.version;
+  if (
+    !versionMatches ||
+    missingRuntimePaths(electronDir, platformPath).length ||
+    invalidRuntimePaths(electronDir, platformPath).length
+  ) {
+    await installElectronRuntime(electronDir, electronPackageJson.version, offline);
   }
-
-  const missingAfterInstall = missingRuntimePaths(electronDir, platformPath);
-  const invalidAfterInstall = invalidRuntimePaths(electronDir, platformPath);
-  if (missingAfterInstall.length > 0 || invalidAfterInstall.length > 0) {
-    throw new Error(
-      `Electron runtime is incomplete after install.\nMissing:\n${missingAfterInstall
-        .map((runtimePath) => `- ${runtimePath}`)
-        .join("\n")}\nInvalid:\n${invalidAfterInstall
-        .map((runtimePath) => `- ${runtimePath}`)
-        .join("\n")}`,
-    );
-  }
-
   ensureExecutable(electronPath);
   repairPathFile(electronDir, platformPath);
-
   return electronPath;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const electronPath = ensureElectronRuntime();
-  process.stdout.write(`${electronPath}\n`);
+export function ensureElectronRuntime({ offline = false } = {}) {
+  const electronDir = NodeFS.realpathSync(
+    NodePath.dirname(require.resolve("electron/package.json")),
+  );
+  const script = NodeURL.fileURLToPath(import.meta.url);
+  // Resolved path fences callers through different workspace symlinks. Kernel releases on death.
+  const result = NodeChildProcess.spawnSync(
+    "flock",
+    [
+      "-x",
+      `${electronDir}.runtime.lock`,
+      process.execPath,
+      script,
+      "--locked",
+      electronDir,
+      ...(offline ? ["--offline"] : []),
+    ],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0)
+    throw new Error(
+      result.error?.message || result.stderr.trim() || "Electron runtime repair failed",
+    );
+  return result.stdout.trim();
+}
+
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === NodeURL.pathToFileURL(process.argv[1]).href
+) {
+  try {
+    const electronPath =
+      process.argv[2] === "--locked"
+        ? await ensureLocked(process.argv[3], process.argv.includes("--offline"))
+        : ensureElectronRuntime({ offline: process.argv.includes("--offline") });
+    process.stdout.write(`${electronPath}\n`);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  }
 }

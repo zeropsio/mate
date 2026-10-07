@@ -146,6 +146,7 @@ import {
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { HQ_LAST_KNOWN, type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "~/zerops/mateComing";
+import { mateRowCues } from "~/zerops/mateMoments.logic";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
@@ -2925,7 +2926,15 @@ function MateRowView<T extends RosterCandidate>({
             {/* Until its socket answers the face stands in idle or asleep, the
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
-            <MateFace greets known={known} shape={shape} size="md" state={view.face} tint={tint} />
+            <MateFace
+              cues={mateRowCues(activity)}
+              greets
+              known={known}
+              shape={shape}
+              size="md"
+              state={view.face}
+              tint={tint}
+            />
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>

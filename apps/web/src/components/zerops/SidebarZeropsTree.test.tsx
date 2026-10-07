@@ -2466,7 +2466,7 @@ describe("a project collapsed to its heading", () => {
         typeof node.type === "string" && node.props["data-zerops-primitive"] === "mate-face",
     );
     expect(face.props["data-mate-face-state"]).toBe("needs");
-    expect(face.props["data-mate-face-arrived"]).toBeUndefined();
+    expect(face.props["data-mate-face-moment"]).toBeUndefined();
     const dot = faces.find(
       (node) => typeof node.type === "string" && node.props.className === "zerops-heading-dot",
     );

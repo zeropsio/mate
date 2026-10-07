@@ -23,6 +23,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { mateIdentityPose } from "~/zerops/mateIdentities";
+import { useMateHeaderCues } from "~/zerops/useMateMoments";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import {
@@ -223,9 +224,18 @@ function MatePill({
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
   const arrived = useArrival(subject !== null);
-  // The header's face is reused from one Mate to the next: it greets no arrival.
+  // The header's face is reused from one Mate to the next: it greets no change of pose, only the
+  // events its line names (`useMateHeaderCues`).
   const face = (
-    <MateFace className="size-6" shape={mate.shape} size="sm" state={mate.face} tint={mate.tint} />
+    <MateFace
+      className="size-6"
+      cues={mate.cues}
+      restarting={mate.restarting}
+      shape={mate.shape}
+      size="sm"
+      state={mate.face}
+      tint={mate.tint}
+    />
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
@@ -719,6 +729,12 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
+  const moments = useMateHeaderCues({
+    environmentId,
+    currentThreadId,
+    mate: mate ?? { connected: false },
+    chats,
+  });
   if (mate === null) return null;
 
   const crew = lineCrew({
@@ -782,15 +798,19 @@ export function ConversationStrip({
           />
         )
       }
-      mate={lineMate({
-        mate,
-        pose: mateIdentityPose(mate, nowMs),
-        chats,
-        currentThreadId,
-        crewChatOpen: crewChat !== null,
-        subject,
-        lastVisitedAtById,
-      })}
+      mate={{
+        ...lineMate({
+          mate,
+          pose: mateIdentityPose(mate, nowMs),
+          chats,
+          currentThreadId,
+          crewChatOpen: crewChat !== null,
+          subject,
+          lastVisitedAtById,
+        }),
+        cues: moments.cues,
+        restarting: moments.restarting,
+      }}
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}

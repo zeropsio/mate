@@ -792,6 +792,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     ? undefined
                     : (linkVoice.headline ?? linkVoice.text ?? undefined),
                 sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}
