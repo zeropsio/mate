@@ -159,6 +159,7 @@ describe("server state projection", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const savedConfigs = yield* Queue.unbounded<ServerConfig>();
@@ -221,6 +222,7 @@ describe("server state projection", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const savedConfigs = yield* Queue.unbounded<ServerConfig>();

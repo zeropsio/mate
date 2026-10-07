@@ -93,6 +93,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
@@ -189,6 +190,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: (dropped) => Effect.sync(() => defective.push(dropped)),
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const shellState = yield* makeEnvironmentShellState().pipe(
@@ -244,6 +246,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
@@ -353,6 +356,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({
@@ -434,6 +438,7 @@ describe("environment shell synchronization", () => {
         connect: Effect.void,
         disconnect: Effect.void,
         retryNow: Effect.void,
+        credentialRotated: Effect.void,
         reportStreamDefect: () => Effect.void,
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const cache = Persistence.EnvironmentCacheStore.of({

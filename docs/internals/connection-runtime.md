@@ -87,7 +87,8 @@ Wakeup handling differs by phase, in [supervisor.ts][supervisor]:
   probe. A probe that fails, times out, or sees the socket close reconnects at
   once without a backoff rung. `application-active-reconnect` skips the probe
   and replaces the lease outright, and that fresh attempt runs even while the
-  network reports offline.
+  network reports offline. A credential rotation (`credentialRotated`) also replaces the
+  lease without a probe: a socket stays authorized as whoever opened it.
 
 The UI derives `available`, `offline`, `connecting`, `reconnecting`,
 `connected`, and `error` from supervisor state plus explicit data-sync state.

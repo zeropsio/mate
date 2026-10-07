@@ -1689,6 +1689,48 @@ describe("EnvironmentRegistry", () => {
       }),
   );
 
+  // A socket stays authorized as whoever opened it: after a rotation (a token
+  // refresh, or another person signing in on this device) the old socket would
+  // keep reading as the old identity, so it is replaced, never probed and kept.
+  it.effect("a rotation on a connected environment opens a new socket with the new bearer", () =>
+    Effect.gen(function* () {
+      const rotated = new BearerConnectionCredential({ token: "rotated-token" });
+      const presented = yield* Ref.make<ReadonlyArray<string | undefined>>([]);
+      const harness = yield* makeHarness(
+        [BEARER_TARGET],
+        [BEARER_PROFILE],
+        [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
+        {
+          authenticate: (_environmentId, credential) =>
+            Ref.update(presented, (tokens) => [...tokens, credential?.token]),
+        },
+      );
+
+      yield* Effect.gen(function* () {
+        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start;
+        yield* registry.unpark(environmentId);
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected",
+        );
+
+        yield* registry.rotateCredential(environmentId, rotated);
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected" && state.generation === 2,
+        );
+
+        expect(yield* Ref.get(presented)).toEqual(["kept-token", rotated.token]);
+        expect(yield* Ref.get(harness.sessions)).toHaveLength(2);
+        expect(yield* Ref.get(harness.releasedSessions)).toBe(1);
+      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+    }),
+  );
+
   it.effect("rotating an environment with no supervisor yet presents only the new bearer", () =>
     Effect.gen(function* () {
       // Nothing has acquired the persisted environment yet. Building its

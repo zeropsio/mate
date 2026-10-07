@@ -80,6 +80,7 @@ const makeHarness = Effect.fn("TestEnvironmentRpc.makeHarness")(function* () {
     connect: Effect.void,
     disconnect: Effect.void,
     retryNow: Ref.update(retryCount, (count) => count + 1),
+    credentialRotated: Effect.void,
     reportStreamDefect: (defective) => Effect.sync(() => defectiveSessions.push(defective)),
   } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
   return {

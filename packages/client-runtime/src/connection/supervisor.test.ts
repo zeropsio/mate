@@ -1262,6 +1262,42 @@ describe("EnvironmentSupervisor", () => {
     }),
   );
 
+  it.effect.each([
+    { case: "connected", stalledProbe: false },
+    { case: "probing", stalledProbe: true },
+  ] as const)("a credential rotation replaces a $case session instead of probing it", (row) =>
+    Effect.gen(function* () {
+      const probeCount = yield* Ref.make(0);
+      const probeStarted = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({
+        probe: () =>
+          Ref.update(probeCount, (count) => count + 1).pipe(
+            Effect.andThen(Deferred.succeed(probeStarted, undefined)),
+            Effect.andThen(row.stalledProbe ? Effect.never : Effect.void),
+          ),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(TARGET_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      if (row.stalledProbe) {
+        yield* harness.wake("application-active");
+        yield* Deferred.await(probeStarted);
+      }
+      yield* supervisor.credentialRotated;
+      const replaced = yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+
+      expect(replaced.attempt).toBe(1);
+      expect(yield* Ref.get(probeCount)).toBe(row.stalledProbe ? 1 : 0);
+      expect(yield* Ref.get(harness.sessionCount)).toBe(2);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+    }),
+  );
+
   it.effect("keeps the backoff ladder after an explicit retry finds a healthy session", () =>
     Effect.gen(function* () {
       const probeCount = yield* Ref.make(0);

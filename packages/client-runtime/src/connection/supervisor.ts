@@ -56,6 +56,7 @@ type SupervisorSignal =
   | { readonly _tag: "ConnectRequested" }
   | { readonly _tag: "DisconnectRequested" }
   | { readonly _tag: "RetryRequested" }
+  | { readonly _tag: "CredentialRotated" }
   | { readonly _tag: "NetworkChanged"; readonly network: NetworkStatus }
   | { readonly _tag: "Wakeup"; readonly reason: ConnectionWakeups.ConnectionWakeup }
   | { readonly _tag: "StreamDefect"; readonly session: RpcSession.RpcSession };
@@ -256,6 +257,11 @@ export class EnvironmentSupervisor extends Context.Service<
     readonly connect: Effect.Effect<void>;
     readonly disconnect: Effect.Effect<void>;
     readonly retryNow: Effect.Effect<void>;
+    /**
+     * The stored credential was replaced. A socket stays authorized as whoever opened it, so the
+     * live one is closed and the next attempt presents the new credential, on a fresh ladder.
+     */
+    readonly credentialRotated: Effect.Effect<void>;
     /** A durable subscription on `session` died of a defect; a session already replaced is ignored. */
     readonly reportStreamDefect: (session: RpcSession.RpcSession) => Effect.Effect<void>;
   }
@@ -483,6 +489,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       switch (next._tag) {
         case "DisconnectRequested":
         case "RetryRequested":
+        case "CredentialRotated":
           return false;
         case "NetworkChanged":
           if (next.network === "offline") {
@@ -540,6 +547,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           : undefined;
       case "ConnectRequested":
       case "DisconnectRequested":
+      case "CredentialRotated":
       case "StreamDefect":
         return undefined;
     }
@@ -576,6 +584,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     const settle = Effect.fnUntraced(function* (next: SupervisorSignal) {
       switch (next._tag) {
         case "DisconnectRequested":
+        // The live socket is authorized as the replaced credential's holder.
+        case "CredentialRotated":
           return "end" as const;
         case "StreamDefect":
           if (next.session === lease.session) return yield* streamDefect();
@@ -1020,6 +1030,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
             case "ConnectRequested":
             case "DisconnectRequested":
             case "RetryRequested":
+            case "CredentialRotated":
             case "NetworkChanged":
               return false;
             case "StreamDefect":
@@ -1057,6 +1068,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         case "ConnectRequested":
         case "DisconnectRequested":
         case "RetryRequested":
+        case "CredentialRotated":
           return false;
         case "NetworkChanged":
         case "Wakeup":
@@ -1241,6 +1253,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     Effect.withSpan("EnvironmentSupervisor.retryNow"),
   );
 
+  const credentialRotated = Ref.set(resetRetryState, true).pipe(
+    Effect.andThen(signal({ _tag: "CredentialRotated" })),
+    Effect.withSpan("EnvironmentSupervisor.credentialRotated"),
+  );
+
   const reportStreamDefect = (defective: RpcSession.RpcSession) =>
     signal({ _tag: "StreamDefect", session: defective }).pipe(
       Effect.withSpan("EnvironmentSupervisor.reportStreamDefect"),
@@ -1256,6 +1273,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     connect,
     disconnect,
     retryNow,
+    credentialRotated,
     reportStreamDefect,
   });
 });
