@@ -83,6 +83,7 @@ import { flushSync } from "react-dom";
 
 import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
+import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { RunShimmer } from "./RunShimmer";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
@@ -93,7 +94,7 @@ import {
   type TurnPlanEntry,
   type WorkLogEntry,
 } from "../../session-logic";
-import type { ChatImageAttachment, ChatMessage } from "../../types";
+import type { ChatImageAttachment, ChatMessage, ChatAttachment } from "../../types";
 import { echoOfMessage } from "./messagePictures.logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
@@ -2605,6 +2606,22 @@ function PersonMark({ item }: { readonly item: Extract<RecordItem, { kind: "pers
   );
 }
 
+/** Files recorded with a question response, beside the answer's own words. */
+function AnswerFiles({ attachments }: { readonly attachments: ReadonlyArray<ChatAttachment> }) {
+  const { activeThreadEnvironmentId } = use(TimelineRowCtx);
+  const pictures = attachments.filter(
+    (attachment): attachment is ChatImageAttachment => attachment.type === "image",
+  );
+  const files = attachments.filter((attachment) => attachment.type !== "image");
+  const urls = useMessageFileUrls(activeThreadEnvironmentId, files);
+  return (
+    <div className="grid gap-2">
+      <PersonPictures pictures={pictures} />
+      <MessageFilesAbove files={files} urls={urls} />
+    </div>
+  );
+}
+
 /** The pictures of a message the person sent into the run: a compact strip, each opening the viewer on all of them. */
 function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatImageAttachment> }) {
   const { activeThreadEnvironmentId, onImageExpand } = use(TimelineRowCtx);
@@ -2676,6 +2693,10 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         call: true,
       };
     case "call":
+      if (item.entry.questionAnswer !== undefined) {
+        const attachments = Object.values(item.entry.questionAnswer.attachmentsByQuestionId).flat();
+        return { key: item.key, bubble: <AnswerFiles attachments={attachments} />, theirs: true };
+      }
       return {
         key: item.key,
         bubble: <StepBubble step={stepOf(item.entry, undefined, false)} />,

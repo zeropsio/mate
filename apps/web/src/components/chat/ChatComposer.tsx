@@ -1,3 +1,4 @@
+import type { useQuestionAttachments } from "./useQuestionAttachments";
 import type {
   ApprovalRequestId,
   Crewmate,
@@ -584,6 +585,7 @@ export interface ChatComposerProps {
   activePendingResolvedAnswers: Record<string, unknown> | null;
   activePendingIsResponding: boolean;
   activePendingDraftAnswers: Record<string, PendingUserInputDraftAnswer>;
+  questionAttachments?: ReturnType<typeof useQuestionAttachments>;
   activePendingQuestionIndex: number;
   respondingRequestIds: ApprovalRequestId[];
 
@@ -3103,6 +3105,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const files = Array.from(event.clipboardData.files);
     if (files.length === 0) return;
     event.preventDefault();
+    if (activePendingProgress?.activeQuestion) {
+      if (activePendingProgress.activeQuestion.allowCustomAnswer !== false)
+        void props.questionAttachments?.add(files);
+      return;
+    }
     addComposerAttachments(files);
   };
 
@@ -3403,15 +3410,48 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 </div>
               </div>
             ) : !isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
-              <ComposerPendingUserInputPanel
-                pendingUserInputs={pendingUserInputs}
-                respondingRequestIds={respondingRequestIds}
-                answers={activePendingDraftAnswers}
-                questionIndex={activePendingQuestionIndex}
-                onToggleOption={onSelectActivePendingUserInputOption}
-                onAdvance={onAdvanceActivePendingUserInput}
-                onDismiss={onDismissActivePendingUserInput}
-              />
+              <>
+                <ComposerPendingUserInputPanel
+                  pendingUserInputs={pendingUserInputs}
+                  respondingRequestIds={respondingRequestIds}
+                  answers={activePendingDraftAnswers}
+                  questionIndex={activePendingQuestionIndex}
+                  onToggleOption={onSelectActivePendingUserInputOption}
+                  onAdvance={onAdvanceActivePendingUserInput}
+                  onDismiss={onDismissActivePendingUserInput}
+                />
+                {props.questionAttachments?.current.map(({ attachment }) => (
+                  <div key={attachment.id} className="flex items-center gap-2 px-3 pb-2">
+                    <span>{attachment.name}</span>
+                    <span>
+                      {props.questionAttachments?.uploads[attachment.id]?.status === "ready"
+                        ? "Attached to this answer"
+                        : props.questionAttachments?.uploads[attachment.id]?.status === "failed"
+                          ? "Upload failed"
+                          : "Uploading"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      aria-label={`Remove ${attachment.name} from this answer`}
+                      onClick={() => props.questionAttachments?.remove(attachment.id)}
+                    >
+                      Remove
+                    </Button>
+                    {props.questionAttachments?.uploads[attachment.id]?.status === "failed" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => props.questionAttachments?.retry(attachment.id)}
+                      >
+                        Retry upload
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </>
             ) : !isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan ? (
               <ComposerPlanFollowUpBanner
                 key={activeProposedPlan.id}

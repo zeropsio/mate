@@ -16,6 +16,13 @@ available pictures.
 On web and desktop, HEIC and HEIF photos are automatically converted to JPEG when you drag them into
 the composer or paste them into a message.
 
+## Answer a question with files
+
+When your Mate supports question attachments, paste pictures or files while answering its question.
+Each file is listed under **Attached to this answer**. Wait for uploads to finish before answering;
+retry or remove failed uploads. A refused answer keeps its text and files so you can try again.
+These attachments answer that question and do not become attachments to your next message.
+
 ## Undo picture edits
 
 While editing a pasted picture, press `Cmd+Z` on macOS or `Ctrl+Z` on Windows and Linux to undo a

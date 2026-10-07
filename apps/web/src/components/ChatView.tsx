@@ -1,3 +1,4 @@
+import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -2592,13 +2593,44 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
+  const questionAttachments = useQuestionAttachments({
+    scope: activePendingUserInput ? `${activeThreadKey}:${activePendingUserInput.requestId}` : null,
+    environmentId,
+    questionId:
+      activePendingUserInput?.questions[
+        pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0
+      ]?.id ?? null,
+    supported:
+      supportsAttachmentUploads &&
+      attachmentEnvironmentConfig?.environment.capabilities.questionAttachments === true,
+    onError: (message) => {
+      if (activeThreadId) setThreadError(activeThreadId, message);
+    },
+  });
   const activePendingDraftAnswers = useMemo(
     () =>
       activePendingUserInput
-        ? (pendingUserInputAnswersByRequestId[activePendingUserInput.requestId] ??
-          EMPTY_PENDING_USER_INPUT_ANSWERS)
+        ? Object.fromEntries(
+            activePendingUserInput.questions.map((question) => [
+              question.id,
+              {
+                ...pendingUserInputAnswersByRequestId[activePendingUserInput.requestId]?.[
+                  question.id
+                ],
+                attachmentCount: questionAttachments.entries.filter(
+                  (entry) => entry.questionId === question.id,
+                ).length,
+                attachmentsBlocked: questionAttachments.blocked,
+              },
+            ]),
+          )
         : EMPTY_PENDING_USER_INPUT_ANSWERS,
-    [activePendingUserInput, pendingUserInputAnswersByRequestId],
+    [
+      activePendingUserInput,
+      pendingUserInputAnswersByRequestId,
+      questionAttachments.entries,
+      questionAttachments.blocked,
+    ],
   );
   const activePendingQuestionIndex = activePendingUserInput
     ? (pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0)
@@ -7411,6 +7443,8 @@ export default function ChatView(props: ChatViewProps) {
     async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
       if (!activeThreadId) return;
 
+      const attachmentsByQuestionId = questionAttachments.forResponse();
+      if (attachmentsByQuestionId === null) return;
       setRespondingUserInputRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
@@ -7420,8 +7454,10 @@ export default function ChatView(props: ChatViewProps) {
           threadId: activeThreadId,
           requestId,
           answers,
+          attachmentsByQuestionId,
         },
       });
+      if (result._tag === "Success") questionAttachments.clear();
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -7432,7 +7468,7 @@ export default function ChatView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError],
+    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError, questionAttachments],
   );
 
   // Closes an async question without messaging the agent. The server records
@@ -7448,6 +7484,7 @@ export default function ChatView(props: ChatViewProps) {
         environmentId,
         input: { threadId: activeThreadId, requestId },
       });
+      if (result._tag === "Success") questionAttachments.clear();
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -7458,7 +7495,7 @@ export default function ChatView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, dismissThreadUserInput, environmentId, setThreadError],
+    [activeThreadId, dismissThreadUserInput, environmentId, setThreadError, questionAttachments],
   );
 
   const setActivePendingUserInputQuestionIndex = useCallback(
@@ -8743,6 +8780,7 @@ export default function ChatView(props: ChatViewProps) {
                               activePendingResolvedAnswers={activePendingResolvedAnswers}
                               activePendingIsResponding={activePendingIsResponding}
                               activePendingDraftAnswers={activePendingDraftAnswers}
+                              questionAttachments={questionAttachments}
                               activePendingQuestionIndex={activePendingQuestionIndex}
                               respondingRequestIds={respondingRequestIds}
                               showPlanFollowUpPrompt={showPlanFollowUpPrompt}
