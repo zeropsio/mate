@@ -9,6 +9,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import {
   makeAccountStore,
+  creationPressStoreAtom,
   makeOperations,
   makeHqExecutor,
   operationProgress,
@@ -39,6 +40,7 @@ import {
 import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 interface AssignDialogProps {
   readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
@@ -541,6 +543,7 @@ function Probe() {
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
+  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
   mock.threads = [];
@@ -598,6 +601,8 @@ afterEach(() => {
     });
   }
   closeAccountLifetime();
+  appAtomRegistry.get(creationPressStoreAtom)?.close();
+  appAtomRegistry.set(creationPressStoreAtom, null);
 });
 
 /** The hook mounted, over `registry` where the case seeds HQ's structure in one. */
@@ -840,6 +845,7 @@ describe("useMateActions — Change face…", () => {
     act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
     closeAccountLifetime();
     openAccountLifetime("user-ada");
+    appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
     mock.updateMate.mockReset().mockResolvedValue(undefined);
     mock.dialog.current = null;
     mount(registry);
