@@ -737,9 +737,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   its own ("Checked the workflow"). The heading says only who worked and how long.
   - _Why:_ the owner: "why isn't 'Kai worked for 5m 3s · edited 7 files · ran 5 commands · started
     11 helpers' in the 'result' style?"
-- **2026-09-27** — **A picture in the Mate's words opens in the image viewer**, the message's other
-  pictures beside it; a step's pictures are drawn in its modal.
-  - _Why:_ the owner, of a picture in an answer: "why aren't these opening in modal?"
 - **2026-09-27** — **A helper's report is a line where it finished**: one that finished after its
   run ended is what woke the next run, never a line of the record that started it; what woke a run
   is said only when that run shows something.
@@ -955,14 +952,6 @@ Mate`, `Wait for it`) is the grey `secondary` pill; `Open` is `outline`. Row pil
   reads as the Mate, then what it is on.** Under a Mate the task follows its name in the muted voice
   at the body's weight, and comes up under the pointer.
   - _Why:_ a long prompt as the person typed it read as a second heading as loud as the Mate's name
-- **2026-09-29** — **An answer's pictures hold their room before they load.** A workspace picture's
-  first sight holds 16:9 across the text, its opener as wide as that room (a width in percent inside
-  a button that shrinks to its content is none); once seen, a picture's shape is remembered by where
-  it came from (256 kept) and it takes the width it will stand at, `min(its width, 30rem, 30rem ×
-its ratio)`, its size attributes giving its height before a byte has come; a picture from an
-  address of its own, as often a badge, holds no 16:9 place; only a first sight fades in.
-  - _Why:_ a picture took no room until its bytes came: opening a conversation, pictures grew one by
-    one and everything in sight jumped
 - **2026-09-29** — **A conversation fades in once the list has put it in place.** The timeline
   list's reveal (`timeline-legend-list`; no picker list) eases in over 140 ms; hiding stays instant.
   - _Why:_ every switch between Mates was a cut from nothing to the whole conversation
@@ -1016,11 +1005,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   control to see the rest. **Supersedes:** the chat's own scroll of the 2026-09-27 _run reads as a
   chat_ row and the 2026-09-29 _page scrolls on past a run's chat_ row.
   - _Why:_ two scrollbars in one view is where most of the earlier passes' scroll bugs lived
-- **2026-09-29** — **Composer pictures in this pass** (the owner's D9), after the composer's top and
-  its one control: a picture sits in the text where it is pasted, takes notes and a crop, goes
-  fitted, and is sent as placed (P1–P5).
-  - _Why:_ the approved prototype had waited for a yes that was never asked for again, and a 5.46 MB
-    paste had just failed a Mate's turn
 - **2026-09-29** — **The person's bubble is neutral grey** (the owner's D10): one step darker than
   the canvas in light (`oklch(0.918 0.006 255.5)`), one step lighter in dark (`oklch(0.26 0.009
 178)`), the same shape and size; the phone's bubble follows the generated tokens.
@@ -1171,42 +1155,6 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   control cannot open. Send, disabled, is a grey disc, never a faded blue; 32 px, 36 on a phone for
   the finger.
   - _Why:_ three 14 px dropdowns at 500 were louder than the conversation's own words
-- **2026-09-29** — **A picture sits where it is pasted** (P1). At the caret, a thumbnail on a line
-  of its own in the text, 80 px tall; a file dropped on the text lands under the pointer; a drag
-  moves it; Backspace removes it like a character. It is one character of the prompt, `￻` from the
-  Specials block — the terminal contexts own `￼`, and a private-use character risks a glyph pasted
-  from a terminal font. The old tray over the text goes.
-  - _Why:_ the Mate reads words and pictures in the order they were placed
-- **2026-09-29** — **Notes and a crop on the picture** (P2, P3). A click pins a numbered note, a
-  drag boxes an area, C crops; the marks are drawn into the copy the Mate sees, one drawing for
-  copy, thumbnail and view. No flash on insert or close: the picture landing where the caret was is
-  its feedback. A reload keeps the copy, its notes and its edits but not the pasted file (the
-  browser's storage cannot hold it), so after one the notes still edit and the marks and crop stand
-  as they were.
-  - _Why:_ a picture with no marks tells the Mate nothing about which part is wrong
-- **2026-09-29** — **The copy the Mate sees is fitted; the original goes only when kept** (P4). At
-  most 2000 px a side and 3,932,160 bytes, which is 5 MB once base64: as pasted where it is
-  unmarked, whole and within both, else PNG, then JPEG from .92 down to .68 on white, then smaller.
-  _Keep original_ sends the untouched file beside it as a file whose path the agent is told, never
-  as a second picture to look at.
-  - _Why:_ a 5.46 MB paste had failed a Mate's turn with an image error
-- **2026-09-29** — **A message shows each picture where it was put** (P5): words and pictures in
-  their order, a picture at most 300 px tall, its notes under it at 14 px with 12 px badges — the
-  prototype's 13 and 10.5 px, brought onto the type scale — and "Original kept · 4.4 MB".
-  - _Why:_ the person should see what the Mate read, in the order it read it
-- **2026-09-29** — **The server fits what the client did not, before any agent sees it.** A picture
-  over the limits — from the phone, an older client, a pasted data URL — is fitted in the message's
-  normalisation for every provider, on a worker thread and one picture at a time across the server;
-  one over 25 MP is refused before it is decoded, and an interlaced PNG is inflated only as far as
-  its header says. Claude reads each picture right after its label, while a message whose last words
-  are a slash command or a skill, or that ends on a picture, keeps the images-first layout. An image
-  error names the picture, its size and what to do. The phone shrinks a photo to the same 2000 px.
-  - _Why:_ a fit takes up to a second and hundreds of megabytes, and on the server's own thread it
-    held every other request up; the Claude CLI runs a command from a message's last text
-- **2026-09-29** — **Codex keeps its image order.** It takes pictures by path after one text item,
-  and its adapter is ported code that stays upstream's, so the labels alone tie each picture to its
-  place there; the server's fit covers its limits.
-  - _Why:_ a diverged port is an expensive port next time, and Codex reads no base64 limit
 - **2026-09-29** — **A fix request joins an unsent draft.** Written into a composer that holds the
   person's words, the request goes after them, a blank line apart, the caret where it continues; the
   same request twice changes nothing. A change's fix goes only to the Mate that wrote it, which
@@ -2292,15 +2240,6 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's helpers were already named by their nickname or path. Where the launch named none, or
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
-- **2026-10-07** — **Unavailable conversation images explain their failure and keep their place.**
-  Supersedes N2's removal of missing result pictures. A missing workspace asset or attachment is
-  unavailable immediately, with the owner's reason; a transient signing failure gets the bounded
-  backoff schedule before becoming unavailable. Failed image requests or decoding also say
-  "Image unavailable". The strip retains its tiles and count; an unavailable "+N" tile can still
-  open later loaded pictures. Missing-file verdicts are no longer persisted in browser storage.
-  Web and desktop share this behavior. Mobile already shows unavailable for signing and byte
-  failures and has no run-result strip; no wire or provider contracts change. Workspace images
-  remain references to their source files, including `/tmp`; this change cannot recover deleted bytes.
 - **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
   Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
   unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a

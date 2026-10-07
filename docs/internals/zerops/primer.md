@@ -592,19 +592,6 @@ still to come says so.
   - _Proven by:_ `MessagesTimeline.logic.test.ts` (the gaps, the seams),
     `ZeropsNextStepBanner.test.tsx`, `composerTopMemory.test.ts`, `mateNextStep.test.ts`,
     `ComposerModelControl.logic.test.ts`, `composerTypeScale.test.ts`
-- **—** — Pass 16: composer pictures (D9)
-  - _State:_ **live** in a Mate's composer, 2026-09-29: a 3210 × 2118 paste stood in the text as a
-    121 × 80 picture, and its view said "Sends 2000 × 1320 · PNG, 595 KB" (removed after, never
-    sent); a send with _Keep original_ and an image error are not yet seen live. The server fits a
-    picture over the limits for every provider, on a worker thread, one at a time. **Open**: Codex
-    keeps its image order — its adapter is ported code — so there only the labels tie a picture to
-    its place (§7, 19)
-  - _Built in:_ mate 0.11.63 (PR #32); the server's worker `dbb52f3eb`
-  - _Proven by:_ `composerPictures.test.ts` (shared and web), `imageCompression.test.ts`,
-    `ComposerPromptEditor.pictures.test.tsx`, `messagePictures.logic.test.ts`,
-    `attachmentFit.test.ts`, `Normalizer.attachments.test.ts`, `ClaudeAdapter.test.ts`; the harness
-    `/design-pictures.html`
-
 - **—** — Pass 16: a thread's live step and waiting question on its shell (D5, D6)
   - _State:_ built — the Mate server relays a running thread's step and a waiting thread's first
     question on its shell, in memory, with no migration and no push added; replayed through the
