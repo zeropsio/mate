@@ -159,7 +159,8 @@ import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
-import { ENGINE_MOVED } from "./engine/MateEngine.ts";
+import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
+import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -681,6 +682,7 @@ const makeWsRpcLayer = (
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsMateAttention = yield* ZeropsMateAttention;
+      const mateEngine = yield* MateEngine;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
@@ -2320,6 +2322,13 @@ const makeWsRpcLayer = (
         }),
         ...registerCrewRpc({
           crew,
+          subject: currentSession.subject,
+          observeRpcEffect,
+          observeRpcStream,
+        }),
+        ...registerEngineRpc({
+          engine: mateEngine,
+          source: Effect.map(zeropsMateAttention.current, (attention) => attention.source),
           subject: currentSession.subject,
           observeRpcEffect,
           observeRpcStream,
