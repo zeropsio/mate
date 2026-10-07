@@ -125,7 +125,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   );
   // Each open Mate's attention straight from it, and what the person saw of its results to HQ.
   useOpenMatesAttention(store);
-  useMateResultsSeen(orgId, observation.seen);
+  useMateResultsSeen(store, orgId, observation.seen);
   // The operations are built here, over the store this mount owns: no screen reaches its writer.
   const operations = useMemo(
     () =>
