@@ -560,7 +560,7 @@ it.effect("invalidates a ref snapshot when a mutation fails after changing Git",
           if (!ChildProcess.isStandardCommand(command)) {
             return yield* Effect.die("expected a standard Git command");
           }
-          if (command.args[0] === "branch" && command.args[1] === "feature/partial-failure") {
+          if (command.args[0] === "branch" && command.args.at(-1) === "feature/partial-failure") {
             const handle = yield* delegate.spawn(command);
             yield* handle.exitCode;
             return makeNonRepositoryHandle();
@@ -892,7 +892,7 @@ for (const scenario of [
           if (!ChildProcess.isStandardCommand(command))
             return yield* Effect.die("expected Git command");
           if (command.args[0] !== "fetch") return makeNonRepositoryHandle();
-          assert.deepEqual(command.args, ["fetch", "--quiet", "origin"]);
+          assert.deepEqual(command.args, ["fetch", "--quiet", "--end-of-options", "origin"]);
           assert.equal(command.options.env?.LC_ALL, "C");
           assert.equal(command.options.env?.GIT_TERMINAL_PROMPT, "0");
           yield* Ref.update(attempts, (count) => count + 1);
@@ -3060,4 +3060,273 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
   });
+});
+
+describe("a ref or remote name that starts with a dash", () => {
+  interface DashNameFixture {
+    readonly cwd: string;
+    readonly initialBranch: string;
+    readonly scratch: string;
+  }
+
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly run: (
+      driver: GitVcsDriver.GitVcsDriver["Service"],
+      fixture: DashNameFixture,
+    ) => Effect.Effect<unknown, GitCommandError>;
+    readonly leavesNoTrace: (
+      fixture: DashNameFixture,
+    ) => Effect.Effect<
+      void,
+      GitCommandError | PlatformError.PlatformError,
+      GitVcsDriver.GitVcsDriver | FileSystem.FileSystem
+    >;
+  }> = [
+    {
+      name: "fetch never runs a remote name as --upload-pack",
+      run: (driver, { cwd, scratch }) =>
+        driver.fetchRemote({
+          cwd,
+          remoteName: `--upload-pack=touch ${scratch}/pwned;git-upload-pack`,
+        }),
+      leavesNoTrace: ({ scratch }) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          assert.isFalse(yield* fs.exists(`${scratch}/pwned`));
+        }),
+    },
+    {
+      name: "checkout never reads a ref as --detach",
+      run: (driver, { cwd }) => driver.switchRef({ cwd, refName: "--detach" }),
+      leavesNoTrace: ({ cwd, initialBranch }) =>
+        Effect.gen(function* () {
+          assert.strictEqual(yield* git(cwd, ["branch", "--show-current"]), initialBranch);
+        }),
+    },
+    {
+      name: "branch never reads a new ref as --list",
+      run: (driver, { cwd }) => driver.createRef({ cwd, refName: "--list" }),
+      leavesNoTrace: () => Effect.void,
+    },
+    {
+      name: "worktree add never reads a ref as --detach",
+      run: (driver, { cwd, scratch }) =>
+        driver.createWorktree({ cwd, refName: "--detach", path: `${scratch}/worktree` }),
+      leavesNoTrace: ({ scratch }) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          assert.isFalse(yield* fs.exists(`${scratch}/worktree`));
+        }),
+    },
+    {
+      name: "branch never reads a local branch as --force",
+      run: (driver, { cwd, initialBranch }) =>
+        driver.fetchRemoteBranch({
+          cwd,
+          remoteName: "origin",
+          remoteBranch: initialBranch,
+          localBranch: "--force",
+        }),
+      leavesNoTrace: ({ cwd }) =>
+        Effect.gen(function* () {
+          assert.strictEqual(yield* git(cwd, ["branch", "--list", "origin/*"]), "");
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it.effect(testCase.name, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const origin = yield* makeTmpDir("git-dash-origin-");
+          const cwd = yield* makeTmpDir("git-dash-clone-");
+          const scratch = yield* makeTmpDir("git-dash-scratch-");
+          const { initialBranch } = yield* initRepoWithCommit(origin);
+          yield* initRepoWithCommit(cwd);
+          yield* git(cwd, ["remote", "add", "origin", origin]);
+          const fixture = { cwd, initialBranch, scratch };
+
+          const result = yield* testCase.run(driver, fixture).pipe(Effect.result);
+
+          assert.isTrue(Result.isFailure(result));
+          yield* testCase.leavesNoTrace(fixture);
+        }),
+      ).pipe(Effect.provide(TestLayer)),
+    );
+  }
+});
+
+describe("a caller's ref or remote name that starts with a dash is refused before git runs", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly run: (
+      driver: GitVcsDriver.GitVcsDriver["Service"],
+    ) => Effect.Effect<unknown, GitCommandError>;
+  }> = [
+    {
+      name: "a checkout of a ref",
+      run: (driver) => driver.switchRef({ cwd: "/repo", refName: "--detach" }),
+    },
+    {
+      name: "a new ref",
+      run: (driver) => driver.createRef({ cwd: "/repo", refName: "--list", switchRef: true }),
+    },
+    {
+      name: "a worktree's ref",
+      run: (driver) => driver.createWorktree({ cwd: "/repo", refName: "--detach", path: null }),
+    },
+    {
+      name: "a worktree's new ref",
+      run: (driver) =>
+        driver.createWorktree({ cwd: "/repo", refName: "main", newRefName: "-f", path: null }),
+    },
+    {
+      name: "a worktree's base ref",
+      run: (driver) =>
+        driver.createWorktree({
+          cwd: "/repo",
+          refName: "main",
+          newRefName: "feature/x",
+          baseRefName: "--orphan",
+          path: null,
+        }),
+    },
+    {
+      name: "a fetched remote",
+      run: (driver) => driver.fetchRemote({ cwd: "/repo", remoteName: "--upload-pack=x" }),
+    },
+    {
+      name: "a fetched remote branch's local branch",
+      run: (driver) =>
+        driver.fetchRemoteBranch({
+          cwd: "/repo",
+          remoteName: "origin",
+          remoteBranch: "main",
+          localBranch: "--force",
+        }),
+    },
+    {
+      name: "a fetched remote branch's remote",
+      run: (driver) =>
+        driver.fetchRemoteBranch({
+          cwd: "/repo",
+          remoteName: "--upload-pack=x",
+          remoteBranch: "main",
+          localBranch: "main",
+        }),
+    },
+    {
+      name: "a tracked remote",
+      run: (driver) =>
+        driver.fetchRemoteTrackingBranch({
+          cwd: "/repo",
+          remoteName: "--upload-pack=x",
+          remoteBranch: "main",
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it.effect(testCase.name, () => {
+      const commands: Array<ReadonlyArray<string>> = [];
+      const spawner = ChildProcessSpawner.make((command) =>
+        Effect.sync(() => {
+          if (ChildProcess.isStandardCommand(command)) commands.push(command.args);
+          return makeNonRepositoryHandle();
+        }),
+      );
+      return Effect.gen(function* () {
+        const driver = yield* makeGitVcsDriverCore().pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        );
+        commands.length = 0;
+
+        const result = yield* testCase.run(driver).pipe(Effect.result);
+
+        assert.isTrue(Result.isFailure(result));
+        assert.deepStrictEqual(commands, []);
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer))),
+      );
+    });
+  }
+});
+
+describe("a review ref that starts with a dash", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly run: (
+      driver: GitVcsDriver.GitVcsDriver["Service"],
+      cwd: string,
+      output: string,
+    ) => Effect.Effect<unknown, GitCommandError>;
+  }> = [
+    {
+      name: "a review against a base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffPreview({ cwd, baseRef: `--output=${output}` }),
+    },
+    {
+      name: "a working-tree file expansion against a base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "working-tree",
+          changeType: "change",
+          baseRef: `--output=${output}`,
+          headRef: null,
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+    {
+      name: "a branch file expansion with a dash base ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: `--output=${output}`,
+          headRef: "HEAD",
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+    {
+      name: "a branch file expansion with a dash head ref is refused and writes no file",
+      run: (driver, cwd, output) =>
+        driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "branch-range",
+          changeType: "change",
+          baseRef: "HEAD",
+          headRef: `--output=${output}`,
+          oldPath: "README.md",
+          newPath: "README.md",
+        }),
+    },
+  ];
+
+  for (const testCase of cases) {
+    it.effect(testCase.name, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const cwd = yield* makeTmpDir("git-review-dash-");
+          const scratch = yield* makeTmpDir("git-review-dash-out-");
+          yield* initRepoWithCommit(cwd);
+          yield* writeTextFile(cwd, "README.md", "# changed\n");
+
+          const result = yield* testCase.run(driver, cwd, `${scratch}/out`).pipe(Effect.result);
+
+          assert.isTrue(Result.isFailure(result));
+          assert.deepStrictEqual(yield* fs.readDirectory(scratch), []);
+        }),
+      ).pipe(Effect.provide(TestLayer)),
+    );
+  }
 });

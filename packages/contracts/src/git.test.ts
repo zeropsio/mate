@@ -2,7 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
+  VcsCreateRefInput,
   VcsCreateWorktreeInput,
+  VcsSwitchRefInput,
   GitPreparePullRequestThreadInput,
   GitRunStackedActionResult,
   GitRunStackedActionInput,
@@ -16,6 +18,55 @@ const decodePreparePullRequestThreadInput = Schema.decodeUnknownSync(
 const decodeRunStackedActionInput = Schema.decodeUnknownSync(GitRunStackedActionInput);
 const decodeRunStackedActionResult = Schema.decodeUnknownSync(GitRunStackedActionResult);
 const decodeResolvePullRequestResult = Schema.decodeUnknownSync(GitResolvePullRequestResult);
+const decodeSwitchRefInput = Schema.decodeUnknownSync(VcsSwitchRefInput);
+const decodeCreateRefInput = Schema.decodeUnknownSync(VcsCreateRefInput);
+
+describe("ref names that git would read as an option", () => {
+  const inputs = [
+    {
+      name: "VcsSwitchRefInput",
+      decode: (refName: string) => decodeSwitchRefInput({ cwd: "/repo", refName }),
+    },
+    {
+      name: "VcsCreateRefInput",
+      decode: (refName: string) => decodeCreateRefInput({ cwd: "/repo", refName }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.refName",
+      decode: (refName: string) => decodeCreateWorktreeInput({ cwd: "/repo", refName, path: null }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.newRefName",
+      decode: (refName: string) =>
+        decodeCreateWorktreeInput({
+          cwd: "/repo",
+          refName: "main",
+          newRefName: refName,
+          path: null,
+        }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.baseRefName",
+      decode: (refName: string) =>
+        decodeCreateWorktreeInput({
+          cwd: "/repo",
+          refName: "main",
+          baseRefName: refName,
+          path: null,
+        }),
+    },
+  ];
+
+  describe.each(inputs)("$name", ({ decode }) => {
+    it.each(["--upload-pack=x", "-b", "-"])("refuses %s", (refName) => {
+      expect(() => decode(refName)).toThrow();
+    });
+
+    it.each(["main", "feature/x-1", "origin/main", "0123456789abcdef"])("accepts %s", (refName) => {
+      expect(() => decode(refName)).not.toThrow();
+    });
+  });
+});
 
 describe("VcsCreateWorktreeInput", () => {
   it("accepts omitted newRefName for existing-refName worktrees", () => {

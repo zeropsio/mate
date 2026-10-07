@@ -38,7 +38,6 @@ import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "./spi/threadToolPolicy.ts";
-import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
 import * as ProviderSessionRuntime from "./persistence/ProviderSessionRuntime.ts";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry.ts";
@@ -541,7 +540,6 @@ const RuntimeBaseDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
   Layer.provideMerge(UsageLayerLive),
   Layer.provideMerge(TraceDiagnostics.layer),
-  Layer.provideMerge(AnalyticsService.layer),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
   Layer.provideMerge(ServerLifecycleEvents.layer),

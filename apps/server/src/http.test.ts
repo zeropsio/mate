@@ -324,6 +324,16 @@ describe("assetResponseHeaders", () => {
     );
   });
 
+  it.each(["/workspace/page.html", "/workspace/PAGE.HTM", "/workspace/nested/index.htm"])(
+    "serves %s in a sandbox with an opaque origin",
+    (path) => {
+      expect(assetResponseHeaders(path)).toHaveProperty(
+        "Content-Security-Policy",
+        "sandbox allow-scripts allow-forms allow-popups allow-modals",
+      );
+    },
+  );
+
   it("downloads uploaded documents without executing their content", () => {
     expect(assetResponseHeaders("/attachments/upload.html", { download: true })).toMatchObject({
       "Content-Disposition": "attachment",
