@@ -442,6 +442,57 @@ describe("structure", () => {
         ),
     );
 
+    it.effect("a refused Move reveals no hidden destination occupancy or existence", () =>
+      withStructure((_view, down) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const empty = yield* structure.createApp("owner", "Empty");
+          const occupied = yield* structure.createApp("owner", "Occupied");
+          yield* structure.attachProject("owner", occupied.id, {
+            projectId: "P_PROD",
+            kind: "production",
+          });
+          yield* structure.createMate("owner", { projectId: "P_MATE", face: "face" });
+          // Even an unavailable existence read must not replace an access refusal.
+          yield* Ref.set(down, true);
+          for (const [who, expected] of [
+            ["dev", "not_structure_writer"],
+            ["reader", "not_structure_writer"],
+            ["nobody", "not_structure_writer"],
+            ["stranger", "not_active_member"],
+          ] as const) {
+            for (const appId of [empty.id, occupied.id, "00000000-0000-0000-0000-000000000000"]) {
+              assert.strictEqual(
+                yield* reasonOf(
+                  structure.moveProject(who, "P_MATE", { appId, kind: "production" }),
+                ),
+                expected,
+                `${who}: ${appId}`,
+              );
+            }
+          }
+          assert.deepStrictEqual(
+            (yield* structure.read("owner")).ungrouped.map((mate) => mate.projectId),
+            ["P_MATE"],
+          );
+        }),
+      ),
+    );
+
+    it.effect("HQ is never offered as a project to move", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          yield* structure.createApp("owner", "Destination");
+          assert.deepStrictEqual(yield* structure.moveDestinations("owner", "HQ"), {});
+          assert.strictEqual(
+            yield* reasonOf(structure.moveProject("owner", "HQ", { appId: null, kind: "mate" })),
+            "hq_project",
+          );
+        }),
+      ),
+    );
+
     it.effect(
       "offers moving a Mate into a production's place only where the move takes it: none held",
       () =>
@@ -1735,6 +1786,66 @@ describe("structure", () => {
 
     // An environment goes with its project: at reconcile once Zerops no longer has it, and when
     // it leaves its application; a move into another application or tier records it there anew.
+    for (const kind of ["stage", "production", "devstage"] as const) {
+      it.effect(`moving a Mate as ${kind} keeps its identity and source repository history`, () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const source = yield* structure.createApp("owner", "Source");
+            const destination = yield* structure.createApp("owner", "Destination");
+            yield* structure.attachProject("owner", source.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-3", standUp: true },
+            });
+            yield* structure.recordSigners("P_MATE", { claude: "dev" });
+            yield* structure.markClosedOff("owner", "P_MATE");
+            const before = (yield* structure.read("owner")).apps.find(
+              (app) => app.id === source.id,
+            )!.projects[0]!.mate;
+            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+              VALUES (${source.id}::uuid, 'appdev', 'owner')`;
+            yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head)
+              VALUES (${source.id}::uuid, 'appdev', 1, 'P_MATE', 'Open work', 'open', ${"a".repeat(40)}),
+                     (${source.id}::uuid, 'appdev', 2, 'P_MATE', 'Merged work', 'merged', ${"b".repeat(40)})`;
+            const history = sql`SELECT app_id::text, repo, number, mate_project_id, state, head
+              FROM hq_change ORDER BY number`;
+            const beforeHistory = yield* history;
+            yield* structure.moveProject("owner", "P_MATE", { appId: destination.id, kind });
+            const read = yield* structure.read("owner");
+            assert.deepStrictEqual(
+              read.apps
+                .find((app) => app.id === destination.id)!
+                .projects.map((project) => ({
+                  projectId: project.projectId,
+                  kind: project.kind,
+                  mate: project.mate,
+                })),
+              [{ projectId: "P_MATE", kind, mate: before }],
+            );
+            assert.deepStrictEqual(read.apps.find((app) => app.id === source.id)!.projects, []);
+            assert.deepStrictEqual(yield* history, beforeHistory);
+            assert.strictEqual(
+              yield* reasonOf(structure.deleteApp("owner", source.id)),
+              "app_not_empty",
+            );
+            // Destruction removes placement, never another repository's retained changes.
+            yield* Ref.update(view, (org) => ({
+              ...org,
+              projects: org.projects.filter((project) => project.id !== "P_MATE"),
+            }));
+            yield* structure.reconcile;
+            assert.deepStrictEqual(yield* history, beforeHistory);
+            assert.strictEqual(
+              yield* reasonOf(structure.deleteApp("owner", source.id)),
+              "app_not_empty",
+            );
+          }),
+        ),
+      );
+    }
+
     it.effect("drops an environment with its project, and records it anew where it moves", () =>
       withStructure((view) =>
         Effect.gen(function* () {

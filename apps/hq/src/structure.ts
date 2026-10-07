@@ -1458,6 +1458,14 @@ export const structureLayer = (options: {
             }
             const target = yield* sql<{ readonly project_id: string; readonly kind: string }>`
               SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+            // Check the person's right before reporting occupancy or asking whether a hidden
+            // holder still exists. A refused Move must not reveal its destination's contents.
+            yield* allowed(
+              userId,
+              "move",
+              moveTarget(projectId, yield* heldOf(sql, projectId), kind, target),
+              view,
+            );
             // A production Zerops still has holds the place, as its offer says (`moveTo`).
             if (productionTaken(projectId, kind, target, view)) {
               return yield* refuse("conflict", "production_taken");
@@ -1475,16 +1483,29 @@ export const structureLayer = (options: {
                 Effect.gen(function* () {
                   yield* lockProject(sql, projectId);
                   const held = yield* heldOf(sql, projectId);
-                  yield* allowed(userId, "move", moveTarget(projectId, held, kind, target), view);
+                  const apps = yield* sql`
+                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
+                  const currentTarget = yield* sql<{
+                    readonly project_id: string;
+                    readonly kind: string;
+                  }>`
+                    SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+                  yield* allowed(
+                    userId,
+                    "move",
+                    moveTarget(projectId, held, kind, currentTarget),
+                    view,
+                  );
+                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                  if (productionTaken(projectId, kind, currentTarget, view)) {
+                    return yield* refuse("conflict", "production_taken");
+                  }
                   if (isMateKind(kind)) {
                     const mates = yield* sql`SELECT 1 FROM hq_mate WHERE project_id = ${projectId}`;
                     if (mates.length === 0) {
                       return yield* refuse("invalid", "mate_record_missing");
                     }
                   }
-                  const apps = yield* sql`
-                    SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR NO KEY UPDATE`;
-                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                   // Its environment stays only where the project stays: moved anywhere else, it
                   // is recorded anew there.
                   const stays = yield* sql`
@@ -1660,6 +1681,7 @@ export const structureLayer = (options: {
         read: (userId) => Effect.map(loadRead(), (source) => source.forPerson(userId)),
         moveDestinations: (userId, projectId) =>
           Effect.gen(function* () {
+            if (projectId === options.hqProjectId) return {};
             const facts = yield* roles.view;
             const rows = yield* sql<{
               readonly app_id: string;
