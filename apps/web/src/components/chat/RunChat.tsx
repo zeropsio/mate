@@ -152,6 +152,7 @@ import {
   movesAsPerson,
 } from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
+import { followScrollTo } from "~/lib/followScroll";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -750,7 +751,7 @@ function SlotBox({ follows = false, detail = false, part, className, children }:
       if (stickRef.current) {
         const bottom = box.scrollHeight - box.clientHeight;
         if (Math.abs(box.scrollTop - bottom) > 1) {
-          box.scrollTop = bottom;
+          followScrollTo(box, bottom);
           ownTopRef.current = box.scrollTop;
         }
       }
@@ -4335,7 +4336,7 @@ function RunScroll({
     const slotEases = () => motionRef?.current.slot?.easing() ?? false;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
-      element.scrollTop = top;
+      followScrollTo(element, top);
       noteScrollTop(element);
       heard({ kind: "set", top: element.scrollTop });
     };

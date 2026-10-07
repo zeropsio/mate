@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act, type ComponentProps, type ReactNode } from "react";
@@ -93,6 +95,85 @@ function codeButton(renderer: ReactTestRenderer, label: string) {
   if (!button) throw new Error(`Missing code button: ${label}`);
   return button.props as ComponentProps<typeof Button>;
 }
+
+/** A link's own words, without the destination mark the fork adds after them. */
+function linkWords(document: Document): Array<string | null> {
+  return [...document.querySelectorAll("a")].map((link) => {
+    const words = link.cloneNode(true) as HTMLElement;
+    words.querySelectorAll("[data-link-indicator]").forEach((mark) => mark.remove());
+    return words.textContent;
+  });
+}
+
+describe("ChatMarkdown bare anchor placeholders", () => {
+  it.each(["<A>", "<a>", "<a >", "<a/>", "<A/>", "<a />"])(
+    "preserves unmatched %s without linking later blocks",
+    (token) => {
+      const text = `- **"From ${token}"** appears in the header.\n\n- **Tests:** cover inheritance.\n\nThe deferred move continues on B.\n\nSee <a href="https://example.com">the link</a>.`;
+      const document = new DOMParser().parseFromString(
+        renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />),
+        "text/html",
+      );
+
+      expect(document.querySelector("strong")?.textContent).toBe(`"From ${token}"`);
+      expect(linkWords(document)).toEqual(["the link"]);
+      expect(document.querySelectorAll("li")).toHaveLength(2);
+      expect(
+        [...document.querySelectorAll("p")].map((paragraph) => paragraph.textContent),
+      ).toContain("The deferred move continues on B.");
+    },
+  );
+
+  it.each(["</a>  ", "<div>more</div>\n</a>"])(
+    "preserves a paired anchor closing in the raw block %s",
+    (closing) => {
+      const document = new DOMParser().parseFromString(
+        renderToStaticMarkup(
+          <ChatMarkdown cwd="/tmp/project" text={`See <a>label\n\n${closing}\n\nfinish`} />,
+        ),
+        "text/html",
+      );
+      expect(document.querySelector("p")?.textContent).toBe("See label");
+    },
+  );
+
+  it("preserves a paired anchor after comment-looking raw text", () => {
+    const document = new DOMParser().parseFromString(
+      renderToStaticMarkup(
+        <ChatMarkdown cwd="/tmp/project" text="See <a>label<script><!-- </script> --></a>" />,
+      ),
+      "text/html",
+    );
+    expect(document.querySelector("p")?.textContent).toBe("See label -->");
+  });
+
+  it.each(["<!-- </a> -->", '<div title="</a>">more</div>', '<script>"</a>"</script>'])(
+    "ignores apparent closing anchors inside %s",
+    (html) => {
+      const document = new DOMParser().parseFromString(
+        renderToStaticMarkup(
+          <ChatMarkdown cwd="/tmp/project" text={`Before <A>.\n\n${html}\n\nAfter.`} />,
+        ),
+        "text/html",
+      );
+      expect(document.querySelector("p")?.textContent).toBe("Before <A>.");
+      expect(document.querySelectorAll("a")).toHaveLength(0);
+    },
+  );
+
+  it("preserves paired HTML anchors, details, markdown links, and inline code", () => {
+    const text =
+      'Bare <a>label</a>, <a id="section"></a>, `<A>`, and [docs](https://example.com).\n\n<details><summary>More</summary>Details</details>';
+    const document = new DOMParser().parseFromString(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} />),
+      "text/html",
+    );
+
+    expect(linkWords(document)).toEqual(["label", "", "docs"]);
+    expect(document.querySelector("code")?.textContent).toBe("<A>");
+    expect(document.querySelector("[data-markdown-details]")?.textContent).toContain("More");
+  });
+});
 
 describe("ChatMarkdown streaming", () => {
   it("runs only a complete single-line shell block after a click", async () => {

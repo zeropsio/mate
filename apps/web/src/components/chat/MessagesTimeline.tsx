@@ -156,7 +156,7 @@ import {
   type TimelineLatestTurn,
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
 import {
   deriveDisplayedUserMessageState,
   type ParsedTerminalContextEntry,
@@ -1500,7 +1500,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     <TimelineRowCtx value={sharedState}>
       <TimelineRowActivityCtx value={activityState}>
         <TimelineWorkingCtx value={working}>
-          <div
+          <TooltipScrollDismissArea
             ref={setTimelineViewportElement}
             className="relative h-full min-h-0"
             // Whether the list follows its end: a run's fold then keeps its
@@ -1583,7 +1583,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 });
               }}
             />
-          </div>
+          </TooltipScrollDismissArea>
           {handedOver && !listPlaced ? (
             // The line the pane on its way said, where it said it, until the
             // rows stand where they stay.
