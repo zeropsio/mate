@@ -1,66 +1,58 @@
 import {
-  makeGitCredentialStore,
-  selectGitCredentials,
-  type HqApi,
-  type GitCredentialSnapshot,
-} from "@t3tools/client-runtime/zerops/hq";
-import { useEffect, useSyncExternalStore, useState } from "react";
+  makeGitCredentials,
+  gitCredentials,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import { useEffect, useMemo, useState } from "react";
 import { useOfficialHq } from "./accountHq";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
-
-const stores = new Map<HqApi, Map<string, ReturnType<typeof makeGitCredentialStore>>>();
-onAccountLifetimeClose(() => {
-  for (const byApp of stores.values()) for (const store of byApp.values()) store.close();
-  stores.clear();
-});
-const UNREAD: GitCredentialSnapshot = {
-  credentials: { state: "unread", waitingFor: null },
-  action: { kind: "idle" },
-};
-const NO_SUBSCRIBE = () => () => undefined;
-function storeFor(api: HqApi, appId: string) {
-  let byApp = stores.get(api);
-  if (byApp === undefined) {
-    byApp = new Map();
-    stores.set(api, byApp);
+import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
+import { randomUUID } from "../lib/utils";
+const UNREAD = Atom.make({ credentials: { state: "unread" }, action: { kind: "idle" } } as const);
+const hosts = new WeakMap<AccountStore, WeakMap<HqApi, ReturnType<typeof makeGitCredentials>>>();
+function hostFor(store: AccountStore, api: HqApi) {
+  let byApi = hosts.get(store);
+  if (byApi === undefined) {
+    byApi = new WeakMap();
+    hosts.set(store, byApi);
   }
-  let store = byApp.get(appId);
-  if (store === undefined) {
-    store = makeGitCredentialStore({
-      list: () => api.gitCredentials(appId),
-      issue: () => api.issueGitCredential(appId),
-      revoke: (id) => api.revokeGitCredential(appId, id),
-      now: () => Date.now(),
-    });
-    byApp.set(appId, store);
+  let host = byApi.get(api);
+  if (host === undefined) {
+    host = makeGitCredentials({ store, api, makeId: randomUUID });
+    byApi.set(api, host);
+    onAccountLifetimeClose(host.close);
   }
-  return store;
+  return host;
 }
 export function useGitCredentials(appId: string) {
   const hq = useOfficialHq();
-  const store = hq === null ? null : storeFor(hq.api, appId);
-  const state = useSyncExternalStore(
-    store?.subscribe ?? NO_SUBSCRIBE,
-    store?.snapshot ?? (() => UNREAD),
+  const account = useAccountStoreForAdapters();
+  const orgId = useAccountOrgId();
+  const key = useMemo(() => (orgId === null ? null : { orgId, appId }), [orgId, appId]);
+  const store = hq === null || account === null ? null : hostFor(account, hq.api);
+  const state = useAtomValue(
+    account === null || key === null ? UNREAD : account.data.project(gitCredentials, key),
   );
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
-    if (store !== null) void store.load();
-    return () => store?.forgetPassword();
-  }, [store]);
+    if (store !== null && key !== null) return store.demand(key);
+  }, [store, key]);
   return {
-    state: selectGitCredentials(state),
+    state,
     address: hq?.address,
     onIssue: () => {
       setCopied(null);
-      if (store !== null) void store.issue();
+      if (store !== null && key !== null) void store.issue(key);
     },
     onRevoke: (id: string) => {
       setCopied(null);
-      if (store !== null) void store.revoke(id);
+      if (store !== null && key !== null) void store.revoke(key, id);
     },
     onAgain: () => {
-      if (store !== null) void store.again();
+      if (store !== null && key !== null) store.again(key);
     },
     onCopy: () => {
       const current = captureAccountLifetime();

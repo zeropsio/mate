@@ -1,4 +1,3 @@
-import type { selectGitCredentials } from "@t3tools/client-runtime/zerops/hq";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
@@ -12,7 +11,7 @@ export function ZeropsGitCredentialsView({
   onAgain,
   onCopy,
 }: {
-  readonly state: ReturnType<typeof selectGitCredentials>;
+  readonly state: ReturnType<typeof useGitCredentials>["state"];
   readonly cloneUrl: string;
   readonly onIssue: () => void;
   readonly onRevoke: (id: string) => void;
@@ -36,7 +35,7 @@ export function ZeropsGitCredentialsView({
             : "Create Git password"}
         </Button>
       </div>
-      {state.action.kind === "failed" ? (
+      {state.action.kind === "failed" || state.action.kind === "unresolved" ? (
         <p role="alert" className="text-sm text-status-failed">
           {state.action.words} Read the password list again before creating another.
         </p>

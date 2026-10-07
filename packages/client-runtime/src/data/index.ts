@@ -328,3 +328,8 @@ export {
 } from "./families/mateImage.ts";
 export type { MateImageKey, MateImageReference } from "./families/mateImage.ts";
 export { makeMateImages, makeMateImageWire, classifyImageHttp } from "./adapters/mateImages.ts";
+
+export { repositorySource } from "./projections/repositorySource.ts";
+export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
+export { makeGitCredentials } from "./adapters/hqGitCredentials.ts";
+export { gitCredentials } from "./projections/gitCredentials.ts";

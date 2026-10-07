@@ -896,14 +896,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useGitCredentials.ts",
-    "kind": "retired-token",
-    "fingerprint": "ReturnType<typeof makeGitCredentialStore>",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/useMateSetup.ts",
     "kind": "retired-token",
     "fingerprint": "MATE_SETUP_POLL_MS",
@@ -933,14 +925,6 @@
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "Retained conversation/usage boundary: this guard token supports route access, discovery completion or provider usage presentation. Its policy and retained client consumers require a separate migration; these inventory, database and browser changes do not supply that contract.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useRepositorySource.ts",
-    "kind": "retired-token",
-    "fingerprint": "ReturnType<typeof makeRepositoryStore>",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "Retained repository/file/theme boundary: this mechanism serves Git credentials, repository discovery, workspace file content/images or theme assets. Its owner protocol and presentation are separate from inventory, database and browser-call results; removing it requires their own read family.",
     "expires": "never"
   },
   {

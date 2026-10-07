@@ -1,58 +1,68 @@
 import {
-  makeRepositoryStore,
-  selectRepositorySource,
-  type HqApi,
-  type RepositoryTarget,
-} from "@t3tools/client-runtime/zerops/hq";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+  makeRepositorySourceReads,
+  repositorySource,
+  type AccountStore,
+} from "@t3tools/client-runtime/data";
+import type { HqApi, RepositoryTarget } from "@t3tools/client-runtime/zerops/hq";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
+import { useEffect, useMemo } from "react";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
 
-const stores = new Map<HqApi, ReturnType<typeof makeRepositoryStore>>();
-onAccountLifetimeClose(() => {
-  for (const store of stores.values()) store.close();
-  stores.clear();
-});
-const UNREAD = { state: "unread", waitingFor: null } as const;
-function storeFor(api: HqApi) {
-  let store = stores.get(api);
-  if (store === undefined) {
-    store = makeRepositoryStore({
-      read: ({ appId, repo, query }, signal) => api.repositorySource(appId, repo, query, signal),
-      now: () => Date.now(),
-    });
-    stores.set(api, store);
+const UNREAD = Atom.make({
+  state: "unread",
+  words: "Waiting for HQ…",
+  alert: false,
+  busy: false,
+} as const);
+const readers = new WeakMap<
+  AccountStore,
+  WeakMap<HqApi, ReturnType<typeof makeRepositorySourceReads>>
+>();
+function readerFor(store: AccountStore, api: HqApi) {
+  let byApi = readers.get(store);
+  if (byApi === undefined) {
+    byApi = new WeakMap();
+    readers.set(store, byApi);
   }
-  return store;
+  let reader = byApi.get(api);
+  if (reader === undefined) {
+    reader = makeRepositorySourceReads(store, api);
+    byApi.set(api, reader);
+    onAccountLifetimeClose(reader.close);
+  }
+  return reader;
 }
 export function useRepositorySource(input: RepositoryTarget, allowed: boolean | undefined) {
   const hq = useOfficialHq();
-  const store = hq === null ? null : storeFor(hq.api);
+  const store = useAccountStoreForAdapters();
   const {
     appId,
     repo,
     query: { rev, path, kind },
   } = input;
-  // A route's spelling is stable even when its component renders again.
+  const orgId = useAccountOrgId();
   const target = useMemo(
     () => ({ appId, repo, query: { ...(rev === undefined ? {} : { rev }), path, kind } }),
     [appId, repo, rev, path, kind],
   );
-  const subscribe = useCallback(
-    (listener: () => void) => store?.subscribe(target, listener) ?? (() => undefined),
-    [store, target],
-  );
-  const source = useSyncExternalStore(
-    subscribe,
-    () => store?.snapshot(target, allowed ?? "unread") ?? UNREAD,
+  const key = useMemo(() => (orgId === null ? null : { orgId, target }), [orgId, target]);
+  const reader = store === null || hq === null ? null : readerFor(store, hq.api);
+  const source = useAtomValue(
+    store === null || key === null
+      ? UNREAD
+      : store.data.project(repositorySource, { ...key, allowed }),
   );
   useEffect(() => {
-    if (store !== null && allowed === true) void store.load(target);
-  }, [store, target, allowed]);
+    if (reader === null || key === null || allowed !== true) return;
+    return reader.demand(key);
+  }, [reader, key, allowed]);
   return {
-    source: selectRepositorySource(source),
+    source,
     again: () => {
-      if (store !== null && allowed === true) void store.again(target);
+      if (reader !== null && key !== null && allowed === true) reader.again(key);
     },
   };
 }

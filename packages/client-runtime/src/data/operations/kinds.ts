@@ -1,3 +1,4 @@
+import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
 import { mateUpdate } from "./mateUpdate.ts";
 /**
  * The operation kinds this account submits. A new kind is one module beside these and one line
@@ -46,6 +47,8 @@ export function defineOperationKinds(
 }
 
 export const OPERATION_KINDS = defineOperationKinds([
+  issueGitCredential,
+  revokeGitCredential,
   throwawaySweep,
   mateRestart,
   mateUpdate,

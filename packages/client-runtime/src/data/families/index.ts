@@ -1,3 +1,5 @@
+import { hqRepositorySourceFamily } from "./hqRepositorySource.ts";
+import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
 import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
@@ -63,6 +65,9 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  hqRepositorySourceFamily,
+  hqGitCredentialsFamily,
+  hqGitCredentialRequestFamily,
   hqLifecycleFamily,
   projectFamily,
   processFamily,
