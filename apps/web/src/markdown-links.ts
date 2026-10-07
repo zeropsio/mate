@@ -419,6 +419,36 @@ export function resolveMarkdownFileLinkMeta(
   return buildFileLinkMetaFromTarget(targetPath, cwd);
 }
 
+/**
+ * Whether a file link's label only names its destination — the file name, a path
+ * ending in it, or the same with the destination's position — so the chip alone
+ * says it. Any other label is the agent's prose, shown beside the chip.
+ */
+export function isMarkdownFileLinkLabel(
+  label: string,
+  destination: Pick<MarkdownFileLinkMeta, "filePath" | "line" | "column">,
+): boolean {
+  const normalize = (path: string) =>
+    path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  const labelPosition = splitPathAndPosition(label.trim());
+  const labelLine = labelPosition.line ? Number.parseInt(labelPosition.line, 10) : undefined;
+  const labelColumn = labelPosition.column ? Number.parseInt(labelPosition.column, 10) : undefined;
+  if (
+    (labelLine !== undefined && labelLine !== destination.line) ||
+    (labelColumn !== undefined && labelColumn !== destination.column)
+  ) {
+    return false;
+  }
+  let labelPath = normalize(labelPosition.path);
+  let destinationPath = normalize(destination.filePath);
+  if (labelPath.length === 0) return true;
+  if (isWindowsAbsolutePath(destination.filePath)) {
+    labelPath = labelPath.toLowerCase();
+    destinationPath = destinationPath.toLowerCase();
+  }
+  return destinationPath === labelPath || destinationPath.endsWith(`/${labelPath}`);
+}
+
 function buildFileLinkMetaFromTarget(targetPath: string, cwd?: string): MarkdownFileLinkMeta {
   const { path, line, column } = splitPathAndPosition(targetPath);
   const parsedLine = line ? Number.parseInt(line, 10) : Number.NaN;

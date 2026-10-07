@@ -397,6 +397,32 @@ describe("ChatMarkdown file option chips", () => {
   });
 });
 
+describe("ChatMarkdown file link labels", () => {
+  const environmentId = EnvironmentId.make("env-labels");
+  const render = (text: string) =>
+    renderToStaticMarkup(
+      <ChatMarkdown cwd="/repo" environmentId={environmentId} text={text} lineBreaks />,
+    );
+
+  it("keeps an agent's prose label beside the file chip, and copies the link as written", () => {
+    const html = render("See [validates the input](/repo/src/example.ts:12) first.");
+
+    expect(html).toContain("validates the input");
+    expect(html).toContain("chat-markdown-file-link");
+    expect(html).toContain('data-markdown-copy="[validates the input](/repo/src/example.ts:12)"');
+  });
+
+  it.each(["example.ts", "src/example.ts:12", "/repo/src/example.ts"])(
+    "shows only the chip when the label %s names the file",
+    (label) => {
+      const html = render(`See [${label}](/repo/src/example.ts:12) first.`);
+
+      expect(html).toContain("chat-markdown-file-link");
+      expect(html).not.toContain(`>${label} <`);
+    },
+  );
+});
+
 describe("ChatMarkdown Windows file links", () => {
   const environmentId = EnvironmentId.make("env-windows");
 
