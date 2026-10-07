@@ -29,7 +29,13 @@ import * as Semaphore from "effect/Semaphore";
 import type { ConversationId, SpiEvent, ThreadId, TurnHandle } from "@t3tools/contracts";
 
 import type { ProviderServiceShape } from "../../provider/Services/ProviderService.ts";
-import type { BridgeDriver, EngineCommand, RequestKey, SessionId } from "../bridge/spi3.ts";
+import type {
+  BridgeDriver,
+  EngineCommand,
+  RequestKey,
+  SendMode,
+  SessionId,
+} from "../bridge/spi3.ts";
 import { type BridgeInput, makeTranslator, type NativeRequest } from "../bridge/translate.ts";
 import type { ConversationsShape } from "../Conversations.ts";
 import type { ProviderSignal } from "../domain/command.ts";
@@ -52,8 +58,15 @@ export interface SessionHost {
   readonly begin: (session: SessionId) => Effect.Effect<void>;
   /** Records a command the engine sent, in order with the provider's events. */
   readonly record: (command: EngineCommand) => Effect.Effect<void>;
-  /** What became of a send: taken, refused, or its session closed first. */
-  readonly awaitSend: (turn: TurnHandle) => Effect.Effect<SendEvidence>;
+  /**
+   * Records a send before its call and returns the wait for what became of it — taken, refused,
+   * or its session closed first. The wait holds its own evidence: one that came before the
+   * handler waits is never lost.
+   */
+  readonly beginSend: (
+    turn: TurnHandle,
+    mode: SendMode,
+  ) => Effect.Effect<Effect.Effect<SendEvidence>>;
   /** The session's open has committed: its held boundaries go, and every later one. */
   readonly openGate: (session: SessionId) => Effect.Effect<void>;
   /** The session never opened: what it held is dropped. */
@@ -255,28 +268,22 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         current = session;
         recording = session;
       }),
+    beginSend: (turn, mode) =>
+      Effect.gen(function* () {
+        // Armed now, before the call: its evidence can never come first.
+        const done = yield* Deferred.make<SendEvidence>();
+        waiting.set(turn, { session: recording, done });
+        yield* enqueue({ _tag: "input", input: { kind: "send", turn, mode } });
+        // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs on
+        // a driver that says nothing.
+        return Effect.interruptible(Deferred.await(done));
+      }),
     record: (command) =>
       Effect.gen(function* () {
-        if (command.kind === "send") {
-          // Armed now, before the call: its evidence can never come first.
-          waiting.set(command.turn, {
-            session: recording,
-            done: yield* Deferred.make<SendEvidence>(),
-          });
-        }
         // A call's result comes back faster than the events the driver emitted before it
         // returned (they travel the bus): it is placed after them, as the driver ordered them.
         if (command.kind === "sent" || command.kind === "send-failed") yield* deps.quiet;
         yield* enqueue({ _tag: "input", input: command });
-      }),
-    awaitSend: (turn) =>
-      Effect.suspend(() => {
-        const send = waiting.get(turn);
-        return send === undefined
-          ? Effect.succeed<SendEvidence>({ _tag: "Closed", words: "Nothing was sent." })
-          : // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs
-            // on a driver that says nothing.
-            Effect.interruptible(Deferred.await(send.done));
       }),
     openGate: (session) =>
       lock.withPermits(1)(
