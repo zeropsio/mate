@@ -165,7 +165,12 @@ interface World {
   readonly wakes: Ref.Ref<ReadonlyArray<WakeRequest>>;
   /** The run each wake started, by wake id, once it has. */
   readonly wokenRuns: Ref.Ref<
-    Readonly<Record<string, { readonly end: unknown; readonly source?: string }>>
+    Readonly<
+      Record<
+        string,
+        { readonly end: unknown; readonly source?: string; readonly reached?: boolean | "unknown" }
+      >
+    >
   >;
 }
 
@@ -189,7 +194,16 @@ const makeWorld = Effect.gen(function* () {
     assigned: yield* Ref.make<ReadonlyArray<readonly [string, unknown]>>([]),
     wakes: yield* Ref.make<ReadonlyArray<WakeRequest>>([]),
     wokenRuns: yield* Ref.make<
-      Readonly<Record<string, { readonly end: unknown; readonly source?: string }>>
+      Readonly<
+        Record<
+          string,
+          {
+            readonly end: unknown;
+            readonly source?: string;
+            readonly reached?: boolean | "unknown";
+          }
+        >
+      >
     >({}),
   } satisfies World;
 });
@@ -278,6 +292,7 @@ const fakes = (world: World) =>
                 runId: runId(ConversationId.make("c"), 1),
                 end: run.end as never,
                 source: (run.source ?? null) as never,
+                reachedAgent: run.reached ?? (run.end === null ? true : "unknown"),
               };
         }),
     }),
@@ -1521,6 +1536,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
               [wakeId(first!.conversationId, "standup", first!.key)]: {
                 end: { kind: "failed", reason: "Ana's sign-in was removed.", next: null },
                 source: "inferred-from-effect",
+                reached: false,
               },
             });
             const step = Effect.map(
@@ -1535,6 +1551,36 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
         const keys = (yield* Ref.get(world.wakes)).map((wake) => wake.key);
         assert.strictEqual(keys.length, 2);
         assert.notStrictEqual(keys[0], keys[1]);
+        assert.deepStrictEqual(
+          (yield* recordIn(database, "")).map((row) => row.source),
+          ["server"],
+        );
+      }),
+  );
+
+  it.live(
+    "a stand-up whose message may already be in the agent is never offered for a second try",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const database = freshDatabase();
+        yield* Ref.set(world.signers, SIGNED);
+        yield* onEngine(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            const [first] = yield* Ref.get(world.wakes);
+            // Its session closed while the message was being sent: it may have arrived.
+            yield* Ref.set(world.wokenRuns, {
+              [wakeId(first!.conversationId, "standup", first!.key)]: {
+                end: { kind: "failed", reason: "The session closed.", next: null },
+                source: "inferred-from-effect",
+                reached: "unknown",
+              },
+            });
+            assert.isFalse(yield* setup.retry("user-a"));
+          }),
+        );
+        assert.strictEqual((yield* Ref.get(world.wakes)).length, 1);
         assert.deepStrictEqual(
           (yield* recordIn(database, "")).map((row) => row.source),
           ["server"],

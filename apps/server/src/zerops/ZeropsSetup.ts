@@ -744,14 +744,17 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       });
 
     /**
-     * The record as a reader takes it: a stand-up the engine ended before it reached the agent
-     * (its admission refused, its session never opened) is a failed send, as V1 records one.
+     * The record as a reader takes it: a stand-up the engine ended before it provably reached the
+     * agent (its admission refused, its session never opened, its send refused) is a failed send,
+     * as V1 records one.
      */
     const seenOnEngine = (record: StandUpRow | undefined) =>
       Effect.gen(function* () {
         if (!onEngine || record?.source !== "server") return record;
         const run = yield* recordedRun(record);
-        return run?.end?.kind === "failed" && run.source === "inferred-from-effect"
+        // Only a stand-up that provably never reached the agent is a failed send: one whose
+        // delivery is unknown may be in the agent already, and V1 never sends one twice.
+        return run?.end?.kind === "failed" && run.reachedAgent === false
           ? { ...record, source: "server:failed" }
           : record;
       });

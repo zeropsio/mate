@@ -135,6 +135,11 @@ export interface MateEngineService {
         readonly runId: RunId;
         readonly end: RunEnd | null;
         readonly source: RunEndSource | null;
+        /**
+         * Whether its words reached the agent: it started (`true`), provably never (`false`: never
+         * sent, or every send refused undelivered), or a send may have (`unknown`).
+         */
+        readonly reachedAgent: boolean | "unknown";
       }
     | undefined
   >;

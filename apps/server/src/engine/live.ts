@@ -58,6 +58,7 @@ interface RunEndRow {
   readonly run_id: string;
   readonly end_json: string | null;
   readonly end_source: string | null;
+  readonly started_at: number | null;
 }
 
 export interface LiveEngineOptions {
@@ -254,15 +255,45 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => []),
       );
 
+    /**
+     * Whether a run's words reached the agent: it started; or no send of it was ever tried, or
+     * every one was refused undelivered (provably never); else a send may have arrived.
+     */
+    const reachedAgent = (row: RunEndRow) =>
+      row.started_at !== null
+        ? Effect.succeed<boolean | "unknown">(true)
+        : sql<{ readonly state: string; readonly outcome_json: string | null }>`
+            SELECT state, outcome_json FROM engine_effect
+            WHERE run_id = ${row.run_id} AND kind = 'provider.send'
+          `.pipe(
+            Effect.map((sends): boolean | "unknown" =>
+              sends.every((send) => {
+                // A send not settled, cut by a restart or closed mid-way may have arrived.
+                if (send.outcome_json === null) return false;
+                const outcome = JSON.parse(send.outcome_json) as {
+                  readonly kind?: unknown;
+                  readonly undelivered?: unknown;
+                };
+                // As decide reads it: a failed send that names no doubt was refused.
+                return (
+                  outcome.kind === "failed" &&
+                  (outcome.undelivered === true || outcome.undelivered === undefined)
+                );
+              })
+                ? false
+                : "unknown",
+            ),
+          );
+
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
-            SELECT run_id, end_json, end_source FROM engine_run
+            SELECT run_id, end_json, end_source, started_at FROM engine_run
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
         : sql<RunEndRow>`
-            SELECT run_id, end_json, end_source FROM engine_run
+            SELECT run_id, end_json, end_source, started_at FROM engine_run
             WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
@@ -273,8 +304,14 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           return Effect.all({
             end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
             source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
+            reachedAgent: reachedAgent(row),
           }).pipe(
-            Effect.map(({ end, source }) => ({ runId: RunId.make(row.run_id), end, source })),
+            Effect.map(({ end, source, reachedAgent }) => ({
+              runId: RunId.make(row.run_id),
+              end,
+              source,
+              reachedAgent,
+            })),
           );
         }),
         Effect.orElseSucceed(() => undefined),

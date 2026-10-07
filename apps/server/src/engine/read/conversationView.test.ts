@@ -263,3 +263,68 @@ describe("a completed call's own record", () => {
     ),
   );
 });
+
+describe("whether a woken run's words reached the agent", () => {
+  const stoodUp = (w: Effect.Success<typeof world>) =>
+    Effect.gen(function* () {
+      const engine = yield* w.engine;
+      const { wakeId } = yield* engine.wake({
+        conversationId: mate,
+        kind: "standup",
+        key: "standup-1",
+        principal: { kind: "standup", startedBy: "ana" },
+        text: "Stand up the project.",
+        dueAt: yield* Clock.currentTimeMillis,
+      });
+      yield* w.advance(1_000);
+      return { engine, wakeId };
+    });
+
+  it.effect("a run whose session closed while its message was being sent may have reached it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        w.provider.options.holdNextSend = true;
+        const { engine, wakeId } = yield* stoodUp(w);
+        yield* w.agent((agent, thread) => agent.crash(thread));
+        const run = yield* engine.runOf({ wakeId });
+        assert.isNotNull(run?.end);
+        assert.strictEqual(run?.reachedAgent, "unknown");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a run its admission refused never reached it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent", refuse: "Ana is gone." });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        const { engine, wakeId } = yield* stoodUp(w);
+        const run = yield* engine.runOf({ wakeId });
+        assert.deepStrictEqual([run?.end?.kind, run?.reachedAgent], ["failed", false]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a run that started reached it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const { engine, wakeId } = yield* stoodUp(w);
+        assert.strictEqual((yield* engine.runOf({ wakeId }))?.reachedAgent, true);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
