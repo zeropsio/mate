@@ -1744,6 +1744,7 @@ agent mark-oauth` was not spawned during the session — the per-process `marked
   for the run: `VITE_HOSTED_APP_CHANNEL=latest vp dev` on the laptop → landing → picker → Connect
   (door from `localhost`).
   - _How it was established:_ bundle grep (`VITE_HOSTED_APP_CHANNEL:""`), `_chat.tsx:190` redirect
+
 - **Card + terminal move work**: in a draft thread the card lists `claude-code` (reconnect) and
   `codex` (not-authorized) with Sign-in buttons; "Sign in to Codex" opens the terminal and runs
   `codex login --device-auth` — output: `https://auth.openai.com/codex/device` (rendered in link
@@ -1910,6 +1911,7 @@ succeeded | failed | cancelled`), `url`, `code`, `message`, `terminalId`. The CL
     `CODEX_HOME` redirects `codex login`: local probe, codex-cli 0.159.2. `CLAUDE_CONFIG_DIR` keeps
     `.credentials.json`: Claude Code docs, IAM "Credential management". Not live-run on a rig since
     the scratch home landed (int 95d2af8a6f).
+
 - Not proven offline: Codex's exact success/error lines beyond `Logged in using <method>` / `Not
 logged in` (ported from the GUI walker), which stream Codex writes to (both are read), and the
   Claude menu text (the walker never matches it — it Enters on stall). The `ws.ts` feed handler
@@ -2093,6 +2095,7 @@ endpoint origin.'` but get `'This environment is not running on Zerops…'` — 
   `packages/ssh` deleted at the freeze (still present untracked on the laptop), the tmpdir-coupled
   goldens, and the 11 lint errors.
   - _Evidence:_ runs 33301432278 → 33305760166
+
 - **The preload verifier still required what the freeze deleted.** `b36e895b3` made the desktop a
   pure hosted client, removing `getLocalEnvironmentBootstraps`, `pickFolder` and the Clerk passkeys
   bridge from `preload.ts` AND from the `DesktopBridge` contract — but never touched
@@ -2617,11 +2620,6 @@ Production`, each an `import.yaml`. The recipe repository already thinks in the 
 
 ## Gitea as an account-level tool — 2026-09-05
 
-Measured by importing `zeropsio/recipe-gitea` twice on the throwaway account (org
-`y6tz5g4lQVaENpmlknyrRw`), once as published and once with the region fix, then probing the running
-instance. Both projects deleted after. Backs the "create Gitea" button and the menu section that
-holds it (`tools.ts`).
-
 - **Import to a serving Gitea takes ~2 minutes.** `09:58:41` project `CREATING` → `10:00:43`
   `web=ACTIVE` with subdomain access, a 2 m 02 s wall clock: project `ACTIVE` at +20 s,
   `db`/`volume` `ACTIVE` at +41 s, then the build. The button needs a progress surface, not an
@@ -2720,16 +2718,7 @@ recipe = the `go-hello-world` stage tier via H-26. Project `nslPTX1QSDA3Ip58N8fZ
   STOPPED once done). The waiter started at `awaiting-container` from the known project id
   (`startProvisioningForProject`), reached health, exchanged identity and landed on a draft.
   - _Evidence:_ service `lastUpdate`; browser landed on `/draft/…`
-- **A just-created environment is not in the menu until it has its container.** The reload fired
-  right after the writes listed the project as `NEW` — no service yet — and `selectMateEnvironments`
-  (membership = a `zcp` is present) left it out, correctly; the reload at identity exchange, when
-  the project is `ACTIVE` with its `zcp`, put it in. `GET /client/{id}/project` itself was lag-free
-  throughout: a rename via `PUT /project/{id}` was visible on the very next read of the list, the
-  detail and even `POST /project/search`. Refresh reloads every mounted list (the sidebar's and the
-  screen's), verified by resource timing: two list reads plus one service-stack read per project,
-  ~70–160 ms each.
-  - _Evidence:_ sidebar snapshot before (5 rows) and after (6, `Otto · Stage`); rename read-back on
-    three endpoints; `performance` resource entries
+
 - **The fresh container's agent starts unauthenticated.** The landed thread shows `CODING AGENT
 SIGN-IN REQUIRED`: a new zcp carries no credential, so the first thing Otto needs is the
   agent-auth flow (§8) — creation does not, and must not, copy one in (H-24 is the eval hack, not
@@ -2789,11 +2778,6 @@ in the client at the start.
   a deploy.
   - _Evidence:_ project + service-stack + process reads on `5tdxFTNGR7K1VXI74OBqlg`; `stack.build
 FAILED`
-- **Rename and move are one write each and the roster follows.** Renaming Nova to Noa and back wrote
-  `mate:bot:` alone; moving `scratch-playground` into a new group "Sandbox" as dev wrote `mate:g:`,
-  `mate:role:dev` and `mate:name:Sandbox` and the group appeared in both lists; "Leave the group"
-  wrote the membership empty and the project returned to Ungrouped with its agent's name intact.
-  - _Evidence:_ sidebar and page read-back after each write; tags preserved per `groups.test.ts`
 
 ## The design pass on the hosted pages — 2026-09-05
 
@@ -2809,25 +2793,14 @@ account, in both shells: the app shell (paired) and the bare shell (the local se
   `overflow: visible`. Lockup box `0 0 216 52`, so a lockup and a bare mark at the same CSS height
   draw the mark at the same size.
   - _Evidence:_ `wordmark.py` output; `brand.test.ts` walks every coordinate
-- **The boot splash and the app's first frame now agree.** The served shell's `#boot-shell-logo` is
-  the still Mate mark: teal loop plus two `currentColor` eye rects, viewBox `0 0 44 52` (the
-  favicon's). Before, it was the old two-tone Zerops logo (`0 0 42.27 50.48`, `#3cbdb2` /
-  `#00b1a3`), which is the flash a reload showed before the sidebar's mark replaced it.
-  - _Evidence:_ `curl localhost:5734/` → 2 `<rect>` in the boot mark;
-    `generate-theme-tokens.test.ts`
+
 - **Rows on `/zerops` no longer move as health answers.** Sampled every row's
   `getBoundingClientRect` at 2.1 s (health pending on most rows, one pill present) and at 12 s
   (every row's pill present, statuses settled): identical tops (257, 311, 365, 484, 538, 592,
   677, 762) and heights (50 px each). The action cell is present on all 8 rows at 2.1 s, empty where
   nothing can act yet.
   - _Evidence:_ `eval` on `[data-zerops-project-row]` at both times
-- **One bar, two shells.** In the app shell the page bar reads `Environments / New environment ·
-ales+onboarding@zerops.io · Sign out` on the wizard and holds the organization switcher plus the
-  account on the list, with the lockup in the sidebar; in the bare shell
-  (`data-zerops-frame="standalone"`, no `[data-sidebar]`) the same bar carries the lockup and the
-  same right side. The sign-in page shows one lockup and one live mark and nothing on the bar's
-  right.
-  - _Evidence:_ `header.innerText` and `[data-zerops-frame]` in each shell; screenshots
+
 - **Sign out works from the bar.** One click on the account's `Sign out` in the bare shell returned
   the landing (`h1` "Sign in to Zerops") on the same URL.
   - _Evidence:_ click via `[data-zerops-account-control] button`
@@ -2844,13 +2817,6 @@ ales+onboarding@zerops.io · Sign out` on the wizard and holds the organization 
   `New environment`'s.
   - _Evidence:_ `eval` at both times; `getBoundingClientRect` on the lockup, the `h1`, the account
     button and the title-row pill
-- **The left panel on localhost needs the local pairing.** The bare shell is the state of a browser
-  whose local dev server session is missing: the account's environments list renders, but no sidebar
-  can. The user's own browser had not used its pairing link (the link stayed unconsumed in
-  `auth_pairing_links` while every live session was HeadlessChrome). Hosted, the primary environment
-  is the container and the identity door authenticates it, so the hosted product never shows the
-  bare shell.
-  - _Evidence:_ `auth_sessions` / `auth_pairing_links` in `~/.t3/dev/state.sqlite`; `resolveDoor`
 
 ## The third pass — the person in the bar, the draft's name, the pairing pages — 2026-09-05
 
@@ -2862,12 +2828,7 @@ Measured in the browser on the dev pair (`localhost:5734` → `13774`), signed i
   `Aleš` beside it.
   - _How it was established:_ `curl` with the session bearer; the trigger's text read `A\nAleš`,
     `aria-label="Account: Aleš"`, `data-zerops-avatar="initials"`
-- **The account trigger shares the title row's right edge.** In the bare shell at 1280 px the
-  trigger measured 91 × 28 with its right edge at 1128 — the `New environment` pill's right edge
-  (1128) and the `h1`'s left edge (152) mirror it. The menu opens 256 wide at y = 44, four below the
-  trigger's bottom, right-aligned to the same 1128 (1256 in the app shell, the column's edge there).
-  - _How it was established:_ `getBoundingClientRect` on the trigger, the pill, the `h1` and
-    `[role=menu]`
+
 - **`ChatView` never mounted the topology writer.** `git log -S useProjectTopology --
 apps/web/src/components/ChatView.tsx` is empty: only `ZeropsPanel` mounted it, so a thread's
   header named the Zerops project only once the panel was open, and `resolveDefaultZeropsPanel` —
@@ -2883,17 +2844,7 @@ apps/web/src/components/ChatView.tsx` is empty: only `ZeropsPanel` mounted it, s
   A hash-only navigation to `/pair#token=…` from `/pair` does not remount the surface and so does
   not auto-pair; navigate away first.
   - _How it was established:_ DOM read; dark-mode screenshot; the second re-pair attempt
-- **Dark mode holds.** The list with the account menu open, Settings › Zerops and the draft with its
-  panel were photographed with the app's own `Use dark mode` setting; nothing lost contrast, the
-  avatar disc and menu use the surface tokens. `agent-browser media dark` does not switch the app:
-  appearance is a client setting, not the media query, once set.
-  - _How it was established:_ screenshots `s5-*`;
-    `document.documentElement.classList.contains("dark")`
-- **Sign out from the menu works end to end.** On `/zerops` in the app shell: open the account menu,
-  click `Sign out` → the landing (`h1` "Sign in to Zerops") on the same URL, no account control, no
-  sidebar; the password form signs back in to `Environments` with the trigger reading `A · Aleš`
-  again.
-  - _How it was established:_ DOM before and after; screenshots `s9-landing-dark*`
+
 - **The hosted pages hold at phone width (390 × 844).** `/zerops`: no horizontal scroll
   (`scrollWidth` 390), the switcher 203 px without its role word, the account trigger 56 × 32
   (picture and chevron, the name hidden below `sm`), the title row stacks the `New environment` pill
@@ -2986,35 +2937,12 @@ gitlabIntegration, publicGitSource}`, `currentAutoscaling`(the platform-filled e
 
 Measured in the browser on the dev pair (`localhost:5734` → `13774`), signed in with the throwaway account, app shell, light and dark, at 1786 × 1000, 1280 × 800 and 390 × 844.
 
-- **One axis.** At 1786 the `h1`, every project `h2` and every table start at x = 533; the five
-  column headers sit at 546 · 754 · 858 · 1041 · 1224 in every table on the page; every row is 40 px
-  (tops 204 · 244 · 284 for Acme Docs, 422 · 462 · 502 for Beviro CRM, 641 for the ungrouped Mate,
-  779 for Gitea). At 1280 with the sidebar the headers are 293 · 501 · 605 · 788 · 971 and the rows
-  still 40 px.
-  - _How it was established:_ `getBoundingClientRect` of `h1`, `h2`, `[role=columnheader]` and
-    `[data-zerops-environment-row]` through `agent-browser eval`
-- **A Mate's row is the way in.** Hovering the first row tints it (`background-color` at 50 %
-  accent) and shows its menu (opacity 1); clicking the seat's name
-  (`[data-zerops-surface=mate-open]`) on Fen's row navigated to `/a5c9ebd6-…/fff9217a-…`, the
-  environment's conversation.
-  - _How it was established:_ `hover`, `eval` of computed styles, `click`, `location.pathname`
 - **A phone gets the rows stacked.** At 390 × 844 the page has no horizontal scroll (`scrollWidth`
   390), the header row is `display: none`, and rows are 110–126 px tall with the seat and tag on the
   first line, the environment, the chips and the activity on their own lines; the empty dashes are
   hidden below `md`.
   - _How it was established:_ `eval` after `set viewport 390 844`; screenshot
-- **The left menu.** Four Mate rows read `Fen · Dev · Idle`, `Juno · Dev · Idle`, `Dara · Production
-· Idle`, `Nova · Idle`, with two folds reading "3 environments" and one "1 environment"; opening
-  Acme Docs' fold listed `Dev acme-docs-dev`, `Stage Acme Docs - stage`, `Production Acme Docs -
-production`, and only the stage row carried a route glyph — the one environment with a public
-  service.
-  - _How it was established:_ `eval` over `[data-zerops-surface=sidebar-mate]`, the fold's button,
-    and the opened rows
-- **The live lockup in the sidebar** is two SVGs in one 24 px box: the live mark
-  (`data-mate-mark="live"`) and the word, side by side; the word starts half the mark's height right
-  of it.
-  - _How it was established:_ `eval` of the lockup's and its parts' rects; `brand.test.ts` pins the
-    geometry
+
 - **The throwaway account's stage environments have no Mate any more.** At the owner's ask ("remove
   zcp from stages") the zcp services of `Acme Docs - stage` (`1sBfUGCWSzibu4otBiCcBA`) and
   `beviro-crm-stage` (`1StgDdSBRCaGHijdOsZLoA`) were deleted (`DELETE /service-stack/{id}`, both
@@ -3047,23 +2975,6 @@ Measured in the browser on the dev pair (`localhost:5734` → `13774`), signed i
   390), cards are 350 wide, rows 36 px.
   - _How it was established:_ `getBoundingClientRect` of `h1`, `h2`, `[data-zerops-mate-card]`,
     `[data-zerops-environment-row]`, `[aria-label^=More]`
-- **The menu carries public access.** Hovering `Acme Docs - stage` shows its `…`; opening it lists
-  `Public access` → `app` · `app-11c9-8080.prg1.zerops.app` (an `<a
-href="https://app-11c9-8080.prg1.zerops.app">`), then `Change project or role`, `Leave the
-project`. Fen's card menu reads `Public access` · `None yet` · `Rename Mate` · `Change project or
-role` · `Leave the project`; a heading's reads `Rename project`.
-  - _How it was established:_ `hover`, `click`, `eval` over `[data-slot=menu-popup] [role=menuitem]`
-- **A Mate's card is the way in.** Hovering Fen's card tints it (`bg-accent/40`) and shows its menu;
-  clicking the name (`[data-zerops-surface=mate-open]`) navigated to `/a5c9ebd6-…/fff9217a-…`, the
-  environment's conversation. While the other session had Fen working, the card read `Working ·
-create todo app` and the sidebar card the same on two lines.
-  - _How it was established:_ `hover`, `eval` of computed styles, `click`, `location.href`
-- **The left menu.** Project names are 28 px rows of 12 px semibold sentence case; Mate cards are
-  `oklch(1 0 0)` on the sidebar's surface, 36 px for one line (Juno, Nova) and 52 px with the
-  subject (Fen); the resting border is the sidebar's, the hovered `foreground/25`; the folds read "2
-  environments" under both projects — stage and production only, the Mate's own left out.
-  - _How it was established:_ `eval` over `[data-zerops-surface=sidebar-project]`,
-    `[data-zerops-surface=sidebar-mate]`, `:hover` computed styles
 
 ## The Mate is the state, the row, the header and the empty conversation — 2026-09-06
 
@@ -3086,12 +2997,7 @@ Measured in the browser on the dev pair (`localhost:5734` → `13774`), signed i
   side in one grid row, Fen's alone in the left column; the environment summaries start in one
   column at x ≈ 821; every `…` is in one column at the right edge.
   - _Where:_ `ZeropsProjectsPage`, `ZeropsGroupTree`, `ZeropsEnvironmentRow`
-- **The left menu.** Mate rows are the menu's rows: Fen 52 px with `create todo app` under the name
-  and the last turn's age at the right edge (`[data-zerops-surface=sidebar-mate-time]`, "16m" at the
-  time), Juno and Nova 36 px with nothing under theirs (their conversations are unspoken); no
-  border, `hover:bg-sidebar-row-hover`; Nova's row is `bg-sidebar-row-active` while its conversation
-  is open. No "Idle" anywhere.
-  - _Where:_ `SidebarZeropsTree`
+
 - **The header.** Fen's conversation is headed `(face) Fen / create todo app`; Nova's unspoken one
   is headed `(face) Nova` alone — `[data-zerops-surface=header-mate]` reads "Nova", no `h2`. The
   context strip under the composer (`.chat-composer-context-strip`) is absent in both — the owner
@@ -3244,16 +3150,6 @@ headerMate:true cache:277` through `563ms mates:3`, then only the sync spinner.
 
 Measured on the dev pair (`localhost:5734`), throwaway account, app shell, light, 1786 × 1000, on Fen's conversation, whose container runs the server from before the previews: what the row and the header show there is the fallback, the title. No ssh route to a container from this machine (`zcp` does not resolve), so the previews themselves are measured by test.
 
-- **Live (old server): the header reads `Fen / create todo app`, the row's second line `create todo
-app`, no third line** — the title, the first task, while the Mate is on "give it optimistic
-  updates". That is what the owner saw and asked about.
-  - _Where:_ `[data-zerops-surface="sidebar-mate-subject"]`, `header-mate`
-- **With the preview: the subject is the person's last message** (`give it optimistic updates` over
-  a title of `create todo app`, for idle, working and done), the running step over it while reported
-  (`Wire the toggle`), the title only when the shell carries no preview; the snippet is the Mate's
-  last words (`Deploying and verifying now.`) and nothing while the person's message is the last
-  thing said.
-  - _Where:_ `agentActivity.test.ts`, `SidebarZeropsTree.test.tsx`
 - **Server: `latestUserMessagePreview` folds in on the person's completed messages only** — the
   user's message sets both previews; the assistant's completion moves `latestMessagePreview` to
   `working on it` and leaves the user's; five refresh events keep both. Migration 046 backfills
@@ -3978,11 +3874,7 @@ used to isolate the startup and expiry paths were removed before validation.
     root Atom had returned to its initial value before React subscribed. The runtime now mounts that
     Atom for its account scope, and the React selection store reconciles once after installing
     subscriptions. Two deterministic regression tests preserve both ordering cases.
-- Refresh, both organizations, empty/nonempty inventory, project/group rows and two different Mate
-  views loaded.
-  - _Scope and consequence:_ The shared inventory projected the same projects into the project page
-    and sidebar. Existing and newly connected conversations opened without the startup spinner
-    returning.
+
 - A populated Zerops panel showed live runtime and infrastructure rows, service detail and current
   usage.
   - _Scope and consequence:_ In a 12-second observed window the client exchanged 24 received and 24
@@ -4123,14 +4015,7 @@ true`, set a plain and a sensitive service env var, restarted and deleted the se
   exchanged after it for a fresh 15-minute session, and only a new door call failed (`401
 invalid_credential`). Regenerating a token kills the old value at once.
   - _Evidence:_ timed sequence against `probe-auth-mate`
-- **A release can be a promotion, run by whoever may deploy to production.** A token with
-  `BASIC_USER` on stage and production only: `GET /app-version/{id}/app-code` on stage's active
-  version (a pre-signed URL on `proxy.app-prg1.zerops.io`), `POST
-/service-stack/{prod}/app-version`, `PUT /app-version/{id}/upload` with the downloaded bytes, `PUT
-/app-version/{id}/build-and-deploy` with the `zerops.yaml` text and setup → production app version
-  `ACTIVE`, attributed to the token. The download URL, its preflight and the API's preflight all
-  answer `Access-Control-Allow-Origin: *`, so a browser can run it on its own session.
-  - _Evidence:_ `probe-auth-a` → `probe-auth-b`
+
 - **Zerops is not an OIDC provider.** `.well-known/openid-configuration` and
   `oauth-authorization-server` on `app.zerops.io` return the web app's HTML (SPA fallback, as for
   any path); the API host closes TLS on them; `/api/rest/public/oauth/authorize` is `404`. The
@@ -4169,11 +4054,7 @@ account's own Gitea. Raw logs stayed in the session scratchpad.
   model pushed to a repo it was never a member of. `restricted: true` also hides public repos;
   per-user `max_repo_creation: 0` and `allow_create_organization: false` close the remaining doors.
   - _Evidence:_ three token identities; `repo_permission.go:440-458`
-- **Protected tags have no admin override.** With `v*` protected to team `releasers`, git push,
-  `POST …/tags` and `POST …/releases` with a new tag were refused for writers, repo admins, org
-  owners and the site admin; a releaser succeeded; move and delete were refused for all others.
-  Publishing a draft release onto a protected tag answers **500**.
-  - _Evidence:_ `hook_pre_receive.go:396-431`; `protected_tag.go:126-149`
+
 - **Protected file patterns are absolute on direct push and per protected branch.**
   `.gitea/workflows/**` on `main` refused a direct push from every identity, the site admin
   included; a catch-all `**` rule extends it to every branch. On the merge path
@@ -4588,26 +4469,12 @@ userDataZeropsPrefixForbidden` "Custom environment variables with 'ZEROPS_' pref
     propagate. Gitea's `admin auth add-oauth` run while the broker's discovery URL still answered
     502 wrote the login source without creating the provider (no sign-in link until a Gitea restart)
     — the recipe now waits for the broker before adding it.
-- The rights loop builds a group in 80 s, and a sign-in lands in the right teams within seconds
-  - _Measured:_ registry tags written → org `e2e`, teams `read`/`write`/`release` (units read /
-    write / write), `e2e/group` private with `main` protected (merge whitelist `release`) and
-    `env/*` (push whitelist the admin), one org webhook, the Mate's bot restricted in `read`: 80 s.
-    OIDC: `GET /user/oauth2/zerops` → broker `/oidc/authorize` → the consent URL's `rid` in 1.4 s;
-    `POST /oidc/complete` by throwaway 134 ms; the callback lands a Gitea session; user `u-{id}` is
-    `is_admin` (org OWNER) and in all three teams after the pass the token issuance triggers. Gitea
-    1.27.2: `/api/v1/user` is `403` to a session cookie; pages carry no CSRF token (Origin-checked);
-    `/api/v1/admin/auth/sources` does not exist.
+
 - A Mate gets its credential and repository from the broker
   - _Measured:_ `POST /mate/credential` by throwaway → `200` in 0.98 s, `minted: true`, generation
     1; `rotate` → generations 2 and 3. `POST /mate/repository` as the bot → `e2e/api` in 2.2 s; the
     bot pushed `mate/{bot}` and opened PR #1; the owner (in `write`) merged it.
-- A merge deploys a stage through the webhook in 15 s and serves in under three minutes
-  - _Measured:_ a merge into `e2e/api` `main` → app version named by the merge sha +15 s,
-    `mate/deploy/stage/api` `pending` → `success` (description the version id), the subdomain
-    serving the new file +173 s. A queued deploy must run on the broker's own context: on the
-    webhook's it was `context canceled` before its first read. Catch-up: broker stopped, a commit
-    merged, broker started → healthz in 7 s, exactly one deploy of the newer sha +9 s. With the
-    broker down nobody signs in to Gitea.
+
 - A group's runner appears on its first job and the action deploys with a job token
   - _Measured:_ `workflow_job` `queued` → `runnere2e` imported, `ACTIVE` +117 s, registered at org
     scope, took the job in host mode; `zeropsio/gitea-mate/actions/deploy@v1` → `POST /deploy` `202`
@@ -4651,17 +4518,7 @@ Test org `Mate`, emptied, then `probe_d20_run.py` (tag `probe:d20-2026-09-17`): 
     worked on timing alone. The fix in flight: the broker treats an empty or `${…}` value as not
     arrived and fetches both admin credentials from `web`'s user-data through the Zerops API, and
     re-fetches on a 401.
-- Once the broker holds the token, one pass delivers a registered Mate's access
-  - _Measured:_ `PUT /service-stack/{broker}/restart` at 07:33Z; the broker listened at 07:33:48Z,
-    its first pass planned 13 and applied 13 (`problems: 0`), and 20 s after the restart the Mate's
-    `zcp` service carried `GITEA_URL` (Gitea's public origin), `MATE_BROKER_URL` (the broker's) and
-    `GITEA_TOKEN` (sensitive) — nobody asked, nothing restarted. Gitea's side of that pass, read
-    with a temporary integration token: the bot `mate-{projectId}` exists, `restricted`, in the
-    org's `read` team (`write` and `release` empty, `Owners` = `admin`), the group repo
-    `imperial-titan/group` and one org hook exist; the delivered `GITEA_TOKEN` authenticates as the
-    bot (`GET /api/v1/user`), and `POST /mate/repository {name: hello}` with it answered `200
-{fullName: imperial-titan/hello, created: true}`. The bot's full name came out as the project's
-    name (`Imperial Titan - dev`), not the Mate's (`Nova`).
+
 - A session token reads sensitive service variables as the literal `REDACTED`; an integration token
   reads them in clear
   - _Measured:_ The owner's `POST /auth/login` session read `web`'s `GITEA_ADMIN_TOKEN` and the
@@ -4780,21 +4637,14 @@ required`).
 - Gitea answers `400 "sha not found [<ref>]"` for a tree read of a ref that does not exist
   - _Measured:_ `GET /repos/{o}/{r}/git/trees/{ref}` on a missing branch is `400`, not `404`; a "is
     this branch new" check must accept both.
-- A Mate's fresh history does not merge into the seeded `main`
-  - _Measured:_ the broker's repository is born with an initial commit; a branch from zcp's own `git
-init` shares no history: `merge` and `squash` refuse ("The merge head and base do not share a
-    common history"), `rebase` succeeds. `POST /repos/{o}/{r}/pulls/{n}/merge` is `405 "User not
-allowed to merge PR"` to the site admin when a merge whitelist names a team he is not in.
+
 - A tier's `import.yaml` cannot be imported as composed
   - _Measured:_ `buildFromGit` on a private Gitea repository → `400 projectImportInvalidParameter
 {"…buildFromGit":["public git repository doesn't exist"]}`; without `buildFromGit`,
     `zeropsSetup` → `["parameter is required for use of pipelineConfig"]`. The app's converter
     (`startWithoutCode: true`, the source map kept) is the only way in; the broker deploys into the
     empty service.
-- The broker deploys what the Mate pushed, and says why it cannot
-  - _Measured:_ after the code and `environments.yaml` merged: `appVersionName` = the merge sha 11 s
-    later, service `ACTIVE`, status `mate/deploy/stage/rm1312` `pending` → deploying; a head without
-    `zerops.yaml` is refused with the reason in the broker's log, not deployed.
+
 - A `${service_var}` reference can reach a container before it resolves
   - _Measured:_ `web` booted with `OIDC_CLIENT_SECRET` holding the literal
     `${broker_OIDC_CLIENT_SECRET}` (28 characters, so an emptiness guard passed it); `admin auth
@@ -4809,12 +4659,6 @@ add-oauth` wrote an unusable source and every callback failed `invalid_client` u
 
 Test org `Mate`, emptied, then one _New project_ from mate.zerops.io on mate 0.11.5 (gitea-mate v2.1); read before the first prompt with the owner's session and a temporary integration token `probe:readiness-2026-09-17` (`NO_ACCESS` + `BASIC_USER` on the Gitea and Mate projects, deleted after). Nothing restarted, nobody asked.
 
-- D20 through the released client, on the owner's own run
-  - _Measured:_ the Mate's `zcp` carried `GITEA_URL`, `MATE_BROKER_URL` and `GITEA_TOKEN`; the token
-    authenticates as the bot `mate-{projectId}` (`restricted`, in `read`); org `imperial-titan`
-    private with `Owners`/`read`/`write`/`release`, `imperial-titan/group` private, `main`
-    merge-whitelisted to `release`, `env/*` push-whitelisted to the admin, one org hook to the
-    broker; `mate-broker` holds `READ_ONLY` + `BASIC_USER` on the Gitea and the Mate projects.
 - The app's OAuth2 client carries only the creating client's origin
   - _Measured:_ `GET /gitea/oauth-client` → `redirectUris:
 ["https://mate.zerops.io/gitea/callback"]`; Gitea's `[cors]` was filled from the same list. The
@@ -4872,12 +4716,6 @@ https://elsewhere.example` → `403` (the scope: `/user` needs `read:user`) with
 
 The test org `Mate`, emptied, the owner's own _New project_ through the localhost pair at about 11:18Z (mate 0.11.7, gitea-mate v3.1 `722378c`). Read from the API as the owner, from the broker's and Gitea's runtime logs, and by replaying the Git tab's own call with a `gitea-signin` throwaway minted as the owner and deleted after; a temporary integration token read Gitea's admin token for the org checks and was deleted after.
 
-- The Gitea project and the Mate came up, and the loop delivered, as on 2026-09-16
-  - _Measured:_ Gitea's `web`/`broker`/`db`/`volume` ACTIVE; the broker listening at 11:20:47Z and
-    its first pass a second later (`planned 13, applied 13`); the Mate's `zcp` `initComplete` at
-    11:19:33Z serving 0.11.7, with `GITEA_URL`, `MATE_BROKER_URL` and `GITEA_TOKEN` on it; the
-    signer tag written; the org `imperial-titan` with `Owners`/`read`/`write`/`release`, the `group`
-    repo, one hook to the broker, the bot `mate-{projectId}` active.
 - **The projects page card stayed at "Almost there." after the Mate was up**
   - _Measured:_ the owner's screenshot minutes after `initComplete`; a reload of the page redirected
     to the conversation at once. The wait reads the container from the pushed inventory
@@ -4921,34 +4759,6 @@ merge_whitelist_teams: [release], block_admin_merge_override: true` through ever
 admin`; `main` then carries `0 — AI Agent/`, `3 — Stage/`, `4 — Small Production/`). A fresh org
     never meets this: its rule exists before any pull request.
 
-## A refresh that re-took its leases painted "Reading your projects…" over the list it had — 2026-09-17
-
-The owner's screenshots at about 14:50Z on the localhost pair (mate 0.11.10), waiting for a Mate to come up: the projects page at "Reading your projects…" with an empty left menu, then the roster again ("every now and then when waiting for the mate to come up it does this full refresh, that's crazy bad"). The cause read from the code; the fix measured by the runtime's own test, in the browser only at the owner's next creation.
-
-- **A refresh re-took every lease, and a released lease drops what it read**
-  - _Measured:_ `refreshZeropsCandidates` bumped a version that re-keyed each `InterestDemand`'s
-    lease. The last lease of an interest releases the organization's queries (`releaseLease` →
-    `releaseInactiveQueries` deletes them) and closes its receiver, so `projectsOf` and `servicesOf`
-    read empty until the new lease's baseline landed; the page keyed its "Reading your projects…"
-    line, its empty-state invitation and the menu's tree on `isLoading && candidates.length === 0`.
-    Every trigger blanked the same way: the 0.11.9 creation clock (every 20 s while a creation is on
-    its way — the owner's case), the header's reload, the access renewal at 14 min, the refresh
-    after every start, restart and connect.
-- **A refresh on a fresh receiver keeps what the reads hold**
-  - _Measured:_ `runtime.refresh(organization)` (0.11.11) re-establishes every leased interest of
-    the organization on a new receiver — the resume-from-background path without the pause — and
-    releases nothing. `runtime.test.ts` "re-reads an organization's inventory on a fresh receiver
-    and keeps what it holds": across the refresh no published state has the organization's projects
-    empty or its query back to `unresolved`; the baseline is read again (a project renamed meanwhile
-    reads renamed after); one receiver closed and one opened; an organization nobody holds opens
-    nothing.
-- **The painters key on "read once", not on "a read in flight"**
-  - _Measured:_ `useZeropsCandidates.readOnce` is the organization's projects query being
-    `observed`, which a refresh keeps; the "Reading…" line, `hasNoZeropsProject` and the menu's tree
-    take `unread = !readOnce`, and the header's reload glyph alone spins on `isLoading`.
-    `ZeropsProjectsPage.test.ts` "keeps an empty organization's invitation up while its list is
-    re-read".
-
 ## The owner's second run on 0.11.11: the recipe merged by the broker in nine seconds — 2026-09-17
 
 The test org `Mate`, emptied at 14:30Z the day before this section's clock (all times UTC), the owner's own _New project_ through the localhost pair at 12:46Z on the 0.11.10 client (0.11.11 from 13:08Z), gitea-mate `main` at `1127415`. Read as the owner through the API and, for Gitea, with the admin token read through a temporary integration token deleted at once; a watcher sampled the org's projects and the group repo every 45 s.
@@ -4976,12 +4786,7 @@ The test org `Mate`, emptied at 14:30Z the day before this section's clock (all 
     service of imperial-titan", `main` with the initial commit by `admin`, Dara's bot
     `mate-{projectId}` the one collaborator, no other branch, no pull request: nothing was pushed,
     since a direct deploy pushes nothing (as on Juno's run).
-- **A Mate's recipe pull request merges by itself (D23), on a fresh org**
-  - _Measured:_ Dara's PR #1 "Mate: the group's import files" from `mate/mate-{projectId}` against
-    `main`: opened 13:18:23Z, merged 13:18:32Z by `admin` (the broker's token; the `pull_request`
-    hook nudged the loop). `main` after: `0 — AI Agent/import.yaml` and `README.md`, `3 — Stage`, `4
-— Small Production`, the README — on top of the initial commit of 12:52:03Z. The service repo
-    `imperial-titan/todoapp` existed by then.
+
 - **The Git tab's row stayed at "no repository yet" after Dara made the checkout; a reload showed
   it**
   - _Measured:_ The row (`CheckoutProbe`) subscribes to the server's `vcs.status` for
@@ -5025,18 +4830,8 @@ Measured on the populated test org (Imperial Titan: Dara up, the recipe on the g
     link and the stage/production hand-off in the closing message. Unmeasured live until the next
     fresh run.
 
-## The rehearsal of the later legs on Imperial Titan: pull request, merge, Add stage — 2026-09-17
-
 Run in the audit browser signed in as the test owner (ales+mate), on the org where Dara had built the `todoapp` / `todoappstage` pair and pushed its branch (14:2xZ–14:4xZ, mate 0.11.13 with the fixes below live on the localhost pair). Read from inside as the owner and with Gitea's admin token through a temporary integration token, deleted after each read.
 
-- **The Git tab's _Open pull request_ and _Merge_ did nothing**
-  - _Measured:_ The surface passed the tab a handler for opening an existing pull request's page and
-    none for creating or merging one: the click bumped the forge read and the row kept offering the
-    verb. Fixed the same hour (`fc2f41c2e`'s sibling `09879cc73`): the surface opens the request
-    from the block's branch onto the repository's default branch, which the block now carries, and
-    merges by number, as the person; the forge is read again once the verb settles. Measured: PR #1
-    "todoapp: mate/mate-…" opened by the person, `Merge` offered, merged at 14:28:47Z by
-    `u-{userId}`; `main` carries the app (`server.js`, `db.js`, `zerops.yaml`, the workflow).
 - **The tier parser read zcp's four-space tiers as "no recipe on main yet"**
   - _Measured:_ `ITEM_START` matched two-space items only, and a `- buildFromGit:` opening an item
     was left in place. The stage form offered "Nothing yet — this project has no recipe on main yet"
@@ -5068,60 +4863,12 @@ Run in the audit browser signed in as the test owner (ales+mate), on the org whe
     `zerops.yaml` into `prod` and `dev` and zcp never re-proposed the recipe (slice 2.2 "kept
     current" — a zcp gap, journal 22). A pair planned from the start names its stage setup; the fix
     for this run is a re-proposed recipe (asked of Dara at 14:47Z).
-- **The group's runner is made on the first workflow job, and a push with no environment yet fails
-  its workflow**
-  - _Measured:_ `runnerimperialtitan` appeared in the Gitea project after the merge to `main` at
-    14:28Z; the service repo's workflow "Zerops deploy / deploy (push)" ran at 14:30:05Z on the
-    runner and failed after 4 s, with no stage declared to deploy to — a red check on `main` the Git
-    tab counts as failing. The broker's catch-up deploys the head once a stage exists, so the code
-    needs no new push.
-- **The recipe fix travelled the designed way: the bot's fork, a pull request, the broker's merge,
-  the deploy**
-  - _Measured:_ Dara's `group-recipe` action refused ("no pair has its Gitea repository yet" — the
-    expansion had dropped the pair's Gitea record, zcp `f04dcc77`); a push to the group repo with
-    either of its tokens was refused by the branch protection (the bot has no write there, by
-    design); told to use its fork, Dara branched `mate/fix-zerops-setup-prod` off the fork synced to
-    upstream `main`, pushed, and opened PR #3 "Fix zeropsSetup: todoapp for the expanded pair" from
-    `mate-{id}:…` at ~14:52:40Z; the broker merged it within a pass (D23 on a fork PR, the second
-    time today), logged "a tier's recipe changed" and "the recipe for todoapp changed — scaling and
-    shape are reported, never applied to a service that exists", found the stage "behind its
-    sources" and started the deploy at 14:52:55Z: an app version named `1c76b758…` from the broker's
-    archive (`source: CLI`), a build container on the stage.
-- **The stage deployed from `main` and answered on its route after one click**
-  - _Measured:_ The build the broker started at 14:52:55Z finished at 14:55:43Z: "deployed
-    imperial-titan-stage/todoapp sha 1c76b75… versionId eTbT…", status
-    `mate/deploy/imperial-titan-stage/todoapp` = success on `main`'s head; the projects page's stage
-    row read `main · 1c76b75`. The tier carries no `enableSubdomainAccess`, so the service came up
-    unpublished (`subdomainAccess: false`, the route answering 502); the stage row's menu offered
-    _Publish todoapp_, and after that click `https://todoapp-2fed-3000.prg1.zerops.app/status`
-    answered `200 OK` within 20 s.
+
 - **Add production, measured**
   - _Measured:_ Submitted 14:57Z from the production row (the form: agent off — "Production usually
     does not", the production recipe "todoapp, tododb · imported without code"); `Imperial Titan -
 production` ACTIVE at 14:58Z with `tododb` up and `todoapp` creating; registry and declaration
     to follow the services, as on the stage.
-- **Production's registry and declaration, lost to a reload, finished by the page**
-  - _Measured:_ A reload of the projects page at 14:59Z, a minute into the production's creation,
-    cut the flow that writes the registry, the broker's grant and the declaration after the
-    services: the project ran, `environments.yaml` and the registry never heard of it, and the page
-    kept the "Production · not set up yet" row. The reconcile (0.11.14,
-    `useZeropsGroupEnvironmentReconcile`) registered it and granted the broker on the next read; its
-    first declaration attempt was cut by the effect re-running on the list's identity and left the
-    branch `mate-app/env-imperial-titan-production` ("Gitea refused to write the files" on the
-    retry); with the effect keyed on the list's content and the writer reusing a leftover branch or
-    request, the next reload opened PR #4 "Add the imperial-titan-production production
-    environment", merged it as the person (~15:10Z), and the document declares
-    `imperial-titan-production: tier production, sources: release`.
-- **The release, measured for the first time (5.5)**
-  - _Measured:_ _Release_ in the Git tab at 15:12Z: the tag `v0.1.0` (the tab's suggestion) created
-    on the group repo's `main` as the person. The broker: "a release was judged … verdict success,
-    approved: u-{userId}" at 15:12:28Z and `mate/release/v0.1.0` = success on the tagged commit;
-    "promoting the stage artifact" (sha `1c76b75`, from the stage's version `eTbT…`) at 15:12:29Z;
-    "deployed imperial-titan-production/todoapp … versionId rAk77…" at 15:13:32Z,
-    `mate/deploy/imperial-titan-production/todoapp` = success. Production's `todoapp` came up
-    unpublished like the stage; after _Publish todoapp_ from its row,
-    `https://todoapp-30b4-3000.prg1.zerops.app/status` answered `200` and `/` served the todo app.
-    Rollback (5.6) remains unrun.
 
 ## The owner's Todo run on 0.11.14: "build a todo app" alone, the recipe merged in ten seconds, two wrong names on `main` — 2026-09-17
 
@@ -5131,12 +4878,7 @@ The owner's fresh run on localhost from the wiped test org (16:15Z on): _New pro
   - _Measured:_ Kai asked for the stack (Node.js + Express + Postgres chosen) and planned `appdev` /
     `appstage` (ubuntu/nodejs@22) + `db` (postgresql:single@18) on the classic route: "I'll go with
     the recommended standard mode: a dev/stage runtime pair". The prompt named no delivery.
-- **The recipe landed on `main` before anyone looked**
-  - _Measured:_ `POST /mate/repository` 200 at 16:34:21Z (1077 ms); the fork commit "recipe: the
-    group's import files, from Todo - dev" at 16:34:26Z; hooks at 16:34:29Z and 16:34:36Z ×2 —
-    `todo/group` PR #1 (from `mate-tsXR…/group@mate/mate-tsXR…`) closed, merged; `main` carries `0 —
-AI Agent`, `3 — Stage`, `4 — Small Production`, `README.md`. The owner, looking for "the group
-    import recipe": nothing to see as a pull request — it is on `main` (D23).
+
 - **The Stage and Small Production tiers name the dev half's setup**
   - _Measured:_ Both tiers: `hostname: app`, `buildFromGit: …/todo/appdev`, `zeropsSetup: appdev` —
     Kai's `zerops.yaml` has `appdev` (start `zsc noop --silent`, `NODE_ENV: development`) and `prod`
@@ -5167,13 +4909,6 @@ AI Agent`, `3 — Stage`, `4 — Small Production`, `README.md`. The owner, look
   - _Measured:_ `deploy pass` every five minutes from 16:17:34Z: groups 1, environments 0, problems
     0 (the first pass, before Gitea's first boot published the admin token, reported one problem and
     wrote nothing).
-- **A correction to `main` as the bot was refused by the session's classifier**
-  - _Measured:_ The correction v9.179.1 would propose (`zeropsSetup: prod` on the three entries),
-    scripted the way zcp does it — the bot's token read off the Mate's `zcp` service with a
-    temporary `BASIC_USER` token, one commit on the fork branch, a pull request the broker merges —
-    was denied by the auto-mode classifier as a write to a shared resource
-    (`fix_todo_recipe_setup.py`, never ran). Left to the owner: run it, or update Kai's zcp and ask
-    for the recipe again.
 
 ## The whole chain through the UI, from a wiped org: two Mates, a stage, a production, `v0.1.0` live — 2026-09-17
 
@@ -5199,11 +4934,7 @@ Driven in the audit browser (agent-browser, signed in as the test owner) on the 
     deploy at 17:49:3xZ committed the tree as "Build a todo app: Node.js backend (REST API) …" (the
     session's words), pushed `mate/mate-hadSu…` and opened `todo/appdev` PR #1 (17:49:33Z hooks);
     the turn ended 17:49:56Z.
-- **The recipe re-proposed after the stage deploy names the stage half's setup**
-  - _Measured:_ `todo/group` PR #2 from the same fork branch, merged at 17:49:41Z; `main`: the AI
-    Agent tier `appdev` → `zeropsSetup: appdev`, `appstage` → `prod`; the Stage and Small Production
-    tiers `app` → `prod`, `enableSubdomainAccess: true` (zcp v9.179.1; the run before it left
-    `appdev` on all three).
+
 - **The workflow names the promoted runtime**
   - _Measured:_ `.gitea/workflows/zerops.yml` on the branch: `environment: stage`, `service: app`
     (v9.179.1). Its job's `POST /deploy` still answered `404` twice: at 17:53:44Z (no environment
@@ -5211,19 +4942,7 @@ Driven in the audit browser (agent-browser, signed in as the test owner) on the 
     `todo-stage` and the workflow asks for `stage`. The broker's catch-up deployed both times
     regardless (below). Fixed after the run: the broker takes a tier's name for its only environment
     (gitea-mate v3.6).
-- **Merge from the Git tab, the runner on the first job**
-  - _Measured:_ _Merge_ at 17:52:03Z; PR #1 merged at 17:52:04Z by `u-iwbx…`; the run queued, the
-    status "Zerops deploy / deploy (push)" pending; the broker: "the group has no runner service
-    yet" → "a group's runner was imported" (`runnertodo`) at 17:52:08Z; started at 18:51:51Z for the
-    second merge; `STOPPED` again by 19:23Z (the quiet spell).
-- **Add stage: declared, deployed by the broker in under a minute, published in one click**
-  - _Measured:_ _Add stage to Todo_ submitted 17:53:51Z ("Todo - stage", agent off, the stage recipe
-    app + db); the project at 17:54:0xZ, `environments.yaml` PR #3 by the person merged, the
-    registry entry, the broker's grant; "an environment is behind its sources" 17:54:56Z → "deployed
-    … sha e1843afc" 17:55:50Z; `subdomainAccess` false after the import (the tier's
-    `enableSubdomainAccess: true` does not survive `startWithoutCode`); _Publish app_ from the row's
-    menu — the first click at 17:57:33Z did nothing (the menu stayed open), the second at 17:59:47Z
-    published; `GET https://app-30ba-3000.prg1.zerops.app/` 200 at 18:00:23Z, `/api/todos` `[]`.
+
 - **Add Mate: the project made, a later step failed, the Mate unregistered**
   - _Measured:_ _Add dev to Todo_ (the dialog's verb for the chip _Add Mate_) submitted 18:14:37Z:
     "Todo - dev 2", bot Fen, the dev recipe (appdev, appstage, db imported without code).
@@ -5233,11 +4952,7 @@ Driven in the audit browser (agent-browser, signed in as the test owner) on the 
     read; the token `zcp-Todo - dev 2` was lowered, so _Locking the container's access_ passed). The
     registration and the hand-off, placed after a successful creation, never ran: no registry entry,
     no bot, the composer with the generic opening line.
-- **Register in Todo → bot in two minutes (D24 live)**
-  - _Measured:_ The row's menu offered _Register in Todo_; clicked 18:30:34Z; the registry entry and
-    the broker's grant at 18:31:31Z; `GITEA_TOKEN`, `GITEA_URL`, `MATE_BROKER_URL` on the `zcp`
-    service at 18:32:39Z. Fixed after: _Add Mate_ registers and writes the hand-off as soon as the
-    project exists (`e5135ce25`, `0efb6c98a`).
+
 - **A second Mate joins the group's repository (2.4 live)**
   - _Measured:_ The hand-off sent to Fen at 18:36:52Z ("Their code is on the project's Gitea, on
     main … work from it, never a new app"); Fen's zcp asked the broker for `appdev` — the broker
@@ -5247,43 +4962,6 @@ Driven in the audit browser (agent-browser, signed in as the test owner) on the 
     request over `main`, the zcp-init commit); its recipe re-proposals PR #4 and #5 merged by the
     broker; the turn ended 18:44:06Z. Fen's closing line suggests `launch-production` — zcp's
     non-Gitea path (zcp hardening).
-- **A feature from the second Mate reaches the stage through the chain, in a minute**
-  - _Measured:_ "Add a due date to each todo." at 18:45:32Z; Fen committed "Add due date to todos"
-    (18:46:19Z, `public/index.html` +33/−4, `server.js` +7/−4), deployed dev and stage, and PR #2
-    carried it; the turn ended 18:51:04Z; _Merge_ in Fen's Git tab 18:51:49Z; the broker "deployed …
-    sha 0db51c04" to `todo-stage` at 18:52:45Z; the stage page carried "due" at 18:52:55Z.
-- **An empty recipe pull request is opened and the broker retries it every three minutes**
-  - _Measured:_ Fen's stage deploy re-proposed the recipe with nothing to commit (main already had
-    it from PR #5) and still opened `todo/group` PR #6 — `mergeable: true`, `files: []`; Gitea
-    answers the merge `405 Please try again later` (its "empty" state) and the rights loop logs
-    "mirror action failed … merge_recipe_pull_request … pr=#6" at 19:05:21Z, 19:08:18Z, 19:11:18Z, …
-    The projects page shows it as a row with _Review_. Fixed after the run: zcp opens no request
-    when the compare against `main` shows no change; the broker closes a bot's request Gitea calls
-    empty.
-- **Add production, Release, Publish: production live in 64 s**
-  - _Measured:_ _Add production to Todo_ 18:53:10Z ("Todo - production", agent off, the production
-    recipe); the project, the registry entry, the grant, `environments.yaml` PR #7 merged
-    (`todo-production`, `sources: release`). _Release_ in Fen's Git tab at 19:20:5xZ tagged `v0.1.0`
-    with no dialog; the broker: "a release was judged … approved: u-iwbx…" 19:20:55Z, "promoting the
-    stage artifact … sha 0db51c04 from 9lSt5lFx" 19:20:56Z, "deployed … todo-production" 19:21:59Z;
-    status `mate/release/v0.1.0` success. _Publish app_ from the production row at 19:22:59Z; `GET
-https://app-30bc-3000.prg1.zerops.app/` 200 with the due-date field at 19:25:15Z.
-- **The end state**
-  - _Measured:_ Five projects: Todo - dev (Vera), Todo - dev 2 (Fen), Todo - stage, Todo -
-    production, Gitea; the registry `mate:gm` for both Mates, the stage and the production; Gitea
-    org `todo`, repos `group` (tiers, `environments.yaml`, tag `v0.1.0`) and `appdev` (`main` at
-    0db51c04 = PR #2's merge; both bots collaborators; both branches over `main`); the runner
-    stopped. Rollback (5.6) not run.
-- **agent-browser facts that cost time**
-  - _Measured:_ `fill` appends to the composer (a contenteditable) and `press Meta+a` selects
-    nothing there — a message went out with the hand-off text still in front of it; a click on a
-    menu item right after opening the menu can miss (the first _Publish app_); a submit button's
-    exact label matters (_Add stage to Todo_, _Add dev to Todo_, _Add production to Todo_) and a
-    disabled button reads `[disabled, ref=…]`; the session's browser was recreated once (sign-in
-    lost, viewport back to 1280×633 — the login button below the fold took no click until the
-    viewport was set again).
-
-## The owner's own poking after the run: Gitea's sign-in 500, "Checking" on an approved release, 700 reads a minute — 2026-09-17
 
 The owner opened the Git tab in their browser (19:35Z on) and followed a pull request's link to Gitea's pages. Read from inside: Gitea's (`web`) and the broker's runtime logs, the statuses as Gitea holds them, the code.
 
@@ -5295,11 +4973,7 @@ The owner opened the Git tab in their browser (19:35Z on) and followed a pull re
     and `[oauth2_client] ACCOUNT_LINKING = disabled` (written before the broker made accounts)
     refuses to link. Fixed: `auto` links the arriving `u-…` identity to the account of that username
     (gitea-mate v3.7 `ad04611`); the test org's `web` redeployed with it.
-- **The Git tab said "Checking" on `v0.1.0`, approved and deployed an hour before**
-  - _Measured:_ Gitea holds one status on the tagged commit: `mate/release/v0.1.0 success approved:
-u-iwbx…` (19:20:55Z). The client read a status's `state`; Gitea's JSON carries it under
-    `status`, so no state ever read and every release was "pending" — "Checking" — and every check
-    on a branch none. Fixed (fork `6790efee0`): the client maps `status` onto `state`.
+
 - **The environment rows' deploy statuses were read from the wrong repository**
   - _Measured:_ `GET /api/v1/repos/todo/app/commits/0db51c04…/statuses` → 404, on repeat: the read
     named the runtime (`app`) while the pair's repository is `appdev` (the tier's `buildFromGit`).
@@ -5315,9 +4989,7 @@ u-iwbx…` (19:20:55Z). The client read a status's `state`; Gitea's JSON carries
     with every read the hook makes. Fixed (fork `2c9f0bc79`): the reads run off the serialised key
     and the minute clock; the rate fell to 20–170 a minute within minutes of the change reaching the
     tab.
-- **The empty recipe request closed by the broker**
-  - _Measured:_ The test org's broker redeployed from `main` (v3.7, 144 s, `zcli push … --setup
-broker`); `todo/group` PR #6 `closed`, not merged, within its next pass.
+
 - **`zcli push` names the setups of `zerops.yaml`, not the services**
   - _Measured:_ `--setup web` is refused: "available setups: gitea, broker, runner" — Gitea's `web`
     service deploys with `--setup gitea`.
@@ -5328,46 +5000,8 @@ broker`); `todo/group` PR #6 `closed`, not merged, within its next pass.
     Dashboard", the `todo` org's activity listed), no consent step shown — the app's session
     completed it. The account is the one the broker made, linked, not a second one.
 
-## The Git tab split: the Mate's leg in the tab, the project's timeline in the left menu, the flow on the projects screen, the Gitea overview — 2026-09-17
-
 The localhost dev pair (web 5734) serving the working tree, signed in as the test owner in the audit browser, on the org as the from-scratch run left it (Todo: Vera, Fen, `Todo - stage`, `Todo - production`, `v0.1.0` live; every pull request merged). Read from the DOM (`eval` over the surfaces' data attributes) and from screenshots at 1440 × 900.
 
-- **The Git tab is the Mate's own**
-  - _Measured:_ Fen's Git tab: one section, `Repositories` → `appdev ·
-mate/mate-hadSu0iZSuCGrIc1hicN4Q ↑0 ↓0` / `PR #1 · todo-stage runs this branch`; no
-    `Environments`, `Releases` or `Recipe changes` section in the panel (`[data-zerops-git-section]`
-    count 1).
-- **The left menu is the project's timeline**
-  - _Measured:_ Under `Todo`: `Vera` (3h, subject, snippet), `Fen` (2h, "Add a due date to each
-    todo.", its reply), then `Todo - stage [STAGE] ●` and `Todo - production [PROD] ●` unfolded,
-    each with the public-route glyph; the dots' titles read `Deployed`; no pull request row, because
-    none is open; no "2 environments" fold.
-- **The projects screen carries the flow**
-  - _Measured:_ Under the two cards: `Todo - stage [STAGE] · main · 0db51c0 · DEPLOYED`, `Todo -
-production [PROD] · release · 0db51c0 · DEPLOYED`, the gate line `Production already runs what
-the stage runs.`, then `v0.1.0 [RELEASE] · app 0db51c0 · APPROVED` with no roll-back (the
-    newest), then `+ Add Mate · + Add stage`. No _Release_ verb, as the gate says.
-- **The Gitea overview lists what the person can reach**
-  - _Measured:_ `/gitea` from the footer's third button: `Gitea` · _Open Gitea_; `todo` → `appdev`
-    (`No open pull request`), `group` (`No open pull request`); both names link to Gitea's
-    repository pages. The footer's button is lit on the page, the way the Zerops one is on
-    `/zerops`.
-- **One reader for the account**
-  - _Measured:_ The provider mounts once in the app root (`ZeropsProjectFlowProvider`); the projects
-    screen dropped its own deploys read and Gitea sign-in, the Git tab its group-repo read
-    (`useZeropsGroupRepo` deleted). The Gitea half is `GET /orgs/{slug}/repos`, `/pulls?state=open`
-    per repository, the statuses per open head, `/tags` on `group` and the statuses per release tag
-    — once a minute and after a verb.
-- **A pull request row under each Mate, Merge inline** (the owner: "simulate the state, have each
-  mate open some")
-  - _Measured:_ Vera asked for a _Clear completed_ button at 22:12:46Z, Fen for an open-todo count
-    at 22:13:07Z; their stage deploys opened `todo/appdev` #3 (Fen's bot,
-    `mate-XGiEULUtRMagwBWsCAhDog`, by 22:19:06Z) and #4 (Vera's, `mate-hadSu0iZSuCGrIc1hicN4Q`, by
-    22:20:50Z). The left menu at 22:21Z: `Vera · now` → `#4 Mate: appdev · Merge`, `Fen · 3m` → `#3
-Mate: appdev · Merge`, then the two environments; the projects screen: `Mate: appdev [PR] ·
-appdev #4 · Vera · Merge`, `Mate: appdev [PR] · appdev #3 · Fen · Merge` above the environment
-    rows. No checks dot: nothing but the broker's own statuses runs on a pull request. Unmeasured
-    still: the fold past three, _Release_ in the menu.
 - **zcp titles every pull request "Mate: appdev"**
   - _Measured:_ Both rows read `Mate: appdev` where the task ("Add a Clear completed button…", "Show
     how many todos are still open") is what a person would look for; the commit carries the task,
@@ -5407,14 +5041,7 @@ stage` (`NO_ACCESS`, `BASIC_USER` on that project) and wrote each as a secret va
     `…794F727A64654E59527A57384D77476F4B3742467841` (Todo - production),
     `…505A42396947454E523665554C707967305451423441` (Notes - production) — all three written and
     read back by name.
-- **A deleted runner is re-imported and takes the job**
-  - _Measured:_ `runnertodo` had been deleted the day before. The merge at 10:19:24Z queued a job;
-    the service was created at 10:19:25Z and the job started at 10:20:55Z — about 90 s from merge to
-    running. A second org got its own: `runnernotes`, for the group `notes`.
-- **A push to `main` deploys the stage, by `zcli push`, on the job**
-  - _Measured:_ `todo/appdev` run 5, push of the merge of pull request #4: status `pending
-dispatched` → `pending deploying · job 5` at 10:23:12Z → `success live` at 10:24:08Z. 58 s from
-    the grant to live.
+
 - **`actions/checkout` takes a bare sha from Gitea**
   - _Measured:_ `git checkout --progress --force 5ebebe2c4f69f93621c2e8503952e5f358d207ef` in the
     job's log — the `ref: inputs.sha || github.sha` the workflow passes.
@@ -5425,18 +5052,7 @@ dispatched` → `pending deploying · job 5` at 10:23:12Z → `success live` at 
   - _Measured:_ The job's log carries the platform's own build: `✅ npm install --omit=dev`,
     `Application deploy artefact size 2.7 MiB`, `Application artefact uploaded in 0s`, `➤ INFO
 Application is deploying`.
-- **A push whose branch feeds no environment ends green**
-  - _Measured:_ `notes/appdev` run 6, the push of Iris's merge with no environment declared yet:
-    `success` in 5 s, the grant answering `nothing`. This is the red check of primer open 21, gone.
-- **A release is dispatched, and only a release reaches a production**
-  - _Measured:_ Notes: `v0.1.0` tagged from the row → `mate/release/v0.1.0 success approved`
-    10:39:44Z → `mate/deploy/notes-production/app pending dispatched` 10:39:45Z → `deploying · job
-7` 10:39:50Z → `success live` 10:42:08Z. 2 min 24 s from tag to live; the run's event is
-    `workflow_dispatch` on `main`.
-- **A project with no stage releases what is merged (D28)**
-  - _Measured:_ Notes declares one production and no stage. _Release_ was offered, and the tag
-    listed `app 729eb446` — the head of `notes/appdev`'s `main`, not a deployed commit. Before the
-    change the offer read "The stage has not deployed anything to release." for ever.
+
 - **A fresh repository carries the current workflow; an old one never would**
   - _Measured:_ `notes/appdev`, wired by zcp v9.180.0, had `zeropsio/gitea-mate/actions/deploy@v4`
     with `workflow_dispatch` on its first commit. `todo/appdev` still had `@v1` on `main` and on
@@ -5446,11 +5062,7 @@ Application is deploying`.
 - **zcp titles a pull request after the task, live**
   - _Measured:_ Iris opened `notes/appdev` #1 as "Build a small notes app: list notes (title+body),
     add a note, delete a note. …" — v9.179.3's title, on its first delivery.
-- **A second Mate's pull request dies when the first lands**
-  - _Measured:_ `todo/appdev` #3 (Fen) went `mergeable: false` the moment #4 (Vera) merged, and the
-    row simply lost its _Merge_ — nothing said why. A branch is cut from `main` when the repository
-    is wired and nothing ever caught it up. Fixed: a delivery merges the base in first, and a
-    collision it cannot settle is named.
+
 - **Three list endpoints answer under a key the client did not read**
   - _Measured:_ `GET /project/{id}/service-stack` under `list` (not `items`), `GET
 /client/{id}/user/list` under `clientUserList`, and the project page's count as `total` (not
@@ -5464,29 +5076,6 @@ Application is deploying`.
 
 ### What the owner found watching it, the same afternoon
 
-- **_Release_ looked inert while the stage was deploying**
-  - _Measured:_ The tag listed what the stage was running, so pressing it during a stage deploy
-    produced a tag nobody could see move. `v0.1.1` was in fact created, listing `app 9076c981`. A
-    release now lists what is merged, whatever a stage is doing.
-- **A failed merge said nothing a person could act on**
-  - _Measured:_ "Gitea would not merge it: Gitea refused to merge the pull request." — the client
-    kept Gitea's status and threw its `message` away, and the conversation showed neither. Gitea's
-    own sentence is now in the message, and the Mate's conversation is where it lands.
-- **Merging from the conversation works; the checkout never followed**
-  - _Measured:_ The row above the composer read "Fen is waiting on you to merge #6."; pressing
-    _Merge_ squashed it onto `main` (`5686decd`). This row first said the Mate's checkout was then
-    pulled: it was not. The pull had no working directory, and one with none is refused before it
-    starts (`resolveScope`, read after the last tests below); the pull is removed, and the branch
-    takes `main` in at its next delivery.
-- **A release's contents are one line per task**
-  - _Measured:_ Todo's release row read `5686dec Mate: appdev (#6)` — Gitea's squash-merge subject,
-    which is the pull request's title and number. The read is `GET
-/repos/{o}/{r}/compare/{deployed}...{main}`, and `404` for a pair it cannot compare is an empty
-    list rather than a failure.
-- **An agent can resolve a conflict in its own checkout, asked plainly**
-  - _Measured:_ Fen was told "run git fetch origin and git merge origin/main, resolve any conflict
-    so both changes survive, then deploy appstage again". It merged, resolved `index.html`,
-    redeployed, and #6 became mergeable — the sequence the delivery now performs by itself.
 - **A wired pair's git-push deploy aimed at protected `main`**
   - _Measured:_ Vera's `zerops_deploy` on `appdev` with `git-push` failed seven times: "rejected as
     non-fast-forward … a pushed branch tip is behind its remote counterpart". The pair carried
@@ -5494,95 +5083,22 @@ Application is deploying`.
     the Mate's own. The agent pushed to its branch by hand each time. Fixed in zcp v9.180.2; the
     Mates were restarted onto it.
 
-## The last tests before the hand-off to zcp hardening: merge, release, roll back, a second task — 2026-09-18
-
-Driven through the UI as the test owner, zcp v9.180.2 on all three Mates. The first three legs ran
-on the dev pair (localhost:5734). It went down mid-run, when an upstream port landed in the same
-tree: the server could not find `@effect/platform-node`, and the client threw
-`SchemaTransformation.transformEffect is not a function`. So the rollback and the Notes legs ran on
-mate.zerops.io, the same client, signed in as the test owner in a fresh browser. It connected to
-Iris by itself.
-
-- **A merge from the conversation squashes, and the stage follows**
-  - _Measured:_ Vera's `todo/appdev` #7 was merged from its banner at 12:13:26Z and landed as
-    `5b2f7d4 "Show total todo count next to open count, e.g. "3 of 7 open" (#7)"`. Push run 13 went
-    `deploying · job 13` at 12:13:34Z and `live` at 12:14:31Z: 63 s from the merge. The stage serves
-    `` `${open} of ${todos.length} open` ``. Fen's #8 followed the same way: merged 12:27:43Z, live
-    12:28:41Z (58 s).
-- **The banner stayed after its request was merged**
-  - _Measured:_ Seen twice: #7 on a page open for hours, #8 on a page just reloaded. The sidebar
-    dropped the request within a second. The banner kept "Fen is waiting on you to merge #8." with
-    _Merge_, never read "Merging…", and went only when the conversation remounted. Cause:
-    `composerBannerItems` is memoised by hand and its dependencies never named
-    `mateReviewBannerItem`. `react-hooks/exhaustive-deps` is off, so nothing flagged it.
-- **The pull after a merge never ran**
-  - _Measured:_ `useVcsPullAction({ cwd: null })`: `resolveScope` answers a missing directory with a
-    failure before any command runs, and the verb swallowed it. The pull is removed.
 - **A wired pair's git-push goes to the Mate's branch (v9.180.2)**
   - _Measured:_ Fen's first deploy of the task, a git-push, read "Finished." in 2 s.
     `mate/mate-XGiEULUtRMagwBWsCAhDog` moved to `187d937`, `main` stayed where it was, and #8 opened
     at 12:22:20Z, 44 s after the task was sent. No push in the turn was rejected; on v9.180.1 Vera's
     were rejected seven times.
-- **The delivery takes the base in by itself (v9.180.1)**
-  - _Measured:_ Iris's branch holds `afed1e5` (the task, 12:23) and then `f4b4f3b "Merge
-remote-tracking branch 'origin/main' into mate/mate-VF3RrXzBTIi5OGt8sEo88A"` (12:26), both as
-    the bot. That is the delivery's order: commit, fetch, merge, push. Fen had merged `main` by hand
-    before editing ("I merged origin/main in again before making the rename edit"), so its delivery
-    found nothing to take.
-- **A request opened after a merge carries only the new work**
-  - _Measured:_ `notes/appdev` #2: 3 files, +17 −0, after #1 landed as a merge commit. `todo/appdev`
-    #8: 1 file, +3 −3, after #6 landed as a squash. A local trial merge of `main` into both Mate
-    branches of `todo/appdev` was clean and left no diff against `main`: pre-squash commits merge
-    clean against their squash.
+
 - **A request is titled after its task**
   - _Measured:_ Notes #2 "Show a live character count under the body field of the add-note form".
     Todo #8 "Rename the app to "Team Todo" in the page title and main heading, then deploy." carries
     the task's deploy instruction in its title.
-- **_Release_ on a project with a stage lists what is merged**
-  - _Measured:_ Todo's row read `release · 5686dec`, `DEPLOYED`, _Release_, with `df1a1bd Rename the
-app … (#8)` and `5b2f7d4 Show total todo count … (#7)` under it, while the stage ran `main`. The
-    click at 12:30:44Z made `v0.1.3`, approved and dispatched at 12:30:46Z; `deploying · job 15` at
-    12:30:50Z, `live` at 12:31:47Z: 63 s. Production serves `<title>Team Todo</title>` and the
-    count.
-- **Roll back, live for the first time (5.6)**
-  - _Measured:_ _Roll back to this_ on `v0.1.2` at 12:36:40Z made `v0.1.4`, whose message is `app
-5686decd…`, `v0.1.2`'s entries. Approved 12:36:42Z, dispatched 12:36:43Z, `deploying · job 16`
-    at 12:36:46Z, `live` at 12:37:51Z on `5686dec`: 71 s. Production serves `<title>Todo</title>`
-    again, and the row offers _Release_ with #8 and #7 under it.
-- **A release after a roll back**
-  - _Measured:_ _Release_ at 12:40:12Z made `v0.1.5`, approved 12:40:13Z; `deploying · job 17` at
-    12:40:17Z, `live` at 12:41:16Z: 64 s. "Team Todo" is back.
-- **A new release row moves the verbs under the pointer**
-  - _Measured:_ `v0.1.4` appeared above `v0.1.3` about a second after the click. The pointer that
-    had pressed `v0.1.2`'s _Roll back to this_ then sat on `v0.1.3`'s, so a second click would have
-    rolled production to `v0.1.3`. Once a roll back runs, the release it left reads _Roll back to
-    this_ though it is newer than what production runs.
-- **A push to a production-only group deploys nothing, and wakes the runner**
-  - _Measured:_ Notes #2 was merged from Iris's banner at 12:42:58Z and landed as `12e57c2f`. Push
-    run 18 went `Waiting to run` at 12:43:01Z, `In progress` at 12:43:07Z and `success` at
-    12:43:10Z. `runnernotes` had been `STOPPED` by the broker after a quiet spell
-    (`internal/server/hooks.go`) and came back for the job. No production status was written.
-- **Notes' second release**
-  - _Measured:_ The row read `release · 729eb44` with `12e57c2 Show a live character count … (#2)`
-    under it. The click at 12:44:14Z made `v0.1.1`, approved and dispatched at 12:44:15Z; `deploying
-· job 19` at 12:44:19Z, `live` at 12:45:27Z: 73 s. Production serves `<span id="body-count"
-class="char-count">0 characters</span>`.
+
 - **Every stage deploy of a wired pair is recorded dirty**
   - _Measured:_ Iris, on its first task: "the deploy to stage was marked `dirty` (uncommitted
     changes existed alongside the committed HEAD at deploy time)". zcp records `attempt.Dirty` from
     the tree it deploys and commits that tree afterwards, in the delivery (`deploy_ssh.go`), so
     fresh work is dirty by construction.
-- **The banner fix, live**
-  - _Measured:_ On the hosted bundle `index-BEzMRUp4.js` (fork `350f02593`), Vera's `todo/appdev` #9
-    was merged from its banner at 13:09:36Z. Banner and sidebar both read "Merging…", both went back
-    to _Merge_ for about a second at 13:09:37Z (the verb stops pending before the re-read lands),
-    and both were gone at 13:09:38Z. The stage served the footer at 13:11:37Z.
-- **An agent rebuilt its own branch on `main`**
-  - _Measured:_ Vera's `mate/mate-hadSu0iZSuCGrIc1hicN4Q` went from `d32492f` on `5686dec` to
-    `b911db6 "Add footer reading Made with Mate"` directly on `df1a1bd` (#8), authored "Todo App"
-    and not under the bot's name. That is a non-fast-forward update of the remote branch, made by
-    the agent; the delivery found nothing to commit or merge. #9 carried only the footer: 1 file, +9
-    −2.
 
 ## The client after the upstream reconcile: a pass with the account — 2026-09-18
 
@@ -5591,19 +5107,10 @@ them. Driven in the audit browser as the test owner against the dev pair, which 
 and restarted first (`pnpm install`, then `node scripts/dev-runner.ts dev --no-browser` with
 `node_modules/.bin` on `PATH` — the runner spawns `vp`, and `tsc` has replaced `tsgo`).
 
-- **Every Zerops surface still draws from the account** — The projects page (both groups, their
-  releases, the release-contents line), the left menu's timeline, the Gitea overview (four
-  repositories, "No open pull request"), the Zerops panel with live sparklines, and the Usage page
-  with each Mate's real limits. No console error in the pass, and none forwarded to the dev log.
 - **A Mate answers, and its delivery still opens a request** — Vera answered a read-only question in
   17 s. A change-and-deploy task committed, deployed both halves, and opened `todo/appdev` #10,
   titled after the task.
-- **The merge banner survives the port** — `mateReviewBannerItem` is still in the composer memo's
-  dependencies, beside upstream's new banner items. #10: _Merging…_ at 17:22:27Z, gone at 17:22:29Z,
-  in step with the sidebar — with the one second of _Merge_ in between that is open.
-- **The chain after a merge** — Push run 21: `deploying · job 21` 17:22:37Z, `live` 17:23:41Z — 74 s
-  from the merge; the stage serves "Made with Mate · Zerops". _Release_ at 17:25:40Z: dispatched
-  17:25:42Z, `deploying · job 22` 17:25:45Z, `live` 17:26:56Z — 76 s; production serves it too.
+
 - **Upstream's follow-up control works here** — With a turn running and text typed, the send verb
   becomes _Queue message_; the queued message renders as its own bubble with a clock, a send-now and
   a cancel, and it ran when the turn ended.
@@ -5632,47 +5139,12 @@ and restarted first (`pnpm install`, then `node scripts/dev-runner.ts dev --no-b
   real file. Excluded in the root test config (`466417488`); a root run of one file went from 7
   files, 6 failed, to 1 file, 84 passed.
 
-## A group built from nothing: project, Mate, stage, a second Mate, production, release — 2026-09-18
-
-The whole chain driven through the UI as the test owner, against the dev pair. The first Mate came
-up on mate 0.11.17 — this morning's release, 571 commits behind `main` — so the run would have
-measured pre-port server code. `main` was released as **0.11.18** (`bde0e35ab`, tag `v0.11.18`,
-`zerops-mate-0.11.18.tgz`, sha256 `94f594eb…`, 22 727 516 bytes) and the container taken onto it
-before the chain was run.
-
-- **A group is built from nothing in a few minutes**
-  - _Measured:_ _New project_ "Links" 20:37:07; its Mate Theo answered "the container is ready to
-    deploy" 35 s later. Gitea had `links/group` before `links/appdev`, which only appears with the
-    Mate's first push.
-- **Update, then restart — the verb alone leaves the old server**
-  - _Measured:_ _Check for updates_ offered _Update to 0.11.18_; running it removed the offer while
-    the menu still read `Server 0.11.17`, with nothing saying a restart was needed. _Restart_
-    brought it to `Server 0.11.18`.
 - **A Mate delivers only when a supervised deploy happens**
   - _Measured:_ Theo's first task ("get it running here on dev") left the work committed inside the
     container: `links/appdev` held one commit, "Initial commit", no `mate/` branch, no request. The
     follow-up cross-deploy to `appstage` (deployed + 4 health checks, 23:12:58) closed the session
     and opened **#1** in the same breath.
-- **Merging from the conversation, then the stage follows**
-  - _Measured:_ #1 merged 23:13:22 → `main` `839c732`. _Add stage_ 23:14:49 landed group PR #3 from
-    `mate-app/env-links-stage`; `Links - stage` read `main · 839c732 · DEPLOYED` and served the app
-    ~90 s after the click.
-- **Two Mates, one branch, one `main`**
-  - _Measured:_ The second Mate's request carried its merge-in and its change on top of the first
-    Mate's commit: `e52f768829` "Add live client-side search box…", `7544646676` "Merge
-    remote-tracking branch 'origin/main'…", 1 file, +25 −2. Merged 23:44:50; the stage moved to
-    `main · 7b86a8c` unprompted and served the search box by 23:46.
-- **Production is fed by a release, never by a push**
-  - _Measured:_ `Links - production` came up with nothing deployed. _Release_ 23:48:22 → `v0.1.0 ·
-app 7b86a8c · APPROVED`, production `release · 7b86a8c · DEPLOYED`, serving the released commit
-    at `app-31a3-3000.prg1.zerops.app`. Its public route trailed: `subdomainAccess` read false while
-    the service sat `UPGRADING` for ~2 min after the release, then answered 200.
-- **An empty delivery still becomes a request to merge**
-  - _Measured:_ `links/appdev` **#2** was one commit by "Zerops Agent", message `zcp init`, **zero
-    files changed**; the owner was asked to merge it and did. After that merge the Mate's branch
-    merged `main` back in and opened **#3** — two commits, zero files — re-offering the
-    already-merged `zcp init`. A request also keeps its first session's title: #3 still read "deploy
-    the existing link-keeper app…" once it held the search box.
+
 - **Adding a Mate to an existing group was broken twice over**
   - _Measured:_ First attempt died at "Closing the project's shared variables": `POST
 /project/search` is refused without a `clientId` term (`Invalid user input: clientId not
@@ -5680,11 +5152,7 @@ defined`), reproduced with curl and fixed in `51d7697c4`. Second attempt died at
     with `Project environment variable key 'envIsolation' is not unique` — the search index trails
     the write, so the plan said _create_ for a variable the project already had; fixed in
     `36e81e7ef`.
-- **A half-created Mate leaves a project the app cannot finish**
-  - _Measured:_ Both failures left an ACTIVE project ("Links - Wren", "Links - Enzo") whose row menu
-    offers no delete — the message says to use the Zerops dashboard. Both healed themselves to
-    `envIsolation=service` with no project-wide key once the fixes were in, because the isolation
-    re-runs on every read of the projects screen.
+
 - **A group card could never stop setting up**
   - _Measured:_ `GET /orgs/{slug}` was read once per set of slugs, so the answer given before the
     broker made the org was the only one the page ever had: the line stayed 20 minutes while Gitea
@@ -5772,72 +5240,6 @@ in a component test that drives the real editor.
     `ClaudeAdapter.test.ts` ("a conversation with no model selection is not measured by the largest
     model that ran": 1000000 before, 200000 after).
 
-## The menu read as a list of Mates, not as where work is — 2026-09-19
-
-The owner asked for the foot to carry the account, the four glyphs to fold away, and the whole
-project → Mates → pull requests → stage → production layout to be thought through for someone who
-does not know what merge, stage or production mean, without taking anything from someone who does.
-What follows is what the reading found and what was changed; the layout decisions themselves belong
-in `spec-mate.md`, and this table holds only what was measured or proven by a test.
-
-- **The foot named neither the person nor the organization** — Four unlabelled glyphs (settings,
-  projects, git, usage) and no identity at all, although the organization scope decides every row
-  above them — a person could read another organization's projects with nothing on screen saying so.
-  Everything needed was already in the session (`api.ts`: `fullName`, `email`, three avatar URLs,
-  the organizations and the active one). One row now carries it and folds the four destinations into
-  its menu, each with a name; the switcher appears only where there is a choice, and an organization
-  still resolving is absent rather than a placeholder. The row reads the session optionally on
-  purpose — a shell that white-screens because no session is mounted is worse than one with no
-  account row. `SidebarZeropsAccount.test.tsx`, `SidebarChrome.test.tsx`.
-- **The timeline's stops looked like the last Mate's** — `EnvironmentRows` rendered after the Mates
-  with no rule, so `Links - stage` read as a child of whichever Mate was listed last rather than of
-  the project. A rule over the list and the project's own left edge say whose they are. The same
-  rows said `Links - stage` under a heading reading `Links`, with a `STAGE` pill beside it — one
-  word three times on two lines; `environmentNameUnderGroup` drops the prefix and the pill stays
-  only where a chosen name says nothing about the role. `SidebarZeropsTree.test.tsx`,
-  `groupRows.test.ts`.
-- **A pull request Gitea refused was a dead end** — The row offered _Merge_ only where `mergeable`
-  was true and otherwise showed nothing at all, leaving the person to open the request to find out
-  why. It now says which: checks still running, or a branch that needs a rebase. A red check stays
-  the dot's to say — the row does not carry one fact twice. Gitea's own answer remains the only
-  authority; nothing recomputes whether a branch merges. `projectFlow.test.ts`,
-  `SidebarZeropsTree.test.tsx`.
-- **_Release_ named the mechanism and not the thing** — `releaseContents` — the commits `main` has
-  that production is not running — was already computed for the projects screen
-  (`useZeropsGroupDeploys.ts`, written to the owner's 2026-09-18 ask) and the menu threw it away,
-  keeping only `releaseOffered: boolean`. The verb now carries the tasks it would put in front of
-  people, in the words the person asked for them in, because a squash merge carries the task's own
-  message; the count and the tasks are the button's accessible name too, so the answer is not
-  hover-only. This is the answer to naming for two audiences at once — the verb keeps its precise
-  name and the explanation sits one hover away, rather than renaming `production` to something
-  friendlier. `projectFlow.test.ts`.
-- **A stop nobody had added was not mentioned at all** — `missing` — the tiers the recipe offers on
-  `main` that no environment fills — was read and dropped. It is the owner's own complaint of
-  2026-09-17, twice ("it never asked me to setup production"), and the menu is where a next step
-  belongs. Said in the muted hand with the invitation as its verb, through the one way to the
-  projects screen the tree already had. `SidebarZeropsTree.test.tsx`.
-- **A Mate never learned its work had landed** — zcp records a pair's pull-request number and never
-  asks again, which is right for the number and wrong for its fate: `giteaPairNeedsPullRequest`
-  gates on `PullRequest == 0`, so a settled pair left the reconcile's pending set entirely. The
-  merge that ends a Mate's work is made in Gitea's own UI, by a colleague, by a script, or by the
-  app's _Merge_ — an event-driven design would have been correct for one of those four and silently
-  wrong for the rest, which is why nothing is pushed at the agent. zcp now asks, on the same
-  per-pair backoff (a burst of five passes reaches Gitea once), forgets a number that is no longer
-  open so the next delivery opens the next request, and reports merged apart from
-  closed-without-merging — to the Mate that opened it those mean work delivered and work refused.
-  The branch needed no instruction: `BuildGiteaDeliveryCommand` has taken the base in before every
-  push since 2026-09-18. Proven red without the predicate, then green:
-  `TestReconcile_TellsTheMateWhatBecameOfItsPullRequest`,
-  `TestReconcile_AsksAboutASettledRequestOnABackoff`, `TestReadGiteaPullRequestOutcome` (zcp
-  `d09cba98`).
-- **Not done in this pass** — The Mate row's hover actions (a fixed-width slot holding the time,
-  giving way to a `…` menu) and the sidebar keybindings were designed and not built; the check dot
-  still carries one tone and one word rather than each context with a link to its failing job, which
-  needs the statuses threaded onto `FlowPullRequest`. None of the three is blocked — they were left
-  for the next pass, not dropped.
-
-## Looking at the menu in the states it actually reaches — 2026-09-19
-
 The pass above was rejected on sight ("but this is so bad… I wanted a proper rethink of this from
 ground up"), and the reason it could be is that the fixtures held one of everything: one pull
 request, one route, one deploy. The harness (`apps/web/design.html`) was widened to the states the
@@ -5847,37 +5249,6 @@ project with no stops, a name longer than any of the three widths — and every 
 looking at it, at 256, 320 and 368px, in both themes. What was decided belongs in `spec-mate.md`;
 this table holds what was measured or is held by a test.
 
-- **A release is named by its tag, and every surface said the sha**
-  - _What it is:_ Zerops keeps one string per service, the app version's name, and the parties that
-    write it write different things into it: the broker names a stage deploy by the commit alone and
-    a release by `{sha} {tag} {tagger}` (measured 2026-09-16, `groupRows.ts`), while a person
-    deploying with `zcli` names it whatever they typed. `deployedCommit` read the first token and
-    the rest was dropped, so a production everybody calls `v1.2.0` was written `3f9c1b2` — and a
-    hand-made deploy, whose name is the only thing anyone has for it, showed nothing at all.
-    `deployedVersion` returns the name, the commit, the tagger and the one label a row writes: the
-    name, with the commit only as its fallback. `EnvironmentRow.line` changed with it, which is what
-    `groupDeploys.test.ts` caught — the projects screen reads it too. `groupRows.test.ts`,
-    `groupDeploys.test.ts`.
-- **Two public routes and ten drew identically**
-  - _What it is:_ The row wrote the host out at one route and fell back to a bare `↗` at any number
-    above it, so a service with ten domains and a service with two were the same glyph — the menu
-    hiding the very fact a person opens it to learn. The control is now a globe and the count, which
-    is the same width at 1 and at 10 and never claims a URL it is not opening; one route still opens
-    directly, with its host as the hover. A port is written only where one service answers on more
-    than one, so four domains pointed at `app` no longer read `app:80` four times.
-    `ZeropsPublicRoutes.test.tsx`.
-- **The heading was smaller than the rows under it**
-  - _What it is:_ The project name was 13px semibold; the Mate names beneath it are 14px. A heading
-    losing to its own contents is why it had no weight, and the fix is not uppercase (its own test
-    forbids that — "a name, not a label") but size: 16px, the only thing in the column set that
-    large. `SidebarZeropsTree.test.tsx`.
-- **The stops were a footer, not a destination**
-  - _What it is:_ A Mate wears a 20px face in the first column; a stage wore an 8px dot buried in
-    its second line of muted text. They are the same kind of thing — places the work reaches — so a
-    stop now takes the same 20px box in the same column, square because a place is not a person,
-    tinted rather than filled, and never without its word. Each also gained the menu it never had:
-    what is running in full (`v2.11.0 · 5c3ea18 · tagged by mira`), the way into Zerops, every
-    public URL, and, on a production, the changes it has not taken yet.
 - **A refused pull request went silent exactly when it was red**
   - _What it is:_ The previous pass wrote the reason for a rebase and for running checks and
     deliberately said nothing for a failure, on the grounds that the dot beside it was already red.
@@ -5885,20 +5256,6 @@ this table holds what was measured or is held by a test.
     readable on the next. Every refusal now carries its word, and the dot wears the tone that means
     the word rather than the checks' — a branch merely behind `main` had green checks, so `needs a
 rebase` was painted green. `projectFlow.test.ts`.
-- **A person's own pull request read as the last Mate's**
-  - _What it is:_ `grouped.others` — a change on nobody's Mate's branch — was indented under the
-    Mates like theirs, distinguished only by a `· ada` the 256px width truncates away. It sits at
-    the project's own left edge now. `SidebarZeropsTree.test.tsx`.
-  - _Stale 2026-10-02:_ `grouped.others` went with the Gitea pull-request rows; a change in HQ is
-    always a Mate's.
-- **Not done in this pass**
-  - _What it is:_ "The actual PRs that prod has" and each branch's distance from production are not
-    built. What a production is _missing_ is shown (`releaseContents`, already read, now listed in
-    the stop's menu eight at a time) and each open branch says whether it is behind (`needs a
-rebase`), but naming the merged requests a production carries needs commit→author attribution,
-    and whether Gitea's squash merge preserves the Mate's bot as the commit's author is unmeasured —
-    `GiteaCommit` reads only `sha` and `subject` today. It should be measured against a live Gitea
-    before anything is built on it.
 
 ## Three refusals with one word behind them — 2026-09-20
 
@@ -6058,25 +5415,6 @@ log, the app's HAR, a Gitea response.
 (403)` once per queued job. The planner now follows a regenerate with `grant-broker-token`; a
     mint is unchanged, it carries the grant in its own body. Because the value does not change, the
     grant takes effect with no restart.
-- **A production running nothing could never take its first release**
-  - _What it is:_ The read compared each service's main head against what production ran and skipped
-    a service with nothing to compare against — which is every service of a new production.
-    `releaseContents` came back empty, so the confirm said _"Nothing is waiting: the production
-    already runs what the stage does"_ and disabled itself while the row went on offering
-    **Release**. `planReleaseReads` decides the reads now and keeps a service with no base; the
-    caller names the head commit itself, which is the whole of what a first release puts live.
-- **Gitea has no `/commits/{sha}`**
-  - _What it is:_ `commitDetail` asked GitHub's shape. Gitea 1.27.2 answers **404** there and
-    carries one commit under `git/commits/{sha}`, with `files` and `stats` when asked for. Every
-    caller read nothing, so the release confirm listed no change and the commit detail had nothing
-    to show. On the new route the confirm went from _"Nothing is waiting"_ to _"One change goes
-    live"_ with the subject listed.
-
-With the three fixed, the whole chain was watched through the UI on the test account: a Mate's
-change merged from the app (**Merge** correctly disabled to `Merging…` while it ran), the broker
-deployed the difference to the stage (`main · dc8aabc`), the release confirm named the one change,
-the tag `v0.1.0` went out as a whole-project manifest (`RELEASE · app dc8aabc`), production came up
-on `release · v0.1.0`, and the stage served the built page.
 
 ## A surface that says something untrue: a green word, three sentences, and a frozen message — 2026-09-20
 
@@ -6085,50 +5423,18 @@ on `release · v0.1.0`, and the stage served the built page.
   card said **HEALTHY** above _"service running: failed"_, _"http internal: skip"_ and _"http
   public: failed"_, with no closing line to contradict it. A card carrying a failed check now takes
   `phaseOverride: "failed"` whatever the call's status was; a skipped check is not a failed one.
-- **"nothing deployed yet" for work already on its way** — A new environment told the reader to go
-  to the Zerops dashboard or ask an agent. Every tier fills itself and each from somewhere different
-  — a stage tracks main and the broker deploys the difference, a production runs what a release
-  names, a Mate's services are the agent's to set up — so `undeployedNote` says which. The release
-  confirm's empty case said _"the production already runs what the stage does"_; a release lists
-  what is merged and a group may have no stage at all (D28), so it names main.
-- **A Mate's message is frozen the moment it is written** — _"Two pull requests wait for review"_
-  goes on saying so an hour after both landed, and the reader had a bare forge url to go on (the
-  owner: _"when I read this and nothing else while its merged its hella confusing"_). The url is now
-  drawn as the change it names — `appdev #1 · Landed` — from the flow while it is open and from the
-  forge once it is not. The repository and number are in the address, so the chip arrives as a chip
-  and only the word fills in; an address it cannot claim renders exactly the link it would have
-  been. `offersMerge` goes with it: **Merge** is no longer drawn under a sentence saying the work is
-  over.
+
 - **Following a change left the conversation** — The address went out to Gitea, then to a page of
   our own once the link was claimed — either way away from the message that named it. `openChange`
   puts one change in its own right-panel tab beside the conversation, focuses a tab already open,
   and leaves the Git tab alone: the list of changes and one change are two different things to be
   looking at. The tab renders `ZeropsChangeDetailPage`, the same component the route does. Cold —
   the projects page, a link followed alone — the page is still what opens.
-- **When it moved belongs on the timeline** — The chip says where a change stands now; a
-  `change-landed` separator says when it moved, in the one place a person reads the work in order.
-  It is not projected from an activity, because nothing the agent did caused it — a person merged,
-  or the broker did. The forge is asked for each repository's landed changes, capped because a
-  closed list only grows, and `changeLandedEvents` keeps the ones belonging to this conversation's
-  Mate. The row names its repository: a recipe change's bare `#2` says nothing beside `appdev #1`.
 
 ## Telling a Mate what landed while it was idle: shipped in 0.11.32, and it does not arrive — 2026-09-20
 
-A Mate is a live process whose beliefs are whatever was sent to it. The app's own timeline never
-reaches it — activities are a read-only projection, and `ProviderSendTurnInput` carries only
-`{threadId, input, attachments, modelSelection, interactionMode}` — so a change that landed while
-it was idle left it saying _"two pull requests wait for review"_ an hour after both merged. Asked
-on the test account, it answered that its change was still open. The alternative considered was to
-have it check: a tool call every turn, mostly to learn nothing changed, and one a model under a
-long context will skip. A fact placed in front of it cannot be skipped, arrives at the moment it
-would have checked, and costs nothing when there is nothing to say.
-
 **It works. The entry that said otherwise, written here on 2026-09-20, was wrong** — corrected
 2026-09-21 rather than deleted, because how it was got wrong is the useful part.
-
-Measured on the test account: `appdev #4` was merged, and the next message to Kai was _"Repeat
-back, word for word, anything that appeared in your input for this turn that I did not type."_ Kai
-answered with two things, the second being
 
 > Zerops update notice:
 > `appdev #4 landed: Change Harbor page description to say Harbor is where the fleet is built`
@@ -6156,10 +5462,6 @@ outside, by asking the agent what it received.
 
 ## The whole chain from an empty organization, on released 0.11.32 — 2026-09-20
 
-The org was wiped to nothing through the API — four projects, the Gitea among them — and the run
-driven from the sign-in screen: project, Mate, agent, application, pull request, merge, stage,
-production, release. Everything below was measured on that run.
-
 - **Sign-in** — A fresh browser profile, the documented order, first try. **No inventory wedge** —
   the app rendered the empty state directly.
 - **Project** — `Harbor` + its first Mate `Ada` + `Headquarters`, both ACTIVE in **50 s**; services
@@ -6167,15 +5469,12 @@ production, release. Everything below was measured on that run.
 - **The Mate** — **Server 0.11.32**, the released build.
 - **Application** — One prompt. Ada bootstrapped `appdev`/`appstage`, wrote the app, deployed,
   verified, pushed, opened **appdev #1**. Worked for **7 m 59 s**.
-- **Merge** — From the app. The project screen then said _"Nothing open. Every change the Mates made
-  has landed."_
+
 - **Stage** — Added from the row. It filled **by itself** — `main · c054699 · Deployed` — with no
   further action: the broker's catch-up pass.
 - **Production** — Added from the row, agent switch off by default (_"an agent with a shell in
   production is a separate decision"_).
-- **Release** — _"1 change is merged and not live"_ → **"Release v0.1.0 — One change goes live."**
-  naming #1 → `v0.1.0 · RELEASE · app c054699 · Approved` → `production · release · v0.1.0 ·
-Deployed`.
+
 - **Live** — Both `app-2ff2-3000.prg1.zerops.app` and `app-2fed-3000.prg1.zerops.app` answer **HTTP
   200** with `<title>Harbor</title>`. **No _Publish app_ step was needed** — that open item does not
   reproduce.
@@ -6186,15 +5485,11 @@ Five things fixed the day before proved themselves on data none of them had seen
   Gitea, so this was the **regenerate** path — the one that used to skip the new tool project. It
   holds `BASIC_USER` on Headquarters and on Harbor - Ada, `READ_ONLY` on the org, and the four dead
   projects' grants are gone.
-- **The first release (`f9a89bd66`)** — A production running nothing took its first release through
-  the dialog, which named the change instead of disabling itself.
+
 - **Gitea's commit route (`c7246e685`)** — The confirm listed #1's subject, which is the read that
   used to 404.
 - **The verify status (`240cb05a0`)** — `VERIFY · APPDEV` came back **CHECKS FAILED — 2 of 4 checks
   failed**, red, over red steps. The same call's own status was `completed`.
-- **`undeployedNote` (`da14aefbc`)** — The stage said _"main lands here on its own, usually within a
-  few minutes"_ and the production _"a production runs what a release names, so it fills on the next
-  release"_ — each tier told where its code comes from.
 
 The change-landed rows fired on the real timeline — `group #1 landed`, `group #2 landed`,
 `appdev #1 landed`. No chip appeared, because Ada named its pull request in prose rather than by
@@ -6204,34 +5499,8 @@ The rebuilt Gitea was audited again with a person's session token: **sixteen** s
 variables across `web`, `broker` and `db`, every one REDACTED, `DB_ADMIN_PASSWORD` and
 `OIDC_CLIENT_SECRET` included.
 
-### The second loop, and the rollback
-
-A second change was put through the same chain, because the first release takes a path the second
-never does — `commitDetail` for a production running nothing, `compareCommits` once it runs
-something.
-
-- Ada opened **appdev #2** and this time wrote the pull request's url into its message, so the chip
-  rendered: `appdev #2 · Unchecked`, inline in the prose. Clicking it **opened a right-panel tab
-  beside the conversation and did not navigate** — the url was unchanged, the tab said
-  `#2 · appdev → main · Ada`, and carried the state, the verb, a comment box offering _Ask Ada_,
-  and the five commits.
-- The merge asks first: _"Merge #2 — It squashes onto main, and the stage runs what main says."_
-- Within **twenty seconds** of the merge all three surfaces had moved: the chip read
-  `appdev #2 · Landed`, the sidebar's pull-request row was gone, and `appdev #2 landed` took its
-  place on the timeline.
-- The stage deployed the merge by itself (`main · 3fbaa7e`), and the confirm read
-  **"Release v0.1.1 — One change goes live."** naming #2 — `compareCommits` between production's
-  `c054699` and main's `3fbaa7e`, the read the first release never makes.
 - `VERIFY · APPDEV` came back **All 4 checks passed**, green. The same builder that said CHECKS
   FAILED earlier in the run: the status word moves in both directions.
-- **Rollback**: _Roll back to this_ on `v0.1.0` cut **`v0.1.2 · RELEASE · app c054699`** — a new tag
-  carrying an earlier tag's manifest, never a name reused. Production took it and the page lost the
-  line #2 had added, while the stage kept it. A rollback moves the production and leaves what
-  tracks main alone.
-
-Ada also handled the squash-merge branch trap on its own, and said so: _"Pull request #1 was
-squash-merged, so the Mate branch on Gitea still carried the old pre-merge commits and my first push
-was rejected as non-fast-forward. I rebased onto the remote branch, then merged main back in."_
 
 ## Four things this run found — 2026-09-20
 
@@ -6253,12 +5522,6 @@ was rejected as non-fast-forward. I rebased onto the remote branch, then merged 
     minutes after the environment exists. The account knows sooner — the project carries its role as
     a tag from birth — so the held tiers are excluded. The verb was disabled throughout, so nothing
     could be double-made.
-- **A Mate's stale claim survives in the sidebar, unqualified**
-  - _What it is:_ Ada's last message ends _"pushed to the appdev repository as a pull request
-    awaiting your merge"_, and an hour later the sidebar row still says so — merged, released, live
-    in production. The chip and the `change-landed` row answer this inside the conversation; **a
-    sidebar snippet can carry neither**. Not fixed: the snippet is a slice of prose, and what would
-    correct it is a fact about a different object.
 
 Two behaviours worth keeping, both correct:
 
@@ -6275,12 +5538,6 @@ The owner asked for more projects and more Mates, and the states that only appea
 account appeared immediately. Built on top of the clean-room run: `Harbor` (Ada, Kai, Sana, plus its
 stage and production), `Lighthouse` (Dara, Wren), `Ferry` (Uma) — nine Zerops projects in all.
 
-- **The left menu's _Add a Mate_ did not add a Mate** — Its handler was `onBrowseProjects`: it
-  navigated to the projects screen and stopped. From a Mate's screen that at least lands where the
-  verb lives; from the projects screen — where a person adding a second Mate already is — it did
-  nothing at all. The ask travels with the navigation now: the menu records the group, the screen
-  answers it once on arrival and clears it. A tiny store rather than a route param, because what
-  arrives is an intent, not an address.
 - **Setting up a half-made Mate renamed it** — Lighthouse's second Mate came up with a project and
   no container — `core` alone, where a made Mate has `core` and `zcp`. The app caught that and
   offered **Set up Mate**, which imported the container and then named the agent with a **freshly
@@ -6290,12 +5547,6 @@ stage and production), `Lighthouse` (Dara, Wren), `Ferry` (Uma) — nine Zerops 
 - **A Mate creation can stop after the project** — The half-made state above was not contrived: it
   happened on an ordinary creation, a few seconds after another one. The app's detection and its
   recovery are the reason it cost nothing. The cause was not chased.
-- **`production` truncates to `prod…` in the left menu** — Measured at the default 238px sidebar:
-  the name span has **43px** and needs **68px**, while the release verb beside it takes **77px** on
-  its own. The verb rides the name's line by an earlier decision, whose stated reason was that the
-  name's line "is short" — true of `stage`, false of `production` once a release is waiting. The
-  line below holds `v0.1.2` alone with about 148px free. The row that carries the most consequential
-  state is the one that cannot say its own name. **Not fixed — the layout is the owner's call.**
 
 Two readings corrected while looking, both mine rather than the product's: the add-role buttons do
 not vanish during a creation (they are `disabled`; a probe matching exact text missed labels split
@@ -6304,24 +5555,11 @@ across two spans), and **Set up Mate** is not inert (it was slow — the guard a
 
 ## Two Mates on one repository: `needs a rebase` proven, and the sweep for dead buttons — 2026-09-21
 
-Ada and Kai were pointed at the same paragraph of the same file on `harbor/appdev`, which is the
-only honest way to reach the conflicted state — a fixture was rejected for exactly this
-(`live-mate-account-states`). Both opened a change; one was merged; the other conflicted for real.
-
 - **Two changes open** — `appdev #3 · Ada` and `appdev #4 · Kai`, each with its author on the row.
-- **#3 merged** — #4 became **Needs a rebase** — an amber pill in the left menu, and at the head of
-  the project an answer panel stacking `#4 needs a rebase` with **Ask Kai** above `2 changes are
-merged and not live` with **Release**. The thing that needs a person, beside the verb that acts on
-  it.
-- **The change itself** — `#4 · appdev → main · Kai`, _"This change no longer merges cleanly."_
-  **Merge** is disabled and carries the reason on itself; **Comment** is disabled on an empty box.
+
 - **Ask Kai** — Opens Kai's conversation with the composer prefilled and **focused**: _"Take #4 … on
   appdev forward: read it, do what it still needs, and push."_ It stops short of sending, which is
   right — the person can change it — and the caret is in the box, so nothing is hidden.
-- **Kai resolved it** — _"Pull request #4 is mergeable again and the rebased branch is pushed."_ #4
-  went back to **Unchecked** with a live **Merge**.
-- **#4 merged** — Three changes merged, no change open, and the stage deployed itself to `main ·
-f00e9ef`.
 
 **The whole loop needed one human decision and two clicks.** Nothing had to be done in Gitea, in
 Zerops, or in a shell.
@@ -6336,7 +5574,7 @@ read for the same shape — a control that looks live, does nothing, and says no
   And the busy key cleared only `if (isCurrent())`, which goes false on any sign-out or account
   reset: one interrupted setup left every _Set up Mate_ on the account dead for the session. A row
   waiting its turn is unpressable now and keeps its own name, and the key clears unconditionally.
-- **Add a Mate** (left menu) — Fixed the day before: it navigated instead of adding.
+
 - **`start` / `restart` / `remove`** — Clean — each clears its key in an unconditional `finally`.
   `start`'s null-write path is unreachable: the verb is only offered when something is stopped,
   which is what guarantees the service it needs.
@@ -6350,48 +5588,15 @@ The discipline is already in the codebase — `setUpMate` was the outlier, not t
 
 ## Production served the platform's placeholder while every surface said Deployed — 2026-09-21
 
-After the third release the stage and the production both answered with Zerops' own
-_"Check if your application is running on a correct port."_ — the page the L7 serves when nothing
-is listening behind it. **Nothing on any surface said so.** The rows read `main · f00e9ef ·
-Deployed` and `release · v0.1.3 · Deployed`, both with a green dot, and the project's answer line
-read _"Production already runs what is merged."_ Every one of those statements was true.
-
-- **The group's stage and production deploy the _dev_ setup** — Diagnosed by Ada, from the workflow
-  log rather than from guessing: the import files in `harbor/group` deploy the app with
-  `zeropsSetup: appdev`, and a dev-mode dynamic runtime's `run.start` is `zsc noop --silent` — a
-  keepalive that listens on nothing. The build succeeds, the version goes ACTIVE, and no process
-  serves the port. A dev setup is by definition not the one that should serve a production.
-  **Attributed here to `gitea-mate`'s recipe, which was wrong — traced below on the same day.**
 - **Nothing checks that an environment serves** — A Mate verifies its own services (`zerops_verify`,
   four checks including `http_public`). A group's stage and production have no such thing: the row's
   word comes from the platform's deploy state, and the platform's state was `ACTIVE` with an
   `ACTIVE` app version throughout. The client cannot tell the difference from what it currently
   reads, so this is a gap rather than a wrong answer.
-- **The words were each true and the whole was misleading** — "Deployed" means the version is
-  active. "Production already runs what is merged" means main's head is what a release put there.
-  Both held while the site was down. A person reads the pair as "it works".
-
-Recovery, driven entirely through the product: Ada was asked why, found it, opened `appdev #5`, the
-merge redeployed the stage (`main · 4f61536`, serving `Harbor is where the fleet is built.`), and
-`v0.1.4` put it in production. Ada also cleared the obvious suspect out loud — _"Nothing in Kai's
-pull request #4 contributed"_ — having checked the workflow log for the exact sha.
 
 **Open, and the owner's call, because it is a design decision about who probes:** whether a group
 environment should carry a reachability check the way a Mate's services do, and whether the row's
 word should be weaker until something has actually answered.
-
-## A verb the person ran now moves the screen they ran it on — 2026-09-21
-
-`run()` bumps a generation after every verb and that reached the forge hook alone, so a merge
-emptied the pull-request row at once while the line beside it went on saying what was waiting to go
-live _before_ the merge — and the environment rows went on naming the commit they ran before it.
-Up to a full minute, on the one screen the person is certainly watching, because they just acted.
-Measured: merged `appdev #4`, and "2 changes are merged and not live" stood still until the clock
-came round.
-
-The generation folds into the read key. **Measured after the fix: a release put its new tag on the
-screen in 2 seconds.** A verb is a discrete bump rather than a moving input, so this stays one
-re-read per change, not the 700 a minute that keying on the groups cost on 2026-09-17.
 
 ## Who wrote `zeropsSetup: appdev` onto a production — 2026-09-21
 
@@ -6402,9 +5607,6 @@ project's own services. **zcp composed these files**; the Mate only ran the tool
 All three of `harbor/group`'s tiers carry `zeropsSetup: appdev` — `0 — AI Agent` on hostnames
 `appdev` and `appstage`, and `3 — Stage` and `4 — Small Production` on hostname `app`. The history
 names the author: `4ac61752e` and `f0c3d9ffa`, both _"recipe: the group's import files, from Harbor
-
-- Ada"_, merged as PRs #1 and #2; `d4f74d207` later from Harbor - Kai as #5. The two environments a
-  person added by hand (#3, #4) sit between them and changed no tier.
 
 - **The shape says it went through a serializer**
   - _What it is:_ Four-space indentation and keys in alphabetical order — `buildFromGit`,
@@ -6485,10 +5687,6 @@ cannot fail the creation, and the platform's `status`/`code`/`detail` now ride o
 session generation is the one check that still stops the container write, and should: a signed-out
 client must send nothing.
 
-Residue worth knowing when reading the test account: `Lighthouse - Enzo` carries `mate:bot:Dara`,
-so the left menu calls it Dara. That is the recovery of 16:00:47 naming a Mate afresh, from before
-`23d560763` taught it to keep the name — left in place as evidence rather than patched by hand.
-
 ## A Mate's birth as levels, measured on the dev client — 2026-09-22
 
 Local web client (`vp run dev`, the tree at `fc824ba09`) against the owner's org `KRLS` (2 orgs, 49
@@ -6564,11 +5762,7 @@ the VPN. t = seconds after _Create project_.
 - **The broker's writes are not hardening** — Three `stack.updateUserData` on zcp at +187…+202
   (`GITEA_TOKEN`, `MATE_BROKER_URL`) — the group's "Setting up its repositories…" line, gone at
   +218.
-- **Two connectors raced at health-ready** — Health probes got the descriptor 200 every 2 s from
-  +127; the birth's connect (`connectContainer`, one attempt, no retry) sent a descriptor GET at
-  +155 that hung 10 s at mate (nginx `499`), so the card showed the error; the sidebar's
-  `useZeropsAutoConnect` connected at +167 (throwaway → token → ticket → shell, all 200), spent the
-  hand-off and does not navigate — the conversation never opened.
+
 - **The member list flakes** — With the Mate's valid key, `GET /client/{org}/user/list` answered
   `400 userNotFound` once in eight calls, 200 otherwise; the door turned one such answer into a 500
   for a browser on `mate.zerops.io` (+281).
@@ -6643,13 +5837,6 @@ Playwright's fake clock. Baseline = `main` a30b3e6bb; gates = `feat/state-model`
 - **Door throwaways**
   - _Measured:_ Every mint deleted with its minting token across every page lifetime; with 11 Mates
     a cold load mints 10 within ~150 ms and the 11th waits for the per-tab budget (~60 s).
-- **S2's false negative**
-  - _Measured:_ Baseline: "zerops ads" read "nothing deployed yet" for 20 min while its service was
-    ACTIVE with an ACTIVE appVersion. From 0a2d876a9: never. On a Gitea-backed fixture (3 cold loads
-    each on main and on the gate-F build): the stage never read "Nothing deployed yet"; sidebar PR
-    row and chat banner always agreed; the PR row came at 17.5–18.8 s because the first `POST
-broker/person/token` failed as a CORS/ERR_FAILED error in ~0.7 s and was retried only after
-    10–12 s (in one main run: never, within 120 s).
 
 ## The KRLS Gitea broker stopped on its destructive cap — 2026-09-23
 
@@ -6676,9 +5863,7 @@ applied=108 destructive=0 problems=0`.
 - **A live Mate that fails delivery gains a token generation every pass**
   - _Measured:_ testzcp's `mate-T5nAioXYTpOkhtOauB99wA`: `deliver_mate_access … creating GITEA_URL:
 zerops api: 400`, `mint=true`, every pass.
-- **The deployed broker refuses `POST /deploy/grant`**
-  - _Measured:_ 405; the deploy@v4 workflow job on push fails ("the broker refused (405 )"); the
-    broker's own deploy (source CLI) deploys the stage, starting ~1 s after a merge into main.
+
 - **Reading the org's members**
   - _Measured:_ `GET /client/{id}/user/list` returned 188 rows, 187 of them integration-token
     pseudo-members; the broker logged intermittent "the member list: zerops api: 400" on
@@ -6700,11 +5885,7 @@ polled every ~0.6 s for 30 s after each push.
 status}` only. `userData.appVersionName` / `ZEROPS_appVersionName` is the newest STARTED build: it
   switched to the new sha at build start, ~63 s before `activeAppVersion.id` changed. `stack.build`
   process frames carry `appVersion {id, name=sha, status BUILDING→DEPLOYING→ACTIVE}`.
-- **`mergeable` is false for ~1.5–2.5 s after every push** — Push to the PR branch, clean: true +0.1
-  s, false +1.6 s, true +3.1 s. Push to base, clean: false +0.08 s, true +2.5 s. Push to base,
-  conflicting: false for all 30 s. Push resolving the conflict: false +0.06 s, true +1.8 s. The API
-  has no field telling the transient false from a conflict; `merge_base` did not move when the base
-  advanced.
+
 - **Sensitive values read as a person** — `GET /service-stack/{id}/env` and `/user-data` return
   sensitive values as the literal `REDACTED` to an OWNER's token.
 
@@ -6740,13 +5921,6 @@ unknown source control provider is registered` on every PR lookup.
     re-created by the next pass. Gitea: each dead org held only `group` with its initial commit and
     no pull request; the six repos, six orgs and five retired bots deleted (`DELETE
 /admin/users/{login}?purge=true`), 204 each. Passes since: `planned 0 … problems 0`.
-- **zcp wires a pair only when a bootstrap closes**
-  - _Measured:_ `reconcileGitea` is called from bootstrap's terminal step and its adopt route only
-    (`internal/tools/workflow_bootstrap.go`), though the reconcile's comment says every status pass:
-    Juno, whose token arrived after its bootstrap, stayed unwired until it ran a list-only bootstrap
-    (16:10Z). Then `POST /mate/repository` 200 twice (16:10:37Z, 16:10:42Z), the recipe PR merged by
-    the broker nine seconds after it opened, both service PRs opened, and the owner's merge, Add
-    production and `v0.1.0` ran through to a production deploy granted at 16:15:22Z.
 
 ## Beviro's re-added production, and a created variable no build could see — 2026-09-24
 
@@ -6765,10 +5939,7 @@ Zerops GUI at ~17:02Z, the second `q3EjSXjUQjAQ1uilTtGxVg` added from the app at
   - _Measured:_ "a deploy of this commit failed, and only a person starts it again" every five
     minutes; the jobs were rerun through Gitea (`POST …/actions/runs/{run}/jobs/{job}/rerun`, 201)
     and medusa deployed at 17:21:52Z.
-- **A bare `environments:` is refused by the broker**
-  - _Measured:_ `medusa/group`'s `environments.yaml` reading `version: 1` + `environments:` with no
-    entry: every webhook and deploy pass for the group failed "environments is a mapping of name to
-    environment" (17:04:54Z–17:09Z) until an entry was merged.
+
 - **A service variable created by `zsc setEnv` did not reach another service's build until it was
   written again**
   - _Measured:_ Medusa's seed created `CHANNEL_PUBLISHABLE_KEY` (`zsc setEnv … --sensitive`, a real
@@ -6807,28 +5978,13 @@ ships) and 0.156.0 on darwin-arm64, against the wire packages imported at upstre
 Test org `Mate`, group `medusa` (Beviro); Mates Juno (`zXUaCquAQyu1Jld65n1UFQ`) and Cleo
 (`JoAbATtBS8CHcqjyPyzTJg`, made 09:14Z); production `q3EjSXjUQjAQ1uilTtGxVg`.
 
-- **The broker merged a Mate's re-proposal over hand-written tiers**
-  - _Measured:_ Cleo's zcp opened `medusa/group#11` "Mate: the group's import files" at 10:04:50Z
-    and the rights loop merged it at 10:04:58Z (D23 merged any open request by a registered Mate's
-    bot). It set production's `nextstore`/`medusa` to `zeropsSetup: nextstoredev`/`medusadev`, added
-    `mailpit` as a code service built from `medusa/mailpit`, and dropped the tiers' project env,
-    secrets and `objectStoragePolicy`. The same happened with Juno's `#9` on 09-25; Juno reverted
-    both (`#10`, `#12`).
-- **The next release built production with the dev setup**
-  - _Measured:_ `v0.1.31` (10:06:00Z): the nextstore job logged "Selected setup: nextstoredev",
-    deployed at 10:08:49Z with `start: zsc noop`, and every storefront URL answered 502. The broker
-    imported `mailpit` into production at 10:04:59Z and could not deploy it ("medusa/mailpit has no
-    workflow").
 - **A job rerun redeploys nothing for a commit production already runs**
   - _Measured:_ Rerunning the job after the revert: "deploy: 0 deployed" — the broker matches the
     running version by commit, not by setup. Activating the last good build (`PUT
 /app-version/{id}/deploy`, the 08:59Z `nextstoreprod` build) answered 200 at 10:20:10Z; the
     broker then saw production behind `v0.1.31` and rebuilt it with "Selected setup: nextstoreprod"
     (deployed 10:24:39Z).
-- **A recipe that only adds files merges; one that changes a tier waits**
-  - _Measured:_ gitea-mate `fe934d5`, deployed 10:27Z: the pass reads each Mate request's files and
-    merges it only when every one is `added`; a modified, deleted or renamed tier file waits for a
-    person and is reported every pass.
+
 - **A tag listing a service production never runs held "Releasing"**
   - _Measured:_ `v0.1.31` listed `mailpit e18fe86`: the app read the head of a repository named
     after the stray `mailpit` service (the hostname fallback in `planMainHeadReads`), and held the
@@ -6937,43 +6093,9 @@ CDP screenshots clipped at 2× and 8×.
 - **The Mate's question hung under the person's bubble**
   - _Measured:_ Ink to ink, the person's bubble ended 3 px above the question's line box (19 px
     after the change); an answer to the next message stays 24 px.
-- **A live run moved nothing it had drawn**
-  - _Measured:_ 168 live samples at 200 ms through a run with a question, three calls and the
-    settle: no bubble inserted, resized or moved in sight, no gap changed, the chat never shrank;
-    the Mate's menu row held 76 px. The only rows that moved were under the settling card, its
-    report easing in 4 → 49 px (known since 2026-09-28).
 
 ## Pass 16 as measured — 2026-09-29
 
-Measured two ways, and each row says which. **Live**: the localhost pair against a real account, in
-the dev browser at 1786 × 1000 with the menu at 435 and 256 px, light and dark, with in-page probes
-reading `getBoundingClientRect` on every animation frame, and a sampler reading every painted frame
-across a switch between Mates. **Harness**: the design pages each part served from its own worktree
-(`/design.html?set=plan&palette=zerops`, `/design-working.html`, `/design-change.html`,
-`/design-switch.html`, `/design-pictures.html`) at the same size, fixtures standing in for the live
-data — a fixture is no evidence for the owner, only for the geometry. The server's numbers are Node
-24 on an M-series Mac.
-
-- **The menu keeps two text edges and four sizes** — Live, at 435 and 256 px, light: every face at
-  x = 16, every word at 56, each name at 78 behind its 16 px owner mark; rows of 76 px (three
-  lines), 58 (an ask and no answer) and 48 (never asked); 30 px from one Mate's line box to the
-  next's (34 glyph to glyph); the menu's words at 16, 14, 13 and 12 px, beside a 9 px screen-reader
-  label and the footer avatar's 10 px initials — the account's organization line stood at 11 px and
-  moved to 12 (`5285adf05`). Before (the plan's 09:00 capture): eight sizes, 16, 14, 13, 12, 11, 10,
-  9 and 7 px.
-- **A pressed heading does not move** — Harness, 304 px: the pressed heading's top, read every frame
-  for 400 ms, moved 0 px folding and opening five projects, their rows easing 162 → 0 px over about
-  ten frames on a fold; the list's last project folded at the scroll's end kept its heading still
-  over 28 frames, its kept room 152 → 52 px after scrolling up 100 px and 0 after 300. Before
-  (live): the heading dropped 32 px, 166 → 198.
-- **The selected band stays on its row** — Harness: a slide between two Mates took 300 ms on the
-  spring, 8 px past its mark at about 110 ms and settled by 300; 0 px off its row on every frame
-  through an 86 px reflow, quiet Mates unfolding above it.
-- **The production chip at three widths** — Harness: 24 px tall, radius 12, 12/500. At 435 px every
-  state whole — `prod v0.1.44 · 1 waiting`, `prod v0.1.56 · release failed`, `prod down`, `prod
-stopped`, `stage main`; at 304 the extra words gone and "Imperial Titan" whole at 96 px; at 256
-  the version gone too. The logo row's room for the waiting faces: 80.9 px at 304 beside the traffic
-  lights, 32.9 at 256 (one face), 58.9 on the web at 208 — nothing overflowing.
 - **A turn reads as one group** — Live, two turns of one conversation: the person's bubble to the
   card 24.0 px, the card to the answer 24.0, the answer's ink to the next bubble about 65; the
   card's corners 30 px; the tray `oklch(0.968 0.004 255.5)` in light. Before: 12, 19 and 24 px.
@@ -6982,14 +6104,7 @@ stopped`, `stage main`; at 304 the extra words gone and "Imperial Titan" whole a
   requests came from Gitea, the strip took the composer's top, the composer grew 61 px and the list
   pinned to its end moved the message to 749. With the strip remembered (`composerTopMemory.ts`):
   the strip in the first paint, the message at 749 from then on.
-- **The review reads the change from Gitea** — Live, from the composer's top: the dialog with
-  Gitea's files and diff (+189), the verdict "Ready to merge · No checks ran · no conflicts with
-  main · 19 commits", _Try it_, _Merge_ focused with its ⌘↵; Esc closed it and gave the focus back
-  to the composer's _Review_; nothing was pressed. "What it does" was empty: none of the Mate's
-  answers linked that pull request. Harness: 720 × 861 with one diff open (the mock 720 × 849); type
-  at 12, 13, 14 and 18 px only; opening, opacity 0 → 0.34 (17 ms) → 0.78 (50) → 0.97 (100) → 1
-  (about 170), scale .98 → 1 and 6 px of lift; closing, 1 → 0.12 at 50 ms → 0 at about 117; in a 640
-  px window the body scrolled (422 px of content in 324) while the verdict and the foot stood.
+
 - **A picture pasted into a live composer** — Live: a 3210 × 2118 screenshot pasted into a Mate's
   composer stood in the text as a 121 × 80 picture, and its view said "Sends 2000 × 1320 · PNG, 595
   KB"; removed after, never sent. Chromium, harness `?fit=1`: a 3210 × 2118 PNG of 4,890,071 B (6.5
@@ -7100,8 +6215,7 @@ Mates, and the parts' own harnesses where a state could not be made live. The Ma
   and was fully shown at ~470–550 ms before; after, the rows stand in the press frame (68–216 ms) and
   nothing moves for the next second. A warmed first open shows at 275–288 ms, a cold one at ~520 ms.
   Production answered a press in 40–66 ms; the dev build adds ~150 ms.
-- **The projects page claimed empty for 11–28 s** — on a reload, "None yet" / "Nothing merged" per
-  project while only the deploys half of its flow had answered.
+
 - **The stand-up's 26 minutes** — Enzo on Beviro, from the sign-in: medusadev +31 → 352 s (yarn 88 s,
   a 700 MiB artefact up in 37 s, deploy step 159 s), medusastage 355 → 809 (yarn 116 s, build 79 s,
   production install 39 s, deploy 175 s), nextstoredev 813 → 1135 (yarn ~120 s, 626 MiB, deploy
@@ -7132,9 +6246,6 @@ Mates, and the parts' own harnesses where a state could not be made live. The Ma
   so Heron's never-deployed appstage (READY_TO_DEPLOY, no subdomain) read as "appdev not healthy, 2 of 4".
 - **A failed entity read was retried three times, then never** — until a foreground return or socket
   recovery, and every event from a watched project reset every failure budget.
-- **The heading line folds without a jump** — the sidebar harness (`design.html?set=ladder`) at
-  435 px: the line's height 20 → 0 px over about 150 ms, its words kept while it folds, no frame
-  where the Mates below it jump.
 
 ## Pass 26 as measured — 2026-09-30
 
@@ -7156,10 +6267,7 @@ and the parts' harnesses and fake-timer probes where a state could not be made l
   before it became the route was admitted only when the 15 s hold ran out (after: at once), and the
   previous route's attempt was never told to give way within 30 s (after: as the route starts).
 - **A new Mate's server does not restart after the agent sign-in** — two Heron Mates, 21:21–21:26Z.
-- **A project someone else made stayed out of the access grant until its renewal** — up to about 12
-  minutes (a 15-minute window renewed 3 minutes early): its services unread, its Mate missing from
-  the menu, "Still reading…" shown and the name check held on "Checking which names are taken…"
-  (a colleague's report on Heron; the owner's of a colleague's new Mate).
+
 - **"Still reading…" showed about 3 s on every reload** — on 0.11.73, from 1.8–2.9 s to 5.5–6.2 s
   of three reloads, over rows whose services were not read yet.
 - **"Project access could not be verified" froze a mounted product** — from the code: when any read
@@ -7266,8 +6374,7 @@ read-only Gitea calls.
   deploy its agent fixed.
 - **Meilisearch needs more than 1 GB to reindex** — Meilisearch 1.44 at a 1 GB floor with 0.25 GB
   free was OOM-killed twice during a Medusa catalog import; at 2 GB with 0.5 GB free it completed.
-- **A recipe-only merge deploys nothing** — merging tier `import.yaml` changes to a group repo's
-  `main` started no process in any of the group's 14 projects, stage and production included.
+
 - **Valkey's eviction policy is set through its profile** — the live import schema accepts
   `profileOverrides: {maxmemory-policy: …}` on every Valkey profile (hobby, staging, production).
   Medusa's job queue (BullMQ) warns on `allkeys-lru` and wants `noeviction`.
@@ -7298,12 +6405,7 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   - _How it was established:_ marker, deploy, read; repeated in the restore drill's timings.
 - **An environment-scoped NO_ACCESS + BASIC_USER token deploys, enables the subdomain and imports
   services** into its one project; an org READ_ONLY token cannot enable a subdomain.
-- **Stage deploys from HQ, twice** (Core `2d93cc977d`): deploying 3–10 s after the merge, live at
-  63–81 s, the app version named `main <sha7>`, the subdomain answering; everything deleted after.
-- **A Mate's delivery round trip through HQ** (Core `7e41c9e963`, zcp `5865657ce`): appdev #1
-  delivered, merged over the API and absorbed by the next delivery; #2 merged with the browser's
-  Merge button; #3 retitled within one session; the recipe proposal in `group` landed by Core.
-  `mate-rig-a - Gita` enrolled with HQ the same day.
+
 - **Backup sets** (Core `ddce9f140d`, then `ec1ae73186`): PGDG's `postgresql-client-18` 18.6
   installs in the runtime prepare (about 82 s) against a Postgres 18.4 server; the five
   `${backup_*}` references resolve inside a sensitive service env; the Object Storage at
@@ -7332,10 +6434,7 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   `mate-door:*` tokens stood in KRLS, all minted by the owner's browser profiles: the client
   deletes a door throwaway without awaiting it (`zeropsThrowaway.ts:161`), and the backstop sweep
   runs once a day per browser.
-- **Main's release tags are signed by Gitea, not by the person.** Snap's `v0.1.0` reads
-  `tagger Gitea <gitea@fake.local>`; the person who released is in the broker's verdict status,
-  `approved: u-<login>`, as for all 94 verdicts in Mate s.r.o.
-  - _How it was established:_ the T13 export of Snap, read-only.
+
 - **An HQ born from the app** (T4b/T4c, KRLS, 2026-10-02): `Headquarters` reported `official: ok`;
   a KRLS member with the Developer preset saw the product with no gate; an owner opening an
   organization with no HQ saw it born. `mate-rig-a - Gita` linked to it live: online, its summary
@@ -7356,18 +6455,6 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
 
 ## Run 4 as measured — 2026-10-02
 
-- **New project to production, timed** — mate 0.11.86, two windows on mate.zerops.io as the test
-  account. Larder's Mate opened its pull request about 6 min after its first task, and the merge took 2 s.
-  The stage answered 200 427 s after Set up stage, held behind its group's runner (below). Production
-  answered 97 s after Release; its build ran 71.5 s. Of the 70 platform processes in the run's
-  projects, 1 FAILED. The other group's existing Mate, watched read-only, ran no process.
-- **A runner's build downloads once, and the broker never rebuilds a failed runner** — the group's
-  first workflow job (the merge's, +1017.6 s) imported `runnerlarder` into the Gitea project. Its
-  build failed after 54.1 s: its one download of gitea-runner (`curl -fsSL`, no retry) hit a dropped
-  TLS handshake (curl exit 35), and the service stayed READY_TO_DEPLOY. The broker imports a runner only when no `runner{slug}` service
-  exists; otherwise it only starts it. So the group's deploy job waited until the runner was deleted
-  and imported again by hand at +1263 s. That build took 121.5 s, and the stage's first build
-  started at +1405.7 s.
 - **A stage's address comes on only after its first build** — `Larder - stage`:
   - project.create +1054.3 → +1082.4 s;
   - the import's own `stack.deploy app`, without code, +1054.4 → +1113.3 s;
@@ -7376,17 +6463,8 @@ KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each r
   - 200 at +1481.8 s.
 
   The broker's `mate/deploy/larder-stage/app` status on `main` read `pending` from +1092.8 s and
-  `success` by +1482.9 s. 0.11.86's menu said "turning its address on" from +1115 s to about +1393 s.
+  `success` by +1482.9 s.
 
-- **The platform runs a version before the forge says so** — the stage ran 102c2af from +1478.7 s
-  while the forge reader's last read of its status was `pending`. The main cell showed "Deployed",
-  then "Deploying…" for 27 s, until the next read.
-- **A merge reached the other window 48 s late** — the merging window cleared the Mate's "needs
-  you" face 0.8 s after the merge (+1013.7 s), and the other window at +1062.9 s. Gitea listed the
-  pull request as merged by +1032 s (by the rig's 30 s poll). The forge reader refreshes every 60 s.
-- **The release dialog re-derived its facts from the release it had just made** — after v0.1.0,
-  Larder's first release, landed, the dialog read "replaces v0.1.0 · 0 changes" and "app stays on
-  102c2af", and offered "Roll back to v0.1.0".
 - **A new Mate looked asleep in the other window** — Drew's zcp build finished at +265.0 s, and his
   Mate answered at about +280 s. In between, the container was ACTIVE with its address but the Mate
   was not answering. For 12–18 s of that, the window that had not made him showed the asleep face;
@@ -7507,64 +6585,15 @@ lastUpdate, os, status` only; `/app-version/search` gives the same version `sour
 
 ## Run 5 as measured — 2026-10-03
 
-- **Pass 34's fixes, re-checked live** — mate 0.11.87 and gitea-mate #7, two windows on
-  mate.zerops.io as the test account, 24 minutes.
-  - A New project "Tally" went through its first stage.
-  - Larder took a merge and a release.
-  - Each Mate read the same "Waiting for your sign-in" whichever flow made it.
-  - A merge cleared the Mate's "needs you" face in the other window 10.0 s after the press (run 4:
-    48 s).
-  - v0.1.1's dialog kept "replaces v0.1.0 · 1 change" and its roll back to v0.1.0 through Released.
-  - A stage's "Deployed 61907df" held through the 6.5 s before the broker's status turned success.
-  - The 42 platform processes in our projects all finished.
-  - The other group's existing Mate, watched read-only, ran nothing.
-- **A group's first runner, timed** — imported 9.2 s after the merge that queued its first job, built
-  at the first try in 103 s.
-- **A stage's first deploy, timed** — Add stage at +664.9 s.
-  - project.create ran +670.4 → +700.0 s.
-  - The import's no-code `stack.deploy app` ran +699.5 → +710.5 s.
-  - With the workflow fixed, the first build ran +1033.8 → +1097.3 s, and the address was on at
-    +1097.3 s.
-  - "Stage is up" showed at +1100.7 s, and the stage answered 200 by +1111.8 s (6 s poll).
-- **A deploy job can fail before the broker sees it** — the group workflow's own Test step ran `npm
-test` on the runner, a bare Ubuntu 26.04 with git and no language runtime, and exited 127 (`npm:
-command not found`).
-  - Both runs failed 23 s after the runner came up: the push run, and the broker's dispatch of the
-    same commit.
-  - The commit on `main` carried the workflow's own status, `Zerops deploy / deploy (push)`:
-    `failure`. The broker's `mate/deploy/<stage>/app` stayed `pending`, because the job never asked
-    for its grant.
-  - The app read neither status and said "first deploy on its way" for 4.3 min.
-  - zcp's template defaults that step to `echo "no test command configured"`. The Mate replaced it.
 - **The platform's process list** — `GET /project/{id}/process` answers newest first, with or
   without `offset`, and carries no `totalCount`.
   - `actionNameContains=stack.build` filters before paging.
   - The Gitea project held 22 processes in all: `limit=1000` returned them in 78 KB, in 0.75 s.
 - **Idle cost** — 16 and 18 requests a minute per window over 280 s with no fresh open pull request
   (run 4: 16). Gitea's org listings ran once a minute per group, and the pull watch added none.
-- **Production blinked twice** — Larder's production answered `unreachable: timeout` for about 20 s
-  at +872 s and again at +1318 s, then 200. Nothing deployed there at either moment.
 
 ## Run 6 as measured — 2026-10-03
 
-- **Pass 35's fixes, re-checked live** — mate 0.11.88, zcp v9.189.1 and gitea-mate #8, two windows
-  on mate.zerops.io as the test account, 33 minutes.
-  - A New project "Quill" with its Mate went through a stage whose first deploy failed, then its fix.
-  - Larder took a new Mate that stood up development from the group repo on its own.
-  - The pull request's workflow set up Node (`actions/setup-node@v4`, node 24) before its Test step.
-  - The stage line read "making the project" (+846 s), "adding the app" (+876 s), then "awaits the
-    runner" (+888 s): the import before the runner, on the menu and the card alike.
-  - The push job failed at Test at +952 s. The first status read that carried it (+972.7 s) turned
-    the projects page cell to "First deploy failed" (+972.9 s) and the menu to "Stage didn't come up ·
-    its first deploy failed" (+972.8 s; +976.7 s in the other window).
-  - After the fix's merge (+1663 s): "first deploy on its way" (+1665 s), "building the app"
-    (+1684 s), "Stage is up" (+1745 s), with no step back at the build's end.
-  - Each coming-up Mate read the same words in the other window: "Coming up", "Waiting for your
-    sign-in", "Nothing asked yet". Its row wore the asleep face until the sign-in.
-  - The other group's projects, watched read-only, ran nothing; one stage build failed on a
-    `deployFiles` path its Mate then fixed.
-- **A group's runner, timed** — imported one second after the merge that queued its first job,
-  built in 118.5 s.
 - **Idle cost** — 22.2 and 20.3 HTTP requests a minute in the two windows (run 5: 16–18). 13.4 a
   minute are each Gitea org's repository list once a minute, so the idle cost grows with the
   account's orgs.

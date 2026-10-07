@@ -71,46 +71,6 @@ to sign in manually. PA's HTTP refusal is `HQ_ZEROPS_REFUSED` (`403 zerops_refus
 | attention  | `<projectId>`: `HqAttentionScopeValue`, including presence, today's overview and source attention                                                                                                                                                                                                                                                |
 | operation  | `<appId>:<operationId>`: durable `OperationRecord` values from `Deploys.operations(appId)`                                                                                                                                                                                                                                                       |
 
-Navigation app values include `environments`: stage/production tier, name, sources, order,
-deploy key status and offers, bounded jobs with state, evidence and version handles, environment
-birth, and production release standing. Decode with `HqNavigationApp` / `HqNavigationEnvironment`.
-App `can.add_stage` and `can.add_production` offer the existing create-new-environment flow:
-HQ requires project-creation capability (or a structure writer), then evaluates the existing
-`attach` rule with held `none` for the prospective creator-owned project and the application's
-real projects. This prospective offer is never used as write evidence. A live stage or devstage
-occupies the stage slot, and a live production occupies production; missing Zerops projects free
-the slot. Occupied slots refuse `slot_taken`, including for a writer; replacing remains a separate
-write. Environment `project:<id>.can.finish` independently gives the existing attach decision for
-that held project, its stage/production tier and its application's current projects. It is present
-even when no environment declaration has been saved yet; a half-made stage occupying the slot can
-therefore refuse `add_stage` while allowing an OWNER/ADMIN to finish. This is permission to finish,
-not a claim that setup is incomplete; key status and presses retain their own facts. Devstage uses
-the stage attach target. Writes still authorize the actual project against fresh Zerops facts.
-The existing per-person `read_change` filter applies: environments are `{ refused: reason }` when
-that person cannot read application changes. Navigation carries no application release catalog,
-recipes, repositories or move destinations; those remain app detail.
-
-Each navigation app carries `releaseOffer`: the recorded recipe head, suggested version, a bounded
-summary of changes production has not received, the recipient's release decision and any release
-in flight. `null` means not read yet; `{ refused: reason }` withholds it from a person without
-`read_change`. HQ reuses the release writer's production recipe interpretation, recorded repository
-heads and retained live deploy evidence. It shares candidates across people, filters at delivery,
-and revises only affected app values after head, release or deploy changes. Reading candidates runs
-outside the navigation baseline lock; menu and project pages demand no app-detail scope for an
-offer. Service entries and comparisons load when review opens, and the write still checks current
-permission and heads.
-
-Each navigation app also carries `changes`, its compact open menu rows (`HqNavigationChange`):
-repo, number, title, mateProjectId, state `open`, updatedAt, mergeability, ready and hasHead.
-Repository supplies the code/recipe label and link, Mate identity groups the row and supplies its
-author from navigation projects, updatedAt orders rows, mergeability drives the mark, and ready
-controls Review alongside the Mate's existing activity facts. hasHead preserves the provider's
-first-push filter without transferring a commit SHA. Descriptions, comments, commit contents and
-settled changes remain in app-detail/change/discussion scopes. A complete authorized read with no
-open changes is `[]`; a person without `read_change` receives `{ refused: reason }`.
-Navigation never subscribes to or hydrates application detail to obtain these rows.
-`scope-error` retains its `code`, reason and disposition on the wire for worded refusals.
-
 `HqNavigationPress` retains `heldForMs`, HQ's remaining hold duration at the read, along with
 `until`, kind, optional appId and importProcessId. The client can present elapsed time from the
 received duration; a clock or transport silence never decides whether the press succeeded or ended.
@@ -125,47 +85,10 @@ import or service binding change allows another read and retains prior usable ev
 new read cannot answer. Unchanged
 input, reconnect and elapsed time repeat no read, including a definitive refusal. Unknown evidence
 can be resolved by the existing Finish setup action or a changed record/import input. Setup facts
-travel only in navigation; clients never demand variables for menu rows, Finish setup or the
+travel only in navigation; clients never demand variables for Finish setup or the
 web connection gate. Container flag/variable surfaces keep their own declared detail demand.
 The unreleased native client has no HQ navigation link yet; its explicit on-open close-off check
-retains the existing sampled marker read until that client observes HQ. It performs no menu demand.
-
-Project `person` facts are already computed for the recipient: role, mayWrite, mine, ownerUserId,
-waitsOnViewer and unseen. `ownerUserId` resolves the project's OWNER to a person; when there is no OWNER grant, it uses the
-current or last Claude signer, then Codex; null when none can be resolved. `mine` compares that
-owner to the viewer. `waitsOnViewer` compares the preferred agent signer to the viewer independently
-of OWNER, using the currently signed-in Claude then Codex person. Each project carries two maps,
-keyed by login/agent ID (including custom agents and other logins): `signedInNow` holds the current
-person only while the credential is present and is not an API token; `everSignedIn` holds the
-latest known person from current sign-in, last sign-in, then saved history. An empty historical map
-means HQ knows of no person having signed in yet. Saved or last signers never imply a current login.
-Both maps and signer-derived facts are supplied only to people who may observe the Mate; other
-readers get empty maps and false waitsOnViewer. Saved signers are not duplicated inside `mate`.
-Token identities are excluded. Referenced people carry `avatarUrl` (null when absent), decoded from
-Zerops member `user.avatar.smallAvatarUrl`, falling back to `externalAvatarUrl`.
-A changed overview updates only that project's facts and referenced person values, without
-re-reading structure, roles, recipes or environments. Unseen is null
-until source attention proves result identities and the person may observe the Mate. `seen` takes
-`projectId` and result IDs (attention result `turnId`); HQ accepts only currently published IDs,
-stores acknowledgement by person/project/result, and updates only that person's navigation.
-Acknowledgements survive Core restart. Each delivery batches uncached coverage for its observed
-projects into one person-filtered SQL read; a targeted update reads only its affected project.
-Coverage is cached by person/project and guarded against forget epochs and concurrent acknowledgements.
-Acknowledgements are deleted on forgetting a Mate. A synchronous epoch
-fences the per-person cache so a recreated Mate cannot inherit an old result acknowledgement. A missing source attention report does not mean zero unseen.
-
-Send `move-offers` with `requestId` and `projectId` when the move dialog opens. The correlated reply
-is `move-offers` with `moveTo`, or `move-offers-error`. Destination enumeration runs only on request;
-the eventual write still checks current permissions.
-
-Send `handover-candidates` with `requestId` and `projectId` when the handover opens. HQ checks
-that the requester is an ACTIVE person with org OWNER/ADMIN role and may observe that Mate,
-before returning every ACTIVE org person with userId, clientUserId, name and nullable avatarUrl.
-Project access alone is insufficient; other requesters receive a `refused` error without candidates.
-Invited/suspended members and integration tokens are excluded. Replies are
-`HqHandoverCandidatesMessage` with `candidates`, or
-`HqHandoverCandidatesError` with `refused` / `transient`. The reply is correlated and delivered
-only to the requesting connection; candidate enumeration is not part of navigation.
+retains the existing sampled marker read until that client observes HQ.
 
 Send `{type:"compare", requestId, appId, repo, base?, head}` for an on-demand repository
 comparison. `repo` keeps the repository name; `base` and `head` are full commit SHAs. Omitting
@@ -234,13 +157,6 @@ and unresolved ends are delivered as values; unresolved evidence names the perso
 action. Omission never deletes a retained operation. Future explicit removals should extend the
 reader result. Isolated scope tests may replace the reader; an unbound reader refuses
 `unsupported` / `operation_reader_not_installed` rather than manufacturing an empty result.
-
-`Changes.navigation` reads every open menu row in one compact SQL query, without bodies,
-comment counts, git, recipes, repositories or releases. The scope hub shares that source across
-people and checks `read_change` at delivery. Change events compare shared per-app fingerprints
-and revise only changed app values, preserving other navigation facts. The source generation
-fences an in-flight baseline; permission changes fence delivery. Closing or merging a change
-replaces that application's complete open-row list. An unchanged event transfers no values.
 
 The production Core composition is shared by the running-Core harness. The retired
 `test/harness/coreWithDeployTimings.ts` remains deleted. Both distinct `0046_*.sql` migrations
