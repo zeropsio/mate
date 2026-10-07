@@ -28,6 +28,8 @@ const Counts = Schema.Struct({
 const Claude = Schema.Struct({
   type: Schema.Literal("assistant"),
   sessionId: Schema.String,
+  /** A sub-agent's records carry its own id beside the parent's `sessionId`. */
+  agentId: Schema.optionalKey(Schema.String),
   requestId: Schema.optionalKey(Schema.String),
   timestamp: Schema.optionalKey(Schema.String),
   message: Schema.Struct({
@@ -46,6 +48,12 @@ const Meta = Schema.Struct({
   forked_from_id: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(Schema.Unknown),
 });
+const SpawnedSource = Schema.Struct({
+  subagent: Schema.Struct({
+    thread_spawn: Schema.Struct({ parent_thread_id: Schema.String }),
+  }),
+});
+const decodeSpawned = Schema.decodeUnknownOption(SpawnedSource);
 const Context = Schema.Struct({
   model: Schema.optionalKey(Schema.String),
   turn_id: Schema.optionalKey(Schema.String),
@@ -94,6 +102,10 @@ export const CodexMeterState = Schema.Struct({
   counterReset: Schema.optionalKey(Schema.Boolean),
   since: Schema.NullOr(Schema.String),
   baseline: Schema.optionalKey(CounterBaseline),
+  /** The native session a fork or a spawned child came from. */
+  parent: Schema.optionalKey(Schema.String),
+  /** While set, token counts are the parent's history copied in at this instant. */
+  copiedAt: Schema.optionalKey(Schema.String),
 });
 export type CodexMeterState = {
   -readonly [K in keyof typeof CodexMeterState.Type]: (typeof CodexMeterState.Type)[K];
@@ -107,7 +119,17 @@ export const initialMeterState = (): CodexMeterState => ({
   counterReset: false,
   since: null,
 });
-const common = (native: unknown, sessionId: string, provider: "claude" | "codex") => {
+/**
+ * A forked or spawned rollout opens with its parent's history copied in, re-stamped to the fork
+ * instant within milliseconds; a genuine count follows a model turn, seconds later.
+ */
+const COPY_BURST_MS = 1000;
+const common = (
+  native: unknown,
+  sessionId: string,
+  provider: "claude" | "codex",
+  parent: string | undefined,
+) => {
   const id = usageDigest([provider, native]);
   return {
     factId: id,
@@ -117,7 +139,8 @@ const common = (native: unknown, sessionId: string, provider: "claude" | "codex"
     nativeCost: null,
     sessionId: usageDigest([provider, sessionId]),
     runId: null,
-    parentId: null,
+    // The native parent session, hashed as its own `sessionId`, so HQ can nest the two.
+    parentId: parent === undefined ? null : usageDigest([provider, parent]),
     meterVersion: `${provider}-transcript-v1`,
     state: "provisional" as const,
   };
@@ -188,7 +211,9 @@ export function meterLine(
         ? { gap: mixed ? "claude-mixed-cache-duration" : "claude-cache-duration-unavailable" }
         : {}),
       fact: {
-        ...common([row.message.id], row.sessionId, provider),
+        ...(row.agentId
+          ? common([row.message.id], row.agentId, provider, row.sessionId)
+          : common([row.message.id], row.sessionId, provider, undefined)),
         model: row.message.model || null,
         components,
         time: time(row.timestamp),
@@ -203,27 +228,24 @@ export function meterLine(
   if (row.type === "session_meta") {
     const meta = decodeMeta(row.payload);
     if (Option.isNone(meta)) return { gap: "codex-missing-native-identity" };
-    const inherited = meta.value.forked_from_id !== undefined || isChildSource(meta.value.source);
+    const spawned = decodeSpawned(meta.value.source);
+    const parent =
+      meta.value.forked_from_id ??
+      (Option.isSome(spawned) ? spawned.value.subagent.thread_spawn.parent_thread_id : undefined);
     if (state.sessionId) {
-      if (state.sessionId !== meta.value.id) {
-        state.fork = true;
-        return { gap: "codex-session-changed" };
-      }
-      if (state.fork !== inherited) {
-        state.fork = true;
-        return { gap: "codex-incomparable-session-lineage" };
-      }
-      return {};
+      // Only the first meta describes this rollout; a fork repeats its ancestors' after it.
+      if (state.sessionId === meta.value.id || state.parent !== undefined) return {};
+      state.fork = true;
+      return { gap: "codex-session-changed" };
     }
     state.sessionId = meta.value.id;
-    state.fork = inherited;
     const at = time(row.timestamp);
     state.since = at.kind === "instant" ? at.at : null;
-    return isChildSource(meta.value.source)
-      ? { gap: "codex-child-overlap-unproved" }
-      : state.fork
-        ? { gap: "codex-inherited-history" }
-        : {};
+    if (parent !== undefined) state.parent = parent;
+    if (parent !== undefined || isChildSource(meta.value.source)) {
+      if (at.kind === "instant") state.copiedAt = at.at;
+    }
+    return {};
   }
   if (row.type === "turn_context") {
     const context = decodeContext(row.payload);
@@ -249,7 +271,13 @@ export function meterLine(
     return { gap: "codex-unproved-counter-reset" };
   }
   const at = time(row.timestamp);
-  if (before(at, floor)) {
+  const copied =
+    state.copiedAt !== undefined &&
+    at.kind === "instant" &&
+    Date.parse(at.at) - Date.parse(state.copiedAt) < COPY_BURST_MS;
+  if (copied && at.kind === "instant") state.copiedAt = at.at;
+  else delete state.copiedAt;
+  if (copied || before(at, floor)) {
     // What the session had used when capture began; its later totals count from here.
     state.baseline = Object.fromEntries(
       COUNTER_FIELDS.flatMap((field) =>
@@ -300,7 +328,7 @@ export function meterLine(
       : { kind: "undated" };
   return {
     fact: {
-      ...common([state.sessionId, "session-counter"], state.sessionId, provider),
+      ...common([state.sessionId, "session-counter"], state.sessionId, provider, state.parent),
       model: state.mixedModels ? null : state.model,
       pricingBand: "counter-pricing-approximate",
       components,

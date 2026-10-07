@@ -25,8 +25,9 @@ renews at most once; a lost `usage.sqlite` is simply a new ledger.
 Codex uses its native session identity and inclusive cumulative total as one replaceable segment.
 The first sample of a non-fork session is retained. A decrease freezes that counter pending lineage
 proof; surpassing the previous high-water later never invents a reset generation.
-A new native session is a new counter; forked history and child counters with unproved parent
-overlap stay excluded pending lineage proof. Model
+A new native session is a new counter. A fork or spawned child counts from the total its copied
+parent history ends at (the counts within 1 s of its first meta) and names that parent session as
+`parentId`, as a Claude sub-agent (`agentId`) names its parent's. Model
 switches leave model allocation unknown. Counter times remain intervals or undated, so HQ does not
 invent daily allocation. Claude cache categories retain unknown components. Reported single cache-write durations use
 HQ's standard/fast 5-minute or 1-hour bands; unknown or mixed durations remain unpriced; reasoning is never added to output twice. Neither meter declares historical completeness,

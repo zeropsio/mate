@@ -7,6 +7,7 @@ import type * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { UsageFact } from "@t3tools/contracts";
 import {
   USAGE_GENESIS_DIGEST,
+  usageDigest,
   usageEntryDigest,
   usageSnapshotDigest,
   type UsageLinkUp,
@@ -469,6 +470,26 @@ describe("Claude/Codex meters", () => {
     assert.equal(first.components.cachedInput, "20");
     assert.isNull(first.components.cacheCreation);
   });
+  it("files a Claude sub-agent's requests under its own session, nested in its parent's", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      sessionId: "s",
+      agentId: "agent-1",
+      isSidechain: true,
+      timestamp: "2026-10-07T12:00:00.000Z",
+      message: { id: "m", model: "claude", usage: { input_tokens: 1, output_tokens: 1 } },
+    });
+    const fact = meterLine("claude", line, initialMeterState()).fact!;
+    assert.equal(fact.sessionId, usageDigest(["claude", "agent-1"]));
+    assert.equal(fact.parentId, usageDigest(["claude", "s"]));
+    const main = meterLine(
+      "claude",
+      line.replace(/"agentId":"agent-1","isSidechain":true,/u, ""),
+      initialMeterState(),
+    ).fact!;
+    assert.equal(main.sessionId, usageDigest(["claude", "s"]));
+    assert.isNull(main.parentId);
+  });
   it("preserves proved fast/cache duration bands and refuses inconsistent creation totals", () => {
     const line = (usage: unknown) =>
       JSON.stringify({
@@ -594,23 +615,73 @@ describe("Claude/Codex meters", () => {
       provenance: "provider-counter-range",
     });
   });
-  it("excludes fork overlap and invalid cache subsets; keeps mixed-model counter allocation unknown", () => {
+  it("counts a Codex fork's and child's own usage under their parent session, never the history they copied", () => {
     const fork = initialMeterState();
-    meterLine("codex", codexLine("session_meta", { id: "fork", forked_from_id: "parent" }), fork);
-    assert.isUndefined(meterLine("codex", cumulative(120), fork).fact);
-    const child = initialMeterState();
-    assert.equal(
-      meterLine(
-        "codex",
-        codexLine("session_meta", {
-          id: "child",
-          source: { subagent: { parent_thread_id: "parent" } },
-        }),
-        child,
-      ).gap,
-      "codex-child-overlap-unproved",
+    meterLine(
+      "codex",
+      codexLine(
+        "session_meta",
+        { id: "fork", forked_from_id: "parent" },
+        "2026-10-07T12:00:00.000Z",
+      ),
+      fork,
     );
-    assert.isUndefined(meterLine("codex", cumulative(120), child).fact);
+    // The parent's history is copied in at the fork instant, then the ancestors' metas.
+    meterLine(
+      "codex",
+      codexLine("session_meta", { id: "parent" }, "2026-10-07T12:00:00.010Z"),
+      fork,
+    );
+    const copied = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1000,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1000,
+          },
+        },
+      },
+      "2026-10-07T12:00:00.020Z",
+    );
+    assert.isUndefined(meterLine("codex", copied, fork).fact);
+    const own = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1300,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1300,
+          },
+        },
+      },
+      "2026-10-07T12:00:30.000Z",
+    );
+    const forked = meterLine("codex", own, fork).fact!;
+    assert.equal(forked.components.inclusiveTotal, "300");
+    assert.equal(forked.sessionId, usageDigest(["codex", "fork"]));
+    assert.equal(forked.parentId, usageDigest(["codex", "parent"]));
+    const child = initialMeterState();
+    meterLine(
+      "codex",
+      codexLine(
+        "session_meta",
+        { id: "child", source: { subagent: { thread_spawn: { parent_thread_id: "parent" } } } },
+        "2026-10-07T11:59:00.000Z",
+      ),
+      child,
+    );
+    const spawned = meterLine("codex", cumulative(120), child).fact!;
+    assert.equal(spawned.components.inclusiveTotal, "120");
+    assert.equal(spawned.parentId, usageDigest(["codex", "parent"]));
+  });
+  it("refuses invalid cache subsets; keeps mixed-model counter allocation unknown", () => {
     const early = initialMeterState();
     meterLine("codex", codexLine("session_meta", { id: "early" }), early);
     meterLine("codex", codexLine("turn_context", { model: "a" }), early);
