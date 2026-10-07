@@ -84,6 +84,11 @@
  *   Claude emits it from Claude Code's `tool_use_meta`, in an update once
  *   its assistant frame names the call and on every step after; the other
  *   drivers do not yet. Additive.
+ * - 2.8 (2026-10-07): an item's `status` gains `stopped` — the call was
+ *   cancelled before it ran to an answer (Claude's `tool_result_meta`
+ *   `non_execution_kind: "cancelled"`), told apart from a call that failed
+ *   or that the person declined. Claude emits it, the other drivers do not
+ *   yet. Additive.
  *
  * @module providerRuntimeSpi
  */
@@ -97,7 +102,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.7";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.8";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

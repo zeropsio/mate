@@ -2047,6 +2047,24 @@ function toolResultBlocksFromUserMessage(message: SDKMessage): Array<{
   return blocks;
 }
 
+/**
+ * Claude's own word for a result that is no execution (`tool_result_meta`, not
+ * yet in the SDK's message type): `cancelled` when the call was stopped before
+ * it ran, which its error text alone cannot tell apart from a refusal.
+ */
+function toolNonExecutionKind(message: SDKMessage, toolUseId: string): string | undefined {
+  const meta = (message as { readonly tool_result_meta?: unknown }).tool_result_meta;
+  if (!Array.isArray(meta)) return undefined;
+  const entry: unknown = meta.find(
+    (candidate: unknown) =>
+      typeof candidate === "object" &&
+      candidate !== null &&
+      (candidate as { readonly id?: unknown }).id === toolUseId,
+  );
+  const kind = (entry as { readonly non_execution_kind?: unknown } | undefined)?.non_execution_kind;
+  return typeof kind === "string" ? kind : undefined;
+}
+
 function toSessionError(
   threadId: ThreadId,
   cause: unknown,
@@ -3503,7 +3521,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
 
       const [index, tool] = toolEntry;
-      const itemStatus = toolResult.isError ? "failed" : "completed";
+      const cancelled = toolNonExecutionKind(message, toolResult.toolUseId) === "cancelled";
+      const itemStatus = cancelled ? "stopped" : toolResult.isError ? "failed" : "completed";
       const toolUseResult = readClaudeToolUseResult(message);
       const toolData = {
         toolName: tool.toolName,
@@ -3524,7 +3543,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           itemId: asRuntimeItemId(tool.itemId),
           payload: {
             itemType: tool.itemType,
-            status: toolResult.isError ? "failed" : "inProgress",
+            status: cancelled ? "stopped" : toolResult.isError ? "failed" : "inProgress",
             title: tool.title,
             ...(tool.detail ? { detail: tool.detail } : {}),
             ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),

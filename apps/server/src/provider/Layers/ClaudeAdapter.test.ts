@@ -2064,6 +2064,93 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // The same error text can describe a cancellation or a real refusal: each
+  // result reads its own native metadata, never the text.
+  it.effect.each([
+    { kind: "cancelled", status: "stopped" },
+    { kind: "denied", status: "failed" },
+    { kind: undefined, status: "failed" },
+  ] as const)("a call Claude cancelled ends stopped, not failed ($kind)", ({ kind, status }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "hello", attachments: [] });
+      for (const [index, id, command] of [
+        [1, "tool-error", "make"],
+        [2, "tool-ok", "ls"],
+      ] as const) {
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-non-execution",
+          uuid: `stream-${id}`,
+          parent_tool_use_id: null,
+          event: {
+            type: "content_block_start",
+            index,
+            content_block: { type: "tool_use", id, name: "Bash", input: { command } },
+          },
+        } as unknown as SDKMessage);
+      }
+      harness.query.emit({
+        type: "user",
+        session_id: "sdk-session-non-execution",
+        uuid: "user-tool-results",
+        parent_tool_use_id: null,
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "tool-error",
+              is_error: true,
+              content: "STOP and wait for the user.",
+            },
+            { type: "tool_result", tool_use_id: "tool-ok", is_error: false, content: "OK" },
+          ],
+        },
+        ...(kind === undefined
+          ? {}
+          : {
+              tool_result_meta: [
+                { id: "tool-error", non_execution_kind: kind },
+                { id: "tool-ok", non_execution_kind: null },
+              ],
+            }),
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-non-execution",
+        uuid: "result-non-execution",
+      } as unknown as SDKMessage);
+
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const completedStatus = (itemId: string) =>
+        events.flatMap((event) =>
+          event.type === "item.completed" && String(event.itemId) === itemId
+            ? [event.payload.status]
+            : [],
+        );
+      assert.deepEqual(completedStatus("tool-error"), [status]);
+      assert.deepEqual(completedStatus("tool-ok"), ["completed"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("backfills Claude thinking summaries from assistant snapshots", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

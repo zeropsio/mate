@@ -77,7 +77,14 @@ export type RuntimeTurnState = typeof RuntimeTurnState.Type;
 const RuntimePlanStepStatus = Schema.Literals(["pending", "inProgress", "completed"]);
 export type RuntimePlanStepStatus = typeof RuntimePlanStepStatus.Type;
 
-const RuntimeItemStatus = Schema.Literals(["inProgress", "completed", "failed", "declined"]);
+/** `stopped`: the call was cancelled before it ran to an answer — no result, no failure. */
+const RuntimeItemStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+  "stopped",
+]);
 export type RuntimeItemStatus = typeof RuntimeItemStatus.Type;
 
 const RuntimeContentStreamKind = Schema.Literals([
