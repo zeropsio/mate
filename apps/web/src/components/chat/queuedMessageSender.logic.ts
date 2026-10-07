@@ -9,9 +9,10 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import type { SentAsk, makeSendTurnReceipts } from "@t3tools/client-runtime/data";
 import type { ChatAttachment, UploadChatAttachment } from "@t3tools/contracts";
 import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/userAsk";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 
 import type { ComposerImageAttachment, ComposerSendIds } from "../../composerDraftStore";
 import type { ComposerFileAttachment } from "../../lib/composerFiles";
@@ -110,6 +111,33 @@ export function backgroundQueuedMessageDue(input: {
   });
 }
 
+/** The account's turn receipts (`sentAsk.ts`) as a sender uses them. */
+export type TurnSendReceipts = Pick<
+  ReturnType<typeof makeSendTurnReceipts>,
+  "requested" | "accepted" | "failed"
+>;
+
+/**
+ * What a turn send records in the account's turn receipts: the words the person typed, for a send
+ * that starts a turn with words — never a slash command, never a send of pictures alone. The open
+ * conversation and the root sender both record through it, so one message makes the same
+ * `mate-send-turn` operation wherever it leaves.
+ */
+export function turnSendAsk(input: {
+  readonly trimmedPrompt: string;
+  readonly messageId: string;
+  readonly threadId: string;
+  readonly at: string;
+}): SentAsk | null {
+  if (input.trimmedPrompt.length === 0 || isSlashCommand(input.trimmedPrompt)) return null;
+  return {
+    messageId: input.messageId,
+    threadId: input.threadId,
+    text: input.trimmedPrompt,
+    at: input.at,
+  };
+}
+
 /** What the root sender needs to send a queued message without its conversation's view. */
 export interface BackgroundQueuedSendDeps {
   /** The thread as it is now; read again after every wait. */
@@ -143,6 +171,8 @@ export interface BackgroundQueuedSendDeps {
   readonly startTurn: (input: StartThreadTurnInput) => Promise<AtomCommandResult<unknown, unknown>>;
   readonly sendCrew: (input: CrewMessageCommand) => Promise<AtomCommandResult<unknown, unknown>>;
   readonly mintIds: () => ComposerSendIds;
+  /** The account's turn receipts; `null` outside an account, where the open view records none. */
+  readonly receipts: TurnSendReceipts | null;
 }
 
 const failureOf = (result: AtomCommandResult<unknown, unknown>): QueuedSendFailure =>
@@ -169,7 +199,7 @@ export async function sendQueuedMessageInBackground(
   if (message === undefined || settings === undefined || thread === null) return;
 
   const files = message.files ?? [];
-  const { sendableTerminalContexts, hasSendableContent } = deriveComposerSendState({
+  const { trimmedPrompt, sendableTerminalContexts, hasSendableContent } = deriveComposerSendState({
     prompt: message.prompt,
     imageCount: message.images.length + files.length,
     terminalContexts: message.terminalContexts,
@@ -285,6 +315,10 @@ export async function sendQueuedMessageInBackground(
   // message was queued with are saved first.
   const createdAt = new Date().toISOString();
   const threadId = current.id;
+  // Recorded where the open conversation records its own send: words, never a crew message.
+  const environmentId = current.environmentId;
+  const ask = turnSendAsk({ trimmedPrompt, messageId: ids.messageId, threadId, at: createdAt });
+  if (ask !== null) deps.receipts?.requested(environmentId, ask);
   const modelChanged =
     settings.modelSelection.instanceId !== current.modelSelection.instanceId ||
     settings.modelSelection.model !== current.modelSelection.model ||
@@ -307,6 +341,7 @@ export async function sendQueuedMessageInBackground(
   for (const step of steps) {
     const result = await step();
     if (result._tag === "Failure") {
+      deps.receipts?.failed(environmentId, ids.messageId, false);
       abort(failureOf(result));
       return;
     }
@@ -323,8 +358,10 @@ export async function sendQueuedMessageInBackground(
     createdAt,
   });
   if (result._tag === "Failure") {
+    deps.receipts?.failed(environmentId, ids.messageId, true);
     abort(failureOf(result));
     return;
   }
+  deps.receipts?.accepted(environmentId, ids.messageId);
   deps.uploads.release(message.images, files);
 }

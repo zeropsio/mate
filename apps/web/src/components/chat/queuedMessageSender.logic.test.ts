@@ -8,8 +8,9 @@ import {
   TurnId,
   type ModelSelection,
 } from "@t3tools/contracts";
+import { makeAccountStore, makeSendTurnReceipts } from "@t3tools/client-runtime/data";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -23,6 +24,7 @@ import type { Thread } from "../../types";
 import {
   backgroundQueuedMessageDue,
   sendQueuedMessageInBackground,
+  turnSendAsk,
   type BackgroundQueuedSendDeps,
 } from "./queuedMessageSender.logic";
 
@@ -139,6 +141,7 @@ function makeDeps(
       commandId: CommandId.make("command-1"),
       messageId: MessageId.make("message-1"),
     }),
+    receipts: null,
     ...overrides,
   };
 }
@@ -471,5 +474,120 @@ describe("sendQueuedMessageInBackground", () => {
 
     expect(deps.startTurn).not.toHaveBeenCalled();
     expect(queued()).toEqual([]);
+  });
+});
+
+describe("a queued message's send receipt", () => {
+  beforeEach(() => {
+    useQueuedMessageStore.setState({
+      queuesByThreadKey: {},
+      drainGenerationByThreadKey: {},
+      openThreadKeys: {},
+      queuedSendByThreadKey: {},
+    });
+  });
+
+  const accountReceipts = () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const receipts = makeSendTurnReceipts(store, registry);
+    const operations = () =>
+      [...store.state().operations.values()].map((record) => ({
+        requestId: record.requestId,
+        intent: { ...record.intent, at: "sent" },
+        submission: record.submission,
+        outcome: record.receipt?.outcome.kind ?? null,
+        nextAction: record.unresolved?.nextAction ?? null,
+      }));
+    return { receipts, operations };
+  };
+
+  /** The open conversation's send of the same message, as `ChatView` records it. */
+  const sentFromOpenView = (prompt: string, outcome: "accepted" | "refused") => {
+    const account = accountReceipts();
+    const ask = turnSendAsk({
+      trimmedPrompt: prompt.trim(),
+      messageId: "message-1",
+      threadId,
+      at: now,
+    });
+    if (ask !== null) account.receipts.requested(environmentId, ask);
+    if (outcome === "accepted") account.receipts.accepted(environmentId, "message-1");
+    else account.receipts.failed(environmentId, "message-1", true);
+    return account.operations();
+  };
+
+  it.each([
+    ["accepted", ok],
+    [
+      "refused",
+      () => Promise.resolve(AsyncResult.failure(Cause.fail(new Error("The agent is signed out.")))),
+    ],
+  ] as const)(
+    "the root sender records the same send operation as the open conversation (%s)",
+    async (outcome, startTurn) => {
+      const message = queue("run the tests");
+      const account = accountReceipts();
+      const deps = makeDeps(endedThread, { receipts: account.receipts, startTurn });
+
+      await sendQueuedMessageInBackground(threadKey, message.id, deps);
+
+      expect(account.operations()).toEqual(sentFromOpenView("run the tests", outcome));
+      expect(account.operations()).toEqual([
+        expect.objectContaining({
+          intent: expect.objectContaining({
+            kind: "mate-send-turn",
+            environmentId,
+            messageId: "message-1",
+            threadId,
+            text: "run the tests",
+          }),
+        }),
+      ]);
+    },
+  );
+
+  it("a send that never reached the turn says it was not sent, and starts no turn", async () => {
+    const message = queue("plan it", { sendSettings: { ...settings, interactionMode: "plan" } });
+    const account = accountReceipts();
+    const deps = makeDeps(endedThread, {
+      receipts: account.receipts,
+      setInteractionMode: () => Promise.resolve(AsyncResult.failure(Cause.fail(new Error("no")))),
+    });
+
+    await sendQueuedMessageInBackground(threadKey, message.id, deps);
+
+    expect(deps.startTurn).not.toHaveBeenCalled();
+    expect(account.operations()).toEqual([
+      expect.objectContaining({ submission: "unsent", outcome: null }),
+    ]);
+  });
+
+  it("a crewmate's message records no turn send, as in its open conversation", async () => {
+    const message = queue("@lead check this");
+    const crewThread = makeThread({
+      ...endedThread,
+      crew: { crew: "crew-1", crewmate: "reviewer" },
+    } as Partial<Thread>);
+    const account = accountReceipts();
+
+    await sendQueuedMessageInBackground(
+      threadKey,
+      message.id,
+      makeDeps(crewThread, { receipts: account.receipts }),
+    );
+
+    expect(account.operations()).toEqual([]);
+  });
+});
+
+describe("turnSendAsk", () => {
+  it.each([
+    ["words", "run the tests", "run the tests"],
+    ["a slash command", "/compact", null],
+    ["no words", "", null],
+  ])("records %s as %j", (_label, prompt, text) => {
+    const ask = turnSendAsk({ trimmedPrompt: prompt, messageId: "m", threadId: "t", at: now });
+    expect(ask?.text ?? null).toBe(text);
   });
 });

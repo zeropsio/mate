@@ -19,6 +19,7 @@ import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useMateCommand } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
+import { useSendTurnReceipts } from "../zerops/sentAsk";
 import { readFileAsDataUrl } from "./ChatView.logic";
 import {
   backgroundQueuedMessageDue,
@@ -73,6 +74,7 @@ function ThreadQueueSenderFor({
   });
   const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const sendCrew = useAtomCommand(crewCommands.command, { reportFailure: false });
+  const receipts = useSendTurnReceipts();
 
   const supportsAttachmentUploads =
     environment?.serverConfig?.environment.capabilities.attachmentUploads === true;
@@ -101,9 +103,11 @@ function ThreadQueueSenderFor({
       startTurn: (input) => startTurn({ environmentId, input }),
       sendCrew: (input) => sendCrew({ environmentId, input }),
       mintIds: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
+      receipts,
     }),
     [
       environmentId,
+      receipts,
       sendCrew,
       setInteractionMode,
       setRuntimeMode,

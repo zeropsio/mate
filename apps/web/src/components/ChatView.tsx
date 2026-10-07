@@ -202,7 +202,7 @@ import { crewRunsOn } from "./zerops/crew/CrewEditors.logic";
 import { crewChatNotices } from "./zerops/crew/crewChatNotices";
 import { crewChatEntries } from "./zerops/crew/crewChatSeams";
 import { crewComposerMentions, crewMessageCommand } from "./zerops/crew/crewComposerSend";
-import { queuedSendAwaitsServer } from "./chat/queuedMessageSender.logic";
+import { queuedSendAwaitsServer, turnSendAsk } from "./chat/queuedMessageSender.logic";
 import {
   crewMessagePlaceholder,
   crewRunsOnWord,
@@ -7031,16 +7031,16 @@ export default function ChatView(props: ChatViewProps) {
         }),
       );
     }
+    // The menu's row says what went until the conversation does (`sentAsk.ts`); a queued message
+    // records the same operation here as when the root sender sends it.
+    const sentAsk = turnSendAsk({
+      trimmedPrompt: trimmed,
+      messageId: messageIdForSend,
+      threadId: threadIdForSend,
+      at: messageCreatedAt,
+    });
+    if (sentAsk !== null) sendTurnReceipts?.requested(environmentId, sentAsk);
     if (!queuedMessage) {
-      // The menu's row says what went until the conversation does (`sentAsk.ts`).
-      if (trimmed.length > 0 && !isSlashCommand(trimmed)) {
-        sendTurnReceipts?.requested(environmentId, {
-          messageId: messageIdForSend,
-          threadId: threadIdForSend,
-          text: trimmed,
-          at: messageCreatedAt,
-        });
-      }
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
