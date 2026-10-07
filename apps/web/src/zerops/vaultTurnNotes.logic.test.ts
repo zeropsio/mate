@@ -2,6 +2,7 @@ import type { VaultChange } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  heldWrites,
   vaultChangeIdOf,
   vaultChipLabel,
   vaultChipsOnlyText,
@@ -113,5 +114,46 @@ describe("vaultChipsOnlyText", () => {
         }),
       ]),
     ).toBe("I updated the vault: STRIPE_KEY, LOG_LEVEL.");
+  });
+});
+
+describe("heldWrites", () => {
+  const held = (...changes: ReadonlyArray<VaultChange>) =>
+    changes.reduce<ReadonlyArray<VaultChange>>(heldWrites, []).map(vaultChipLabel);
+  it.each([
+    {
+      name: "a value added and removed before it is told is no news",
+      changes: [
+        change("TMP", "added", "2026-10-07T10:00:00Z"),
+        change("TMP", "removed", "2026-10-07T10:01:00Z"),
+      ],
+      told: [],
+    },
+    {
+      name: "a value changed then removed is told as removed",
+      changes: [
+        change("OLD", "changed", "2026-10-07T10:00:00Z"),
+        change("OLD", "removed", "2026-10-07T10:01:00Z"),
+      ],
+      told: ["OLD removed"],
+    },
+    {
+      name: "a value added then changed is told as added",
+      changes: [
+        change("NEW", "added", "2026-10-07T10:00:00Z"),
+        change("NEW", "changed", "2026-10-07T10:01:00Z"),
+      ],
+      told: ["NEW added"],
+    },
+    {
+      name: "other values stay",
+      changes: [
+        change("A", "added", "2026-10-07T10:00:00Z"),
+        change("B", "changed", "2026-10-07T10:01:00Z"),
+      ],
+      told: ["A added", "B changed"],
+    },
+  ])("$name", ({ changes, told }) => {
+    expect(held(...changes)).toEqual(told);
   });
 });

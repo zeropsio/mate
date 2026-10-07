@@ -45,6 +45,23 @@ export function vaultTurnChanges(input: {
     );
 }
 
+/**
+ * The person's writes still to tell once one more is made: one per value. A value added and removed
+ * before it was told is no news at all; one added and then changed is still news of its adding.
+ */
+export function heldWrites(
+  held: ReadonlyArray<VaultChange>,
+  change: VaultChange,
+): ReadonlyArray<VaultChange> {
+  const id = vaultValueIdOf(change);
+  const before = held.find((each) => vaultValueIdOf(each) === id);
+  const rest = held.filter((each) => vaultValueIdOf(each) !== id);
+  if (before?.kind === "added" && change.kind === "removed") return rest;
+  if (before?.kind === "added" && change.kind === "changed")
+    return [...rest, { ...change, kind: "added" }];
+  return [...rest, change];
+}
+
 const VERB: Readonly<Record<VaultChange["kind"], string>> = {
   added: "added",
   changed: "changed",

@@ -21,7 +21,12 @@ import { create } from "zustand";
 
 import { useDetailDemand } from "./ZeropsAccountData";
 import { useZeropsEnvironmentProject } from "./useZeropsEnvironmentProject";
-import { vaultChangeIdOf, vaultTurnChanges, vaultValueIdOf } from "./vaultTurnNotes.logic";
+import {
+  heldWrites,
+  vaultChangeIdOf,
+  vaultTurnChanges,
+  vaultValueIdOf,
+} from "./vaultTurnNotes.logic";
 
 interface VaultTurnState {
   /** This client's writes not yet told, by project. */
@@ -39,15 +44,7 @@ const UNREAD = Atom.make(NOT_READ_VAULT);
 /** A write the person made to a project's vault from here: told with the next message. */
 export function recordVaultWrite(projectId: string, change: VaultChange): void {
   useVaultTurnStore.setState((state) => ({
-    own: {
-      ...state.own,
-      [projectId]: [
-        ...(state.own[projectId] ?? NO_CHANGES).filter(
-          (held) => vaultValueIdOf(held) !== vaultValueIdOf(change),
-        ),
-        change,
-      ],
-    },
+    own: { ...state.own, [projectId]: heldWrites(state.own[projectId] ?? NO_CHANGES, change) },
   }));
 }
 
