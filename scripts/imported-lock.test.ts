@@ -288,6 +288,97 @@ it.layer(NodeServices.layer)("imported-lock: checkImportedLock", (it) => {
   );
 });
 
+// The Import zone may carry one recorded transform over upstream's tree until the next
+// re-import (2026-10-07: Effect 4.0.1's import paths). The check reproduces it, so any edit
+// beyond the transform still fails, even one the lock's own tree OIDs were updated to hide.
+it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
+  const upstreamSource =
+    'import { HttpClient } from "effect/unstable/http";\nexport const a = 1;\n';
+  const transformedSource = 'import { HttpClient } from "effect/http";\nexport const a = 1;\n';
+
+  const lockFor = Effect.fn("test.lockFor")(function* (repoDir: string) {
+    const upstream = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+    const upstreamOids = yield* resolveTreeOids(upstream.repoDir, "HEAD", ["pkg-a"]);
+    const headOids = yield* resolveTreeOids(repoDir, "HEAD", ["pkg-a"]);
+    return {
+      upstream: "deadbeef",
+      paths: headOids,
+      transform: {
+        name: "effect-401" as const,
+        script: "scripts/effect-401-codemod.ts --import-zone",
+        since: "2026-10-07",
+        until: "the next re-import",
+        upstreamPaths: upstreamOids,
+      },
+    };
+  });
+
+  it.effect("passes when the path is exactly the transform of upstream's tree", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": transformedSource });
+        const lockPath = path.join(fixture.repoDir, "imported.lock");
+        yield* writeImportedLockFile(lockPath, yield* lockFor(fixture.repoDir));
+
+        assert.deepStrictEqual(yield* checkImportedLock(fixture.repoDir, lockPath), []);
+      }),
+    ),
+  );
+
+  it.effect("fails on an edit beyond the transform, even one the lock's tree OIDs record", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fixture = yield* makeFixtureRepo({
+          "pkg-a/index.ts": `${transformedSource}export const b = 2;\n`,
+        });
+        const lockPath = path.join(fixture.repoDir, "imported.lock");
+        const lock = yield* lockFor(fixture.repoDir);
+        yield* writeImportedLockFile(lockPath, lock);
+
+        const mismatches = yield* checkImportedLock(fixture.repoDir, lockPath);
+
+        assert.deepStrictEqual(
+          mismatches.map((mismatch) => [mismatch.path, mismatch.expected]),
+          [["pkg-a", lock.transform.upstreamPaths["pkg-a"]!]],
+        );
+      }),
+    ),
+  );
+
+  it.effect("fails when a file was left untransformed", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+        const lockPath = path.join(fixture.repoDir, "imported.lock");
+        yield* writeImportedLockFile(lockPath, yield* lockFor(fixture.repoDir));
+
+        const mismatches = yield* checkImportedLock(fixture.repoDir, lockPath);
+
+        assert.deepStrictEqual(
+          mismatches.map((mismatch) => mismatch.path),
+          ["pkg-a"],
+        );
+      }),
+    ),
+  );
+
+  it.effect("a re-import's write ends the transform", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = yield* makeFixtureRepo({ "pkg-a/index.ts": upstreamSource });
+        yield* runGit(fixture.repoDir, ["tag", "upstream-fixture"]);
+
+        const lock = yield* writeImportedLock(fixture.repoDir, "upstream-fixture", ["pkg-a"]);
+
+        assert.isFalse("transform" in lock);
+      }),
+    ),
+  );
+});
+
 it.layer(NodeServices.layer)("imported-lock: writeImportedLock", (it) => {
   it.effect("regenerates the lock from the upstream ref when HEAD matches it", () =>
     Effect.scoped(

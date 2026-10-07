@@ -14,6 +14,8 @@ import { Command, Flag } from "effect/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
 
+import { IMPORT_TRANSFORMS, readTreeFiles, reproduce } from "./imported-lock-transform.ts";
+
 // The zone map (methodology §3): these are the standalone wire-protocol
 // packages the fork imports byte-identically from upstream. Neither imports
 // owned code (`@t3tools/*` or `apps/`) — verified 2026-08-28.
@@ -24,9 +26,21 @@ export const IMPORTED_LOCK_PATHS = [
 
 export const IMPORTED_LOCK_FILE_NAME = "imported.lock";
 
+// A transform the zone carries over upstream's tree until the next re-import, which drops it.
+// `paths` then holds HEAD's (transformed) tree OIDs and `upstreamPaths` upstream's; the check
+// restores HEAD with the transform's inverse and proves it is upstream's tree byte for byte.
+const ImportTransformSchema = Schema.Struct({
+  name: Schema.Literals(["effect-401"]),
+  script: Schema.String,
+  since: Schema.String,
+  until: Schema.String,
+  upstreamPaths: Schema.Record(Schema.String, Schema.String),
+});
+
 const ImportedLockSchema = Schema.Struct({
   upstream: Schema.String,
   paths: Schema.Record(Schema.String, Schema.String),
+  transform: Schema.optionalKey(ImportTransformSchema),
 });
 export type ImportedLock = typeof ImportedLockSchema.Type;
 
@@ -250,7 +264,25 @@ export const checkImportedLock = Effect.fn("checkImportedLock")(function* (
 ) {
   const lock = yield* readImportedLock(lockFilePath);
   const actual = yield* resolveTreeOids(cwd, "HEAD", Object.keys(lock.paths));
-  return diffOidMaps(lock.paths, actual);
+  const drift = diffOidMaps(lock.paths, actual);
+  if (lock.transform === undefined) return drift;
+  const transform = IMPORT_TRANSFORMS[lock.transform.name]!;
+  const upstreamPaths = lock.transform.upstreamPaths;
+  const notReproduced = yield* Effect.sync(() =>
+    Object.keys(upstreamPaths).flatMap((path): ReadonlyArray<OidMismatch> => {
+      const result = reproduce(path, readTreeFiles(cwd, "HEAD", path), transform);
+      if (result.restoredTree === upstreamPaths[path] && result.notReproduced.length === 0) {
+        return [];
+      }
+      const files =
+        result.notReproduced.length === 0 ? "" : ` (${result.notReproduced.join(", ")})`;
+      return [{ path, expected: upstreamPaths[path]!, actual: `${result.restoredTree}${files}` }];
+    }),
+  );
+  return [
+    ...drift,
+    ...notReproduced.filter((mismatch) => !drift.some((entry) => entry.path === mismatch.path)),
+  ];
 });
 
 /**

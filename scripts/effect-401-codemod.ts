@@ -4,6 +4,7 @@
  * Effect 4.0.0-rc.115 → 4.0.1, the way upstream's 194c73f3f did it, re-runnable on any branch.
  *
  *   node scripts/effect-401-codemod.ts [dir] [--dry-run] [--fmt] [--include-import-zone]
+ *   node scripts/effect-401-codemod.ts [repo] --import-zone   (the Import zone's recorded transform)
  *
  * Rewrites, in every source, JSON, Markdown and YAML file under `dir` (default: cwd):
  * - `effect/unstable/<area>` → `effect/<area>`, `httpapi` → `http-api` (strings, imports,
@@ -13,7 +14,9 @@
  *
  * Prints every change, then the sites it could not rewrite (hand fixes: APIs 4.0.1 removed) and
  * the sites whose meaning changed under the same name (checks). A second run changes nothing.
- * The Import zone (paths in `imported.lock`) is skipped: it is re-imported, never edited.
+ * The Import zone (paths in `imported.lock`) is skipped: it carries only `--import-zone` (the
+ * path rewrite plus upstream 194c73f3f's own 4.0.1 hunks there), recorded as imported.lock's
+ * `transform` and reproduced by its check.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -211,6 +214,92 @@ const rewriteEncoding = (text: string, changes: Array<Site>, handFixes: Array<Si
   return body.slice(0, found.index) + imports + body.slice(found.index);
 };
 
+/**
+ * Import-path mode: only `effect/unstable/<area>` → `effect/<area>`. This is the transform the
+ * Import zone carries over its upstream tree until the next re-import (imported.lock `transform`).
+ */
+export const rewriteImportPaths = (text: string): string => rewriteUnstable(text, [], []);
+
+const RESTORED = new Map([...AREAS].map(([old, next]) => [next, old]));
+const RESTORABLE = new RegExp(
+  `(?<![\\w@./-])effect/(${[...RESTORED.keys()].toSorted((a, b) => b.length - a.length).join("|")})(?=[/"'\`])`,
+  "gu",
+);
+
+/**
+ * The inverse of `rewriteImportPaths` over text that had no `effect/<area>` path of its own:
+ * imported.lock's check restores the Import zone with it and proves the result is upstream's tree.
+ */
+export const restoreImportPaths = (text: string): string =>
+  text.replace(RESTORABLE, (_match, area: string) => `${OLD_ROOT}/${RESTORED.get(area)}`);
+
+interface Hunk {
+  /** Repository-relative path. */
+  readonly path: string;
+  readonly before: string;
+  readonly after: string;
+}
+
+/**
+ * Upstream 194c73f3f's own Effect 4.0.1 adaptations inside the Import zone, byte for byte, as
+ * exact substitutions over upstream 422248515: 4.0.1's ndJsonRpc skips a line that is not JSON,
+ * so effect-acp splits frames itself and fails the session on a malformed agent line.
+ */
+const IMPORT_ZONE_HUNKS: ReadonlyArray<Hunk> = [
+  {
+    path: "packages/effect-acp/src/protocol.ts",
+    before: "const parserFactory = RpcSerialization.ndJsonRpc();\n",
+    after: [
+      "const parserFactory = RpcSerialization.ndJsonRpc();",
+      "// ndJsonRpc skips lines that are not JSON. A malformed agent line has to end the",
+      "// session, so frames are split here and each one goes through the strict codec.",
+      "const makeStrictNdJsonRpcParser = () => {",
+      "  const codec = RpcSerialization.jsonRpc().makeUnsafe();",
+      "  const decoder = new TextDecoder();",
+      '  let buffer = "";',
+      "  return {",
+      "    decode: (bytes: Uint8Array | string): ReadonlyArray<unknown> => {",
+      '      buffer += typeof bytes === "string" ? bytes : decoder.decode(bytes, { stream: true });',
+      '      const lines = buffer.split("\\n");',
+      '      buffer = lines.pop() ?? "";',
+      "      return lines.flatMap((line) => codec.decode(line));",
+      "    },",
+      "    encode: (response: Parameters<typeof codec.encode>[0]) => {",
+      "      const encoded = codec.encode(response);",
+      "      return encoded === undefined ? undefined : `${encoded}\\n`;",
+      "    },",
+      "  };",
+      "};",
+      "",
+    ].join("\n"),
+  },
+  {
+    path: "packages/effect-acp/src/protocol.ts",
+    before: "  const parser = parserFactory.makeUnsafe();\n",
+    after: "  const parser = makeStrictNdJsonRpcParser();\n",
+  },
+];
+
+/** The Import zone's transform: the path rewrite, then upstream's own hunks. Idempotent. */
+export const transformImportZoneFile = (path: string, text: string): string => {
+  let out = rewriteImportPaths(text);
+  for (const hunk of IMPORT_ZONE_HUNKS) {
+    if (hunk.path === path && !out.includes(hunk.after)) {
+      out = out.replace(hunk.before, () => hunk.after);
+    }
+  }
+  return out;
+};
+
+/** The inverse of `transformImportZoneFile`, which imported.lock's check reproduces it with. */
+export const restoreImportZoneFile = (path: string, text: string): string => {
+  let out = text;
+  for (const hunk of IMPORT_ZONE_HUNKS.toReversed()) {
+    if (hunk.path === path) out = out.replace(hunk.after, () => hunk.before);
+  }
+  return restoreImportPaths(out);
+};
+
 interface Pattern {
   readonly test: RegExp;
   readonly message: string;
@@ -366,19 +455,38 @@ export interface RunResult {
 
 export const run = (
   root: string,
-  options: { readonly dryRun: boolean; readonly includeImportZone: boolean },
+  options: {
+    readonly dryRun: boolean;
+    readonly includeImportZone: boolean;
+    readonly importZone?: boolean;
+  },
 ): RunResult => {
   const changed: Array<string> = [];
   const report: Array<{ path: string; result: FileResult }> = [];
-  for (const path of listFiles(root, options)) {
+  const files = options.importZone
+    ? importZone(root).flatMap((zone) =>
+        listFiles(NodePath.join(root, zone), { includeImportZone: true }).map(
+          (path) => `${zone}/${path}`,
+        ),
+      )
+    : listFiles(root, options);
+  for (const path of files) {
     const absolute = NodePath.join(root, path);
     const text = NodeFS.readFileSync(absolute, "utf8");
     if (text.includes("\u0000")) continue;
-    const result = rewriteFile(path, text);
+    const result: FileResult = options.importZone
+      ? {
+          text: transformImportZoneFile(path, text),
+          changes: [{ line: 1, message: "Import zone transform" }],
+          handFixes: [],
+          checks: [],
+        }
+      : rewriteFile(path, text);
     if (result.text !== text) {
       changed.push(path);
       if (!options.dryRun) NodeFS.writeFileSync(absolute, result.text);
     }
+    if (options.importZone && result.text === text) continue;
     if (result.changes.length + result.handFixes.length + result.checks.length > 0) {
       report.push({ path, result });
     }
@@ -392,8 +500,13 @@ const main = () => {
   const dryRun = args.includes("--dry-run");
   const fmt = args.includes("--fmt");
   const includeImportZone = args.includes("--include-import-zone");
+  const importZoneMode = args.includes("--import-zone");
   const started = Date.now();
-  const { changed, report } = run(root, { dryRun, includeImportZone });
+  const { changed, report } = run(root, {
+    dryRun,
+    includeImportZone,
+    importZone: importZoneMode,
+  });
 
   const print = (title: string, pick: (result: FileResult) => ReadonlyArray<Site>) => {
     const rows = report.flatMap(({ path, result }) =>
@@ -409,11 +522,12 @@ const main = () => {
   console.log(
     `\n${changed.length} file(s) ${dryRun ? "would change" : "changed"}, ${handFixes} hand fix(es), in ${Date.now() - started} ms.`,
   );
-  if (!includeImportZone && importZone(root).length > 0) {
+  if (!includeImportZone && !importZoneMode && importZone(root).length > 0) {
     console.log(`Import zone skipped: ${importZone(root).join(", ")} (re-import, never edit).`);
   }
 
-  if (fmt && !dryRun && changed.length > 0) {
+  // The Import zone keeps upstream's formatting: --fmt never runs over it.
+  if (fmt && !importZoneMode && !dryRun && changed.length > 0) {
     const vp = NodePath.join(root, "node_modules/.bin/vp");
     for (let index = 0; index < changed.length; index += 200) {
       NodeChildProcess.execFileSync(vp, ["fmt", ...changed.slice(index, index + 200)], {

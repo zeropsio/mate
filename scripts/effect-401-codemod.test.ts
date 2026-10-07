@@ -1,6 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { rewriteFile } from "./effect-401-codemod.ts";
+import {
+  restoreImportZoneFile,
+  rewriteFile,
+  transformImportZoneFile,
+} from "./effect-401-codemod.ts";
 
 const cases: ReadonlyArray<{
   readonly name: string;
@@ -156,6 +160,43 @@ describe("effect-401 codemod", () => {
     "a Stream.scan already given a lazy initial state is not listed: %s",
     (input) => {
       expect(rewriteFile("file.ts", input).checks).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
+      path: "packages/effect-acp/src/client.ts",
+      upstream: [
+        `import * as Encoding from "effect/Encoding";`,
+        `import { HttpApi } from "effect/unstable/httpapi";`,
+        `import * as NodeServices from "@effect/platform-node/NodeServices";`,
+        `import * as RpcClient from "effect/unstable/rpc/RpcClient";`,
+        ``,
+      ].join("\n"),
+      expected: [`from "effect/Encoding"`, `from "effect/http-api"`, `from "effect/rpc/RpcClient"`],
+    },
+    {
+      path: "packages/effect-acp/src/protocol.ts",
+      upstream: [
+        `import * as RpcSerialization from "effect/unstable/rpc/RpcSerialization";`,
+        `const parserFactory = RpcSerialization.ndJsonRpc();`,
+        `const run = () => {`,
+        `  const parser = parserFactory.makeUnsafe();`,
+        `};`,
+        ``,
+      ].join("\n"),
+      expected: [
+        `const makeStrictNdJsonRpcParser = () => {`,
+        `const parser = makeStrictNdJsonRpcParser();`,
+      ],
+    },
+  ])(
+    "the Import zone's transform over $path is undone byte for byte by its inverse",
+    ({ path, upstream, expected }) => {
+      const transformed = transformImportZoneFile(path, upstream);
+      for (const text of expected) expect(transformed).toContain(text);
+      expect(transformImportZoneFile(path, transformed)).toBe(transformed);
+      expect(restoreImportZoneFile(path, transformed)).toBe(upstream);
     },
   );
 });
