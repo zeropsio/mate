@@ -16,7 +16,7 @@ import * as NodeURL from "node:url";
 import type { SpiEvent } from "@t3tools/contracts";
 import { assert, describe, it } from "vite-plus/test";
 
-import type { BridgeDriver, RequestKey, SessionKey, TurnHandle } from "./spi3.ts";
+import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
 import { crashOncePath, recordAcp, recordClaude, recordCodex } from "../testing/bridge/record.ts";
 import { integrityBreach, signalLines, textOf } from "../testing/bridge/signals.ts";
@@ -24,7 +24,7 @@ import { integrityBreach, signalLines, textOf } from "../testing/bridge/signals.
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
 const fixturesRoot = NodePath.join(__dirname, "../../spi/fixtures");
 
-const S1 = "s1" as SessionKey;
+const S1 = "s1" as SessionId;
 const H1 = "h1" as TurnHandle;
 
 const readGolden = (driver: string, name: string): ReadonlyArray<SpiEvent> =>
@@ -300,7 +300,7 @@ const THREAD = "thread-1";
 const NOW = "2026-10-07T00:00:00.000Z";
 const RESETS = "2026-10-07T05:00:00.000Z";
 const H2 = "h2" as TurnHandle;
-const S2 = "s2" as SessionKey;
+const S2 = "s2" as SessionId;
 const DRIVERS: ReadonlyArray<BridgeDriver> = [
   "claudeAgent",
   "codex",

@@ -47,10 +47,10 @@ import { makeAntigravityAcpRuntime } from "../../../provider/acp/AntigravityAcpS
 import { replayClaude } from "../../../spi/replay/claudeReplay.ts";
 import { replayCodex } from "../../../spi/replay/codexReplay.ts";
 import type { Fixture } from "../../../spi/replay/types.ts";
-import type { BridgeDriver, RequestKey, SessionKey, TurnHandle } from "../../bridge/spi3.ts";
+import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "../../bridge/spi3.ts";
 import type { BridgeInput } from "../../bridge/translate.ts";
 
-export const S1 = "s1" as SessionKey;
+export const S1 = "s1" as SessionId;
 export const H1 = "h1" as TurnHandle;
 
 const holdsTurn = (driver: BridgeDriver) =>

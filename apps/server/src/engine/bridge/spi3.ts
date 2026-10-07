@@ -15,15 +15,16 @@
  * Where a driver cannot know a fact, a signal says `"unknown"`; the bridge
  * never fills a gap with a guess.
  *
- * Ids: the `core` lane owns `packages/contracts/src/engine.ts`. Until it
- * lands, the keys below are local aliases, all plain branded strings, so a
- * later move to the contracts package is a re-export.
+ * Ids: a session is the engine's `SessionId` (`packages/contracts/src/engine.ts`),
+ * re-exported here. Turn handles and item, work, request and response keys are
+ * the bridge's own brands; the engine stores them as opaque strings.
  */
 import type {
   CanonicalRequestType,
   ProviderApprovalOption,
   RuntimeErrorClass,
   RuntimePlanStep,
+  SessionId,
   SpiToolCall,
   ThreadTokenUsageSnapshot,
   ToolLifecycleItemType,
@@ -31,13 +32,14 @@ import type {
 } from "@t3tools/contracts";
 import type * as Brand from "effect/Brand";
 
+/** One native driver session; rotates under a conversation. */
+export type { SessionId };
+
 export const DRIVER_SPI_VERSION = "3.0";
 
 /** The six drivers the bridge knows; a seventh needs its row in `capabilities.ts` first. */
 export type BridgeDriver = "claudeAgent" | "codex" | "cursor" | "grok" | "antigravity" | "opencode";
 
-/** One native driver session; rotates under a conversation (local alias, see the header). */
-export type SessionKey = Brand.Branded<string, "SessionKey">;
 /** The engine's handle for one message it sent, or the bridge's for a turn the agent opened itself. */
 export type TurnHandle = Brand.Branded<string, "TurnHandle">;
 /** `${turn}.i${n}`: n is the order the bridge first saw the item in that turn. */
@@ -77,7 +79,7 @@ export type SendMode = "new" | "steer" | "continue";
 export type EngineCommand =
   | {
       readonly kind: "start";
-      readonly session: SessionKey;
+      readonly session: SessionId;
       readonly from: "fresh" | "resume" | "seeded";
     }
   | { readonly kind: "started"; readonly resume?: unknown }
@@ -218,7 +220,7 @@ export type RequestCloseHow =
   | "expired";
 
 export interface SignalHeader {
-  readonly session: SessionKey;
+  readonly session: SessionId;
   /** Strictly increasing across the translator's whole life, sessions included. */
   readonly seq: number;
 }

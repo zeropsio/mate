@@ -46,7 +46,7 @@ import type {
   ResponseKey,
   SessionCloseAsk,
   SessionCloseCause,
-  SessionKey,
+  SessionId,
   SignalBody,
   TurnEndSource,
   TurnHandle,
@@ -141,7 +141,7 @@ interface RequestState {
 }
 
 interface SessionState {
-  readonly key: SessionKey;
+  readonly key: SessionId;
   phase: "opening" | "open" | "closed";
   readonly from: "fresh" | "resume" | "seeded" | "implicit";
   closeAsked?: SessionCloseAsk;
@@ -182,7 +182,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
   };
 
   const newSession = (
-    key: SessionKey,
+    key: SessionId,
     from: SessionState["from"],
     phase: SessionState["phase"],
   ): SessionState => ({
@@ -551,7 +551,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       // Nothing asked for it: the legacy host recovered a session on its own.
       implicitCount += 1;
       session = newSession(
-        `${options.threadId}.implicit${implicitCount}` as SessionKey,
+        `${options.threadId}.implicit${implicitCount}` as SessionId,
         "implicit",
         "open",
       );
