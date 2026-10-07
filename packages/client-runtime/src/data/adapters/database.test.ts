@@ -1,9 +1,10 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, type ZeropsDataConsoleResponse } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { databaseCatalog, databasePanel } from "../projections/database.ts";
+import { databaseKey } from "../families/database.ts";
 import { makeDatabaseReads } from "./database.ts";
 
 const env = EnvironmentId.make("database-test");
@@ -67,6 +68,106 @@ function fixture(call: Parameters<typeof makeDatabaseReads>[0]["wire"]["call"]) 
 }
 
 describe("database source reads", () => {
+  it.each(["catalog", "mention/orders", "picker"])(
+    "mention reads preserve the tree and query of a service named %s",
+    async (panelId) => {
+      const f = fixture((_, request) =>
+        Promise.resolve(
+          request.kind === "refresh"
+            ? services
+            : request.kind === "tree"
+              ? { kind: "tree", nodes: [node], nextCursor: "" }
+              : table("retained query"),
+        ),
+      );
+      try {
+        await f.database.read(env, panelId, {
+          request: { kind: "tree", path: node.path },
+          target: "tree/root",
+        });
+        await f.database.read(env, panelId, {
+          request: { kind: "query", service: "db", stmt: "select name from orders" },
+          target: "query",
+        });
+        const before = databasePanel.derive(readsOfState(f.store.state()), {
+          environmentId: env,
+          panelId,
+        });
+        if (panelId === "catalog") await f.database.catalog(env);
+        else if (panelId === "picker")
+          await f.database.read(
+            env,
+            { kind: "picker" },
+            {
+              request: { kind: "refresh" },
+              target: "services",
+            },
+          );
+        else
+          await f.database.mention(env, {
+            token: "orders",
+            aliases: [],
+            service: "db",
+            serviceType: "postgresql",
+            segments: ["orders"],
+            kind: "table",
+            label: "orders",
+          });
+        const after = databasePanel.derive(readsOfState(f.store.state()), {
+          environmentId: env,
+          panelId,
+        });
+        expect(after.tree).toEqual(before.tree);
+        expect(after.queryState?.model.rows).toEqual([["retained query"]]);
+      } finally {
+        f.close();
+      }
+    },
+  );
+
+  it.each(["refresh", "tree"] as const)(
+    "closing the last mention demand cancels traversal paused at %s",
+    async (pausedKind) => {
+      const paused = Promise.withResolvers<ZeropsDataConsoleResponse>();
+      const started = Promise.withResolvers<void>();
+      const requests: string[] = [];
+      let signal: AbortSignal | undefined;
+      const root: ZeropsDataConsoleResponse = {
+        kind: "tree",
+        nodes: [{ ...node, kind: "container", hasChildren: true }],
+        nextCursor: "",
+      };
+      const f = fixture((_, request, abort?: AbortSignal) => {
+        requests.push(request.kind);
+        if (request.kind === pausedKind) {
+          signal = abort;
+          started.resolve();
+          return paused.promise;
+        }
+        return Promise.resolve(request.kind === "refresh" ? services : root);
+      });
+      const first = f.database.demandCatalog(env);
+      const last = f.database.demandCatalog(env);
+      const loading = f.database.catalog(env);
+      try {
+        await started.promise;
+        first();
+        expect(signal?.aborted ?? false).toBe(false);
+        const readsAtRelease = requests.length;
+        last();
+        paused.resolve(pausedKind === "refresh" ? services : root);
+        await loading;
+        expect(requests).toHaveLength(readsAtRelease);
+        expect(signal?.aborted).toBe(true);
+        expect(databaseCatalog.derive(readsOfState(f.store.state()), env).status).toBe("loading");
+      } finally {
+        first();
+        last();
+        f.close();
+      }
+    },
+  );
+
   it("stores pages once and fences a superseded read", async () => {
     let finish: ((value: ReturnType<typeof table>) => void) | undefined;
     let calls = 0;
@@ -221,7 +322,9 @@ it("purges only the refused Mate's database values after owner-proven denial", a
   deny = true;
   await f.database.read(env, "db", { request, target: "table" });
   expect(f.panel().tableModel.rows).toEqual([]);
-  expect(readsOfState(f.store.state()).fact("database", `${env}/other`).kind).toBe("withheld");
+  expect(readsOfState(f.store.state()).fact("database", databaseKey(env, "other")).kind).toBe(
+    "withheld",
+  );
   f.close();
 });
 

@@ -87,19 +87,23 @@ let accountStore: AccountStore;
 let database: DatabaseReads;
 let atomRegistry: AtomRegistry.AtomRegistry;
 vi.mock("../../zerops/useDatabase", () => ({
-  useDatabasePanel: (environmentId: EnvironmentId | null, panelId: string) => ({
-    ...databasePanel.derive(readsOfState(accountStore.state()), {
-      environmentId: environmentId ?? EnvironmentId.make("none"),
-      panelId,
-    }),
-    available: true,
-    read: (intent: Parameters<DatabaseReads["read"]>[2]) =>
-      environmentId === null ? Promise.resolve() : database.read(environmentId, panelId, intent),
-    update: (intent: Parameters<DatabaseReads["update"]>[2]) => {
-      if (environmentId !== null) database.update(environmentId, panelId, intent);
-    },
-  }),
-  useDatabaseServices: (environmentId: EnvironmentId | null, panelId: string) => {
+  useDatabasePanel: (environmentId: EnvironmentId | null, service: string | null) => {
+    const panelId = service ?? { kind: "picker" as const };
+    return {
+      ...databasePanel.derive(readsOfState(accountStore.state()), {
+        environmentId: environmentId ?? EnvironmentId.make("none"),
+        panelId,
+      }),
+      available: true,
+      read: (intent: Parameters<DatabaseReads["read"]>[2]) =>
+        environmentId === null ? Promise.resolve() : database.read(environmentId, panelId, intent),
+      update: (intent: Parameters<DatabaseReads["update"]>[2]) => {
+        if (environmentId !== null) database.update(environmentId, panelId, intent);
+      },
+    };
+  },
+  useDatabaseServices: (environmentId: EnvironmentId | null, service: string | null) => {
+    const panelId = service ?? { kind: "picker" as const };
     const panel = databasePanel.derive(readsOfState(accountStore.state()), {
       environmentId: environmentId ?? EnvironmentId.make("none"),
       panelId,

@@ -11,6 +11,7 @@ import {
   databaseSessionScope,
   emptyDatabasePanel,
   type DatabasePanelValue,
+  type DatabasePanelSlot,
 } from "../families/database.ts";
 import type { Coverage } from "../model.ts";
 import type { Projection } from "../store.ts";
@@ -34,7 +35,7 @@ export interface DatabasePanelRead extends DatabasePanelValue {
 }
 
 export const databasePanel: Projection<
-  { readonly environmentId: EnvironmentId; readonly panelId: string },
+  { readonly environmentId: EnvironmentId; readonly panelId: DatabasePanelSlot },
   DatabasePanelRead
 > = {
   name: "databasePanel",
@@ -96,8 +97,8 @@ export const databaseCatalog: Projection<EnvironmentId, DatabaseCatalogRead> = {
   name: "databaseCatalog",
   keyOf: (environmentId) => environmentId,
   derive: (read, environmentId) => {
-    const fact = read.fact("database", databaseKey(environmentId, "catalog"));
-    const scope = databaseScope(environmentId, "catalog");
+    const fact = read.fact("database", databaseKey(environmentId, { kind: "catalog" }));
+    const scope = databaseScope(environmentId, { kind: "catalog" });
     const stream = read.stream(scope);
     const known =
       fact.kind === "known" && fact.value.kind === "catalog" ? fact.value.entries : undefined;
@@ -122,11 +123,12 @@ export const databaseMentionContext: Projection<
   { readonly label: string; readonly text: string } | undefined
 > = {
   name: "databaseMentionContext",
-  keyOf: ({ environmentId, entry }) => databaseKey(environmentId, `mention/${entry.token}`),
+  keyOf: ({ environmentId, entry }) =>
+    databaseKey(environmentId, { kind: "mention", token: entry.token }),
   derive: (read, { environmentId, entry }) => {
-    const fact = read.fact("database", databaseKey(environmentId, `mention/${entry.token}`));
-    if (read.stream(databaseScope(environmentId, `mention/${entry.token}`)).phase !== "live")
-      return undefined;
+    const slot = { kind: "mention", token: entry.token } as const;
+    const fact = read.fact("database", databaseKey(environmentId, slot));
+    if (read.stream(databaseScope(environmentId, slot)).phase !== "live") return undefined;
     if (
       fact.kind !== "known" ||
       fact.value.kind !== "result" ||
@@ -146,7 +148,7 @@ export const databaseMentionContext: Projection<
 export const databaseServices: Projection<
   {
     readonly environmentId: EnvironmentId;
-    readonly panelId: string;
+    readonly panelId: DatabasePanelSlot;
     readonly platform: import("./platformAccess.ts").PlatformAccessKey | null;
   },
   ReadonlyArray<import("../../zerops/dataConsole.ts").DataConsoleServiceRow>

@@ -33,6 +33,8 @@ import {
   emptyDatabasePanel,
   type DatabasePanelValue,
   type DatabaseValue,
+  type DatabasePanelSlot,
+  type DatabaseSlot,
 } from "../families/database.ts";
 import type { ScopeKey } from "../model.ts";
 import { streamOf } from "../reducer.ts";
@@ -50,6 +52,7 @@ export interface DatabaseWire {
   readonly call: (
     environmentId: EnvironmentId,
     request: ZeropsDataConsoleRequest,
+    signal: AbortSignal,
   ) => Promise<ZeropsDataConsoleResponse>;
 }
 export interface DatabaseReadIntent {
@@ -71,12 +74,12 @@ export type DatabasePanelIntent =
 export interface DatabaseReads {
   readonly read: (
     environmentId: EnvironmentId,
-    panelId: string,
+    panelId: DatabasePanelSlot,
     intent: DatabaseReadIntent,
   ) => Promise<void>;
   readonly update: (
     environmentId: EnvironmentId,
-    panelId: string,
+    panelId: DatabasePanelSlot,
     intent: DatabasePanelIntent,
   ) => void;
   /** Once per account session; remount never revives a refused read. */
@@ -84,14 +87,14 @@ export interface DatabaseReads {
   readonly demandCatalog: (environmentId: EnvironmentId) => () => void;
   readonly demandSession: (environmentId: EnvironmentId) => () => void;
   readonly mention: (environmentId: EnvironmentId, entry: DataMentionEntry) => Promise<void>;
-  readonly release: (environmentId: EnvironmentId, panelId: string) => void;
+  readonly release: (environmentId: EnvironmentId, slot: DatabaseSlot) => void;
   readonly close: () => void;
 }
 
 export function makeDatabaseWire(registry: EnvironmentRegistry["Service"]): DatabaseWire {
   return {
     session: makeDatabaseSessionWire(registry),
-    call: async (environmentId, input) => {
+    call: async (environmentId, input, signal) => {
       const result = await Effect.runPromise(
         Effect.result(
           registry.run(environmentId, rpcRequest(WS_METHODS.zeropsDataConsoleCall, input)).pipe(
@@ -99,6 +102,7 @@ export function makeDatabaseWire(registry: EnvironmentRegistry["Service"]): Data
             Effect.catchCause((cause) => Effect.fail(classifyDatabaseFailure(Cause.squash(cause)))),
           ),
         ),
+        { signal },
       );
       if (Result.isFailure(result)) throw result.failure;
       return result.success;
@@ -185,7 +189,10 @@ export function makeDatabaseReads({
   for (const [key, fact] of store.state().facts)
     if (key.startsWith("database:") && fact.revision.kind === "mate-link")
       revision = Math.max(revision, fact.revision.sequence);
-  const attempts = new Map<ScopeKey, { readonly token: number; cancelRetry?: () => void }>();
+  const attempts = new Map<
+    ScopeKey,
+    { readonly abort: AbortController; cancelRetry?: () => void }
+  >();
   const catalogs = new Map<EnvironmentId, Promise<void>>();
   const sessions = new Map<
     EnvironmentId,
@@ -199,17 +206,20 @@ export function makeDatabaseReads({
       now: Effect.runSync(Clock.currentTimeMillis),
       event,
     });
-  const valueAt = (environmentId: EnvironmentId, panelId: string) => {
+  const valueAt = (environmentId: EnvironmentId, panelId: DatabaseSlot) => {
     const fact = readsOfState(store.state()).fact("database", databaseKey(environmentId, panelId));
     return fact.kind === "known" ? fact.value : undefined;
   };
-  const panelAt = (environmentId: EnvironmentId, panelId: string): DatabasePanelValue => {
+  const panelAt = (
+    environmentId: EnvironmentId,
+    panelId: DatabasePanelSlot,
+  ): DatabasePanelValue => {
     const value = valueAt(environmentId, panelId);
     return value?.kind === "panel" ? value : emptyDatabasePanel;
   };
   const write = (
     environmentId: EnvironmentId,
-    panelId: string,
+    panelId: DatabaseSlot,
     scope: ScopeKey,
     value: DatabaseValue,
     partial = false,
@@ -247,11 +257,12 @@ export function makeDatabaseReads({
     const active = attempts.get(scope);
     active?.cancelRetry?.();
     attempts.delete(scope);
+    active?.abort.abort();
     signal(scope, { kind: "demand", demanded: false });
   };
   const denyEnvironment = (environmentId: EnvironmentId, fault: StreamFault) => {
     for (const [key] of store.state().facts) {
-      if (key.startsWith(`database:${environmentId}/`))
+      if (key.startsWith(`database:${encodeURIComponent(environmentId)}/`))
         store.dispatch({
           kind: "access",
           family: "database",
@@ -267,9 +278,11 @@ export function makeDatabaseReads({
   };
   const sample = async (
     environmentId: EnvironmentId,
-    panelId: string,
+    panelId: DatabaseSlot,
     target: string,
-    source: () => Promise<{ readonly value: DatabaseValue; readonly partial?: boolean }>,
+    source: (
+      signal: AbortSignal,
+    ) => Promise<{ readonly value: DatabaseValue; readonly partial?: boolean }>,
     manual: boolean,
   ): Promise<void> => {
     if (closed) return;
@@ -278,8 +291,9 @@ export function makeDatabaseReads({
     if (!manual && (before.phase === "refused" || before.phase === "live")) return;
     const previous = attempts.get(scope);
     previous?.cancelRetry?.();
-    const active: { readonly token: number; cancelRetry?: () => void } = {
-      token: (previous?.token ?? 0) + 1,
+    previous?.abort.abort();
+    const active: { readonly abort: AbortController; cancelRetry?: () => void } = {
+      abort: new AbortController(),
     };
     attempts.set(scope, active);
     signal(scope, { kind: "demand", demanded: true });
@@ -294,7 +308,7 @@ export function makeDatabaseReads({
       if (!current()) return;
       signal(scope, { kind: "handshake" });
       try {
-        const result = await source();
+        const result = await source(active.abort.signal);
         if (!current()) return;
         write(environmentId, panelId, scope, result.value, result.partial, true);
         signal(scope, { kind: "baseline-committed" });
@@ -350,8 +364,8 @@ export function makeDatabaseReads({
       environmentId,
       panelId,
       intent.target,
-      async () => {
-        const response = await wire.call(environmentId, intent.request);
+      async (signal) => {
+        const response = await wire.call(environmentId, intent.request, signal);
         return {
           value: applyDatabaseAnswer(panelAt(environmentId, panelId), intent, response),
           partial:
@@ -428,17 +442,19 @@ export function makeDatabaseReads({
   };
 
   const catalog: DatabaseReads["catalog"] = (environmentId) => {
-    const scope = databaseScope(environmentId, "catalog");
-    if (valueAt(environmentId, "catalog")?.kind === "catalog") return Promise.resolve();
+    const slot = { kind: "catalog" } as const;
+    const scope = databaseScope(environmentId, slot);
+    if (valueAt(environmentId, slot)?.kind === "catalog") return Promise.resolve();
     const existing = catalogs.get(environmentId);
     if (existing !== undefined && streamOf(store.state(), scope).phase !== "paused")
       return existing;
     const load = sample(
       environmentId,
-      "catalog",
+      slot,
       "value",
-      async () => {
-        const discovery = await wire.call(environmentId, { kind: "refresh" });
+      async (signal) => {
+        const discovery = await wire.call(environmentId, { kind: "refresh" }, signal);
+        signal.throwIfAborted();
         if (discovery.kind !== "services")
           throw {
             outcome: "definitive-refusal",
@@ -451,7 +467,7 @@ export function makeDatabaseReads({
         const tables: ZeropsDataConsoleNode[] = [];
         const collapsed: Record<string, ReadonlyArray<string>> = {};
         for (const service of browsable) {
-          const walked = await walkService(environmentId, service, wire);
+          const walked = await walkService(environmentId, service, wire, signal);
           tables.push(...walked.tables);
           collapsed[service.hostname] = walked.collapsed;
           partial ||= walked.partial;
@@ -501,6 +517,7 @@ export function makeDatabaseReads({
     };
   };
   const demandCatalog: DatabaseReads["demandCatalog"] = (environmentId) => {
+    if (closed) return () => {};
     catalogHolders.set(environmentId, (catalogHolders.get(environmentId) ?? 0) + 1);
     void catalog(environmentId);
     let released = false;
@@ -511,30 +528,34 @@ export function makeDatabaseReads({
       if (remaining > 0) catalogHolders.set(environmentId, remaining);
       else {
         catalogHolders.delete(environmentId);
-        cancel(databaseScope(environmentId, "catalog"));
+        cancel(databaseScope(environmentId, { kind: "catalog" }));
       }
     };
   };
   const mention: DatabaseReads["mention"] = (environmentId, entry) =>
     sample(
       environmentId,
-      `mention/${entry.token}`,
+      { kind: "mention", token: entry.token },
       "value",
-      async () => ({
+      async (signal) => ({
         value: {
           kind: "result",
-          response: await wire.call(environmentId, {
-            kind: "table",
-            path: { service: entry.service, segments: entry.segments },
-            page: { limit: 1 },
-          }),
+          response: await wire.call(
+            environmentId,
+            {
+              kind: "table",
+              path: { service: entry.service, segments: entry.segments },
+              page: { limit: 1 },
+            },
+            signal,
+          ),
         },
       }),
       true,
     );
-  const release: DatabaseReads["release"] = (environmentId, panelId) => {
+  const release: DatabaseReads["release"] = (environmentId, slot) => {
     for (const scope of attempts.keys())
-      if (scope.startsWith(databaseScope(environmentId, panelId, "").slice(0, -1))) cancel(scope);
+      if (scope.startsWith(databaseScope(environmentId, slot, ""))) cancel(scope);
   };
   return {
     read,
@@ -561,6 +582,7 @@ async function walkService(
   environmentId: EnvironmentId,
   service: ZeropsDataConsoleService,
   wire: DatabaseWire,
+  signal: AbortSignal,
 ): Promise<{
   readonly tables: ReadonlyArray<ZeropsDataConsoleNode>;
   readonly collapsed: ReadonlyArray<string>;
@@ -571,7 +593,9 @@ async function walkService(
   let partial = false;
   const tree = async (path: ZeropsDataConsolePath) => {
     try {
-      const answer = await wire.call(environmentId, { kind: "tree", path });
+      signal.throwIfAborted();
+      const answer = await wire.call(environmentId, { kind: "tree", path }, signal);
+      signal.throwIfAborted();
       if (answer.kind !== "tree") {
         partial = true;
         return undefined;
@@ -579,6 +603,7 @@ async function walkService(
       partial ||= answer.nextCursor !== "";
       return answer;
     } catch (error) {
+      signal.throwIfAborted();
       if (classifyDatabaseFailure(error).outcome === "authoritative-denial") throw error;
       partial = true;
       return undefined;

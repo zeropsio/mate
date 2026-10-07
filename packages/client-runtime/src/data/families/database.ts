@@ -65,14 +65,27 @@ export const databaseFamily: FamilySpec<"database"> = {
   scope: { source: "mate", suffix: "database", leaving: "removed", demand: "detail", mode: "once" },
 };
 
-export const databaseKey = (environmentId: EnvironmentId, panelId: string): string =>
-  `${environmentId}/${panelId}`;
+/** A service name is always a service slot, even when it spells a reserved purpose. */
+export type DatabasePanelSlot = string | { readonly kind: "picker" };
+export type DatabaseSlot =
+  | DatabasePanelSlot
+  | { readonly kind: "catalog" }
+  | { readonly kind: "mention"; readonly token: string };
+const slotParts = (slot: DatabaseSlot): ReadonlyArray<string> =>
+  typeof slot === "string"
+    ? ["service", slot]
+    : slot.kind === "mention"
+      ? [slot.kind, slot.token]
+      : [slot.kind];
+
+export const databaseKey = (environmentId: EnvironmentId, slot: DatabaseSlot): string =>
+  `${encodeURIComponent(environmentId)}/${JSON.stringify(slotParts(slot))}`;
 export const databaseScope = (
   environmentId: EnvironmentId,
-  panelId: string,
+  slot: DatabaseSlot,
   target = "value",
 ): ScopeKey =>
-  `mate:${encodeURIComponent(environmentId)}:database:${encodeURIComponent(panelId)}/${encodeURIComponent(target)}`;
+  `mate:${encodeURIComponent(environmentId)}:database:${encodeURIComponent(JSON.stringify(slotParts(slot)))}/${encodeURIComponent(target)}`;
 export const databaseTreeTarget = (path: ZeropsDataConsolePath): string =>
   `tree/${treePathKey(path)}`;
 

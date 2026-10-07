@@ -238,7 +238,9 @@ partial coverage stays partial, and a denied project is withheld at the read.
 Database details are the `database` family. The Mate executor reads services, trees, tables,
 counts, query results and mention catalogs on explicit demand; its adapter commits each answer
 through the reducer. Each target has the common stream machine, with late answers fenced by the
-input generation. A refusal survives remount and adapter recreation until explicit retry or a
+input generation. Service names and picker, catalog and mention purposes have separate tagged
+slots. Closing the last mention demand aborts catalog reads and traversal as well as publication.
+A refusal survives remount and adapter recreation until explicit retry or a
 changed input. `databaseSession` observes the console process through its own demanded realtime
 scope; observing an idle console never starts it. The panel holds only selection and editing state,
 and the previous direct database command and catalog cache are removed.

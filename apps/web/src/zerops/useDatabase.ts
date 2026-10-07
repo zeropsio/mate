@@ -40,7 +40,8 @@ const EMPTY_CATALOG = Atom.make({
   refused: false,
 });
 
-export function useDatabasePanel(environmentId: EnvironmentId | null, panelId: string) {
+export function useDatabasePanel(environmentId: EnvironmentId | null, service: string | null) {
+  const panelId = service ?? { kind: "picker" as const };
   const account = useAccountDataOptional();
   const database = account?.database;
   const value = useProjection(
@@ -50,9 +51,9 @@ export function useDatabasePanel(environmentId: EnvironmentId | null, panelId: s
   );
   useEffect(
     () => () => {
-      if (environmentId !== null) database?.release(environmentId, panelId);
+      if (environmentId !== null) database?.release(environmentId, service ?? { kind: "picker" });
     },
-    [database, environmentId, panelId],
+    [database, environmentId, service],
   );
   return {
     ...value,
@@ -93,13 +94,14 @@ export function useDatabaseMentionRead(environmentId: EnvironmentId) {
     const result = registry.get(
       account.data.project(databaseMentionContext, { environmentId, entry }),
     );
-    account.database.release(environmentId, `mention/${entry.token}`);
+    account.database.release(environmentId, { kind: "mention", token: entry.token });
     return result;
   };
 }
 
 const EMPTY_SERVICES = Atom.make([] as ReadonlyArray<DataConsoleServiceRow>);
-export function useDatabaseServices(environmentId: EnvironmentId | null, panelId: string) {
+export function useDatabaseServices(environmentId: EnvironmentId | null, service: string | null) {
+  const panelId = service ?? { kind: "picker" as const };
   const account = useAccountDataOptional();
   const project = useEnvironmentProjectRef(environmentId);
   return useProjection(

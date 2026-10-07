@@ -136,12 +136,9 @@ export function ZeropsDataPanel({
   const session = useZeropsDataConsole(dataConsoleSupported ? environmentId : null);
   const serviceRows = useDatabaseServices(
     dataConsoleSupported ? environmentId : null,
-    service ?? "picker",
+    service ?? null,
   );
-  const database = useDatabasePanel(
-    dataConsoleSupported ? environmentId : null,
-    service ?? "picker",
-  );
+  const database = useDatabasePanel(dataConsoleSupported ? environmentId : null, service ?? null);
   const {
     services,
     tree,
