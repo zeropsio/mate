@@ -479,7 +479,13 @@ describe("mergeUsage", () => {
     );
     const merged = mergeUsage([environment("env-a", decoded)], USAGE_CONTRACT_VERSION);
     expect(merged.costUsd).toBe(0);
-    expect(merged.contractMismatches.map((mismatch) => mismatch.environmentId)).toEqual(["env-a"]);
+    expect(merged.contractMismatches).toEqual([
+      {
+        environmentId: "env-a",
+        direction: "clientBehind",
+        contractVersion: USAGE_CONTRACT_VERSION + 1,
+      },
+    ]);
   });
 
   it("derives provider shares and cost quality", () => {
