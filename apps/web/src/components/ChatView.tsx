@@ -1,4 +1,5 @@
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
+import { vaultNote } from "@t3tools/client-runtime/data";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -17,6 +18,7 @@ import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackBannerItem } from "./chat/ComposerFeedback";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
+  AgentTurnNotes,
   type ApprovalRequestId,
   DEFAULT_MODEL,
   type EnvironmentId,
@@ -666,6 +668,8 @@ interface TerminalLaunchContext {
 }
 
 type PersistentTerminalLaunchContext = Pick<TerminalLaunchContext, "cwd" | "worktreePath">;
+
+const isAgentTurnNotes = Schema.is(AgentTurnNotes);
 
 function useLocalDispatchState(input: {
   activeThread: Thread | undefined;
@@ -3013,13 +3017,19 @@ export default function ChatView(props: ChatViewProps) {
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   // What the Mate hears of its vault: the person's changes since it last spoke, as chips and a note.
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
-  const agentNotes = useMemo(
-    () => [
-      ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
-    ],
-    [agentSpokeAt, changeLandedEvents, vaultTurn.note],
-  );
+  const turnContext = useMemo(() => {
+    const notes = [...agentTurnNotes(changeLandedEvents, agentSpokeAt)];
+    const vaultChanges: (typeof vaultTurn.changes)[number][] = [];
+    for (const change of vaultTurn.changes) {
+      const note = vaultNote([change]);
+      if (note !== null && isAgentTurnNotes([...notes, note])) {
+        notes.push(note);
+        vaultChanges.push(change);
+      }
+    }
+    return { notes, vaultChanges };
+  }, [agentSpokeAt, changeLandedEvents, vaultTurn.changes]);
+  const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
@@ -6660,6 +6670,8 @@ export default function ChatView(props: ChatViewProps) {
         files: [...composerFiles],
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
+        agentNotes: [...agentNotes],
+        vaultChanges: [...turnContext.vaultChanges],
         submissionIntent,
         queuedAfterToolActivityId: latestCompletedToolActivityId(threadActivities),
         createdAt: new Date().toISOString(),
@@ -7151,9 +7163,16 @@ export default function ChatView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
-      const turnAgentNotes = agentNotesFor(outgoingMessageText, agentNotes);
+      const turnAgentNotes = agentNotesFor(
+        outgoingMessageText,
+        queuedMessage ? (queuedMessage.agentNotes ?? []) : agentNotes,
+      );
       const toldVault =
-        vaultTurn.note !== null && turnAgentNotes.includes(vaultTurn.note) ? vaultTurn.changes : [];
+        turnAgentNotes.length > 0
+          ? queuedMessage
+            ? (queuedMessage.vaultChanges ?? [])
+            : turnContext.vaultChanges
+          : [];
       turnStartAttempted = true;
       const startResult = await startThreadTurn({
         environmentId,
