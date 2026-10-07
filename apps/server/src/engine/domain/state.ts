@@ -82,6 +82,8 @@ export interface OpenRequest {
   readonly key: string;
   readonly answerable: boolean;
   readonly principal: Principal;
+  /** Answers given so far: one the provider failed to take is given again as a new effect. */
+  readonly answers: number;
 }
 
 export interface ArmedWake {
@@ -105,6 +107,9 @@ export interface EffectInFlight {
 export interface SessionRecord {
   readonly id: SessionId;
   readonly driver: string;
+  /** The model the engine asked for when it opened: what fit compares. */
+  readonly requestedModel: string | null;
+  /** The model the driver reports, in its own spelling. */
   readonly model: string | null;
   readonly nativeRef: string | null;
   readonly capabilities: SessionCapabilities;
@@ -131,10 +136,17 @@ export interface ConversationState {
   readonly session: SessionRecord | null;
   /** The native thread of the last session, so the next one resumes it. */
   readonly lastNativeRef: string | null;
-  /** Usage limit: queued runs wait until then. */
-  readonly pausedUntil: number | null;
+  /**
+   * A usage limit holds the queue until then; `"unknown"` until a probe or a known reset ends it,
+   * or the person writes again.
+   */
+  readonly pausedUntil: number | "unknown" | null;
+  /** The last usage probe's delay: the next one waits twice as long, up to an hour. */
+  readonly usageProbeMs: number | null;
   readonly items: Readonly<Record<string, OpenItem>>;
   readonly requests: Readonly<Record<string, OpenRequest>>;
+  /** Answered requests whose answer the provider has not taken yet, by the answer's effect. */
+  readonly answering: Readonly<Record<string, OpenRequest>>;
   readonly wakes: Readonly<Record<string, ArmedWake>>;
   readonly effects: Readonly<Record<string, EffectInFlight>>;
 }
@@ -155,8 +167,10 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   session: null,
   lastNativeRef: null,
   pausedUntil: null,
+  usageProbeMs: null,
   items: {},
   requests: {},
+  answering: {},
   wakes: {},
   effects: {},
 });

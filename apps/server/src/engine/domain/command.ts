@@ -98,6 +98,8 @@ export type ProviderSignal =
       readonly turn?: TurnHandle;
       readonly resetsAt: number | null;
     }
+  /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
+  | { readonly kind: "usage-reset-known"; readonly resetsAt: number }
   | { readonly kind: "session-exited"; readonly reason: string }
   /** Deltas flowed: the turn is alive. Throttled by `decide`, so the pump may send it per batch. */
   | { readonly kind: "activity"; readonly turn: TurnHandle };

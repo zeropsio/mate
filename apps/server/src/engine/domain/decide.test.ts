@@ -225,7 +225,7 @@ const transitions: ReadonlyArray<Row> = [
     name: "a request makes the run wait",
     given: running,
     when: requestOpened(),
-    events: ["RequestOpened", "RunWaiting"],
+    events: ["RequestOpened", "RunWaiting", "WakeCancelled"],
     run: { n: 1, state: "waiting" },
   },
   {
@@ -237,7 +237,7 @@ const transitions: ReadonlyArray<Row> = [
       answer: { decision: "accept" },
       summary: "Allowed",
     },
-    events: ["EffectRequested", "RequestAnswered", "RunResumed"],
+    events: ["EffectRequested", "RequestAnswered", "RunResumed", "WakeArmed"],
     effects: ["provider.respond"],
     run: { n: 1, state: "running" },
   },
@@ -245,7 +245,7 @@ const transitions: ReadonlyArray<Row> = [
     name: "a request the provider closes resumes the run",
     given: waiting,
     when: signal({ kind: "request-closed", key: "q1", state: "dismissed" }),
-    events: ["RequestClosed", "RunResumed"],
+    events: ["RequestClosed", "RunResumed", "WakeArmed"],
     run: { n: 1, state: "running" },
   },
   {
@@ -280,7 +280,7 @@ const transitions: ReadonlyArray<Row> = [
       signal({ kind: "item-opened", turn: T(1), key: "k", by: { kind: "mate" }, body: note("k") }),
     ],
     when: signal({ kind: "session-exited", reason: "exit 137" }),
-    events: ["ItemClosed", "RequestClosed", "WakeCancelled", "RunEnded", "SessionClosed"],
+    events: ["ItemClosed", "RequestClosed", "RunEnded", "SessionClosed"],
     run: { n: 1, end: "crashed", source: "inferred-from-crash" },
     also: (scene) => {
       expect(scene.events[0]).toMatchObject({ body: { streaming: false } });
@@ -542,13 +542,13 @@ const transitions: ReadonlyArray<Row> = [
       by: { kind: "mate" },
       body: note("k"),
     }),
-    events: ["RunResponsive", "ItemOpened"],
+    events: ["RunResponsive", "WakeArmed", "ItemOpened"],
   },
   {
     name: "activity is recorded at most every half watchdog",
     given: [...running, { command: signal({ kind: "activity", turn: T(1) }), at: T0 + MINUTE }],
     when: { command: signal({ kind: "activity", turn: T(1) }), at: T0 + WATCHDOG_SILENCE_MS / 2 },
-    events: ["RunResponsive"],
+    events: ["RunResponsive", "WakeArmed"],
     also: (scene) =>
       expect(scene.state.runs[r(1)]?.lastActivityAt).toBe(T0 + WATCHDOG_SILENCE_MS / 2),
   },
@@ -1012,5 +1012,105 @@ describe("decide: an answer the provider refused", () => {
       settled(requestId(r(1), 1), "provider.respond", { kind: "failed", reason: "callback gone" }),
     ]);
     expect(state.runs[r(1)]?.state).toBe("waiting");
+  });
+});
+
+describe("decide: a usage limit, a refused answer and a message's delivery", () => {
+  const unknownLimit = signal({ kind: "usage-limit", resetsAt: null });
+  const probeOf = (n: number) => wakeId(conversation, "usage-probe", r(n));
+  it("a limit whose reset is unknown is probed after 15 minutes, then twice as long, up to an hour", () => {
+    const first = playAll([...proofRunning, unknownLimit]);
+    expect(first.state.wakes[probeOf(1)]?.dueAt).toBe(T0 + 15 * MINUTE);
+    const second = playAll([
+      ...proofRunning,
+      unknownLimit,
+      fired("usage-probe", r(1), T0 + 15 * MINUTE),
+      opened(2),
+      signal({ kind: "usage-limit", turn: T(2), resetsAt: null }),
+    ]);
+    expect(second.state.runs[r(2)]).toMatchObject({ joins: r(1), end: { kind: "usage-limit" } });
+    expect(second.state.wakes[probeOf(2)]?.dueAt).toBe(T0 + 45 * MINUTE);
+    const capped = playAll([
+      ...proofRunning,
+      unknownLimit,
+      fired("usage-probe", r(1), T0 + 15 * MINUTE),
+      signal({ kind: "usage-limit", turn: T(2), resetsAt: null }),
+      fired("usage-probe", r(2), T0 + 45 * MINUTE),
+      signal({ kind: "usage-limit", turn: T(3), resetsAt: null }),
+      fired("usage-probe", r(3), T0 + 105 * MINUTE),
+      signal({ kind: "usage-limit", turn: T(4), resetsAt: null }),
+    ]);
+    expect(capped.state.wakes[probeOf(4)]?.dueAt).toBe(T0 + 165 * MINUTE);
+  });
+  it("the person writing again lifts a limit whose reset nobody knows", () => {
+    const { state } = playAll([...proofRunning, unknownLimit, send("try again")]);
+    expect({ run: state.runs[r(2)]?.state, paused: state.pausedUntil }).toEqual({
+      run: "sending",
+      paused: null,
+    });
+    expect(state.wakes[probeOf(1)]).toBeUndefined();
+  });
+  it("a reset learned later replaces the probe with a resume at that time", () => {
+    const reset = T0 + 40 * MINUTE;
+    const { state } = playAll([
+      ...proofRunning,
+      send("queued"),
+      unknownLimit,
+      signal({ kind: "usage-reset-known", resetsAt: reset }),
+    ]);
+    expect(state.wakes[probeOf(1)]).toBeUndefined();
+    expect(state.wakes[wakeId(conversation, "usage-resume", r(1))]).toMatchObject({
+      dueAt: reset,
+      joins: r(1),
+    });
+    expect({ queued: state.runs[r(2)]?.state, paused: state.pausedUntil }).toEqual({
+      queued: "queued",
+      paused: reset,
+    });
+  });
+  it("an answer the provider can no longer take expires its request", () => {
+    const { state, log } = playAll([
+      ...proofRunning,
+      requestOpened("q"),
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: "yes", summary: "yes" },
+      settled(requestId(r(1), 1), "provider.respond", {
+        kind: "failed",
+        reason: "the callback is gone",
+        refused: true,
+      }),
+    ]);
+    expect(log.at(-1)).toMatchObject({ _tag: "RequestClosed", state: "expired" });
+    expect(state.requests).toEqual({});
+  });
+  it("an answer given again after a failed one is a new effect", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      requestOpened("q"),
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: "yes", summary: "yes" },
+      settled(requestId(r(1), 1), "provider.respond", { kind: "failed", reason: "timeout" }),
+      { _tag: "Answer", requestId: requestId(r(1), 1), answer: "yes", summary: "yes" },
+    ]);
+    expect(
+      log.flatMap((e) =>
+        e._tag === "EffectRequested" && e.kind === "provider.respond" ? [e.effectId] : [],
+      ),
+    ).toEqual([
+      effectId(requestId(r(1), 1), "provider.respond", 1),
+      effectId(requestId(r(1), 1), "provider.respond", 2),
+    ]);
+  });
+  it.each([
+    [
+      "a send the provider refused reads refused",
+      settled(r(1), "provider.send", { kind: "failed", reason: "socket closed" }),
+      "refused",
+    ],
+    [
+      "a send a restart cut mid-flight reads unknown",
+      recovered([effectId(r(1), "provider.send", 1)]),
+      "unknown",
+    ],
+  ] as const)("%s", (_name, last, expected) => {
+    expect(delivery(playAll([send("go"), opened(1), last]).log)).toBe(expected);
   });
 });

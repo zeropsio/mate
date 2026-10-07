@@ -154,6 +154,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         state: "running",
         waitingOn: null,
         lastActivityAt: event.at,
+        unresponsiveSince: null,
       }));
     case "RunStopAsked":
       return withRun(state, event.runId, (run) => ({
@@ -184,6 +185,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         endedRuns: kept,
         pausedUntil: pauseAfter(event.end, state.pausedUntil),
+        usageProbeMs: event.end.kind === "usage-limit" ? state.usageProbeMs : null,
       };
     }
     case "RunRequeued":
@@ -250,7 +252,15 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     }
     case "ItemUpdated": {
       const item = state.items[event.itemId];
-      const touched = touch(state, event.runId, event.at);
+      const body = event.body;
+      const touched =
+        body.kind === "person"
+          ? withRun(state, event.runId, (run) =>
+              run.trigger.kind === "person" && run.trigger.itemId === event.itemId
+                ? { ...run, personBody: body }
+                : run,
+            )
+          : touch(state, event.runId, event.at);
       return item === undefined
         ? touched
         : { ...touched, items: { ...touched.items, [item.id]: { ...item, body: event.body } } };
@@ -275,19 +285,58 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             key: event.key,
             answerable: event.answerable,
             principal: event.principal,
+            answers: 0,
           },
         },
       };
     }
-    case "RequestAnswered":
+    case "RequestAnswered": {
+      const request = state.requests[event.requestId];
+      return {
+        ...state,
+        requests: without(state.requests, event.requestId),
+        answering:
+          request === undefined
+            ? state.answering
+            : {
+                ...state.answering,
+                [event.effectId]: { ...request, answers: request.answers + 1 },
+              },
+      };
+    }
+    case "RequestReopened":
+      return {
+        ...state,
+        requests: {
+          ...state.requests,
+          [event.requestId]: {
+            id: event.requestId,
+            runId: event.runId,
+            key: event.key,
+            answerable: true,
+            principal: event.principal,
+            answers: event.answers,
+          },
+        },
+        answering: Object.fromEntries(
+          Object.entries(state.answering).filter(([, open]) => open.id !== event.requestId),
+        ),
+      };
     case "RequestClosed":
-      return { ...state, requests: without(state.requests, event.requestId) };
+      return {
+        ...state,
+        requests: without(state.requests, event.requestId),
+        answering: Object.fromEntries(
+          Object.entries(state.answering).filter(([, open]) => open.id !== event.requestId),
+        ),
+      };
     case "SessionOpened":
       return {
         ...state,
         session: {
           id: event.sessionId,
           driver: event.driver,
+          requestedModel: event.requestedModel,
           model: event.model,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
@@ -321,10 +370,16 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       };
     }
     case "EffectOutcomeRecorded":
-      return { ...state, effects: without(state.effects, event.effectId) };
+      return {
+        ...state,
+        effects: without(state.effects, event.effectId),
+        answering: without(state.answering, event.effectId),
+      };
     case "WakeArmed":
       return {
         ...state,
+        pausedUntil: event.kind === "usage-resume" ? event.dueAt : state.pausedUntil,
+        usageProbeMs: event.kind === "usage-probe" ? event.dueAt - event.at : state.usageProbeMs,
         wakes: {
           ...state.wakes,
           [event.wakeId]: {
@@ -344,16 +399,23 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...state,
         wakes: without(state.wakes, event.wakeId),
-        pausedUntil: wake?.kind === "usage-resume" ? null : state.pausedUntil,
+        pausedUntil: isUsageWake(wake?.kind) ? null : state.pausedUntil,
       };
     }
     case "WakeCancelled":
       return { ...state, wakes: without(state.wakes, event.wakeId) };
+    case "UsagePauseLifted":
+      return { ...state, pausedUntil: null };
   }
 };
 
-const pauseAfter = (end: RunEnd, current: number | null): number | null =>
-  end.kind === "usage-limit" ? end.resetsAt : current;
+/** A usage limit holds the queue until its reset, or until a probe says when that is. */
+const pauseAfter = (end: RunEnd, current: number | "unknown" | null) =>
+  end.kind === "usage-limit" ? (end.resetsAt ?? "unknown") : current;
+
+/** The wakes that end a usage pause when they fire or are cancelled. */
+export const isUsageWake = (kind: string | undefined): boolean =>
+  kind === "usage-resume" || kind === "usage-probe";
 
 /** Folds events onto a state: rehydration's tail fold, and a full fold from the start. */
 export const fold = (

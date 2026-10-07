@@ -26,6 +26,7 @@ import {
   type ItemBody,
   type Principal,
   type RejectionReason,
+  type RequestId,
   type RunEnd,
   type RunEndSource,
   type RunId,
@@ -48,11 +49,14 @@ import type {
   ItemDetailDraft,
   ProviderSignal,
 } from "./command.ts";
-import { evolve, stampEvents } from "./evolve.ts";
+import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
 import { activeRun, runOfTurn, type ConversationState, type RunRecord } from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
+/** The first probe of a usage limit whose reset is unknown, and the longest a probe waits. */
+export const USAGE_PROBE_FIRST_MS = 15 * 60_000;
+export const USAGE_PROBE_MAX_MS = 60 * 60_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
 /** A message a restart cut mid-send goes again in its own words, marked so the agent knows. */
@@ -228,7 +232,9 @@ const queueRun = (
   return id;
 };
 
-const paused = (b: StepBuilder) => b.state.pausedUntil !== null && b.now < b.state.pausedUntil;
+const paused = (b: StepBuilder) =>
+  b.state.pausedUntil === "unknown" ||
+  (b.state.pausedUntil !== null && b.now < b.state.pausedUntil);
 
 /** Admits the oldest queued run when nothing is active and no usage limit holds the queue. */
 const admitNext = (b: StepBuilder): void => {
@@ -240,12 +246,13 @@ const admitNext = (b: StepBuilder): void => {
 };
 
 /**
- * Sends an admitted run on a fitting session, or asks for one. A session just opened for this
- * run fits whatever model the driver reports.
+ * Sends an admitted run on a fitting session, or asks for one. A session fits by the model the
+ * engine asked for when it opened it, never by the driver's own spelling of it; a session just
+ * opened for this run fits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   const session = b.state.session;
-  const fits = b.state.model === null || session?.model === b.state.model || justOpened;
+  const fits = b.state.model === null || session?.requestedModel === b.state.model || justOpened;
   if (session !== null && fits) {
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
@@ -264,21 +271,29 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   });
 };
 
-const personBody = (
-  run: RunRecord,
-  delivery: "delivered" | "refused",
-  at: number,
-): ItemBody | null =>
+type Delivery = "delivered" | "refused" | "unknown";
+
+const personBody = (run: RunRecord, delivery: Delivery, at: number): ItemBody | null =>
   run.personBody === null ? null : { ...run.personBody, delivery: { state: delivery, at } };
 
-const updatePerson = (b: StepBuilder, run: RunRecord, delivery: "delivered" | "refused") => {
+const updatePerson = (b: StepBuilder, run: RunRecord, delivery: Delivery) => {
   const body = personBody(run, delivery, b.now);
   if (body === null || run.trigger.kind !== "person") return;
   b.emit({ _tag: "ItemUpdated", runId: run.id, itemId: run.trigger.itemId, body });
 };
 
-/** Ends a run: its open items close, its requests lapse, its watchdog is cancelled. */
-const endRun = (b: StepBuilder, run: RunRecord, end: RunEnd, source: RunEndSource): void => {
+/**
+ * Ends a run: its open items close, its requests lapse, its watchdog is cancelled, and its
+ * message never stays queued — refused when it never went out, or `unsent` (refused, or unknown
+ * for a send that may have arrived) when it ends while sending.
+ */
+const endRun = (
+  b: StepBuilder,
+  run: RunRecord,
+  end: RunEnd,
+  source: RunEndSource,
+  unsent: "refused" | "unknown" = "unknown",
+): void => {
   for (const item of Object.values(b.state.items)) {
     if (item.runId !== run.id) continue;
     b.emit({
@@ -292,11 +307,10 @@ const endRun = (b: StepBuilder, run: RunRecord, end: RunEnd, source: RunEndSourc
     if (request.runId !== run.id) continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
   }
-  const watchdog = deriveWakeId(b.state.conversationId, "watchdog", run.id);
-  if (b.state.wakes[watchdog] !== undefined) {
-    b.emit({ _tag: "WakeCancelled", wakeId: watchdog, reason: "run ended" });
+  cancelWatchdog(b, run, "run ended");
+  if (run.personBody?.delivery.state === "queued") {
+    updatePerson(b, run, run.state === "sending" ? unsent : "refused");
   }
-  if (run.state === "queued" || run.state === "admitted") updatePerson(b, run, "refused");
   b.emit({ _tag: "RunEnded", runId: run.id, end, source });
 };
 
@@ -330,6 +344,32 @@ const armWatchdog = (b: StepBuilder, run: RunRecord, from: number): void => {
     joins: run.id,
     text: null,
   });
+};
+
+const cancelWatchdog = (b: StepBuilder, run: RunRecord, reason: string): void => {
+  const watchdog = deriveWakeId(b.state.conversationId, "watchdog", run.id);
+  if (b.state.wakes[watchdog] !== undefined) {
+    b.emit({ _tag: "WakeCancelled", wakeId: watchdog, reason });
+  }
+};
+
+/** A running run waits on a person: the watchdog stops, the person is the slow one. */
+const markWaiting = (b: StepBuilder, run: RunRecord, request: RequestId): void => {
+  b.emit({ _tag: "RunWaiting", runId: run.id, requestId: request });
+  cancelWatchdog(b, run, "waiting on a person");
+};
+
+/** A waiting run runs again: its mark clears and the watchdog watches it again. */
+const markResumed = (b: StepBuilder, run: RunRecord): void => {
+  b.emit({ _tag: "RunResumed", runId: run.id });
+  armWatchdog(b, b.run(run.id), b.now);
+};
+
+/** A run spoke again: its mark clears and, while it runs, the watchdog watches it again. */
+const markResponsive = (b: StepBuilder, run: RunRecord): void => {
+  b.emit({ _tag: "RunResponsive", runId: run.id });
+  const live = b.run(run.id);
+  if (live.state === "running") armWatchdog(b, live, b.now);
 };
 
 const markStarted = (
@@ -373,6 +413,11 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     },
   });
   b.result = { ...b.result, itemId: item };
+  if (b.state.pausedUntil === "unknown") {
+    // A limit whose reset nobody knows holds the queue until its probe or the person: they wrote.
+    cancelUsageWakes(b, "the person wrote again");
+    b.emit({ _tag: "UsagePauseLifted", reason: "the person wrote again" });
+  }
   admitNext(b);
 };
 
@@ -404,7 +449,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   if (request === undefined) throw new Rejected("unknown-request");
   if (!request.answerable) throw new Rejected("not-answerable");
   const run = b.run(request.runId);
-  const effect = b.effect("provider.respond", request.id, 1, run.id, {
+  const effect = b.effect("provider.respond", request.id, request.answers + 1, run.id, {
     requestId: request.id,
     key: request.key,
     sessionId: run.sessionId,
@@ -426,7 +471,7 @@ const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
   const run = b.run(id);
   if (run.state !== "waiting") return;
   if (Object.values(b.state.requests).some((request) => request.runId === id)) return;
-  b.emit({ _tag: "RunResumed", runId: id });
+  markResumed(b, run);
 };
 
 const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): void => {
@@ -534,6 +579,7 @@ const wakeFired = (
       return;
     }
     case "usage-resume":
+    case "usage-probe":
       if (!b.state.archived && !newerPersonMessage(b.state, wake)) {
         startFromWake(b, wake.kind, id, wake);
       }
@@ -576,7 +622,8 @@ const startFromWake = (
 
 const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
   const run = id === null ? undefined : b.state.runs[id];
-  if (run === undefined || !isLive(run) || run.unresponsiveSince !== null) return;
+  // Only a running run is watched: one waiting on a person is not silent, it is waiting.
+  if (run === undefined || run.state !== "running" || run.unresponsiveSince !== null) return;
   const lastActivity = run.lastActivityAt ?? run.startedAt ?? b.now;
   if (b.now - lastActivity >= WATCHDOG_SILENCE_MS) {
     b.emit({ _tag: "RunUnresponsive", runId: run.id, silentSince: lastActivity });
@@ -590,6 +637,7 @@ const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
 const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");
+  const answered = b.state.answering[id];
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
   if (run === undefined || run.state === "ended") {
@@ -615,7 +663,13 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
       return;
     case "provider.send":
       if (failure !== null) {
-        endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect");
+        endRun(
+          b,
+          run,
+          { kind: "failed", reason: failure, next: null },
+          "inferred-from-effect",
+          "refused",
+        );
         admitNext(b);
         return;
       }
@@ -631,6 +685,30 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
         endRun(b, run, { kind: "stopped", by: run.stopAsked.by }, "stop-asked");
         admitNext(b);
       }
+      return;
+    case "provider.respond":
+      if (failure === null || answered === undefined || !isLive(run)) return;
+      if (outcome.kind === "failed" && outcome.refused === true) {
+        // The driver can no longer take any answer: the request expired, nothing waits on it.
+        b.emit({
+          _tag: "RequestClosed",
+          runId: run.id,
+          requestId: answered.id,
+          state: "expired",
+        });
+        return;
+      }
+      // The answer never reached the agent, which still waits on it: the person answers again.
+      b.emit({
+        _tag: "RequestReopened",
+        runId: run.id,
+        requestId: answered.id,
+        key: answered.key,
+        principal: answered.principal,
+        reason: failure,
+        answers: answered.answers,
+      });
+      if (b.run(run.id).state === "running") markWaiting(b, b.run(run.id), answered.id);
       return;
     default:
       return;
@@ -660,6 +738,7 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     _tag: "SessionOpened",
     sessionId: opened.sessionId,
     driver: opened.driver,
+    requestedModel: b.state.model,
     model: opened.model,
     nativeRef: opened.nativeRef,
     capabilities: opened.capabilities,
@@ -687,7 +766,7 @@ const signals = (
 const awaken = (b: StepBuilder, run: RunRecord): RunRecord => {
   if (run.state === "sending") markStarted(b, run, null);
   const live = b.run(run.id);
-  if (live.unresponsiveSince !== null) b.emit({ _tag: "RunResponsive", runId: live.id });
+  if (live.unresponsiveSince !== null) markResponsive(b, live);
   return b.run(run.id);
 };
 
@@ -717,7 +796,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const quiet = b.now - (run.lastActivityAt ?? 0) >= WATCHDOG_SILENCE_MS / 2;
       if (run.unresponsiveSince !== null || quiet) {
         if (run.state === "sending") markStarted(b, run, null);
-        b.emit({ _tag: "RunResponsive", runId: run.id });
+        markResponsive(b, b.run(run.id));
       }
       return;
     }
@@ -783,9 +862,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         b.emit({ _tag: "RequestClosed", runId: run.id, requestId: id, state: "lapsed" });
         return;
       }
-      if (b.run(run.id).state !== "waiting") {
-        b.emit({ _tag: "RunWaiting", runId: run.id, requestId: id });
-      }
+      if (b.run(run.id).state !== "waiting") markWaiting(b, b.run(run.id), id);
       return;
     }
     case "request-closed": {
@@ -809,6 +886,25 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const end = turnEnd(live, signal.outcome);
       endRun(b, live, end, signal.source);
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
+      admitNext(b);
+      return;
+    }
+    case "usage-reset-known": {
+      // A limit whose reset was unknown: its probe gives way to a resume at the known time.
+      const probe = Object.values(b.state.wakes).find((wake) => wake.kind === "usage-probe");
+      if (b.state.pausedUntil !== "unknown" || probe === undefined) return;
+      b.emit({ _tag: "WakeCancelled", wakeId: probe.id, reason: "the reset is known" });
+      b.emit({ _tag: "UsagePauseLifted", reason: "the reset is known" });
+      b.emit({
+        _tag: "WakeArmed",
+        wakeId: deriveWakeId(b.state.conversationId, "usage-resume", probe.joins ?? "limit"),
+        kind: "usage-resume",
+        dueAt: signal.resetsAt,
+        cron: null,
+        principal: probe.principal,
+        joins: probe.joins,
+        text: CONTINUE_TEXT,
+      });
       admitNext(b);
       return;
     }
@@ -866,9 +962,30 @@ const resetTime = (resetsAt: string): number | null => {
   return Number.isNaN(at) ? null : at;
 };
 
-/** A usage limit ended `run`: a known reset arms a resume that joins it. */
+/**
+ * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it; an
+ * unknown one arms a probe that tries to resume it, waiting 15 minutes, then twice as long after
+ * each probe the limit refuses, up to an hour. Only the probe's outcome ends anything; the
+ * person can write sooner.
+ */
 const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void => {
-  if (resetsAt === null) return;
+  // One limit at a time: the newest says when the queue may go on.
+  cancelUsageWakes(b, "a newer usage limit");
+  if (resetsAt === null) {
+    const last = b.state.usageProbeMs;
+    const delay = last === null ? USAGE_PROBE_FIRST_MS : Math.min(2 * last, USAGE_PROBE_MAX_MS);
+    b.emit({
+      _tag: "WakeArmed",
+      wakeId: deriveWakeId(b.state.conversationId, "usage-probe", run.id),
+      kind: "usage-probe",
+      dueAt: b.now + delay,
+      cron: null,
+      principal: run.principal,
+      joins: run.id,
+      text: CONTINUE_TEXT,
+    });
+    return;
+  }
   b.emit({
     _tag: "WakeArmed",
     wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
@@ -879,6 +996,12 @@ const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void 
     joins: run.id,
     text: CONTINUE_TEXT,
   });
+};
+
+const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
+  for (const wake of Object.values(b.state.wakes)) {
+    if (isUsageWake(wake.kind)) b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason });
+  }
 };
 
 /** A turn the agent started on its own: a run that joins the run whose work it reports. */

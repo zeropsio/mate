@@ -421,7 +421,8 @@ export const RequestAsk = forwardCompatibleUnion({
 });
 export type RequestAsk = typeof RequestAsk.Type;
 
-const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed"] as const;
+/** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
+const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;
 /** A request's state as this build's rules know it. */
 export const RequestState = Schema.Literals(REQUEST_STATES);
 export type RequestState = typeof RequestState.Type;
@@ -512,7 +513,12 @@ export const EffectOutcome = forwardCompatibleUnion({
   known: ["ok", "failed", "cut", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("ok"), value: Schema.optionalKey(Schema.Unknown) }),
-    Schema.Struct({ kind: Schema.Literal("failed"), reason: Schema.String }),
+    Schema.Struct({
+      kind: Schema.Literal("failed"),
+      reason: Schema.String,
+      /** The other side refused for good: an answer it can no longer take, a run it won't admit. */
+      refused: Schema.optionalKey(Schema.Boolean),
+    }),
     Schema.Struct({ kind: Schema.Literal("cut"), reason: Schema.String }),
   ],
   fallback: unknownKind,
@@ -610,6 +616,16 @@ export const RequestAnswered = event("RequestAnswered", {
   summary: Schema.String,
   effectId: EffectId,
 });
+/** An answer the provider failed to take: the request is open again for the person. */
+export const RequestReopened = event("RequestReopened", {
+  runId: RunId,
+  requestId: RequestId,
+  key: Schema.String,
+  principal: Principal,
+  reason: Schema.String,
+  /** Answers given so far, none taken. */
+  answers: Schema.Int,
+});
 export const RequestClosed = event("RequestClosed", {
   runId: RunId,
   requestId: RequestId,
@@ -618,6 +634,9 @@ export const RequestClosed = event("RequestClosed", {
 export const SessionOpened = event("SessionOpened", {
   sessionId: SessionId,
   driver: Schema.String,
+  /** The model the engine asked for: a session fits by it, never by the driver's spelling. */
+  requestedModel: Schema.NullOr(Schema.String),
+  /** The model the driver reports, as it spells it. */
   model: Schema.NullOr(Schema.String),
   nativeRef: Schema.NullOr(Schema.String),
   capabilities: SessionCapabilities,
@@ -627,6 +646,8 @@ export const SessionClosed = event("SessionClosed", {
   sessionId: SessionId,
   reason: SessionCloseReason,
 });
+/** A usage limit whose reset nobody knew stops holding the queue (the person wrote again). */
+export const UsagePauseLifted = event("UsagePauseLifted", { reason: Schema.String });
 export const ModelSwitched = event("ModelSwitched", { model: Schema.String, by: Principal });
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
@@ -677,9 +698,11 @@ const knownEvents = [
   ItemClosed,
   RequestOpened,
   RequestAnswered,
+  RequestReopened,
   RequestClosed,
   SessionOpened,
   SessionClosed,
+  UsagePauseLifted,
   ModelSwitched,
   ConversationArchived,
   ConversationUnarchived,

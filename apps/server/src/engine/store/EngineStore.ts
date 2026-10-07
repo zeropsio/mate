@@ -228,10 +228,16 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
             answer_json = ${JSON.stringify({ by: event.by, at: event.at, summary: event.summary })}
           WHERE request_id = ${event.requestId}
         `.pipe(Effect.asVoid);
+      case "RequestReopened":
+        return sql`
+          UPDATE engine_request SET state = 'open', answerable = 1, answer_json = NULL,
+            rev = ${event.seq}
+          WHERE request_id = ${event.requestId}
+        `.pipe(Effect.asVoid);
       case "RequestClosed":
         return sql`
           UPDATE engine_request SET state = ${event.state}, answerable = 0, rev = ${event.seq}
-          WHERE request_id = ${event.requestId} AND state = 'open'
+          WHERE request_id = ${event.requestId} AND state IN ('open', 'answered')
         `.pipe(Effect.asVoid);
       case "SessionOpened":
         return sql`
@@ -281,6 +287,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           UPDATE engine_wake SET state = 'cancelled' WHERE wake_id = ${event.wakeId}
         `.pipe(Effect.asVoid);
       case "ModelSwitched":
+      case "UsagePauseLifted":
       case "ConversationArchived":
       case "ConversationUnarchived":
       case "EffectRequested":
