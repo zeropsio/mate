@@ -82,7 +82,9 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     ...ACP_HOLDS_THE_TURN,
     // Waits for the agent's answer to the cancel (killed after 15 s).
     interrupt: { confirmedByAgent: true, closesSession: false },
-    // Its connection's end stops the session before the prompt's failure.
+    // Either order: its connection's end can stop the session before the
+    // prompt's failure (AG:440-462), leaving the end to the bridge, or the
+    // failing prompt ends the turn first (the mock agent's crash, measured).
     crashTerminal: "bridge",
     usageLimit: { typed: false, parksTurn: false, resetTime: false },
     // Commands still open at the turn's end are promoted to tasks.

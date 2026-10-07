@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 /**
  * The driver bridge, pinned as sentences.
  *
@@ -18,6 +18,7 @@ import { assert, describe, it } from "vite-plus/test";
 
 import type { BridgeDriver, RequestKey, SessionKey, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
+import { crashOncePath, recordAcp, recordClaude, recordCodex } from "./testkit/record.ts";
 import { integrityBreach, signalLines, textOf } from "./testkit/signals.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -1232,4 +1233,282 @@ describe("the fold's rules", () => {
       { reason: "unknown-turn", type: "item.started" },
     ]);
   });
+});
+
+// ── mock: real adapters, authored wire or the ACP mock agent ───────────
+
+const plainTurn = NodeFS.readFileSync(
+  NodePath.join(fixturesRoot, "claude", "plain-text-turn.jsonl"),
+  "utf8",
+)
+  .trim()
+  .split("\n")
+  .map((line) => (JSON.parse(line) as { readonly message: Record<string, unknown> }).message);
+const CLAUDE_SESSION = "c8f9608e-c260-4030-b4fb-d7a79d50bd17";
+/** The recorded turn up to its last stream event: everything but its result. */
+const claudeTurnSoFar = plainTurn.slice(0, 10);
+const claudeResult = plainTurn[10]!;
+
+const CODEX_THREAD = "spi-replay-codex-thread";
+const codexTurnStarted = (turnId: string) => ({
+  method: "turn/started",
+  params: {
+    threadId: CODEX_THREAD,
+    turn: {
+      id: turnId,
+      items: [],
+      itemsView: "notLoaded",
+      status: "inProgress",
+      error: null,
+      startedAt: 1785898342,
+      completedAt: null,
+      durationMs: null,
+    },
+  },
+});
+const record = async (
+  driver: BridgeDriver,
+  recording: Promise<{ readonly threadId: string; readonly log: ReadonlyArray<BridgeInput> }>,
+) => {
+  const { threadId, log } = await recording;
+  const { signals } = run(driver, threadId, log);
+  assert.isUndefined(integrityBreach(signals));
+  return signalLines(signals);
+};
+
+/** A refused five-hour window, two hours from now: a reset the adapter believes. */
+const refusedWindow = () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 2 * 60 * 60;
+  return {
+    resetsAt: new Date(resetsAt * 1000).toISOString(),
+    message: {
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt },
+      uuid: "limit-1",
+      session_id: CLAUDE_SESSION,
+    },
+  };
+};
+
+describe("real adapters, driven by a mock or an authored wire", () => {
+  it("claudeAgent [mock]: a refused window parks the turn with no end, until when it says", async () => {
+    const window = refusedWindow();
+    assert.deepStrictEqual(
+      await record("claudeAgent", recordClaude([...claudeTurnSoFar, window.message])),
+      [
+        ...OPENS_H1,
+        "h1.i1 text running",
+        "h1.i1 text completed",
+        "context usage",
+        `usage limit parks-turn h1 until ${window.resetsAt}`,
+        "notice warning",
+      ],
+    );
+  });
+
+  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with only a warning, which the bridge cannot read as a limit", async () => {
+    const pastReset = {
+      type: "rate_limit_event",
+      rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
+      uuid: "limit-1",
+      session_id: CLAUDE_SESSION,
+    };
+    assert.deepStrictEqual(
+      await record("claudeAgent", recordClaude([...claudeTurnSoFar, pastReset])),
+      [
+        ...OPENS_H1,
+        "h1.i1 text running",
+        "h1.i1 text completed",
+        "context usage",
+        "notice warning",
+      ],
+    );
+  });
+
+  it("claudeAgent [mock]: a background shell outlives its turn, and its result wakes the agent into a turn of its own", async () => {
+    const lines = await record(
+      "claudeAgent",
+      recordClaude([
+        ...claudeTurnSoFar,
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "bg-1",
+          tool_use_id: "toolu_bg",
+          description: "npm run dev",
+          task_type: "local_bash",
+          uuid: "task-1",
+          session_id: CLAUDE_SESSION,
+        },
+        claudeResult,
+        {
+          type: "system",
+          subtype: "task_notification",
+          task_id: "bg-1",
+          tool_use_id: "toolu_bg",
+          status: "completed",
+          output_file: "/tmp/bg-1.output",
+          summary: "dev server exited",
+          uuid: "task-2",
+          session_id: CLAUDE_SESSION,
+        },
+        {
+          type: "assistant",
+          message: {
+            model: "claude-opus-5",
+            id: "msg_wake",
+            type: "message",
+            role: "assistant",
+            content: [{ type: "text", text: "The dev server exited." }],
+            stop_reason: null,
+            usage: { input_tokens: 1, output_tokens: 4 },
+          },
+          parent_tool_use_id: null,
+          session_id: CLAUDE_SESSION,
+          uuid: "wake-1",
+        },
+        { ...claudeResult, uuid: "wake-result" },
+      ]),
+    );
+    assert.deepStrictEqual(lines, [
+      ...OPENS_H1,
+      "h1.i1 text running",
+      "h1.i1 text completed",
+      "context usage",
+      "s1.w1 shell running, from h1",
+      "context usage",
+      "h1 ended completed (end_turn) — agent",
+      "s1.w1 shell completed, from h1",
+      "s1.self1 opened by self",
+      "s1.self1.i1 text running",
+      "s1.self1.i1 text completed",
+      "context usage",
+      "s1.self1 ended completed (end_turn) — agent",
+    ]);
+  });
+
+  it("codex [mock]: an app-server exit mid-turn ends nothing, so the bridge ends the turn cut by the crash", async () => {
+    assert.deepStrictEqual(
+      await record(
+        "codex",
+        recordCodex([
+          codexTurnStarted("turn-1"),
+          { method: "session/exited", params: { threadId: CODEX_THREAD } },
+        ]),
+      ),
+      [
+        ...OPENS_H1,
+        "h1 ended cut: process-exit — inferred-from-crash",
+        "session s1 closed: process-exit",
+      ],
+    );
+  });
+
+  it("codex [mock]: an exhausted usage limit ends the turn, typed, with no time it lifts", async () => {
+    const limit = { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
+    assert.deepStrictEqual(
+      await record(
+        "codex",
+        recordCodex([
+          codexTurnStarted("turn-1"),
+          {
+            method: "error",
+            params: { threadId: CODEX_THREAD, turnId: "turn-1", willRetry: false, error: limit },
+          },
+          {
+            method: "turn/completed",
+            params: {
+              threadId: CODEX_THREAD,
+              turn: { id: "turn-1", items: [], status: "failed", error: limit },
+            },
+          },
+        ]),
+      ),
+      [...OPENS_H1, "notice error usage_limit", "h1 ended usage-limited until unknown — agent"],
+    );
+  });
+
+  for (const driver of ["cursor", "grok"] as const) {
+    it(
+      `${driver} [mock]: Stop during a tool call is a local cancel the agent never confirms`,
+      { timeout: 30_000 },
+      async () => {
+        assert.deepStrictEqual(
+          await record(
+            driver,
+            recordAcp(
+              driver,
+              { T3_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1" },
+              { kind: "stop-mid-tool" },
+            ),
+          ),
+          [
+            ...OPENS_H1,
+            "h1.i1 tool command_execution running ×2",
+            "h1.i1 tool command_execution unreturned",
+            "h1 ended interrupted — stop-asked",
+          ],
+        );
+      },
+    );
+  }
+
+  for (const driver of ["cursor", "antigravity"] as const) {
+    it(
+      `${driver} [mock]: the agent dying on its prompt ends the turn cut by the process exit, as the adapter says, and closes the session`,
+      { timeout: 30_000 },
+      async () => {
+        assert.deepStrictEqual(
+          await record(
+            driver,
+            recordAcp(
+              driver,
+              { T3_ACP_CRASH_ONCE_PATH: await crashOncePath() },
+              { kind: "until-end" },
+            ),
+          ),
+          [...OPENS_H1, "h1 ended cut: process-exit — agent", "session s1 closed: process-exit"],
+        );
+      },
+    );
+  }
+
+  it(
+    "grok [mock]: a monitor outlives its turn and ends after it",
+    { timeout: 30_000 },
+    async () => {
+      assert.deepStrictEqual(
+        await record(
+          "grok",
+          recordAcp(
+            "grok",
+            { T3_ACP_EMIT_GROK_MONITOR_POST_TURN_POLL: "1" },
+            { kind: "until", type: "task.completed" },
+          ),
+        ),
+        [
+          ...OPENS_H1,
+          "h1.i1 tool dynamic_tool_call running",
+          "s1.w1 monitor running, from h1",
+          "h1.i1 tool dynamic_tool_call completed",
+          "h1 ended completed (end_turn) — agent",
+          "s1.w1 monitor completed, from h1",
+        ],
+      );
+    },
+  );
+
+  it(
+    "grok [mock]: a rate limit ends the turn, typed, with no time it lifts",
+    { timeout: 30_000 },
+    async () => {
+      assert.deepStrictEqual(
+        await record(
+          "grok",
+          recordAcp("grok", { T3_ACP_EMIT_XAI_RATE_LIMIT_THEN_HANG: "1" }, { kind: "until-end" }),
+        ),
+        [...OPENS_H1, "h1 ended usage-limited until unknown — agent"],
+      );
+    },
+  );
 });
