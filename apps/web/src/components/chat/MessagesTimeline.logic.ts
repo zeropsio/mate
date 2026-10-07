@@ -952,11 +952,12 @@ export interface StableMessagesTimelineRowsState {
   result: MessagesTimelineRow[];
 }
 
-/** Match each user message to the next assistant checkpoint. */
+/** A turn's captured work can be rewound even if it failed before an assistant answer. */
 function buildRevertTurnCountByUserMessageId(input: {
   supportsConversationRollback: boolean;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   turnDiffSummaryByAssistantMessageId: ReadonlyMap<MessageId, TurnDiffSummary>;
+  turnDiffSummaryByTurnId: ReadonlyMap<TurnId, TurnDiffSummary>;
   inferredCheckpointTurnCountByTurnId: Readonly<Record<string, number | undefined>>;
 }): Map<MessageId, number> {
   const byUserMessageId = new Map<MessageId, number>();
@@ -964,6 +965,19 @@ function buildRevertTurnCountByUserMessageId(input: {
   for (let index = 0; index < entryCount; index += 1) {
     const entry = input.timelineEntries[index];
     if (!entry || entry.kind !== "message" || entry.message.role !== "user") continue;
+    const ownSummary =
+      entry.message.turnId === null
+        ? undefined
+        : input.turnDiffSummaryByTurnId.get(entry.message.turnId);
+    const ownCount =
+      ownSummary?.checkpointTurnCount ??
+      (ownSummary === undefined
+        ? undefined
+        : input.inferredCheckpointTurnCountByTurnId[ownSummary.turnId]);
+    if (typeof ownCount === "number") {
+      byUserMessageId.set(entry.message.id, Math.max(0, ownCount - 1));
+      continue;
+    }
     for (let nextIndex = index + 1; nextIndex < input.timelineEntries.length; nextIndex += 1) {
       const nextEntry = input.timelineEntries[nextIndex];
       if (!nextEntry || nextEntry.kind !== "message") continue;
@@ -2109,6 +2123,7 @@ export function deriveMessagesTimelineRows(input: {
     supportsConversationRollback: input.supportsConversationRollback,
     timelineEntries: entries,
     turnDiffSummaryByAssistantMessageId: diffByAssistantMessageId,
+    turnDiffSummaryByTurnId: diffByTurnId,
     inferredCheckpointTurnCountByTurnId: input.supportsConversationRollback
       ? inferCheckpointTurnCountByTurnId(input.turnDiffSummaries)
       : {},
