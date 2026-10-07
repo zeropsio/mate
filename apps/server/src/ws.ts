@@ -155,7 +155,7 @@ import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
-import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
+import { ENGINE_MOVED } from "./engine/MateEngine.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
@@ -680,7 +680,6 @@ const makeWsRpcLayer = (
           ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
           : run(threadFileWrites);
       const crew = yield* CrewEngine;
-      const mateEngine = yield* MateEngine;
       const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -1428,7 +1427,7 @@ const makeWsRpcLayer = (
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               // The Mate engine owns the conversation: V1's door is closed, before admission.
-              if (mateEngine.live) {
+              if (config.mateEngine === "mate") {
                 return yield* new OrchestrationDispatchCommandError({ message: ENGINE_MOVED });
               }
               yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);

@@ -166,12 +166,7 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
-import {
-  ENGINE_MOVED,
-  inertMateEngine,
-  MateEngine,
-  type MateEngineService,
-} from "./engine/MateEngine.ts";
+import { ENGINE_MOVED, type MateEngine } from "./engine/MateEngine.ts";
 import { engineLayerInert } from "./engine/layer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
@@ -554,8 +549,6 @@ const unavailableZeropsAgentLogin = {
 const buildAppUnderTest = (options?: {
   onPairingChangesSubscribed?: Effect.Effect<void>;
   config?: Partial<ServerConfig.ServerConfig["Service"]>;
-  /** The Mate engine the server runs; inert (V1 owns the conversation) unless given. */
-  mateEngine?: MateEngineService;
   fixtureZeropsLayer?: Layer.Layer<
     | ZeropsLifecycle.ZeropsLifecycle
     | ZeropsAgentAuth.ZeropsAgentAuth
@@ -1283,9 +1276,8 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
-            options?.mateEngine === undefined
-              ? engineLayerInert
-              : Layer.succeed(MateEngine, options.mateEngine),
+            // The Mate engine inert, whatever the switch says: its doors are V1's to close.
+            engineLayerInert,
             options?.layers?.zeropsSetup === undefined
               ? Layer.empty
               : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
@@ -2584,7 +2576,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       Effect.gen(function* () {
         const dispatched: Array<string> = [];
         yield* buildAppUnderTest({
-          mateEngine: { ...inertMateEngine, live: true },
+          config: { mateEngine: "mate" },
           layers: {
             orchestrationEngine: {
               dispatch: (command) =>
@@ -2624,7 +2616,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const dispatched: Array<string> = [];
       yield* buildAppUnderTest({
-        mateEngine: { ...inertMateEngine, live: true },
+        config: { mateEngine: "mate" },
         layers: {
           orchestrationEngine: {
             dispatch: (command) =>
