@@ -95,6 +95,36 @@ export function mateChat(
         .setTimeout(8000)
         .click();
     });
+  const send = (message: string, waitForReady: boolean) =>
+    Effect.promise(async () => {
+      const input = page.locator(composer).setTimeout(8000);
+      await (await input.waitHandle()).focus();
+      await page.keyboard.down(modifier);
+      await page.keyboard.press("a");
+      await page.keyboard.up(modifier);
+      await page.keyboard.press("Backspace");
+      await page.keyboard.type(message);
+      await page.waitForFunction(
+        (message) => document.activeElement?.textContent === message,
+        { timeout: 8000, polling: "raf" },
+        message,
+      );
+      if (waitForReady)
+        await page.waitForFunction(
+          () =>
+            [...document.querySelectorAll<HTMLButtonElement>("button[type=submit]")].some(
+              (button) =>
+                ["Send message", "Queue message"].includes(
+                  button.getAttribute("aria-label") ?? "",
+                ) &&
+                !button.disabled &&
+                button.getBoundingClientRect().height > 0,
+            ),
+          { timeout: 8000, polling: "raf" },
+        );
+      await (await input.waitHandle()).focus();
+      await page.keyboard.press("Enter");
+    });
   return {
     step: <A, E, R>(name: string, action: Effect.Effect<A, E, R>) =>
       action.pipe(
@@ -313,22 +343,8 @@ export function mateChat(
           });
           await page.mouse.up();
         }),
-      send: (message: string) =>
-        Effect.promise(async () => {
-          const input = page.locator(composer).setTimeout(8000);
-          await (await input.waitHandle()).focus();
-          await page.keyboard.down(modifier);
-          await page.keyboard.press("a");
-          await page.keyboard.up(modifier);
-          await page.keyboard.press("Backspace");
-          await page.keyboard.type(message);
-          await page.waitForFunction(
-            (message) => document.activeElement?.textContent === message,
-            { timeout: 8000, polling: "raf" },
-            message,
-          );
-          await page.keyboard.press("Enter");
-        }),
+      send: (message: string) => send(message, true),
+      attemptSend: (message: string) => send(message, false),
     },
     // The scenario DSL exposes assertions, never a Promise callback.
     // oxlint-disable-next-line unicorn/no-thenable
