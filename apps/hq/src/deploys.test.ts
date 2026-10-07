@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import type { OperationSignal } from "./operationWatch.ts";
@@ -1792,10 +1793,10 @@ describe("deploys", () => {
     for (const column of ["evidence", "verified_version_id"] as const) {
       it.effect(`restarts an environment worker after a transient ${column} SQL failure`, () =>
         Effect.gen(function* () {
-          const exited = yield* Queue.unbounded<void>();
+          const stopped = yield* Queue.unbounded<Fiber.Fiber<unknown, unknown>>();
           let platform: FakeWorld | undefined;
           return yield* withDeploys(
-            ({ appId, world, tiers, commit, until }) =>
+            ({ appId, world, tiers, commit, deploys }) =>
               Effect.gen(function* () {
                 platform = world;
                 const sql = yield* SqlClient.SqlClient;
@@ -1808,18 +1809,24 @@ describe("deploys", () => {
                 tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
                 world.outcome = () => "BUILDING";
                 yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-                yield* Queue.take(exited);
+                // Observer finalization precedes the worker's registry cleanup. Join the worker
+                // that reported the SQL failure before waking dispatch again.
+                yield* Fiber.await(yield* Queue.take(stopped));
                 yield* sql`DROP TRIGGER reject_observation ON hq_deploy_job`;
                 yield* (yield* Rollouts).wake;
-                yield* until(settled("live"));
+                yield* (yield* Deploys).changes.pipe(
+                  Stream.mapEffect(() => deploys),
+                  Stream.filter(settled("live")),
+                  Stream.take(1),
+                  Stream.runDrain,
+                );
                 assert.lengthOf(versions(world), 1);
               }),
             {
               observer: {
                 watch: (target) =>
                   Stream.unwrap(
-                    Effect.gen(function* () {
-                      yield* Effect.addFinalizer(() => Queue.offer(exited, undefined));
+                    Effect.sync(() => {
                       if (platform !== undefined)
                         platform.services[0]!.activeVersionId = target.versionId;
                       return Stream.succeed({
@@ -1831,6 +1838,15 @@ describe("deploys", () => {
                   ),
               },
             },
+          ).pipe(
+            Effect.provide(
+              Logger.layer([
+                Logger.make(({ message, fiber }) => {
+                  if (Array.isArray(message) && message[0] === "an environment's deploys stopped")
+                    Queue.offerUnsafe(stopped, fiber);
+                }),
+              ]),
+            ),
           );
         }),
       );

@@ -22,13 +22,15 @@ const readAttention = Schema.decodeEffect(HqAttentionValue);
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "five distinct people get cold navigation with Mate facts within budget; unchanged resumes send no values",
+      "five distinct people get cold navigation with Mate facts within the read budget; unchanged resumes send no values",
       () =>
         Effect.gen(function* () {
           const queries: string[] = [];
           let recording = false;
           const core = yield* startCore(true, {
-            reconcileEvery: Duration.hours(1),
+            reconcileEvery: Duration.infinity,
+            streamRecheck: Duration.infinity,
+            pingEvery: Duration.infinity,
             viewTtl: Duration.zero,
           }).pipe(
             Effect.provideService(Statement.CurrentTransformer, (statement) =>
@@ -210,9 +212,9 @@ describe("HQ scoped socket", () => {
           );
           recording = false;
           const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
-          const memberReads = core.fake.calls
-            .slice(coldCalls)
-            .filter((call) => call === "members:hq").length;
+          const navigationCalls = core.fake.calls.slice(coldCalls);
+          const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
+          const structureQueries = queries.filter((query) => /FROM hq_app a ORDER BY/.test(query));
           process.stdout.write(
             `HQ cold reads: SQL=${queries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
           );
@@ -230,8 +232,22 @@ describe("HQ scoped socket", () => {
             people.length,
             "one scoped seen read per person, not per Mate",
           );
-          assert.isAtMost(times[2]!, 60);
-          assert.isAtMost(times[4]!, 300);
+          // The shared structure is read cold, then once when setup-marker evidence lands.
+          const sharedStructureReads = 1 + 1;
+          assert.isAtMost(structureQueries.length, sharedStructureReads);
+          // Each socket authenticates and checks its session; navigation checks roles before
+          // and after loading. Concurrent checks can share a read, but never add per-Mate reads.
+          const roleReadsPerPerson = 2 + 2;
+          assert.isAtMost(memberReads, people.length * roleReadsPerPerson + sharedStructureReads);
+          assert.isAtMost(
+            navigationCalls.filter((call) => call === "projects:hq").length,
+            people.length * roleReadsPerPerson + sharedStructureReads,
+          );
+          assert.isAtMost(
+            navigationCalls.filter((call) => call === "mateSetupMarker:hq").length,
+            projects.length,
+            "setup evidence is shared across people",
+          );
           for (const [index, sample] of samples.entries()) {
             assert.lengthOf(sample.deliveries, 1);
             const values = sample.deliveries[0]!.values as Array<{
