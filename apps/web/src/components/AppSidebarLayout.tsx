@@ -281,6 +281,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         side="left"
         collapsible="offcanvas"
         data-app-sidebar=""
+        role="navigation"
+        aria-label={isOnSettings ? "Settings" : "Mates"}
         className="border-r border-sidebar-border"
         resizable={{
           maxWidth: sidebarMaximumWidth,

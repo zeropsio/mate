@@ -242,7 +242,7 @@ function Sidebar({
   if (isMobile) {
     return (
       <SidebarInstanceContext value={instanceContextValue}>
-        <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
+        <Sheet onOpenChange={setOpenMobile} open={openMobile}>
           <SheetPopup
             className={cn(
               // The sheet is portalled out of the wrapper, so it restates the
@@ -271,6 +271,7 @@ function Sidebar({
                 "flex h-full w-full flex-col pb-safe pt-safe",
                 side === "left" ? "pl-safe" : "pr-safe",
               )}
+              {...props}
             >
               {children}
             </div>
@@ -606,6 +607,10 @@ function SidebarContent({
         hideScrollbars
         scrollFade
         scrollFadePadding={false}
+        // Mate rows provide keyboard access to this scroll region. Keeping
+        // Base UI's viewport out of the tab order lets its presentational role
+        // flatten in WebKit instead of becoming a VoiceOver interaction group.
+        viewportTabIndex={-1}
         className="h-auto min-h-0 flex-1"
       >
         <div
