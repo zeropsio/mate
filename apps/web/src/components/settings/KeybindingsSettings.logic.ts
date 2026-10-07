@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import { isMacPlatform } from "../../lib/utils";
+import { METRIC_OPTIONS, WINDOW_OPTIONS } from "../usage/usageShortcuts";
 
 export type KeybindingSource = "Default" | "Custom" | "Project";
 
@@ -274,6 +275,10 @@ export function buildKeybindingCommandOptions(
 }
 
 export function commandLabel(command: KeybindingCommand): string {
+  const usageMetric = METRIC_OPTIONS.find((option) => option.command === command);
+  if (usageMetric) return `Usage: ${usageMetric.label}`;
+  const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);
+  if (usagePeriod) return `Usage: Period: ${usagePeriod.label}`;
   const raw = String(command);
   if (raw.startsWith("script.") && raw.endsWith(".run")) {
     return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;
