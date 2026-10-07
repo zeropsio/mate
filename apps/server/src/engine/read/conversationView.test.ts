@@ -4,6 +4,7 @@ import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { runId } from "@t3tools/contracts";
 
+import { conversationRowOf } from "./conversationRow.ts";
 import { makeEngineWorld, mate } from "../testing/pump/engineWorld.ts";
 
 const world = Effect.gen(function* () {
@@ -88,6 +89,49 @@ describe("a conversation's view", () => {
         const seen = yield* Effect.forkScoped(Stream.runCollect(Stream.take(engine.changes, 1)));
         yield* w.tell({ _tag: "Send", text: "hello" });
         assert.deepStrictEqual([...(yield* Fiber.join(seen))], [mate]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a run a restart cut, as a person reads it", () => {
+  const revision = { environmentId: "env", epoch: 1 };
+
+  it.effect("says why the run was cut and that it carries on, while it does", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Deploy the api" });
+        yield* w.agent((agent, thread) => agent.call(thread));
+        yield* w.crash;
+        yield* w.boot;
+        const view = yield* viewOf(w);
+        assert.deepStrictEqual(view?.lastEnded?.end, {
+          kind: "cut-by-restart",
+          continuedBy: runId(mate, 2),
+          words: "Mate restarted.",
+        });
+        assert.strictEqual(view?.activeRun?.id, runId(mate, 2));
+        assert.strictEqual(conversationRowOf(view!, revision).state.kind, "working");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("says why the run was cut and why it was not continued", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "/compact", maintenance: true });
+        yield* w.crash;
+        yield* w.boot;
+        const view = yield* viewOf(w);
+        assert.deepStrictEqual(conversationRowOf(view!, revision).state, {
+          kind: "failed",
+          errorLine:
+            "Mate restarted. The run was cut and not continued (a maintenance turn): send a message to go on.",
+        });
         yield* w.shutdown;
       }),
     ),

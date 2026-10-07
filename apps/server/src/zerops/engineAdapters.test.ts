@@ -52,4 +52,39 @@ describe("engineAdapters", () => {
       assert.strictEqual(yield* (yield* RestartEvidence).read, null);
     }).pipe(Effect.provide(engineAdaptersOpen)),
   );
+
+  it.effect(
+    "a run a restart cut is explained by the platform's record: who restarted the Mate, and when",
+    () =>
+      Effect.gen(function* () {
+        const evidence = yield* RestartEvidence;
+        const facts = {
+          name: "Fen",
+          projectId: "p1",
+          serviceId: "s1",
+          containerStartedAt: null,
+          processes: [
+            {
+              status: "FINISHED",
+              actionName: "stack.restart",
+              serviceStackId: "s1",
+              started: "2026-10-07T10:00:00.000Z",
+              createdByUser: { fullName: "Ana Novak" },
+            },
+          ],
+        };
+        const window = {
+          lastActivityAt: Date.parse("2026-10-07T09:59:00.000Z"),
+          bootAt: Date.parse("2026-10-07T10:01:00.000Z"),
+        };
+        assert.strictEqual(
+          evidence.explain(facts, window),
+          "Fen was restarted by Ana Novak at 2026-10-07T10:00:00.000Z.",
+        );
+        assert.strictEqual(
+          evidence.explain(null, window),
+          "Mate restarted at 2026-10-07T10:01:00.000Z.",
+        );
+      }).pipe(Effect.provide(engineAdaptersOpen)),
+  );
 });
