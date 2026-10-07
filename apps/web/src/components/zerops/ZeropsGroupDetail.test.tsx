@@ -682,6 +682,8 @@ interface StopCase {
   readonly readAgain?: ReactNode;
   readonly tier: EnvironmentRow["tier"];
   readonly services: ReadonlyArray<EnvironmentServiceState>;
+  readonly servicesRead?: boolean;
+  readonly repository?: string | null;
   readonly deployment?: Shown<Deployment>;
   /** What the platform lists for each service; unread unless given. */
   readonly platform?: Shown<ReadonlyArray<StopService>>;
@@ -814,9 +816,9 @@ function renderStop(input: StopCase): string {
       releases={
         input.tier === "production" ? releases(input.releases ?? 0, running, input.moving) : []
       }
-      repo="appdev"
+      repo={input.repository === null ? undefined : (input.repository ?? "appdev")}
       routes={[]}
-      services={rows}
+      services={input.servicesRead === false ? undefined : rows}
       stop={stop}
       tags={new Map()}
       trouble={null}
@@ -827,6 +829,17 @@ function renderStop(input: StopCase): string {
     />,
   );
 }
+
+it.each(["stage", "production"] as const)(
+  "keeps unread %s services and their repository unknown rather than empty",
+  (tier) => {
+    const markup = renderStop({ tier, services: [], servicesRead: false, repository: null });
+    expect(markup).toContain("Services aren");
+    expect(markup).toContain("known yet");
+    expect(markup).not.toContain("None yet");
+    expect(markup).not.toContain("No repository is declared");
+  },
+);
 
 it("keeps runtime read recovery inside the verdict that reports its failure", () => {
   const markup = renderStop({

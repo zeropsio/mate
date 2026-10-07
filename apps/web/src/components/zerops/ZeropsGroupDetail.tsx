@@ -1384,7 +1384,14 @@ export function ZeropsStopDetailPage({
                 onRunAgain: () => said(verbs.redeploy(flow, projectId, redeploy)),
               }
         }
-        services={services}
+        services={
+          declared === undefined ||
+          !flow.recipeRead ||
+          platform.state !== "known" ||
+          platform.coverage !== "complete"
+            ? undefined
+            : services
+        }
         stop={stop}
         tags={tags}
         trouble={verbs.trouble}
@@ -1578,7 +1585,7 @@ export function ZeropsStopPane({
   addService,
   notInZerops = NOTHING_MISSING,
   deployAnswer,
-  services,
+  services: readServices,
   stop,
   tags,
   trouble,
@@ -1606,7 +1613,8 @@ export function ZeropsStopPane({
   readonly view: StopView;
   readonly verdict: StopVerdict;
   /** One row per service, as `serviceRows` says it. */
-  readonly services: ReadonlyArray<StopServiceRow>;
+  /** Undefined until the recipe and complete platform service listing have been read. */
+  readonly services: ReadonlyArray<StopServiceRow> | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
@@ -1657,6 +1665,7 @@ export function ZeropsStopPane({
   readonly routeTrouble?: string | null;
 }) {
   const [allReleases, setAllReleases] = useState(false);
+  const services = readServices ?? NO_SERVICE_ROWS;
   const title = stop.name;
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
@@ -1757,8 +1766,10 @@ export function ZeropsStopPane({
           </CardGroup>
         )}
 
-        <CardGroup title={stopCardTitle("services", services.length)}>
-          {services.length === 0 ? (
+        <CardGroup title={stopCardTitle("services", readServices?.length)}>
+          {readServices === undefined ? (
+            <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
+          ) : services.length === 0 ? (
             <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
           ) : (
             <ul className="flex flex-col">
@@ -1857,7 +1868,9 @@ export function ZeropsStopPane({
               repo !== undefined && history.kind === "read" ? history.total : undefined,
             )}
           >
-            {repo === undefined ? (
+            {readServices === undefined ? (
+              <p className="py-2 text-sm text-muted-foreground">Repository not known yet.</p>
+            ) : repo === undefined ? (
               <p className="py-2 text-sm text-muted-foreground">
                 No repository is declared for this environment&rsquo;s services, so its history
                 cannot be read.
