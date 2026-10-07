@@ -2102,32 +2102,3 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's helpers were already named by their nickname or path. Where the launch named none, or
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
-- **2026-10-06** — **A written or edited file's row opens onto what the agent wrote, and "Open in
-  Files" shows a file it wrote outside the workspace as it wrote it** (D9, the owner: "Are these
-  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a
-  write's content or an edit's new text, drawn from the call's own stored payload
-  (`threads.fileWrites`): Claude Code's `Write` content and `Edit`/`MultiEdit` `new_string`s and
-  `NotebookEdit` `new_source`, Codex's added files and the added lines of its updates, OpenCode's
-  `write` content, `edit`/`multiedit` `newString`s and the added lines of its patches, and for an ACP agent (Cursor, Grok, Antigravity) the `new_string`, `newString` or `content` its call's raw input carries, else what its `diff` block adds over its old text, worked out on the server and cut to the characters that differ (`…db2…`): a line that stands unchanged in the old text is never shown as added, and a Codex or patch run that removes and adds the same line drops the pair. A change that only removes reads as a count ("Removed 3 lines"). The client's copy of a
-  call carries only a mark that it wrote something; a call whose driver sent none keeps the row it
-  had, and a running or failed write opens onto nothing. Each file's text stands in the card's own
-  item box: in the log whole once opened, nothing scrolling inside (the 0.14.4 rule). "Open in
-  Files" for a path inside the workspace opens the Files tab as before; for one outside, the
-  read-only panel shows the thread's newest completed write of that path, labelled "As Sage wrote
-  it at 01:23" (`threads.writtenFile`).
-  - _Rule:_ what a reader sees is exactly what the agent wrote in its calls, from the thread's own
-    record. Nothing is read from disk, and nothing the agent only read or found in a file is sent:
-    never an edit's old text, a diff's removed or context lines, a patch's hunk headers, ACP's
-    `oldText` or a deleted file's content.
-    - Only a completed call wrote, as the server's own stored row says: a failed, declined or
-      never-returned call counts for nothing.
-    - The Files tab's path must equal exactly — untrimmed, in the form it was named — a path that a
-      completed call of THIS thread wrote; another thread's writes count for nothing.
-    - Both methods take `orchestration:read`, as `subscribeThread` does, and one answer carries at
-      most 1 MiB of text.
-  - _Why:_ a security review found that serving the file from disk cannot hold: an edit of one line
-    of `~/.npmrc` or an outside `.env` would serve the token beside it, which the agent never wrote
-    and readers never saw (a Read reaches them as an 84-character summary), and a renamed folder, a
-    write through a shared mapping, a FUSE mount, a timing slack or another clock each put other
-    content under the written name. The agent's own calls already reach every reader of the thread;
-    showing those, and only those, discloses nothing new.
