@@ -211,12 +211,17 @@ describe("HQ scoped socket", () => {
             ),
           );
           recording = false;
+          const sessionQueries = queries.filter((query) => /\bhq_session\b/.test(query));
           const seenQueries = queries.filter((query) => /\bhq_attention_seen\b/.test(query));
           const navigationCalls = core.fake.calls.slice(coldCalls);
           const memberReads = navigationCalls.filter((call) => call === "members:hq").length;
           const structureQueries = queries.filter((query) => /FROM hq_app a ORDER BY/.test(query));
+          // The app's emptiness subquery also mentions hq_change; count it with structure.
+          const changeQueries = queries.filter(
+            (query) => /\bhq_change\b/.test(query) && !structureQueries.includes(query),
+          );
           process.stdout.write(
-            `HQ cold reads: SQL=${queries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
+            `HQ cold reads: SQL=${queries.length}, sessions=${sessionQueries.length}, structure=${structureQueries.length}, changes=${changeQueries.length}, seen=${seenQueries.length}, members=${memberReads}\n`,
           );
           assert.isAbove(
             core.fake.calls.filter((call) => call === "members:hq").length,
@@ -227,14 +232,37 @@ describe("HQ scoped socket", () => {
           process.stdout.write(
             `HQ five people / 30 Mates / cold roles: p50=${times[2]?.toFixed(1)}ms p95=${times[4]?.toFixed(1)}ms\n`,
           );
-          assert.isAtMost(
+          const sessionReadsPerPerson = 2; // Socket authentication and its initial session check.
+          assert.strictEqual(sessionQueries.length, people.length * sessionReadsPerPerson);
+          assert.strictEqual(
             seenQueries.length,
             people.length,
             "one scoped seen read per person, not per Mate",
           );
           // The shared structure is read cold, then once when setup-marker evidence lands.
           const sharedStructureReads = 1 + 1;
+          assert.isAtLeast(structureQueries.length, 1);
           assert.isAtMost(structureQueries.length, sharedStructureReads);
+          assert.strictEqual(
+            changeQueries.length,
+            1,
+            "one shared change read for all people and Mates",
+          );
+          // Each structure read: isolation SET, five structure SELECTs, four environment SELECTs.
+          // Each person also reads seen results and key health. The asynchronous release read
+          // starts three shared SELECTs and its first recipe lookup before the scope receipts.
+          const statementsPerStructureRead = 1 + 5 + 4;
+          const sqlBudget =
+            people.length * (sessionReadsPerPerson + 1 + 1) +
+            structureQueries.length * statementsPerStructureRead +
+            1 +
+            3 +
+            1;
+          assert.isAtMost(
+            queries.length,
+            sqlBudget,
+            "total SQL for cold navigation, including all read kinds",
+          );
           // Each socket authenticates and checks its session; navigation checks roles before
           // and after loading. Concurrent checks can share a read, but never add per-Mate reads.
           const roleReadsPerPerson = 2 + 2;
