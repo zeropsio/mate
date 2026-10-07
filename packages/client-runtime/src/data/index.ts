@@ -313,3 +313,5 @@ export {
   type ProjectTopologySnapshot,
   type ProjectTopologyLiveness,
 } from "./projections/inventoryTopology.ts";
+
+export { composerControl, type ComposerControlLook } from "./projections/composerControl.ts";

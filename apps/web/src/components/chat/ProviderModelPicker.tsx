@@ -29,13 +29,7 @@ import {
   type ComposerModelControlLabel,
 } from "./ComposerModelControl.logic";
 import { shortcutLabelForCommand } from "../../keybindings";
-import {
-  composerControlKey,
-  rememberComposerControl,
-  rememberedComposerControl,
-  shownComposerControl,
-  type ComposerControlLook,
-} from "./composerControlMemory";
+import { composerControl, type ComposerControlLook } from "@t3tools/client-runtime/data";
 
 /**
  * The composer's one quiet control (C4): the trigger says the model and its
@@ -71,11 +65,10 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   composer?: ProviderModelPickerComposer;
   disabled?: boolean;
   /**
-   * The agents' catalog is still read: the composer's control stands as it last looked for this
-   * model (`composerControlMemory`) rather than as the raw selection.
+   * The catalog is still unread: reserve the control without inventing a label.
    */
   catalogPending?: boolean;
-  /** Also remembers the control's look under this key: its conversation's own, preferred while the catalog is read. */
+  /** Local conversation identity; supplies no display evidence. */
   rememberAs?: string | undefined;
   terminalOpen?: boolean;
   open?: boolean;
@@ -145,8 +138,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             ...props.composer.traits,
           });
 
-  // The composer's control as it stands now, remembered for the next time the catalog is read.
-  const controlKey = composerControlKey(activeInstanceId, props.model);
   const resolvedLook: ComposerControlLook | null =
     props.composer !== undefined &&
     activeEntry !== null &&
@@ -160,22 +151,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           label: composerLabel,
         }
       : null;
-  const resolvedLookText = resolvedLook === null ? null : JSON.stringify(resolvedLook);
-  const rememberAs = props.rememberAs;
-  useEffect(() => {
-    if (resolvedLookText === null) return;
-    const resolved = JSON.parse(resolvedLookText) as ComposerControlLook;
-    rememberComposerControl(controlKey, resolved);
-    if (rememberAs !== undefined) rememberComposerControl(rememberAs, resolved);
-  }, [controlKey, rememberAs, resolvedLookText]);
-  const look = shownComposerControl({
+  const control = composerControl({
     resolved: resolvedLook,
     pending: props.catalogPending === true,
-    remembered: [
-      rememberAs === undefined ? undefined : rememberedComposerControl(rememberAs),
-      rememberedComposerControl(controlKey),
-    ],
   });
+  const look = control.kind === "known" ? control.look : null;
 
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
@@ -266,8 +246,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   );
 
   if (props.composer !== undefined) {
-    const shownLabel = look?.label ?? composerLabel;
-    const text = shownLabel === null ? triggerLabel : composerModelControlText(shownLabel);
+    const shownLabel = control.kind === "unknown" ? null : (look?.label ?? composerLabel);
+    const text =
+      control.kind === "unknown"
+        ? "Reading models…"
+        : shownLabel === null
+          ? triggerLabel
+          : composerModelControlText(shownLabel);
     return (
       <Popover
         open={isMenuOpen}
@@ -286,8 +271,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               className={cn("min-w-0 shrink", props.triggerClassName)}
               data-chat-provider-model-picker="true"
               data-composer-shortcut={props.composer.shortcuts}
-              // A catalog still read is a beat, not a refusal: the control keeps its look,
-              // and the popover above stays shut until it is read.
+              // Unknown catalog evidence reserves the control and keeps its menu shut.
               disabled={props.disabled === true && props.catalogPending !== true}
               aria-disabled={props.catalogPending === true || undefined}
               size="quiet"
@@ -304,7 +288,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
               iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
               indicatorBackground="var(--contrast-input)"
             />
-          ) : activeEntry ? (
+          ) : control.kind !== "unknown" && activeEntry ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}
@@ -317,9 +301,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : null}
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 truncate" />}>
-              {shownLabel === null ? triggerTitle : shownLabel.model}
+              {control.kind === "unknown"
+                ? "Reading models…"
+                : shownLabel === null
+                  ? triggerTitle
+                  : shownLabel.model}
             </TooltipTrigger>
-            <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
+            <TooltipPopup side="top">
+              {control.kind === "unknown" ? "Reading models…" : triggerTooltipContent}
+            </TooltipPopup>
           </Tooltip>
           {shownLabel === null || shownLabel.traits.length === 0 ? null : (
             <span className="shrink-0 whitespace-nowrap">

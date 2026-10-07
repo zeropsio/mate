@@ -1,21 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/chat/composerControlMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "window.localStorage.getItem(STORAGE_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained debt: the provider/model selector still restores its copied label across page loads. Removing this storage without migrating the picker to the provider-catalog projection would change selection display; that migration is separate from database mention reads.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/composerControlMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "window.localStorage.setItem(STORAGE_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Retained debt: the provider/model selector still restores its copied label across page loads. Removing this storage without migrating the picker to the provider-catalog projection would change selection display; that migration is separate from database mention reads.",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
