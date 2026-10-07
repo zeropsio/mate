@@ -2657,6 +2657,73 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect(
+    "a send refused because the Mate engine owns the conversation claims none of its uploads",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const config = yield* buildAppUnderTest({ config: { mateEngine: "mate" } });
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const upload = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.attachmentsCreateUploadUrl]({
+              name: "screenshot.png",
+              mimeType: "image/png",
+              sizeBytes: 6,
+            }),
+          ),
+        );
+        const uploaded = yield* HttpClient.post(upload.relativeUrl, {
+          body: HttpBody.uint8Array(new Uint8Array([1, 2, 3, 4, 5, 6]), "image/png"),
+        });
+        assert.equal(uploaded.status, 204);
+
+        const response = yield* fetchEffect(
+          yield* getHttpServerUrl("/api/orchestration/dispatch"),
+          {
+            method: "POST",
+            headers: {
+              authorization: yield* getAuthenticatedAuthorizationHeader(),
+              "content-type": "application/json",
+            },
+            body: jsonRequestBody({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-http-engine-moved-upload"),
+              threadId: defaultThreadId,
+              message: {
+                messageId: MessageId.make("msg-http-engine-moved-upload"),
+                role: "user",
+                text: "hello",
+                attachments: [
+                  {
+                    type: "image",
+                    id: upload.attachmentId,
+                    name: "screenshot.png",
+                    mimeType: "image/png",
+                    sizeBytes: 6,
+                  },
+                ],
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-10-07T10:00:00.000Z",
+            }),
+          },
+        );
+
+        assert.equal(response.status, 403);
+        // Refused before the claim: no copy under a thread, only the pending upload the sweep
+        // collects, exactly as after any other failed send.
+        assert.deepEqual(yield* fileSystem.readDirectory(config.attachmentsDir), [
+          `${upload.attachmentId}.png`,
+        ]);
+        assert.isTrue(
+          yield* fileSystem.exists(path.join(config.attachmentsDir, `${upload.attachmentId}.png`)),
+        );
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("refuses a V1 command over HTTP once the Mate engine owns the conversation", () =>
     Effect.gen(function* () {
       const dispatched: Array<string> = [];
