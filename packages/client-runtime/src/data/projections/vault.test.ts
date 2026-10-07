@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { projectVariablesFamily, projectVariablesScope } from "../families/projectVariables.ts";
 import { serviceVariableFamily, serviceVariablesScope } from "../families/serviceVariables.ts";
-import { emptyAccount, type AccountState, type ScopeKey } from "../model.ts";
+import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { vault } from "./vault.ts";
@@ -186,7 +186,7 @@ function answered(
   ];
 }
 
-const refused = (scope: ScopeKey): AccountInput =>
+const refused = (scope: string): AccountInput =>
   event(scope, {
     kind: "fault",
     fault: { outcome: "definitive-refusal", message: "no" },
@@ -234,8 +234,20 @@ describe("vault", () => {
     expect(view().status).toBe(status);
   });
 
-  it("keeps what an earlier answer said once a read fails", () => {
-    const failed = viewOf(base, sharedAnswer, servicesAnswer, [refused(SERVICES_SCOPE)]);
+  it.each([
+    { name: "a read refused", input: refused(SERVICES_SCOPE) },
+    { name: "the organization's link refused", input: refused(linkKeys.zerops(ORG)) },
+    {
+      name: "the organization's link recovering",
+      input: event(linkKeys.zerops(ORG), {
+        kind: "fault",
+        fault: { outcome: "transient", message: "down" },
+        jitter: 0,
+      }),
+    },
+  ])("is failed with what an earlier answer said kept: $name", ({ input }) => {
+    const failed = viewOf(base, sharedAnswer, servicesAnswer, [input]);
+    expect(failed.status).toBe("failed");
     expect(failed.scopes).toEqual(ready.scopes);
   });
 

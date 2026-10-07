@@ -12,7 +12,7 @@ import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
 import type { ServiceValue } from "../families/service.ts";
-import type { ScopeKey } from "../model.ts";
+import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import type {
@@ -136,10 +136,10 @@ const typeOf = (service: ServiceValue): string | null => {
 const byKey = <T extends { readonly key: string }>(left: T, right: T) =>
   left.key.localeCompare(right.key);
 
-const failing = (read: ProjectionReads, scope: ScopeKey) => {
-  const { phase } = read.stream(scope);
-  return phase === "refused" || phase === "recovering";
-};
+/** Phases in which what the vault shows is not being kept current: its read failed or was refused. */
+const FAILING: ReadonlySet<string> = new Set(["refused", "recovering", "stale"]);
+const failing = (read: ProjectionReads, key: ScopeKey | LinkKey) =>
+  FAILING.has(read.stream(key).phase);
 
 export const vault: Projection<VaultKey, VaultView> = {
   name: "vault",
@@ -149,7 +149,9 @@ export const vault: Projection<VaultKey, VaultView> = {
     const servicesScope = serviceVariablesScope(orgId, projectId);
     const coverage = [read.coverage(sharedScope), read.coverage(servicesScope)];
     const status: VaultView["status"] =
-      failing(read, sharedScope) || failing(read, servicesScope)
+      failing(read, linkKeys.zerops(orgId)) ||
+      failing(read, sharedScope) ||
+      failing(read, servicesScope)
         ? "failed"
         : coverage.includes("unknown")
           ? "unread"
