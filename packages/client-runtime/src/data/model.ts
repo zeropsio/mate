@@ -25,6 +25,7 @@ export type StreamKey = LinkKey | ScopeKey;
 export const linkKeys = {
   zerops: (orgId: string): LinkKey => `zerops:${orgId}`,
   hq: (orgId: string): LinkKey => `hq:${orgId}`,
+  mateHealth: (projectId: string): LinkKey => `mate:health:${projectId}`,
   mate: (projectId: string): LinkKey => `mate:${projectId}`,
 } as const;
 

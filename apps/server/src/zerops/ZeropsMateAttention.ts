@@ -21,11 +21,14 @@
 import type {
   EnvironmentId,
   MateAttention,
+  MateHealth,
   OrchestrationEvent,
   OrchestrationThreadShell,
   ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Cause from "effect/Cause";
@@ -35,6 +38,7 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -47,6 +51,7 @@ import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { resourceHealthChanges } from "./mateResourceHealth.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 
 /** The most chats followed one by one between two reads; past it, all are read whole again. */
@@ -71,12 +76,16 @@ export interface MateAttentionReads<E> {
   readonly thread: (id: ThreadId) => Effect.Effect<Option.Option<OrchestrationThreadShell>, E>;
   /** Every orchestration domain event. */
   readonly domainEvents: Stream.Stream<AttentionEvent>;
+  readonly healthDemand?: Effect.Effect<void>;
+  readonly health?: Stream.Stream<Omit<MateHealth, "source">>;
 }
 
 export class ZeropsMateAttention extends Context.Service<
   ZeropsMateAttention,
   {
     /** The attention as it stands. */
+    readonly healthCurrent: Effect.Effect<Option.Option<MateHealth>>;
+    readonly healthChanges: Stream.Stream<MateHealth>;
     readonly current: Effect.Effect<MateAttention>;
     /** The attention now, then each new revision. */
     readonly changes: Stream.Stream<MateAttention>;
@@ -92,6 +101,15 @@ export const makeZeropsMateAttention = <E>(
       epoch: reads.epoch,
       incarnation: reads.incarnation,
     };
+    const health = yield* SubscriptionRef.make<Option.Option<MateHealth>>(Option.none());
+    let healthRevision = 0;
+    if (reads.health !== undefined)
+      yield* Effect.forkScoped(
+        Stream.runForEach(reads.health, (value) => {
+          const next: MateHealth = { ...value, source: { ...source, revision: healthRevision++ } };
+          return SubscriptionRef.set(health, Option.some(next));
+        }),
+      );
     const chats = new Map<ThreadId, OrchestrationThreadShell>();
     let project = Option.none<ProjectId>();
     /**
@@ -197,6 +215,14 @@ export const makeZeropsMateAttention = <E>(
     });
 
     return ZeropsMateAttention.of({
+      healthCurrent: SubscriptionRef.get(health),
+      healthChanges: Stream.concat(
+        Stream.fromEffect(reads.healthDemand ?? Effect.void).pipe(Stream.drain),
+        SubscriptionRef.changes(health).pipe(
+          Stream.filter(Option.isSome),
+          Stream.map((value) => value.value),
+        ),
+      ),
       current: Effect.flatMap(started, SubscriptionRef.get),
       changes: Stream.unwrap(Effect.map(started, SubscriptionRef.changes)),
     });
@@ -239,6 +265,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projection = yield* ProjectionSnapshotQuery;
     const engine = yield* OrchestrationEngineService;
+    const healthDemand = yield* PubSub.unbounded<void>();
     return yield* makeZeropsMateAttention({
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
       epoch: yield* nextMateEpoch(config.mateEpochPath),
@@ -254,6 +281,19 @@ export const layer = Layer.effect(
           ),
       thread: projection.getThreadShellById,
       domainEvents: engine.streamDomainEvents,
+      healthDemand: PubSub.publish(healthDemand, undefined).pipe(Effect.asVoid),
+      health: resourceHealthChanges(
+        config.stateDir,
+        undefined,
+        Stream.fromPubSub(healthDemand),
+      ).pipe(
+        Stream.mapEffect((evidence) =>
+          Effect.map(Clock.currentTimeMillis, (ms) => ({
+            sampledAt: DateTime.formatIso(DateTime.makeUnsafe(ms)),
+            evidence,
+          })),
+        ),
+      ),
     });
   }),
 );

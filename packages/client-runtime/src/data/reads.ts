@@ -1,3 +1,4 @@
+import { mateHealth } from "./projections/mateHealth.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -450,6 +451,11 @@ export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, {
 });
 export const hqMateLoginsAtom = projectReader(hqMateLogins, mateKey, undefined);
 export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
+export const mateHealthAtom = projectReader(mateHealth, mateKey, {
+  health: null,
+  live: false,
+  configuredMinimumBytes: null,
+});
 export const mateAttentionAtom = projectReader(mateAttention, mateKey, {
   attention: null,
   live: false,

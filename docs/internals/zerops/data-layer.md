@@ -105,3 +105,11 @@ Counts enumerate every remaining ledger entry, including repeated uses in a file
 | Retired mechanism | `packages/client-runtime/src/state/threads.ts`                   |       4 | native thread compatibility facade and resume family preserve replay and pagination |
 | Retired mechanism | `packages/client-runtime/src/state/vcs.ts`                       |       3 | native VCS refs and summary subscriptions keep the existing native path             |
 | Retired mechanism | `packages/client-runtime/src/zerops/projections/candidates.ts`   |       1 | native candidate selection has not migrated to account projections                  |
+
+Mate resource health has its own revision and subscription, independent of conversation reads,
+and travels to HQ in an independent `health` frame, retained in `hq_mate_health`. Both paths enter the `mateHealth` family. The health
+projection joins these with the zcp service's configured RAM minimum. Kernel cgroup v2 evidence
+and state-disk free space determine resource strain; a transport failure never does. An unavailable
+source retains the permitted report labelled last-known. The server samples at startup and on
+kernel notifications, PSI triggers and state-directory changes. PSI's unprivileged two-second
+trigger window schedules reads only; counter growth and measured limits determine the fact.

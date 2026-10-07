@@ -1,5 +1,6 @@
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { recoveryNotice } from "~/zerops/mateRecovery.logic";
+import { MateHealthNotice } from "./MateHealthNotice";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
@@ -849,6 +850,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         />
       }
     >
+      <MateHealthNotice projectId={projectId} name={named.name} />
       {view === null ? null : (
         <MateEmptyStateView
           coming={view}

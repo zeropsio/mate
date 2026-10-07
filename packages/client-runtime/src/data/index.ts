@@ -463,3 +463,8 @@ export { mateFeedServices } from "./adapters/mateFeeds.ts";
 export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
 export { mateSetupRetryCommand } from "./mateActionReads.ts";
 export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";
+export { mateHealth, mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
+export { mateHealthAtom } from "./reads.ts";
+
+export { makeMateHealthWire } from "./adapters/mateHealth.ts";
+export { startMateHealth } from "./account.ts";
