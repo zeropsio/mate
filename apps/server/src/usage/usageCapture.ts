@@ -36,6 +36,8 @@ const Checkpoint = Schema.Struct({
   prefix: Schema.optionalKey(Schema.String),
   meter: CodexMeterState,
   stamp: Schema.optionalKey(Schema.String),
+  /** The record at `offset` is past the cap: no newline ends it before this byte. */
+  skipTo: Schema.optionalKey(Schema.Number),
 });
 type Checkpoint = typeof Checkpoint.Type;
 const decodeCheckpoint = Schema.decodeUnknownSync(Schema.fromJsonString(Checkpoint));
@@ -172,14 +174,57 @@ export const captureSource = Effect.fnUntraced(function* (
           // Reconcile stable native IDs from the beginning; missing rows never retract facts.
           checkpoint = { offset: 0, meter: initialMeterState() };
         }
+        const checkpointAt = (offset: number, extra: { readonly skipTo?: number } = {}) =>
+          Effect.gen(function* () {
+            const from = Math.max(0, offset - CAPTURE_GUARD_BYTES);
+            yield* ledger.saveCheckpoint(
+              key,
+              usageCanonical({
+                offset,
+                guard: { from, digest: bytesDigest(yield* read(from, offset - from)) },
+                identity,
+                meter: checkpoint.meter,
+                ...extra,
+              }),
+            );
+          });
+        /** The first newline at or after `from`, read a chunk at a time and never held. */
+        const newlineFrom = (from: number) =>
+          Effect.gen(function* () {
+            for (let at = from; at < stats.size; at += CAPTURE_READ_BYTES) {
+              const index = (yield* read(
+                at,
+                Math.min(CAPTURE_READ_BYTES, stats.size - at),
+              )).indexOf(10);
+              if (index >= 0) return at + index;
+            }
+            return -1;
+          });
+        if (checkpoint.skipTo !== undefined) {
+          // Still inside a record past the cap: look for its end from where the last scan stopped.
+          const newline = yield* newlineFrom(checkpoint.skipTo);
+          if (newline < 0) {
+            yield* checkpointAt(checkpoint.offset, { skipTo: stats.size });
+            return false;
+          }
+          yield* checkpointAt(newline + 1);
+          return true;
+        }
         const start = checkpoint.offset;
         let chunk = yield* read(start, Math.min(CAPTURE_READ_BYTES, stats.size - start));
         let end = chunk.lastIndexOf(10);
-        // A record longer than one chunk is read whole, up to the record cap.
+        // A record longer than one chunk is read whole, up to the record cap; past it, it is a gap
+        // and the transcript reads on after its end.
         while (end < 0 && start + chunk.length < stats.size) {
           if (chunk.length >= CAPTURE_RECORD_MAX_BYTES) {
-            gaps.add("incomplete-or-oversize-record");
-            return false;
+            gaps.add("oversize-record");
+            const newline = yield* newlineFrom(start + chunk.length);
+            if (newline < 0) {
+              yield* checkpointAt(start, { skipTo: stats.size });
+              return false;
+            }
+            yield* checkpointAt(newline + 1);
+            return true;
           }
           chunk = yield* read(start, Math.min(chunk.length * 2, stats.size - start));
           end = chunk.lastIndexOf(10);

@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import { usageCanonical, usageDigest, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageReplication } from "./usageReplication.ts";
-import { captureSource, CAPTURE_READ_BYTES } from "./usageCapture.ts";
+import { captureSource, CAPTURE_READ_BYTES, CAPTURE_RECORD_MAX_BYTES } from "./usageCapture.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 
 const binding = { orgId: "org", projectId: "project", mateId: "mate" };
@@ -504,4 +504,39 @@ it.effect(
         );
       }),
     ),
+);
+
+it.effect("a record past the record cap is skipped as a gap and the transcript reads on", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* temporary;
+      const transcript = NodePath.join(directory, "session.jsonl");
+      const source = { provider: "claude" as const, directory };
+      yield* Effect.tryPromise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          "x".repeat(CAPTURE_RECORD_MAX_BYTES + 1024 * 1024) + "\n" + response("after", 120),
+        ),
+      );
+      yield* makeUsageLedger.pipe(
+        Effect.flatMap((ledger) =>
+          Effect.gen(function* () {
+            yield* captureSource(ledger, binding, source);
+            assert.equal(yield* consume(ledger), 120n);
+            assert.include((yield* ledger.origins)[0]!.coverage.gaps, "oversize-record");
+            yield* Effect.tryPromise(() => NodeFSP.appendFile(transcript, response("more", 30)));
+            let read = 0;
+            yield* captureSource(ledger, binding, source, {
+              onRead: (bytes) => {
+                read += bytes;
+              },
+            });
+            assert.equal(yield* consume(ledger), 150n);
+            assert.isBelow(read, 1024 * 1024);
+          }),
+        ),
+        Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+      );
+    }),
+  ),
 );

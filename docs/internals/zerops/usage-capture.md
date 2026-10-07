@@ -51,7 +51,7 @@ checkpointed after its last record, a Codex session's total then is the baseline
 count from, and a record dated before it is never a fact. Reads continue from source checkpoints, one 1 MiB chunk per
 transaction, with no size cutoff; a reconciliation admits at most 2,048 files. The 64 KiB before a
 checkpoint guard a resumed position (a rewrite before them goes unnoticed); a source change during
-parsing rolls back its facts/checkpoint. Records over 32 MiB, damaged records, incomplete listings,
+parsing rolls back its facts/checkpoint. A record over 32 MiB is skipped (a gap) and reading goes on after it. Damaged records, incomplete listings,
 rewrites and unreadable sources remain explicit gaps. File deletion never retracts consumption.
 These are IO admission limits, not proof of an empty or complete period.
 
