@@ -49,7 +49,10 @@ import {
   ProviderAdapterTurnEndedError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
+import {
+  ATTACHED_PICTURE_UNREADABLE,
+  agentStoppedUnexpectedly,
+} from "@t3tools/shared/threadStatus";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
@@ -187,6 +190,7 @@ interface GrokSessionContext {
   currentModelId: string | undefined;
   currentReasoningEffort: string | undefined;
   stopped: boolean;
+  terminated: boolean;
   /** Live monitor/shell identities and their originating turns. */
   readonly backgroundTasks: Map<string, GrokBackgroundTaskRecord>;
 }
@@ -357,6 +361,7 @@ export function grokPromptSettlementBelongsToContext(input: {
 
 export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapterLiveOptions) {
   return Effect.gen(function* () {
+    const ownerScope = yield* Effect.scope;
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("grok");
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -956,7 +961,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       threadId: ThreadId,
     ): Effect.Effect<GrokSessionContext, ProviderAdapterSessionNotFoundError> => {
       const ctx = sessions.get(threadId);
-      if (!ctx || ctx.stopped) {
+      if (!ctx || ctx.stopped || ctx.terminated) {
         return Effect.fail(
           new ProviderAdapterSessionNotFoundError({ provider: PROVIDER, threadId }),
         );
@@ -983,7 +988,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           ...(yield* makeEventStamp()),
           provider: PROVIDER,
           threadId: ctx.threadId,
-          payload: { exitKind },
+          payload: { exitKind: ctx.terminated ? "error" : exitKind },
         });
       });
 
@@ -1341,12 +1346,36 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 ? normalizeGrokReasoningEffort(requestedStartReasoningEffort)
                 : currentStartReasoningEffort,
             stopped: false,
+            terminated: false,
             backgroundTasks: new Map(),
           };
 
           const nf = yield* Stream.runDrain(
             Stream.mapEffect(acp.getEvents(), (event) =>
               Effect.gen(function* () {
+                if (event._tag === "ConnectionTerminated") {
+                  ctx.terminated = true;
+                  yield* withThreadLock(
+                    ctx.threadId,
+                    Effect.gen(function* () {
+                      if (sessions.get(ctx.threadId) !== ctx) return;
+                      if (ctx.activeTurnId) {
+                        yield* settlePromptInFlight(
+                          ctx.threadId,
+                          ctx.activeTurnId,
+                          ctx.acpSessionId,
+                          {
+                            errorMessage: agentStoppedUnexpectedly(PROVIDER),
+                            processExited: true,
+                            settleAllPrompts: true,
+                          },
+                        );
+                      }
+                      yield* stopSessionInternal(ctx);
+                    }),
+                  ).pipe(Effect.forkIn(ownerScope));
+                  return;
+                }
                 if (event._tag === "EventStreamBarrier") {
                   yield* Deferred.succeed(event.acknowledge, undefined);
                   return;
@@ -1360,12 +1389,6 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 }
 
                 if (event._tag === "ModeChanged") {
-                  return;
-                }
-                if (event._tag === "ConnectionTerminated") {
-                  // Its process died: the session goes, so the next message
-                  // starts a new one. Forked: the stop interrupts this fiber.
-                  yield* stopSessionInternal(ctx, "error").pipe(Effect.forkDetach);
                   return;
                 }
 
@@ -2256,12 +2279,16 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       );
 
     const listSessions: GrokAdapterShape["listSessions"] = () =>
-      Effect.sync(() => Array.from(sessions.values(), (c) => ({ ...c.session })));
+      Effect.sync(() =>
+        Array.from(sessions.values())
+          .filter((c) => !c.terminated)
+          .map((c) => ({ ...c.session })),
+      );
 
     const hasSession: GrokAdapterShape["hasSession"] = (threadId) =>
       Effect.sync(() => {
         const c = sessions.get(threadId);
-        return c !== undefined && !c.stopped;
+        return c !== undefined && !c.stopped && !c.terminated;
       });
 
     const stopAll: GrokAdapterShape["stopAll"] = () =>

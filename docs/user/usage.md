@@ -17,6 +17,9 @@ variable. Use absolute paths or `~/` paths in the account's environment settings
 environment paths depend on each project's working directory and cannot be reliably discovered
 by Usage. Accounts sharing a history directory count once.
 
+When your app and server support different providers, usage totals may cover only the providers
+your app understands. Update the app to include newly supported providers.
+
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
 Code, per connected environment: the session and weekly windows, plus a per-model weekly window
 such as Fable when your plan has one. Each window is a bar from the moment it opened to its reset,

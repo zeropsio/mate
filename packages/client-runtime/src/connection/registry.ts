@@ -914,9 +914,10 @@ export const make = Effect.gen(function* () {
    * through `register`: re-registering rebuilds the supervisor, which moves the
    * install generation and rebinds every `followStream` consumer, the shell
    * among them. Here the supervisor, its install generation and the catalog
-   * entry stay as they are. The retry is this environment's alone — never the
-   * global `credentials-changed` wakeup, which would kick every blocked
-   * supervisor.
+   * entry stay as they are. A live socket is closed and reopened with the new
+   * bearer: it stays authorized as whoever opened it. The reconnect is this
+   * environment's alone — never the global `credentials-changed` wakeup, which
+   * would kick every blocked supervisor.
    *
    * It holds the environment's lease for the whole write, so a `remove` cannot
    * land between the lookup and the store and leave the new bearer behind in a
@@ -940,14 +941,14 @@ export const make = Effect.gen(function* () {
         const store = credentials.put(target.connectionId, credential);
         const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
         if (existing !== undefined && Equal.equals(existing.entry, entry)) {
-          // The bump and the retry are one step: a block judged stale by the
-          // bump is left waiting for exactly that retry.
+          // The bump and the reconnect are one step: a block judged stale by the
+          // bump is left waiting for exactly that reconnect.
           yield* existing.credentialWrite.withPermits(1)(
             store.pipe(
               Effect.andThen(
                 Effect.uninterruptible(
                   Ref.update(existing.credentialGeneration, (generation) => generation + 1).pipe(
-                    Effect.andThen(existing.supervisor.retryNow),
+                    Effect.andThen(existing.supervisor.credentialRotated),
                   ),
                 ),
               ),

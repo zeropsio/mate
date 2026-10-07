@@ -73,6 +73,7 @@ const makeSupervisor = Effect.fn("TestEnvironmentCommands.makeSupervisor")(funct
     connect: Effect.void,
     disconnect: Effect.void,
     retryNow: Effect.void,
+    credentialRotated: Effect.void,
     reportStreamDefect: () => Effect.void,
   } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
 });

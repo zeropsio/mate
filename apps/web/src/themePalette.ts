@@ -78,6 +78,10 @@ const RESERVED_THEME_IDS = new Set([
   "t3-iris",
 ]);
 
+export function isReservedThemeId(themeId: string): boolean {
+  return RESERVED_THEME_IDS.has(themeId);
+}
+
 const customThemeListeners = new Set<() => void>();
 type CustomThemeLibrarySnapshot =
   | Readonly<{

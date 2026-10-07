@@ -151,6 +151,16 @@ function bareModelName(key: string): string {
 }
 
 /**
+ * Drops a bracketed variant suffix such as `claude-opus-4-6[1m]`, which
+ * Claude Code writes for the 1M context tier. The rate table only knows the
+ * base name, and we price at the base tier anyway.
+ */
+function stripVariantSuffix(key: string): string {
+  const bracket = key.indexOf("[");
+  return bracket === -1 ? key : key.slice(0, bracket);
+}
+
+/**
  * Models we never price, regardless of the table.
  *
  * `<synthetic>` marks locally generated messages that were never billed. Bare
@@ -167,14 +177,17 @@ const UNPRICEABLE_MODELS = new Set([
 ]);
 
 export function lookupRate(table: RateTable, model: string): ModelRate | null {
-  const key = normalizeRateKey(model);
+  const key = stripVariantSuffix(normalizeRateKey(model));
   const bareName = bareModelName(key);
   if (bareName.length === 0 || UNPRICEABLE_MODELS.has(bareName)) return null;
   return table.get(key) ?? null;
 }
 
 /** The parts of a transcript record that decide its price. */
-export type PricedRecord = Pick<UsageRecord, "model" | "totals" | "fast" | "reportedCostUsd">;
+export type PricedRecord = Pick<
+  UsageRecord,
+  "model" | "rateModel" | "totals" | "fast" | "reportedCostUsd"
+>;
 
 export interface PricedUsage {
   readonly costUsd: number;
@@ -198,7 +211,7 @@ export function priceUsage(
     return { costUsd: reportedCostUsd, costSource: "providerReported" };
   }
 
-  const rate = override ?? lookupRate(table, model);
+  const rate = override ?? lookupRate(table, record.rateModel ?? model);
   if (rate === null) return { costUsd: 0, costSource: "unpriced" };
 
   const standardCostUsd =
@@ -222,7 +235,8 @@ export function cacheSavingsUsd(
   record: PricedRecord,
   overrides?: RateTable,
 ): number {
-  const rate = overrides?.get(record.model.trim()) ?? lookupRate(table, record.model);
+  const rate =
+    overrides?.get(record.model.trim()) ?? lookupRate(table, record.rateModel ?? record.model);
   if (rate === null) return 0;
   return (
     record.totals.cachedInputTokens *

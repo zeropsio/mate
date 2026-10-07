@@ -25,6 +25,7 @@ import {
   type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { agentStoppedUnexpectedly } from "@t3tools/shared/threadStatus";
 
 import { ServerConfig } from "../../config.ts";
 import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
@@ -360,6 +361,76 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       assert.include(prompts[1]?.[1]?.text, "Grok harness, as grok-4.6");
       assert.include(prompts[1]?.[1]?.text, "with low reasoning effort");
       assert.include(prompts[1]?.[1]?.text, "embed images and videos");
+    }),
+  );
+
+  it.effect("retires a crashed process so a deliberate retry can resume", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("grok-crash-recovery");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-crash-recovery-")),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
+      const wrapper = yield* Effect.promise(() =>
+        makeMockGrokWrapper({
+          T3_ACP_CRASH_PROMPT: "1",
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
+        }),
+      );
+      const adapter = yield* makeTestAdapter(wrapper);
+      const exited =
+        yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "session.exited" }>>();
+      const crashedTurn =
+        yield* Deferred.make<Extract<ProviderRuntimeEvent, { type: "turn.completed" }>>();
+      const events = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+        event.type === "session.exited"
+          ? Deferred.succeed(exited, event).pipe(Effect.asVoid)
+          : event.type === "turn.completed"
+            ? Deferred.succeed(crashedTurn, event).pipe(Effect.asVoid)
+            : Effect.void,
+      ).pipe(Effect.forkChild);
+      const input = {
+        threadId,
+        provider: ProviderDriverKind.make("grok"),
+        cwd: process.cwd(),
+        runtimeMode: "full-access" as const,
+      };
+      const session = yield* adapter.startSession(input);
+      const failure = yield* Effect.flip(
+        adapter.sendTurn({ threadId, input: "crash now", attachments: [] }),
+      );
+      assert.isDefined(failure);
+      assert.isFalse(yield* adapter.hasSession(threadId));
+      const retryDuringTeardown = yield* Effect.flip(
+        adapter.sendTurn({ threadId, input: "retry during teardown", attachments: [] }),
+      );
+      assert.equal(retryDuringTeardown._tag, "ProviderAdapterSessionNotFoundError");
+      assert.equal((yield* Deferred.await(exited)).payload.exitKind, "error");
+      // The person reads that it stopped, and the turn breaks off as a crash.
+      assert.deepStrictEqual((yield* Deferred.await(crashedTurn)).payload, {
+        state: "failed",
+        errorMessage: agentStoppedUnexpectedly("grok"),
+        terminalReason: "process_exit",
+      });
+      assert.deepStrictEqual(yield* adapter.listSessions(), []);
+      yield* Fiber.interrupt(events);
+      yield* adapter.startSession({ ...input, resumeCursor: session.resumeCursor });
+      const turn = yield* adapter.sendTurn({ threadId, input: "retry now", attachments: [] });
+      assert.equal(turn.threadId, threadId);
+      yield* adapter.stopSession(threadId);
+      const requests = yield* Effect.promise(() => readJsonLines(requestLogPath));
+      assert.equal(requests.filter((request) => request.method === "session/new").length, 1);
+      assert.deepStrictEqual(session.resumeCursor, {
+        schemaVersion: 1,
+        sessionId: "mock-session-1",
+      });
+      const resumes = requests.filter((request) => request.method === "session/load");
+      assert.equal(resumes.length, 1);
+      assert.deepStrictEqual(resumes[0]?.params, {
+        sessionId: "mock-session-1",
+        cwd: process.cwd(),
+        mcpServers: [],
+      });
     }),
   );
 

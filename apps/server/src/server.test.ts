@@ -72,6 +72,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import * as Tracer from "effect/Tracer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   FetchHttpClient,
@@ -199,6 +200,7 @@ import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
+import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
@@ -208,7 +210,6 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
-import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -569,6 +570,7 @@ const buildAppUnderTest = (options?: {
     | ProviderInstanceRegistry
   >;
   layers?: {
+    httpClient?: HttpClient.HttpClient;
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
     modelManifest?: Partial<ModelManifest.ModelManifest["Service"]>;
@@ -594,7 +596,6 @@ const buildAppUnderTest = (options?: {
     terminalManager?: Partial<TerminalManager.TerminalManager["Service"]>;
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     threadDeletionReactor?: Partial<ThreadDeletionReactor["Service"]>;
-    analyticsService?: Partial<AnalyticsService.AnalyticsService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
@@ -608,6 +609,7 @@ const buildAppUnderTest = (options?: {
       CloudManagedEndpointRuntime.CloudManagedEndpointRuntime["Service"]
     >;
     relayClient?: Partial<RelayClient.RelayClient["Service"]>;
+    agentAwarenessRelay?: Partial<AgentAwarenessRelay.AgentAwarenessRelay["Service"]>;
     cloudCliTokenManager?: Partial<CloudCliTokenManager.CloudCliTokenManager["Service"]>;
     nativeTelemetryClient?: Partial<NativeTelemetryClient.NativeTelemetryClient["Service"]>;
     desktopTelemetryReceiver?: Partial<
@@ -1090,13 +1092,6 @@ const buildAppUnderTest = (options?: {
       Layer.provide(resourceTelemetryLayer),
       Layer.provide(UsageService.layerTest),
       Layer.provide(
-        Layer.mock(AnalyticsService.AnalyticsService)({
-          record: () => Effect.void,
-          flush: Effect.void,
-          ...options?.layers?.analyticsService,
-        }),
-      ),
-      Layer.provide(
         Layer.mock(BrowserTraceCollector.BrowserTraceCollector)({
           record: () => Effect.void,
           ...options?.layers?.browserTraceCollector,
@@ -1379,11 +1374,17 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.succeed(
-          CloudManagedEndpointRuntime.CloudManagedEndpointRuntime,
-          CloudManagedEndpointRuntime.CloudManagedEndpointRuntime.of({
-            applyConfig: () => Effect.succeed({ status: "disabled" }),
-            ...options?.layers?.cloudManagedEndpointRuntime,
+        Layer.mergeAll(
+          Layer.succeed(
+            CloudManagedEndpointRuntime.CloudManagedEndpointRuntime,
+            CloudManagedEndpointRuntime.CloudManagedEndpointRuntime.of({
+              applyConfig: () => Effect.succeed({ status: "disabled" }),
+              ...options?.layers?.cloudManagedEndpointRuntime,
+            }),
+          ),
+          Layer.mock(AgentAwarenessRelay.AgentAwarenessRelay)({
+            requestCatchUp: () => Effect.void,
+            ...options?.layers?.agentAwarenessRelay,
           }),
         ),
       ),
@@ -1431,7 +1432,11 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(makeAuthTestLayer()),
       Layer.provideMerge(AssetSigningKey.layer.pipe(Layer.provideMerge(ServerSecretStore.layer))),
       Layer.provide(workspaceAndProjectServicesLayer),
-      Layer.provideMerge(FetchHttpClient.layer),
+      Layer.provideMerge(
+        options?.layers?.httpClient === undefined
+          ? FetchHttpClient.layer
+          : Layer.succeed(HttpClient.HttpClient, options.layers.httpClient),
+      ),
       Layer.provide(layerConfig),
     );
 
@@ -3248,6 +3253,55 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(pairedResponse.status, 403);
       assert.equal(pairedBody._tag, "EnvironmentScopeRequiredError");
       assert.equal(pairedBody.requiredScope, "relay:write");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("wakes the agent awareness relay when this server links or changes publishing", () =>
+    Effect.gen(function* () {
+      let catchUpRequests = 0;
+      yield* buildAppUnderTest({
+        layers: {
+          agentAwarenessRelay: {
+            requestCatchUp: () =>
+              Effect.sync(() => {
+                catchUpRequests += 1;
+              }),
+          },
+        },
+      });
+
+      const cloudKeyPair = NodeCrypto.generateKeyPairSync("ed25519", {
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      const authorization = yield* getAuthenticatedAuthorizationHeader();
+      const relayConfigResponse = yield* fetchEffect(
+        yield* getHttpServerUrl("/api/connect/relay-config"),
+        {
+          method: "POST",
+          headers: { authorization, "content-type": "application/json" },
+          body: jsonRequestBody({
+            relayUrl: "https://relay.example.test",
+            cloudUserId: "user_123",
+            environmentCredential: "t3env_test_credential",
+            cloudMintPublicKey: cloudKeyPair.publicKey,
+            endpointRuntime: null,
+          }),
+        },
+      );
+      assert.equal(relayConfigResponse.status, 200);
+      assert.equal(catchUpRequests, 1);
+
+      const preferencesResponse = yield* fetchEffect(
+        yield* getHttpServerUrl("/api/connect/preferences"),
+        {
+          method: "POST",
+          headers: { authorization, "content-type": "application/json" },
+          body: jsonRequestBody({ publishAgentActivity: true }),
+        },
+      );
+      assert.equal(preferencesResponse.status, 200);
+      assert.equal(catchUpRequests, 2);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5303,6 +5357,56 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("does not trace browser OTLP trace exports on the server", () =>
+    Effect.gen(function* () {
+      const spanNames: Array<string> = [];
+      const forwardedUrls: Array<string> = [];
+      yield* buildAppUnderTest({
+        config: { otlpTracesUrl: "http://collector.test/v1/traces" },
+        layers: {
+          httpClient: HttpClient.make((request) =>
+            Effect.sync(() => {
+              forwardedUrls.push(request.url);
+              return HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }));
+            }),
+          ),
+        },
+      }).pipe(
+        Effect.provideService(
+          Tracer.Tracer,
+          Tracer.make({
+            span: (options) => {
+              spanNames.push(options.name);
+              return new Tracer.NativeSpan(options);
+            },
+          }),
+        ),
+      );
+      const authorization = yield* getAuthenticatedAuthorizationHeader();
+      spanNames.length = 0;
+
+      // The query string must not bring back the HTTP server span.
+      for (const url of ["/api/observability/v1/traces", "/api/observability/v1/traces?x=1"]) {
+        const response = yield* HttpClient.post(url, {
+          headers: { authorization, "content-type": "application/json" },
+          body: yield* HttpBody.json({ resourceSpans: [] }),
+        });
+        assert.equal(response.status, 204);
+      }
+
+      assert.deepEqual(forwardedUrls, [
+        "http://collector.test/v1/traces",
+        "http://collector.test/v1/traces",
+      ]);
+      assert.deepEqual(spanNames, []);
+
+      // Other routes keep their HTTP server span.
+      const session = yield* HttpClient.get("/api/auth/session", { headers: { authorization } });
+      assert.equal(session.status, 200);
+      assert.include(spanNames, "http.server GET");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("routes websocket rpc server.upsertKeybinding", () =>
     Effect.gen(function* () {
       const rule: KeybindingRule = {
@@ -6995,230 +7099,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           }),
         ),
       );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("records thread analytics only after a client command succeeds", () =>
-    Effect.gen(function* () {
-      const effects: string[] = [];
-      const analyticsProperties: Array<Readonly<Record<string, unknown>> | undefined> = [];
-      const failedCommandId = CommandId.make("cmd-thread-create-failed");
-
-      yield* buildAppUnderTest({
-        layers: {
-          analyticsService: {
-            record: (event, properties) =>
-              Effect.sync(() => {
-                effects.push(`analytics:${event}`);
-                analyticsProperties.push(properties);
-              }),
-          },
-          orchestrationEngine: {
-            dispatch: (command) =>
-              Effect.sync(() => effects.push(`dispatch:${command.commandId}`)).pipe(
-                Effect.flatMap(() =>
-                  command.commandId === failedCommandId
-                    ? Effect.fail(
-                        new PersistenceSqlError({
-                          operation: "OrchestrationEventStore.append:query",
-                          detail: "thread creation failed",
-                        }),
-                      )
-                    : Effect.succeed({ sequence: 1 }),
-                ),
-              ),
-          },
-        },
-      });
-
-      const createThreadCommand = (commandId: CommandId, threadId: ThreadId) =>
-        ({
-          type: "thread.create",
-          commandId,
-          threadId,
-          projectId: defaultProjectId,
-          title: "Analytics test",
-          modelSelection: defaultModelSelection,
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-        }) as const;
-
-      const wsUrl = yield* getWsServerUrl(
-        "/ws?clientSurface=mobile&clientAppVersion=1.2.3&clientDeviceType=phone&clientOs=iOS&clientOsMajorVersion=18&clientDeviceModel=iPhone+15+Pro&connectionMethod=relay",
-      );
-      yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          Effect.gen(function* () {
-            const failed = yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](
-              createThreadCommand(failedCommandId, ThreadId.make("thread-create-failed")),
-            ).pipe(Effect.result);
-
-            assert.equal(failed._tag, "Failure");
-            assert.deepEqual(effects, [
-              "analytics:client.connected",
-              "dispatch:cmd-thread-create-failed",
-            ]);
-
-            const succeeded = yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](
-              createThreadCommand(
-                CommandId.make("cmd-thread-create-succeeded"),
-                ThreadId.make("thread-create-succeeded"),
-              ),
-            );
-
-            assert.equal(succeeded.sequence, 1);
-          }),
-        ),
-      );
-
-      assert.deepEqual(effects, [
-        "analytics:client.connected",
-        "dispatch:cmd-thread-create-failed",
-        "dispatch:cmd-thread-create-succeeded",
-        "analytics:client.thread.started",
-      ]);
-      assert.deepEqual(analyticsProperties, [
-        {
-          surface: "mobile",
-          appVersion: "1.2.3",
-          clientAppVersion: "1.2.3",
-          clientOs: "iOS",
-          os: "iOS",
-          clientDeviceType: "phone",
-          osMajorVersion: 18,
-          clientOsMajorVersion: 18,
-          deviceModel: "iPhone 15 Pro",
-          clientDeviceModel: "iPhone 15 Pro",
-          connectionMethod: "relay",
-        },
-        {
-          surface: "mobile",
-          appVersion: "1.2.3",
-          clientAppVersion: "1.2.3",
-          clientOs: "iOS",
-          os: "iOS",
-          clientDeviceType: "phone",
-          osMajorVersion: 18,
-          clientOsMajorVersion: 18,
-          deviceModel: "iPhone 15 Pro",
-          clientDeviceModel: "iPhone 15 Pro",
-          connectionMethod: "relay",
-        },
-      ]);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("keeps telemetry separate for simultaneous clients", () =>
-    Effect.gen(function* () {
-      const analyticsEvents: Array<{
-        event: string;
-        properties: Readonly<Record<string, unknown>> | undefined;
-      }> = [];
-
-      yield* buildAppUnderTest({
-        layers: {
-          analyticsService: {
-            record: (event, properties) =>
-              Effect.sync(() => analyticsEvents.push({ event, properties })),
-          },
-          orchestrationEngine: {
-            dispatch: () => Effect.succeed({ sequence: 1 }),
-          },
-        },
-      });
-
-      const webUrl = yield* getWsServerUrl(
-        "/ws?clientSurface=web&clientAppVersion=2.0.0&clientDeviceType=desktop&clientOs=Windows&clientWebDeployment=hosted&clientBrowser=Chrome&connectionMethod=direct",
-      );
-      const mobileUrl = yield* getWsServerUrl(
-        "/ws?clientSurface=mobile&clientAppVersion=3.0.0&clientDeviceType=tablet&clientOs=Android&clientOsMajorVersion=15&clientDeviceModel=Pixel+Tablet&connectionMethod=relay",
-      );
-      const turnCommand = (client: string) => ({
-        type: "thread.turn.start" as const,
-        commandId: CommandId.make(`cmd-${client}-turn`),
-        threadId: ThreadId.make(`thread-${client}`),
-        message: {
-          messageId: MessageId.make(`message-${client}`),
-          role: "user" as const,
-          text: "hello",
-          attachments: [],
-        },
-        modelSelection: defaultModelSelection,
-        runtimeMode: "full-access" as const,
-        interactionMode: "default" as const,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-
-      yield* Effect.scoped(
-        withWsRpcClient(webUrl, (webClient) =>
-          withWsRpcClient(mobileUrl, (mobileClient) =>
-            Effect.gen(function* () {
-              yield* mobileClient[ORCHESTRATION_WS_METHODS.dispatchCommand](turnCommand("mobile"));
-              yield* webClient[ORCHESTRATION_WS_METHODS.dispatchCommand](turnCommand("web"));
-            }),
-          ),
-        ),
-      );
-
-      assert.deepEqual(
-        analyticsEvents
-          .filter(({ event }) => event === "client.turn.requested")
-          .map(({ properties }) => properties),
-        [
-          {
-            surface: "mobile",
-            appVersion: "3.0.0",
-            clientAppVersion: "3.0.0",
-            clientOs: "Android",
-            os: "Android",
-            clientDeviceType: "tablet",
-            osMajorVersion: 15,
-            clientOsMajorVersion: 15,
-            deviceModel: "Pixel Tablet",
-            clientDeviceModel: "Pixel Tablet",
-            connectionMethod: "relay",
-          },
-          {
-            surface: "web",
-            appVersion: "2.0.0",
-            clientAppVersion: "2.0.0",
-            clientOs: "Windows",
-            clientDeviceType: "desktop",
-            webDeployment: "hosted",
-            clientBrowser: "Chrome",
-            connectionMethod: "direct",
-          },
-        ],
-      );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("ignores invalid client telemetry without rejecting the connection", () =>
-    Effect.gen(function* () {
-      const connectedProperties: Array<Readonly<Record<string, unknown>> | undefined> = [];
-
-      yield* buildAppUnderTest({
-        layers: {
-          analyticsService: {
-            record: (event, properties) =>
-              event === "client.connected"
-                ? Effect.sync(() => connectedProperties.push(properties))
-                : Effect.void,
-          },
-        },
-      });
-
-      const invalidUrl = yield* getWsServerUrl(
-        "/ws?clientSurface=watch&clientDeviceType=television&clientOs=Plan9&clientWebDeployment=cdn&clientBrowser=&clientOsMajorVersion=-1&connectionMethod=teleport",
-      );
-      yield* Effect.scoped(
-        withWsRpcClient(invalidUrl, (client) => client[WS_METHODS.serverGetSettings]({})),
-      );
-
-      assert.deepEqual(connectedProperties, [{}]);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

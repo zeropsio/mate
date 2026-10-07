@@ -77,7 +77,7 @@ describe("the top bar's height", () => {
       shell: "a Windows desktop window",
       md: true,
       classes: ["electron", "electron-windows", "wco"],
-      height: "env(titlebar-area-height, 52px)",
+      height: "max(40px, env(titlebar-area-height, 52px))",
     },
   ])("is $height in $shell", ({ md, classes, height }) => {
     expect(resolve({ md, classes })).toBe(height);

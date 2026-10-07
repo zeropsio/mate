@@ -84,6 +84,19 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   - _Fixture set:_ row 5; no replay golden moved
   - _Goldens/driver:_ unchanged from row 5
   - _Notes:_ See below
+- **7** — 2026-10-07
+  - _Ported upstream SHA:_ `10f39eb9a` (nightly `v0.0.46-nightly.20261007.2761`; imported zone
+    re-imported at `422248515` in `2d0691977`) — provider slice: 19 ports + the import + 2 fork
+    fixes, see `intake.md`
+  - _Claude CLI:_ unchanged from row 5
+  - _Claude Agent SDK:_ unchanged from row 5
+  - _Codex CLI:_ floor `0.155.1` unchanged; no field became required in the new protocol (checked
+    offline); a live 0.155.1 decode was not run
+  - _Antigravity:_ `1.3.0` ported (`4dbc0129c`), **needs a live turn**; the manifest stays `=1.1.1`
+  - _Effect:_ unchanged from row 5
+  - _Fixture set:_ row 5; no replay golden moved (chat-gate A byte-identical)
+  - _Goldens/driver:_ unchanged from row 5
+  - _Notes:_ See below
 
 ## Row 0 notes
 
@@ -242,3 +255,18 @@ checklist step 5) — never edited in place; a later row supersedes an earlier o
   rewrites those lines re-applies them; `codexNoCrewSnapshot.test.ts` fails if a port changes what
   a thread without a profile gets, `codexThreadProfile.contract.test.ts` if the seam is lost, and
   the Ported↔spi zone rule if either file imports any other `spi/` file.
+
+## Row 7 notes
+
+- **The import pins `422248515`, not the range end.** At `10f39eb9a` effect-acp is rewritten for
+  the V2 orchestrator and Effect 4.0.1, which the fork declines; `422248515` is the last commit
+  whose wire packages still serve the V1 adapters. effect-codex-app-server moves (tree `3ab6b38f6`),
+  effect-acp does not (`1c70adfcc`).
+- **The Codex protocol gains no required field.** Parsing every object type in `schema.gen.ts`
+  before and after the import: 993 types, 2009 required fields, none added, none removed. The live
+  decode of a real Codex 0.155.1 session against the new import is still owed.
+- **Antigravity 1.3.0 is unproven.** `4dbc0129c` pins the sha256-checked `agy` 1.3.0 download, but
+  no turn has run against the fork's effect-acp. An installed 1.3.0 resolves to `unknown` until one
+  live turn passes and the manifest range moves to `=1.3.0`.
+- **SPI stays at 2.6.** The interim effect-acp guard (`81ebf0815`) wraps every session-update
+  handler in `AcpSessionRuntime.ts` with a logged defect catch; it changes no event member.

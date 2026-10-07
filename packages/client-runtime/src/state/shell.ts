@@ -153,6 +153,20 @@ export const makeEnvironmentShellState = Effect.fn("EnvironmentShellState.make")
         }
         continue;
       }
+      if (item.kind === "unknown-event") {
+        // A newer Mate's item this build cannot apply: skipped, the cursor moves past it.
+        const sequence = item.sequence;
+        if (sequence !== undefined && Option.isSome(next.snapshot)) {
+          const snapshot = next.snapshot.value;
+          if (sequence > snapshot.snapshotSequence) {
+            next = {
+              ...next,
+              snapshot: Option.some({ ...snapshot, snapshotSequence: sequence }),
+            };
+          }
+        }
+        continue;
+      }
       const nextSnapshot =
         item.kind === "snapshot"
           ? item.snapshot

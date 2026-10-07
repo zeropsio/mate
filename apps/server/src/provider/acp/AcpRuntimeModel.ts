@@ -41,7 +41,9 @@ function isSessionModeState(value: unknown): value is EffectAcpSchema.SessionMod
       isRecord(mode) &&
       typeof mode.id === "string" &&
       typeof mode.name === "string" &&
-      (mode.description === undefined || typeof mode.description === "string"),
+      (mode.description === undefined ||
+        mode.description === null ||
+        typeof mode.description === "string"),
   );
 }
 

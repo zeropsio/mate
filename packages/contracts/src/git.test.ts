@@ -2,7 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
 import {
+  VcsCreateRefInput,
+  GitCommandError,
   VcsCreateWorktreeInput,
+  VcsSwitchRefInput,
   GitPreparePullRequestThreadInput,
   GitRunStackedActionResult,
   GitRunStackedActionInput,
@@ -16,6 +19,56 @@ const decodePreparePullRequestThreadInput = Schema.decodeUnknownSync(
 const decodeRunStackedActionInput = Schema.decodeUnknownSync(GitRunStackedActionInput);
 const decodeRunStackedActionResult = Schema.decodeUnknownSync(GitRunStackedActionResult);
 const decodeResolvePullRequestResult = Schema.decodeUnknownSync(GitResolvePullRequestResult);
+const decodeSwitchRefInput = Schema.decodeUnknownSync(VcsSwitchRefInput);
+const decodeCreateRefInput = Schema.decodeUnknownSync(VcsCreateRefInput);
+const decodeGitCommandError = Schema.decodeUnknownSync(GitCommandError);
+
+describe("ref names that git would read as an option", () => {
+  const inputs = [
+    {
+      name: "VcsSwitchRefInput",
+      decode: (refName: string) => decodeSwitchRefInput({ cwd: "/repo", refName }),
+    },
+    {
+      name: "VcsCreateRefInput",
+      decode: (refName: string) => decodeCreateRefInput({ cwd: "/repo", refName }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.refName",
+      decode: (refName: string) => decodeCreateWorktreeInput({ cwd: "/repo", refName, path: null }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.newRefName",
+      decode: (refName: string) =>
+        decodeCreateWorktreeInput({
+          cwd: "/repo",
+          refName: "main",
+          newRefName: refName,
+          path: null,
+        }),
+    },
+    {
+      name: "VcsCreateWorktreeInput.baseRefName",
+      decode: (refName: string) =>
+        decodeCreateWorktreeInput({
+          cwd: "/repo",
+          refName: "main",
+          baseRefName: refName,
+          path: null,
+        }),
+    },
+  ];
+
+  describe.each(inputs)("$name", ({ decode }) => {
+    it.each(["--upload-pack=x", "-b", "-"])("refuses %s", (refName) => {
+      expect(() => decode(refName)).toThrow();
+    });
+
+    it.each(["main", "feature/x-1", "origin/main", "0123456789abcdef"])("accepts %s", (refName) => {
+      expect(() => decode(refName)).not.toThrow();
+    });
+  });
+});
 
 describe("VcsCreateWorktreeInput", () => {
   it("accepts omitted newRefName for existing-refName worktrees", () => {
@@ -124,5 +177,25 @@ describe("GitRunStackedActionResult", () => {
     if (parsed.toast.cta.kind === "run_action") {
       expect(parsed.toast.cta.action.kind).toBe("create_pr");
     }
+  });
+});
+
+describe("GitCommandError", () => {
+  const encoded = (reason: string) => ({
+    _tag: "GitCommandError",
+    operation: "GitVcsDriver.fetch",
+    command: "git fetch",
+    cwd: "/repo",
+    detail: "git fetch failed.",
+    reason,
+  });
+
+  it.each([
+    { reason: "authentication_failed", decoded: "authentication_failed" },
+    { reason: "dubious_ownership", decoded: undefined },
+  ])("an older client still decodes a failure whose reason is $reason", ({ reason, decoded }) => {
+    const error = decodeGitCommandError(encoded(reason));
+    expect(error.detail).toBe("git fetch failed.");
+    expect(error.reason).toBe(decoded);
   });
 });
