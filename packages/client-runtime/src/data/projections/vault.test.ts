@@ -379,3 +379,40 @@ describe("vault", () => {
     expect(view.notLive.map((each) => each.kind)).toEqual(["restart", "self"]);
   });
 });
+
+describe("vault — the Mate's own keys", () => {
+  const view = viewOf(
+    base,
+    answered(SHARED_SCOPE, "projectVariables", [
+      {
+        id: PROJECT,
+        envList: [
+          ...SHARED_ROWS,
+          env("ZCP_API_KEY", "admin-token", { created: T(13), lastUpdate: T(13) }),
+          env("GIT_TOKEN", "git-token", { created: T(13), lastUpdate: T(13) }),
+          env("GITEA_URL", "https://gitea", { created: T(13), lastUpdate: T(13) }),
+        ],
+      },
+    ]),
+    answered(SERVICES_SCOPE, "serviceVariable", [
+      ...SERVICE_ROWS,
+      userData("s-app", "MATE_SETUP_RUNTIMES", "x", { created: T(13), lastUpdate: T(13) }),
+      entry("s-app", "ADMIN", "${ZCP_API_KEY}"),
+    ]),
+  );
+  const keys = view.scopes.flatMap((each) => each.values.map((one) => one.key));
+
+  it.each(["ZCP_API_KEY", "GIT_TOKEN", "GITEA_URL", "MATE_SETUP_RUNTIMES"])(
+    "never lists %s as a value, nor as anything not live",
+    (key) => {
+      expect(keys).not.toContain(key);
+      expect(JSON.stringify(view.notLive)).not.toContain(key);
+    },
+  );
+
+  it("resolves a reference to one as the platform's", () => {
+    expect(scope(view, "s-app").reads.find((read) => read.key === "ADMIN")?.refs).toEqual([
+      { kind: "platform", name: "ZCP_API_KEY" },
+    ]);
+  });
+});

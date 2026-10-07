@@ -51,6 +51,16 @@ const DEPLOY_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deplo
 const isIdentityNoise = (key: string) =>
   key === "projectId" || key === "serviceId" || key.startsWith("ZEROPS_");
 
+/**
+ * The keys the Mate and its zcp own (its admin token, its git and setup keys): never a value in
+ * any scope, never in a note — removing one breaks the Mate. A reference to one is the platform's.
+ */
+export const isMateOwned = (key: string): boolean =>
+  key.startsWith("ZCP_") ||
+  key.startsWith("MATE_") ||
+  key.startsWith("GITEA_") ||
+  key === "GIT_TOKEN";
+
 const isUser = (row: { readonly type: string }) => row.type === "USER";
 const isSystem = (row: { readonly type: string }) => row.type === "SYSTEM";
 
@@ -101,6 +111,10 @@ function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>) {
   const values: Held[] = [];
   for (const held of rows) {
     const { row } = held;
+    if (isMateOwned(row.key)) {
+      system.add(row.key);
+      continue;
+    }
     if (kind === "managed") {
       if (isSystem(row) && isIdentityNoise(row.key)) system.add(row.key);
       else values.push(held);
@@ -146,7 +160,7 @@ export const vault: Projection<VaultKey, VaultView> = {
     const projectFact = read.fact("projectVariables", projectId);
     const sharedRows: ReadonlyArray<VariableRow> =
       projectFact.kind === "known" ? projectFact.value.rows : [];
-    const sharedValues = sharedRows.filter(isUser);
+    const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
 
     const rowsByService = new Map<string, Held[]>();
     for (const id of read.members(servicesScope).ids) {
@@ -184,7 +198,9 @@ export const vault: Projection<VaultKey, VaultView> = {
 
     const world: RefWorld = {
       shared: new Map(sharedValues.map((row) => [row.key, row.value])),
-      sharedSystem: new Set(sharedRows.filter(isSystem).map((row) => row.key)),
+      sharedSystem: new Set(
+        sharedRows.filter((row) => isSystem(row) || isMateOwned(row.key)).map((row) => row.key),
+      ),
       services: services.map(({ ref }) => ref),
     };
     const readers = readersOf(world);
