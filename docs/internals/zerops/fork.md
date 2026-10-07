@@ -48,7 +48,8 @@ Measured against the real upstream repo, 2026-08-28:
 - **Owned core** — the rest of `apps/server`, `apps/web` (outside the product sub-paths below),
   `packages/{contracts,client-runtime,shared,ssh}`, `apps/desktop`, `apps/mobile`
   - _Rule:_ Ours. Upstream changes here are optional cherry-picks chosen by triage (§6).
-- **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`,
+- **Owned product** — `apps/server/src/zerops/**`, `apps/server/src/engine/**` (the Mate
+  engine), `packages/contracts/src/engine*.ts`, `apps/web/src/zerops/**`,
   `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`,
   `apps/mobile/src/features/zerops/**`,
   `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`, `packages/hq-git/**`,
