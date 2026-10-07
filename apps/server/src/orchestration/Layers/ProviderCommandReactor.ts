@@ -833,11 +833,14 @@ const make = Effect.gen(function* () {
             })
           : "none";
       // A running turn is never cut off for a model selection: a change only a
-      // new session can run waits until the session is idle.
+      // new session can run waits until the session is idle. Background agents
+      // and watch loops run inside the provider's process, so it also waits
+      // until they end: a new session would kill them and lose their results.
       const sessionRunning =
         activeSession?.status === "running" || thread.session?.status === "running";
+      const backgroundWorkLive = (thread.backgroundLiveness ?? null) !== null;
       const shouldRestartForModelSelectionChange =
-        modelSelectionChange === "new-session" && !sessionRunning;
+        modelSelectionChange === "new-session" && !sessionRunning && !backgroundWorkLive;
       if (
         !runtimeModeChanged &&
         !cwdChanged &&

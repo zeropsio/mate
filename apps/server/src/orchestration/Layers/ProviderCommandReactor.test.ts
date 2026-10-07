@@ -112,6 +112,7 @@ describe("ProviderCommandReactor", () => {
     | OrchestrationEngineService
     | ProviderCommandReactor
     | ProjectionSnapshotQuery
+    | ThreadBackgroundLiveness.ThreadBackgroundLivenessService
     | SqlClient.SqlClient,
     unknown
   > | null = null;
@@ -513,6 +514,7 @@ describe("ProviderCommandReactor", () => {
         }),
       ),
       Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(ThreadBackgroundLiveness.layer),
       Layer.provideMerge(SqlitePersistenceMemory),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
@@ -522,6 +524,9 @@ describe("ProviderCommandReactor", () => {
     const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
     const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
     const reactor = await runtime.runPromise(Effect.service(ProviderCommandReactor));
+    const backgroundLiveness = await runtime.runPromise(
+      Effect.service(ThreadBackgroundLiveness.ThreadBackgroundLivenessService),
+    );
     const runEffect = <A, E>(effect: Effect.Effect<A, E>) => runtime!.runPromise(effect);
 
     await Effect.runPromise(
@@ -649,6 +654,7 @@ describe("ProviderCommandReactor", () => {
       generateBranchName,
       generateThreadTitle,
       runtimeSessions,
+      backgroundLiveness,
       stateDir,
       drain,
       startReactor,
@@ -3973,6 +3979,50 @@ describe("ProviderCommandReactor", () => {
         modelSelection: { options: [{ id: "fastMode", value: true }] },
       });
     }),
+  );
+
+  // Background agents and watch loops run inside Claude's process: a new
+  // session would end them and lose their results.
+  effectIt.effect(
+    "restarts claude for a start-only option only once its background agents end",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            threadModelSelection: {
+              instanceId: ProviderInstanceId.make("claudeAgent"),
+              model: "claude-sonnet-4-6",
+            },
+            inSessionModelOptions: ["effort"],
+          }),
+        );
+        const backgroundTask = (kind: "started" | "completed") =>
+          harness.backgroundLiveness.recordTaskLiveness({
+            threadId: "thread-1",
+            taskId: "task-agent-1",
+            taskType: "local_agent",
+            status: kind === "started" ? "running" : "completed",
+            kind,
+          });
+
+        yield* harness.engine.dispatch(claudeTurnStart("a", [{ id: "fastMode", value: false }]));
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+        backgroundTask("started");
+
+        yield* harness.engine.dispatch(claudeTurnStart("b", [{ id: "fastMode", value: true }]));
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+        expect(harness.stopSession).not.toHaveBeenCalled();
+
+        backgroundTask("completed");
+        yield* harness.engine.dispatch(claudeTurnStart("c", [{ id: "fastMode", value: true }]));
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 3));
+        expect(harness.startSession).toHaveBeenCalledTimes(2);
+        expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+          resumeCursor: { opaque: "resume-1" },
+          modelSelection: { options: [{ id: "fastMode", value: true }] },
+        });
+      }),
   );
 
   it("restarts the provider session when runtime mode is updated on the thread", async () => {
