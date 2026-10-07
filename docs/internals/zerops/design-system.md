@@ -31,54 +31,6 @@ Fixed by the accepted principles (concept P1–P8): depth by tint, one `MicroLab
 word (never a bare dot), pills and chips, blue acts / teal identifies, native containers on
 mobile. Everything else in a row is filled by the slice that builds it.
 
-- **`StatusDot`** — web · mobile
-  - _Anatomy (fixed part):_ one glyph in a status tone, never rendered without its word beside it;
-    the word's hand is the word's own — a state's name in a card or a panel is a `MicroLabel`, a
-    state a person is meant to read in a list row or a panel's verdict is `sentence`, and a row too
-    narrow for either is `dotOnly` with the word as its accessible name; a surface never re-cases
-    what `client-runtime` wrote (R5); in-flight = the stepped `status-pulse`, never an `infinite`
-    opacity loop
-  - _States:_ ok · busy (pulse) · attention · failed · off
-  - _Phrase source:_ tone id from `brand.ts` status tones; the word from the consumer's phrase
-    function
-  - _Lands:_ F5b
-- **`MicroLabel`** — web · mobile
-  - _Anatomy (fixed part):_ 10 px / 600 / uppercase / .06em / 45 % (11 px on mobile)
-  - _Lands:_ F5b
-- **`Chip`** — web · mobile
-  - _Anatomy (fixed part):_ 10 px text, tint from `brand.ts` chip tints, radius 10 (info-chip 8)
-  - _Lands:_ F5b
-- **`Pill`** — web · mobile
-  - _Anatomy (fixed part):_ the CTA shape for primary/secondary buttons; ghost and icon buttons keep
-    8 px
-  - _Lands:_ F5b
-- **`FlatCard`** — web · mobile
-  - _Anatomy (fixed part):_ flat and borderless in light, 1 px `rgba(255,255,255,.06)` in dark;
-    shadows only on popovers/dialogs
-  - _Lands:_ F5b
-- **`ProcessSteps`** — web · mobile
-  - _Anatomy (fixed part):_ `default` (a process timeline — birth, creation, agent sign-in): `30px
-1fr` grid, 17 px step glyphs in 2 px-bordered circles, the state on its own line as a
-    `MicroLabel`; `compact` (results inside a card): the card's one mark per state (`StepGlyph`),
-    the label at 13 px with the state after it in muted sentence case, the time `4s` / `1m 12s` at
-    12 px, 4 px between rows
-  - _States:_ queued · running · done · failed
-  - _Lands:_ F5b
-- **`KeyChip`** — web
-  - _Anatomy (fixed part):_ key glyph, radius 3
-  - _Lands:_ F5b
-- **`QuestionCard`** — web · mobile
-  - _Lands:_ surface round
-- **`CredentialCard`** — web · mobile
-  - _Lands:_ surface round
-- **`StepGlyph`** — web
-  - _Anatomy (fixed part):_ a step's state as one 14 px mark wherever steps are listed — a deploy's
-    pipeline, a card's compact steps, a batch's segments: a ring, what is inside it saying the state
-    — empty waiting (`status-off`), a dot running (`status-busy`, stepping — the strongest), a check
-    done (`status-ok`), a cross failed, a dash stopped
-  - _States:_ waiting · running · done · failed · stopped
-  - _Lands:_ landed 2026-09-27
-
 ## 2. Glossary — the words the UI uses
 
 T3 word → Zerops word. User-facing copy only (R4 guards the sinks); identifiers, imports and
