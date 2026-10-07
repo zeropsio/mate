@@ -6,7 +6,7 @@
  *
  * @module data/operations/hqUpdate
  */
-import { HQ_CORE_VERSION_PREFIX } from "../../zerops/hq/birth.ts";
+import { hqCoreVersionName } from "../../zerops/hq/birth.ts";
 import type { OperationKind } from "./kind.ts";
 import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
 
@@ -20,6 +20,8 @@ declare module "../model.ts" {
       readonly serviceId: string;
       /** The Core it runs now, as a failed update says it still does; empty where unnamed. */
       readonly running: string;
+      /** The reviewed Core. An older birth caller may not name it; no build is adopted then. */
+      readonly carried?: string;
     };
   }
   interface OperationResults {
@@ -42,16 +44,17 @@ export const hqUpdate: OperationKind<"hq-update"> = {
         `HQ's update ${process.status.toLowerCase()}. HQ still runs ${intent.running || "its Core"}.`,
     ),
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
-  // After a lost answer: a build of HQ's service under way, of a Core this app names as one.
+  // After a lost answer: only a build of the exact reviewed Core on HQ's service.
   effectHandles: (read, intent) =>
-    runningIn(
-      read,
-      intent.projectId,
-      (process) =>
-        DEPLOY_ACTIONS.has(process.actionName) &&
-        process.serviceStackIds.includes(intent.serviceId) &&
-        (process.appVersion?.name === undefined ||
-          process.appVersion.name.startsWith(HQ_CORE_VERSION_PREFIX)),
-    ),
+    intent.carried === undefined
+      ? []
+      : runningIn(
+          read,
+          intent.projectId,
+          (process) =>
+            DEPLOY_ACTIONS.has(process.actionName) &&
+            process.serviceStackIds.includes(intent.serviceId) &&
+            process.appVersion?.name === hqCoreVersionName(intent.carried!),
+        ),
   adoptedResult: (processId) => ({ processId }),
 };

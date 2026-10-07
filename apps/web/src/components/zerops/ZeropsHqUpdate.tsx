@@ -11,7 +11,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { NOT_READ_PROCESSES, projectProcessesAtom } from "@t3tools/client-runtime/data";
 import { HQ_SERVICE, hqUpdateState, type HqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/unstable/reactivity";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useAccountOrgId, useDetailDemand, useProjectServices } from "~/zerops/ZeropsAccountData";
@@ -55,11 +55,14 @@ export function ZeropsHqUpdatePanel({
   readonly onBusy?: (busy: boolean) => void;
 }) {
   const [running, setRunning] = useState(false);
+  const pending = useRef(false);
   const [stopped, setStopped] = useState<string | null>(null);
   /** The Core an update pressed here deployed: Zerops may offer it again for a few seconds. */
   const [ran, setRan] = useState<string | null>(null);
 
   const update = async () => {
+    if (pending.current) return;
+    pending.current = true;
     setRunning(true);
     setStopped(null);
     onBusy?.(true);
@@ -69,6 +72,7 @@ export function ZeropsHqUpdatePanel({
       setRan(read.state.kind === "updating" ? null : read.state.carried);
     }
     setRunning(false);
+    pending.current = false;
     onBusy?.(false);
   };
 
@@ -164,7 +168,7 @@ export function ZeropsHqUpdate({
       return { ok: false, reason: "Zerops lists no hq service in HQ's project." };
     try {
       await runOperation(
-        { kind: "hq-update", orgId, projectId, serviceId, running },
+        { kind: "hq-update", orgId, projectId, serviceId, running, carried },
         { orgId, unobserved: UPDATE_UNFOLLOWED },
       );
       return { ok: true };
@@ -177,7 +181,7 @@ export function ZeropsHqUpdate({
             : "Zerops could not be reached.",
       };
     }
-  }, [orgId, projectId, runOperation, running, serviceId]);
+  }, [carried, orgId, projectId, runOperation, running, serviceId]);
   return (
     <>
       <Button onClick={() => setOpen(true)} size="xs" variant="link">
