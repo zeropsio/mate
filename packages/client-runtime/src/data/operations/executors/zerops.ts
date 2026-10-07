@@ -28,6 +28,7 @@ import {
   startServiceExecutor,
 } from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
+import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
@@ -43,6 +44,12 @@ type ZeropsOperationsClient = Pick<
   | "fetchProject"
   | "writeProject"
   | "setProjectMemberRole"
+  | "addProjectVariable"
+  | "updateProjectVariable"
+  | "removeProjectVariable"
+  | "addServiceVariable"
+  | "updateServiceVariable"
+  | "removeServiceVariable"
 >;
 
 export function makeZeropsExecutor(input: {
@@ -109,6 +116,17 @@ export function makeZeropsExecutor(input: {
     setProjectMemberRole: (input) => client.setProjectMemberRole(input),
     fetchProject: (projectId) => client.fetchProject(projectId),
   });
+  const vault = vaultWriteExecutor({
+    addProjectVariable: (projectId, write) => client.addProjectVariable(projectId, write),
+    updateProjectVariable: (id, write) => client.updateProjectVariable(id, write),
+    removeProjectVariable: (id) => client.removeProjectVariable(id),
+    addServiceVariable: (serviceId, write) => client.addServiceVariable(serviceId, write),
+    updateServiceVariable: (id, write) => client.updateServiceVariable(id, write),
+    removeServiceVariable: (id) => client.removeServiceVariable(id),
+  });
+  const restartOne = serviceRestartExecutor({
+    restartService: (serviceId) => client.restartService(serviceId),
+  });
   return {
     submit: (requestId, intent) => {
       switch (intent.kind) {
@@ -132,6 +150,10 @@ export function makeZeropsExecutor(input: {
           return retag(requestId, intent);
         case "assign-mate-owner":
           return assign(requestId, intent);
+        case "vault-write":
+          return vault(requestId, intent);
+        case "service-restart":
+          return restartOne(requestId, intent);
         case "change-comment":
         case "release":
         case "roll-back":

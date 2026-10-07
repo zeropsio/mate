@@ -14,10 +14,12 @@ import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { renameProject } from "./renameProject.ts";
+import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
 import { throwawaySweep } from "./throwawaySweep.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
+import { vaultWrite } from "./vaultWrite.ts";
 
 /** The registry, checked once at startup: each kind once. */
 export function defineOperationKinds(
@@ -43,6 +45,8 @@ export const OPERATION_KINDS = defineOperationKinds([
   updateProjectTags,
   assignMateOwner,
   changeComment,
+  vaultWrite,
+  serviceRestart,
   ...FLOW_WRITE_KINDS,
 ]);
 
