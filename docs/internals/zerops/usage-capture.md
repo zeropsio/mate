@@ -35,9 +35,10 @@ Startup reconciliation, transcript filesystem changes, settings changes and prov
 transcript directory that does not exist yet is awaited from its nearest existing parent; a watcher
 that errors is replaced after a growing delay. The
 first retained import declares backfilling before reading; its durable marker prevents repeated
-backfill declarations. Subsequent reads reconcile source checkpoints. Each reconciliation admits
-at most 2,048 files and 64 MiB of new transcript bytes, in 1 MiB chunks. A whole-prefix fingerprint
-protects resumed positions; a source change during parsing rolls back its facts/checkpoint. Prefixes over 64 MiB, damaged/oversize records, incomplete listings,
+backfill declarations. Subsequent reads continue from source checkpoints, one 1 MiB chunk per
+transaction, with no size cutoff; a reconciliation admits at most 2,048 files. The 64 KiB before a
+checkpoint guard a resumed position (a rewrite before them goes unnoticed); a source change during
+parsing rolls back its facts/checkpoint. Records over 32 MiB, damaged records, incomplete listings,
 rewrites and unreadable sources remain explicit gaps. File deletion never retracts consumption.
 These are IO admission limits, not proof of an empty or complete period.
 

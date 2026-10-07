@@ -291,3 +291,61 @@ it.effect("inherited Claude responses with a different outer session never count
     }),
   ),
 );
+
+it.effect("a transcript past 64 MiB is still counted", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* temporary;
+      const transcript = NodePath.join(directory, "session.jsonl");
+      const source = { provider: "claude" as const, directory };
+      const filler = usageCanonical({ type: "user", value: "x".repeat(16 * 1024) }) + "\n";
+      yield* Effect.tryPromise(() =>
+        NodeFSP.writeFile(
+          transcript,
+          filler.repeat(Math.ceil((65 * 1024 * 1024) / filler.length)) + response("one", 120),
+        ),
+      );
+      yield* makeUsageLedger.pipe(
+        Effect.flatMap((ledger) =>
+          Effect.gen(function* () {
+            yield* captureSource(ledger, binding, source);
+            assert.equal(yield* consume(ledger), 120n);
+          }),
+        ),
+        Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+      );
+    }),
+  ),
+);
+
+it.effect(
+  "a resumed transcript reads what was appended and a bounded guard, never its prefix",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* temporary;
+        const transcript = NodePath.join(directory, "session.jsonl");
+        const source = { provider: "claude" as const, directory };
+        const filler = usageCanonical({ type: "user", value: "x".repeat(1024) }) + "\n";
+        const prefix = filler.repeat(2048) + response("one", 120);
+        yield* Effect.tryPromise(() => NodeFSP.writeFile(transcript, prefix));
+        yield* makeUsageLedger.pipe(
+          Effect.flatMap((ledger) =>
+            Effect.gen(function* () {
+              yield* captureSource(ledger, binding, source);
+              yield* Effect.tryPromise(() => NodeFSP.appendFile(transcript, response("two", 30)));
+              let read = 0;
+              yield* captureSource(ledger, binding, source, {
+                onRead: (bytes) => {
+                  read += bytes;
+                },
+              });
+              assert.equal(yield* consume(ledger), 150n);
+              assert.isBelow(read, prefix.length / 4);
+            }),
+          ),
+          Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+        );
+      }),
+    ),
+);

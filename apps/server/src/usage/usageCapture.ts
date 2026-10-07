@@ -16,24 +16,33 @@ import {
   type UsageLedger,
 } from "./UsageLedger.ts";
 
-/** IO budgets bound each transaction and the one-time retained import, never determine completeness. */
+/** One transaction reads at most one chunk; a record longer than the record cap is a gap. */
 export const CAPTURE_READ_BYTES = 1024 * 1024;
-export const RETAINED_IMPORT_BYTES = 64 * 1024 * 1024;
+export const CAPTURE_RECORD_MAX_BYTES = 32 * 1024 * 1024;
 export const CAPTURE_FILES_MAX = 2048;
+/** The bytes before a checkpoint that a resumed scan re-reads to notice a rewritten transcript. */
+export const CAPTURE_GUARD_BYTES = 64 * 1024;
 const Checkpoint = Schema.Struct({
   offset: Schema.Number,
-  prefix: Schema.String,
+  /** Digest of the bytes from `from` up to `offset`; absent on a checkpoint from an older build. */
+  guard: Schema.optionalKey(Schema.Struct({ from: Schema.Number, digest: Schema.String })),
+  identity: Schema.optionalKey(Schema.String),
+  prefix: Schema.optionalKey(Schema.String),
   meter: CodexMeterState,
   stamp: Schema.optionalKey(Schema.String),
 });
+type Checkpoint = typeof Checkpoint.Type;
 const decodeCheckpoint = Schema.decodeUnknownSync(Schema.fromJsonString(Checkpoint));
-const prefixDigest = (bytes: Uint8Array) =>
+const bytesDigest = (bytes: Uint8Array) =>
   NodeCrypto.createHash("sha256").update(bytes).digest("hex");
-const EMPTY_PREFIX = prefixDigest(new Uint8Array());
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 export interface CaptureSource {
   readonly provider: "claude" | "codex";
   readonly directory: string;
+}
+export interface CaptureOptions {
+  /** Every byte read from a transcript, for IO accounting. */
+  readonly onRead?: (bytes: number) => void;
 }
 
 /** Fails on incomplete listings, rather than certifying a swallowed IO error as an empty source. */
@@ -55,6 +64,7 @@ export const captureSource = Effect.fnUntraced(function* (
   ledger: UsageLedger,
   binding: UsageBinding,
   source: CaptureSource,
+  options: CaptureOptions = {},
 ) {
   // Multiple configured homes may contain copies of one native session. They share its
   // provider history origin; file positions remain separate reconciliation evidence.
@@ -80,7 +90,6 @@ export const captureSource = Effect.fnUntraced(function* (
   );
   if (!files) return;
   const importKey = `${sourceId}:retained-import`;
-  let importedBytes = 0;
   const gaps = new Set<string>(origin.coverage.gaps);
   const retainedImport = (yield* ledger.checkpoint(importKey)) === undefined;
   if (retainedImport)
@@ -95,49 +104,56 @@ export const captureSource = Effect.fnUntraced(function* (
     const scan = ledger.transaction(
       Effect.gen(function* () {
         const saved = yield* ledger.checkpoint(key);
-        let checkpoint: typeof Checkpoint.Type = saved
+        let checkpoint: Checkpoint = saved
           ? decodeCheckpoint(saved)
-          : { offset: 0, prefix: EMPTY_PREFIX, meter: initialMeterState() };
-        if (importedBytes >= RETAINED_IMPORT_BYTES) {
-          gaps.add("retained-import-budget");
-          return;
-        }
+          : { offset: 0, meter: initialMeterState() };
         const handle = yield* Effect.acquireRelease(
           Effect.tryPromise(() => NodeFSP.open(file, "r")),
           (handle) => Effect.promise(() => handle.close()),
         );
+        const read = (position: number, length: number) =>
+          Effect.tryPromise(async () => {
+            const buffer = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(buffer, 0, length, position);
+            options.onRead?.(bytesRead);
+            return buffer.subarray(0, bytesRead);
+          });
         const stats = yield* Effect.tryPromise(() => handle.stat());
+        const identity = `${stats.dev}:${stats.ino}`;
         const stamp = usageDigest([stats.dev, stats.ino, stats.size, stats.mtimeMs, stats.ctimeMs]);
-        // Unchanged files need no prefix IO. This cache never changes a fact or declares coverage.
+        // Unchanged files need no IO. This cache never changes a fact or declares coverage.
         if (saved && checkpoint.offset === stats.size && checkpoint.stamp === stamp) return false;
-        // A whole-prefix hash verifies comparable positions across truncation/replacement.
-        // Prefix verification has the same declared byte budget as the retained import.
-        if (checkpoint.offset > RETAINED_IMPORT_BYTES) {
-          gaps.add("source-prefix-budget");
-          return;
-        }
-        const prefix = Buffer.alloc(Math.min(checkpoint.offset, stats.size));
-        if (prefix.length) yield* Effect.tryPromise(() => handle.read(prefix, 0, prefix.length, 0));
-        if (stats.size < checkpoint.offset || prefixDigest(prefix) !== checkpoint.prefix) {
+        // A bounded guard before the checkpoint notices a truncated, replaced or rewritten tail
+        // without re-reading the prefix; a checkpoint from an older build is trusted once.
+        const guard = checkpoint.guard;
+        const rewritten =
+          stats.size < checkpoint.offset ||
+          (checkpoint.identity !== undefined && checkpoint.identity !== identity) ||
+          (guard !== undefined &&
+            bytesDigest(yield* read(guard.from, checkpoint.offset - guard.from)) !== guard.digest);
+        if (rewritten) {
           gaps.add("source-rewritten");
           // Reconcile stable native IDs from the beginning; missing rows never retract facts.
-          checkpoint = { offset: 0, prefix: EMPTY_PREFIX, meter: initialMeterState() };
+          checkpoint = { offset: 0, meter: initialMeterState() };
         }
-        const allowance = Math.min(CAPTURE_READ_BYTES, RETAINED_IMPORT_BYTES - importedBytes);
-        const buffer = Buffer.alloc(
-          Math.min(allowance, Math.max(0, stats.size - checkpoint.offset)),
-        );
-        const read = yield* Effect.tryPromise(() =>
-          handle.read(buffer, 0, buffer.length, checkpoint.offset),
-        );
-        importedBytes += read.bytesRead;
-        const end = buffer.subarray(0, read.bytesRead).lastIndexOf(10);
+        const start = checkpoint.offset;
+        let chunk = yield* read(start, Math.min(CAPTURE_READ_BYTES, stats.size - start));
+        let end = chunk.lastIndexOf(10);
+        // A record longer than one chunk is read whole, up to the record cap.
+        while (end < 0 && start + chunk.length < stats.size) {
+          if (chunk.length >= CAPTURE_RECORD_MAX_BYTES) {
+            gaps.add("incomplete-or-oversize-record");
+            return false;
+          }
+          chunk = yield* read(start, Math.min(chunk.length * 2, stats.size - start));
+          end = chunk.lastIndexOf(10);
+        }
         if (end < 0) {
-          if (stats.size > checkpoint.offset) gaps.add("incomplete-or-oversize-record");
-          return;
+          if (stats.size > start) gaps.add("incomplete-or-oversize-record");
+          return false;
         }
-        const consumed = buffer.subarray(0, end + 1);
-        let offset = checkpoint.offset;
+        const consumed = chunk.subarray(0, end + 1);
+        let offset = start;
         for (const line of utf8.decode(consumed).split("\n").slice(0, -1)) {
           offset += Buffer.byteLength(line, "utf8") + 1;
           const result = meterLine(source.provider, line, checkpoint.meter);
@@ -145,25 +161,29 @@ export const captureSource = Effect.fnUntraced(function* (
           if (result.fact)
             yield* ledger.capture({ ...result.fact, originId: origin.originId }, key, offset);
         }
-        const completePrefix = Buffer.alloc(offset);
-        yield* Effect.tryPromise(() => handle.read(completePrefix, 0, offset, 0));
+        // What was parsed must still be on disk: a rewrite during capture rolls the chunk back.
         const after = yield* Effect.tryPromise(() => handle.stat());
-        if (usageDigest([after.dev, after.ino, after.size, after.mtimeMs, after.ctimeMs]) !== stamp)
+        if (
+          `${after.dev}:${after.ino}` !== identity ||
+          !consumed.equals(yield* read(start, consumed.length))
+        )
           return yield* new UsageLedgerError({ code: "source-changed-during-capture" });
+        const from = Math.max(0, offset - CAPTURE_GUARD_BYTES);
+        const tail =
+          from >= start
+            ? consumed.subarray(from - start)
+            : Buffer.concat([yield* read(from, start - from), consumed]);
         yield* ledger.saveCheckpoint(
           key,
           usageCanonical({
             offset,
-            prefix: prefixDigest(completePrefix),
+            guard: { from, digest: bytesDigest(tail) },
+            identity,
             meter: checkpoint.meter,
-            stamp,
+            ...(offset === stats.size ? { stamp } : {}),
           }),
         );
-        if (offset < stats.size) {
-          if (importedBytes >= RETAINED_IMPORT_BYTES) gaps.add("capture-read-budget");
-          else return true;
-        }
-        return false;
+        return offset < stats.size;
       }),
     );
     while (
