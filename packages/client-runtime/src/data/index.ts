@@ -286,6 +286,7 @@ export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
 
 export {
   inventory,
+  inventoryContents,
   inventoryCandidates,
   NOT_READ_INVENTORY,
   inventoryPlacements,

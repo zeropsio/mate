@@ -1,3 +1,4 @@
+import { projectsScope } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -5,6 +6,8 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { heldCandidateRowsAtom } from "./useZeropsCandidates";
+import { projectTopologyViewAtom, environmentProjectsAtom } from "../state/zerops";
 import { zeropsSessionAtom } from "../state/zerops";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { organization, project } from "./__fixtures__/platformData";
@@ -67,7 +70,7 @@ function registered(input: {
 
 /** What the account's product publishes once its inventory is granted; its store's roster. */
 function publishAccount(registry: AtomRegistry.AtomRegistry) {
-  mountRoster(registry, organization.organizationId, [PROJECT], {
+  const store = mountRoster(registry, organization.organizationId, [PROJECT], {
     services: [{ ...ZCP, projectId: PROJECT.id }],
   });
   registry.set(zeropsSessionAtom, {
@@ -75,6 +78,7 @@ function publishAccount(registry: AtomRegistry.AtomRegistry) {
     organizationStatus: "selected",
     activeOrganization: organization,
   });
+  return store;
 }
 
 const whoLivesAt = (registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) =>
@@ -104,6 +108,86 @@ afterEach(() => {
 });
 
 describe("who lives in each environment, derived", () => {
+  it("transport recovery never republishes a chat's Mate identity, but an owner rename does", () => {
+    openAccount("user-a");
+    const store = publishAccount(appAtomRegistry);
+    let renders = 0;
+    const stop = appAtomRegistry.subscribe(zeropsMatesAtom, () => renders++);
+    const before = appAtomRegistry.get(zeropsMatesAtom);
+    const topology = projectTopologyViewAtom(owner);
+    const contentAtoms: ReadonlyArray<Atom.Atom<unknown>> = [
+      heldCandidateRowsAtom,
+      topology,
+      environmentProjectsAtom,
+    ];
+    let contentRenders = 0;
+    const stops = contentAtoms.map((atom) =>
+      appAtomRegistry.subscribe(atom, () => contentRenders++),
+    );
+    const contentBefore = contentAtoms.map((atom) => appAtomRegistry.get(atom));
+    contentRenders = 0;
+    renders = 0;
+    const orgId = organization.organizationId;
+    const scope = projectsScope(orgId);
+    store.dispatch({
+      kind: "stream",
+      key: `zerops:${orgId}`,
+      now: 0,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "socket closed" },
+      },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "parent-lost" } });
+    store.dispatch({
+      kind: "stream",
+      key: `zerops:${orgId}`,
+      now: 0,
+      event: { kind: "retry-due" },
+    });
+    store.dispatch({
+      kind: "stream",
+      key: `zerops:${orgId}`,
+      now: 0,
+      event: { kind: "handshake" },
+    });
+    store.dispatch({
+      kind: "stream",
+      key: `zerops:${orgId}`,
+      now: 0,
+      event: { kind: "baseline-committed" },
+    });
+    expect(appAtomRegistry.get(zeropsMatesAtom)).toBe(before);
+    expect(renders).toBe(0);
+    expect(contentRenders).toBe(0);
+    contentAtoms.forEach((atom, index) =>
+      expect(appAtomRegistry.get(atom)).toBe(contentBefore[index]),
+    );
+    const held = appAtomRegistry.get(store.data.fact("project", PROJECT.id));
+    if (held.kind !== "known") throw new Error("The roster did not read the project");
+    store.dispatch({
+      kind: "rows",
+      scope,
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "project",
+          id: PROJECT.id,
+          value: { ...held.value, name: "renamed" },
+          revision: { kind: "zerops", version: 2 },
+        },
+      ],
+    });
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe("renamed");
+    expect(renders).toBe(1);
+    expect(contentRenders).toBe(2);
+    stops.forEach((stop) => stop());
+    stop();
+  });
+
   it("an environment the list has not reached is unknown, never nobody", () => {
     openAccount("user-a");
     publishAccount(appAtomRegistry);

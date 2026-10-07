@@ -372,6 +372,7 @@ describe("H: hosted client budgets", () => {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);
         yield* b.given.mates(["Ada", "Bea"]);
+        yield* b.given.releaseRead("Shop");
         yield* s.given.signedIn;
         yield* b.when.menuReady(["Ada", "Bea"]);
         yield* b.when.nextHqSegment;

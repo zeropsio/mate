@@ -246,7 +246,7 @@ import {
   nextTimelineFollow,
   type TimelineScrollDirection,
 } from "@t3tools/client-runtime/zerops/timelineFollow";
-import { useProjectTopology } from "../zerops/useProjectTopology";
+import { useZeropsTopology } from "../zerops/useZeropsFeeds";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -2486,10 +2486,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The environment, not the thread: a draft has one before it has the other,
-  // and the header names the project either way. This host demands the
-  // project's topology (`useProjectTopology`) — the panel demands the same
-  // ref-counted interest, so opening it costs nothing extra.
-  const zeropsTopology = useProjectTopology(activeThreadEnvironmentId).view;
+  // and the header names the project either way. It draws topology contents,
+  // independently of the listing's transport freshness.
+  const zeropsTopology = useZeropsTopology(activeThreadEnvironmentId);
   // The one sign-in dialog, shared with the model picker's per-agent panels
   // and the Crew tab — see `useZeropsAgentSignInDialog`.
   const zeropsSignInDialog = useZeropsAgentSignInDialog(activeThreadEnvironmentId, activeThreadRef);

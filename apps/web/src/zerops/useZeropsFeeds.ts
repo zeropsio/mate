@@ -15,7 +15,7 @@
  * `ZeropsQuickActions.tsx`). It reads the project's topology atom, derived from the
  * account's runtime (`../state/zerops.ts`'s `projectTopologyAtom`), through the environment's
  * project (`useEnvironmentProjectRef`); `useProjectTopology` is where a non-protected host
- * (`ChatView.tsx`, `ZeropsPanel.tsx`) demands it, and where a caller that needs liveness or
+ * (`ZeropsPanel.tsx`) demands it, and where a caller that needs liveness or
  * the last-read error reads it instead of through this thin view-only read.
  */
 import { useDatabaseSession } from "./useDatabaseSession";
@@ -40,6 +40,7 @@ import {
   environmentProjectRef,
   environmentProjectsAtom,
   projectTopologyAtom,
+  projectTopologyViewAtom,
   zeropsFeeds,
   inventoryReadAtom,
 } from "../state/zerops";
@@ -89,7 +90,8 @@ export function useEnvironmentTopology(
 export function useZeropsTopology(
   environmentId: EnvironmentId | null,
 ): ZeropsTopologyView | undefined {
-  return useEnvironmentTopology(environmentId).view;
+  const project = useEnvironmentProjectRef(environmentId);
+  return useAtomValue(project === null ? EMPTY_ATOM : projectTopologyViewAtom(project));
 }
 
 export function useZeropsLifecycle(
