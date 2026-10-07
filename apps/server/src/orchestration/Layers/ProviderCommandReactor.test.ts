@@ -3986,48 +3986,72 @@ describe("ProviderCommandReactor", () => {
   );
 
   // Background agents and watch loops run inside Claude's process: a new
-  // session would end them and lose their results.
-  effectIt.effect(
-    "restarts claude for a start-only option only once its background agents end",
-    () =>
-      Effect.gen(function* () {
-        const harness = yield* Effect.promise(() =>
-          createHarness({
-            threadModelSelection: {
-              instanceId: ProviderInstanceId.make("claudeAgent"),
-              model: "claude-sonnet-4-6",
-            },
-            inSessionModelOptions: ["effort"],
-          }),
-        );
-        const backgroundTask = (kind: "started" | "completed") =>
-          harness.backgroundLiveness.recordTaskLiveness({
-            threadId: "thread-1",
-            taskId: "task-agent-1",
-            taskType: "local_agent",
-            status: kind === "started" ? "running" : "completed",
-            kind,
+  // session would end them and lose their results. The person is told, never
+  // left believing the model changed when it did not.
+  for (const [work, taskType] of [
+    ["background agents work", "local_agent"],
+    ["only a watch loop runs", "monitor"],
+  ] as const) {
+    effectIt.effect(
+      `refuses a model change that needs a new Claude session while ${work}, and takes it once the work ends`,
+      () =>
+        Effect.gen(function* () {
+          const harness = yield* Effect.promise(() =>
+            createHarness({
+              threadModelSelection: {
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                model: "claude-sonnet-4-6",
+              },
+              inSessionModelOptions: ["effort"],
+            }),
+          );
+          const backgroundTask = (kind: "started" | "completed") =>
+            harness.backgroundLiveness.recordTaskLiveness({
+              threadId: "thread-1",
+              taskId: "task-1",
+              taskType,
+              status: kind === "started" ? "running" : "completed",
+              kind,
+            });
+
+          yield* harness.engine.dispatch(claudeTurnStart("a", [{ id: "fastMode", value: false }]));
+          yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+          backgroundTask("started");
+
+          yield* harness.engine.dispatch(claudeTurnStart("b", [{ id: "fastMode", value: true }]));
+          const refusals = () =>
+            Effect.promise(harness.readModel).pipe(
+              Effect.map(
+                (model) =>
+                  model.threads
+                    .find((thread) => thread.id === "thread-1")
+                    ?.activities.filter(
+                      (activity) => activity.kind === "provider.turn.start.failed",
+                    ) ?? [],
+              ),
+            );
+          yield* Effect.promise(() =>
+            waitFor(async () => (await Effect.runPromise(refusals())).length === 1),
+          );
+          expect((yield* refusals())[0]?.payload).toMatchObject({
+            detail:
+              "Claude is still running background work, and this model change needs a new session that would end it. Wait for it to finish or stop it, or keep the current model, then send the message again. (background-work)",
           });
+          expect(harness.sendTurn).toHaveBeenCalledTimes(1);
+          expect(harness.startSession).toHaveBeenCalledTimes(1);
+          expect(harness.stopSession).not.toHaveBeenCalled();
 
-        yield* harness.engine.dispatch(claudeTurnStart("a", [{ id: "fastMode", value: false }]));
-        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
-        backgroundTask("started");
-
-        yield* harness.engine.dispatch(claudeTurnStart("b", [{ id: "fastMode", value: true }]));
-        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
-        expect(harness.startSession).toHaveBeenCalledTimes(1);
-        expect(harness.stopSession).not.toHaveBeenCalled();
-
-        backgroundTask("completed");
-        yield* harness.engine.dispatch(claudeTurnStart("c", [{ id: "fastMode", value: true }]));
-        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 3));
-        expect(harness.startSession).toHaveBeenCalledTimes(2);
-        expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
-          resumeCursor: { opaque: "resume-1" },
-          modelSelection: { options: [{ id: "fastMode", value: true }] },
-        });
-      }),
-  );
+          backgroundTask("completed");
+          yield* harness.engine.dispatch(claudeTurnStart("c", [{ id: "fastMode", value: true }]));
+          yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+          expect(harness.startSession).toHaveBeenCalledTimes(2);
+          expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+            resumeCursor: { opaque: "resume-1" },
+            modelSelection: { options: [{ id: "fastMode", value: true }] },
+          });
+        }),
+    );
+  }
 
   // Idle shells hold the worktree; a terminal running a command stays for
   // the person to close (TerminalManager.closeIdle decides which is which).
