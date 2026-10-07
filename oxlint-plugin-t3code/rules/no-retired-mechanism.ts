@@ -177,16 +177,6 @@ export default defineRule({
               text.includes("findOfficialHq(members)") &&
               !/(?:isViewer|mayWrite|mine)(?::|=)/u.test(text))
           );
-        case "setInterval(renewNow, PRESS_RENEW_MS)": {
-          const lease = body("pressHold");
-          return (
-            path === "apps/web/src/zerops/matePress.ts" &&
-            lease.includes("api.holdPress(") &&
-            lease.includes("api.endPress(") &&
-            lease.includes("clearInterval(renewal)") &&
-            !/(?:settlePress|setState|phase:|state:)/u.test(lease)
-          );
-        }
         case "settleToIdleAfter": {
           const display = body(token);
           return (

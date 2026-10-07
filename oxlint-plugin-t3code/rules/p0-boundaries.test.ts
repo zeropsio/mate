@@ -1,4 +1,4 @@
-import { describe } from "@effect/vitest";
+import { assert, describe } from "@effect/vitest";
 import { createOxlintRuleHarness } from "../test/utils.ts";
 
 const io = (filename: string) =>
@@ -172,11 +172,14 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
   );
 
   const lease = retired("apps/web/src/zerops/matePress.ts");
-  const heartbeat = `export function pressHold(api) { const renewNow = () => api.holdPress(id); const timer = setInterval(renewNow, PRESS_RENEW_MS); return () => { clearInterval(renewal); api.endPress(id); }; }`;
-  lease.valid("lease timer renews a protocol hold and has an end", heartbeat);
   lease.invalid(
-    "lease timer cannot decide a press outcome",
-    heartbeat.replace("api.holdPress(id)", `settlePress(id, { state: "failed" })`),
+    "an app-owned press lease stays retired even when it renews and ends",
+    `export function pressHold(api) { const renewNow = () => api.holdPress(id); const renewal = setInterval(renewNow, PRESS_RENEW_MS); return () => { clearInterval(renewal); api.endPress(id); }; }`,
+    (output) => {
+      assert.include(output, "pressHold(");
+      assert.include(output, "setInterval(renewNow");
+    },
+    2,
   );
 
   const update = retired("apps/web/src/zerops/useZeropsMateUpdate.ts");
