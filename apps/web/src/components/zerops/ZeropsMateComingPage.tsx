@@ -26,6 +26,7 @@
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
 import { useMateRegistration } from "~/zerops/registration";
+import { useMateOffers } from "~/zerops/useHqOffers";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
@@ -189,6 +190,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
   const registration = useMateRegistration(projectId);
+  const offers = useMateOffers()(projectId);
+  const listedOnly = offers?.held === true && offers.observe.kind === "refused";
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const creations = useCreations();
@@ -277,14 +280,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // An absent project is decided by the person's project scope. Unopened projects' container
   // reads cannot keep an ungranted direct link waiting after that scope has answered.
   const page = mateComingPage({
-    coming,
-    candidate,
+    coming: listedOnly ? undefined : coming,
+    candidate: listedOnly ? undefined : candidate,
     complete:
       (held.complete || wholeForPerson) &&
       press === undefined &&
       (creation === undefined || listingLacksIt),
-    linked: link.environmentId !== undefined,
-    reachability: link.reachability,
+    linked: !listedOnly && link.environmentId !== undefined,
+    reachability: listedOnly ? { kind: "refused-role" } : link.reachability,
   });
   // Whether this view has shown it coming up: its hand-over is then the stand-up's, in place.
   const [cameUp, setCameUp] = useState(false);

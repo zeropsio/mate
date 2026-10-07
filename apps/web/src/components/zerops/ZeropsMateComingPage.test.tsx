@@ -83,11 +83,20 @@ const app = vi.hoisted(() => ({
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
+  observeRefused: false,
   wholeForPerson: false,
   registration: {
     attempt: 0,
     state: "waiting",
   } as import("@t3tools/client-runtime/data").MateRegistration,
+}));
+vi.mock("~/zerops/useHqOffers", () => ({
+  useMateOffers: () => () => ({
+    held: true,
+    observe: app.observeRefused
+      ? { kind: "refused", reason: "zerops_read_only" }
+      : { kind: "allowed" },
+  }),
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
@@ -290,6 +299,7 @@ beforeEach(() => {
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
   app.standUpFailed = false;
+  app.observeRefused = false;
   app.standUpRetry.mockClear();
   app.threads = [];
   app.projects = [];
@@ -1254,4 +1264,14 @@ it("keeps the failed stand-up's recovery visible before a conversation exists", 
   expect(again).toBeDefined();
   act(() => again?.props.onClick());
   expect(app.standUpRetry).toHaveBeenCalledOnce();
+});
+
+it("shows HQ's read-only refusal and never connects a listed Mate", () => {
+  app.observeRefused = true;
+  act(() => {
+    tree = create(h(ZeropsMateComingPage, { projectId: PROJECT }));
+  });
+  expect(said()).toContain("You can see this project in Zerops but can't operate its Mate.");
+  expect(app.connect).not.toHaveBeenCalled();
+  expect(buttons()).not.toContain("Connect");
 });
