@@ -1,3 +1,4 @@
+import { ConversationReadiness } from "./conversationReadiness";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -8,6 +9,7 @@ import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
 import {
+  use,
   useLayoutEffect,
   useMemo,
   useState,
@@ -729,6 +731,7 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
+  const conversationReady = use(ConversationReadiness);
   const moments = useMateHeaderCues({
     environmentId,
     currentThreadId,
@@ -781,6 +784,15 @@ export function ConversationStrip({
     }
   };
 
+  const shownMate = lineMate({
+    mate,
+    pose: mateIdentityPose(mate, nowMs),
+    chats,
+    currentThreadId,
+    crewChatOpen: crewChat !== null,
+    subject,
+    lastVisitedAtById,
+  });
   return (
     // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
     <ConversationStripView
@@ -799,16 +811,10 @@ export function ConversationStrip({
         )
       }
       mate={{
-        ...lineMate({
-          mate,
-          pose: mateIdentityPose(mate, nowMs),
-          chats,
-          currentThreadId,
-          crewChatOpen: crewChat !== null,
-          subject,
-          lastVisitedAtById,
-        }),
-        cues: moments.cues,
+        ...shownMate,
+        face: conversationReady ? shownMate.face : "sleep",
+        // An opening's eyes follow the placed-list verdict, without a clock-driven peek.
+        cues: moments.cues.filter((cue) => cue.moment !== "peek"),
         restarting: moments.restarting,
       }}
       onCloseChat={(chat) => void close(chat)}

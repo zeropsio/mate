@@ -246,34 +246,23 @@ export function readTimelineFirstLineInset(scroller: Element): number {
   );
 }
 
-/**
- * How long a conversation is placed, at most, before it shows where the best
- * anchor it has puts it: its rows may never hold still while its Mate streams
- * an answer (a restore restarted on each change never landed), and the list's
- * own placing at the end starts over on each change too.
- */
-export const TIMELINE_PLACING_AT_MOST_MS = 350;
-
 /** Frames a conversation must stand where it stays before it is shown. */
 const PLACED_AFTER_FRAMES = 2;
 
 /**
  * One frame of placing a conversation: wait for the list and the row it
  * lands on, put back a place more than a pixel off, call it placed after two
- * frames standing where it stays, and overdue once it has taken too long.
+ * frames standing where it stays. A deadline cannot prove the rows ready.
  */
 export function judgeTimelinePlacing(
   frame: {
-    readonly elapsedMs: number;
     /** The list has placed and shown its rows once (LegendList's `onLoad`). */
     readonly listReady: boolean;
     /** How far the view stands from where it should, in px; null until measurable. */
     readonly offBy: number | null;
   },
   stableFrames: number,
-): { readonly verdict: "wait" | "correct" | "placed" | "overdue"; readonly stableFrames: number } {
-  if (frame.elapsedMs >= TIMELINE_PLACING_AT_MOST_MS)
-    return { verdict: "overdue", stableFrames: 0 };
+): { readonly verdict: "wait" | "correct" | "placed"; readonly stableFrames: number } {
   if (!frame.listReady || frame.offBy === null) return { verdict: "wait", stableFrames: 0 };
   if (Math.abs(frame.offBy) > 1) return { verdict: "correct", stableFrames: 0 };
   const stable = stableFrames + 1;
