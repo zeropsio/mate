@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
 import { expect, it } from "vite-plus/test";
 import { bundleKey, cachedBundle } from "../harness/buildCache.ts";
 
@@ -95,3 +96,73 @@ it.each(["design-new.html", "nested/design.html", "new-source.txt"])(
     }
   },
 );
+
+it("publishes one finished bundle for two concurrent builder processes", async () => {
+  const root = await cacheFixture();
+  let attempts = 0;
+  let builds = 0;
+  const building = new Set<NodeChildProcess.ChildProcess>();
+  const finish = () => {
+    if (attempts !== 2) return;
+    for (const child of building) child.send("finish");
+    building.clear();
+  };
+  const worker = () => {
+    const child = NodeChildProcess.spawn(
+      process.execPath,
+      [NodeURL.fileURLToPath(new URL("./buildCacheWorker.ts", import.meta.url)), root],
+      { stdio: ["ignore", "ignore", "inherit", "ipc"] },
+    );
+    const exited = new Promise<void>((resolve) => {
+      child.once("exit", () => resolve());
+      child.once("error", () => resolve());
+    });
+    const ready = new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", () => reject(new Error("Builder exited before ready")));
+      child.once("message", (message) =>
+        message === "ready" ? resolve() : reject(new Error("Invalid builder readiness")),
+      );
+    });
+    const result = new Promise<{ dist: string; content: string }>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", () => reject(new Error("Builder exited before publishing")));
+      child.on("message", (message) => {
+        if (message === "attempting") {
+          attempts++;
+          finish();
+        } else if (message === "building") {
+          builds++;
+          building.add(child);
+          finish();
+        } else if (
+          typeof message === "object" &&
+          message !== null &&
+          "dist" in message &&
+          typeof message.dist === "string" &&
+          "content" in message &&
+          typeof message.content === "string"
+        ) {
+          resolve({ dist: message.dist, content: message.content });
+        }
+      });
+    });
+    return { child, exited, ready, result };
+  };
+  const workers = [worker(), worker()];
+  try {
+    const [, results] = await Promise.all([
+      Promise.all(workers.map((worker) => worker.ready)).then(() => {
+        for (const worker of workers) worker.child.send("start");
+      }),
+      Promise.all(workers.map((worker) => worker.result)),
+    ]);
+    expect(builds).toBe(1);
+    expect(results[0]?.dist).toBe(results[1]?.dist);
+    expect(results.map((result) => result.content)).toEqual(["finished bundle", "finished bundle"]);
+  } finally {
+    for (const worker of workers) worker.child.kill("SIGKILL");
+    await Promise.all(workers.map((worker) => worker.exited));
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});

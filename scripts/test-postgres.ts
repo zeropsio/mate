@@ -6,6 +6,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
+import { acquireProcessLock } from "./test-process-lock.ts";
 
 /** Shared by worktrees, private to this OS user; independent of their module caches and ports. */
 export const postgresHome = NodePath.join(
@@ -17,35 +18,7 @@ const socketPath = NodePath.join(postgresHome, "supervisor.sock");
 /** Serialize server election and idle shutdown, never test execution. The kernel releases on death. */
 export async function lifecycleLock(): Promise<() => Promise<void>> {
   NodeFS.mkdirSync(postgresHome, { recursive: true, mode: 0o700 });
-  const holder = NodeChildProcess.spawn(
-    "flock",
-    [
-      "-x",
-      NodePath.join(postgresHome, "lifecycle.lock"),
-      process.execPath,
-      "-e",
-      "process.stdout.write('locked'); process.stdin.resume()",
-    ],
-    { stdio: ["pipe", "pipe", "inherit"] },
-  );
-  const closed = new Promise<void>((resolve, reject) => {
-    holder.once("error", reject);
-    holder.once("exit", (code, signal) =>
-      code === 0
-        ? resolve()
-        : reject(new Error(`PostgreSQL lifecycle lock exited: ${code ?? signal}`)),
-    );
-  });
-  await Promise.race([
-    new Promise<void>((resolve) => holder.stdout.once("data", () => resolve())),
-    closed.then(() => {
-      throw new Error("PostgreSQL lifecycle lock exited before acquisition");
-    }),
-  ]);
-  return async () => {
-    holder.stdin.end();
-    await closed;
-  };
+  return acquireProcessLock(NodePath.join(postgresHome, "lifecycle.lock"));
 }
 
 function connect(): Promise<NodeNet.Socket | undefined> {

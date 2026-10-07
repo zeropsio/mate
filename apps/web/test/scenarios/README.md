@@ -25,8 +25,9 @@ The hosted production bundle is cached at `node_modules/.cache/mate-scenario-web
 within this worktree. Git discovers tracked and new non-ignored source files, including Tailwind's
 `design*.html` inputs. Ignored build environment files and the public build environment also join
 the key. This conservative source set can invalidate on unrelated edits; vendored reference
-repositories and generated routes are excluded. Concurrent runs await the builder, failed builds
-never publish, and unchanged invocations reuse the bundle.
+repositories and generated routes are excluded. A kernel file lock elects one builder per key;
+other processes wait for its release and reuse the atomically published bundle. The lock file
+stays in place, and the kernel releases ownership if its process dies. Failed builds never publish.
 Each run launches headless Chrome and starts real HQ Core with isolated databases on the
 [shared host test PostgreSQL](../../../../docs/internals/test-postgres.md) and disposable git roots
 through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
