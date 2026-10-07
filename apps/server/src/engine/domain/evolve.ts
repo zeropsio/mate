@@ -65,6 +65,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         id: event.runId,
         ordinal: event.ordinal,
         seq: event.seq,
+        sinceSeq: event.seq,
         trigger: event.trigger,
         joins: event.joins,
         principal: event.principal,
@@ -78,6 +79,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         end: null,
         endSource: null,
         queuedAt: event.at,
+        admittedAt: null,
         startedAt: null,
         endedAt: null,
         lastActivityAt: null,
@@ -112,7 +114,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           activeRunId: event.runId,
         },
         event.runId,
-        (run) => ({ ...run, state: "admitted" }),
+        (run) => ({ ...run, state: "admitted", admittedAt: event.at }),
       );
     case "RunSending":
       return withRun(state, event.runId, (run) => ({
@@ -199,7 +201,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           ...run,
           nextItemOrdinal: run.nextItemOrdinal + 1,
           lastActivityAt: body.kind === "person" ? run.lastActivityAt : event.at,
-          seq: own ? event.seq : run.seq,
+          sinceSeq: own ? event.seq : run.sinceSeq,
           personBody: own ? body : run.personBody,
         };
       });

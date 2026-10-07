@@ -529,7 +529,7 @@ const newerPersonMessage = (
   wake: { readonly joins: RunId | null; readonly armedSeq: number },
 ): boolean => {
   const joined = wake.joins === null ? undefined : state.runs[wake.joins];
-  return state.lastPersonSeq > (joined?.seq ?? wake.armedSeq);
+  return state.lastPersonSeq > (joined?.sinceSeq ?? wake.armedSeq);
 };
 
 const startFromWake = (
@@ -812,7 +812,7 @@ export const continuationRefusal = (state: ConversationState, run: RunRecord): s
   if (state.archived) return "archived";
   if (run.stopAsked !== null) return "a Stop was asked";
   if (run.maintenance) return "a maintenance turn";
-  if (state.lastPersonSeq > run.seq) return "a newer person message";
+  if (state.lastPersonSeq > run.sinceSeq) return "a newer person message";
   return null;
 };
 

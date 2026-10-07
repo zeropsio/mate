@@ -32,8 +32,10 @@ export const STATE_VERSION = 1;
 export interface RunRecord {
   readonly id: RunId;
   readonly ordinal: number;
-  /** Sequence of its `RunQueued`, or of its own person message: a person message after it is newer. */
+  /** Sequence of its `RunQueued`. */
   readonly seq: number;
+  /** Sequence of its own person message, else of its `RunQueued`: a person message after it is newer. */
+  readonly sinceSeq: number;
   readonly trigger: RunTrigger;
   readonly joins: RunId | null;
   readonly principal: Principal;
@@ -47,6 +49,7 @@ export interface RunRecord {
   readonly end: RunEnd | null;
   readonly endSource: RunEndSource | null;
   readonly queuedAt: number;
+  readonly admittedAt: number | null;
   readonly startedAt: number | null;
   readonly endedAt: number | null;
   readonly lastActivityAt: number | null;
