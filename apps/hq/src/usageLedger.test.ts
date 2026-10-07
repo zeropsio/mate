@@ -854,6 +854,27 @@ describe("HQ usage ledger boundaries", () => {
         }),
       ),
     );
+    it.effect(
+      "same ids with different content are a permanent conflict; an identical repeat is acknowledged",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, total } = yield* setup;
+            const first = batch([fact("a", "100")]);
+            yield* ledger.receive(sender, first);
+            const repeated = yield* ledger.receive(sender, first);
+            assert.strictEqual(repeated.type, "usage-ack");
+            const reused = { ...fact("b", "50"), factId: "a" };
+            const refusal = yield* Effect.flip(ledger.receive(sender, batch([reused])));
+            assert.strictEqual(refusal._tag, "UsageRefused");
+            assert.strictEqual(
+              refusal._tag === "UsageRefused" ? refusal.code : "",
+              "fact_identity_conflict",
+            );
+            assert.strictEqual(yield* total, "100");
+          }),
+        ),
+    );
     it.effect("39,000 real-schema facts keep summary and keyset detail bounded", () =>
       database(
         Effect.gen(function* () {

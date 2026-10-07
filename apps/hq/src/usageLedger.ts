@@ -192,6 +192,12 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
     const [old] =
       yield* sql<ReceiptRow>`SELECT native_id,revision::text,digest,contribution FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND native_id=${nativeId}`;
     const digest = usageDigest(fact);
+    // Another native identity holding this fact id would violate the receipt's uniqueness: the
+    // Mate sent different content under the same ids, so no retry can ever commit it.
+    const holders = yield* sql<{
+      readonly native_id: string;
+    }>`SELECT native_id FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND fact_id=${fact.factId} AND native_id<>${nativeId}`;
+    if (holders.length > 0) return yield* fail("fact_identity_conflict");
     if (old !== undefined) {
       if (BigInt(fact.revision) < BigInt(old.revision)) return false;
       if (fact.revision === old.revision) {
