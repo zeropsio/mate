@@ -14,27 +14,6 @@ const REGISTRATIONS = 10;
 
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Catches a request storm that prevents a populated organization menu becoming usable.
-    it.effect("a populated menu starts within a finite platform request budget", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(names);
-        const before = b.measure.browser();
-        yield* s.given.signedIn;
-        yield* b.when.menuReady(names);
-        yield* b.when.browserSettled;
-        const sample = b.measure.browser();
-        const requests = sample.requests - before.requests;
-        report(
-          `H startup: browser total=${requests}, registrations=${sample.registrations - before.registrations}, other=${sample.otherRequests - before.otherRequests}; 4 Mates, settled`,
-        );
-        report(`H startup HQ: ${JSON.stringify(b.measure.hqRequests())}; excludes preflights`);
-        expect(requests, "Browser startup request budget").toBeLessThanOrEqual(60);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches menu discovery connecting every Mate and spending container resources before a click.
     it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
       Effect.gen(function* () {
@@ -320,9 +299,9 @@ describe("H: hosted client budgets", () => {
         }),
     );
 
-    // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
+    // Catches startup reads that make a populated organization slow and expensive.
     it.effect(
-      "target: browser startup uses at most its organization-wide registrations and eight other requests",
+      "browser startup uses at most its organization-wide registrations and eight other requests",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installBudget]);

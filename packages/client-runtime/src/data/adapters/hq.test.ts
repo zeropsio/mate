@@ -282,6 +282,29 @@ describe("hqNavigationLink", () => {
       }),
   );
 
+  it.effect("pings on a new segment cannot confirm its retained navigation", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      yield* fixture.endSegment;
+      yield* settle;
+      yield* fixture.send({ type: "ping" });
+      yield* settle;
+      const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+      expect(view()).toMatchObject({ live: false, reconnecting: true });
+      expect(appName(store, "shop")).toBe("Shop");
+      yield* TestClock.adjust(20_000);
+      yield* settle;
+      expect(view().live).toBe(false);
+      expect(view().reconnecting).toBe(true);
+      expect(streamOf(store.state(), linkKeys.hq(ORG)).fault?.message).toBe(
+        "No answer came in time.",
+      );
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("never commits a delta that does not follow its cursor: the scope is asked whole", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
