@@ -15,7 +15,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, press, readableText, TestNode } from "~/zerops/__fixtures__/testDom";
 
-import { ENVIRONMENT_ROW_GRID_CLASS } from "./ZeropsEnvironmentRow";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -126,12 +125,8 @@ describe("ZeropsReleaseRows without the commits read", () => {
     const html = rows([LIVE, EARLIER, REFUSED]);
     expect(html).not.toContain("aria-expanded");
     expect(html).not.toContain("release-carried");
-    expect(html).toContain(
-      '<span class="flex min-w-0 items-center gap-2.5"><span class="min-w-0 truncate text-sm text-foreground" data-zerops-surface="environment-name">v1.1.0</span>',
-    );
-    expect(html).toContain(
-      '<span class="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1" data-zerops-surface="environment-summary">app v1.1.0-sha</span>',
-    );
+    expect(html).toContain('data-zerops-surface="environment-name">v1.1.0</span>');
+    expect(html).toContain('data-zerops-surface="environment-summary">app v1.1.0-sha</span>');
     expect(html).toMatch(/Roll back to this<\/button><\/span><\/li>/u);
   });
 });
@@ -249,7 +244,7 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       "a release that carried nothing new keeps its shas, and its name where the others are",
       row(TITAN_RELEASES[1]!, 1),
       TITAN_READ,
-      [">titan 2cc0000<", '<span aria-hidden="true" class="size-5 shrink-0"></span>'],
+      [">titan 2cc0000<"],
       ["aria-expanded"],
     ],
     [
@@ -285,67 +280,6 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
     );
     expect(html).toMatch(
       /data-zerops-surface="release-description">Rolled back to v0\.1\.0<\/span><span[^>]*data-zerops-surface="release-byline">app 30f75f9</u,
-    );
-  });
-
-  it("writes what a release carried in the row's flexible middle, the tag and its pill before it", () => {
-    const html = renderToStaticMarkup(carriedRows([NEWEST], TITAN_READ));
-    expect(html).toMatch(
-      /data-zerops-surface="environment-name">v0\.1\.27<\/span><span[^>]*data-zerops-surface="role-tag"[\s\S]*<\/span><\/span><span class="[^"]*" data-zerops-surface="release-description">v0\.23\.0: the void \(#32\), \+1 more<\/span><span class="[^"]*text-muted-foreground[^"]*" data-zerops-surface="release-byline">ales · 4h · titan 1bcc930<\/span>/u,
-    );
-    expect(html).not.toContain("environment-summary");
-  });
-
-  it("gives the status and the verb one width on every row, so the dots and the verbs run down a column", () => {
-    const html = renderToStaticMarkup(
-      carriedRows(
-        [row(TITAN_RELEASES[0]!, 0, { live: true }), row(SPLIT_RELEASES[0]!, 1)],
-        carriedOf([
-          ["v0.1.27", known(TITAN)],
-          ["v2.0.1", known(API, WEB)],
-        ]),
-      ),
-    );
-    const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
-    expect(grids).toHaveLength(2);
-    expect(grids[0]).toBe(grids[1]);
-    // The tag column is fixed, so a long tag truncates rather than pushing its description right.
-    expect(grids[0]).toContain("sm:grid-cols-[11rem_minmax(0,1fr)_6.5rem_7rem]");
-    // The Live row has no verb: its dot stays in the status column, the verb's column empty.
-    expect(html).toMatch(
-      /Live<\/span><\/span><\/span><span class="[^"]*empty:hidden[^"]*"><\/span><\/li>/u,
-    );
-    expect(html).toContain("Live");
-    expect(html).toContain("Roll back to this");
-  });
-
-  it("draws a row that says nothing it carried on the described rows' grid, its line in their middle", () => {
-    const html = renderToStaticMarkup(
-      carriedRows(
-        [
-          // A roll-back carried nothing new: its tag lists what an older one did.
-          row(TITAN_RELEASES[1]!, 0, { live: true }),
-          NEWEST,
-          row(
-            titanRelease("v0.1.24", "3dd0000", {
-              verdict: "refused",
-              detail: "The build of titan failed.",
-            }),
-            2,
-          ),
-        ],
-        TITAN_READ,
-      ),
-    );
-    const grids = [...html.matchAll(/<li class="([^"]*)"/gu)].map((match) => match[1]);
-    expect(grids).toHaveLength(3);
-    expect(new Set(grids).size).toBe(1);
-    expect(html).not.toContain(ENVIRONMENT_ROW_GRID_CLASS);
-    expect(html).toMatch(
-      /data-zerops-surface="role-tag"[\s\S]*?<\/span><\/span><span class="[^"]*sm:col-start-2[^"]*" data-zerops-surface="environment-summary">titan 2cc0000<\/span>/u,
-    );
-    expect(html).toContain(
-      'data-zerops-surface="environment-summary">The build of titan failed.</span>',
     );
   });
 

@@ -27,6 +27,38 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     });
   const open = (tier: "stage" | "production") =>
     Effect.promise(() => page.goto(`${s.web.origin}/group/${appId}/Shop-${tier}`));
+  const openFromNavigation = Effect.gen(function* () {
+    yield* Effect.promise(() =>
+      page
+        .locator(
+          '[data-zerops-group="' +
+            appId +
+            '"] [data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]',
+        )
+        .click(),
+    );
+    yield* Effect.promise(() =>
+      page.locator('[data-zerops-surface="sidebar-production-main"]').click(),
+    );
+  });
+  const releaseEntriesShow = (sha: string) =>
+    Effect.promise(() =>
+      page.waitForFunction(
+        (sha) => {
+          const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+          return dialog?.innerText.includes(sha.slice(0, 7));
+        },
+        { timeout: 15_000, polling: "raf" },
+        sha,
+      ),
+    );
+  const productionBuildCount = Effect.sync(
+    () =>
+      s.drivers.zerops
+        .rows("process")
+        .filter((row) => row.projectId === "Shop-production" && row.actionName === "stack.build")
+        .length,
+  );
   const deployment = Effect.fn("e-env.deployment")(function* (tier: "stage" | "production") {
     return yield* Effect.sync(() =>
       s.drivers.zerops
@@ -42,6 +74,23 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       Effect.retry(Schedule.spaced("25 millis")),
       Effect.timeout("10 seconds"),
     );
+  });
+  const finishImport = Effect.fn("e-env.finishImport")(function* (tier: "stage" | "production") {
+    const process = yield* Effect.sync(() =>
+      s.drivers.zerops
+        .rows("process")
+        .find(
+          (row) =>
+            row.projectId === `Shop-${tier}` &&
+            row.actionName === "service-stack.create" &&
+            row.status === "RUNNING",
+        ),
+    ).pipe(
+      Effect.filterOrFail((row) => row !== undefined),
+      Effect.retry(Schedule.spaced("25 millis")),
+      Effect.timeout("10 seconds"),
+    );
+    s.drivers.zerops.writes.transition(process.id, "FINISHED");
   });
   const finish = Effect.fn("e-env.finish")(function* (
     tier: "stage" | "production",
@@ -212,8 +261,10 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   return {
     when: {
       open,
+      openFromNavigation,
       longRunningGap,
       finish,
+      finishImport,
       rollBackOnZerops,
       click,
       releaseFromReview,
@@ -222,7 +273,17 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       editVersion,
     },
     // oxlint-disable-next-line unicorn/no-thenable
-    then: { text, rowShows, running, releaseDisabled, keepsDocument, keepsWord, keepsStageRunning },
+    then: {
+      text,
+      rowShows,
+      running,
+      releaseDisabled,
+      keepsDocument,
+      keepsWord,
+      keepsStageRunning,
+      releaseEntriesShow,
+      productionBuildCount,
+    },
     deployment,
   };
 }

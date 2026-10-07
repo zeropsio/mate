@@ -1,11 +1,99 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { environmentFixture } from "./fake.ts";
+import { environmentFixture, environmentFixtureWith } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
 describe("E: stage, production, release and rollback", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // Production is releasable from navigation even if stage is absent, still building or failed.
+    it.effect.each(["absent", "building", "failed"] as const)(
+      "navigation reaches a production release while stage is %s",
+      (stage) =>
+        Effect.gen(function* () {
+          const f = yield* environmentFixtureWith({}, { stage: stage !== "absent" });
+          const a = environmentActions(f);
+          const sha = yield* f.merge();
+          if (stage === "failed") yield* a.when.finish("stage", "FAILED");
+          yield* f.s.given.signedIn;
+          yield* a.when.openFromNavigation;
+          yield* a.when.click("Review release");
+          yield* a.then.releaseEntriesShow(sha);
+          yield* a.when.click("Release v0.1.0");
+          yield* a.when.finish("production");
+          yield* a.then.text("Released");
+          yield* a.when.click("Close");
+          yield* a.then.rowShows("v0.1.0", "Live");
+          if (stage === "building") yield* a.then.running("stage");
+          yield* f.s.then.noExternalNetwork;
+        }),
+    );
+
+    // Closing the review and reloading must keep the accepted rollout, without a second build.
+    it.effect("closing and reloading a release review keeps its pending rollout", () =>
+      Effect.gen(function* () {
+        const f = yield* environmentFixtureWith({}, { stage: false });
+        const a = environmentActions(f);
+        yield* f.merge();
+        yield* f.s.given.signedIn;
+        yield* a.when.openFromNavigation;
+        yield* a.when.releaseFromReview;
+        yield* a.then.running("production");
+        yield* a.when.click("Close");
+        yield* a.when.reload;
+        yield* a.then.rowShows("v0.1.0", "Approved");
+        yield* a.then.running("production");
+        expect(yield* a.then.productionBuildCount).toBe(1);
+        yield* a.when.finish("production");
+        yield* a.then.rowShows("v0.1.0", "Live");
+        expect(yield* a.then.productionBuildCount).toBe(1);
+        yield* f.s.then.noExternalNetwork;
+      }),
+    );
+
+    // Only a missing declared service can be added; the same press imports then deploys it.
+    it.effect("Add service restores the declared missing service and deploys its main commit", () =>
+      Effect.gen(function* () {
+        const f = yield* environmentFixture;
+        const a = environmentActions(f);
+        const sha = yield* f.merge();
+        yield* a.when.finish("stage");
+        f.removeService("stage");
+        yield* f.s.given.signedIn;
+        yield* a.when.open("stage");
+        yield* a.when.click("Add web");
+        yield* a.when.finishImport("stage");
+        yield* a.then.text(`Building ${sha.slice(0, 7)}`);
+        yield* a.when.finish("stage");
+        yield* a.then.text("Deployed");
+        yield* a.then.text(sha.slice(0, 7));
+        yield* f.s.then.noExternalNetwork;
+      }),
+    );
+
+    // A colleague's accepted release must replace this review's unsent offer without another tag.
+    it.effect("a colleague's release displaces an open local release offer", () =>
+      Effect.gen(function* () {
+        const f = yield* environmentFixtureWith({}, { stage: false });
+        const a = environmentActions(f);
+        yield* f.merge();
+        yield* f.s.given.signedIn;
+        yield* a.when.openFromNavigation;
+        yield* a.when.click("Review release");
+        yield* a.then.text("Release v0.1.0");
+        yield* f.release("v0.1.0");
+        yield* a.then.text("Releasing v0.1.0");
+        yield* a.then.running("production");
+        expect(yield* a.then.productionBuildCount).toBe(1);
+        yield* a.when.finish("production");
+        yield* a.then.text("Released");
+        yield* a.when.click("Close");
+        yield* a.then.rowShows("v0.1.0", "Live");
+        expect(yield* a.then.productionBuildCount).toBe(1);
+        yield* f.s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a merged storefront change whose stage deployment is never shown to the user.
     it.effect("merge starts a visible stage deployment", () =>
       Effect.gen(function* () {

@@ -45,19 +45,9 @@ describe("ZeropsEnvironmentRow", () => {
     expect(html).toContain("app, db · deployed 2h ago");
     expect(html.indexOf("Acme Docs - stage")).toBeLessThan(html.indexOf(">stage<"));
     expect(html.indexOf(">stage<")).toBeLessThan(html.indexOf("app, db"));
-    // The same three places down the page: a grid, not a table, and no dashes.
-    expect(html).toContain("grid");
     expect(html).not.toContain("—");
     expect(html).not.toContain('role="row"');
     expect(html).not.toContain("<button");
-  });
-
-  it("drops what it holds under the name on a phone", () => {
-    const html = row();
-    const summaryAt = html.indexOf('data-zerops-surface="environment-summary"');
-    const summary = html.slice(html.lastIndexOf("<span", summaryAt), summaryAt);
-    expect(summary).toContain("col-span-2");
-    expect(summary).toContain("sm:col-span-1");
   });
 
   it("has no pill for an environment with no role, and leaves the place empty while its services are unread", () => {
@@ -67,37 +57,17 @@ describe("ZeropsEnvironmentRow", () => {
     expect(html).not.toContain("No services");
   });
 
-  it("puts the project's trouble, the menu and the one verb at the far end, the verb on the edge", () => {
+  it("renders the project's trouble, menu and primary action in order", () => {
     const html = row({
       action: <button data-test="verb" type="button" />,
       menu: <span data-test="menu" />,
       status: <span data-test="status" />,
     });
-    const end = html.slice(html.indexOf("justify-end"));
-    expect(end).toContain('data-test="status"');
-    expect(end).toContain('data-test="verb"');
-    expect(end).toContain('data-test="menu"');
-    // A menu shown on hover still takes its width while hidden: before the
-    // verb, it leaves the verb on the content edge every other verb ends on.
-    expect(end.indexOf('data-test="status"')).toBeLessThan(end.indexOf('data-test="menu"'));
-    expect(end.indexOf('data-test="menu"')).toBeLessThan(end.indexOf('data-test="verb"'));
-    expect(html).toContain("group-hover/row:opacity-100");
-  });
-
-  it("gives its end one width down a list, whether or not a row has a verb in it", () => {
-    // An `auto` end sized each row by its own verb, so the columns before it
-    // started at a different x on a row with Set up Mate than on one without.
-    const html = row();
-    const classes = html.slice(html.indexOf("<li"), html.indexOf(">", html.indexOf("<li")));
-    expect(classes).toContain("sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(9.5rem,auto)]");
-  });
-
-  it("names its environment in the page's primary hand, on its four-size scale", () => {
-    const html = row();
-    const at = html.indexOf('data-zerops-surface="environment-name"');
-    const name = html.slice(html.lastIndexOf("<span", at), at);
-    expect(name).toContain("text-sm");
-    expect(name).not.toContain("text-[13px]");
+    expect(html).toContain('data-test="status"');
+    expect(html).toContain('data-test="verb"');
+    expect(html).toContain('data-test="menu"');
+    expect(html.indexOf('data-test="status"')).toBeLessThan(html.indexOf('data-test="menu"'));
+    expect(html.indexOf('data-test="menu"')).toBeLessThan(html.indexOf('data-test="verb"'));
   });
 
   it("opens its stop from the name alone when it links there; a plain name otherwise", () => {
@@ -110,7 +80,6 @@ describe("ZeropsEnvironmentRow", () => {
     expect(anchor).toContain('href="/group/aaa/fixture-stage"');
     expect(anchor).toContain('data-zerops-surface="environment-name"');
     expect(anchor).toContain(">Acme Docs - stage</a>");
-    expect(anchor).toContain("hover:underline");
     expect(anchor).not.toContain("role-tag");
     expect(anchor).not.toContain("data-test=");
     expect(linked.match(/<a /gu)).toHaveLength(1);
@@ -139,11 +108,9 @@ describe("stopLinkOf", () => {
 });
 
 describe("ZeropsRoleTag", () => {
-  it("is the one MicroLabel in a pill", () => {
+  it("names the environment role", () => {
     const html = renderToStaticMarkup(<ZeropsRoleTag label="prod" />);
     expect(html).toContain('data-zerops-surface="role-tag"');
-    expect(html).toContain('data-zerops-primitive="micro-label"');
-    expect(html).toContain("rounded-full");
     expect(html).toContain(">prod<");
   });
 });

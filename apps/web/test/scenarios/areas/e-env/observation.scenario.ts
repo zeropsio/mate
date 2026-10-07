@@ -12,21 +12,13 @@ describe("E: deploy observation and the person's next action", () => {
         Effect.gen(function* () {
           const f = yield* environmentFixture;
           const a = environmentActions(f);
-          const zerops = f.s.drivers.zerops;
-          let unanswered = true;
-          zerops.handlers.unshift(async (request) =>
-            unanswered &&
-            request.method === "PUT" &&
-            /\/app-version\/[^/]+\/build-and-deploy$/u.test(request.url.pathname)
-              ? { status: 503, body: { message: "Submission did not answer" } }
-              : undefined,
-          );
+          const answerBuilds = f.unansweredBuilds();
           yield* f.s.given.signedIn;
           yield* a.when.open("stage");
           const sha = yield* f.merge();
           yield* a.then.text("Waiting for Zerops to start the build.");
           yield* a.then.text("Check it in Zerops, or run it again.");
-          unanswered = false;
+          answerBuilds();
           yield* Effect.promise(() =>
             f.s.page.locator('[data-zerops-surface="stop-service-job"] button').click(),
           );
@@ -40,22 +32,11 @@ describe("E: deploy observation and the person's next action", () => {
       Effect.gen(function* () {
         const f = yield* environmentFixture;
         const a = environmentActions(f);
-        const zerops = f.s.drivers.zerops;
         yield* f.s.given.signedIn;
         yield* a.when.open("stage");
         const sha = yield* f.merge();
         yield* a.then.text(`Building ${sha.slice(0, 7)}`);
-        zerops.handlers.unshift(async (request) =>
-          request.headers.authorization === "Bearer hq" &&
-          request.url.pathname.endsWith("/process/search")
-            ? { status: 403, body: { message: "Observation no longer authorized" } }
-            : undefined,
-        );
-        const follow = [...zerops.subscriptions.values()].find(
-          (r) => r.apiToken === "hq" && r.kind === "app-version",
-        );
-        expect(follow).toBeDefined();
-        zerops.sockets.get(follow!.receiver)!.close();
+        f.loseObservation();
         yield* a.then.text("HQ lost track of this deploy.");
         yield* a.then.text("Check it in Zerops, or run it again.");
         yield* Effect.promise(async () => {
