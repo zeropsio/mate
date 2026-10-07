@@ -88,8 +88,8 @@ export const projectGone: Projection<
  */
 export type ProjectStanding =
   | { readonly kind: "listed"; readonly project: ProjectValue }
-  | { readonly kind: "denied" }
-  | { readonly kind: "deleted" }
+  | { readonly kind: "denied"; readonly name?: string }
+  | { readonly kind: "deleted"; readonly name?: string }
   | { readonly kind: "unknown" };
 
 export const projectStanding: Projection<
@@ -104,9 +104,11 @@ export const projectStanding: Projection<
       case "known":
         return { kind: "listed", project: fact.value };
       case "deleted":
-        return { kind: "deleted" };
+        return { kind: "deleted", ...(fact.label === undefined ? {} : { name: fact.label }) };
       case "withheld":
-        return fact.reason === "denied" ? { kind: "denied" } : { kind: "unknown" };
+        return fact.reason === "denied"
+          ? { kind: "denied", ...(fact.label === undefined ? {} : { name: fact.label }) }
+          : { kind: "unknown" };
       case "unknown":
         return { kind: "unknown" };
     }

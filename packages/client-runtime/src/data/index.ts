@@ -444,3 +444,4 @@ export {
   setupFailureLogQuery,
   setupFailureReason,
 } from "./projections/setupFailure.ts";
+export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";

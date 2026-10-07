@@ -15,11 +15,19 @@ import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { RouteGateView } from "./-routeGate";
+import { recoveryNotice } from "../zerops/mateRecovery.logic";
 
 // "Go to projects" is a router link; no router runs here.
 vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { readonly children?: ReactNode }) => children ?? null,
+}));
+
+// This text-only DOM fixture does not implement SVG namespaces.
+vi.mock("lucide-react", async (actual) => ({
+  ...(await actual<typeof import("lucide-react")>()),
+  CircleAlertIcon: () => null,
+  CircleHelpIcon: () => null,
 }));
 
 /** A floating layer as the UI kit gates one; it renders in place here. */
@@ -82,6 +90,32 @@ afterEach(() => {
 });
 
 describe("RouteGateView", () => {
+  it.each(["denied", "deleted"] as const)(
+    "owner-proven %s supersedes a refused detail read while the route is unavailable",
+    (kind) => {
+      const recoveryPhrase = recoveryNotice(
+        { standing: { kind, name: "Wren" }, status: undefined, process: undefined },
+        "This Mate",
+      );
+      act(() =>
+        root.render(
+          <RouteGateView
+            {...gateFor({ kind: "refused-role" }, "live")}
+            projectId={null}
+            projectUnavailable
+            recoveryPhrase={recoveryPhrase}
+            stage={<p>Zerops refused this project's services. Again</p>}
+          >
+            conversation
+          </RouteGateView>,
+        ),
+      );
+      expect(readableText(container)).toBe(`${recoveryPhrase?.text}Go to projects`);
+      expect(readableText(container)).not.toContain("Open in Zerops");
+      expect(readableText(container)).not.toContain("refused this project's services");
+    },
+  );
+
   // The gate says nothing over a mounted conversation: the link's one voice goes down to it, for
   // the banner over its composer (`mateVoice`).
   it("a restart under a live link, then with the link down, keeps the ChatView instance and hands it the voice", () => {

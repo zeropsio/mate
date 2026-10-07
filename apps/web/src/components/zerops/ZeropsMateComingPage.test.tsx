@@ -70,6 +70,11 @@ const MAIN = {
 };
 
 const app = vi.hoisted(() => ({
+  recovery: {
+    standing: { kind: "unknown" },
+    status: undefined,
+    process: undefined,
+  } as import("@t3tools/client-runtime/data").MateRecovery,
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
@@ -102,6 +107,7 @@ vi.mock("~/zerops/useHqOffers", () => ({
   }),
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
+vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
 vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -171,6 +177,7 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountData: () => ({ orgId: "org-1" }),
   useAccountDataOptional: () => null,
   useAccountOrgId: () => "org-1",
+  useDetailDemand: () => undefined,
   useProjection: () => undefined,
   useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
 }));
@@ -183,6 +190,7 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
+  useZeropsSessionOptional: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
 }));
 // Off unless a test reads how far a birth has got: then the real derivation, at a fixed clock.
 vi.mock("~/zerops/useZeropsBirthProgress", async () => {
@@ -307,6 +315,7 @@ const buttons = () =>
     .map((node) => node.children.join("")) ?? [];
 
 beforeEach(() => {
+  app.recovery = { standing: { kind: "unknown" }, status: undefined, process: undefined };
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   // The composer standing in takes the focus a frame after it arrives.
@@ -587,6 +596,18 @@ describe("the footer in a Mate's own view", () => {
 });
 
 describe("the header in a Mate's own view", () => {
+  it("a known deleted project stays named and removes its platform link", () => {
+    app.listing = listingOf([]);
+    app.recovery = {
+      standing: { kind: "deleted", name: "Quinn" },
+      status: undefined,
+      process: undefined,
+    };
+    openView();
+    expect(said()).toContain("Quinn's project was deleted");
+    expect(said()).not.toContain("Open in Zerops");
+    expect(buttons()).toContain("Go to projects");
+  });
   it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     app.told = { subject: "Rename the orders column" };

@@ -1,3 +1,4 @@
+import type { WebMateVoice as MateVoice } from "~/zerops/mateNoticeVoice";
 import {
   connectionBannerCopy,
   type EnvironmentConnectionPresentation,
@@ -7,7 +8,6 @@ import {
   isAtomCommandInterrupted,
 } from "@t3tools/client-runtime/state/runtime";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
-import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
 import type { ReactElement } from "react";
@@ -57,17 +57,25 @@ export function mateVoiceBannerItem(input: {
   readonly voice: MateVoice;
   readonly onRetry: () => void;
   readonly projects: ReactElement;
+  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  readonly busy?: boolean;
+  readonly projectUrl?: string;
 }): ComposerBannerStackItem | null {
   const { voice } = input;
   if (voice.surface !== "banner" || voice.text === null) return null;
   const askAgain = askAgainLabel(voice.actions);
+  const containerAction = voice.actions.includes("start")
+    ? "start"
+    : voice.actions.includes("restart")
+      ? "restart"
+      : null;
+  const openInZerops = voice.actions.includes("open-in-zerops") && input.projectUrl !== undefined;
   const toProjects = voice.actions.some(
     (action) =>
       action === "go-to-projects" ||
-      action === "start" ||
+      ((action === "start" || action === "restart") && input.onContainerAction === undefined) ||
       action === "enable" ||
-      action === "restart" ||
-      action === "open-in-zerops",
+      (action === "open-in-zerops" && !openInZerops),
   );
   return {
     id: `mate-link:${input.environmentId}`,
@@ -80,15 +88,40 @@ export function mateVoiceBannerItem(input: {
     icon: <WifiOffIcon />,
     title: voice.headline ?? voice.text,
     ...(voice.secondary === undefined ? {} : { description: voice.secondary }),
-    ...(askAgain !== null || toProjects
+    ...(askAgain !== null ||
+    toProjects ||
+    openInZerops ||
+    (containerAction !== null && input.onContainerAction !== undefined)
       ? {
           actions: (
             <>
+              {containerAction === null || input.onContainerAction === undefined ? null : (
+                <Button
+                  disabled={input.busy}
+                  size="xs"
+                  onClick={() => input.onContainerAction?.(containerAction)}
+                >
+                  {input.busy
+                    ? "Asking Zerops…"
+                    : containerAction === "start"
+                      ? "Start"
+                      : "Retry restart"}
+                </Button>
+              )}
               {askAgain === null ? null : (
                 <Button size="xs" onClick={input.onRetry}>
                   {askAgain}
                 </Button>
               )}
+              {openInZerops ? (
+                <Button
+                  render={<a href={input.projectUrl} target="_blank" rel="noreferrer" />}
+                  size="xs"
+                  variant="outline"
+                >
+                  Open in Zerops
+                </Button>
+              ) : null}
               {toProjects ? (
                 <Button render={input.projects} size="xs" variant="outline">
                   Go to projects

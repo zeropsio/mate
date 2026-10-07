@@ -1,3 +1,5 @@
+import { useMateRecovery } from "~/zerops/useMateRecovery";
+import { recoveryNotice } from "~/zerops/mateRecovery.logic";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
@@ -248,6 +250,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
+  const recovery = useMateRecovery(projectId, candidate?.service?.id);
+  const projectUnavailable =
+    recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
   const { mateLink } = useEnvironmentLinks();
   const rowKey = candidate?.key ?? projectId;
   const link = useMemo(
@@ -318,7 +323,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       press === undefined &&
       (creation === undefined || listingLacksIt),
     linked: !listedOnly && link.environmentId !== undefined,
-    reachability: listedOnly ? { kind: "refused-role" } : link.reachability,
+    reachability: projectUnavailable
+      ? {
+          kind: "gone",
+          because: recovery.standing.kind === "deleted" ? "direct-not-found" : "direct-forbidden",
+        }
+      : listedOnly
+        ? { kind: "refused-role" }
+        : link.reachability,
   });
   // Whether this view has shown it coming up: its hand-over is then the stand-up's, in place.
   const [cameUp, setCameUp] = useState(false);
@@ -342,7 +354,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     }
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
-      name: creation?.botName ?? press?.placement?.displayName ?? "",
+      name:
+        ("name" in recovery.standing ? recovery.standing.name : undefined) ??
+        creation?.botName ??
+        press?.placement?.displayName ??
+        "",
       tint: face.tint,
       shape: face.shape,
       project: creation?.name ?? press?.placement?.groupName,
@@ -351,7 +367,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [press, candidate, creation, projectId, tints, viewer]);
+  }, [press, candidate, creation, projectId, projectUnavailable, recovery.standing, tints, viewer]);
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
@@ -677,6 +693,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         : null;
   const linkVoice = mateNoticeVoice({
     reachability: linkReachability,
+    recovery,
     conversationShown: false,
     nowMs,
     mateName: named.name,
@@ -743,8 +760,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                 kind: "unreachable",
                 severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: "sleep",
-                headline:
-                  page.reachability === null
+                headline: projectUnavailable
+                  ? recoveryNotice(recovery, named.name)?.text
+                  : page.reachability === null
                     ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
                     : linkVoice.surface === "none"
                       ? undefined
@@ -755,10 +773,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     onTryNow={tryNow}
                     projects={<Link to="/zerops" />}
                     phrase={{
-                      ...mateOpeningPhrase(page, { nowMs, mateName: named.name }),
+                      ...(projectUnavailable
+                        ? recoveryNotice(recovery, named.name)!
+                        : mateOpeningPhrase(page, { nowMs, mateName: named.name })),
                       text: null,
                     }}
-                    projectUrl={mate.projectUrl}
+                    projectUrl={projectUnavailable ? undefined : mate.projectUrl}
                   />
                 ),
               }
@@ -776,7 +796,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     mateServiceId={mate.serviceId}
                     onTryNow={tryNow}
                     projectId={projectId}
-                    projectUrl={mate.projectUrl}
+                    projectUrl={projectUnavailable ? undefined : mate.projectUrl}
                     voice={
                       linkVoice.surface === "none" ? SILENT_STAGE : { ...linkVoice, text: null }
                     }
@@ -802,7 +822,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
-  if (detailFailure !== null)
+  if (detailFailure !== null && !projectUnavailable)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     <MateComingFrame
@@ -820,7 +840,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                   arriving: mateArriving(mate.arrivingUntil, clockMs),
                 })
           }
-          mate={{ ...mate, connected: stageAwake }}
+          mate={{
+            ...mate,
+            projectUrl: projectUnavailable ? undefined : mate.projectUrl,
+            connected: stageAwake,
+          }}
           standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
         />
       }
