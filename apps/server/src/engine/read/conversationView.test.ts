@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -162,5 +163,47 @@ describe("a conversation's agent", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+});
+
+describe("the engine's doors for the grafts", () => {
+  it.effect(
+    "a stand-up wake runs for the principal it names, and its run is found by the wake",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({ driver: "codex" });
+          yield* w.boot;
+          const engine = yield* w.engine;
+          const given = yield* engine.assignAgent(mate, {
+            instanceId: "codex",
+            driver: "codex",
+            model: "m1",
+            profile: { kind: "mate" },
+          });
+          assert.isTrue(given);
+          const now = yield* Clock.currentTimeMillis;
+          const { wakeId } = yield* engine.wake({
+            conversationId: mate,
+            kind: "standup",
+            key: "standup-1",
+            principal: { kind: "standup", startedBy: "ana" },
+            text: "Stand up the project.",
+            dueAt: now,
+          });
+          yield* w.advance(1_000);
+          const run = yield* engine.runOf({ wakeId });
+          assert.strictEqual(run?.runId, runId(mate, 1));
+          assert.strictEqual(run?.end, null);
+          const started = yield* w.run(runId(mate, 1));
+          assert.deepStrictEqual(
+            [started?.trigger.kind, started?.trigger.cause],
+            ["wake", "standup"],
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual((yield* engine.runOf({ wakeId }))?.end, { kind: "completed" });
+          yield* w.shutdown;
+        }),
+      ),
   );
 });

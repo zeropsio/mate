@@ -21,6 +21,7 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import type {
+  ConversationAgent,
   ConversationId,
   Principal,
   RunEnd,
@@ -93,6 +94,18 @@ export interface MateEngineService {
   ) => Effect.Effect<void>;
   readonly wake: (wake: WakeRequest) => Effect.Effect<WakeReceipt, WakeRefused>;
   readonly runOutcome: (id: WakeId) => Effect.Effect<RunOutcome | undefined>;
+  /**
+   * Gives a conversation the agent it belongs to (the stand-up, the flip); whether the engine
+   * took it. Giving it the agent it has changes nothing.
+   */
+  readonly assignAgent: (
+    conversationId: ConversationId,
+    agent: ConversationAgent,
+  ) => Effect.Effect<boolean>;
+  /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
+  readonly runOf: (
+    find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
+  ) => Effect.Effect<{ readonly runId: RunId; readonly end: RunEnd | null } | undefined>;
 }
 
 export class MateEngine extends Context.Service<MateEngine, MateEngineService>()(
@@ -112,4 +125,6 @@ export const inertMateEngine: MateEngineService = {
   stopSessionsOn: () => Effect.void,
   wake: notRunning,
   runOutcome: () => Effect.succeed(undefined),
+  assignAgent: () => Effect.succeed(false),
+  runOf: () => Effect.succeed(undefined),
 };

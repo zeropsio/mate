@@ -170,6 +170,47 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => undefined),
       );
 
+    const assignAgent: MateEngineService["assignAgent"] = (conversationId, agent) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        yield* conversations.ask({
+          commandId: CommandId.make(`assign:${agent.instanceId}:${now}`),
+          conversationId,
+          principal: ENGINE,
+          command: { _tag: "AssignAgent", agent },
+        });
+        return true;
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Mate engine: an agent could not be given", cause).pipe(
+            Effect.as(false),
+          ),
+        ),
+      );
+
+    const runOf: MateEngineService["runOf"] = (find) =>
+      ("wakeId" in find
+        ? sql<{ readonly run_id: string; readonly end_json: string | null }>`
+            SELECT run_id, end_json FROM engine_run
+            WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
+            ORDER BY ordinal DESC LIMIT 1
+          `
+        : sql<{ readonly run_id: string; readonly end_json: string | null }>`
+            SELECT run_id, end_json FROM engine_run WHERE provider_turn_id = ${find.providerTurnId}
+            ORDER BY ordinal DESC LIMIT 1
+          `
+      ).pipe(
+        Effect.flatMap((rows) => {
+          const row = rows[0];
+          if (row === undefined) return Effect.succeed(undefined);
+          return Effect.map(
+            row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
+            (end) => ({ runId: RunId.make(row.run_id), end }),
+          );
+        }),
+        Effect.orElseSucceed(() => undefined),
+      );
+
     return MateEngine.of({
       live: true,
       start,
@@ -194,6 +235,8 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       stopSessionsOn,
       wake,
       runOutcome,
+      assignAgent,
+      runOf,
     });
   });
 
