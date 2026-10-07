@@ -10,6 +10,47 @@ import type { OperationIntent } from "../../model.ts";
 const viewer = { id: "org", name: "Org", membershipId: "member", roleCode: "ADMIN" };
 describe("operation admission from the account store", () => {
   it.effect.each([
+    { kind: "delete-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: false },
+    { kind: "rename-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: false },
+    { kind: "start-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: true },
+    { kind: "assign-mate-owner", orgRole: "NO_ACCESS", projectRole: "OWNER", allowed: false },
+    { kind: "finish-mate-handover", orgRole: "NO_ACCESS", projectRole: "OWNER", allowed: false },
+    { kind: "finish-mate-handover", orgRole: "ADMIN", projectRole: "ADMIN", allowed: true },
+  ] as const)("$kind requires its actual project or organization role", (entry) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      for (const input of liveProjects("org", [
+        { id: "p", userRoles: [{ clientUserId: "member", roleCode: entry.projectRole }] },
+      ]))
+        store.dispatch(input);
+      const intent: OperationIntent =
+        entry.kind === "rename-project"
+          ? { kind: entry.kind, orgId: "org", projectId: "p", name: "New name" }
+          : entry.kind === "assign-mate-owner"
+            ? { kind: entry.kind, orgId: "org", projectId: "p", clientUserId: "ada" }
+            : entry.kind === "finish-mate-handover"
+              ? {
+                  kind: entry.kind,
+                  orgId: "org",
+                  projectId: "p",
+                  clientUserId: "ada",
+                  previousOwnerIds: ["bob"],
+                }
+              : { kind: entry.kind, orgId: "org", projectId: "p" };
+      const result = yield* Effect.result(
+        admitPlatformOperation({
+          intent,
+          store,
+          viewer: { ...viewer, roleCode: entry.orgRole },
+          active: () => true,
+          readDetail: async () => false,
+        }),
+      );
+      expect(Result.isSuccess(result)).toBe(entry.allowed);
+    }),
+  );
+
+  it.effect.each([
     {
       name: "a known project",
       listed: true,

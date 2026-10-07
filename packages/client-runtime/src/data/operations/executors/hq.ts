@@ -23,6 +23,7 @@ import type { OperationIntent, OperationReceipt, OperationResult } from "../../m
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
 import type { HqWriteIntent } from "../hqWrites.ts";
+import { changesMateClass, type MoveProjectIntent } from "../moveProject.ts";
 
 import {
   changeHandle,
@@ -51,7 +52,16 @@ export type HqWrites = Pick<
   | "recordClosedOff"
   | "keepDeployToken"
 > &
-  FlowWrites;
+  FlowWrites &
+  Partial<
+    Pick<HqApi, "moveProject" | "mateKey" | "prepareProjectDeletion" | "completeProjectDeletion">
+  > & {
+    /** HQ retains this original request and finishes its class-change side effects. */
+    readonly moveProjectOperation?: (
+      requestId: string,
+      intent: MoveProjectIntent,
+    ) => Promise<OperationReceipt>;
+  };
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -180,6 +190,9 @@ export function makeHqExecutor(ports: {
   readonly apiOf: (orgId: string) => HqWrites | null;
   /** The person's Zerops client, which mints an environment's deploy key. */
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
+  /** Captured account lifetime; lifecycle writes require it. */
+  readonly active?: () => boolean;
+  readonly hqProjectIdOf?: (orgId: string) => string | null;
 }): OperationExecutor {
   /** The environment's own token minted, then kept by HQ; a refused one taken back. */
   const keepKey = (
@@ -254,8 +267,104 @@ export function makeHqExecutor(ports: {
   };
 
   return {
+    isCurrent: (intent) =>
+      ports.active?.() !== false &&
+      (!("hqProjectId" in intent) ||
+        (ports.active !== undefined && ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId)),
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
+        if (ports.active?.() === false)
+          return yield* Effect.fail<StreamFault>({
+            outcome: "definitive-refusal",
+            message: "This Zerops sign-in has ended.",
+          });
+        if (
+          intent.kind === "move-project" ||
+          intent.kind === "prepare-mate-deletion" ||
+          intent.kind === "complete-mate-deletion"
+        ) {
+          if (
+            ports.active === undefined ||
+            ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId
+          )
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "The original HQ must be available to finish this operation.",
+            });
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (intent.kind === "prepare-mate-deletion") {
+            const keyOf = api.mateKey;
+            const prepare = api.prepareProjectDeletion;
+            if (keyOf === undefined || prepare === undefined)
+              return yield* Effect.fail<StreamFault>({
+                outcome: "definitive-refusal",
+                message: "This HQ cannot prepare deletion.",
+              });
+            const keyTokenId = yield* Effect.tryPromise({
+              try: () => keyOf(intent.projectId),
+              catch: (cause) => {
+                const fault = faultOf(cause);
+                return fault.outcome === "uncertain-acceptance"
+                  ? { outcome: "transient" as const, message: fault.message }
+                  : fault;
+              },
+            });
+            if (!ports.active() || ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId)
+              return yield* Effect.fail<StreamFault>({
+                outcome: "definitive-refusal",
+                message: "This Zerops sign-in or its HQ has changed.",
+              });
+            const completion = yield* Effect.tryPromise({
+              try: () => prepare(intent.projectId),
+              catch: faultOf,
+            });
+            return answered(requestId, intent.projectId, { keyTokenId, completion });
+          }
+          if (intent.kind === "complete-mate-deletion") {
+            const complete = api.completeProjectDeletion;
+            if (complete === undefined)
+              return yield* Effect.fail<StreamFault>({
+                outcome: "definitive-refusal",
+                message: "This HQ cannot complete deletion.",
+              });
+            yield* Effect.tryPromise({
+              try: () => complete(intent.projectId, intent.completion),
+              catch: faultOf,
+            });
+          } else {
+            if (api.moveProjectOperation !== undefined)
+              return yield* Effect.tryPromise({
+                try: () => api.moveProjectOperation!(requestId, intent),
+                catch: faultOf,
+              });
+            if (changesMateClass(intent))
+              return yield* Effect.fail<StreamFault>({
+                outcome: "definitive-refusal",
+                message:
+                  "This HQ cannot safely finish a move that changes the Mate's role. Update HQ before trying again.",
+                code: "class_move_receipt_required",
+              });
+            const move = api.moveProject;
+            if (move === undefined)
+              return yield* Effect.fail<StreamFault>({
+                outcome: "definitive-refusal",
+                message: "This HQ cannot move projects.",
+              });
+            yield* Effect.tryPromise({
+              try: () => move(intent.projectId, intent.to),
+              catch: faultOf,
+            });
+          }
+          return {
+            ...answered(requestId, intent.projectId),
+            affected: [{ family: "placement", id: intent.projectId }],
+          };
+        }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;
           const api = ports.apiOf(flow.orgId);

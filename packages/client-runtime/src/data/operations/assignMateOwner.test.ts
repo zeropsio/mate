@@ -4,7 +4,8 @@ import * as Effect from "effect/Effect";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { accountOf, progressOf, zeropsOperations } from "../__fixtures__/operations.ts";
 import type { AccountStore } from "../store.ts";
-import { ZeropsApiError, type ZeropsProject } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsProject } from "../../zerops/api.ts";
+import { operationResult } from "../model.ts";
 import { assignMateOwnerExecutor } from "./executors/projectWrites.ts";
 
 const ASSIGN = {
@@ -42,12 +43,82 @@ function operationsOf(
 }
 
 const handed = { id: "p1", name: "p1", status: "ACTIVE", userRoles: owners("ada", "bob") };
+const finished = { ...handed, userRoles: owners("ada") };
 
 describe("assign-mate-owner", () => {
+  it.effect("a lost old-owner removal stays unresolved with the original remainder", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, calls } = operationsOf(
+        store,
+        async (write) => {
+          if (write.roleCode === null) throw new ZeropsApiError("Answer lost.", "network");
+          return handed;
+        },
+        async () => handed,
+      );
+      yield* operations.submit(ASSIGN);
+      expect(progressOf(store)).toMatchObject({
+        stage: "unresolved",
+        operationId: "p1",
+        nextActor: "person",
+      });
+      expect(operationResult(store.state().operations.get("r1"), "assign-mate-owner")).toEqual({
+        previousOwnerIds: ["bob"],
+      });
+      expect(calls).toEqual([
+        { clientUserId: "ada", roleCode: "OWNER" },
+        { clientUserId: "bob", roleCode: null },
+        "read",
+      ]);
+    }),
+  );
+
+  it.effect.each(["both", "finished", "recipient-changed", "new-owner"] as const)(
+    "after reload Finish hand-over acts only on the original remainder: $0",
+    (state) =>
+      Effect.gen(function* () {
+        const store = account();
+        const read =
+          state === "both"
+            ? handed
+            : state === "finished"
+              ? finished
+              : {
+                  ...handed,
+                  userRoles:
+                    state === "recipient-changed" ? owners("bob") : owners("ada", "bob", "eve"),
+                };
+        const { operations, calls } = operationsOf(
+          store,
+          async () => finished,
+          async () => read,
+        );
+        yield* operations.submit({
+          ...ASSIGN,
+          kind: "finish-mate-handover",
+          previousOwnerIds: ["bob"],
+        });
+        expect(calls).toEqual(
+          state === "both" ? ["read", { clientUserId: "bob", roleCode: null }] : ["read"],
+        );
+        expect(progressOf(store).stage).toBe(state === "recipient-changed" ? "refused" : "done");
+        expect(store.state().operations.get("r1")?.receipt?.outcome.kind).toBe(
+          state === "new-owner"
+            ? "failed"
+            : state === "recipient-changed"
+              ? "pending"
+              : "succeeded",
+        );
+      }),
+  );
+
   it.effect("hands the Mate over, then takes it from every previous owner", () =>
     Effect.gen(function* () {
       const store = account();
-      const { operations, calls } = operationsOf(store, async () => handed);
+      const { operations, calls } = operationsOf(store, async (write) =>
+        write.roleCode === null ? finished : handed,
+      );
       yield* operations.submit(ASSIGN);
       expect(calls).toEqual([
         { clientUserId: "ada", roleCode: "OWNER" },
@@ -57,35 +128,57 @@ describe("assign-mate-owner", () => {
     }),
   );
 
+  it.effect("keeps an unobserved old-owner removal separate from a before-send refusal", () =>
+    Effect.gen(function* () {
+      for (const [answer, expected, evidence] of [
+        [
+          async (write: Write) => {
+            if (write.roleCode === null) throw new ZeropsApiError("Not allowed.", "forbidden", 403);
+            return handed;
+          },
+          {
+            stage: "unresolved",
+            operationId: "p1",
+            nextActor: "person",
+            nextAction: "Check the original hand-over, then finish removing its previous owners",
+            reason: "Not allowed.",
+          },
+          null,
+        ],
+        [
+          async () => {
+            throw new ZeropsWriteNotSent({
+              outcome: "definitive-refusal",
+              message: "Not allowed.",
+            });
+          },
+          { stage: "refused", reason: "Not allowed." },
+          null,
+        ],
+      ] as const) {
+        const store = account();
+        const { operations } = operationsOf(store, answer);
+        yield* operations.submit(ASSIGN);
+        expect(progressOf(store)).toEqual(expected);
+        const outcome = store.state().operations.get("r1")?.receipt?.outcome;
+        expect(outcome?.kind === "failed" ? outcome.evidence : null).toBe(evidence);
+      }
+    }),
+  );
+
   it.effect(
-    "says a hand over its previous owner still holds, and a refusal that wrote nothing",
+    "an acknowledged assignment followed by changed ownership retains its accepted receipt",
     () =>
       Effect.gen(function* () {
-        for (const [answer, expected, evidence] of [
-          [
-            async (write: Write) => {
-              if (write.roleCode === null)
-                throw new ZeropsApiError("Not allowed.", "forbidden", 403);
-              return handed;
-            },
-            { stage: "done", operationId: "p1", outcome: "failed" },
-            "It was handed over, but its previous owner still owns it too: Not allowed.",
-          ],
-          [
-            async () => {
-              throw new ZeropsApiError("Not allowed.", "forbidden", 403);
-            },
-            { stage: "refused", reason: "Not allowed." },
-            null,
-          ],
-        ] as const) {
-          const store = account();
-          const { operations } = operationsOf(store, answer);
-          yield* operations.submit(ASSIGN);
-          expect(progressOf(store)).toEqual(expected);
-          const outcome = store.state().operations.get("r1")?.receipt?.outcome;
-          expect(outcome?.kind === "failed" ? outcome.evidence : null).toBe(evidence);
-        }
+        const store = account();
+        const { operations, calls } = operationsOf(store, async () => ({
+          ...handed,
+          userRoles: owners("eve"),
+        }));
+        yield* operations.submit(ASSIGN);
+        expect(progressOf(store)).toEqual({ stage: "done", operationId: "p1", outcome: "failed" });
+        expect(store.state().operations.get("r1")?.receipt?.acceptance.kind).toBe("accepted");
+        expect(calls).toEqual([{ clientUserId: "ada", roleCode: "OWNER" }]);
       }),
   );
 
@@ -94,7 +187,7 @@ describe("assign-mate-owner", () => {
       const lost = (write: Write) =>
         write.roleCode === "OWNER"
           ? Promise.reject(new ZeropsApiError("No answer.", "network"))
-          : Promise.resolve(handed);
+          : Promise.resolve(finished);
       for (const [read, expected, calls] of [
         [
           () => Promise.resolve(handed),

@@ -29,6 +29,7 @@ import { hqBirthReads } from "./hqBirthReads.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
+import { retireMateKeyExecutor } from "./mateDeletion.ts";
 import { hqBirthExecutor } from "./hqBirth.ts";
 import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
@@ -54,6 +55,7 @@ type ZeropsOperationsClient = Pick<
   | "startService"
   | "deleteProject"
   | "listIntegrationTokens"
+  | "readIntegrationToken"
   | "deleteIntegrationToken"
   | "enableSubdomainAccess"
   | "writeMateFlag"
@@ -126,6 +128,7 @@ export function makeZeropsExecutor(input: {
     const remove = deleteProjectExecutor({
       deleteProject: (projectId) => client.deleteProject(projectId),
     });
+    const retireKey = retireMateKeyExecutor(client);
     const create = createProjectExecutor({
       createProject: (input) => client.createProject(input),
       listClientProjects: (clientId) => client.listClientProjects(clientId),
@@ -237,6 +240,8 @@ export function makeZeropsExecutor(input: {
               return restart.submit(requestId, intent);
             case "delete-project":
               return remove(requestId, intent);
+            case "retire-mate-key":
+              return retireKey(requestId, intent);
             case "throwaway-sweep":
               return sweep(requestId, intent);
             case "enable-subdomain-access":
@@ -252,6 +257,7 @@ export function makeZeropsExecutor(input: {
             case "update-project-tags":
               return retag(requestId, intent);
             case "assign-mate-owner":
+            case "finish-mate-handover":
               return assign(requestId, intent);
             case "hq-birth":
               return provisionHq(requestId, intent);
@@ -282,6 +288,7 @@ export function makeZeropsExecutor(input: {
     };
   };
   return {
+    isCurrent: () => input.active(),
     submit: (requestId, intent) => {
       const admission = () =>
         admitPlatformOperation({
@@ -339,6 +346,7 @@ export function makeZeropsExecutor(input: {
         deleteIntegrationToken: (target, signal) =>
           source.deleteIntegrationToken(target, signal, check),
         listIntegrationTokens: (...args) => source.listIntegrationTokens(...args),
+        readIntegrationToken: (...args) => source.readIntegrationToken(...args),
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         readProjectEnv: (...args) => source.readProjectEnv(...args),
