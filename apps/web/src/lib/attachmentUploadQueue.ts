@@ -141,7 +141,7 @@ function uploadBytes(input: {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Upload rejected (${xhr.status})`));
+        reject(new Error(xhr.status === 507 ? "Storage full" : `Upload rejected (${xhr.status})`));
       }
     });
     xhr.addEventListener("error", () => reject(new Error("Upload failed")));
@@ -392,9 +392,11 @@ function startUpload(environmentId: EnvironmentId, item: UploadItem): void {
     // The HTTP failure can arrive after the socket has already reconnected.
     // Wait for that attempt, then retry only if this job still owns the file.
     void job.settled.then(() => {
+      const outcome = readAttachmentUpload(job.item.key);
       if (
         jobsByImageId.get(job.item.key) === job &&
-        readAttachmentUpload(job.item.key)?.status === "failed" &&
+        outcome?.status === "failed" &&
+        outcome.reason !== "Storage full" &&
         isConnected()
       ) {
         retryUpload(input.environmentId, item);

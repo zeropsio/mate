@@ -161,6 +161,7 @@ function ManagedAssetImage({
         {...props}
         ref={ref}
         src={url}
+        data-image-src={props.src}
         loading="lazy"
         decoding="async"
         aria-busy={!url || loadingOriginal}

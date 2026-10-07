@@ -1191,7 +1191,7 @@ function openMarkdownImage(button: HTMLElement, open: (preview: ExpandedImagePre
   if (index < 0) return;
   open({
     images: images.map((image) => ({
-      src: image.currentSrc || image.dataset.imageSrc || image.src,
+      src: image.dataset.imageSrc || image.currentSrc || image.src,
       name:
         image.alt ||
         (image.currentSrc || image.dataset.imageSrc || image.src).split("/").pop()?.split("?")[0] ||

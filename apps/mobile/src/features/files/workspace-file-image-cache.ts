@@ -28,6 +28,7 @@ export function createWorkspaceFileImageAtomFamily(options?: {
     Atom.make(
       Effect.tryPromise({
         try: async () => {
+          if (key.uri.startsWith("data:image/")) return key.uri;
           const cached = await prefetch(key.uri);
           if (!cached) {
             throw new WorkspaceImagePrefetchError({ uri: key.uri });

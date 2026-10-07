@@ -274,7 +274,13 @@ function projectViewedImagePath(
   input: Record<string, unknown> | null,
 ): string | undefined {
   const directPath = asTrimmedString(data.imagePath);
-  if (directPath && isWorkspaceImagePreviewPath(directPath)) {
+  if (
+    directPath &&
+    (/^mate-asset:[a-f0-9-]{36}(?::(?:source-missing|source-changed|storage-full|unsupported|persistence-failed))?$/.test(
+      directPath,
+    ) ||
+      isWorkspaceImagePreviewPath(directPath))
+  ) {
     return directPath;
   }
 

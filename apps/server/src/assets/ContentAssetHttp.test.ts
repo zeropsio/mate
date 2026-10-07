@@ -32,6 +32,10 @@ async function fixture() {
   );
   return {
     store,
+    original:
+      occurrence.original.status === "ready"
+        ? await store.object(occurrence.original.digest)
+        : null,
     object: await store.object((await store.preview(occurrence.id, 120, 80)).digest, true),
   };
 }
@@ -101,5 +105,36 @@ it.effect(
         headers: { "if-none-match": "*" },
       });
       expect(missing.status).toBe(404);
+    }),
+);
+
+it.effect.each([
+  { method: "GET", headers: {} },
+  { method: "HEAD", headers: {} },
+  { method: "GET", headers: { range: "bytes=0-20" } },
+  { method: "GET", headers: { "if-none-match": "*" } },
+] as const)(
+  "a previously readable original requires current access on every request: %s",
+  ({ method, headers }) =>
+    Effect.gen(function* () {
+      const { original } = yield* Effect.promise(fixture);
+      if (original === null) throw new Error("missing original");
+      let allowed = true;
+      let resolutions = 0;
+      const serve = () =>
+        protectedContentAsset(
+          Effect.sync(() => (allowed ? null : contentAssetFailure("access-denied", 403))),
+          Effect.sync(() => {
+            resolutions++;
+            return original;
+          }),
+          { method, headers },
+        );
+      expect((yield* serve()).status).toBe(
+        method === "GET" && "range" in headers ? 206 : "if-none-match" in headers ? 304 : 200,
+      );
+      allowed = false;
+      expect((yield* serve()).status).toBe(403);
+      expect(resolutions).toBe(1);
     }),
 );

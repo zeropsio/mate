@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { accountReadsAtom } from "@t3tools/client-runtime/data";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -42,3 +43,7 @@ describe("ZeropsAccountData on mobile", () => {
     expect(heard).toEqual(["org-2"]);
   });
 });
+
+vi.mock("./MateImagesProvider", () => ({
+  MateImages: ({ children }: { readonly children: ReactNode }) => children,
+}));

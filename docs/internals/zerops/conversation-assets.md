@@ -33,6 +33,7 @@ failing write reports `Storage full`. A missing object is not described as expir
 intentionally deleted without evidence.
 
 Older servers use their existing signed route, selected by the declared capability; modern reads
-do not race a signed fallback. Mobile currently retains its signed presentation path. New Mate
-servers resolve compact conversation references for that path too. Videos, non-image files and
+do not race a signed fallback. Native mobile reads modern originals through the same authorized
+data adapter and presents an in-memory data URI; older servers retain the signed presentation.
+Previously issued signed aliases cannot read content-addressed originals. Videos, non-image files and
 external Markdown image URLs retain their existing behavior.

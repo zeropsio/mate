@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -225,3 +226,7 @@ describe("ZeropsSessionProvider recovery token", () => {
     expect(renderProviderElement().props.children.props.account?.userId).toBe(USER.id);
   });
 });
+
+vi.mock("./MateImagesProvider", () => ({
+  MateImages: ({ children }: { readonly children: ReactNode }) => children,
+}));

@@ -1,4 +1,5 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { mateImageSource } from "@t3tools/client-runtime/data";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create } from "react-test-renderer";
@@ -8,6 +9,7 @@ const testState = vi.hoisted(() => ({
   resources: [] as Array<unknown>,
   assetState: "success" as "success" | "loading" | "failure",
   dimensions: undefined as { width: number; height: number } | undefined,
+  url: "https://signed.test/workspace-image.svg",
 }));
 
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
@@ -18,7 +20,7 @@ vi.mock("../assets/assetUrls", () => ({
     if (testState.assetState === "failure") return { _tag: "Failure" };
     return {
       _tag: "Success",
-      url: "https://signed.test/workspace-image.svg",
+      url: testState.url,
       ...(testState.dimensions === undefined ? {} : { imageDimensions: testState.dimensions }),
     };
   },
@@ -69,6 +71,7 @@ describe("ChatMarkdown workspace images", () => {
   beforeEach(() => {
     testState.resources = [];
     testState.assetState = "success";
+    testState.url = "https://signed.test/workspace-image.svg";
   });
 
   it("loads every Windows workspace path form through a signed asset URL", () => {
@@ -151,6 +154,62 @@ describe("ChatMarkdown workspace images", () => {
     expect(html).toContain("max-h-[30rem]");
     expect(html).not.toContain("Image unavailable");
   });
+
+  it.each(["loaded", "unloaded"])(
+    "opens a Markdown gallery by occurrence even when its preview is %s",
+    (status) => {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      const source = mateImageSource({
+        environmentId: threadRef.environmentId,
+        resource: {
+          _tag: "workspace-file",
+          threadId: threadRef.threadId,
+          path: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        },
+      });
+      const image = {
+        currentSrc: status === "loaded" ? "blob:preview" : "",
+        src: "blob:preview",
+        dataset: { imageSrc: source },
+        alt: "original",
+      };
+      const external = {
+        currentSrc: "https://example.org/other.png",
+        src: "https://example.org/other.png",
+        dataset: {},
+        alt: "other",
+      };
+      const open = vi.fn();
+      testState.url = "https://signed.test/workspace-image.svg";
+      let renderer!: ReturnType<typeof create>;
+      act(() => {
+        renderer = create(
+          <ChatMarkdown
+            cwd="/workspace"
+            threadRef={threadRef}
+            text="![original](shot.png)"
+            onOpenImage={open}
+          />,
+        );
+      });
+      act(() =>
+        renderer.root.findByProps({ "data-markdown-image-opener": true }).props.onClick({
+          currentTarget: {
+            querySelector: () => image,
+            closest: () => ({ querySelectorAll: () => [image, external] }),
+          },
+        }),
+      );
+      expect(open).toHaveBeenCalledWith({
+        index: 0,
+        images: [
+          { src: source, name: "original" },
+          { src: external.src, name: "other" },
+        ],
+      });
+      act(() => renderer.unmount());
+    },
+  );
 });
 
 describe("a picture's room before it loads", () => {

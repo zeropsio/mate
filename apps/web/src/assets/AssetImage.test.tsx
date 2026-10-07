@@ -48,5 +48,6 @@ it("measures the drawn image itself and keeps authorized pixels in its reserved 
   expect(observed).toEqual(["img"]);
   expect(image.keys.at(-1)).toMatchObject({ rendition: { width: 240, height: 160 } });
   expect(renderer.root.findByType("img").props.src).toBe("blob:preview");
+  expect(renderer.root.findByType("img").props["data-image-src"]).toBe(source);
   act(() => renderer.unmount());
 });

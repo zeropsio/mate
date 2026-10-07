@@ -58,7 +58,15 @@ export function attachmentUploadBlockReason(input: {
 
   const failed = images.failed + files.failed;
   if (failed > 0) {
-    return `Retry or remove the failed ${noun(images.failed, files.failed, failed === 1)}`;
+    const full = [...input.imageIds, ...(input.fileIds ?? [])].some((id) => {
+      const upload = input.uploadsByImageId[id];
+      return (
+        upload?.status === "failed" &&
+        upload.environmentId === input.environmentId &&
+        upload.reason === "Storage full"
+      );
+    });
+    return `${full ? "Storage full. " : ""}Retry or remove the failed ${noun(images.failed, files.failed, failed === 1)}`;
   }
   const pending = images.pending + files.pending;
   if (pending > 0) {

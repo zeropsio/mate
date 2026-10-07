@@ -6,6 +6,7 @@ import { EventId, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import sharp from "sharp";
 import { ServerConfig, layerTest } from "../config.ts";
 import { captureActivityMedia, captureConversationText } from "./ConversationMedia.ts";
@@ -15,6 +16,9 @@ import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { resolveImageAsset } from "./ImageAsset.ts";
 import { contentAssetsAt } from "./ContentAssets.ts";
+import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
 const layer = Layer.mergeAll(
   layerTest(process.cwd(), { prefix: "mate-capture-" }),
   WorkspacePaths.layer,
@@ -216,7 +220,7 @@ it.effect(
           summary: "Screenshot",
           createdAt: "2026-10-07T00:00:00.000Z",
           turnId: null,
-          payload: { data: { imagePath: source } },
+          payload: { data: { toolName: "Read", input: { file_path: source }, imagePath: source } },
         },
         ThreadId.make("thread"),
         config.stateDir,
@@ -224,5 +228,10 @@ it.effect(
       yield* Effect.promise(() => NodeFSP.unlink(source));
       const replay = yield* captureActivityMedia(first, ThreadId.make("thread"), config.stateDir);
       expect(replay.payload).toEqual(first.payload);
+      const projected = projectActivityPayload(replay);
+      expect(projected.payload).toMatchObject({
+        data: { imagePath: expect.stringMatching(/^mate-asset:/) },
+      });
+      expect(encodeJson(projected.payload)).not.toContain(`"imagePath":"${source}"`);
     }).pipe(Effect.provide(layer)),
 );

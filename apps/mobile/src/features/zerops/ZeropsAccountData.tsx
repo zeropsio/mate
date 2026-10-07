@@ -11,11 +11,13 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { MateImages } from "./MateImagesProvider";
 
 /** What this layer reads of the data provider's binding, which renders it. */
 interface AccountBinding {
   readonly registry: AtomRegistry.AtomRegistry;
   readonly accountData: {
+    readonly store: AccountStore;
     readonly data: AccountStore["data"];
     readonly observation: AccountObservation;
   };
@@ -71,7 +73,17 @@ export function ZeropsAccountData({
     },
     [observation, registry],
   );
-  return <AccountDataContext value={value}>{children}</AccountDataContext>;
+  return (
+    <AccountDataContext value={value}>
+      {binding === null ? (
+        children
+      ) : (
+        <MateImages store={binding.accountData.store} registry={binding.registry}>
+          {children}
+        </MateImages>
+      )}
+    </AccountDataContext>
+  );
 }
 
 /** The account's data layer; `null` while no account is signed in. */

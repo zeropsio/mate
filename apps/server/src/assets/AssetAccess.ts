@@ -414,19 +414,9 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     });
     if (occurrence.original.status !== "ready")
       return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
-    const expiresAt = (yield* Clock.currentTimeMillis) + ASSET_TOKEN_TTL_MS;
     return {
-      ...(yield* signAssetUrl({
-        resource: input.resource,
-        fileName: occurrence.name,
-        claims: {
-          version: 1,
-          kind: "retained-media",
-          relativePath: `originals/${occurrence.original.digest}`,
-          mimeType: occurrence.original.mimeType,
-          expiresAt,
-        },
-      })),
+      relativeUrl: `/api/assets/objects/${occurrence.original.digest}/original`,
+      expiresAt: 0,
       ...(occurrence.original.width && occurrence.original.height
         ? {
             imageDimensions: {
@@ -887,6 +877,15 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
   if (decodedPath === null) return null;
   const path = yield* Path.Path;
   if (claims.kind === "retained-media") {
+    // Content-addressed objects require the live session/owner checks of the digest route.
+    const retainedPath = path.normalize(claims.relativePath);
+    if (
+      ["originals", "previews"].some(
+        (directory) =>
+          retainedPath === directory || retainedPath.startsWith(`${directory}${path.sep}`),
+      )
+    )
+      return null;
     if (!claims.mimeType && decodedPath !== path.basename(claims.relativePath)) return null;
     const canonicalFile = yield* resolveCanonicalWorkspaceFileForRequest({
       workspaceRoot: yield* retainedMediaDirectory,

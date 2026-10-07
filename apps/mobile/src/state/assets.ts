@@ -5,6 +5,8 @@ import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { usePreparedConnection } from "./session";
+import { useMateImageUri } from "../assets/MateImages";
+import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 
 export const assetEnvironment = createAssetEnvironmentAtoms(connectionAtomRuntime);
 
@@ -22,11 +24,30 @@ export function useAssetUrlState(
   resource: AssetResource | null,
 ): AssetUrlState {
   const preparedConnection = usePreparedConnection(environmentId);
+  const image =
+    resource !== null &&
+    (resource._tag === "project-favicon" ||
+      (resource._tag === "attachment"
+        ? resource.occurrenceId !== undefined || resource.mimeType?.startsWith("image/") === true
+        : resource.path.startsWith("mate-asset:") || isWorkspaceImagePreviewPath(resource.path)));
+  const modern =
+    preparedConnection._tag === "Some" &&
+    preparedConnection.value.contentAddressedImages === true &&
+    image;
+  const original = useMateImageUri(
+    modern && environmentId !== null && resource !== null
+      ? { environmentId, resource, rendition: "original" }
+      : null,
+  );
   const result = useAtomValue(
-    environmentId === null || resource === null
+    environmentId === null || resource === null || modern || preparedConnection._tag === "None"
       ? EMPTY_ASSET_URL_ATOM
       : assetEnvironment.createUrl({ environmentId, input: { resource } }),
   );
+  if (modern) {
+    if (original.read.kind === "failed") return { _tag: "Failure" };
+    return original.uri === null ? { _tag: "Loading" } : { _tag: "Success", url: original.uri };
+  }
   if (result._tag === "Failure") {
     return { _tag: "Failure" };
   }

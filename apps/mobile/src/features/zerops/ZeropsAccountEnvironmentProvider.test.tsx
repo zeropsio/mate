@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { reactHookHarness as hooks } from "../../../../web/src/test/reactHookHarness";
 const effects = vi.hoisted(() => [] as Array<() => void | (() => void)>);
@@ -140,3 +141,7 @@ describe("mobile account data lifecycle", () => {
     expect(accounts.events).toEqual([]);
   });
 });
+
+vi.mock("./MateImagesProvider", () => ({
+  MateImages: ({ children }: { readonly children: ReactNode }) => children,
+}));

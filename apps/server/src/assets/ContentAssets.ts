@@ -70,6 +70,7 @@ export const contentAssetsAt = (stateDir: string) => {
 
 /** Originals remain rooted by retained occurrence receipts, including hidden/restore history. */
 export class ContentAssets {
+  private mutation: Promise<void> = Promise.resolve();
   private ownership: Promise<Map<string, ImageOccurrence[]>> | undefined;
   private previewOwnership: Promise<Map<string, Set<string>>> | undefined;
   private readonly producing = new Map<string, number>();
@@ -86,6 +87,19 @@ export class ContentAssets {
     this.write = write;
   }
 
+  /** Publication and root changes share the reclamation transaction. Pressure retries stay inside it. */
+  private async mutate<A>(run: () => Promise<A>): Promise<A> {
+    const previous = this.mutation;
+    const release = Promise.withResolvers<void>();
+    this.mutation = release.promise;
+    await previous;
+    try {
+      return await run();
+    } finally {
+      release.resolve();
+    }
+  }
+
   private async atomic(file: string, bytes: Uint8Array): Promise<void> {
     const staging = `${file}.pending-${NodeCrypto.randomUUID()}`;
     const attempt = async () => {
@@ -99,7 +113,7 @@ export class ContentAssets {
       } catch (error) {
         if (!hasCode(error, "ENOSPC")) throw error;
         await NodeFSP.rm(staging, { force: true });
-        await this.reclaim();
+        await this.reclaimUnlocked();
         await attempt();
       }
     } catch (error) {
@@ -111,6 +125,10 @@ export class ContentAssets {
 
   /** Occurrences precede durable conversation references, and hidden/restore history keeps its roots. */
   async reclaim() {
+    return this.mutate(() => this.reclaimUnlocked());
+  }
+
+  private async reclaimUnlocked() {
     const previews = NodePath.join(this.directory, "previews");
     await NodeFSP.rm(NodePath.join(previews, "recipes"), { force: true, recursive: true });
     for (const name of await NodeFSP.readdir(NodePath.join(previews, "objects")).catch(() => [])) {
@@ -189,86 +207,90 @@ export class ContentAssets {
   }
 
   async ingestBytes(bytes: Uint8Array, owner: Owner): Promise<ImageOccurrence> {
-    const id = NodeCrypto.randomUUID();
-    let occurrence: ImageOccurrence;
-    const digest = digestOf(bytes);
-    this.producing.set(digest, (this.producing.get(digest) ?? 0) + 1);
-    try {
-      const { relativeUrl: _, ...original } = await this.publish(
-        bytes,
-        false,
-        owner.mimeType ?? mediaMimeTypeFromExtension(NodePath.extname(owner.name)) ?? undefined,
-      );
-      occurrence = { ...owner, id, original: { status: "ready", ...original } };
-    } catch (error) {
-      occurrence = {
-        ...owner,
-        id,
-        original: {
-          status: "failed",
-          code:
-            error instanceof ContentAssetError &&
-            error.code !== "preview-unavailable" &&
-            error.code !== "object-missing"
-              ? error.code
-              : "persistence-failed",
-        },
-      };
-    }
-    try {
-      await this.atomic(
-        NodePath.join(this.directory, "occurrences", `${id}.json`),
-        Buffer.from(JSON.stringify(occurrence)),
-      );
-    } catch (error) {
-      // The caller gets the refusal, but must not claim it was durably recorded.
+    return this.mutate(async () => {
+      const id = NodeCrypto.randomUUID();
+      let occurrence: ImageOccurrence;
+      const digest = digestOf(bytes);
+      this.producing.set(digest, (this.producing.get(digest) ?? 0) + 1);
+      try {
+        const { relativeUrl: _, ...original } = await this.publish(
+          bytes,
+          false,
+          owner.mimeType ?? mediaMimeTypeFromExtension(NodePath.extname(owner.name)) ?? undefined,
+        );
+        occurrence = { ...owner, id, original: { status: "ready", ...original } };
+      } catch (error) {
+        occurrence = {
+          ...owner,
+          id,
+          original: {
+            status: "failed",
+            code:
+              error instanceof ContentAssetError &&
+              error.code !== "preview-unavailable" &&
+              error.code !== "object-missing"
+                ? error.code
+                : "persistence-failed",
+          },
+        };
+      }
+      try {
+        await this.atomic(
+          NodePath.join(this.directory, "occurrences", `${id}.json`),
+          Buffer.from(JSON.stringify(occurrence)),
+        );
+      } catch (error) {
+        // The caller gets the refusal, but must not claim it was durably recorded.
+        this.producing.set(digest, this.producing.get(digest)! - 1);
+        if (this.producing.get(digest) === 0) this.producing.delete(digest);
+        return {
+          ...owner,
+          id,
+          original: {
+            status: "failed",
+            code:
+              error instanceof ContentAssetError && error.code === "storage-full"
+                ? "storage-full"
+                : "persistence-failed",
+          },
+        };
+      }
       this.producing.set(digest, this.producing.get(digest)! - 1);
       if (this.producing.get(digest) === 0) this.producing.delete(digest);
-      return {
-        ...owner,
-        id,
-        original: {
-          status: "failed",
-          code:
-            error instanceof ContentAssetError && error.code === "storage-full"
-              ? "storage-full"
-              : "persistence-failed",
-        },
-      };
-    }
-    this.producing.set(digest, this.producing.get(digest)! - 1);
-    if (this.producing.get(digest) === 0) this.producing.delete(digest);
-    await this.remember(occurrence);
-    return occurrence;
+      await this.remember(occurrence);
+      return occurrence;
+    });
   }
 
   async failure(
     owner: Owner,
     code: Extract<ImageOccurrence["original"], { status: "failed" }>["code"],
   ): Promise<ImageOccurrence> {
-    const occurrence: ImageOccurrence = {
-      ...owner,
-      id: NodeCrypto.randomUUID(),
-      original: { status: "failed", code },
-    };
-    try {
-      await this.atomic(
-        NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`),
-        Buffer.from(JSON.stringify(occurrence)),
-      );
-    } catch (error) {
-      return {
-        ...occurrence,
-        original: {
-          status: "failed",
-          code:
-            error instanceof ContentAssetError && error.code === "storage-full"
-              ? "storage-full"
-              : "persistence-failed",
-        },
+    return this.mutate(async () => {
+      const occurrence: ImageOccurrence = {
+        ...owner,
+        id: NodeCrypto.randomUUID(),
+        original: { status: "failed", code },
       };
-    }
-    return occurrence;
+      try {
+        await this.atomic(
+          NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`),
+          Buffer.from(JSON.stringify(occurrence)),
+        );
+      } catch (error) {
+        return {
+          ...occurrence,
+          original: {
+            status: "failed",
+            code:
+              error instanceof ContentAssetError && error.code === "storage-full"
+                ? "storage-full"
+                : "persistence-failed",
+          },
+        };
+      }
+      return occurrence;
+    });
   }
 
   async ingestFile(source: string, owner: Owner): Promise<ImageOccurrence> {
@@ -298,37 +320,15 @@ export class ContentAssets {
         await handle.close();
       }
     } catch (error) {
-      const occurrence: ImageOccurrence = {
-        ...owner,
-        id: NodeCrypto.randomUUID(),
-        original: {
-          status: "failed",
-          code: hasCode(error, "ENOENT")
-            ? "source-missing"
-            : error instanceof ContentAssetError &&
-                (error.code === "source-changed" || error.code === "unsupported")
-              ? error.code
-              : "persistence-failed",
-        },
-      };
-      try {
-        await this.atomic(
-          NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`),
-          Buffer.from(JSON.stringify(occurrence)),
-        );
-      } catch (failure) {
-        return {
-          ...occurrence,
-          original: {
-            status: "failed",
-            code:
-              failure instanceof ContentAssetError && failure.code === "storage-full"
-                ? "storage-full"
-                : "persistence-failed",
-          },
-        };
-      }
-      return occurrence;
+      return this.failure(
+        owner,
+        hasCode(error, "ENOENT")
+          ? "source-missing"
+          : error instanceof ContentAssetError &&
+              (error.code === "source-changed" || error.code === "unsupported")
+            ? error.code
+            : "persistence-failed",
+      );
     }
   }
 
@@ -349,7 +349,9 @@ export class ContentAssets {
       }
       const occurrence = await ingest();
       try {
-        await this.atomic(binding, Buffer.from(JSON.stringify({ id: occurrence.id })));
+        await this.mutate(() =>
+          this.atomic(binding, Buffer.from(JSON.stringify({ id: occurrence.id }))),
+        );
       } catch (error) {
         return {
           ...occurrence,
@@ -373,34 +375,53 @@ export class ContentAssets {
   }
 
   async claim(occurrence: ImageOccurrence, owner: Owner): Promise<ImageOccurrence> {
-    const claimed: ImageOccurrence = {
-      ...owner,
-      id: NodeCrypto.randomUUID(),
-      original: occurrence.original,
-    };
-    await this.atomic(
-      NodePath.join(this.directory, "occurrences", `${claimed.id}.json`),
-      Buffer.from(JSON.stringify(claimed)),
-    );
-    await this.remember(claimed);
-    return claimed;
+    return this.mutate(async () => {
+      const digest =
+        occurrence.original.status === "ready" ? occurrence.original.digest : undefined;
+      if (digest !== undefined) {
+        await this.object(digest);
+        this.producing.set(digest, (this.producing.get(digest) ?? 0) + 1);
+      }
+      try {
+        const claimed: ImageOccurrence = {
+          ...owner,
+          id: NodeCrypto.randomUUID(),
+          original: occurrence.original,
+        };
+        await this.atomic(
+          NodePath.join(this.directory, "occurrences", `${claimed.id}.json`),
+          Buffer.from(JSON.stringify(claimed)),
+        );
+        await this.remember(claimed);
+        return claimed;
+      } finally {
+        if (digest !== undefined) {
+          const remaining = this.producing.get(digest)! - 1;
+          if (remaining === 0) this.producing.delete(digest);
+          else this.producing.set(digest, remaining);
+        }
+      }
+    });
   }
 
   /** Explicit cancellation releases the pending upload root; committed occurrence roots remain. */
   async releaseUpload(attachmentId: string): Promise<void> {
-    const key = digestOf(Buffer.from(JSON.stringify(["upload", attachmentId])));
-    const binding = NodePath.join(this.directory, "backfills", `${key}.json`);
-    try {
-      const value = JSON.parse(await NodeFSP.readFile(binding, "utf8")) as { id: string };
-      const occurrence = await this.occurrence(value.id);
-      if (occurrence.threadId !== "pending" || occurrence.ownerId !== attachmentId) return;
-      await NodeFSP.rm(binding, { force: true });
-      await NodeFSP.rm(NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`), {
-        force: true,
-      });
-    } catch {
-      /* An absent pending root needs no release. */
-    }
+    return this.mutate(async () => {
+      const key = digestOf(Buffer.from(JSON.stringify(["upload", attachmentId])));
+      const binding = NodePath.join(this.directory, "backfills", `${key}.json`);
+      try {
+        const value = JSON.parse(await NodeFSP.readFile(binding, "utf8")) as { id: string };
+        const occurrence = await this.occurrence(value.id);
+        if (occurrence.threadId !== "pending" || occurrence.ownerId !== attachmentId) return;
+        await NodeFSP.rm(binding, { force: true });
+        await NodeFSP.rm(NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`), {
+          force: true,
+        });
+        this.ownership = undefined;
+      } catch {
+        /* An absent pending root needs no release. */
+      }
+    });
   }
 
   async upload(attachmentId: string, file: string, owner: Owner): Promise<ImageOccurrence> {
@@ -561,27 +582,29 @@ export class ContentAssets {
           .catch(() => null);
         const bytes = webp !== null && webp.byteLength < png.byteLength ? webp : png;
         const digest = digestOf(bytes);
-        this.generating.set(digest, (this.generating.get(digest) ?? 0) + 1);
-        try {
-          const representation = await this.publish(bytes, true);
-          await this.atomic(
-            recipe,
-            Buffer.from(JSON.stringify({ original: original.digest, representation })),
-          );
-          if (this.previewOwnership) {
-            const index = await this.previewOwnership.catch(() => null);
-            if (index) {
-              const originals = index.get(representation.digest) ?? new Set<string>();
-              originals.add(original.digest);
-              index.set(representation.digest, originals);
+        return await this.mutate(async () => {
+          this.generating.set(digest, (this.generating.get(digest) ?? 0) + 1);
+          try {
+            const representation = await this.publish(bytes, true);
+            await this.atomic(
+              recipe,
+              Buffer.from(JSON.stringify({ original: original.digest, representation })),
+            );
+            if (this.previewOwnership) {
+              const index = await this.previewOwnership.catch(() => null);
+              if (index) {
+                const originals = index.get(representation.digest) ?? new Set<string>();
+                originals.add(original.digest);
+                index.set(representation.digest, originals);
+              }
             }
+            return representation;
+          } finally {
+            const remaining = this.generating.get(digest)! - 1;
+            if (remaining === 0) this.generating.delete(digest);
+            else this.generating.set(digest, remaining);
           }
-          return representation;
-        } finally {
-          const remaining = this.generating.get(digest)! - 1;
-          if (remaining === 0) this.generating.delete(digest);
-          else this.generating.set(digest, remaining);
-        }
+        });
       } catch (error) {
         throw error instanceof ContentAssetError
           ? error
