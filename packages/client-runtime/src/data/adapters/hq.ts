@@ -1,3 +1,4 @@
+import { AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { lifecycleReceipt } from "../families/hqLifecycle.ts";
 /**
  * HQ, our own source (`@t3tools/shared/hqStream`): one socket
@@ -285,6 +286,8 @@ export function hqNavigationLink(options: {
       const asked = new Set<string>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
+      // Each new segment negotiates usage before any consumption scope is sent.
+      let usageSupported: boolean | null = null;
       /** When the open segment last said anything. */
       let heardAt = 0;
       /** Fails once the open segment said nothing for {@link HQ_SILENCE_MS}. */
@@ -463,6 +466,15 @@ export function hqNavigationLink(options: {
                   decodeHqProtocol(message.core),
                   () => ({}),
                 );
+                usageSupported = core.agentUsage === AGENT_USAGE_REPORT_PROTOCOL;
+                if (usageSupported)
+                  for (const demanded of demands.scopes()) {
+                    if (
+                      detailOf(demanded)?.wire.kind === "agentUsage" &&
+                      streamOf(store.state(), demanded).fault?.code === "usage-update-required"
+                    )
+                      yield* signal(demanded, { kind: "input-changed" });
+                  }
                 store.dispatch({
                   kind: "delivery",
                   via: "hq-stream",
@@ -480,6 +492,7 @@ export function hqNavigationLink(options: {
                           message.incarnation,
                           core.build ?? null,
                           core.protocol ?? null,
+                          core.agentUsage ?? null,
                         ]),
                         revision: message.revision,
                       },
@@ -488,6 +501,11 @@ export function hqNavigationLink(options: {
                   removals: [],
                 });
               }
+              if (
+                message.scope.kind === "navigation" &&
+                demands.scopes().some((scope) => detailOf(scope)?.wire.kind === "agentUsage")
+              )
+                wakeAttempt?.();
               store.dispatch({ kind: "hq-ready", scopes: entry.generations });
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "baseline-committed" });
@@ -543,12 +561,31 @@ export function hqNavigationLink(options: {
       const observe = Effect.gen(function* () {
         if (open === null) return Number.POSITIVE_INFINITY;
         const now = yield* Clock.currentTimeMillis;
+        const held = demands.scopes().flatMap((scope) => {
+          const registered = detailOf(scope);
+          return registered === null ? [] : [registered];
+        });
+        if (usageSupported === false)
+          for (const registered of held) {
+            if (registered.wire.kind !== "agentUsage") continue;
+            for (const { scope } of registered.families) {
+              if (streamOf(store.state(), scope).fault?.code === "usage-update-required") continue;
+              yield* signal(scope, {
+                kind: "fault",
+                jitter: 0,
+                fault: {
+                  outcome: "definitive-refusal",
+                  code: "usage-update-required",
+                  message: "Update HQ to read recorded Mate usage.",
+                },
+              });
+            }
+          }
         const wanted = [
           nav,
-          ...demands.scopes().flatMap((scope) => {
-            const registered = detailOf(scope);
-            return registered === null ? [] : [registered];
-          }),
+          ...held.filter(
+            (registered) => registered.wire.kind !== "agentUsage" || usageSupported === true,
+          ),
         ];
         const keys = new Set(wanted.map(({ wire }) => hqScopeKey(wire)));
         for (const [scopeKey, entry] of subscribed) {
@@ -562,6 +599,10 @@ export function hqNavigationLink(options: {
         for (const registered of wanted) {
           const stream = streamOf(store.state(), registered.families[0]!.scope);
           if (stream.phase === "refused") continue;
+          if (refresh.delete(registered.families[0]!.scope)) {
+            fresh.push(registered);
+            continue;
+          }
           if (stream.phase === "recovering" && stream.next.kind === "retry") {
             if (stream.next.at > now) wakeAt = Math.min(wakeAt, stream.next.at);
             else fresh.push(registered);
@@ -619,6 +660,12 @@ export function hqNavigationLink(options: {
           Effect.gen(function* () {
             const opened = yield* wire.open;
             open = opened;
+            usageSupported = null;
+            for (const { registered } of subscribed.values()) {
+              if (registered.wire.kind === "agentUsage")
+                for (const { scope } of registered.families)
+                  yield* signal(scope, { kind: "parent-lost" });
+            }
             if (first) yield* signal(key, { kind: "handshake" });
             if (refusedWhole) {
               refusedWhole = false;
@@ -629,6 +676,7 @@ export function hqNavigationLink(options: {
             const resumed = [...subscribed.values()]
               .map(({ registered }) => registered)
               .filter((registered) => {
+                if (registered.wire.kind === "agentUsage") return false;
                 const { phase } = streamOf(store.state(), registered.families[0]!.scope);
                 return phase !== "refused" && phase !== "recovering";
               });

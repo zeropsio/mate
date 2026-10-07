@@ -1,0 +1,60 @@
+import type { UsageReport, UsageStatistics } from "@t3tools/contracts";
+export const statistics = (tokens = "1000", records = "1"): UsageStatistics => ({
+  tokens,
+  records,
+  uncachedInput: tokens,
+  cachedInput: "0",
+  cacheCreation: "0",
+  output: "0",
+  reasoning: "0",
+  unknownComponents: "0",
+});
+export function recordedReport(change: Partial<UsageReport> = {}): UsageReport {
+  return {
+    query: {
+      since: "2026-10-01T00:00:00.000Z",
+      until: "2026-10-08T00:00:00.000Z",
+      mode: "utc-days",
+      timezone: "UTC",
+      projectId: null,
+      appId: null,
+      mateId: null,
+      ownerUserId: null,
+      provider: null,
+      model: null,
+      groupBy: "mate",
+    },
+    generation: { accounting: "1", access: "0".repeat(64), pricing: "prices" },
+    provenance: "live-responses",
+    exactSince: "2026-09-08T00:00:00.000Z",
+    recordedSince: "2026-10-01T00:00:00.000Z",
+    basis: "recorded-provider-usage-current-owner-and-app",
+    state: "complete",
+    coverage: [
+      {
+        originId: "origin-a",
+        value: { state: "complete", since: "2026-10-01T00:00:00.000Z", through: null, gaps: [] },
+        deleted: false,
+        mateId: "mate-a",
+        projectId: "project-a",
+        appId: "app-a",
+        ownerUserId: null,
+        label: "A",
+      },
+    ],
+    coverageMore: false,
+    totals: statistics(),
+    pricing: {
+      basis: "automatic-api-equivalent-estimate",
+      revision: "prices",
+      costUsdNanos: "7830000000",
+      pricedRecords: "1",
+      unpricedRecords: "0",
+    },
+    groups: [{ key: "mate-a", totals: statistics(), costUsdNanos: "7830000000" }],
+    groupsMore: false,
+    detail: [],
+    next: null,
+    ...change,
+  };
+}

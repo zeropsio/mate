@@ -32,6 +32,7 @@ export interface UsageScope {
 }
 
 interface UsageAmounts {
+  readonly costKnown?: boolean;
   readonly costUsd: number;
   readonly totalTokens: number;
   /** Of the rolled-up environments' cost; 0 when that is 0. */
@@ -100,6 +101,7 @@ function rollUp<K>(
       key,
       {
         ...group,
+        costKnown: group.mates.some((mate) => mate.costKnown !== false),
         costShare: totalCost === 0 ? 0 : group.costUsd / totalCost,
         tokenShare: totalTokens === 0 ? 0 : group.totalTokens / totalTokens,
       },
@@ -130,6 +132,7 @@ export function usageDimensions(input: {
         projectName: identity?.projectName ?? null,
         owner: identity?.owner ?? null,
         costUsd: row.costUsd,
+        costKnown: row.records === 0 || row.unpricedRecords < row.records,
         totalTokens: row.totalTokens,
         costShare: totalCost === 0 ? 0 : row.costUsd / totalCost,
         tokenShare: totalTokens === 0 ? 0 : row.totalTokens / totalTokens,

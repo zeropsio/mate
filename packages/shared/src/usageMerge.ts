@@ -24,6 +24,7 @@ export interface EnvironmentUsage {
 }
 
 export interface ProviderTotals {
+  readonly costKnown?: boolean;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
   readonly totalTokens: number;
@@ -63,18 +64,26 @@ export function isModelCostUnknown(model: ModelTotals): boolean {
 }
 
 export interface DailyTotals {
+  readonly costKnown?: boolean;
   readonly day: string;
   readonly costUsd: number;
   readonly totalTokens: number;
-  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean }
+  >;
 }
 
 export interface HourlyTotals {
+  readonly costKnown?: boolean;
   readonly day: string;
   readonly hourStart: string;
   readonly costUsd: number;
   readonly totalTokens: number;
-  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean }
+  >;
 }
 
 export interface CostQuality {
@@ -446,7 +455,10 @@ export function mergeUsage(
     {
       costUsd: number;
       totalTokens: number;
-      byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean }
+      >;
     }
   >();
   const hourlyAccumulator = new Map<
@@ -456,7 +468,10 @@ export function mergeUsage(
       hourStart: string;
       costUsd: number;
       totalTokens: number;
-      byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean }
+      >;
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
@@ -467,7 +482,10 @@ export function mergeUsage(
     records: number;
     unpricedRecords: number;
     sessions: number;
-    providers: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+    providers: Map<
+      UsageProviderKind,
+      { costUsd: number; totalTokens: number; costKnown?: boolean }
+    >;
   }[] = [];
 
   for (const environment of current) {

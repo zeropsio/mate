@@ -5,13 +5,11 @@ import {
   AGENT_USAGE_CAPTURE_PROTOCOL,
   type UsageFact,
   type UsageOrigin,
-  type UsageCoverage,
 } from "@t3tools/contracts";
 import {
-  usageDigest,
-  usageEntryDigest,
-  usageSnapshotDigest,
-  USAGE_GENESIS_DIGEST,
+  usageOriginId,
+  usageFactId,
+  usageFactDigest,
   type UsageLinkUp,
   type UsageLinkDown,
 } from "@t3tools/shared/agentUsage";
@@ -27,7 +25,8 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { Roles } from "./roles.ts";
 import { type ZeropsError } from "./zerops/api.ts";
 import { lockProject } from "./held.ts";
-import { contributionOf, type UsageContribution } from "./usageAccounting.ts";
+import { contributionOf } from "./usageAccounting.ts";
+import { runUsageRetention } from "./usageRetention.ts";
 
 export class UsageRefused extends Schema.TaggedError<UsageRefused>()("UsageRefused", {
   code: Schema.String,
@@ -38,8 +37,6 @@ export interface UsageSender {
   readonly credential: string;
   readonly channel: string;
   readonly mateId: string;
-  /** The org HQ holds the Mate in, offered on its `state` so the Mate need not ask Zerops. */
-  readonly orgId: string;
 }
 export interface UsageLedgerService {
   readonly open: (
@@ -58,62 +55,19 @@ export const UsageLane = Context.Reference<{ readonly ledger?: UsageLedgerServic
   "@t3tools/hq/usageLane",
   { defaultValue: () => ({}) },
 );
-interface Producer {
-  readonly org_id: string;
-  readonly project_id: string;
-  readonly mate_id: string;
-  readonly cursor: string;
-  readonly digest: string;
-  readonly snapshot: SnapshotProgress | null;
-}
-interface SnapshotProgress {
-  readonly id: string;
-  readonly highWater: string;
-  readonly highDigest: string;
-  readonly pages: number;
-  readonly page: number;
-  readonly digest: string;
-  readonly manifest: string;
-  readonly totalFacts: string;
-  readonly receivedFacts: string;
-}
 interface OriginRow {
   readonly org_id: string;
   readonly project_id: string;
   readonly mate_id: string;
-  readonly writer_id: string;
-  readonly ledger_id: string;
   readonly provider: string;
 }
-interface ReceiptRow {
-  readonly native_id: string;
-  readonly revision: string;
-  readonly digest: string;
-  readonly contribution: UsageContribution | null;
-}
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-const withoutDigest = <T extends { readonly digest: string }>(value: T) => {
-  const { digest: _, ...body } = value;
-  return body;
-};
 export const makeUsageLedger = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,
   leader: Leader["Service"],
   readOrg: Effect.Effect<string, ZeropsError>,
 ) {
   const processId = NodeCrypto.randomUUID();
-  // HQ serves one org. Once known (read, or recorded with any producer) it is offered to Mates
-  // without asking Zerops again, so a slow or absent Zerops never holds a link's capture lane.
-  let knownOrg: string | undefined;
-  const offeredOrg = Effect.gen(function* () {
-    if (knownOrg !== undefined) return knownOrg;
-    const [recorded] = yield* sql<{
-      readonly org_id: string;
-    }>`SELECT org_id FROM hq_usage_producer LIMIT 1`;
-    const org = recorded?.org_id ?? (yield* readOrg);
-    knownOrg = org;
-    return org;
-  });
   const changed = yield* PubSub.unbounded<void>();
   const fail = (code: string) => new UsageRefused({ code });
   const credentialHash = (credential: string) =>
@@ -133,7 +87,6 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   });
   const register = Effect.fnUntraced(function* (
     sender: UsageSender,
-    ledgerId: string,
     origin: UsageOrigin,
     orgId: string,
   ) {
@@ -143,380 +96,88 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
       origin.mateId !== sender.mateId
     )
       return yield* fail("origin_binding");
+    if (
+      origin.originId !==
+      usageOriginId({ orgId, projectId: sender.projectId, mateId: sender.mateId }, origin.provider)
+    )
+      return yield* fail("origin_identity_conflict");
     const [old] =
-      yield* sql<OriginRow>`SELECT * FROM hq_usage_origin WHERE origin_id=${origin.originId}`;
+      yield* sql<OriginRow>`SELECT org_id,project_id,mate_id::text,provider FROM hq_usage_origin WHERE origin_id=${origin.originId}`;
     if (old !== undefined) {
       if (
         old.org_id !== orgId ||
         old.project_id !== sender.projectId ||
         old.mate_id !== sender.mateId ||
-        old.writer_id !== origin.writerId ||
-        old.ledger_id !== ledgerId ||
         old.provider !== origin.provider
       )
-        return yield* fail("origin_lineage_conflict");
-      // A repeated hello cannot replace a coverage barrier already committed in the journal.
+        return yield* fail("origin_binding_conflict");
       return false;
     }
-    yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,ledger_id,writer_id,provider,label,coverage,last_app_id)
-      VALUES(${origin.originId},${orgId},${sender.projectId},${sender.mateId}::uuid,${ledgerId},${origin.writerId},${origin.provider},${origin.label},${json(origin.coverage)}::jsonb,(SELECT app_id::text FROM hq_app_project WHERE project_id=${sender.projectId}))`;
+    yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,provider,label,coverage,last_app_id)
+      VALUES(${origin.originId},${orgId},${sender.projectId},${sender.mateId}::uuid,${origin.provider},${origin.label},${json(origin.coverage)}::jsonb,(SELECT app_id::text FROM hq_app_project WHERE project_id=${sender.projectId}))`;
     return true;
   });
-  const delta = Effect.fnUntraced(function* (
-    originId: string,
-    contribution: UsageContribution,
-    sign: number,
-  ) {
-    const { day, model, pricingBand, meterVersion, knownComponents, statistics, nativeCost } =
-      contribution;
-    if (sign === 1)
-      yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics,native_cost)
-      VALUES(${originId},${day},${model},${pricingBand},${meterVersion},${knownComponents},${json(statistics)}::jsonb,${json(nativeCost)}::jsonb)
-      ON CONFLICT(origin_id,day,model,pricing_band,meter_version,known_components) DO UPDATE SET statistics=hq_usage_add(hq_usage_daily.statistics,EXCLUDED.statistics,1), native_cost=hq_usage_add(hq_usage_daily.native_cost,EXCLUDED.native_cost,1)`;
-    else {
-      const rows =
-        yield* sql`UPDATE hq_usage_daily SET statistics=hq_usage_add(statistics,${json(statistics)}::jsonb,-1),native_cost=hq_usage_add(native_cost,${json(nativeCost)}::jsonb,-1)
-        WHERE origin_id=${originId} AND day=${day} AND model=${model} AND pricing_band=${pricingBand} AND meter_version=${meterVersion} AND known_components=${knownComponents} RETURNING 1`;
-      if (rows.length !== 1) return yield* fail("missing_daily_contribution");
-    }
-  });
-  const apply = Effect.fnUntraced(function* (
-    sender: UsageSender,
-    ledgerId: string,
-    fact: UsageFact,
-    orgId: string,
-  ) {
+  const apply = Effect.fnUntraced(function* (sender: UsageSender, fact: UsageFact, orgId: string) {
     const [origin] =
-      yield* sql<OriginRow>`SELECT * FROM hq_usage_origin WHERE origin_id=${fact.originId}`;
+      yield* sql<OriginRow>`SELECT org_id,project_id,mate_id::text,provider FROM hq_usage_origin WHERE origin_id=${fact.originId}`;
     if (
       origin === undefined ||
       origin.org_id !== orgId ||
       origin.project_id !== sender.projectId ||
       origin.mate_id !== sender.mateId ||
-      origin.ledger_id !== ledgerId ||
       origin.provider !== fact.provider
     )
       return yield* fail("unregistered_origin");
-    const aliases = [...new Set([fact.nativeId, ...fact.aliases])];
-    const rows = yield* sql<{
-      readonly native_id: string;
-    }>`SELECT DISTINCT native_id FROM hq_usage_alias WHERE origin_id=${fact.originId} AND ${sql.in("alias", aliases)}`;
-    if (rows.length > 1) return yield* fail("alias_conflict");
-    const nativeId = rows[0]?.native_id ?? fact.nativeId;
-    const [old] =
-      yield* sql<ReceiptRow>`SELECT native_id,revision::text,digest,contribution FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND native_id=${nativeId}`;
-    const digest = usageDigest(fact);
-    // Another native identity holding this fact id would violate the receipt's uniqueness: the
-    // Mate sent different content under the same ids, so no retry can ever commit it.
-    const holders = yield* sql<{
-      readonly native_id: string;
-    }>`SELECT native_id FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND fact_id=${fact.factId} AND native_id<>${nativeId}`;
-    if (holders.length > 0) return yield* fail("fact_identity_conflict");
+    if (fact.factId !== usageFactId(fact.sessionId, fact.nativeId))
+      return yield* fail("fact_identity_key");
+    if (
+      fact.originId !==
+      usageOriginId({ orgId, projectId: sender.projectId, mateId: sender.mateId }, fact.provider)
+    )
+      return yield* fail("origin_identity_conflict");
+    const digest = usageFactDigest(fact);
+    const [old] = yield* sql<{
+      readonly digest: string;
+    }>`SELECT digest FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND fact_id=${fact.factId}`;
     if (old !== undefined) {
-      if (BigInt(fact.revision) < BigInt(old.revision)) return false;
-      if (fact.revision === old.revision) {
-        if (old.digest !== digest) return yield* fail("fact_revision_conflict");
-        return false;
-      }
+      if (old.digest !== digest) return yield* fail("fact_identity_conflict");
+      return false;
     }
     const contribution = yield* Effect.try({
       try: () => contributionOf(fact),
       catch: () => fail("invalid_contribution"),
     });
-    if (old?.contribution !== null && old?.contribution !== undefined)
-      yield* delta(fact.originId, old.contribution, -1);
-    if (contribution !== null) yield* delta(fact.originId, contribution, 1);
-    yield* sql`INSERT INTO hq_usage_receipt(origin_id,native_id,fact_id,revision,digest,contribution)
-      VALUES(${fact.originId},${nativeId},${fact.factId},${fact.revision}::numeric,${digest},${json(contribution)}::jsonb)
-      ON CONFLICT(origin_id,native_id) DO UPDATE SET revision=EXCLUDED.revision,digest=EXCLUDED.digest,contribution=EXCLUDED.contribution`;
-    for (const alias of aliases)
-      yield* sql`INSERT INTO hq_usage_alias(origin_id,alias,native_id) VALUES(${fact.originId},${alias},${nativeId}) ON CONFLICT DO NOTHING`;
-    yield* sql`INSERT INTO hq_usage_fact(origin_id,native_id,occurrence,day,model,value)
-      VALUES(${fact.originId},${nativeId},${fact.time.kind === "instant" ? fact.time.at : null}::timestamptz,${fact.time.kind === "instant" ? fact.time.at.slice(0, 10) : "unallocated"},${fact.model ?? ""},${json(fact)}::jsonb)
-      ON CONFLICT(origin_id,native_id) DO UPDATE SET ingested_at=now(),occurrence=EXCLUDED.occurrence,day=EXCLUDED.day,model=EXCLUDED.model,value=EXCLUDED.value`;
+    const { day, model, pricingBand, meterVersion, knownComponents, statistics, nativeCost } =
+      contribution;
+    yield* sql`INSERT INTO hq_usage_receipt(origin_id,fact_id,digest,contribution)
+      VALUES(${fact.originId},${fact.factId},${digest},${json(contribution)}::jsonb)`;
+    yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics,native_cost)
+      VALUES(${fact.originId},${day},${model},${pricingBand},${meterVersion},${knownComponents},${json(statistics)}::jsonb,${json(nativeCost)}::jsonb)
+      ON CONFLICT(origin_id,day,model,pricing_band,meter_version,known_components) DO UPDATE SET statistics=hq_usage_add(hq_usage_daily.statistics,EXCLUDED.statistics,1),native_cost=hq_usage_add(hq_usage_daily.native_cost,EXCLUDED.native_cost,1)`;
+    yield* sql`INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,model,value)
+      VALUES(${fact.originId},${fact.factId},${fact.time.at}::timestamptz,${day},${model},${json(fact)}::jsonb)`;
+    yield* sql`UPDATE hq_usage_origin SET recorded_since=least(recorded_since,${fact.time.at}::timestamptz) WHERE origin_id=${fact.originId}`;
     return true;
   });
-  /** What HQ refused of an origin's facts stays in its coverage, whatever the Mate says later. */
-  const refusedGaps = (gaps: unknown) =>
-    Array.isArray(gaps)
-      ? gaps.filter((gap): gap is string => typeof gap === "string" && gap.startsWith("refused:"))
-      : [];
-  const withRefused = (value: UsageCoverage, refused: ReadonlyArray<string>): UsageCoverage => {
-    const kept = [...new Set(refused)].slice(0, 32);
-    return {
-      ...value,
-      gaps: [...kept, ...value.gaps.filter((gap) => !kept.includes(gap))].slice(0, 32),
-    };
-  };
-  /**
-   * A fact HQ can never accept (another fact's id, a used revision with other content, aliases of
-   * two records, a contribution it cannot count) is refused for good and kept as a gap on its
-   * origin: one such fact never stops the lane (review of answer 4).
-   */
-  const FACT_REFUSALS: ReadonlySet<string> = new Set([
-    "fact_identity_conflict",
-    "fact_revision_conflict",
-    "alias_conflict",
-    "invalid_contribution",
-  ]);
-  const applyOrRefuse = (sender: UsageSender, ledgerId: string, fact: UsageFact, orgId: string) =>
-    apply(sender, ledgerId, fact, orgId).pipe(
-      Effect.catchIf(
-        (error): error is UsageRefused =>
-          error._tag === "UsageRefused" && FACT_REFUSALS.has(error.code),
-        (refusal) =>
-          Effect.gen(function* () {
-            const [origin] = yield* sql<{
-              readonly coverage: UsageCoverage;
-            }>`SELECT coverage FROM hq_usage_origin WHERE origin_id=${fact.originId} FOR UPDATE`;
-            if (origin === undefined) return yield* fail("unregistered_origin");
-            const value = withRefused(origin.coverage, [
-              `refused:${refusal.code}`,
-              ...refusedGaps(origin.coverage.gaps),
-            ]);
-            yield* sql`UPDATE hq_usage_origin SET coverage=${json(value)}::jsonb WHERE origin_id=${fact.originId}`;
-            return true;
-          }),
-      ),
-    );
-  const coverage = Effect.fnUntraced(function* (
-    sender: UsageSender,
-    ledgerId: string,
-    values: ReadonlyArray<{
-      originId: string;
-      value: UsageCoverage;
-    }>,
-    staging = false,
-  ) {
-    for (const raw of values) {
-      const [held] = yield* sql<{
-        readonly coverage: UsageCoverage;
-      }>`SELECT coverage FROM hq_usage_origin WHERE origin_id=${raw.originId}`;
-      const item = { ...raw, value: withRefused(raw.value, refusedGaps(held?.coverage.gaps)) };
-      const rows = staging
-        ? yield* sql`UPDATE hq_usage_origin SET snapshot_coverage=${json(item.value)}::jsonb WHERE origin_id=${item.originId} AND ledger_id=${ledgerId} AND mate_id=${sender.mateId}::uuid RETURNING 1`
-        : yield* sql`UPDATE hq_usage_origin SET coverage=${json(item.value)}::jsonb WHERE origin_id=${item.originId} AND ledger_id=${ledgerId} AND mate_id=${sender.mateId}::uuid RETURNING 1`;
-      if (rows.length !== 1) return yield* fail("unregistered_coverage");
-    }
-  });
   const receive = Effect.fnUntraced(function* (sender: UsageSender, message: UsageLinkUp) {
+    if (message.protocol !== AGENT_USAGE_CAPTURE_PROTOCOL)
+      return yield* fail("unsupported_protocol");
     if (new TextEncoder().encode(json(message)).byteLength > AGENT_USAGE_BATCH_BYTES)
       return yield* fail("usage_frame_too_big");
-    // The org this lane was opened with: no Zerops read per frame.
-    const orgId = sender.orgId;
+    const orgId = yield* readOrg;
     const answer = yield* leader.write(
       Effect.gen(function* () {
         yield* authorize(sender);
-        const ledgerId = message.ledgerId;
-        let [producer] =
-          yield* sql<Producer>`SELECT org_id,project_id,mate_id::text,cursor::text,digest,snapshot FROM hq_usage_producer WHERE ledger_id=${ledgerId} FOR UPDATE`;
-        if (message.type === "usage-hello") {
-          if (message.protocol !== AGENT_USAGE_CAPTURE_PROTOCOL)
-            return yield* fail("unsupported_protocol");
-          const newProducer = producer === undefined;
-          if (producer === undefined) {
-            yield* sql`INSERT INTO hq_usage_producer(ledger_id,org_id,project_id,mate_id,channel,process_id,digest) VALUES(${ledgerId},${orgId},${sender.projectId},${sender.mateId}::uuid,${sender.channel},${processId},${USAGE_GENESIS_DIGEST})`;
-            producer = {
-              org_id: orgId,
-              project_id: sender.projectId,
-              mate_id: sender.mateId,
-              cursor: "0",
-              digest: USAGE_GENESIS_DIGEST,
-              snapshot: null,
-            };
-          }
-          if (
-            producer.org_id !== orgId ||
-            producer.project_id !== sender.projectId ||
-            producer.mate_id !== sender.mateId
-          )
-            return yield* fail("ledger_binding_conflict");
-          if (
-            BigInt(producer.cursor) > BigInt(message.highWater) ||
-            (producer.cursor === message.highWater && producer.digest !== message.highDigest)
-          )
-            return yield* fail("ledger_rollback_conflict");
-          let registered = false;
-          for (const origin of message.origins)
-            registered = (yield* register(sender, ledgerId, origin, orgId)) || registered;
-          yield* sql`UPDATE hq_usage_producer SET channel=${sender.channel},process_id=${processId} WHERE ledger_id=${ledgerId}`;
-          if (registered || newProducer)
-            yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
-          return {
-            type: "usage-resume",
-            ledgerId,
-            channel: sender.channel,
-            cursor: producer.cursor,
-            digest: producer.digest,
-            action:
-              BigInt(message.replayFloor) > BigInt(producer.cursor) + 1n ? "snapshot" : "replay",
-          } as const;
-        }
-        if (
-          message.channel !== sender.channel ||
-          producer === undefined ||
-          producer.org_id !== orgId ||
-          producer.project_id !== sender.projectId ||
-          producer.mate_id !== sender.mateId
-        )
-          return yield* fail("channel_or_binding");
-        const bound =
-          yield* sql`SELECT 1 FROM hq_usage_producer WHERE ledger_id=${ledgerId} AND channel=${sender.channel} AND process_id=${processId}`;
-        if (bound.length !== 1) return yield* fail("hello_required");
-        let cursor = producer.cursor;
-        let digest = producer.digest;
         let moved = false;
-        if (message.type === "usage-batch") {
-          if (producer.snapshot !== null && producer.snapshot.page < producer.snapshot.pages)
-            return yield* fail("snapshot_in_progress");
-          let checkedCursor = cursor;
-          let checkedDigest = digest;
-          const checked = new Map<string, string>();
-          for (const entry of message.entries) {
-            if (usageEntryDigest(withoutDigest(entry)) !== entry.digest)
-              return yield* fail("entry_digest");
-            if (BigInt(entry.sequence) <= BigInt(checkedCursor)) {
-              const previous =
-                checked.get(entry.sequence) ??
-                (yield* sql<{
-                  readonly digest: string;
-                }>`SELECT digest FROM hq_usage_prefix WHERE ledger_id=${ledgerId} AND sequence=${entry.sequence}::numeric`)[0]
-                  ?.digest;
-              if (previous !== entry.digest) return yield* fail("prefix_conflict");
-            } else {
-              if (BigInt(entry.sequence) !== BigInt(checkedCursor) + 1n)
-                return {
-                  type: "usage-resume",
-                  ledgerId,
-                  channel: sender.channel,
-                  cursor,
-                  digest,
-                  action: "replay",
-                } as const;
-              if (entry.previousDigest !== checkedDigest) return yield* fail("prefix_conflict");
-              checkedCursor = entry.sequence;
-              checkedDigest = entry.digest;
-              checked.set(entry.sequence, entry.digest);
-            }
-          }
-          for (const entry of message.entries) {
-            if (BigInt(entry.sequence) <= BigInt(cursor)) continue;
-            for (const fact of entry.facts)
-              moved = (yield* applyOrRefuse(sender, ledgerId, fact, orgId)) || moved;
-            yield* coverage(sender, ledgerId, entry.coverage);
-            moved = moved || entry.coverage.length > 0;
-            cursor = entry.sequence;
-            digest = entry.digest;
-            yield* sql`INSERT INTO hq_usage_prefix(ledger_id,sequence,digest) VALUES(${ledgerId},${cursor}::numeric,${digest})`;
-          }
-        } else if (message.type === "usage-snapshot-abandon") {
-          if (
-            producer.snapshot?.id !== message.snapshotId ||
-            producer.snapshot.page === producer.snapshot.pages
-          )
-            return yield* fail("snapshot_not_in_progress");
-          // Already accepted pages remain canonical; abandonment never subtracts by absence.
-          yield* sql`UPDATE hq_usage_producer SET snapshot=NULL WHERE ledger_id=${ledgerId}`;
-          yield* sql`UPDATE hq_usage_origin SET snapshot_coverage=NULL WHERE ledger_id=${ledgerId}`;
-          yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
-          return {
-            type: "usage-resume",
-            ledgerId,
-            channel: sender.channel,
-            cursor,
-            digest,
-            action: "snapshot",
-          } as const;
-        } else {
-          const { type: _, channel: __, manifestDigest: ___, digest: ____, ...body } = message;
-          if (usageSnapshotDigest(body) !== message.digest) return yield* fail("snapshot_digest");
-          const progress =
-            producer.snapshot?.page === producer.snapshot?.pages &&
-            producer.snapshot?.id !== message.snapshotId
-              ? null
-              : producer.snapshot;
-          if (BigInt(message.highWater) < BigInt(cursor)) return yield* fail("snapshot_rollback");
-          if (message.page === 0 && progress === null) {
-            if (message.previousDigest !== USAGE_GENESIS_DIGEST)
-              return yield* fail("snapshot_prefix");
-          } else if (
-            progress === null ||
-            progress.id !== message.snapshotId ||
-            progress.highWater !== message.highWater ||
-            progress.highDigest !== message.highDigest ||
-            progress.pages !== message.pages ||
-            progress.manifest !== message.manifestDigest ||
-            progress.totalFacts !== message.totalFacts
-          )
-            return yield* fail("snapshot_conflict");
-          if (
-            progress !== null &&
-            message.page === progress.page - 1 &&
-            message.digest === progress.digest
-          )
-            return {
-              type: "usage-snapshot-ack",
-              ledgerId,
-              channel: sender.channel,
-              snapshotId: message.snapshotId,
-              nextPage: progress.page,
-              cursor,
-              digest,
-            } as const;
-          if (
-            message.page !== (progress?.page ?? 0) ||
-            message.previousDigest !== (progress?.digest ?? USAGE_GENESIS_DIGEST)
-          )
-            return yield* fail("snapshot_page_gap");
-          for (const fact of message.facts)
-            moved = (yield* applyOrRefuse(sender, ledgerId, fact, orgId)) || moved;
-          yield* coverage(sender, ledgerId, message.coverage, true);
-          // Published pages stay partial until the pinned manifest is complete.
-          yield* sql`UPDATE hq_usage_origin SET coverage=jsonb_set(coverage,'{state}','"recovering"') WHERE ledger_id=${ledgerId}`;
-          const complete = message.page + 1 === message.pages;
-          if (
-            complete &&
-            (message.digest !== message.manifestDigest ||
-              BigInt(progress?.receivedFacts ?? "0") + BigInt(message.facts.length) !==
-                BigInt(message.totalFacts))
-          )
-            return yield* fail("snapshot_manifest");
-          const next: SnapshotProgress = {
-            id: message.snapshotId,
-            highWater: message.highWater,
-            highDigest: message.highDigest,
-            pages: message.pages,
-            page: message.page + 1,
-            digest: message.digest,
-            manifest: message.manifestDigest,
-            totalFacts: message.totalFacts,
-            receivedFacts: String(
-              BigInt(progress?.receivedFacts ?? "0") + BigInt(message.facts.length),
-            ),
-          };
-          yield* sql`UPDATE hq_usage_producer SET snapshot=${json(next)}::jsonb WHERE ledger_id=${ledgerId}`;
-          if (complete) {
-            cursor = message.highWater;
-            digest = message.highDigest;
-            yield* sql`UPDATE hq_usage_origin SET coverage=coalesce(snapshot_coverage,coverage),snapshot_coverage=NULL WHERE ledger_id=${ledgerId}`;
-            yield* sql`INSERT INTO hq_usage_prefix(ledger_id,sequence,digest) VALUES(${ledgerId},${cursor}::numeric,${digest}) ON CONFLICT DO NOTHING`;
-          }
-          yield* sql`UPDATE hq_usage_producer SET cursor=${cursor}::numeric,digest=${digest} WHERE ledger_id=${ledgerId}`;
-          yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
-          return {
-            type: "usage-snapshot-ack",
-            ledgerId,
-            channel: sender.channel,
-            snapshotId: message.snapshotId,
-            nextPage: message.page + 1,
-            cursor,
-            digest,
-          } as const;
-        }
-        yield* sql`UPDATE hq_usage_producer SET cursor=${cursor}::numeric,digest=${digest} WHERE ledger_id=${ledgerId}`;
-        if (moved || cursor !== producer.cursor)
-          yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
-        return { type: "usage-ack", ledgerId, channel: sender.channel, cursor, digest } as const;
+        for (const origin of message.origins)
+          moved = (yield* register(sender, origin, orgId)) || moved;
+        for (const fact of message.facts) moved = (yield* apply(sender, fact, orgId)) || moved;
+        if (moved) yield* sql`UPDATE hq_usage_state SET revision=revision+1 WHERE id=1`;
+        return {
+          type: "usage-ack",
+          batchId: message.batchId,
+          accepted: message.facts.map(({ originId, factId }) => ({ originId, factId })),
+        } as const;
       }),
     );
     yield* PubSub.publish(changed, undefined);
@@ -524,22 +185,20 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   });
   return {
     open: (projectId: string, credential: string) =>
-      Effect.flatMap(offeredOrg, (orgId) =>
-        leader.write(
-          Effect.gen(function* () {
-            yield* lockProject(sql, projectId);
-            const rows =
-              yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
-            if (rows.length !== 1) return yield* fail("credential_revoked");
-            const [mate] = yield* sql<{
-              readonly id: string;
-            }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
-            if (mate === undefined) return yield* fail("mate_gone");
-            const channel = NodeCrypto.randomUUID();
-            yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
-            return { projectId, credential, channel, mateId: mate.id, orgId };
-          }),
-        ),
+      leader.write(
+        Effect.gen(function* () {
+          yield* lockProject(sql, projectId);
+          const rows =
+            yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
+          if (rows.length !== 1) return yield* fail("credential_revoked");
+          const [mate] = yield* sql<{
+            readonly id: string;
+          }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
+          if (mate === undefined) return yield* fail("mate_gone");
+          const channel = NodeCrypto.randomUUID();
+          yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
+          return { projectId, credential, channel, mateId: mate.id };
+        }),
       ),
     receive,
     changes: Stream.fromPubSub(changed),
@@ -552,12 +211,12 @@ export const usageLedgerLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const leader = yield* Leader;
     const roles = yield* Roles;
-    return {
-      ledger: yield* makeUsageLedger(
-        sql,
-        leader,
-        Effect.map(roles.recent, (view) => view.orgId),
-      ),
-    };
+    const ledger = yield* makeUsageLedger(
+      sql,
+      leader,
+      Effect.map(roles.recent, (view) => view.orgId),
+    );
+    yield* runUsageRetention(sql, leader, ledger.notify);
+    return { ledger };
   }),
 );

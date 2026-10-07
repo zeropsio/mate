@@ -1,282 +1,197 @@
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-/**
- * Multi-environment usage state.
- *
- * Every connected environment answers the same typed query; the client merges
- * the results; one this browser is not connected to is left out, not asked.
- * Raw transcripts never leave the machine that produced them.
- *
- * @module state/usage
- */
-import { useAtomValue } from "@effect/atom-react";
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
+/** HQ reports through the account store; this view never opens or reads a Mate. */
+import { useMemo } from "react";
+import { Atom } from "effect/reactivity";
+import { agentUsage, agentUsageOwner, type AgentUsageRead } from "@t3tools/client-runtime/data";
 import {
-  USAGE_CONTRACT_VERSION,
-  type EnvironmentId,
-  type UsageBucket,
-  type UsageSummary,
+  EnvironmentId,
+  type UsageReport,
+  type UsageReportQuery,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
-import { Atom } from "effect/reactivity";
-import { useCallback, useMemo } from "react";
-
-import { mergeUsage, type EnvironmentUsage, type MergedUsage } from "@t3tools/shared/usageMerge";
-import { appAtomRegistry } from "../rpc/atomRegistry";
-import { environmentPresentations } from "./presentation";
-import { serverEnvironment } from "./server";
+import type { MergedUsage, ModelTotals, ProviderTotals } from "@t3tools/shared/usageMerge";
 import {
-  providerUsageReport,
-  mateFeedAtom,
-  retainedMateFeedAtom,
-  mateFeedReadsAtom,
-} from "@t3tools/client-runtime/data";
+  useAccountDataOptional,
+  useDetailDemand,
+  useProjection,
+} from "../zerops/ZeropsAccountData";
+import type { UsageScope } from "../components/usage/usageDimensions";
+import { usageReportQuery, usageReportTotals } from "./usage.logic";
 
-export interface EnvironmentUsageStatus {
-  readonly environmentId: EnvironmentId;
-  readonly label: string;
-  readonly isStale: boolean;
-  readonly isPending: boolean;
-  readonly error: string | null;
-  readonly summary: UsageSummary | null;
-}
-
-/** What the window's atom reads: each environment's presentation, and its summary query. */
-export interface UsageByWindowSources {
-  readonly presentationsAtom: Atom.Atom<
-    ReadonlyMap<
-      EnvironmentId,
-      {
-        readonly entry: { readonly target: { readonly label: string } };
-        readonly connection: { readonly phase: EnvironmentConnectionPhase };
-      }
-    >
-  >;
-  readonly retainedUsageSummary: (target: {
-    readonly environmentId: EnvironmentId;
-    readonly input: UsageSummaryInput;
-  }) => Atom.Atom<Known<UsageSummary>>;
-  readonly usageSummary: (target: {
-    readonly environmentId: EnvironmentId;
-    readonly input: UsageSummaryInput;
-  }) => Atom.Atom<Known<UsageSummary>>;
-}
-
-/**
- * Reads every connected environment's summary for one window: a Mate this
- * browser holds no socket to is not woken to report.
- *
- * Keyed by the serialised window so switching ranges does not thrash the atom
- * cache, and so each environment's query is shared with any other reader of the
- * same window.
- */
-export function createUsageWindowReadAtoms(sources: UsageByWindowSources) {
-  return Atom.family((windowKey: string) =>
-    Atom.make((get): readonly EnvironmentUsageStatus[] => {
-      const { input, permitted } = JSON.parse(windowKey) as {
-        input: UsageSummaryInput;
-        permitted?: readonly EnvironmentId[];
-      };
-      const presentations = get(sources.presentationsAtom);
-
-      const statuses: EnvironmentUsageStatus[] = [];
-      for (const [environmentId, presentation] of presentations) {
-        if (permitted !== undefined && !permitted.includes(environmentId)) continue;
-        if (presentation.connection.phase === "error") continue;
-        const connected = presentation.connection.phase === "connected";
-        const result = get(
-          (connected ? sources.usageSummary : sources.retainedUsageSummary)({
-            environmentId,
-            input,
-          }),
-        );
-        if (!connected && result.state !== "known" && result.state !== "failed") continue;
-        statuses.push({
-          environmentId,
-          label: presentation.entry.target.label,
-          ...providerUsageReport(result, connected),
-        });
-      }
-      return statuses;
-    }).pipe(Atom.withLabel(`web-usage:window:${windowKey}`)),
+const UNREAD = Atom.make<AgentUsageRead>({ kind: "reading" });
+function useReport(query: UsageReportQuery, enabled: boolean) {
+  const account = useAccountDataOptional();
+  const owner = agentUsageOwner(query);
+  useDetailDemand("agentUsage", undefined, enabled ? owner : null);
+  const result = useProjection(
+    agentUsage,
+    !enabled || account?.orgId == null ? null : { orgId: account.orgId, owner },
+    UNREAD,
   );
+  return { result, refresh: () => account?.retryDetail({ family: "agentUsage", ownerId: owner }) };
 }
-
-const providerPricesAtom = Atom.family((environmentId: EnvironmentId) =>
-  Atom.make((get) => {
-    const overrides = get(serverEnvironment.configValueAtom(environmentId))?.settings
-      .usagePriceOverrides;
-    return JSON.stringify(
-      overrides == null
-        ? []
-        : Object.keys(overrides)
-            .sort()
-            .map((model) => [
-              model,
-              overrides[model]?.inputCostPerMillionTokens,
-              overrides[model]?.outputCostPerMillionTokens,
-              overrides[model]?.cacheReadCostPerMillionTokens,
-              overrides[model]?.cacheWriteCostPerMillionTokens,
-            ]),
-    );
-  }),
-);
-const summaryAtom = Atom.family((key: string) => {
-  const [environmentId, input] = JSON.parse(key) as [EnvironmentId, UsageSummaryInput];
-  const scope = {
-    family: "mateUsage" as const,
-    environmentId,
-    input: input as unknown as Readonly<Record<string, unknown>>,
+const reportOf = (read: AgentUsageRead) => (read.kind === "read" ? read.report : null);
+const sameGeneration = (left: UsageReport | null, right: UsageReport | null) =>
+  left !== null &&
+  right !== null &&
+  left.generation.accounting === right.generation.accounting &&
+  left.generation.access === right.generation.access &&
+  left.generation.pricing === right.generation.pricing;
+const matchedReport = (report: UsageReport | null, read: AgentUsageRead) =>
+  sameGeneration(report, reportOf(read)) ? reportOf(read) : null;
+export function useAgentUsage(
+  input: UsageSummaryInput,
+  scope: UsageScope,
+  enabled = true,
+  provenance: NonNullable<UsageReportQuery["provenance"]> = "live-responses",
+) {
+  const query = usageReportQuery(input, scope, provenance);
+  const primary = useReport(query, enabled);
+  const overall = useReport({ ...query, appId: null, mateId: null, ownerUserId: null }, enabled);
+  const models = useReport({ ...query, groupBy: "model" }, enabled);
+  const providers = useReport({ ...query, groupBy: "provider" }, enabled);
+  const periods = useReport(
+    { ...query, groupBy: input.resolution === "hour" ? "hour" : "day" },
+    enabled,
+  );
+  const report = reportOf(primary.result);
+  const merged = useMemo(
+    () =>
+      usageReportView(
+        report,
+        matchedReport(report, models.result),
+        matchedReport(report, providers.result),
+        matchedReport(report, periods.result),
+        input.resolution === "hour",
+      ),
+    [report, models.result, providers.result, periods.result, input.resolution],
+  );
+  return {
+    merged,
+    overall: useMemo(() => usageReportView(reportOf(overall.result)), [overall.result]),
+    report,
+    overallReport: matchedReport(report, overall.result),
+    detailPending: [models.result, providers.result, periods.result].some(
+      (read) =>
+        read.kind === "reading" || (read.kind === "read" && !sameGeneration(report, read.report)),
+    ),
+    detailUnavailable: [models.result, providers.result, periods.result].some(
+      (read) => read.kind === "unavailable",
+    ),
+    read: primary.result,
+    stale: primary.result.kind === "read" && primary.result.stale,
+    refresh: () => {
+      primary.refresh();
+      overall.refresh();
+      models.refresh();
+      providers.refresh();
+      periods.refresh();
+    },
   };
-  const source = mateFeedAtom(scope);
-  const invalidation = Atom.make((get) => {
-    const prices = get(providerPricesAtom(environmentId));
-    const host = get(mateFeedReadsAtom);
-    const previous = get.self<string>();
-    if (Option.isSome(previous) && previous.value !== prices) host?.revalidate(scope);
-    return prices;
-  });
-  return Atom.make((get) => {
-    get(invalidation);
-    return get(source);
-  });
-});
-const retainedSummaryAtom = Atom.family((key: string) => {
-  const [environmentId, input] = JSON.parse(key) as [
-    EnvironmentId,
-    Readonly<Record<string, unknown>>,
-  ];
-  return retainedMateFeedAtom({ family: "mateUsage", environmentId, input });
-});
-const usageByWindowAtom = createUsageWindowReadAtoms({
-  presentationsAtom: environmentPresentations.presentationsAtom,
-  retainedUsageSummary: (target) =>
-    retainedSummaryAtom(JSON.stringify([target.environmentId, target.input])),
-  usageSummary: (target) => summaryAtom(JSON.stringify([target.environmentId, target.input])),
-});
-
-export interface UsageView {
-  /** The environments the predicate includes, merged. */
-  readonly merged: MergedUsage;
-  /** Every answered environment, merged: what the scope is chosen from. */
-  readonly overall: MergedUsage;
-  readonly environments: readonly EnvironmentUsageStatus[];
-  /** True until at least one environment has answered. */
-  readonly isPending: boolean;
-  /**
-   * True while environments that have not failed are still answering. Failed
-   * environments are reported through their own error rows: totals will not
-   * improve by waiting on them, so they must not read as "still reporting".
-   */
-  readonly isPartial: boolean;
-  readonly refresh: () => void;
 }
 
-/**
- * Merges every environment that has answered. `keepBucket` narrows the merge,
- * for example to one model; source ownership still applies, so the result
- * matches that slice of the full merge. Session counts are per directory and
- * are not narrowed.
- */
-export function mergeAnsweredUsage(
-  environments: readonly EnvironmentUsageStatus[],
-  keepBucket?: (bucket: UsageBucket) => boolean,
+/** Display aggregates only; permanent identity and deduplication remain at HQ. */
+export function usageReportView(
+  report: UsageReport | null,
+  models: UsageReport | null = null,
+  providers: UsageReport | null = null,
+  periods: UsageReport | null = null,
+  hourly = false,
 ): MergedUsage {
-  const answered: EnvironmentUsage[] = environments.flatMap(({ environmentId, label, summary }) =>
-    summary === null
+  const totals = usageReportTotals(report);
+  const providerRows: ProviderTotals[] = (providers?.groups ?? []).flatMap((row) =>
+    row.provider == null
       ? []
       : [
           {
-            environmentId,
-            label,
-            summary:
-              keepBucket === undefined
-                ? summary
-                : { ...summary, buckets: summary.buckets.filter(keepBucket) },
+            provider: row.provider,
+            costKnown: row.costUsdNanos !== null,
+            costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
+            totalTokens: Number(row.totals.tokens),
+            records: Number(row.totals.records),
+            sessions: Number(row.totals.records),
+            costShare:
+              totals.costUsd > 0 ? Number(row.costUsdNanos ?? 0) / 1e9 / totals.costUsd : 0,
+            tokenShare: totals.totalTokens > 0 ? Number(row.totals.tokens) / totals.totalTokens : 0,
           },
         ],
   );
-  return mergeUsage(answered, USAGE_CONTRACT_VERSION);
-}
-
-/**
- * `include` narrows `merged` to a scope; it must be stable across renders
- * (memoised) or every render re-merges.
- */
-export function useProviderUsage(
-  input: UsageSummaryInput,
-  include?: (environmentId: EnvironmentId) => boolean,
-  permitted?: ReadonlySet<EnvironmentId>,
-): UsageView {
-  const windowKey = useMemo(
-    () =>
-      JSON.stringify({
-        permitted: permitted === undefined ? undefined : [...permitted].toSorted(),
-        input: {
-          sinceDay: input.sinceDay,
-          untilDay: input.untilDay,
-          timeZone: input.timeZone,
-          resolution: input.resolution,
-          sinceTime: input.sinceTime,
-          untilTime: input.untilTime,
-        },
-      }),
-    [
-      permitted,
-      input.sinceDay,
-      input.untilDay,
-      input.timeZone,
-      input.resolution,
-      input.sinceTime,
-      input.untilTime,
-    ],
-  );
-  const atom = usageByWindowAtom(windowKey);
-  const environments = useAtomValue(atom);
-
-  const refresh = useCallback(() => {
-    const host = appAtomRegistry.get(mateFeedReadsAtom);
-    const { input } = JSON.parse(windowKey) as { input: Readonly<Record<string, unknown>> };
-    for (const environment of environments)
-      host?.retry({ family: "mateUsage", environmentId: environment.environmentId, input });
-  }, [environments, windowKey]);
-
-  const answered = useMemo(
-    (): readonly EnvironmentUsage[] =>
-      environments.flatMap((environment) =>
-        environment.summary === null
-          ? []
-          : [
-              {
-                environmentId: environment.environmentId,
-                label: environment.label,
-                summary: environment.summary,
-              },
-            ],
-      ),
-    [environments],
-  );
-  const overall = useMemo(() => mergeUsage(answered, USAGE_CONTRACT_VERSION), [answered]);
-  const merged = useMemo(
-    () => (include === undefined ? overall : mergeUsage(answered, USAGE_CONTRACT_VERSION, include)),
-    [answered, include, overall],
-  );
-
-  const answeredCount = environments.filter((environment) => environment.summary !== null).length;
-  const stillReporting = environments.filter(
-    (environment) => environment.summary === null && environment.error === null,
-  ).length;
-
+  const modelRows: ModelTotals[] = (models?.groups ?? [])
+    .flatMap((row) =>
+      row.provider == null
+        ? []
+        : [
+            {
+              provider: row.provider,
+              model: row.model ?? "Unknown model",
+              costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
+              totalTokens: Number(row.totals.tokens),
+              records: Number(row.totals.records),
+              unpricedRecords: row.costUsdNanos === null ? Number(row.totals.records) : 0,
+              costShare:
+                totals.costUsd > 0 ? Number(row.costUsdNanos ?? 0) / 1e9 / totals.costUsd : 0,
+              tokenShare:
+                totals.totalTokens > 0 ? Number(row.totals.tokens) / totals.totalTokens : 0,
+            },
+          ],
+    )
+    .sort((a, b) => b.costUsd - a.costUsd || b.totalTokens - a.totalTokens);
+  const buckets = new Map<
+    string,
+    {
+      day: string;
+      hourStart: string;
+      costUsd: number;
+      costKnown: boolean;
+      totalTokens: number;
+      byProvider: Map<
+        ProviderTotals["provider"],
+        { costUsd: number; totalTokens: number; costKnown: boolean }
+      >;
+    }
+  >();
+  for (const row of periods?.groups ?? []) {
+    if (row.period === undefined || row.provider === undefined) continue;
+    const bucket = buckets.get(row.period) ?? {
+      day: row.period.slice(0, 10),
+      hourStart: row.period,
+      costUsd: 0,
+      costKnown: false,
+      totalTokens: 0,
+      byProvider: new Map(),
+    };
+    const costUsd = Number(row.costUsdNanos ?? 0) / 1e9;
+    const totalTokens = Number(row.totals.tokens);
+    bucket.costUsd += costUsd;
+    bucket.costKnown ||= row.costUsdNanos !== null;
+    bucket.totalTokens += totalTokens;
+    bucket.byProvider.set(row.provider, {
+      costUsd,
+      totalTokens,
+      costKnown: row.costUsdNanos !== null,
+    });
+    buckets.set(row.period, bucket);
+  }
+  const periodRows = [...buckets.values()].sort((a, b) => a.hourStart.localeCompare(b.hourStart));
+  const byEnvironment = (report?.groups ?? []).map((row) => ({
+    environmentId: EnvironmentId.make(row.key),
+    costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
+    totalTokens: Number(row.totals.tokens),
+    records: Number(row.totals.records),
+    unpricedRecords: row.costUsdNanos === null ? Number(row.totals.records) : 0,
+    sessions: Number(row.totals.records),
+    costShare: totals.costUsd > 0 ? Number(row.costUsdNanos ?? 0) / 1e9 / totals.costUsd : 0,
+    tokenShare: totals.totalTokens > 0 ? Number(row.totals.tokens) / totals.totalTokens : 0,
+    providers: [],
+  }));
   return {
-    merged,
-    overall,
-    environments,
-    isPending: answeredCount === 0 && stillReporting > 0,
-    isPartial:
-      answeredCount > 0 &&
-      environments.some(
-        (environment) => environment.isPending || environment.error !== null || environment.isStale,
-      ),
-    refresh,
+    ...totals,
+    models: modelRows,
+    providers: providerRows,
+    daily: hourly ? [] : periodRows,
+    hourly: hourly ? periodRows : [],
+    byEnvironment,
+    contributingEnvironments: byEnvironment.map((row) => row.environmentId),
+    duplicateSources: [],
+    contractMismatches: [],
   };
 }

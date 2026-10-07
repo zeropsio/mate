@@ -1,13 +1,8 @@
 import { act, cloneElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  UsageDay,
-  EnvironmentId,
-  USAGE_CONTRACT_VERSION,
-  type UsageSummary,
-} from "@t3tools/contracts";
-import { mergeUsage } from "@t3tools/shared/usageMerge";
+import { EnvironmentId } from "@t3tools/contracts";
+import { recordedReport } from "./usageTestFixtures";
 
 const state = vi.hoisted(() => ({
   baseline: "resolving" as "resolving" | "resolved" | "unavailable",
@@ -26,41 +21,31 @@ vi.mock("@tanstack/react-router", () => ({
   useCanGoBack: () => false,
 }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
-vi.mock("../../state/usage", () => ({
-  useProviderUsage: () => ({
-    merged: {
-      ...mergeUsage([], USAGE_CONTRACT_VERSION),
-      costUsd: state.answered && !state.pending ? 7.83 : 0,
-      records: state.answered && !state.pending ? 1 : 0,
+vi.mock("../../state/usage", async (original) => {
+  const actual = await original<typeof import("../../state/usage")>();
+  return {
+    ...actual,
+    useAgentUsage: () => {
+      const report = state.answered ? recordedReport() : null;
+      const read = state.failedNeighbor
+        ? { kind: "unavailable", reason: "HQ usage unavailable. Reconnect or retry HQ access." }
+        : state.pending || state.baseline !== "resolved" || !state.answered
+          ? { kind: "reading" }
+          : { kind: "read", report, stale: false };
+      return {
+        merged: actual.usageReportView(report),
+        overall: actual.usageReportView(report),
+        report,
+        overallReport: report,
+        detailPending: false,
+        detailUnavailable: false,
+        read,
+        stale: false,
+        refresh: vi.fn(),
+      };
     },
-    overall: mergeUsage([], USAGE_CONTRACT_VERSION),
-    environments: state.answered
-      ? [
-          {
-            environmentId: EnvironmentId.make("env-a"),
-            label: "A",
-            summary: summary(),
-            error: null,
-            isPending: false,
-          },
-          ...(state.pending
-            ? [
-                {
-                  environmentId: EnvironmentId.make("env-b"),
-                  label: "B",
-                  summary: null,
-                  error: state.failedNeighbor ? "failed" : null,
-                  isPending: !state.failedNeighbor,
-                },
-              ]
-            : []),
-        ]
-      : [],
-    isPending: false,
-    isPartial: state.pending,
-    refresh: vi.fn(),
-  }),
-}));
+  };
+});
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     baseline: state.baseline,
@@ -84,8 +69,7 @@ vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
         : new Map(),
   }),
 }));
-vi.mock("../../zerops/useUsageMates", () => ({ useUsageMates: () => [] }));
-vi.mock("../ui/button", () => ({ Button: "button" }));
+vi.mock("../ui/button", () => ({ Button: "button", InlineButton: "button" }));
 vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
 vi.mock("../ui/select", () => ({
   Select: "div",
@@ -104,7 +88,6 @@ vi.mock("../WorkspaceBreadcrumb", () => ({
 vi.mock("../WorkspacePageContainer", () => ({ WorkspacePageContainer: "main" }));
 vi.mock("../WorkspacePageHeader", () => ({ WorkspacePageHeader: "header" }));
 vi.mock("./UsageProviderChart", () => ({ UsageProviderChart: () => null }));
-vi.mock("./UsagePriceOverrides", () => ({ UsagePriceOverrides: () => null }));
 vi.mock("./usagePagePreferences", () => ({
   readUsagePagePreferences: () => ({ metric: "cost", windowDays: 30 }),
   saveUsagePagePreferences: vi.fn(),
@@ -118,19 +101,6 @@ vi.mock("../zerops/WaitLine", () => ({
 import { UsagePage } from "./UsagePage";
 import { UsageLimitsSection } from "./UsageLimits";
 
-function summary(): UsageSummary {
-  return {
-    contractVersion: USAGE_CONTRACT_VERSION,
-    readAt: "2026-10-07T12:00:00Z",
-    timeZone: "UTC",
-    sinceDay: UsageDay.make("2026-10-01"),
-    untilDay: UsageDay.make("2026-10-07"),
-    buckets: [],
-    sources: [],
-    pricing: { status: "fresh", source: "test", fetchedAt: null, knownModels: 0 },
-    scanDurationMs: 0,
-  };
-}
 function mount(element: React.ReactElement): ReactTestRenderer {
   let tree: ReactTestRenderer | undefined;
   act(() => {
@@ -205,7 +175,7 @@ describe("Usage source transitions", () => {
       tree.root.findAllByProps({ "aria-label": "Usage metric" })[0]!.props.onValueChange(["cost"]),
     );
     expect(text(tree)).toContain("Shop");
-    expect(text(tree)).toContain("Agent API-equivalent usage estimate");
+    expect(text(tree)).toContain("Recorded consumption by agents and subagents");
     act(() => tree.unmount());
   });
 });
@@ -286,7 +256,7 @@ it("an empty fast answer cannot turn an unresolved subtotal into zero", () => {
   const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
   expect(text(tree)).not.toContain("$0.00");
   expect(text(tree)).not.toContain("No activity in this window");
-  expect(text(tree)).toContain("Usage coverage is incomplete");
+  expect(text(tree)).toContain("Reading organization usage from HQ");
   act(() => tree.unmount());
 });
 
@@ -297,7 +267,7 @@ it("an empty answer beside a terminal failure names the next action without clai
   state.failedNeighbor = true;
   const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
   expect(text(tree)).not.toContain("$0.00");
-  expect(text(tree)).not.toContain("Usage coverage is incomplete");
-  expect(text(tree)).toContain("reconnect or retry them");
+  expect(text(tree)).not.toContain("Reading organization usage from HQ");
+  expect(text(tree)).toContain("Reconnect or retry HQ access");
   act(() => tree.unmount());
 });

@@ -1,90 +1,32 @@
 import * as Schema from "effect/Schema";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import {
-  UsageCoverage,
-  UsageDigest,
-  UsageFact,
-  UsageIdentity,
-  UsageJournalEntry,
-  UsageOrigin,
-  UsageQuantity,
-  AGENT_USAGE_BATCH_MAX,
-} from "@t3tools/contracts";
+import { UsageFact, UsageIdentity, UsageOrigin, AGENT_USAGE_BATCH_MAX } from "@t3tools/contracts";
 export {
   AGENT_USAGE_CAPTURE_PROTOCOL,
   AGENT_USAGE_REPORT_PROTOCOL,
   AGENT_USAGE_BATCH_BYTES,
   AGENT_USAGE_BATCH_MAX,
 } from "@t3tools/contracts";
-export const USAGE_GENESIS_DIGEST = "0".repeat(64);
-const Channel = { ledgerId: UsageIdentity, channel: UsageIdentity };
-const Cursor = { cursor: UsageQuantity, digest: UsageDigest };
-export const UsageHello = Schema.Struct({
-  type: Schema.Literal("usage-hello"),
+export const UsageLinkUp = Schema.Struct({
+  type: Schema.Literal("usage-facts"),
   protocol: Schema.Int,
-  ledgerId: UsageIdentity,
-  highWater: UsageQuantity,
-  highDigest: UsageDigest,
-  replayFloor: UsageQuantity,
+  batchId: UsageIdentity,
   origins: Schema.Array(UsageOrigin).check(Schema.isMaxLength(64)),
-});
-export const UsageBatch = Schema.Struct({
-  type: Schema.Literal("usage-batch"),
-  ...Channel,
-  entries: Schema.Array(UsageJournalEntry).check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(AGENT_USAGE_BATCH_MAX),
-  ),
-});
-export const UsageSnapshot = Schema.Struct({
-  type: Schema.Literal("usage-snapshot"),
-  ...Channel,
-  snapshotId: UsageIdentity,
-  highWater: UsageQuantity,
-  highDigest: UsageDigest,
-  page: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 1000000 })),
-  totalFacts: UsageQuantity,
-  pages: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 1000000 })),
-  /** Rolling digest of canonical page content; final page proves the pinned manifest. */
-  previousDigest: UsageDigest,
-  digest: UsageDigest,
-  manifestDigest: UsageDigest,
   facts: Schema.Array(UsageFact).check(Schema.isMaxLength(AGENT_USAGE_BATCH_MAX)),
-  coverage: Schema.Array(Schema.Struct({ originId: UsageIdentity, value: UsageCoverage })).check(
-    Schema.isMaxLength(64),
-  ),
 });
-export const UsageSnapshotAbandon = Schema.Struct({
-  type: Schema.Literal("usage-snapshot-abandon"),
-  ...Channel,
-  snapshotId: UsageIdentity,
-});
-export const UsageLinkUp = Schema.Union([
-  UsageHello,
-  UsageBatch,
-  UsageSnapshot,
-  UsageSnapshotAbandon,
-]);
 export type UsageLinkUp = typeof UsageLinkUp.Type;
 export const UsageLinkDown = Schema.Union([
   Schema.Struct({
-    type: Schema.Literal("usage-resume"),
-    ...Channel,
-    ...Cursor,
-    action: Schema.Literals(["replay", "snapshot"]),
-  }),
-  Schema.Struct({ type: Schema.Literal("usage-ack"), ...Channel, ...Cursor }),
-  Schema.Struct({
-    type: Schema.Literal("usage-snapshot-ack"),
-    ...Channel,
-    snapshotId: UsageIdentity,
-    nextPage: Schema.Int,
-    ...Cursor,
+    type: Schema.Literal("usage-ack"),
+    batchId: UsageIdentity,
+    accepted: Schema.Array(Schema.Struct({ originId: UsageIdentity, factId: UsageIdentity })).check(
+      Schema.isMaxLength(AGENT_USAGE_BATCH_MAX),
+    ),
   }),
   Schema.Struct({
     type: Schema.Literal("usage-error"),
-    ledgerId: UsageIdentity,
+    batchId: UsageIdentity,
     code: UsageIdentity,
     disposition: Schema.Literals(["refused", "transient", "unsupported", "fenced"]),
     cursor: Schema.optionalKey(UsageQuantity),
@@ -113,9 +55,22 @@ export const usageCanonical = (value: unknown): string => {
 };
 export const usageDigest = (value: unknown) =>
   bytesToHex(sha256(new TextEncoder().encode(usageCanonical(value))));
-/** Hash every field except digest; previousDigest chains the accepted prefix. */
-export const usageEntryDigest = (entry: Omit<typeof UsageJournalEntry.Type, "digest">) =>
-  usageDigest(entry);
-export const usageSnapshotDigest = (
-  page: Omit<typeof UsageSnapshot.Type, "digest" | "manifestDigest" | "channel" | "type">,
-) => usageDigest(page);
+/** The first observation timestamps a completion; delivery metadata cannot change consumption. */
+export const usageFactDigest = (fact: typeof UsageFact.Type) =>
+  usageDigest({
+    ...fact,
+    time: fact.time.provenance === "server-completion" ? undefined : fact.time,
+  });
+
+/** Provider consumption belongs to the registered Mate, never a database or writer instance. */
+export const usageOriginId = (
+  binding: Pick<typeof UsageOrigin.Type, "orgId" | "projectId" | "mateId">,
+  provider: (typeof UsageOrigin.Type)["provider"],
+) =>
+  usageDigest([
+    { orgId: binding.orgId, projectId: binding.projectId, mateId: binding.mateId },
+    provider,
+  ]);
+/** The provider thread namespaces the native response identity. */
+export const usageFactId = (nativeThreadId: string, nativeResponseId: string) =>
+  usageDigest([nativeThreadId, nativeResponseId]);

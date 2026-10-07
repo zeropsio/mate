@@ -521,3 +521,5 @@ export {
   type UsageLimitNotice,
 } from "./projections/mateLimit.ts";
 export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";
+export { agentUsageOwner } from "./families/agentUsage.ts";
+export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";

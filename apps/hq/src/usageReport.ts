@@ -44,6 +44,7 @@ interface Source {
   readonly org_id: string;
   readonly project_id: string;
   readonly mate_id: string;
+  readonly recorded_since: string | null;
   readonly coverage: UsageCoverage | null;
   readonly provider: string | null;
   readonly deleted: boolean;
@@ -80,6 +81,12 @@ export const readUsageReport = Effect.fnUntraced(function* (
     (person) => person.kind === "person" && person.userId === userId && person.status === "ACTIVE",
   );
   if (member === undefined) return yield* new UsageRefused({ code: "forbidden" });
+  const q = scope.query;
+  const legacy = q.provenance === "legacy-scanner";
+  if (legacy && (q.mode === "exact" || scope.detail?.tier === "exact" || q.groupBy === "hour"))
+    return yield* new UsageRefused({ code: "legacy_usage_is_not_exact" });
+  const originTable = legacy ? "hq_usage_history_origin" : "hq_usage_origin";
+  const dailyTable = legacy ? "hq_usage_history_daily" : "hq_usage_daily";
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`;
@@ -90,19 +97,15 @@ export const readUsageReport = Effect.fnUntraced(function* (
         readonly exact_since: string | null;
         readonly recovery: string;
         readonly pricing: string;
-        readonly protected_revision: string | null;
-        readonly protected_set: string | null;
-        readonly protection_verified: boolean;
       }>`
-      SELECT revision::text,protected_revision::text,protected_set,protection_verified,to_char(exact_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS exact_since,recovery,(SELECT revision FROM hq_usage_price_policy WHERE id=1) AS pricing FROM hq_usage_state WHERE id=1`;
+      SELECT revision::text,to_char(exact_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS exact_since,recovery,(SELECT revision FROM hq_usage_price_policy WHERE id=1) AS pricing FROM hq_usage_state WHERE id=1`;
       if (state === undefined) return yield* new UsageRefused({ code: "usage_state_missing" });
       const sources =
-        yield* sql<Source>`SELECT o.origin_id,o.org_id,coalesce(o.project_id,m.project_id) AS project_id,
+        yield* sql<Source>`SELECT o.origin_id,o.org_id,to_char(o.recorded_since AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS recorded_since,coalesce(o.project_id,m.project_id) AS project_id,
       coalesce(o.mate_id,m.usage_id)::text AS mate_id,o.coverage,o.provider,coalesce(o.deleted,false) AS deleted,
       coalesce(o.label,m.project_id) AS label,o.last_app_id,m.usage_id::text AS current_mate,p.app_id::text,m.made_by,m.standup_requested_by,m.signers
-      FROM hq_usage_origin o FULL JOIN hq_mate m ON m.usage_id=o.mate_id LEFT JOIN hq_app_project p ON p.project_id=coalesce(o.project_id,m.project_id)
+      FROM ${sql(originTable)} o FULL JOIN hq_mate m ON m.usage_id=o.mate_id LEFT JOIN hq_app_project p ON p.project_id=coalesce(o.project_id,m.project_id)
       WHERE o.org_id=${current.facts.orgId} OR o.origin_id IS NULL`;
-      const q = scope.query;
       if (
         q.mode === "exact" &&
         q.since !== null &&
@@ -150,26 +153,30 @@ export const readUsageReport = Effect.fnUntraced(function* (
             ownerUserId: owner,
             label: source.label,
             deleted: source.deleted,
-            coverage: source.coverage,
+            recordedSince: source.recorded_since,
+            coverage:
+              legacy && source.coverage !== null
+                ? {
+                    ...source.coverage,
+                    state: "partial" as const,
+                    gaps: [...source.coverage.gaps, "legacy-scanner"],
+                  }
+                : source.coverage,
+            provider: source.provider,
             live,
           },
         ];
       });
-      const captureGaps = scoped
-        .filter((source) => source.originId === null)
-        .map((source) => ({
-          projectId: source.projectId,
-          mateId: source.mateId,
-          appId: source.appId,
-          ownerUserId: source.ownerUserId,
-          label: source.label,
-          reason: "unregistered" as const,
-        }));
       const counted = scoped.flatMap((source) =>
         source.originId !== null && source.coverage !== null
           ? [{ ...source, originId: source.originId, coverage: source.coverage }]
           : [],
       );
+      const dates = counted.flatMap((source) =>
+        source.recordedSince === null ? [] : [source.recordedSince],
+      );
+      dates.sort();
+      const recordedSince = dates[0] ?? null;
       counted.sort((a, b) => a.originId.localeCompare(b.originId));
       // A narrowed inaccessible selector is a refusal, not an authorized empty zero.
       if (q.projectId !== null && !admitted.some((source) => source.project_id === q.projectId))
@@ -212,7 +219,6 @@ export const readUsageReport = Effect.fnUntraced(function* (
       const incomplete =
         state.recovery !== "verified" ||
         counted.length === 0 ||
-        captureGaps.length > 0 ||
         counted.some(
           (source) =>
             source.coverage.state !== "complete" ||
@@ -225,15 +231,19 @@ export const readUsageReport = Effect.fnUntraced(function* (
             (q.groupBy === "owner" && source.ownerUserId === null),
         );
       const base = {
+        provenance: legacy ? ("legacy-scanner" as const) : ("live-responses" as const),
         query: q,
         generation,
-        exactSince: state.exact_since,
+        exactSince: legacy ? null : state.exact_since,
         basis: "recorded-provider-usage-current-owner-and-app" as const,
-        state: unsupported
-          ? ("unsupported-exact-boundary" as const)
-          : incomplete
-            ? ("partial" as const)
-            : ("complete" as const),
+        state:
+          recordedSince === null
+            ? ("unknown" as const)
+            : unsupported
+              ? ("unsupported-exact-boundary" as const)
+              : incomplete
+                ? ("partial" as const)
+                : ("complete" as const),
         coverage: counted.slice(0, 200).map((source) => ({
           originId: source.originId,
           value: source.coverage,
@@ -246,14 +256,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
           placement: source.live ? ("current" as const) : ("last-known" as const),
         })),
         coverageMore: counted.length > 200,
-        captureGaps: captureGaps.slice(0, 200),
-        captureGapsMore: captureGaps.length > 200,
-        retention: {
-          targetDays: AGENT_USAGE_EXACT_DAYS,
-          protectedRevision: state.protected_revision,
-          protectedSet: state.protected_set,
-          pinned: !state.protection_verified || state.protected_revision !== state.revision,
-        } satisfies NonNullable<UsageReport["retention"]>,
+        recordedSince,
       };
       if (unsupported)
         return {
@@ -272,25 +275,57 @@ export const readUsageReport = Effect.fnUntraced(function* (
           next: null,
         };
       // Whole UTC days always use rollups. Only exact subday edges replace their intersected cells.
-      const params = [json(counted), q.since, q.until, q.mode, q.model, state.pricing];
-      const cellCte = `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text, deleted boolean)),
+      let params = [json(counted), q.since, q.until, q.mode, q.model, state.pricing];
+      let cellCte = `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text, deleted boolean,provider text)),
     cells AS (
-      SELECT d.origin_id,d.day,d.model,d.pricing_band,d.statistics,d.native_cost,s.* FROM hq_usage_daily d JOIN source s ON s."originId"=d.origin_id
+      SELECT d.origin_id,d.day,NULL::timestamptz AS occurrence,d.model,d.pricing_band,d.statistics,d.native_cost,s.* FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id
       WHERE ((d.day='unallocated' AND $2::timestamptz IS NULL) OR (d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char(($3::timestamptz AT TIME ZONE 'UTC')::date + CASE WHEN $4='exact' AND ($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time THEN 1 ELSE 0 END,'YYYY-MM-DD')
       )) AND ($5::text IS NULL OR d.model=$5)
       AND NOT ($4='exact' AND (($2::timestamptz IS NOT NULL AND ($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD'))))
       UNION ALL
-      SELECT f.origin_id,f.day,f.model,r.contribution->>'pricingBand',r.contribution->'statistics',r.contribution->'nativeCost',s.* FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id JOIN hq_usage_receipt r USING(origin_id,native_id)
+      SELECT f.origin_id,f.day,f.occurrence,f.model,r.contribution->>'pricingBand',r.contribution->'statistics',r.contribution->'nativeCost',s.* FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id JOIN hq_usage_receipt r USING(origin_id,fact_id)
       WHERE $4='exact' AND f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND r.contribution IS NOT NULL AND r.contribution<>'null'::jsonb
       AND ($5::text IS NULL OR f.model=$5) AND ((($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')))
     ), priced AS (SELECT c.*,p.rates,
       CASE WHEN p.rates IS NOT NULL AND (c.statistics->>'unknownComponents')::numeric=0 AND NOT EXISTS(SELECT 1 FROM jsonb_each_text(c.statistics) component WHERE component.key IN ('uncachedInput','cachedInput','cacheCreation','output') AND component.value::numeric>0 AND p.rates->>component.key IS NULL) THEN
       (c.statistics->>'uncachedInput')::numeric*coalesce((p.rates->>'uncachedInput')::numeric,0)+(c.statistics->>'cachedInput')::numeric*coalesce((p.rates->>'cachedInput')::numeric,0)+(c.statistics->>'cacheCreation')::numeric*coalesce((p.rates->>'cacheCreation')::numeric,0)+(c.statistics->>'output')::numeric*coalesce((p.rates->>'output')::numeric,0) END AS cost
       FROM cells c LEFT JOIN hq_usage_price p ON p.revision=$6 AND p.model=c.model AND p.pricing_band=c.pricing_band)`;
+      if (legacy) {
+        cellCte =
+          `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text,deleted boolean,provider text)),
+          cells AS (SELECT d.origin_id,d.day,NULL::timestamptz AS occurrence,d.model,d.pricing_band,d.statistics,d.native_cost,s.*
+          FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id
+          WHERE ((d.day='unallocated' AND $2::timestamptz IS NULL) OR (d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')))
+          AND ($5::text IS NULL OR d.model=$5) AND $4::text='utc-days')` +
+          cellCte.slice(cellCte.indexOf(", priced AS"));
+      }
+      if (q.groupBy === "hour") {
+        if (
+          q.since === null ||
+          state.exact_since === null ||
+          Date.parse(q.since) < Date.parse(state.exact_since)
+        )
+          return yield* new UsageRefused({ code: "unsupported_exact_boundary" });
+        params = [json(counted), q.since, q.until, q.model, state.pricing];
+        cellCte =
+          `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text,deleted boolean,provider text)),
+          cells AS (SELECT f.origin_id,f.day,f.occurrence,f.model,r.contribution->>'pricingBand' AS pricing_band,r.contribution->'statistics' AS statistics,r.contribution->'nativeCost' AS native_cost,s.*
+          FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id JOIN hq_usage_receipt r USING(origin_id,fact_id)
+          WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR f.model=$4))` +
+          cellCte.slice(cellCte.indexOf(", priced AS")).replaceAll("$6", "$5");
+      }
+      const period =
+        q.groupBy === "hour"
+          ? `to_char(occurrence AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:00:00.000"Z"')`
+          : "day";
+      const byPeriod = q.groupBy === "hour" || q.groupBy === "day";
       const group = {
+        hour: `jsonb_build_array(${period},provider)::text`,
+        day: `jsonb_build_array(${period},provider)::text`,
+        provider: "provider",
         month: "CASE WHEN day='unallocated' THEN 'unallocated' ELSE substring(day,1,7) END",
         year: "CASE WHEN day='unallocated' THEN 'unallocated' ELSE substring(day,1,4) END",
-        model: "nullif(model,'')",
+        model: "jsonb_build_array(provider,nullif(model,''))::text",
         mate: '"mateId"',
         project: '"projectId"',
         app: "coalesce(\"appId\",'ungrouped')",
@@ -307,14 +342,14 @@ export const readUsageReport = Effect.fnUntraced(function* (
         readonly unallocated: boolean;
         readonly native: Readonly<Record<string, string>>;
       }>(
-        `${cellCte}, grouped AS (SELECT coalesce(${group},'unresolved') AS key,${sums("statistics")} AS totals,CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END AS "costUsdNanos" FROM priced GROUP BY 1), limited AS (SELECT * FROM grouped ORDER BY key LIMIT 201)
+        `${cellCte}, grouped AS (SELECT coalesce(${group},'unresolved') AS key,${q.groupBy === "model" ? "provider,nullif(model,'') AS model," : byPeriod ? `provider,${period} AS period,` : q.groupBy === "provider" ? "provider," : ""}${sums("statistics")} AS totals,CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END AS "costUsdNanos" FROM priced GROUP BY ${q.groupBy === "model" || byPeriod ? "1,2,3" : q.groupBy === "provider" ? "1,2" : "1"}), limited AS (SELECT * FROM grouped ORDER BY key LIMIT 201)
       SELECT ${sums("statistics")} AS totals,CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END AS cost,
       coalesce(sum(CASE WHEN cost IS NOT NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text AS priced,
       coalesce(sum(CASE WHEN cost IS NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text AS unpriced,
       (SELECT coalesce(jsonb_agg(x ORDER BY key),'[]') FROM (SELECT * FROM limited ORDER BY key LIMIT 200)x) AS groups,
       (SELECT count(*)>200 FROM limited) AS more,
       (SELECT hq_usage_sum(native_cost) FROM priced) AS native,
-      EXISTS(SELECT 1 FROM hq_usage_daily d JOIN source s ON s."originId"=d.origin_id WHERE d.day='unallocated' AND (d.statistics->>'records')::numeric>0) AS unallocated
+      EXISTS(SELECT 1 FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id WHERE d.day='unallocated' AND (d.statistics->>'records')::numeric>0) AS unallocated
       FROM priced`,
         params,
       );
@@ -339,8 +374,8 @@ export const readUsageReport = Effect.fnUntraced(function* (
         const tier = scope.detail.tier;
         const rows = yield* sql.unsafe<{ readonly key: string; readonly value: unknown }>(
           tier === "daily"
-            ? `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)::text AS key,jsonb_build_object('originId',d.origin_id,'day',d.day,'model',nullif(d.model,''),'pricingBand',d.pricing_band,'meterVersion',d.meter_version,'knownComponents',d.known_components,'statistics',d.statistics,'nativeCost',d.native_cost) AS value FROM hq_usage_daily d JOIN source s ON s."originId"=d.origin_id WHERE d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD') AND ($4::text IS NULL OR d.model=$4) AND ($5::text IS NULL OR (d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)>($5,$6,$7,$8,$9,$10)) ORDER BY d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components LIMIT 101`
-            : `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(f.occurrence,f.origin_id,f.native_id)::text AS key,f.value FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR f.model=$4) AND ($5::text IS NULL OR (f.occurrence,f.origin_id,f.native_id)>($5::timestamptz,$6,$7)) ORDER BY f.occurrence,f.origin_id,f.native_id LIMIT 101`,
+            ? `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)::text AS key,jsonb_build_object('originId',d.origin_id,'day',d.day,'model',nullif(d.model,''),'pricingBand',d.pricing_band,'meterVersion',d.meter_version,'knownComponents',d.known_components,'statistics',d.statistics,'nativeCost',d.native_cost) AS value FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id WHERE d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD') AND ($4::text IS NULL OR d.model=$4) AND ($5::text IS NULL OR (d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)>($5,$6,$7,$8,$9,$10)) ORDER BY d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components LIMIT 101`
+            : `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(f.occurrence,f.origin_id,f.fact_id)::text AS key,f.value FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR f.model=$4) AND ($5::text IS NULL OR (f.occurrence,f.origin_id,f.fact_id)>($5::timestamptz,$6,$7)) ORDER BY f.occurrence,f.origin_id,f.fact_id LIMIT 101`,
           [
             json(counted),
             q.since,
@@ -364,7 +399,10 @@ export const readUsageReport = Effect.fnUntraced(function* (
       }
       const report = {
         ...base,
-        state: summary.unallocated ? "partial" : base.state,
+        state:
+          summary.unallocated || (base.state === "unknown" && summary.totals.records !== "0")
+            ? "partial"
+            : base.state,
         totals: summary.totals,
         pricing: {
           basis: "automatic-api-equivalent-estimate",

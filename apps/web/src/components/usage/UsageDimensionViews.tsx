@@ -37,8 +37,15 @@ function personColor(person: UsagePersonRow, index: number): string {
     : (PERSON_SERIES[index % PERSON_SERIES.length] ?? "var(--muted-foreground)");
 }
 
-function amount(metric: UsageDimensionMetric, row: { costUsd: number; totalTokens: number }) {
-  return metric === "cost" ? formatUsd(row.costUsd) : formatTokens(row.totalTokens);
+function amount(
+  metric: UsageDimensionMetric,
+  row: { costUsd: number; totalTokens: number; costKnown?: boolean },
+) {
+  return metric === "cost"
+    ? row.costKnown === false
+      ? "Unpriced"
+      : formatUsd(row.costUsd)
+    : formatTokens(row.totalTokens);
 }
 
 function share(metric: UsageDimensionMetric, row: { costShare: number; tokenShare: number }) {

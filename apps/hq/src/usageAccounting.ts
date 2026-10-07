@@ -9,7 +9,6 @@ export const zeroUsage = (): UsageStatistics => ({
   reasoning: "0",
   records: "0",
   unknownComponents: "0",
-  provisional: "0",
 });
 export interface UsageContribution {
   readonly day: string;
@@ -21,8 +20,7 @@ export interface UsageContribution {
   /** Currency, basis and decimal scale remain separate; never sum unlike native costs. */
   readonly nativeCost: Readonly<Record<string, string>>;
 }
-export const contributionOf = (fact: UsageFact): UsageContribution | null => {
-  if (fact.state === "retracted") return null;
+export const contributionOf = (fact: UsageFact): UsageContribution => {
   const parts = [
     fact.components.uncachedInput,
     fact.components.cachedInput,
@@ -34,10 +32,9 @@ export const contributionOf = (fact: UsageFact): UsageContribution | null => {
     fact.components.inclusiveTotal === null ? knownSplit : BigInt(fact.components.inclusiveTotal);
   if (tokens < knownSplit || tokens >= 10n ** 38n) throw new Error("Invalid usage total");
   return {
-    // Intervals and undated facts are explicitly unallocated, never assigned to the last sample.
-    day: fact.time.kind === "instant" ? fact.time.at.slice(0, 10) : "unallocated",
+    day: fact.time.at.slice(0, 10),
     model: fact.model ?? "",
-    pricingBand: fact.pricingBand,
+    pricingBand: "api-equivalent-baseline",
     meterVersion: fact.meterVersion,
     knownComponents: parts.map((part) => (part === null ? "0" : "1")).join(""),
     statistics: {
@@ -49,7 +46,6 @@ export const contributionOf = (fact: UsageFact): UsageContribution | null => {
       reasoning: fact.components.reasoning ?? "0",
       records: "1",
       unknownComponents: parts.some((part) => part === null) ? "1" : "0",
-      provisional: fact.state === "provisional" ? "1" : "0",
     },
     nativeCost:
       fact.nativeCost === null

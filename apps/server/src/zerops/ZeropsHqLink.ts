@@ -590,13 +590,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
     ZeropsHqLink,
     Effect.gen(function* () {
       const config = yield* ServerConfig;
-      const path = config.zerops?.hqEnrollmentPath;
-      if (path === undefined) {
-        return ZeropsHqLink.of({
-          standing: Effect.succeed({ kind: "not-enrolled", outcome: Option.none() }),
-        });
-      }
-      const fs = yield* FileSystem.FileSystem;
       const paths = yield* Path.Path;
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
@@ -607,7 +600,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         const usageDatabase = yield* Layer.build(
           UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
         );
-        return yield* makeUsageLink(runtimeEvents.events).pipe(Effect.provide(usageDatabase));
+        return yield* makeUsageLink.pipe(Effect.provide(usageDatabase));
       }).pipe(
         Effect.asSome,
         Effect.catchCause(() =>

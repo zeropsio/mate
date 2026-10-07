@@ -60,6 +60,7 @@ export const automaticUsageRates = (
       return [];
     const rate = read.value;
     const bands: [string, number, number | undefined][] = [
+      ["api-equivalent-baseline", 1, undefined],
       ["standard", 1, undefined],
       ["cache-5m", 1, rate.cache_creation_input_token_cost],
       ["cache-1h", 1, rate.cache_creation_input_token_cost_above_1hr],
