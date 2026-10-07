@@ -34,8 +34,14 @@ through `apps/hq/test/harness`. Nothing imports application modules into the bro
 its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
 Core's established test infrastructure remains reusable by its own tests.
 
-Prerequisites: workspace dependencies, installed Chrome, `flock` and local Postgres binaries. Override
-Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core never downloads Chrome.
+Prerequisites: workspace dependencies, a provisioned test browser, `flock` and local Postgres binaries. Run
+`vp run test:browser` once per host to install the pinned Chrome for Testing into
+`~/.cache/mate-test-browser`; subsequent invocations reuse it across worktrees without downloading.
+Tests never download browsers or fall back to an installed personal Chrome. Google-signed Chrome
+on macOS creates keychain-backed unexportable keys even with `--use-mock-keychain` and
+`--password-store=basic`; the test binary must have no Google keychain entitlement. Override the
+binary with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. An invalid browser override fails
+immediately.
 Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
 HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
 are disabled. Both unmapped HTTP and WebSocket destinations fail the suite, even if the app catches
