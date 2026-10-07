@@ -17,8 +17,7 @@ no plan of their own.
   - _Lifecycle:_ Changes in the commit that changes the fact
 - **[`map.md`](map.md)** — The systems and every channel between them
   - _Lifecycle:_ Changes when a channel is added or removed
-- **[`verified.md`](verified.md)** — Facts measured against real systems
-  - _Lifecycle:_ Each entry decays; re-verify before trusting
+- **[`verified.md`](verified.md)** — Relied-on platform facts and commands to re-check them
 - **[`hacks.md`](hacks.md)** — Shortcuts (POC and dev-loop) and what the real fix is
   - _Lifecycle:_ Entries die when paid back
 - **[`questions.md`](questions.md)** — Unknowns that block real implementation
