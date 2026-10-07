@@ -6947,9 +6947,12 @@ describe("ClaudeAdapterLive", () => {
         } as unknown as SDKMessage);
       }
       yield* drainSdkMessages;
+      // Refused with no reset: each parks the turn, until nobody knows when.
       assert.deepEqual(
-        runtimeEvents.filter((event) => event.type === "account.rate-limits.updated"),
-        [],
+        runtimeEvents.flatMap((event) =>
+          event.type === "account.rate-limits.updated" ? [event.payload.refused] : [],
+        ),
+        [{ window: "7-day model" }, { window: "usage" }],
       );
 
       yield* Ref.set(scopedLimitNames, { overageIncluded: "Model A" });
@@ -6976,9 +6979,10 @@ describe("ClaudeAdapterLive", () => {
           "Claude usage limit reached. This turn is paused until the 7-day Model A limit resets in 1h.",
         ],
       );
+      // The two refused windows before it, then this one's believable reset.
       assert.equal(
         runtimeEvents.filter((event) => event.type === "account.rate-limits.updated").length,
-        1,
+        3,
       );
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(

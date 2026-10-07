@@ -687,6 +687,11 @@ export type AccountUpdatedPayload = typeof AccountUpdatedPayload.Type;
 const AccountRateLimitsUpdatedPayload = Schema.Struct({
   limits: ProviderUsageLimitsUpdate,
   blocked: Schema.optional(ProviderUsageLimitBlock),
+  /**
+   * The window refuses new requests and gives no reset time the adapter can believe (past, or
+   * beyond the longest wait): the running turn is parked with no end, until when nobody knows.
+   */
+  refused: Schema.optional(Schema.Struct({ window: TrimmedNonEmptyStringSchema })),
 });
 export type AccountRateLimitsUpdatedPayload = typeof AccountRateLimitsUpdatedPayload.Type;
 

@@ -4446,13 +4446,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ? claudeUsageLimitBlock(rateLimitInfo, Date.parse(stamp.createdAt), names)
         : undefined;
       context.usageLimitBlockedUntilMs = closed?.resetsAtMs;
-      if (limits || closed) {
+      // Rejected with no believable reset: the turn parks all the same, until nobody knows when.
+      const refused =
+        blocked && !closed
+          ? {
+              window:
+                (rateLimitInfo.rateLimitType &&
+                  CLAUDE_USAGE_LIMIT_WINDOWS[rateLimitInfo.rateLimitType]) ||
+                "usage",
+            }
+          : undefined;
+      if (limits || closed || refused) {
         yield* offerRuntimeEvent({
           ...base,
           type: "account.rate-limits.updated",
           payload: {
             limits: limits ?? { windows: [] },
             ...(closed ? { blocked: closed.block } : {}),
+            ...(refused ? { refused } : {}),
           },
         });
       }
