@@ -296,7 +296,10 @@ vi.mock("./accountOperations", () => ({
         ? { stage: "uncertain" }
         : mock.faceRegistry!.get(mock.faceStore.data.project(operationProgress, id)),
     // HQ still has no new answer in this surface fixture; owner recovery is tested in hqWrites.
-    askAgain: async () => undefined,
+    askAgain: async (id: string) => {
+      if (!mock.faceStore?.state().operations.has(id))
+        throw new Error("This request belongs to a closed account.");
+    },
     untilMoveRemainder: async ({ requestId }: { requestId: string }) => {
       const remainder = [...mock.moveRemainders.values()].find(
         (value) => value.requestId === requestId,
@@ -825,6 +828,25 @@ describe("useMateActions — Change face…", () => {
     await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
     expect(mock.updateMate).toHaveBeenCalledOnce();
     expect(mock.dialog.current).toMatchObject({ open: true, pending: false });
+  });
+  it("a reopened account can save a face without inheriting the previous lifetime's request", async () => {
+    const registry = AtomRegistry.make();
+    mock.updateMate.mockRejectedValue(
+      new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." }),
+    );
+    mount(registry);
+    openFace(FEN);
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    act(() => mounted.splice(0).forEach((tree) => tree.unmount()));
+    closeAccountLifetime();
+    openAccountLifetime("user-ada");
+    mock.updateMate.mockReset().mockResolvedValue(undefined);
+    mock.dialog.current = null;
+    mount(registry);
+    openFace(FEN);
+    await act(async () => mock.dialog.current!.onSave({ tint: "rose", shape: "seal" }));
+    expect(mock.updateMate).toHaveBeenCalledOnce();
+    expect(mock.dialog.current).toMatchObject({ open: false, pending: false, error: null });
   });
 });
 

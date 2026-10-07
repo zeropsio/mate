@@ -114,9 +114,9 @@ import {
   settleDeletingMates,
   useDeletingMates,
 } from "./deletingMates";
-import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
+import { officialHq, useAccountHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
-import { captureAccountLifetime } from "./accountLifetime";
+import { captureAccountLifetime, currentAccountEpoch } from "./accountLifetime";
 import { useOpenMate } from "./useOpenMate";
 import { useProjectOrderOptions } from "./projectOrderPreference";
 import {
@@ -185,7 +185,7 @@ type MateDialog =
     };
 
 /**
- * Where a dialog's press stands — Delete's, Change face's or Hand over's: the platform answering
+ * Where a dialog's press stands — Delete's or Hand over's: the platform answering
  * it, or why it refused. One dialog is open at a time, and opening one starts it unpressed.
  */
 interface DialogPress {
@@ -293,7 +293,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const [dialog, setDialog] = useProjectDialog((open: MateDialog) => open.candidate.project.id);
   const faceRequest = useAtomValue(
     dialog?.kind === "face" && activeOrganization !== null
-      ? faceRequests(JSON.stringify([activeOrganization.id, dialog.candidate.project.id]))
+      ? faceRequests(
+          JSON.stringify([
+            currentAccountEpoch(),
+            activeOrganization.id,
+            dialog.candidate.project.id,
+          ]),
+        )
       : NO_FACE_REQUEST,
   );
   const facePress = useProjection(faceAction, faceRequest?.requestId ?? null, EMPTY_FACE_ACTION);
@@ -579,12 +585,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [activeOrganization, refresh, restartMate, setDialog, write],
   );
-
-  /** HQ's API, where a Mate's face and its application live (ADR 0002). */
-  const hqApi = useCallback(() => {
-    if (activeOrganization === null) throw new Error("No organization is open.");
-    return accountHqApi(client, activeOrganization.id, officialHq(accountHq));
-  }, [accountHq, activeOrganization, client]);
 
   /**
    * Renames the Mate's project in Zerops: `name` is the Mate's own, its project's is built from it
@@ -1226,7 +1226,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           if (!isCurrent()) return;
           if (activeOrganization === null) throw new Error("Choose an organization first.");
           const value = changedMateFace(readZeropsMembership(candidate.project).face, face);
-          const key = JSON.stringify([activeOrganization.id, candidate.project.id]);
+          const key = JSON.stringify([
+            currentAccountEpoch(),
+            activeOrganization.id,
+            candidate.project.id,
+          ]);
           const selected = atomRegistry.get(faceRequests(key));
           const previous =
             selected?.face === value &&
