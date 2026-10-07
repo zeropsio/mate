@@ -2,6 +2,7 @@ import {
   type EnvironmentId,
   type FilesystemBrowseEntry,
   type KeybindingCommand,
+  type ProviderInstanceId,
   type ThreadId,
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
@@ -696,4 +697,35 @@ export function paletteNoMatchMessage(input: {
 }): string {
   if (input.isActionsOnly) return "No matching actions.";
   return input.listsRead ? "No matching commands, projects, or threads." : "";
+}
+
+/**
+ * What "Restart the coding agent" does to a Mate's chat. Stopping the process
+ * keeps the conversation: the next message starts a fresh one that resumes it
+ * with new skills, plugins and MCP servers loaded. The fresh rescan updates
+ * the composer's slash menu at once. `workspaceRoot` is the project's folder.
+ */
+export function restartCodingAgentPlan(
+  thread: Pick<Thread, "session" | "modelSelection" | "worktreePath">,
+  workspaceRoot: string | undefined,
+): {
+  readonly stop: boolean;
+  readonly rescan: {
+    readonly instanceId: ProviderInstanceId;
+    readonly cwd: string;
+    readonly fresh: true;
+  } | null;
+} {
+  const cwd = thread.worktreePath ?? workspaceRoot;
+  return {
+    stop: thread.session !== null && thread.session.status !== "stopped",
+    rescan:
+      cwd === undefined
+        ? null
+        : {
+            instanceId: thread.session?.providerInstanceId ?? thread.modelSelection.instanceId,
+            cwd,
+            fresh: true,
+          },
+  };
 }

@@ -49,6 +49,7 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  RotateCcwIcon,
   ServerIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -84,6 +85,7 @@ import { filesystemEnvironment } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
 import { sourceControlEnvironment } from "../state/sourceControl";
+import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -136,6 +138,7 @@ import {
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
+  restartCodingAgentPlan,
   type SearchOverlayMode,
   paletteNoMatchMessage,
   paletteListsRead,
@@ -167,7 +170,11 @@ import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
-import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
+import {
+  primaryServerKeybindingsAtom,
+  primaryServerProvidersAtom,
+  serverEnvironment,
+} from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup } from "./ui/command";
@@ -723,6 +730,12 @@ function OpenCommandPaletteDialog(props: {
     reportFailure: false,
   });
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
+    reportFailure: false,
+  });
+  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
+    reportFailure: false,
+  });
+  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     reportFailure: false,
   });
   const { environments } = useEnvironments();
@@ -1873,6 +1886,37 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/usage" });
     },
   });
+
+  if (activeThread) {
+    const thread = activeThread;
+    actionItems.push({
+      kind: "action",
+      value: "action:restart-coding-agent",
+      searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
+      title: "Restart the coding agent",
+      icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
+      // Failures throw into executeItem's error toast.
+      run: async () => {
+        const { environmentId } = thread;
+        const plan = restartCodingAgentPlan(thread, projectCwdById.get(thread.projectId));
+        if (plan.stop) {
+          const stopped = await stopThreadSession({
+            environmentId,
+            input: { threadId: thread.id },
+          });
+          if (stopped._tag === "Failure") throw squashAtomCommandFailure(stopped);
+        }
+        toastManager.add({
+          type: "success",
+          title: "The coding agent restarts",
+          description: "Your next message starts it fresh, with new skills and plugins.",
+        });
+        if (plan.rescan === null) return;
+        const refreshed = await refreshProviders({ environmentId, input: plan.rescan });
+        if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
+      },
+    });
+  }
 
   actionItems.push({
     kind: "action",

@@ -16,6 +16,7 @@ import {
   hqChatMateApps,
   hqChatMateNames,
   reduceCommandPaletteUiState,
+  restartCodingAgentPlan,
   type CommandPaletteGroup,
   paletteNoMatchMessage,
   paletteListsRead,
@@ -807,5 +808,58 @@ describe("palette list settlement includes HQ and stays with its organization", 
     expect(
       paletteListsRead(next, { ...input, organizationId: "org-b", hqMatesRead: true }).read,
     ).toBe(true);
+  });
+});
+
+describe("restartCodingAgentPlan", () => {
+  const session = (status: "running" | "idle" | "stopped") => ({
+    threadId: ThreadId.make("thread-1"),
+    status,
+    providerName: "claudeAgent",
+    providerInstanceId: ProviderInstanceId.make("claude-work"),
+    runtimeMode: "full-access" as const,
+    activeTurnId: null,
+    lastError: null,
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  });
+  it.each([
+    {
+      name: "a live session stops, and its own coding agent rescans the Mate's copy",
+      thread: makeThread({ session: session("running"), worktreePath: "/workspace/copy" }),
+      plan: {
+        stop: true,
+        rescan: { instanceId: "claude-work", cwd: "/workspace/copy", fresh: true },
+      },
+    },
+    {
+      name: "an idle session still stops: its process holds the old skills",
+      thread: makeThread({ session: session("idle") }),
+      plan: {
+        stop: true,
+        rescan: { instanceId: "claude-work", cwd: "/workspace/project", fresh: true },
+      },
+    },
+    {
+      name: "a stopped session is not stopped again",
+      thread: makeThread({ session: session("stopped") }),
+      plan: {
+        stop: false,
+        rescan: { instanceId: "claude-work", cwd: "/workspace/project", fresh: true },
+      },
+    },
+    {
+      name: "without a session the selected coding agent rescans",
+      thread: makeThread(),
+      plan: {
+        stop: false,
+        rescan: { instanceId: "codex", cwd: "/workspace/project", fresh: true },
+      },
+    },
+  ])("restarting the coding agent: $name", ({ thread, plan }) => {
+    expect(restartCodingAgentPlan(thread, "/workspace/project")).toEqual(plan);
+  });
+
+  it("restarting the coding agent rescans nothing when the Mate's folder is unknown", () => {
+    expect(restartCodingAgentPlan(makeThread(), undefined)).toEqual({ stop: false, rescan: null });
   });
 });
