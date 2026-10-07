@@ -1621,6 +1621,69 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
   );
 });
 
+// The Mate engine's two boundaries (coexist.md §6). The engine lives in
+// `apps/server/src/engine/**` and reaches out only to its neutral seams: the
+// config, the SPI, the provider service, the workspace history, the attachment
+// store and the terminal manager; never V1's `orchestration/**`, never
+// `zerops/**` (Zerops reaches it through `ports.ts`). Outside, only the wiring
+// files and the graft layers that branch reach in, and only to its public
+// surface: the service, the layer and the ports. Tests may reach further.
+const ENGINE_DIR = "apps/server/src/engine";
+const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/engine/MateEngine.ts",
+  "apps/server/src/engine/layer.ts",
+  "apps/server/src/engine/ports.ts",
+]);
+const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/serverRuntimeStartup.ts",
+  "apps/server/src/ws.ts",
+  "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
+  "apps/server/src/zerops/ZeropsSignOut.ts",
+  "apps/server/src/zerops/engineAdapters.ts",
+  "apps/server/src/zerops/zeropsFeedsLayer.ts",
+]);
+const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  "apps/server/src/attachmentStore.ts",
+  "apps/server/src/checkpointing/WorkspaceHistory.ts",
+  "apps/server/src/config.ts",
+  "apps/server/src/provider/Services/ProviderService.ts",
+  "apps/server/src/terminal/Manager.ts",
+]);
+const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
+
+const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
+
+const collectEngineBoundaryViolations = Effect.fn("collectEngineBoundaryViolations")(function* (
+  root: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const violations: Array<ImportViolation> = [];
+  for (const file of yield* collectTsFiles(path.join(root, "apps/server/src"))) {
+    const relativeFile = path.relative(root, file).split(path.sep).join("/");
+    if (isEngineTestFile(relativeFile)) continue;
+    const insideEngine = relativeFile.startsWith(`${ENGINE_DIR}/`);
+    for (const { specifier } of collectImportStatements(yield* fs.readFileString(file))) {
+      if (!specifier.startsWith(".")) continue;
+      const target = path
+        .relative(root, path.resolve(path.dirname(file), specifier))
+        .split(path.sep)
+        .join("/");
+      const targetInEngine = target.startsWith(`${ENGINE_DIR}/`);
+      const allowed = insideEngine
+        ? targetInEngine ||
+          ENGINE_ALLOWED_OUTSIDE.has(target) ||
+          ENGINE_ALLOWED_OUTSIDE_DIRS.some((dir) => target.startsWith(dir))
+        : !targetInEngine ||
+          (ENGINE_WIRING_FILES.has(relativeFile) && ENGINE_PUBLIC_FILES.has(target));
+      if (!allowed) violations.push({ file: relativeFile, specifier });
+    }
+  }
+  return violations.sort((a, b) =>
+    a.file === b.file ? a.specifier.localeCompare(b.specifier) : a.file.localeCompare(b.file),
+  );
+});
+
 const makeRepoFixture = Effect.fn("makeRepoFixture")(function* (
   files: Readonly<Record<string, string>>,
 ) {
@@ -1798,6 +1861,60 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
       Effect.gen(function* () {
         const root = yield* repoRoot;
         assert.deepStrictEqual(yield* collectCrewBoundaryViolations(root), []);
+      }),
+  );
+
+  it.effect(
+    "engine boundary fixture: V1 reaching in, a wiring file reaching past the surface and the engine reaching V1 or Zerops are reported",
+    () =>
+      Effect.gen(function* () {
+        const fixtureRoot = yield* makeRepoFixture({
+          "apps/server/src/zerops/zeropsFeedsLayer.ts": [
+            'import { engineLayer } from "../engine/layer.ts";',
+            'import { EngineStore } from "../engine/store/EngineStore.ts";',
+            "",
+          ].join("\n"),
+          "apps/server/src/orchestration/http.ts":
+            'import { MateEngine } from "../engine/MateEngine.ts";\n',
+          "apps/server/src/engine/MateEngine.ts": [
+            'import { RunAdmission } from "./ports.ts";',
+            'import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";',
+            'import { ProviderService } from "../provider/Services/ProviderService.ts";',
+            'import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";',
+            'import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";',
+            "",
+          ].join("\n"),
+          "apps/server/src/engine/MateEngine.test.ts":
+            'import { NodeSqliteClient } from "../persistence/NodeSqliteClient.ts";\n',
+        });
+
+        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(fixtureRoot), [
+          {
+            file: "apps/server/src/engine/MateEngine.ts",
+            specifier: "../orchestration/Services/OrchestrationEngine.ts",
+          },
+          {
+            file: "apps/server/src/engine/MateEngine.ts",
+            specifier: "../zerops/ZeropsTurnAdmission.ts",
+          },
+          {
+            file: "apps/server/src/orchestration/http.ts",
+            specifier: "../engine/MateEngine.ts",
+          },
+          {
+            file: "apps/server/src/zerops/zeropsFeedsLayer.ts",
+            specifier: "../engine/store/EngineStore.ts",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "engine boundary: the engine reaches only its neutral seams, and only the wiring reaches its surface",
+    () =>
+      Effect.gen(function* () {
+        const root = yield* repoRoot;
+        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(root), []);
       }),
   );
 
