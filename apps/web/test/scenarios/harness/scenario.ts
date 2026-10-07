@@ -29,6 +29,7 @@ const encodeLink = Schema.encodeEffect(MateLinkUp);
 /** Modules are explicitly installed by their area; no shared registration list to merge. */
 export type ScenarioExtension = (drivers: ScenarioDrivers) => void | Promise<void>;
 export interface ScenarioDrivers {
+  hq: Awaited<ReturnType<typeof hqConnection>>;
   zerops: ZeropsFake;
   mates: Map<string, MateFake>;
   core: Effect.Success<ReturnType<typeof startCore>>;

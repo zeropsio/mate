@@ -1,7 +1,7 @@
 import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { productionRecipe } from "../f-create/recipe.ts";
+import { environmentRecipe } from "../f-create/recipe.ts";
 import { menuScenario } from "./dsl.ts";
 
 describe("B: authoritative placement", () => {
@@ -9,7 +9,7 @@ describe("B: authoritative placement", () => {
     it.effect("a Mate used as stage occupies the stage slot and explains who deploys it", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
-        yield* productionRecipe(s);
+        yield* environmentRecipe(s, "production");
         yield* s.colleague.moves("Ada", "Shop", "devstage");
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
@@ -23,7 +23,7 @@ describe("B: authoritative placement", () => {
     it.effect("proven deletion frees the production slot without losing the surviving Mate", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario([], { hq: { reconcileEvery: 200, streamRecheck: 200 } });
-        yield* productionRecipe(s);
+        yield* environmentRecipe(s, "production");
         yield* s.given.project("Production", {
           app: "Shop",
           kind: "production",
