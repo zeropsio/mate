@@ -47,6 +47,8 @@ import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { MateEngine } from "../engine/MateEngine.ts";
+import { engineAttentionReads } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 
 /** The most chats followed one by one between two reads; past it, all are read whole again. */
@@ -239,10 +241,19 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const projection = yield* ProjectionSnapshotQuery;
     const engine = yield* OrchestrationEngineService;
-    return yield* makeZeropsMateAttention({
+    const mateEngine = yield* MateEngine;
+    const identity = {
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
       epoch: yield* nextMateEpoch(config.mateEpochPath),
       incarnation: yield* (yield* Crypto.Crypto).randomUUIDv4,
+    };
+    // While the Mate engine owns the conversation, the attention counts its runs and requests
+    // alone: a thread V1 left running at the flip is never read, so it never counts as working.
+    if (mateEngine.live) {
+      return yield* makeZeropsMateAttention({ ...identity, ...engineAttentionReads(mateEngine) });
+    }
+    return yield* makeZeropsMateAttention({
+      ...identity,
       project: projection
         .getActiveProjectByWorkspaceRoot(config.cwd)
         .pipe(Effect.map(Option.map((project) => project.id))),

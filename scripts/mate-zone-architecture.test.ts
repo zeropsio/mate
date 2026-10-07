@@ -1639,9 +1639,12 @@ const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
+  "apps/server/src/zerops/ZeropsHqLink.ts",
+  "apps/server/src/zerops/ZeropsMateAttention.ts",
   "apps/server/src/zerops/ZeropsSetup.ts",
   "apps/server/src/zerops/ZeropsSignOut.ts",
   "apps/server/src/zerops/engineAdapters.ts",
+  "apps/server/src/zerops/engineOverview.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([

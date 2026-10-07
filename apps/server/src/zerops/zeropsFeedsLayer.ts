@@ -118,6 +118,12 @@ const MateEngineLive = engineLayer.pipe(
   ),
 );
 
+/**
+ * The Mate's attention, one instance for the link and the Mate's own clients (memoized by
+ * reference): V1's chats, or the engine's conversations while it owns the conversation.
+ */
+const ZeropsMateAttentionLive = ZeropsMateAttentionModule.layer.pipe(Layer.provide(MateEngineLive));
+
 /** The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. */
 const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
   Layer.provideMerge(ZeropsCliModule.layer),
@@ -141,7 +147,8 @@ const ZeropsHqLinkLive = Layer.unwrap(
   Layer.provide(ZeropsLoginsLive),
   Layer.provide(ZeropsProjectSignersModule.layer),
   Layer.provide(ZeropsMateUpdateLive),
-  Layer.provide(ZeropsMateAttentionModule.layer),
+  Layer.provide(ZeropsMateAttentionLive),
+  Layer.provide(MateEngineLive),
 );
 
 const liveLayer = Layer.mergeAll(
@@ -201,7 +208,7 @@ const liveLayer = Layer.mergeAll(
   ),
   ZeropsHqLinkLive,
   // The same instance the link reads (memoized by reference), for the Mate's own clients.
-  ZeropsMateAttentionModule.layer,
+  ZeropsMateAttentionLive,
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateLive,
   ZeropsDataConsoleModule.layer,

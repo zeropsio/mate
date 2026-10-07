@@ -78,6 +78,8 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { MateEngine } from "../engine/MateEngine.ts";
+import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
@@ -543,10 +545,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
       const providers = yield* ProviderInstances;
-      const feed = yield* mateOverviewFeed({
-        providers: { latest: providers.providers, changes: providers.changes },
-        environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
-        serverVersion: packageJson.version,
+      // While the Mate engine owns the conversation, its conversations are the chats: V1's
+      // projections (a thread left running at the flip among them) are never read.
+      const chats = chatsSource(yield* MateEngine, {
         threads: Effect.gen(function* () {
           const project = Option.getOrUndefined(
             yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
@@ -557,13 +558,20 @@ export const layer = (crew: OverviewSources["crew"]) =>
                 (thread) => thread.projectId === project.id,
               );
         }),
+        domainEvents: engine.streamDomainEvents,
+      });
+      const feed = yield* mateOverviewFeed({
+        providers: { latest: providers.providers, changes: providers.changes },
+        environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
+        serverVersion: packageJson.version,
+        threads: chats.threads,
         crew,
         agentAuth: yield* ZeropsAgentAuth,
         agentLogin: yield* ZeropsAgentLogin,
         lastSigners: (yield* ZeropsSignIns).lastSigners,
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
-        domainEvents: engine.streamDomainEvents,
+        domainEvents: chats.domainEvents,
       });
       return yield* makeZeropsHqLink({
         readEnrollment: fs
