@@ -57,7 +57,7 @@ export function ComposerPendingVaultChanges({
                 </span>
               }
             />
-            <TooltipPopup side="top" className="max-w-96 whitespace-pre-wrap leading-tight">
+            <TooltipPopup side="top" variant="code" className="max-w-96 whitespace-pre-wrap">
               {heardOf(change)}
             </TooltipPopup>
           </Tooltip>
