@@ -46,7 +46,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import type { ProjectTopologyLiveness } from "../../state/zerops";
+import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { FlatCard, LivenessLine, MateFace, MicroLabel, MintPanel, StatusDot } from "./primitives";
 import { sparklineGeometry } from "./sparkline";

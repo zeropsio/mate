@@ -25,11 +25,11 @@ import {
  */
 const frameSrcs = new WeakMap<ZeropsBrowserFrame, string>();
 
-/** The daemon relays JPEG frames (S8b brief), never re-encoded — `data` is base64 as received. */
+/** The source image is never re-encoded; the daemon defaults to JPEG and tool images name their format. */
 export function frameImageSrc(frame: ZeropsBrowserFrame): string {
   const known = frameSrcs.get(frame);
   if (known !== undefined) return known;
-  const src = `data:image/jpeg;base64,${frame.data}`;
+  const src = `data:${frame.mimeType ?? "image/jpeg"};base64,${frame.data}`;
   frameSrcs.set(frame, src);
   return src;
 }
@@ -80,12 +80,12 @@ export function mapCanvasPointToDevicePixels(
 }
 
 /**
- * `subscribeZeropsBrowserStream` interleaves two kinds of event (state
- * transitions, frames) on one stream; a viewer needs both at once (the
+ * `subscribeZeropsBrowserStream` interleaves state transitions, frames and
+ * call results on one stream; a viewer needs both at once (the
  * current connection status AND the last frame, so it never renders a stale
  * frame under a "no-browser" caption). This is the accumulated snapshot a
- * client folds the raw event stream into — every consumer reads this, never
- * the raw `ZeropsBrowserStreamEvent` union.
+ * adapter folds the raw event stream into. The account stores the live viewport
+ * separately from the source-proven call result slots.
  */
 export interface ZeropsBrowserStreamState {
   readonly status: ZeropsBrowserStreamStatus;
@@ -104,6 +104,7 @@ export function foldBrowserStreamEvent(
   state: ZeropsBrowserStreamState,
   event: ZeropsBrowserStreamEvent,
 ): ZeropsBrowserStreamState {
+  if (event.type === "call-result") return state;
   if (event.type === "frame") {
     return { ...state, frame: event };
   }

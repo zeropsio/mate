@@ -2,7 +2,6 @@ import {
   connectionCatalogDisplayUrl,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import { type ZeropsService } from "@t3tools/client-runtime/zerops";
 import {
   projectKeyOf,
   ZeropsProjectId,
@@ -10,12 +9,7 @@ import {
   type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
 import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
-import {
-  placeListing,
-  placementsOf,
-  type HqMates,
-  type HqPlacement,
-} from "@t3tools/client-runtime/zerops/hq";
+import { placeListing, type HqMates, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -24,29 +18,23 @@ import {
   heldCandidates,
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
-import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
-import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import * as Option from "effect/Option";
 import { Atom } from "effect/unstable/reactivity";
 import {
-  listedProjectAtom,
-  projectServicesAtom,
-  type ProjectServices,
-  NOT_READ_USAGE,
-  projectProcessesAtom,
-  projectUsageAtom,
+  inventoryTopology,
+  EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  type ProjectTopologySnapshot,
+  accountReadsAtom,
+  inventory,
+  inventoryPlacements,
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqStatusAtom,
   shownProjectsAtom,
-  usageOwnerOf,
   type HqNavigationRead,
-  type ProjectUsage,
-  type ProjectValue,
 } from "@t3tools/client-runtime/data";
-import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import type { HqStanding } from "../zerops/accountHq";
@@ -143,15 +131,10 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
  * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
-  const navigation = get(shownHqNavigationAtom);
-  return navigation.structure === null
+  const account = get(accountReadsAtom);
+  return account?.orgId == null
     ? null
-    : placementsOf(
-        navigation.structure,
-        get(hqLoginsAtom),
-        get(hqReadyAgentsAtom),
-        navigation.presses,
-      );
+    : get(account.data.project(inventoryPlacements, account.orgId));
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
@@ -194,49 +177,16 @@ export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
   return navigation.read === "unread" ? null : navigation.people;
 }).pipe(Atom.withLabel("zerops:hq-people"));
 
-const sameLogins = (
-  left: ReadonlyMap<string, OverviewLogins>,
-  right: ReadonlyMap<string, OverviewLogins>,
-) => JSON.stringify([...left]) === JSON.stringify([...right]);
-
-/**
- * Each Mate's logins, as HQ's overview of it says them, by project (`placementsOf` joins them onto
- * its record): the same map while none of them moves, so a Mate at work redraws no listing.
- */
-export const hqLoginsAtom = Atom.make(
-  (get): ReadonlyMap<string, OverviewLogins> =>
-    new Map(
-      [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([projectId, mate]) =>
-        mate.logins === undefined ? [] : [[projectId, mate.logins] as const],
-      ),
-    ),
-).pipe(Atom.withEquality(sameLogins), Atom.withLabel("zerops:hq-logins"));
-
-/** Whether each Mate runs on an agent that needs no sign-in, as HQ's overview of it says, by project. */
-export const hqReadyAgentsAtom = Atom.make(
-  (get): ReadonlyMap<string, boolean> =>
-    new Map(
-      [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([id, mate]) =>
-        mate.identity?.runsWithoutSignIn === undefined
-          ? []
-          : [[id, mate.identity.runsWithoutSignIn] as const],
-      ),
-    ),
-).pipe(
-  Atom.withEquality(
-    (a: ReadonlyMap<string, boolean>, b: ReadonlyMap<string, boolean>) =>
-      JSON.stringify([...a]) === JSON.stringify([...b]),
-  ),
-  Atom.withLabel("zerops:hq-ready-agents"),
-);
-
 const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 
-/** The account's inventory as `ZeropsInventoryProvider` projects it; null before navigation publishes. */
-export const zeropsInventoryAtom = Atom.make<InventoryProjection | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:inventory"),
-);
+/** The inventory projection, read directly from the mounted account's facts. */
+export const inventoryReadAtom = Atom.make((get): InventoryProjection | null => {
+  const account = get(accountReadsAtom);
+  const organization = get(zeropsSessionAtom)?.activeOrganization;
+  return account === null || organization == null || account.orgId !== organization.organizationId
+    ? null
+    : get(account.data.project(inventory, { organization, viewer: account.viewer }));
+}).pipe(Atom.withLabel("data:inventory"));
 
 /** One environment this renderer registered, as the connection catalog presents it. */
 export interface ZeropsEnvironmentEntry {
@@ -281,7 +231,7 @@ const shownListingAtom = Atom.make(
     readonly admits: (row: CandidateRow) => boolean;
   } => {
     const session = get(zeropsSessionAtom);
-    const inventory = get(zeropsInventoryAtom);
+    const inventory = get(inventoryReadAtom);
     if (
       session === null ||
       inventory === null ||
@@ -332,7 +282,7 @@ export const mateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateRow>> 
  */
 export const candidateListingWholeAtom = Atom.make((get): boolean => {
   const session = get(zeropsSessionAtom);
-  const inventory = get(zeropsInventoryAtom);
+  const inventory = get(inventoryReadAtom);
   const organization = session?.activeOrganization ?? null;
   if (inventory === null || organization === null) return false;
   const rows = get(mateRowsAtom);
@@ -414,70 +364,21 @@ export function environmentProjectRef(input: {
   );
 }
 
-export type ProjectTopologyLiveness = "live" | "recovering";
-
-export interface ProjectTopologySnapshot {
-  readonly view: ZeropsTopologyView | undefined;
-  readonly liveness: ProjectTopologyLiveness | undefined;
-  readonly lastReadAt: number | undefined;
-  readonly error: string | undefined;
-}
-
-export const EMPTY_PROJECT_TOPOLOGY_SNAPSHOT: ProjectTopologySnapshot = {
-  view: undefined,
-  liveness: undefined,
-  lastReadAt: undefined,
-  error: undefined,
-};
-
-export function projectTopologySnapshotFromRead(
-  /** The project as the account's store lists it; `null` while it does not. */
-  project: ProjectValue | null,
-  topology: ProjectServices,
-  /** What runs in the project now, as the account's store holds it (`projectProcesses`). */
-  running: ReadonlyArray<ActivityProcess>,
-  /** The project's resources, as the account's store holds them while the panel shows them. */
-  usage: ProjectUsage = NOT_READ_USAGE,
-): ProjectTopologySnapshot {
-  const error =
-    topology.unavailableReason === undefined ? usage.failure : "Zerops refused the services list.";
-  const liveness: ProjectTopologyLiveness = topology.live ? "live" : "recovering";
-  if (project === null || topology.services === undefined)
-    return { view: undefined, liveness, lastReadAt: undefined, error };
-  const services: ReadonlyArray<ZeropsService> = topology.services;
-  const processes = running;
-  const base = projectTopology(project, services, processes, undefined, usage.history);
-  const rows = base.services.map((row) => {
-    const used = usage.byService[row.serviceId];
-    return used === undefined ? row : { ...row, usage: used };
-  });
-  return {
-    view: { ...base, services: rows, usageRead: usage.read },
-    liveness,
-    lastReadAt: undefined,
-    error,
-  };
-}
-
 const topologyProjects = new Map<string, ProjectRef>();
 
 const projectTopologies = Atom.family((key: string) =>
   Atom.make((get): ProjectTopologySnapshot => {
-    const inventory = get(zeropsInventoryAtom);
+    const account = get(accountReadsAtom);
     const project = topologyProjects.get(key)!;
-    // Source-denied project content is withheld at the read.
-    if (inventory === null || inventory.authority.get(key)?.kind === "withheld") {
-      return EMPTY_PROJECT_TOPOLOGY_SNAPSHOT;
-    }
-    const topology = get(projectServicesAtom(project.projectId));
-    // What runs in it is the account store's: the organization's running work, never the runtime's.
-    const running = get(projectProcessesAtom(project.projectId)).running;
-    return projectTopologySnapshotFromRead(
-      get(listedProjectAtom(project.projectId)),
-      topology,
-      running,
-      get(projectUsageAtom(usageOwnerOf(project.organization.organizationId, project.projectId))),
-    );
+    return account === null
+      ? EMPTY_PROJECT_TOPOLOGY_SNAPSHOT
+      : get(
+          account.data.project(inventoryTopology, {
+            orgId: project.organization.organizationId,
+            projectId: project.projectId,
+            viewer: account.viewer,
+          }),
+        );
   }).pipe(Atom.withLabel(`zerops:project-topology:${key}`)),
 );
 

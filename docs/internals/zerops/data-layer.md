@@ -227,37 +227,48 @@ Never fetch directly in a component or hook, cache remote facts or verdicts in `
 use timers to decide outcomes or source precedence, compute person facts in the client, or make
 navigation fetch every detail. Do not retain a parallel old path after its replacement is wired.
 
-## Remaining work after Mate 0.14.26
+## Inventory, database and browser results
 
-As of 2026-10-07, three items remain in transit:
+The inventory presentation reads `inventory` and `inventoryCandidates`, joining retained platform
+access with HQ placement and Mate overview labels. Project topology reads `inventoryTopology` for
+its services, running work and usage. The web inventory provider publishes these projections;
+there is no writable inventory snapshot copied into a second atom. An outage keeps source facts,
+partial coverage stays partial, and a denied project is withheld at the read.
 
-- **D03 — inventory presentation join.** The inventory atom still joins navigation and project
-  topology. Replace that presentation join with the closing projection over HQ placement and Mate
-  connections; its platform input already comes from the data layer.
-- **D57 — database catalog/query family.** Mate database actions still need a fact family and
-  surface projection for their catalog and query reads. They do not use the removed Zerops runtime;
-  deleting their current path before replacing it would remove working database actions.
-- **D47 — `rememberedRef`.** Mate browser-stream frames lack call identity, revision and replacement
-  completeness. Moving the last partial frame into a fact family requires a contract and server
-  change that proves replacement, absence and deletion; client timing cannot supply that evidence.
+Database details are the `database` family. The Mate executor reads services, trees, tables,
+counts, query results and mention catalogs on explicit demand; its adapter commits each answer
+through the reducer. Each target has the common stream machine, with late answers fenced by the
+input generation. Service names and picker, catalog and mention purposes have separate tagged
+slots. Closing the last mention demand aborts catalog reads and traversal as well as publication.
+A refusal survives remount and adapter recreation until explicit retry or a
+changed input. `databaseSession` observes the console process through its own demanded realtime
+scope; observing an idle console never starts it. The panel holds only selection and editing state,
+and the previous direct database command and catalog cache are removed.
 
-The guard ledgers in `oxlint-plugin-t3code/exceptions/*.json` retain these reason classes
-(counted at 0.14.26; these are findings, not separate features):
+Browser viewport and call results are separate slots in `mateBrowserFrame`. A call slot includes
+environment, thread, turn and tool-call identity and compares the source's revision. Only complete
+identified evidence replaces a call result; explicit complete absence clears its frame. A viewport
+event proves only the call revision it identifies in the current connection session. Retained
+frames stay last-known after reconnect until that revision is observed again; running cards withhold
+last-known images. A frame without that identity cannot become a call result just because a card is mounted or a call
+is active. Older servers omit the identity, so their call slots stay unknown while the live browser
+panel still reads the viewport. The optional RPC call-result capability keeps older clients able
+to subscribe to the same relay. View cleanup releases shared demand without permanently closing
+its host, so StrictMode can acquire it again. Account teardown permanently closes demanded adapters
+before registry disposal.
 
-- **67 remote-I/O entries:** Mate transport/socket/client wiring and direct stream/HTTP reads
-  (18), Mate command atoms constructed by the app (23), direct HQ calls (20), and Zerops calls in
-  hooks/components or operation flows (6). Their remaining boundaries belong in transport adapters,
-  source adapters or operation executors, with surfaces dispatching and reading projections.
-- **226 retired-mechanism entries:** duplicate Mate environment/query/feed/config/shell atoms;
-  workspace-image, project-file and git-remote reads; HQ registry/recipe/release/credential hooks
-  and readiness flags; mobile candidate selection; client-derived member/permission facts;
-  locally held creation, press, update and hand-off state, polling and grace timers; usage/attention
-  reads and stored composer labels/change strips. The ledger also explicitly preserves D03's
-  inventory join, D57's database actions and D47's unversioned partial browser frames until their
-  replacements have the required presentation or source contract.
-- **8 storage entries:** the copied provider/model label (2), the copied HQ change strip (3), and
-  this tab's container intents (3). Remote labels and strips must come from projections; local
-  intent bookkeeping needs its declared allowlisted home rather than becoming a remote verdict cache.
+The three guard ledgers retain only findings whose exact fingerprints still exist. Every surviving
+entry explains its retained dependency: 64 remote-I/O findings, 205 retired-mechanism findings and
+8 browser-storage findings. The remaining boundaries include account/transport
+bootstrap, T3 workspace and conversation state, separate repository and credential protocols,
+creation/press/update workflows awaiting their own owner receipts, and unreleased mobile
+presentation. The token detector also matches some existing facade names that already read data
+projections; those entries identify that distinction explicitly.
+
+The provider/model label and composer change-strip storage entries remain debt in those separate
+surfaces. Container-intent entries describe local tab bookkeeping awaiting its declared allowlisted
+home; they do not authorize remote verdict storage. These retained entries do not provide a second
+inventory, database or browser-call source path.
 
 The old Zerops runtime, query cells, grant driver and second realtime socket are removed. The verified account owns one
 Zerops store and transport, with its Mate presentation adapter closed before its registry. Operations
