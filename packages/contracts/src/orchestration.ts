@@ -926,15 +926,60 @@ export const OrchestrationShellStreamEvent = Schema.Union([
 ]);
 export type OrchestrationShellStreamEvent = typeof OrchestrationShellStreamEvent.Type;
 
+const OrchestrationShellSynchronizedItem = Schema.Struct({
+  kind: Schema.Literal("synchronized"),
+});
+const OrchestrationShellSnapshotItem = Schema.Struct({
+  kind: Schema.Literal("snapshot"),
+  snapshot: OrchestrationShellSnapshot,
+});
+const isUnknownShellItemKind = hasUnknownUnionTag(
+  [
+    OrchestrationShellSynchronizedItem,
+    OrchestrationShellSnapshotItem,
+    ...OrchestrationShellStreamEvent.members,
+  ],
+  "kind",
+);
+
+/**
+ * A shell item whose kind this build does not know. Newer Mates add kinds; an
+ * older client decodes them to this case and skips them, moving its cursor past
+ * one that carries a sequence, instead of failing the whole subscription. A
+ * known kind whose payload does not decode still fails. Decode-only: servers
+ * never send it.
+ */
+const OrchestrationUnknownShellStreamItem = Schema.Struct({
+  kind: Schema.String,
+  sequence: Schema.optionalKey(NonNegativeInt),
+}).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (item) => isUnknownShellItemKind(item) || "A known shell item kind must decode in full.",
+    ),
+  ),
+  Schema.decodeTo(
+    Schema.Struct({
+      kind: Schema.Literal("unknown-event"),
+      sequence: Schema.optionalKey(NonNegativeInt),
+    }),
+    {
+      decode: SchemaGetter.transform((item) =>
+        item.sequence === undefined
+          ? { kind: "unknown-event" as const }
+          : { kind: "unknown-event" as const, sequence: item.sequence },
+      ),
+      encode: SchemaGetter.forbidden(() => "Servers never send unknown shell items."),
+    },
+  ),
+);
+
 export const OrchestrationShellStreamItem = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("synchronized"),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("snapshot"),
-    snapshot: OrchestrationShellSnapshot,
-  }),
+  OrchestrationShellSynchronizedItem,
+  OrchestrationShellSnapshotItem,
   OrchestrationShellStreamEvent,
+  // After the known arms: union members are tried in order.
+  OrchestrationUnknownShellStreamItem,
 ]);
 export type OrchestrationShellStreamItem = typeof OrchestrationShellStreamItem.Type;
 

@@ -314,6 +314,82 @@ describe("environment shell synchronization", () => {
     }).pipe(Effect.scoped),
   );
 
+  // A newer Mate sends a shell item this build does not know: the known items on
+  // either side still apply, and the cursor moves past the unknown one.
+  it.effect.each([
+    {
+      case: "between two known ones",
+      items: [
+        { kind: "project-upserted", sequence: 2, project: { id: "one" } },
+        { kind: "unknown-event", sequence: 3 },
+        { kind: "project-upserted", sequence: 4, project: { id: "two" } },
+      ],
+      projects: ["one", "two"],
+      cursor: 4,
+    },
+    {
+      case: "last",
+      items: [
+        { kind: "project-upserted", sequence: 2, project: { id: "one" } },
+        { kind: "unknown-event", sequence: 3 },
+      ],
+      projects: ["one"],
+      cursor: 3,
+    },
+    {
+      case: "without a sequence",
+      items: [
+        { kind: "unknown-event" },
+        { kind: "project-upserted", sequence: 2, project: { id: "one" } },
+      ],
+      projects: ["one"],
+      cursor: 2,
+    },
+  ])("applies the known shell items around an unknown one $case", (row) =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<OrchestrationShellStreamItem>();
+      const client = {
+        [ORCHESTRATION_WS_METHODS.subscribeShell]: () => Stream.fromQueue(events),
+      } as unknown as WsRpcProtocolClient;
+      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+        target: TARGET,
+        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+        session: yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(
+          Option.some(session(client)),
+        ),
+        prepared: yield* SubscriptionRef.make(Option.some(PREPARED)),
+        connect: Effect.void,
+        disconnect: Effect.void,
+        retryNow: Effect.void,
+        credentialRotated: Effect.void,
+        reportStreamDefect: () => Effect.void,
+      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
+      const shellState = yield* makeEnvironmentShellState().pipe(
+        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        Effect.provideService(Persistence.EnvironmentCacheStore, noCache),
+        Effect.provideService(
+          ShellSnapshotLoader,
+          ShellSnapshotLoader.of({ load: () => Effect.succeedNone }),
+        ),
+      );
+
+      yield* Queue.offer(events, { kind: "snapshot", snapshot: LIVE_SHELL_SNAPSHOT });
+      yield* Queue.offerAll(events, row.items as ReadonlyArray<OrchestrationShellStreamItem>);
+      const settled = yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.filter(
+          (state) =>
+            Option.isSome(state.snapshot) && state.snapshot.value.snapshotSequence === row.cursor,
+        ),
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
+      );
+
+      const snapshot = Option.getOrThrow(settled.snapshot);
+      expect(snapshot.projects.map((project) => project.id)).toEqual(row.projects);
+      expect(Option.isNone(settled.error)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("requests a full socket snapshot when the HTTP refresh fails", () =>
     Effect.gen(function* () {
       const cachedSnapshot: OrchestrationShellSnapshot = {
