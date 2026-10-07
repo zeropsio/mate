@@ -1588,6 +1588,54 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
       }),
   );
 
+  it.live(
+    "a stand-up V1 was running at the flip settles as cut by the switch, and its asker may try again",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const database = freshDatabase();
+        yield* recordIn(database, "server");
+        // V1's boot reconcile is parked: its projection says running for good.
+        yield* turnRow(database, "thread-main", "mate-standup-thread-main-1", "running");
+        yield* onEngine(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            const step = Effect.map(
+              setup.document,
+              (document) => document.steps.find((one) => one.id === "standup")?.state,
+            );
+            assert.strictEqual(yield* step, "failed");
+            yield* Ref.set(world.signers, SIGNED);
+            assert.isTrue(yield* setup.retry("user-a"));
+          }),
+        );
+        assert.deepStrictEqual(
+          (yield* Ref.get(world.wakes)).map((wake) => wake.conversationId),
+          ["thread-main"],
+        );
+      }),
+  );
+
+  it.live("a stand-up V1 finished before the flip stays finished", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      const database = freshDatabase();
+      yield* recordIn(database, "server");
+      yield* turnRow(database, "thread-main", "mate-standup-thread-main-1", "completed");
+      yield* onEngine(world, database, (setup) =>
+        Effect.gen(function* () {
+          yield* setup.awaitStandUp;
+          const step = Effect.map(
+            setup.document,
+            (document) => document.steps.find((one) => one.id === "standup")?.state,
+          );
+          assert.strictEqual(yield* step, "done");
+          assert.isFalse(yield* setup.retry("user-a"));
+        }),
+      );
+    }),
+  );
+
   it.live("the setup document reads the stand-up's run from the engine", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;

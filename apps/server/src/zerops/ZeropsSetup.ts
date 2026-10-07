@@ -412,6 +412,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
               : ("failed" as const),
       );
 
+    /**
+     * A stand-up V1 ran before the flip: how its turn ended, read once from V1's projection; one
+     * V1 still says runs was cut by the switch (V1 runs nothing now, its reconcile is parked).
+     */
+    const v1TurnAtFlip = (record: StandUpRow) =>
+      Effect.map(turnOf(record), (state) => (state === "running" ? ("failed" as const) : state));
+
     /** The stand-up's own run: the engine's, while it owns the conversation; else V1's turn. */
     const standUpTurnOf = (record: StandUpRow) =>
       onEngine
@@ -423,7 +430,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
                 record.commandId,
               ),
             }),
-            (state) => (state === undefined ? turnOf(record) : Effect.succeed(state)),
+            (state) => (state === undefined ? v1TurnAtFlip(record) : Effect.succeed(state)),
           )
         : turnOf(record);
 
@@ -752,9 +759,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       Effect.gen(function* () {
         if (!onEngine || record?.source !== "server") return record;
         const run = yield* recordedRun(record);
+        // A stand-up V1 was running at the flip was cut by the switch: its asker may try again.
+        if (run === undefined) {
+          return (yield* turnOf(record)) === "running"
+            ? { ...record, source: "server:failed" }
+            : record;
+        }
         // Only a stand-up that provably never reached the agent is a failed send: one whose
         // delivery is unknown may be in the agent already, and V1 never sends one twice.
-        return run?.end?.kind === "failed" && run.reachedAgent === false
+        return run.end?.kind === "failed" && run.reachedAgent === false
           ? { ...record, source: "server:failed" }
           : record;
       });
