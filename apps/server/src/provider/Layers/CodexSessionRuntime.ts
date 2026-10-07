@@ -802,6 +802,7 @@ function readNotificationThreadId(notification: CodexServerNotification): string
     case "hook/started":
     case "turn/completed":
     case "hook/completed":
+    case "rawResponse/completed":
     case "turn/diff/updated":
     case "turn/plan/updated":
     case "item/started":
@@ -899,6 +900,7 @@ function readRouteFields(notification: CodexServerNotification): {
         turnId: TurnId.make(notification.params.turnId),
         itemId: undefined,
       };
+    case "rawResponse/completed":
     case "turn/diff/updated":
     case "turn/plan/updated":
       return {
@@ -1097,6 +1099,7 @@ const CHILD_AGENT_EVENT_METHODS: ReadonlySet<string> = new Set([
   "turn/completed",
   "thread/status/changed",
   "thread/tokenUsage/updated",
+  "rawResponse/completed",
   "thread/settings/updated",
   "model/rerouted",
   "item/started",
@@ -1739,6 +1742,15 @@ export const makeCodexSessionRuntime = (
         const metadata = (yield* Ref.get(collabChildMetadataRef)).get(child.agentThreadId);
         const childIdentity = collabChildIdentity(child, metadata);
         switch (notification.method) {
+          case "rawResponse/completed":
+            yield* emitEvent({
+              kind: "notification",
+              threadId: options.threadId,
+              turnId: TurnId.make(notification.params.turnId),
+              method: "rawResponse/completed",
+              payload: { ...notification.params, parentThreadId: child.parentThreadId },
+            });
+            return true;
           case "turn/started": {
             yield* markCollabChildOpen(child.agentThreadId);
             const childTurnId =
@@ -1799,6 +1811,7 @@ export const makeCodexSessionRuntime = (
               payload: {
                 ...childIdentity,
                 tokenUsage: notification.params.tokenUsage,
+                nativeTurnId: notification.params.turnId,
               },
             });
             return true;

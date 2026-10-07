@@ -166,6 +166,55 @@ const peerPath = NodePath.join(
 );
 
 describe("CodexSessionRuntime collab integration", () => {
+  it.effect("preserves each child's native response and turn identity through parent routing", () =>
+    Effect.gen(function* () {
+      const usage = {
+        inputTokens: 100,
+        cachedInputTokens: 40,
+        cacheWriteInputTokens: 0,
+        outputTokens: 30,
+        reasoningOutputTokens: 10,
+        totalTokens: 130,
+      };
+      const params = {
+        threadId: CHILD_A,
+        turnId: "child-native-turn",
+        responseId: "child-native-response",
+        usage,
+      };
+      // The captured registration establishes a real child; schema-native response completion is additive.
+      const script = {
+        rootThreadId: ROOT,
+        notifications: [capturedSpawnedThread(), { method: "rawResponse/completed", params }],
+      };
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
+      );
+      const runtime = yield* makeCodexSessionRuntime({
+        threadId: ThreadId.make("usage-child-routing"),
+        binaryPath: peerPath,
+        cwd: NodeOS.tmpdir(),
+        runtimeMode: "full-access",
+        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
+      });
+      const responses = yield* runtime.events.pipe(
+        Stream.filter((event) => event.method === "rawResponse/completed"),
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.start();
+      yield* runtime.sendTurn({ input: "start child" });
+      const events = Array.from(yield* Fiber.join(responses));
+      assert.equal(events[0]?.threadId, "usage-child-routing");
+      assert.equal(events[0]?.turnId, "child-native-turn");
+      assert.deepEqual(events[0]?.payload, { ...params, parentThreadId: ROOT });
+      yield* runtime.close;
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("looks up child model metadata once after activity registration", () =>
     Effect.gen(function* () {
       const script = {

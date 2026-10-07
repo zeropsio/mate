@@ -99,6 +99,7 @@ import {
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
 import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpControl.ts";
+import { makeClaudeResponseUsage } from "../../spi/responseUsage.ts";
 
 /** A session as the MCP tab's hook sees it. */
 const claudeMcpSession = (context: {
@@ -453,6 +454,7 @@ function rememberPendingTaskEntry(
 }
 
 interface ClaudeSessionContext {
+  readonly responseUsage: ReturnType<typeof makeClaudeResponseUsage>;
   session: ProviderSession;
   /** The last of what the CLI wrote to stderr: why its stream died, for the log. */
   readonly stderrTail: StderrTail;
@@ -4633,6 +4635,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ) {
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
+    for (const payload of context.responseUsage(message)) {
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        ...stamp,
+        type: "response.usage.completed",
+        provider: PROVIDER,
+        threadId: context.session.threadId,
+        providerRefs: {},
+        payload,
+      });
+    }
 
     // Wire-only command bookkeeping has no user-facing T3 lifecycle.
     if (sdkMessageType(message) === "command_lifecycle") {
@@ -5602,6 +5615,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         };
 
         const context: ClaudeSessionContext = {
+          responseUsage: makeClaudeResponseUsage(),
           session,
           stderrTail,
           startInput: input,

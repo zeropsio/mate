@@ -16,6 +16,7 @@ import {
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
 import { ProviderUsageLimitBlock, ProviderUsageLimitsUpdate } from "./providerUsageLimits.ts";
 import { ProviderApprovalOption } from "./orchestration.ts";
+import { UsageComponents, UsageNativeCost } from "./agentUsage.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
@@ -295,6 +296,17 @@ const ThreadTokenUsageUpdatedPayload = Schema.Struct({
   usage: ThreadTokenUsageSnapshot,
 });
 export type ThreadTokenUsageUpdatedPayload = typeof ThreadTokenUsageUpdatedPayload.Type;
+
+/** One native response's completed, noncumulative consumption. */
+export const ResponseUsageCompletedPayload = Schema.Struct({
+  nativeThreadId: TrimmedNonEmptyStringSchema,
+  nativeResponseId: TrimmedNonEmptyStringSchema,
+  model: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  components: UsageComponents,
+  nativeCost: Schema.NullOr(UsageNativeCost),
+  parentId: Schema.NullOr(TrimmedNonEmptyStringSchema),
+});
+export type ResponseUsageCompletedPayload = typeof ResponseUsageCompletedPayload.Type;
 
 const ThreadRealtimeStartedPayload = Schema.Struct({
   realtimeSessionId: Schema.optional(TrimmedNonEmptyStringSchema),
@@ -853,6 +865,12 @@ const ProviderRuntimeThreadTokenUsageUpdatedEvent = Schema.Struct({
 export type ProviderRuntimeThreadTokenUsageUpdatedEvent =
   typeof ProviderRuntimeThreadTokenUsageUpdatedEvent.Type;
 
+const ProviderRuntimeResponseUsageCompletedEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: Schema.Literal("response.usage.completed"),
+  payload: ResponseUsageCompletedPayload,
+});
+
 const ProviderRuntimeThreadRealtimeStartedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: ThreadRealtimeStartedType,
@@ -1161,6 +1179,7 @@ export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeThreadStateChangedEvent,
   ProviderRuntimeThreadMetadataUpdatedEvent,
   ProviderRuntimeThreadTokenUsageUpdatedEvent,
+  ProviderRuntimeResponseUsageCompletedEvent,
   ProviderRuntimeThreadRealtimeStartedEvent,
   ProviderRuntimeThreadRealtimeItemAddedEvent,
   ProviderRuntimeThreadRealtimeAudioDeltaEvent,

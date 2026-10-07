@@ -37,6 +37,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Predicate from "effect/Predicate";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/process";
@@ -63,6 +64,7 @@ import {
   readCodexThreadPolicies,
 } from "../../spi/codexThreadProfile.ts";
 import { codexMcpControl } from "../../spi/mcpControl.ts";
+import { codexResponseUsage } from "../../spi/responseUsage.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -1130,6 +1132,26 @@ function mapToRuntimeEvents(
         },
       },
     ];
+  }
+
+  // Internal native notification: session setup does not yet opt into raw events.
+  // Mapping this shape does not establish that current new/resumed/child sessions deliver it.
+  if (event.method === "rawResponse/completed") {
+    const raw = Predicate.isObject(event.payload) ? event.payload : undefined;
+    const payload = codexResponseUsage(
+      event.payload,
+      null,
+      typeof raw?.parentThreadId === "string" ? raw.parentThreadId : null,
+    );
+    return payload
+      ? [
+          {
+            ...runtimeEventBase(event, canonicalThreadId),
+            type: "response.usage.completed",
+            payload,
+          },
+        ]
+      : [];
   }
 
   if (event.method === "thread/tokenUsage/updated") {

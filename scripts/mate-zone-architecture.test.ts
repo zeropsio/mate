@@ -1513,6 +1513,7 @@ const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
   `${SPI_DIR}/openCodeThreadProfile.ts`,
   `${SPI_DIR}/mcpControl.ts`,
   `${SPI_DIR}/mcpToolTitle.ts`,
+  `${SPI_DIR}/responseUsage.ts`,
 ]);
 
 const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(function* (

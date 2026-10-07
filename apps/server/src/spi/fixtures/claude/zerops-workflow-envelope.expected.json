@@ -844,6 +844,29 @@
   },
   {
     "eventId": "evt-15",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "response.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+      "nativeResponseId": "msg_011CeWiUZRvtK86asHxy2qwU",
+      "model": "claude-opus-5",
+      "components": {
+        "uncachedInput": "2",
+        "cachedInput": "14270",
+        "cacheCreation": "7203",
+        "output": "120",
+        "reasoning": "0",
+        "inclusiveTotal": null
+      },
+      "nativeCost": null,
+      "parentId": null
+    }
+  },
+  {
+    "eventId": "evt-16",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -876,7 +899,7 @@
   },
   {
     "type": "item.started",
-    "eventId": "evt-16",
+    "eventId": "evt-17",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -928,7 +951,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-17",
+    "eventId": "evt-18",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -978,7 +1001,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-18",
+    "eventId": "evt-19",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1072,7 +1095,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-19",
+    "eventId": "evt-20",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1131,8 +1154,31 @@
     }
   },
   {
+    "eventId": "evt-21",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "response.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+      "nativeResponseId": "msg_011CeWiUjGGgFEubXDRoafne",
+      "model": "claude-opus-5",
+      "components": {
+        "uncachedInput": "2",
+        "cachedInput": "21473",
+        "cacheCreation": "7592",
+        "output": "59",
+        "reasoning": "0",
+        "inclusiveTotal": null
+      },
+      "nativeCost": null,
+      "parentId": null
+    }
+  },
+  {
     "type": "item.updated",
-    "eventId": "evt-20",
+    "eventId": "evt-22",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1217,7 +1263,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-21",
+    "eventId": "evt-23",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1301,7 +1347,7 @@
     }
   },
   {
-    "eventId": "evt-22",
+    "eventId": "evt-24",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1334,7 +1380,7 @@
   },
   {
     "type": "item.started",
-    "eventId": "evt-23",
+    "eventId": "evt-25",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1386,7 +1432,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-24",
+    "eventId": "evt-26",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1436,7 +1482,7 @@
   },
   {
     "type": "item.updated",
-    "eventId": "evt-25",
+    "eventId": "evt-27",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1530,7 +1576,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-26",
+    "eventId": "evt-28",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1589,8 +1635,31 @@
     }
   },
   {
+    "eventId": "evt-29",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "response.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+      "nativeResponseId": "msg_011CeWiUqCxU6JnFJNLpj5rU",
+      "model": "claude-opus-5",
+      "components": {
+        "uncachedInput": "2",
+        "cachedInput": "29065",
+        "cacheCreation": "2928",
+        "output": "58",
+        "reasoning": "0",
+        "inclusiveTotal": null
+      },
+      "nativeCost": null,
+      "parentId": null
+    }
+  },
+  {
     "type": "item.updated",
-    "eventId": "evt-27",
+    "eventId": "evt-30",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1675,7 +1744,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-28",
+    "eventId": "evt-31",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1759,7 +1828,7 @@
     }
   },
   {
-    "eventId": "evt-29",
+    "eventId": "evt-32",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1792,7 +1861,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-30",
+    "eventId": "evt-33",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1824,7 +1893,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-31",
+    "eventId": "evt-34",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1856,7 +1925,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-32",
+    "eventId": "evt-35",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1888,7 +1957,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-33",
+    "eventId": "evt-36",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1920,7 +1989,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-34",
+    "eventId": "evt-37",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1952,7 +2021,7 @@
   },
   {
     "type": "content.delta",
-    "eventId": "evt-35",
+    "eventId": "evt-38",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1984,7 +2053,7 @@
   },
   {
     "type": "item.completed",
-    "eventId": "evt-36",
+    "eventId": "evt-39",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "itemId": "item-4",
@@ -2013,7 +2082,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-37",
+    "eventId": "evt-40",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -2072,8 +2141,31 @@
     }
   },
   {
+    "eventId": "evt-41",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "response.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+      "nativeResponseId": "msg_011CeWiUwgPV3XksJouNnsvu",
+      "model": "claude-opus-5",
+      "components": {
+        "uncachedInput": "2",
+        "cachedInput": "31993",
+        "cacheCreation": "749",
+        "output": "300",
+        "reasoning": "0",
+        "inclusiveTotal": null
+      },
+      "nativeCost": null,
+      "parentId": null
+    }
+  },
+  {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-38",
+    "eventId": "evt-42",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -2203,7 +2295,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-39",
+    "eventId": "evt-43",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

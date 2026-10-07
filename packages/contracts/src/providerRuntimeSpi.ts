@@ -95,6 +95,11 @@
  *   independent of any reset time. Claude emits it; the other adapters keep their
  *   terminal usage-limit errors. Codex also supplies the existing typed `blocked`
  *   reset on a refused turn when its snapshot names an exhausted window.
+ * - 2.10 (2026-10-08): `response.usage.completed` records exact native response
+ *   identity and reported consumption, including agent sidechains. Claude emits
+ *   at message_stop (or a completed nonstream snapshot); Codex emits from
+ *   rawResponse/completed. Thread/task/result totals never create usage facts.
+ *   The Claude replay goldens gain these additive completion events.
  *
  * @module providerRuntimeSpi
  */
@@ -108,7 +113,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.9";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.10";
 
 /**
  * One image content block an MCP tool result carried, e.g. a
