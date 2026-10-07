@@ -41,6 +41,11 @@ export function scopeName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname ?? SHARED_NAME;
 }
 
+/** One row of one scope, for what is in flight or refused there: the scope's id and the key. */
+export function vaultRowKey(scopeId: string, key: string): string {
+  return `${scopeId}:${key}`;
+}
+
 export function sameScopeRef(a: VaultScopeRef, b: VaultScopeRef): boolean {
   return a.kind === "shared"
     ? b.kind === "shared"
@@ -459,13 +464,17 @@ export function removeGuardWords(
   ];
 }
 
-/** What a refused write says, from the platform's code. */
+/**
+ * What a refused write says: the account's own sentence when it gave one, else words for the
+ * platform's code.
+ */
 export function refusalWords(
   errorCode: string | null,
   scope: VaultScope,
   key: string,
-  platformMessage: string | null,
+  reason: string | null,
 ): string {
+  if (reason !== null && reason !== "") return reason;
   switch (errorCode) {
     case "projectEnvDuplicateKey":
       return `${key} is already in ${scopeName(scope)}`;
@@ -474,6 +483,6 @@ export function refusalWords(
     case "projectEnvKeyInvalid":
       return KEY_FORMAT_WORDS;
     default:
-      return platformMessage ?? "Zerops refused it";
+      return "Zerops refused it";
   }
 }

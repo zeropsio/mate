@@ -428,7 +428,14 @@ describe("refusalWords", () => {
     expect(refusalWords(code, scope, key, null)).toBe(words);
   });
 
-  it("passes on the platform's own words for a code it does not know", () => {
-    expect(refusalWords("somethingElse", SHARED, "X", "Quota exceeded.")).toBe("Quota exceeded.");
+  it("shows the account's own sentence as given", () => {
+    expect(
+      refusalWords(
+        "projectEnvDuplicateKey",
+        SHARED,
+        "LOG_LEVEL",
+        "LOG_LEVEL is already in Shared.",
+      ),
+    ).toBe("LOG_LEVEL is already in Shared.");
   });
 });
