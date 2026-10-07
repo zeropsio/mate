@@ -87,6 +87,23 @@ describe("provider compatibility", () => {
     }
   });
 
+  it("marks known-incompatible CLI versions broken in the bundled policy", () => {
+    const bundled = ModelManifest.BUNDLED_MODEL_MANIFEST.compatibility;
+    for (const [kind, version, expected] of [
+      ["opencode", "1.14.18", "broken"],
+      ["opencode", "1.14.19", "supported"],
+      ["opencode", "1.99.0", "supported"],
+      ["opencode", "2.0.0", "broken"],
+      ["opencode", "2.1.0", "broken"],
+    ] as const) {
+      assert.strictEqual(
+        resolveProviderCompatibility(bundled, ProviderDriverKind.make(kind), version)?.status,
+        expected,
+        `${kind} ${version}`,
+      );
+    }
+  });
+
   it("compares Cursor build dates without treating semver prereleases as stable", () => {
     const cursor = ProviderDriverKind.make("cursor");
     const cursorPolicy: ProviderCompatibilityPolicy = {
