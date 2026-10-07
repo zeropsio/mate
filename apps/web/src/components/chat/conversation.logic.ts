@@ -727,6 +727,8 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
  */
 /** Why a run broke off, and — the latest run only — what to do next. */
 export interface BrokeOff {
+  /** The runtime failure represented here, rather than repeated in the work log. */
+  readonly entryId: string;
   readonly reason: string;
   readonly next: string | null;
 }
@@ -741,12 +743,18 @@ function brokeOffOn(input: {
     (input.terminal !== null &&
       readUsageLimitNotice(input.terminal.message.text, input.terminal.createdAt) !== null);
   if (limited) return null;
-  const last = lastOwnEntry(input.entries);
+  const terminalFailure = input.entries.findLast(
+    (entry) =>
+      entry.kind === "work" &&
+      entry.entry.sourceActivityKind === "runtime.error" &&
+      (entry.entry.turnEnd === "crash" || entry.entry.turnEnd === "failed"),
+  );
+  const last = terminalFailure ?? lastOwnEntry(input.entries);
   if (last?.kind !== "work" || last.entry.sourceActivityKind !== "runtime.error") return null;
   const words = last.entry.detail?.trim() || last.entry.label;
   const reason = brokeOffReason(words);
   const next = words.slice(reason.length).trim();
-  return { reason, next: input.latest && next.length > 0 ? next : null };
+  return { entryId: last.id, reason, next: input.latest && next.length > 0 ? next : null };
 }
 
 /** A background task or a helper reporting in: the task's word, never the Mate's step. */

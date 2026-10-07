@@ -1221,6 +1221,7 @@ describe("a run that broke off", () => {
       ],
       latest: { id: "t1", state: "error", completed: true },
       brokeOff: {
+        entryId: "e1",
         reason: "Codex stopped unexpectedly.",
         next: "Send a message to pick up where it left off.",
       },
@@ -1239,7 +1240,7 @@ describe("a run that broke off", () => {
       ],
       latest: { id: "t2", state: "completed", completed: true },
       // Only the latest run says what to do next.
-      brokeOff: { reason: "Codex stopped unexpectedly.", next: null },
+      brokeOff: { entryId: "e1", reason: "Codex stopped unexpectedly.", next: null },
       answer: null,
       face: "brokeOff",
     },
@@ -1251,7 +1252,7 @@ describe("a run that broke off", () => {
         crashed("e1", "t1", 2, "API Error: 500 Internal server error"),
       ],
       latest: { id: "t1", state: "error", completed: true },
-      brokeOff: { reason: "API Error: 500 Internal server error", next: null },
+      brokeOff: { entryId: "e1", reason: "API Error: 500 Internal server error", next: null },
       answer: null,
       face: "brokeOff",
     },

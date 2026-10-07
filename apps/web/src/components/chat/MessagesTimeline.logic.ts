@@ -1441,6 +1441,7 @@ function stretchRecord(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
   writing: MessageEntry | null;
+  brokeOffEntryId: string | null;
   pauseRow: MessagesTimelineRow | null;
   tracked: TrackedCommands;
   /** When the run ended; null while it runs. What reported after it is the next run's to tell. */
@@ -1756,8 +1757,8 @@ function stretchRecord(input: {
             event: { type: "compaction", label: work.label },
           });
         } else if (isErrorEntry(entry)) {
-          // A limit's error is the pause's to tell, once.
-          if (!isUsageLimitError(entry)) {
+          // Pauses and the run's terminal failure already stand outside the log.
+          if (!isUsageLimitError(entry) && entry.id !== input.brokeOffEntryId) {
             push({ kind: "error", key: `error:${entry.id}`, at: entry.createdAt, entry: work });
           }
         } else if (work.inputAnswers !== undefined) {
@@ -1995,6 +1996,7 @@ function recordReads(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
   writing: MessageEntry | null;
+  brokeOffEntryId: string | null;
   tracked: TrackedCommands;
   until: string | null;
   reading: BatchReading;
@@ -2007,6 +2009,7 @@ function recordReads(input: {
     stretch.endedAt,
     input.answer,
     input.writing,
+    input.brokeOffEntryId,
     input.until,
     input.batch,
     tracked.liveJobs ?? null,
@@ -2527,6 +2530,7 @@ export function deriveMessagesTimelineRows(input: {
         stretch,
         answer: turn.answer,
         writing: turn.writing,
+        brokeOffEntryId: turn.brokeOff?.entryId ?? null,
         tracked,
         until: turn.live ? null : last.endedAt,
         reading,

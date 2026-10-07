@@ -506,6 +506,7 @@ function WatchedToItsEnd({
 }
 
 const BROKE_OFF = {
+  entryId: "runtime-error",
   reason: "Claude Code stopped unexpectedly.",
   next: "Send a message to pick up where it left off.",
 };

@@ -221,7 +221,12 @@ import {
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
-import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
+import {
+  agentLastSpokeAt,
+  agentNotesFor,
+  agentTurnNotes,
+  agentNeedsSignIn,
+} from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
@@ -1802,13 +1807,34 @@ export default function ChatView(props: ChatViewProps) {
   // just fall through to the persisted one. Mask the current error until a
   // different error arrives, mirroring the provider status banner.
   const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
-  const visibleThreadError = shouldShowThreadErrorBanner(
-    routeThreadKey,
-    threadError,
-    isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
-  )
-    ? threadError
-    : null;
+  // A persisted runtime failure already has its place in the conversation.
+  // Keep command refusals in the banner; they have no durable timeline entry.
+  const threadErrorInTimeline =
+    localServerError == null &&
+    !agentNeedsSignIn(threadError ?? "", activeServerThread?.session?.providerName) &&
+    activeServerThread?.activities.some(
+      (activity) =>
+        activity.kind === "runtime.error" &&
+        typeof activity.payload === "object" &&
+        activity.payload !== null &&
+        "turnEnd" in activity.payload &&
+        (activity.payload.turnEnd === "crash" || activity.payload.turnEnd === "failed") &&
+        activity.turnId === activeServerThread.latestTurn?.turnId &&
+        (activity.summary === threadError ||
+          (typeof activity.payload === "object" &&
+            activity.payload !== null &&
+            "message" in activity.payload &&
+            activity.payload.message === threadError)),
+    );
+  const visibleThreadError =
+    !threadErrorInTimeline &&
+    shouldShowThreadErrorBanner(
+      routeThreadKey,
+      threadError,
+      isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
+    )
+      ? threadError
+      : null;
   // Dismissing only mutates the session-scoped mask set, which does not
   // trigger a render on its own; setThreadError(null) can also bail when the
   // local shadow is already empty and the banner is driven purely by
