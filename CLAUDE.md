@@ -67,6 +67,14 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
   typechecks of touched packages, related tests and only affected scenario areas. `--list` previews
   selection; `--base <ref>` changes the comparison. Use targeted tests while iterating.
+- A lane's loop: targeted `vp test run <files>` while iterating; the gate once when the change is
+  complete, then only the failed files and the gate once more. Rebase once, right before the push;
+  re-run only what the rebase changed in the lane's files. A push rejected because `main` moved is
+  rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
+  exceptions, `surfaces.json`, theme tokens or tooling. At most one
+  `gh run watch <id> --exit-status`, then read the failures once; never poll logs in a loop.
+- A fresh worktree needs the Electron runtime: `vp run --filter @t3tools/desktop ensure:electron`
+  once after the install ("Electron failed to install correctly" means it was skipped).
 - The integrator runs the full gates before pushing the assembled work: `node scripts/ci-local.ts`
   for CI's Check job, plus the full unit and scenario suites. CI runs the repository-wide checks;
   lanes keep their local checks targeted.
@@ -78,6 +86,30 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   tags, and waits until `stable.json` serves the new version.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
+
+## When something that is not your code fails
+
+Accounts, APIs, credentials, infrastructure, tools. Classify by the evidence, then act; before each
+attempt write one line, "hypothesis: … / test: …". An identical action is never repeated expecting
+a different result, except in class B.
+
+- **A — yours**: a server, database, browser, worktree, dependency or runtime you started or own,
+  or a wrong path, ID or variable in your own command. Fix it and continue; each attempt changes
+  something.
+- **B — transient**: timeout, 5xx, 429, "at capacity", connection reset, DNS SERVFAIL. The same
+  action up to three times in all, with growing pauses (~10 s, 30 s, 90 s); still failing → D.
+- **C — refused**: 401/403, 404, 409, 422, "not found", "permission denied", a missing credential or
+  variable. One diagnosis: read the whole error body, name the account, credential and target in
+  use (the key name or path, never a secret's value), confirm with one read-only call. Your own
+  mistake → A; otherwise → D.
+- **Unknown**: at most three distinct hypotheses, each tested once by the cheapest read-only probe;
+  then A, B, C or D.
+- **D — park**: stop only the steps that depend on it, finish every independent step, and end with
+  `BLOCKED: <step> — <exact error> — <class> — tried: <hypotheses> — need: <one concrete question>`.
+
+Never a workaround, always D: another identity or authority (account, credential, organization,
+token, permission), a target the task does not name, `--no-verify` / `--force`, a disabled check,
+substitute infrastructure.
 
 ## Context is the cost
 

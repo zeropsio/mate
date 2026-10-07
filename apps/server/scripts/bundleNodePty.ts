@@ -100,6 +100,9 @@ export function bundleNodePtyIntoTarball(input: BundleNodePtyInput): void {
   try {
     NodeChildProcess.execFileSync("tar", ["-xzf", input.tarballPath, "-C", workDir]);
     const packageDir = NodePath.join(workDir, "package");
+    // pnpm normalizes non-bin files to 0644; the server executes this helper directly.
+    const healthEvents = NodePath.join(packageDir, "dist", "health-events");
+    if (NodeFS.existsSync(healthEvents)) NodeFS.chmodSync(healthEvents, 0o755);
     const manifestPath = NodePath.join(packageDir, "package.json");
     NodeFS.writeFileSync(
       manifestPath,

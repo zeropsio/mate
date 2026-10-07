@@ -453,8 +453,7 @@ describe("a Mate's own view while its link is made", () => {
         reachability: { kind: "gone", because: "direct-not-found" },
       } satisfies MateLink,
       listing: listingOf([QUINN]),
-      words:
-        "Quinn's project is no longer available. It was deleted, or you no longer have access.",
+      words: "Quinn's project was deleted. This conversation is no longer available.",
       name: "Quinn",
     },
     {
