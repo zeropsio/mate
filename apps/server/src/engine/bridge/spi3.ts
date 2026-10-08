@@ -125,7 +125,13 @@ export type TurnOutcome =
   /** The driver's word for a normal end, when it gave one: end_turn, max_tokens, refusal… */
   | { readonly kind: "completed"; readonly reason?: string }
   | { readonly kind: "interrupted" }
-  | { readonly kind: "failed"; readonly class: FailureClass; readonly words: string }
+  | {
+      readonly kind: "failed";
+      readonly class: FailureClass;
+      readonly words: string;
+      /** The driver's terminal reason, when it gave one: prompt_too_long, api_error… */
+      readonly reason?: string;
+    }
   | { readonly kind: "usage-limited"; readonly resetsAt: string | Unknown; readonly words?: string }
   | {
       readonly kind: "cut";

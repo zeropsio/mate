@@ -376,7 +376,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     if (terminalReason === "process_exit" || said?.class === "process_exit") {
       return { kind: "cut", cause: "process-exit", words };
     }
-    return { kind: "failed", class: failureClass(options.driver, said?.class, words), words };
+    return {
+      kind: "failed",
+      class: failureClass(options.driver, said?.class, words),
+      words,
+      ...(terminalReason === undefined ? {} : { reason: terminalReason }),
+    };
   };
 
   // ── sessions ──

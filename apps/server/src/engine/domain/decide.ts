@@ -33,6 +33,7 @@ import {
   type RejectionReason,
   type RequestId,
   type RunEnd,
+  type RunEndDetail,
   type RunEndSource,
   type RunId,
   type RunTrigger,
@@ -85,6 +86,26 @@ export const resentText = (text: string): string =>
   `(Sent again after a server restart; it may have reached you already.)\n\n${text}`;
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
+
+/**
+ * What a driver's terminal reason says of a run's end: the context outgrew what the model takes,
+ * or the provider broke the turn off. Any other reason is the agent's own end.
+ */
+const END_DETAILS: Readonly<Record<string, RunEndDetail>> = {
+  prompt_too_long: "overflow",
+  rapid_refill_breaker: "overflow",
+  // An ACP agent's turn that ran out of tokens.
+  max_tokens: "overflow",
+  api_error: "provider-error",
+  model_error: "provider-error",
+  turn_setup_failed: "provider-error",
+};
+
+/** What a run's end carries beyond its kind: its cost, its context, why it broke off. */
+type EndFacts = Pick<
+  Extract<EventDraft, { readonly _tag: "RunEnded" }>,
+  "costUsd" | "contextTokens" | "detail" | "refusal"
+>;
 
 /** The effects `decide` asks for, with the lane they queue in and what a restart does to them. */
 export const EFFECT_KINDS = {
@@ -425,6 +446,7 @@ const endRun = (
   end: RunEnd,
   source: RunEndSource,
   unsent: "refused" | "unknown" = "unknown",
+  facts: EndFacts = {},
 ): void => {
   for (const item of Object.values(b.state.items)) {
     if (item.runId !== run.id || item.body.kind === "work") continue;
@@ -452,7 +474,7 @@ const endRun = (
   if (run.personBody?.delivery.state === "queued") {
     updatePerson(b, run, run.state === "sending" ? unsent : "refused");
   }
-  b.emit({ _tag: "RunEnded", runId: run.id, end, source });
+  b.emit({ _tag: "RunEnded", runId: run.id, end, source, ...facts });
   // Every run that asked for a capture releases it, whatever ended it.
   if (run.prepare !== "none" && !run.maintenance) {
     b.effect("workspace.finish", run.id, 1, run.id, {
@@ -957,12 +979,14 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   switch (effect.kind) {
     case "run.prepare": {
       if (outcome.kind === "failed" && outcome.refused === true) {
-        // Only admission refuses a run, and before anything of it ran.
+        // Only admission refuses a run, and before anything of it ran: its words are the refusal.
         endRun(
           b,
           run,
           { kind: "failed", reason: outcome.reason, next: null },
           "inferred-from-effect",
+          undefined,
+          { detail: "refused", refusal: outcome.reason },
         );
         admitNext(b);
         return;
@@ -1344,7 +1368,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (run.state === "sending") markStarted(b, run, null, signal.turn);
       const live = b.run(run.id);
       const end = turnEnd(live, signal.outcome);
-      endRun(b, live, end, signal.source);
+      endRun(b, live, end, signal.source, undefined, endFacts(signal));
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
       return;
@@ -1443,6 +1467,20 @@ const updateClosed = (b: StepBuilder, closed: ClosedItem, body: ItemBody): void 
   const settled = run?.end == null ? body : settledBody(body, run.end);
   if (contentDigest(settled) === closed.digest) return;
   b.emit({ _tag: "ItemUpdated", runId: closed.runId, itemId: closed.itemId, body: settled });
+};
+
+/** What a turn's end carries onto its run's: its cost, the context it left, why it broke off. */
+const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" }>): EndFacts => {
+  const reason =
+    signal.outcome.kind === "completed" || signal.outcome.kind === "failed"
+      ? signal.outcome.reason
+      : undefined;
+  const detail = reason === undefined ? undefined : END_DETAILS[reason];
+  return {
+    ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
+    ...(signal.contextTokens === undefined ? {} : { contextTokens: signal.contextTokens }),
+    ...(detail === undefined ? {} : { detail }),
+  };
 };
 
 /** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */

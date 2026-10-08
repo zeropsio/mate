@@ -96,6 +96,13 @@ export type ProviderSignal =
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;
       readonly source: TurnEndSource;
+      /** What the turn cost, as its driver reported it. */
+      readonly costUsd?: number;
+      /**
+       * The context the session held at the turn's end: the last gauge reading before it. A gauge
+       * is never an outcome; the run's end only keeps where it stood.
+       */
+      readonly contextTokens?: number;
     }
   | {
       readonly kind: "usage-limit";

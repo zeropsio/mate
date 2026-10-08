@@ -1957,3 +1957,60 @@ describe("decide: every run acts for someone", () => {
     expect(Object.values(state.runs).every((run) => run.principal.kind !== "engine")).toBe(true);
   });
 });
+
+describe("decide: a run's end says what it cost, how full its context was, why it broke off", () => {
+  const endWith = (
+    outcome: TurnOutcome,
+    facts: { readonly costUsd?: number; readonly contextTokens?: number } = {},
+  ): Command => signal({ kind: "turn-ended", turn: T(1), outcome, source: "agent", ...facts });
+  const runEnded = (steps: ReadonlyArray<Step>) =>
+    playAll(steps).log.find((event) => event._tag === "RunEnded");
+
+  it("a turn's end records its cost and the context the conversation held", () => {
+    const end = runEnded([
+      ...running,
+      endWith({ kind: "completed" }, { costUsd: 0.42, contextTokens: 91_000 }),
+    ]);
+    expect(end).toMatchObject({ end: { kind: "completed" }, costUsd: 0.42, contextTokens: 91_000 });
+    expect(end).not.toHaveProperty("detail");
+  });
+
+  it.each([
+    [
+      "the prompt outgrew the context",
+      "overflow",
+      { kind: "completed", reason: "prompt_too_long" },
+    ],
+    [
+      "the context refilled faster than it compacts",
+      "overflow",
+      { kind: "failed", class: "provider", words: "refill", reason: "rapid_refill_breaker" },
+    ],
+    ["an ACP agent ran out of tokens", "overflow", { kind: "completed", reason: "max_tokens" }],
+    [
+      "the provider's API failed",
+      "provider-error",
+      { kind: "failed", class: "provider", words: "API error", reason: "api_error" },
+    ],
+    [
+      "the turn's setup failed",
+      "provider-error",
+      { kind: "failed", class: "unknown", words: "no setup", reason: "turn_setup_failed" },
+    ],
+    ["the agent finished", "no detail", { kind: "completed", reason: "end_turn" }],
+  ] as const)("%s: its end reads %s", (_name, detail, outcome) => {
+    const end = runEnded([...running, endWith(outcome as TurnOutcome)]);
+    if (detail === "no detail") expect(end).not.toHaveProperty("detail");
+    else expect(end).toMatchObject({ detail });
+  });
+
+  it("a run admission refuses ends failed, its refusal in admission's own words", () => {
+    const words = "Ana's Claude login is not yours to use.";
+    const end = runEnded([send(), prepared(1, { kind: "failed", reason: words, refused: true })]);
+    expect(end).toMatchObject({
+      end: { kind: "failed", reason: words },
+      detail: "refused",
+      refusal: words,
+    });
+  });
+});

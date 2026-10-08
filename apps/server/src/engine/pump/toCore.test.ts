@@ -384,6 +384,40 @@ describe("the pump's mapping", () => {
     assert.deepStrictEqual(stepLines(step), [line]);
   });
 
+  it("a turn's end carries its cost and the session's last context reading", () => {
+    const toCore = makeToCore();
+    const ended = (costUsd?: number) =>
+      toCore
+        .step(
+          sig({
+            type: "turn.ended",
+            turn: H1,
+            outcome: { kind: "completed" },
+            source: "agent",
+            ...(costUsd === undefined ? {} : { costUsd }),
+          }),
+          0,
+        )
+        .signals.find((signal) => signal.kind === "turn-ended");
+    const before = ended();
+    toCore.step(sig({ type: "usage.context", usage: { usedTokens: 40_000 } }), 0);
+    toCore.step(sig({ type: "usage.context", usage: { usedTokens: 91_000 } }), 0);
+    assert.deepStrictEqual(
+      { before, after: ended(0.42) },
+      {
+        before: { kind: "turn-ended", turn: H1, outcome: { kind: "completed" }, source: "agent" },
+        after: {
+          kind: "turn-ended",
+          turn: H1,
+          outcome: { kind: "completed" },
+          source: "agent",
+          costUsd: 0.42,
+          contextTokens: 91_000,
+        },
+      },
+    );
+  });
+
   it("a send the driver refused, or took, is the evidence its send waits on", () => {
     const toCore = makeToCore();
     assert.deepStrictEqual(
