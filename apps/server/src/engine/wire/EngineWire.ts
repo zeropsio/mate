@@ -740,7 +740,12 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             answer.kind === "approval"
               ? { decision: answer.decision }
               : answer.kind === "input"
-                ? { answers: answer.answers }
+                ? {
+                    answers: answer.answers,
+                    ...(answer.attachmentsByQuestionId === undefined
+                      ? {}
+                      : { attachmentsByQuestionId: answer.attachmentsByQuestionId }),
+                  }
                 : null,
           summary: input.summary,
         });

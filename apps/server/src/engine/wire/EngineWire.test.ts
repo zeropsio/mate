@@ -5,7 +5,9 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import {
   CommandId,
   MATE_ENGINE_PROTOCOLS,
+  RequestId,
   runId,
+  type ChatImageAttachment,
   type EngineConversationFrame,
   type EngineCursor,
   type EngineRowsFrame,
@@ -24,6 +26,13 @@ import {
 
 const ana: WireCaller = { subject: "ana", environmentId: "env-1", epoch: 4 };
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+const preview = {
+  type: "image",
+  id: "img-q",
+  name: "question-preview.png",
+  mimeType: "image/png",
+  sizeBytes: 2048,
+} as unknown as ChatImageAttachment;
 
 const world = Effect.gen(function* () {
   const w = yield* makeEngineWorld({ driver: "claudeAgent" });
@@ -498,6 +507,44 @@ describe("a client's calls to an engine conversation", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  it.effect(
+    "an answer's pictures reach the agent with its words, and the question's record keeps both",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* send(wire, "Look at the preview");
+          yield* w.settle;
+          const asked = yield* w.agent((agent, thread) => agent.ask(thread, "question"));
+          const [request] = yield* w.requests;
+          const given = {
+            answers: { target: "Inspect the preview shown here" },
+            attachmentsByQuestionId: { target: [preview] },
+          };
+          const result = yield* wire.answer(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("answer-1"),
+              requestId: RequestId.make(request!.request_id),
+              answer: { kind: "input", ...given },
+              summary: "Answered",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          yield* w.settle;
+          assert.include(w.provider.calls, `answer ${asked} with target: question-preview.png`);
+          const [snapshot] = yield* watch(w, wire);
+          assert.strictEqual(snapshot?.type, "snapshot");
+          if (snapshot?.type !== "snapshot") return;
+          assert.deepInclude(snapshot.requests[0]?.answer, given);
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect("a client speaking a protocol this Mate does not serve is routed to update", () =>

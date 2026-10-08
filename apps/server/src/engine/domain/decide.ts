@@ -28,6 +28,7 @@ import {
   type EffectOutcome,
   type ItemBody,
   type Principal,
+  type ProviderUserInputAnswers,
   type RejectionReason,
   type RequestId,
   type RunEnd,
@@ -38,6 +39,7 @@ import {
   type SessionCloseReason,
   type SessionId,
   type TurnHandle,
+  type UserInputAttachments,
   WORK_ENDED,
 } from "@t3tools/contracts";
 
@@ -607,9 +609,30 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
     by: b.envelope.principal,
     summary: command.summary,
     effectId: effect,
+    ...(request.kind === "question" ? questionAnswer(command.answer) : {}),
   });
   b.result = { ...b.result, requestId: request.id, runId: run.id };
   resumeIfAnswered(b, run.id);
+};
+
+/** What a question's record keeps of its answer: the words and pictures, by question id. */
+const questionAnswer = (
+  answer: unknown,
+): Pick<
+  Extract<EventDraft, { _tag: "RequestAnswered" }>,
+  "answers" | "attachmentsByQuestionId"
+> => {
+  if (typeof answer !== "object" || answer === null) return {};
+  const given = answer as {
+    readonly answers?: ProviderUserInputAnswers;
+    readonly attachmentsByQuestionId?: UserInputAttachments;
+  };
+  return {
+    ...(given.answers === undefined ? {} : { answers: given.answers }),
+    ...(given.attachmentsByQuestionId === undefined
+      ? {}
+      : { attachmentsByQuestionId: given.attachmentsByQuestionId }),
+  };
 };
 
 const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {

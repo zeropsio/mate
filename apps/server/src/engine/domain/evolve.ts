@@ -322,6 +322,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answerable: event.answerable,
             principal: event.principal,
             answers: 0,
+            kind: event.ask.kind,
           },
         },
       };
@@ -340,7 +341,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
               },
       };
     }
-    case "RequestReopened":
+    case "RequestReopened": {
+      const answered = Object.values(state.answering).find((open) => open.id === event.requestId);
       return {
         ...state,
         requests: {
@@ -352,12 +354,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answerable: true,
             principal: event.principal,
             answers: event.answers,
+            ...(answered?.kind === undefined ? {} : { kind: answered.kind }),
           },
         },
         answering: Object.fromEntries(
           Object.entries(state.answering).filter(([, open]) => open.id !== event.requestId),
         ),
       };
+    }
     case "RequestClosed":
       return {
         ...state,

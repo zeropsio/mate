@@ -13,6 +13,7 @@ import type {
   ItemBody,
   ItemId,
   Principal,
+  RequestAsk,
   RequestId,
   RunEnd,
   RunEndSource,
@@ -96,6 +97,8 @@ export interface OpenRequest {
   readonly principal: Principal;
   /** Answers given so far: one the provider failed to take is given again as a new effect. */
   readonly answers: number;
+  /** What it asks; absent in a snapshot taken before it was kept. */
+  readonly kind?: RequestAsk["kind"];
 }
 
 export interface ArmedWake {

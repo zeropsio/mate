@@ -1137,6 +1137,58 @@ describe("decide: a person's message never reads queued once its run has ended",
   });
 });
 
+describe("decide: a question's answer carries its pictures", () => {
+  const preview = {
+    type: "image",
+    id: "img-q",
+    name: "question-preview.png",
+    mimeType: "image/png",
+    sizeBytes: 2048,
+  } as unknown as ChatImageAttachment;
+  const asked = signal({
+    kind: "request-opened",
+    key: "q1",
+    ask: { kind: "question", questions: [], dismissible: false },
+  });
+  const given = {
+    answers: { target: "Inspect the preview shown here" },
+    attachmentsByQuestionId: { target: [preview] },
+  };
+  const answer = (said: unknown, summary = "Answered"): Command => ({
+    _tag: "Answer",
+    requestId: requestId(r(1), 1),
+    answer: said,
+    summary,
+  });
+  it("the pictures go to the agent with the words, by their asset reference", () => {
+    const scene = play([...running, asked, answer(given)]);
+    expect(scene.effects).toMatchObject([{ kind: "provider.respond", payload: { answer: given } }]);
+  });
+  it("the question's record keeps what was answered and the pictures", () => {
+    const scene = play([...running, asked, answer(given)]);
+    expect(scene.events.find((e) => e._tag === "RequestAnswered")).toMatchObject(given);
+  });
+  it("an approval's record keeps its summary alone", () => {
+    const scene = play([...waiting, answer({ decision: "accept" }, "Approved")]);
+    const answered = scene.events.find((e) => e._tag === "RequestAnswered");
+    expect(answered).toMatchObject({ summary: "Approved" });
+    expect(answered).not.toHaveProperty("answers");
+    expect(answered).not.toHaveProperty("attachmentsByQuestionId");
+  });
+  it("an answer with pictures the agent failed to take opens the question again", () => {
+    const { state, log } = playAll([
+      ...proofRunning,
+      asked,
+      answer(given),
+      settled(requestId(r(1), 1), "provider.respond", { kind: "failed", reason: "timeout" }),
+    ]);
+    expect(log.filter((e) => e._tag === "RequestReopened")).toMatchObject([
+      { requestId: requestId(r(1), 1) },
+    ]);
+    expect(Object.keys(state.requests)).toEqual([requestId(r(1), 1)]);
+  });
+});
+
 describe("decide: an answer the provider refused", () => {
   it("a failed answer leaves the run waiting on its request", () => {
     const { state } = playAll([

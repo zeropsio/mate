@@ -256,7 +256,14 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }) as never,
       respondToUserInput: (input) =>
         Effect.gen(function* () {
-          calls.push(`answer ${input.requestId}`);
+          const pictures = Object.entries(input.attachmentsByQuestionId ?? {}).flatMap(
+            ([question, attached]) => attached.map((file) => `${question}: ${file.name}`),
+          );
+          calls.push(
+            pictures.length === 0
+              ? `answer ${input.requestId}`
+              : `answer ${input.requestId} with ${pictures.join(", ")}`,
+          );
           const session = yield* sessionOf(input.threadId);
           if (!session.requests.delete(input.requestId)) {
             return yield* Effect.fail(
