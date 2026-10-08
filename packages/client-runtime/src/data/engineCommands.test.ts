@@ -189,6 +189,25 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
+  // Catches plan mode dropped: a steer carries no interaction mode, and the working run keeps its own.
+  it.effect("a plan sent while the run works goes as the next run, in plan mode", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+          r.v1,
+        ),
+      );
+      expect(r.calls).toMatchObject([
+        { kind: "send", commandId: "message-7", interactionMode: "plan" },
+      ]);
+    }),
+  );
+
   // Catches a steer racing the run's end: the engine refuses it, and the person saw "Nothing is
   // running to stop." for a message. V1 starts a new turn with it.
   it.effect.each([
