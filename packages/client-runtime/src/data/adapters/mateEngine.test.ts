@@ -567,6 +567,48 @@ describe("an engine conversation's older pages", () => {
     }),
   );
 
+  it.live(
+    "draws every group its window holds whole: the person's words and the agent's answer",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        r.conversations.hold(ada);
+        yield* settle;
+        const ordinals = [3, 4, 5, 6];
+        yield* r.send(
+          snapshot({
+            runs: ordinals.map((ordinal) =>
+              run(ordinal, 2, {
+                summary: {
+                  items: 2,
+                  calls: {},
+                  answerItemId: `thread-ada/r/${ordinal}/i/2`,
+                  lastItemSeq: null,
+                },
+              }),
+            ),
+            items: ordinals.flatMap((ordinal) => [
+              personItem(`thread-ada/r/${ordinal}`, 1, `Request ${ordinal}`, {
+                seq: ordinal * 10 + 1,
+                rev: ordinal * 10 + 1,
+              }),
+              noteItem(`thread-ada/r/${ordinal}`, 2, `Answer ${ordinal}`, {
+                seq: ordinal * 10 + 2,
+                rev: ordinal * 10 + 2,
+              }),
+            ]),
+            window: { oldestOrdinal: 3, earlier: true },
+          }),
+          synchronized(12),
+        );
+        expect(r.pages).toEqual([]);
+        expect(Option.getOrNull(drawn(r).data)?.messages.map((message) => message.text)).toEqual(
+          ordinals.flatMap((ordinal) => [`Request ${ordinal}`, `Answer ${ordinal}`]),
+        );
+        r.close();
+      }),
+  );
+
   it.live("offers nothing earlier when its window starts at the first run", () =>
     Effect.gen(function* () {
       const r = rig();
