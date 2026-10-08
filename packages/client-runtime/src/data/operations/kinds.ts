@@ -5,6 +5,7 @@ import { mateWriteFile } from "./mateWriteFile.ts";
 import { mateAction } from "./mateActions.ts";
 import { mateUpdate } from "./mateUpdate.ts";
 import { mateSendTurn } from "./mateSendTurn.ts";
+import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
 /**
  * The operation kinds this account submits. A new kind is one module beside these and one line
  * here.
@@ -58,6 +59,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   ...WORKSPACE_MUTATION_KINDS,
   mateWriteFile,
   mateSendTurn,
+  ...MATE_ENGINE_KINDS,
   mateAction,
   throwawaySweep,
   mateRestart,
