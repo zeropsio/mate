@@ -275,6 +275,8 @@ export interface CrewWorld {
   readonly agentsNotLive: (instanceIds: ReadonlySet<string>) => Effect.Effect<void>;
   /** How a crewmate's conversation stood when the server went down (set before a restart). */
   readonly chatWas: (chat: CrewChat, was: CrewChatWas) => Effect.Effect<void>;
+  /** The task last moved at `at`: it has waited since, as far as the crew can tell. */
+  readonly taskLastMovedAt: (taskId: string, at: string) => Effect.Effect<void>;
   /** Holds the crew's next such step before it runs. */
   readonly hold: (step: CrewHoldStep) => Effect.Effect<CrewHold>;
 
@@ -545,6 +547,15 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
           shell,
         ]);
       }),
+    taskLastMovedAt: (taskId, at) =>
+      run(
+        Effect.gen(function* () {
+          const store = yield* CrewStore;
+          const task = (yield* store.assignments(CREW_ID)).find((row) => row.assignment === taskId);
+          if (task === undefined) return yield* Effect.die(`no task ${taskId}`);
+          yield* store.putAssignment({ ...task, updatedAt: at });
+        }).pipe(Effect.orDie),
+      ),
     hold: (step) => fakes.holdSsh(holdMatcher(step)),
     snapshot: snapshotWhere(() => true),
     snapshotWhere,
@@ -652,6 +663,15 @@ export const v1Journey = <E>(
     | ReadonlyArray<(world: V1CrewWorld) => Effect.Effect<void, E>>,
   options: CrewJourneyOptions = {},
 ): Effect.Effect<void> => v1Phases(typeof phases === "function" ? [phases] : phases, options);
+
+/**
+ * A check of V1's own mechanism inside a journey every world plays (an operation's record): it runs
+ * on the V1 world, and the other worlds have no such mechanism to check.
+ */
+export const onV1 = (
+  world: CrewWorld,
+  check: (world: V1CrewWorld) => Effect.Effect<void>,
+): Effect.Effect<void> => ("v1" in world ? check(world as V1CrewWorld) : Effect.void);
 
 /** A test of a `v1Journey`: it runs where the journeys run on V1, and is skipped elsewhere. */
 export const itV1 = it.live.skipIf(CREW_WORLD !== "v1");
