@@ -238,7 +238,7 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutage } from "../zerops/hqNavigation";
+import { hqOutage, useHqServiceUrl } from "../zerops/hqNavigation";
 import { useAccountDataOptional } from "../zerops/ZeropsAccountData";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -1941,6 +1941,7 @@ export default function Sidebar() {
     timestampFormat,
     zeropsNowMs,
   );
+  const hqServiceUrl = useHqServiceUrl();
   const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
@@ -3922,6 +3923,7 @@ export default function Sidebar() {
         status={
           zeropsHqOutage === null ? undefined : (
             <SidebarHqStatus
+              serviceUrl={hqServiceUrl}
               kind={zeropsHqOutage.kind}
               line={zeropsHqOutage.line}
               onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}

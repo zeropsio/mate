@@ -610,12 +610,15 @@ describe("SidebarZeropsTree", () => {
   it.each([
     ["syncing", false, null, false],
     ["syncing", true, null, false],
-    ["last-known", false, "HQ is not reachable — showing what it last said", false],
-    ["last-known", true, "HQ is not reachable — showing what it last said", true],
+    ["last-known", false, "HQ is not reachable since 14:05 — showing what it last said.", false],
+    ["last-known", true, "HQ is not reachable since 14:05 — showing what it last said.", true],
     ["unavailable", false, "HQ unavailable", false],
     ["unavailable", true, "HQ unavailable", true],
   ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {
-    const line = "HQ is not reachable since 14:05 — showing what it last said.";
+    const line =
+      kind === "unavailable"
+        ? "HQ unavailable"
+        : "HQ is not reachable since 14:05 — showing what it last said.";
     const html = renderToStaticMarkup(
       <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
     );
@@ -4371,4 +4374,44 @@ it("the tree retains its order on a timestamp-only delivery and each row reads o
   // Click selection still use the candidate the row actually represents.
   act(() => rows()[1]!.props.onClick());
   expect(onSelect).toHaveBeenLastCalledWith(b);
+});
+
+it("HQ's outage header exposes its source time and service destination", () => {
+  const html = renderToStaticMarkup(
+    <SidebarHqStatus
+      kind="last-known"
+      line="HQ is not reachable since 10:36 — showing what it last said."
+      serviceUrl="https://app.zerops.io/service-stack/hq-core"
+      onAgain={() => {}}
+    />,
+  );
+  expect(html).toContain("since 10:36");
+  expect(html).toContain('href="https://app.zerops.io/service-stack/hq-core"');
+  expect(html).toContain("Open in Zerops");
+  expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
+});
+
+it("a retained Mate line keeps its row clickable and offers Zerops separately", () => {
+  const activity: ZeropsAgentActivity = {
+    threadId: ThreadId.make("thread-retained"),
+    subject: undefined,
+    snippet: undefined,
+    pausedUntil: undefined,
+    task: undefined,
+    kind: "idle",
+    status: null,
+    face: "sleep",
+    at: "2026-10-08T08:20:00Z",
+    unread: false,
+    threadKey: "env:thread-retained",
+    remembered: true,
+    lastKnown: { kind: "working", at: "2026-10-08T08:20:00Z", pausedUntil: undefined },
+  };
+  const html = render([CRM_DEV], { getActivity: () => activity });
+  expect(html).toContain("Last known");
+  expect(html).toContain("was working");
+  expect(html).toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*Last known/);
+  expect(html).toContain('href="https://app.zerops.io/project/crm-dev"');
+  expect(html).toContain("Open in Zerops");
+  expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
 });

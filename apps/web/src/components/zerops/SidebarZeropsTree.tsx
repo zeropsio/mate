@@ -145,14 +145,15 @@ import {
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
-import { HQ_LAST_KNOWN, type HqOutage } from "~/zerops/hqNavigation";
+import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "~/zerops/mateComing";
 import { mateRowCues } from "~/zerops/mateMoments.logic";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useMateOfflineSince, useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
@@ -1852,7 +1853,9 @@ export function SidebarHqStatus({
   kind,
   line,
   onAgain,
+  serviceUrl,
 }: {
+  readonly serviceUrl?: string | undefined;
   readonly kind: HqOutage["kind"];
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
@@ -1861,41 +1864,53 @@ export function SidebarHqStatus({
   // Words give way to the header's other members and wrap; the spinner keeps its size.
   const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          again === undefined ? (
-            <span
-              className={cn("inline-flex items-center", fit)}
-              data-zerops-surface="sidebar-hq-outage"
-              role="status"
-            />
+    <span className="flex min-w-0 flex-col items-start gap-1">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            again === undefined ? (
+              <span
+                className={cn("inline-flex items-center", fit)}
+                data-zerops-surface="sidebar-hq-outage"
+                role="status"
+              />
+            ) : (
+              <button
+                className={cn("inline-flex cursor-pointer items-center", fit)}
+                data-zerops-surface="sidebar-hq-outage"
+                onClick={again}
+                type="button"
+              />
+            )
+          }
+        >
+          {kind === "syncing" ? (
+            <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
           ) : (
-            <button
-              className={cn("inline-flex cursor-pointer items-center", fit)}
-              data-zerops-surface="sidebar-hq-outage"
-              onClick={again}
-              type="button"
-            />
-          )
-        }
-      >
-        {kind === "syncing" ? (
-          <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
-          >
-            {kind === "refused" ? line : kind === "last-known" ? HQ_LAST_KNOWN : "HQ unavailable"}
-          </span>
-        )}
-        <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        {again === undefined ? line : `${line} Press to try again.`}
-      </TooltipPopup>
-    </Tooltip>
+            <span
+              aria-hidden="true"
+              className="line-clamp-2 text-left text-xs leading-tight text-sidebar-muted-foreground"
+            >
+              {line}
+            </span>
+          )}
+          <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          {again === undefined ? line : `${line} Press to try again.`}
+        </TooltipPopup>
+      </Tooltip>
+      {kind === "syncing" || serviceUrl === undefined ? null : (
+        <a
+          className="text-xs text-sidebar-muted-foreground underline"
+          href={serviceUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open in Zerops
+        </a>
+      )}
+    </span>
   );
 }
 
@@ -2633,9 +2648,12 @@ function MateRowView<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
+  const offlineSince = useMateOfflineSince(candidate.project.id);
   const read = mateRowReading({
     name: projectNameInApp(candidate.project),
     connected: up,
+    offlineSince,
+    timestampFormat,
     activity,
     reviewWaits,
     mine: hqPeople?.waitsOnViewer === true,
@@ -2651,6 +2669,8 @@ function MateRowView<T extends RosterCandidate>({
         : read;
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
+  const retainedReply =
+    view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
   // Its project access detail is held while the row is drawn with its menu (`useDrawnProjectAccess`).
   const drawn = actions?.drawn;
@@ -3013,7 +3033,7 @@ function MateRowView<T extends RosterCandidate>({
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {outsideHq ? null : status !== null ? (
+          {outsideHq ? null : status !== null && retainedReply === undefined ? (
             <span className="flex min-w-0 items-center gap-2">
               <MateStatusMarker mateName={name} status={status} timestampFormat={timestampFormat} />
               {status.kind === "limit" || view.reply === undefined ? null : (
@@ -3027,6 +3047,18 @@ function MateRowView<T extends RosterCandidate>({
           {finishing === undefined ? null : <MateFinishingLine words={finishing} />}
         </span>
       </button>
+      {outsideHq || retainedReply === undefined ? null : (
+        <span className="absolute end-2 bottom-2.5">
+          <a
+            className="shrink-0 text-xs text-muted-foreground underline"
+            href={zeropsProjectUrl(candidate.project.id)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open in Zerops
+          </a>
+        </span>
+      )}
       {actions === undefined ? null : (
         <span
           className={cn(
@@ -3432,6 +3464,7 @@ function MateReply({
     <span
       className={cn(
         "truncate text-line leading-4.5",
+        reply.lastKnown === true && "pe-24",
         REPLY_TONE_CLASS[reply.tone],
         wordsChanged && "animate-words-in motion-reduce:animate-none",
       )}

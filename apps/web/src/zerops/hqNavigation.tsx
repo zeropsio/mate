@@ -13,9 +13,11 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
 
 import { formatDayAwareTimestamp } from "../timestampFormat";
+import { HQ_SERVICE } from "@t3tools/client-runtime/zerops/hq";
+import { serviceDashboardUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { accountHqApi, useAccountHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
-import { useAccountDataOptional } from "./ZeropsAccountData";
+import { useAccountDataOptional, useProjectServices } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** How the menu says HQ's standing: `null` while it answers, or before anything is known. */
@@ -30,9 +32,6 @@ export interface HqOutage {
   /** Whether the person's *Try again* is offered: HQ refused, or its retries are capped. */
   readonly again: boolean;
 }
-
-/** What the menu's header says, in words, while what HQ said is not current. */
-export const HQ_LAST_KNOWN = "HQ is not reachable — showing what it last said";
 
 /**
  * What the menu says while HQ does not answer (SPEC §6.2.3). Once HQ answered, any pause of its
@@ -120,4 +119,13 @@ export function ZeropsHqNavigation(): null {
   useEffect(() => () => showHq?.(null), [showHq]);
 
   return null;
+}
+
+/** The official HQ's Core service, from the account's existing service facts. */
+export function useHqServiceUrl(): string | undefined {
+  const orgId = useZeropsSession().activeOrganization?.id;
+  const hq = useAccountHq(orgId).hq;
+  const { services } = useProjectServices(hq.kind === "official" ? hq.projectId : null);
+  const service = services?.find((entry) => entry.name === HQ_SERVICE && entry.isSystem !== true);
+  return service === undefined ? undefined : serviceDashboardUrl(service.id);
 }

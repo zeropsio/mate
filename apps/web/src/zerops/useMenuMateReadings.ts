@@ -227,3 +227,9 @@ export function useMateComingOf(
 export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
   return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
 }
+
+/** HQ transport loss is not evidence that a Mate went offline. */
+export function useMateOfflineSince(projectId: string | null | undefined): string | undefined {
+  const read = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
+  return read.live && read.presence?.online === false ? read.presence.since : undefined;
+}

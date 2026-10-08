@@ -1,6 +1,6 @@
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
-import { useLastKnownMateWords } from "../zerops/useMenuMateReadings";
+import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { recoveryNotice } from "../zerops/mateRecovery.logic";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
@@ -192,14 +192,19 @@ function SignedInRootRouteView() {
         : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
-  // Seconds tick only while the words count down to the link's next try.
-  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
+  // The existing seconds clock counts retry waits and elapsed lifecycle work.
   const recovery = useMateRecovery(
     gateInputs.projectId,
     gateInputs.serviceId,
     linkReachability?.kind !== "ready",
   );
-  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
+  const nowMs = useSecondsNowMs(
+    reachabilityCountsDown(linkReachability) ||
+      ((recovery.process?.status === "RUNNING" || recovery.process?.status === "PENDING") &&
+        (recovery.process.actionName === "stack.restart" ||
+          recovery.process.actionName === "stack.start")),
+  );
+  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName, nowMs);
   const projectUnavailable =
     recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
   const gatePhrase =
@@ -211,6 +216,8 @@ function SignedInRootRouteView() {
       (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined),
     speakingName,
   );
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const offlineSince = useMateOfflineSince(gateInputs.projectId);
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
     speaksFor !== null &&
@@ -221,6 +228,8 @@ function SignedInRootRouteView() {
           reachability: linkReachability,
           recovery,
           lastKnown,
+          offlineSince,
+          timestampFormat,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
           mateName: speakingName,

@@ -239,3 +239,22 @@ it("a failed restart separates its cause and Details while retaining last-known 
     actions: ["restart", "open-in-zerops"],
   });
 });
+
+it("uses the offline source time without turning retained work time into outage onset", () => {
+  expect(
+    mateNoticeVoice({
+      reachability: { kind: "not-answering", overdue: false },
+      conversationShown: false,
+      nowMs: Date.parse("2026-10-08T11:00:00Z"),
+      mateName: "Eddy",
+      offlineSince: new Date().toISOString(),
+      timestampFormat: "24-hour",
+      lastKnown: "Last known 09:20: Eddy was working.",
+    }),
+  ).toMatchObject({
+    headline: expect.stringContaining("Eddy isn't answering since"),
+    secondary: "Last known 09:20: Eddy was working.",
+    actions: ["try-now", "open-in-zerops"],
+  });
+});
+

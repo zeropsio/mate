@@ -19,6 +19,7 @@ import {
   useMateConversationsRead,
   useMateRowActivity,
   useLastKnownMateWords,
+  useMateOfflineSince,
 } from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
@@ -200,3 +201,20 @@ describe("useComingClock — a coming-up line moves on at its deadline", () => {
     expect(lines.at(-1)).toBeUndefined();
   });
 });
+
+it.each([
+  [true, false, AT],
+  [true, true, undefined],
+  [false, false, undefined],
+  [false, true, undefined],
+] as const)(
+  "Mate outage time follows offline evidence, not HQ transport loss (HQ live %s, Mate online %s)",
+  (live, online, since) => {
+    const registry = told(VERA);
+    mountHqNavigation(registry, "org-acme", {
+      live,
+      mates: { "p-vera": { ...VERA, presence: { ...VERA.presence, online } } },
+    });
+    expect(mountedOver(registry, () => useMateOfflineSince("p-vera"))).toBe(since);
+  },
+);
