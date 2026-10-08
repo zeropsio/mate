@@ -183,7 +183,7 @@ const checkPicture = (
   ratio: 1.6,
 });
 
-const filePicture = (name: string): OutcomePicture => ({
+const filePicture = (name: string): Extract<OutcomePicture, { kind: "file" }> => ({
   kind: "file",
   key: `file:/var/www/app/.shots/${name}`,
   path: `/var/www/app/.shots/${name}`,
@@ -501,7 +501,17 @@ describe("TurnReport's pictures", () => {
     ]);
   });
 
-  it("takes a file's shape as it loads when its address came without its size", () => {
+  it("reserves a captured file's known shape while its bytes are unread", () => {
+    workspace.files = new Map();
+    const [tile] = tilesOf(
+      renderPictures([
+        { ...filePicture("home-mobile.png"), dimensions: { width: 1179, height: 2556 } },
+      ]),
+    );
+    expect(tile!.props.style.aspectRatio).toBeCloseTo(1179 / 2556, 6);
+  });
+
+  it("keeps a file's reserved shape when its address came without its size", () => {
     workspace.files = new Map([
       ["/var/www/app/.shots/home-mobile.svg", { _tag: "Success", url: served("home-mobile.svg") }],
     ]);
@@ -509,8 +519,10 @@ describe("TurnReport's pictures", () => {
     const [tile] = tilesOf(renderer);
     expect(tile!.props.style.aspectRatio).toBe(1.6);
     const picture = tile!.find((node) => node.type === "img");
-    act(() => picture.props.onLoad({ currentTarget: { naturalWidth: 1179, naturalHeight: 2556 } }));
-    expect(tilesOf(renderer)[0]!.props.style.aspectRatio).toBeCloseTo(1179 / 2556, 6);
+    act(() =>
+      picture.props.onLoad?.({ currentTarget: { naturalWidth: 1179, naturalHeight: 2556 } }),
+    );
+    expect(tilesOf(renderer)[0]!.props.style.aspectRatio).toBe(1.6);
   });
 
   it("is the whole result when the run left no row", () => {

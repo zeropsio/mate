@@ -1,6 +1,6 @@
 import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { usageLimitProvider } from "./noticeWords";
+import { usageLimitProvider } from "./providerLimit.logic";
 
 export type MateStatus = {
   readonly kind: "limit" | "sign-in" | "answer" | "broken";

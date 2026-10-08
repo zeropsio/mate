@@ -125,6 +125,7 @@ const harness = Effect.fn("harness")(function* () {
   const journal = yield* Journal.WorkspaceCaptureJournal;
   let failInsert = false;
   let failTurnLookup = false;
+  let insertGate: { entered: Deferred.Deferred<void>; open: Deferred.Deferred<void> } | undefined;
   const faultedJournal = Journal.WorkspaceCaptureJournal.of({
     ...journal,
     getByTurn: (threadId, turnId) =>
@@ -136,13 +137,17 @@ const harness = Effect.fn("harness")(function* () {
           : journal.getByTurn(threadId, turnId),
       ),
     insert: (run) =>
-      Effect.suspend(() =>
-        failInsert
-          ? Effect.fail(
-              new Journal.CaptureJournalError({ cause: new Error("journal write unavailable") }),
-            )
-          : journal.insert(run),
-      ),
+      Effect.gen(function* () {
+        if (insertGate !== undefined) {
+          yield* Deferred.succeed(insertGate.entered, undefined);
+          yield* Deferred.await(insertGate.open);
+        }
+        return failInsert
+          ? yield* new Journal.CaptureJournalError({
+              cause: new Error("journal write unavailable"),
+            })
+          : yield* journal.insert(run);
+      }),
   });
   const build = History.make.pipe(
     Effect.provideService(CheckpointStore, store),
@@ -165,6 +170,13 @@ const harness = Effect.fn("harness")(function* () {
     afterCaptureEntered,
     failJournalInsert: (value: boolean) => {
       failInsert = value;
+    },
+    /** Holds the journal's next inserts at the door until `open` completes. */
+    holdJournalInsert: (gate: {
+      entered: Deferred.Deferred<void>;
+      open: Deferred.Deferred<void>;
+    }) => {
+      insertGate = gate;
     },
     failJournalTurnLookup: (value: boolean) => {
       failTurnLookup = value;
@@ -192,6 +204,27 @@ describe("Workspace history", () => {
       yield* h.history.release(threadId, undefined, "request");
       expect(yield* h.history.gapsOf(threadId, "request")).toEqual([]);
     }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect(
+    "a run released while its capture runs leaves no reason behind when the capture then breaks",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        const gate = { entered: yield* Deferred.make<void>(), open: yield* Deferred.make<void>() };
+        h.holdJournalInsert(gate);
+        h.failJournalInsert(true);
+        const released = yield* Effect.forkChild(h.prepare("released"));
+        yield* Deferred.await(gate.entered);
+        yield* h.history.release(threadId, undefined, "released");
+        yield* Deferred.succeed(gate.open, undefined);
+        yield* Fiber.join(released);
+        expect(yield* h.history.gapsOf(threadId, "released")).toEqual([]);
+        yield* h.prepare("held");
+        expect((yield* h.history.gapsOf(threadId, "held")).map((gap) => gap.service)).toEqual([
+          "workspace",
+        ]);
+      }).pipe(Effect.provide(testLayer)),
   );
 
   it.effect("names each service a run's capture could not snapshot, and why", () =>

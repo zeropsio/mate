@@ -2,6 +2,8 @@
 
 A Mate with `capabilities.contentAddressedImages` retains still-image bytes when a message, tool
 result or upload is produced, before provider fitting and before the temporary source can disappear.
+Native file views capture their input or item path at the tool-event boundary. Their durable
+reference includes the original dimensions, so cards reserve the right shape before reading bytes.
 An occurrence records its conversation owner, digest, dimensions, name and capture result. Messages
 and tool cards carry these references, rather than filesystem paths or inline image bodies. Reading
 an older conversation backfills any bytes still available; bytes already lost cannot be recovered.
@@ -15,13 +17,16 @@ asset volume and migration remain separate work.
 A drawn slot demands one lossless preview at its contained pixel size and display DPR, clamped to
 the original. Concurrent equal demands share encoding. Nearby sufficient previews are reused.
 Lossless WebP is chosen when supported and smaller than PNG. Opening the selected image reads its
-original, retains the preview while loading, and offers an original download. Other gallery
-originals are not prefetched.
+original, retains the scaled preview in the final viewer box until the original decodes, and offers
+an original download. Hover, focus and press express intent to read that original; unselected
+gallery originals have no byte demand. The client controls near-viewport byte demand once; downloaded
+Blob images decode eagerly, without a second native lazy-loading gate.
 
 The account data layer owns reads, Blob facts, receipts and retry policy. Mounted presentations own
 Blob URLs and revoke them on release. No image facts enter browser storage. Transport outages keep
 known facts; uncertain access withholds bytes; authoritative denial purges them. A definitive
-refusal requires an explicit retry. The existing Mate authorization header protects the stable
+refusal stops recovery. Permanent missing-source and codec failures show one line without a retry;
+transient failures offer a compact retry control in the reserved box. The existing Mate authorization header protects the stable
 `/api/assets/objects/<digest>/<original|preview>` route, resolved beneath the environment base path.
 Session and owner checks run before GET, HEAD, validators and ranges. Responses use a strong digest
 ETag and `Cache-Control: private, max-age=31536000, immutable`. The hosted client reuses

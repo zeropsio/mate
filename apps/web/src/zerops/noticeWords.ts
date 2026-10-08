@@ -1,20 +1,7 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { signedOutAgent } from "@t3tools/client-runtime/zerops";
-
-/** Expected provider pauses use the same words in the menu and conversation. */
-export function usageLimitProvider(error: string | null | undefined): string | null {
-  if (!error) return null;
-  const matched =
-    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
-      error.trim(),
-    );
-  if (matched)
-    return matched[1]!.toLowerCase() === "coding agent"
-      ? "coding agent"
-      : matched[1]!.replace(/ AI$/i, "");
-  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim()) ? "coding agent" : null;
-}
+import { usageLimitProvider } from "./providerLimit.logic";
 
 export function usageLimitWords(provider: string, reset?: string, mateName = "The Mate"): string {
   const name = provider === "coding agent" ? "coding agent's" : provider;

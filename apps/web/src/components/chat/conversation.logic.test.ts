@@ -2567,6 +2567,28 @@ describe("deriveOutcome", () => {
     expect(readPictures(outcome?.pictures ?? [])).toEqual(read);
   });
 
+  it("keeps a captured screenshot's filename and dimensions in its result card", () => {
+    const outcome = deriveOutcome({
+      turn: structure(
+        [
+          user("m0", 0),
+          look("v1", "t1", 3, "mate-asset:shot", {
+            viewedImageName: "home-mobile.png",
+            viewedImageDimensions: { width: 1179, height: 2556 },
+          }),
+          assistant("a1", "t1", 9),
+        ],
+        settled,
+      ).turns[0]!,
+      landed: [],
+      diffs: [],
+    });
+    expect(outcome?.pictures[0]).toMatchObject({
+      name: "home-mobile.png",
+      dimensions: { width: 1179, height: 2556 },
+    });
+  });
+
   // A check's picture carries its shape, so its tile holds it before a byte
   // of the picture has come; a file's is read with its address.
   it("carries each check's picture's shape", () => {

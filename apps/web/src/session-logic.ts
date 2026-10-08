@@ -1,4 +1,4 @@
-import { usageLimitProvider } from "./zerops/noticeWords";
+import { usageLimitProvider } from "./zerops/providerLimit.logic";
 import {
   requestKindFromRequestType,
   type PendingApproval,
@@ -217,6 +217,8 @@ export interface WorkLogEntry {
   label: string;
   detail?: string;
   viewedImagePath?: string;
+  viewedImageName?: string;
+  viewedImageDimensions?: { readonly width: number; readonly height: number };
   command?: string;
   rawCommand?: string;
   changedFiles?: ReadonlyArray<string>;
@@ -1276,6 +1278,18 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   }
   if (viewedImagePath) {
     entry.viewedImagePath = viewedImagePath;
+    const imageName = asTrimmedString(asRecord(payload?.data)?.imageName);
+    if (imageName) entry.viewedImageName = imageName;
+    const dimensions = asRecord(asRecord(payload?.data)?.imageDimensions);
+    if (
+      typeof dimensions?.width === "number" &&
+      dimensions.width > 0 &&
+      Number.isFinite(dimensions.width) &&
+      typeof dimensions.height === "number" &&
+      dimensions.height > 0 &&
+      Number.isFinite(dimensions.height)
+    )
+      entry.viewedImageDimensions = { width: dimensions.width, height: dimensions.height };
   }
   if (commandPreview.command) {
     entry.command = commandPreview.command;
@@ -1565,6 +1579,8 @@ function mergeDerivedWorkLogEntries(
   const changedFiles = mergeChangedFiles(previous.changedFiles, next.changedFiles);
   const detail = next.detail ?? previous.detail;
   const viewedImagePath = next.viewedImagePath ?? previous.viewedImagePath;
+  const viewedImageDimensions = next.viewedImageDimensions ?? previous.viewedImageDimensions;
+  const viewedImageName = next.viewedImageName ?? previous.viewedImageName;
   const command = next.command ?? previous.command;
   const rawCommand = next.rawCommand ?? previous.rawCommand;
   const toolTitle = next.toolTitle ?? previous.toolTitle;
@@ -1592,6 +1608,8 @@ function mergeDerivedWorkLogEntries(
     updatedAt: next.createdAt,
     ...(detail ? { detail } : {}),
     ...(viewedImagePath ? { viewedImagePath } : {}),
+    ...(viewedImageDimensions ? { viewedImageDimensions } : {}),
+    ...(viewedImageName ? { viewedImageName } : {}),
     ...(command ? { command } : {}),
     ...(rawCommand ? { rawCommand } : {}),
     ...(changedFiles.length > 0 ? { changedFiles } : {}),

@@ -15,6 +15,7 @@
  * 40 ms apart, when the run finished while the person watched (T5); read
  * later, they are simply there.
  */
+import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
@@ -26,7 +27,6 @@ import {
   useState,
   type AnimationEvent,
   type CSSProperties,
-  type SyntheticEvent,
 } from "react";
 
 import { useAssetUrlStates, type AssetUrlState } from "../../assets/assetUrls";
@@ -194,6 +194,7 @@ function PictureTile({
   /** Opens the viewer here; null where nothing here can be opened yet. */
   readonly onOpen: (() => void) | null;
 }) {
+  const intent = useImageIntent(state._tag === "Success" ? state.url : undefined);
   const [failedUrl, setFailedUrl] = useState<string>();
   const unavailable =
     state._tag === "Failure" || (state._tag === "Success" && failedUrl === state.url);
@@ -203,19 +204,13 @@ function PictureTile({
     (more > 0 ? `${picture.label}, and ${more} more` : picture.label) +
     (unavailable ? `. Image unavailable${reason ? ` · ${reason}` : ""}` : "");
   const failed = (picture.kind === "check" && picture.failed) || undefined;
-  const size = state._tag === "Success" ? state.imageDimensions : undefined;
-  const known =
-    picture.kind === "check" ? picture.ratio : size === undefined ? null : size.width / size.height;
-  // A file whose address came without its size takes its shape as it loads.
-  const [learned, setLearned] = useState<number | null>(null);
-  const shape: CSSProperties = { aspectRatio: tileRatio(known ?? learned) };
-  const learn =
-    known === null
-      ? (event: SyntheticEvent<HTMLImageElement>) => {
-          const { naturalWidth, naturalHeight } = event.currentTarget;
-          if (naturalWidth > 0 && naturalHeight > 0) setLearned(naturalWidth / naturalHeight);
-        }
+  const size =
+    picture.kind === "file"
+      ? (picture.dimensions ?? (state._tag === "Success" ? state.imageDimensions : undefined))
       : undefined;
+  const known = picture.kind === "check" ? picture.ratio : size ? size.width / size.height : null;
+  // A legacy file without dimensions keeps its reserved shape after decode.
+  const shape: CSSProperties = { aspectRatio: tileRatio(known) };
   return (
     <Tooltip>
       <TooltipTrigger
@@ -235,6 +230,7 @@ function PictureTile({
               className="run-result-tile"
               data-failed={failed}
               data-result-picture={status}
+              {...intent}
               onClick={onOpen}
               style={shape}
               type="button"
@@ -247,7 +243,8 @@ function PictureTile({
         ) : state._tag === "Success" ? (
           <AssetImage
             alt=""
-            onLoad={learn}
+            width={size?.width}
+            height={size?.height}
             src={state.url}
             onError={() => setFailedUrl(state.url)}
           />

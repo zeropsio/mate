@@ -75,7 +75,7 @@ it("shows a failed attachment signing with its reason instead of a pending box",
       renderText={() => null}
     />,
   );
-  expect(html).toContain("Image unavailable");
-  expect(html).toContain("Attachment no longer exists");
+  expect(html).not.toContain("Image unavailable");
+  expect(html.match(/Attachment no longer exists/g)).toHaveLength(1);
   expect(html).not.toContain("message-picture-pending");
 });

@@ -1,3 +1,4 @@
+import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
@@ -1365,6 +1366,7 @@ function OpenableMarkdownImage({
   readonly className?: string | undefined;
   readonly children: ReactNode;
 }) {
+  const intent = useImageIntent();
   const open = use(MarkdownImageOpenerContext);
   if (open === null) return children;
   return (
@@ -1377,6 +1379,7 @@ function OpenableMarkdownImage({
       )}
       data-markdown-image-opener
       data-markdown-image-block={block || undefined}
+      {...intent}
       onClick={(event) => openMarkdownImage(event.currentTarget, open)}
       type="button"
     >

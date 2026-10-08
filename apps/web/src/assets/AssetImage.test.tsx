@@ -4,19 +4,43 @@ import { act, useRef } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
-const image = vi.hoisted(() => ({ keys: [] as unknown[] }));
+const image = vi.hoisted(() => ({
+  keys: [] as unknown[],
+  near: true,
+  failure: null as null | { reason: string; retryable: boolean },
+}));
 vi.mock("./MateImages", () => ({
   useMateImage: (key: unknown) => {
     image.keys.push(key);
-    return { read: { kind: "ready" }, url: "blob:preview", retry: () => {} };
+    if (key && typeof key === "object" && "rendition" in key && key.rendition === "original")
+      return {
+        read: { kind: "reading" },
+        url: "blob:preview",
+        previewUrl: "blob:preview",
+        originalUrl: undefined,
+        loadingOriginal: true,
+        retry: () => {},
+      };
+    return image.failure
+      ? { read: { kind: "failed", ...image.failure }, retry: () => {} }
+      : {
+          read: { kind: "ready" },
+          url: "blob:preview",
+          originalUrl: "blob:preview",
+          retry: () => {},
+        };
   },
 }));
 vi.mock("../hooks/useNearViewport", () => ({
-  useNearViewport: () => ({ ref: useRef(null), near: true }),
+  useNearViewport: () => ({ ref: useRef(null), near: image.near }),
 }));
 import { AssetImage } from "./AssetImage";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  image.failure = null;
+  image.near = true;
+});
 it("measures the drawn image itself and keeps authorized pixels in its reserved tile", () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal("window", { devicePixelRatio: 2 });
@@ -91,5 +115,53 @@ it("a failed picture explains the failure and retries on request", () => {
   expect(retry.children).toEqual(["Try again"]);
   act(() => retry.props.onClick({ stopPropagation() {} }));
   expect(renderer.root.findByType("img").props.src).toBe("https://image.test/missing.png");
+  act(() => renderer.unmount());
+});
+
+it.each([
+  { reason: "Image no longer available", retryable: false },
+  { reason: "Mate is unreachable.", retryable: true },
+])(
+  "shows one failure line and retry only for a recoverable image: $reason",
+  ({ reason, retryable }) => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.stubGlobal("window", { devicePixelRatio: 1 });
+    image.failure = { reason, retryable };
+    const src = mateImageSource({
+      environmentId: EnvironmentId.make("mate"),
+      resource: {
+        _tag: "workspace-file",
+        threadId: ThreadId.make("thread"),
+        path: "mate-asset:shot",
+      },
+    });
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<AssetImage src={src} width={640} height={320} />);
+    });
+    const content = JSON.stringify(renderer.toJSON());
+    expect(content.split(reason)).toHaveLength(2);
+    expect(content).not.toContain('"Image unavailable"');
+    expect(renderer.root.findAllByType("button")).toHaveLength(retryable ? 1 : 0);
+    act(() => renderer.unmount());
+  },
+);
+
+it("the selected original shows its retained preview before viewport observation", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  image.near = false;
+  const src = mateImageSource({
+    environmentId: EnvironmentId.make("mate"),
+    resource: {
+      _tag: "workspace-file",
+      threadId: ThreadId.make("thread"),
+      path: "mate-asset:shot",
+    },
+  });
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(<AssetImage src={src} original width={640} height={400} />);
+  });
+  expect(renderer.root.findByProps({ "aria-hidden": true }).props.src).toBe("blob:preview");
   act(() => renderer.unmount());
 });
