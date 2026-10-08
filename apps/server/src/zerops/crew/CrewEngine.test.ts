@@ -1249,7 +1249,10 @@ describe("CrewEngine", () => {
       ),
   );
 
-  it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
+  // A conversation's stored worktree path is V1's thread's: the engine resolves a crewmate's
+  // workspace from its copy each time, so nothing drifts to put back (the owner, 2026-10-08:
+  // V1's mechanism goes at cutover).
+  itV1("a writer's conversation without its copy as its worktree gets it back at boot", () =>
     crewJourney([
       (world) =>
         Effect.gen(function* () {
@@ -1274,7 +1277,9 @@ describe("CrewEngine", () => {
 
   {
     const path = "/chosen/copy";
-    it.live("boot keeps a conversation path a person chose and offers a selected crew copy", () =>
+    // V1's thread worktree a person chose: an engine crewmate's conversation has no path of its
+    // own to choose (the owner, 2026-10-08: V1's mechanism goes at cutover).
+    itV1("boot keeps a conversation path a person chose and offers a selected crew copy", () =>
       crewJourney([
         (world) =>
           Effect.gen(function* () {

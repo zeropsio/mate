@@ -379,6 +379,8 @@ const enginePort = (input: {
     CrewChat,
     { readonly payload: Record<string, unknown>; readonly turnId: string | null }
   >();
+  /** The session thread each chat a journey asked a tool profile for stood on then. */
+  const profiled = new Map<string, string>();
   /** Runs the crew stopped whose interrupted end a journey already played. */
   const stopsTaken = new Set<string>();
 
@@ -849,12 +851,16 @@ const enginePort = (input: {
         ),
       ),
     member: memberOf,
+    // A chat a journey looked at stays the session it saw (V1's stint thread): after a rotation
+    // it reads as that session, retired.
     toolProfile: (chat) =>
       Effect.gen(function* () {
         const current = yield* policy;
         if (Option.isNone(current)) return undefined;
+        const seen = profiled.get(chat) ?? (yield* threadOf(chat));
+        profiled.set(chat, seen);
         return yield* current.value.profileFor({
-          threadId: ThreadId.make(yield* threadOf(chat)),
+          threadId: ThreadId.make(seen),
           instanceId: ProviderInstanceId.make("claudeAgent"),
         });
       }),
