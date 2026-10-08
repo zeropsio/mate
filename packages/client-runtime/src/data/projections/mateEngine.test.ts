@@ -752,6 +752,14 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
   });
 
+  // Milo, 2026-10-08: "Started a helper · 56c95419-…/s/1.2.w1".
+  it("a helper its agent never named is on the helpers' surface in plain words, never its id", () => {
+    const [helper] = foldSubagentActivities(
+      activitiesOf([workItem(run1, 2, { work: `${run1}/s/1.2.w1`, title: null })]),
+    );
+    expect(helper?.title).toBe("A helper");
+  });
+
   it("a thought is the run's reasoning, drawn from its first word while it is written", () => {
     const messages = (items: ReadonlyArray<Item>) =>
       thread(held({ runs: [engineRun("thread-ada", 1)], items }))?.messages.map(

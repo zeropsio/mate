@@ -86,6 +86,7 @@ import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
+import { UNNAMED_HELPER } from "@t3tools/client-runtime/state/subagentRuntime";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
@@ -2307,9 +2308,13 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   if (!spawn) return null;
   const { agents, count, summary, workflowName } = spawnAgents(ctx.agentPanelModel, spawn);
   const words = count === 1 ? "Started a helper" : `Started ${count} helpers`;
+  // A helper no one named says nothing past "Started a helper".
   const what =
     workflowName ??
-    (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · "));
+    agents
+      .map((agent) => agent.title)
+      .filter((title) => title !== UNNAMED_HELPER)
+      .join(" · ");
   const failed = summary.tone === "failed";
   // Helpers not known yet: nothing to open onto.
   const opens = opensOnto({ control: "helpers", agents: agents.length });
