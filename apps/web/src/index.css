@@ -7747,40 +7747,126 @@ button.rv-relrow:hover .rv-relrow-go {
   }
 }
 
-/* Readiness opens the waiting face and reveals the placed rows in the same render.
-   The fade is presentation only: neither layer waits on an animation or a clock. */
-[data-conversation-opening] {
-  transition: opacity 140ms ease-out;
+/* Opening is one story; named beats keep the complete sequence within 600 ms. */
+:root {
+  --duration-conversation-wake: 180ms; /* A short blink-open, fully on the stage. */
+  --duration-conversation-text-exit: 60ms; /* Clear the words before the face travels. */
+  --duration-conversation-travel: 200ms; /* Land the same face in the measured header slot. */
+  --duration-conversation-rise: 80ms; /* Placed content arrives quickly after the face lands. */
+  --duration-conversation-handoff: calc(
+    var(--duration-conversation-text-exit) + var(--duration-conversation-travel) +
+      var(--duration-conversation-rise)
+  );
 }
 
-/* A waiting conversation has no footer yet. Its real footer is measured behind the stage,
-   then arrives with the placed conversation; no stand-in height positions the waiting face. */
-[data-chat-workspace-drop-target]:has([data-conversation-opening="waiting"])
-  [data-conversation-footer] {
-  opacity: 0;
+[data-opening-face] {
+  /* The decorative portal lets the header button own pointer events after landing. */
+  pointer-events: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  transform-origin: top left;
 }
 
-[data-conversation-footer] {
-  transition: opacity 140ms ease-out;
-}
-
-/* The open eyes are the readiness verdict. Their shared pose morph must not
-   keep the sleeping strokes painted while this stage hands over. */
-[data-conversation-opening] :is([data-mate-face-eye], [data-mate-face-shut]) {
+/* Stage-owned eyes are solid drawings throughout; only their height opens. */
+[data-opening-actor]:not([data-opening-actor="complete"])
+  :is([data-mate-face-eye], [data-mate-face-shut]) {
   transition: none;
 }
 
-[data-conversation-opening="ready"] {
+[data-opening-actor="wake"] [data-mate-face-eye] {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: conversation-eye-open var(--duration-conversation-wake) var(--ease-out-strong) both;
+}
+
+[data-conversation-opening="hand-off"] {
+  animation: conversation-handoff var(--duration-conversation-handoff) linear;
+}
+
+[data-conversation-opening="hand-off"]
+  :is([data-arrival-headline], [data-arrival-sentence], [data-arrival-slot]) {
+  animation: conversation-text-exit var(--duration-conversation-text-exit) var(--ease-out-strong)
+    both;
+}
+
+[data-opening-actor="hand-off"] {
+  transform-origin: top left;
+  animation: conversation-face-travel var(--duration-conversation-travel) var(--ease-out-strong)
+    var(--duration-conversation-text-exit) both;
+}
+
+/* The real footer stays laid out and measured throughout. Hidden content accepts the input
+   that ends the sequence; it is never replaced by a guessed footer or a second conversation. */
+:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
+    [data-conversation-opening="waiting"],
+    [data-conversation-opening="wake"]
+  )
+  :is([data-conversation-footer], [data-conversation-content]) {
   opacity: 0;
+  transition: none;
+}
+
+:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
+    [data-conversation-opening="hand-off"]
+  )
+  :is([data-conversation-footer], [data-conversation-content]) {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    calc(var(--duration-conversation-text-exit) + var(--duration-conversation-travel)) backwards;
+}
+
+[data-conversation-opening="complete"] {
   visibility: hidden;
-  transition:
-    opacity 140ms ease-out,
-    visibility 0s 140ms;
+}
+
+@keyframes conversation-eye-open {
+  0%,
+  20% {
+    transform: scaleY(0.04);
+  }
+  65%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes conversation-text-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes conversation-face-travel {
+  to {
+    transform: translate(var(--opening-x), var(--opening-y)) scale(var(--opening-scale));
+  }
+}
+
+@keyframes conversation-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Animation completion advances presentation only, never source readiness. */
+@keyframes conversation-handoff {
+  from {
+    --conversation-handoff: 0;
+  }
+  to {
+    --conversation-handoff: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   [data-conversation-opening],
+  [data-opening-actor],
+  [data-opening-actor] [data-mate-face-eye],
   [data-conversation-footer] {
+    animation: none !important;
     transition: none;
   }
 }

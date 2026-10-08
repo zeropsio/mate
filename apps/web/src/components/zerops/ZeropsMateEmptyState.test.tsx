@@ -162,11 +162,11 @@ describe("ZeropsMateEmptyState", () => {
     ];
   });
 
-  it("wears the face its person picked", () => {
+  it("leaves the conversation's one face in its header while retaining sign-in content", () => {
     feedState.agentAuth = known(NOT_SIGNED_IN);
     const html = render();
-    expect(html).toContain('data-mate-face-tint="olive"');
-    expect(html).toContain('data-mate-face-shape="seal"');
+    expect(html).not.toContain("data-mate-face-state");
+    expect(stage(html).signIn).toBe(true);
   });
 
   it("an unread agent-auth feed never renders as nothing to sign in: it says it is checking", () => {
@@ -197,7 +197,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen stands up development on Acme Docs.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -206,7 +205,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(SIGNED_IN_BY_ADA),
       headline: "Fen is standing up development on Acme Docs.",
       sentence: "Signed in. It starts in a moment.",
-      face: "working",
       signIn: false,
     },
     {
@@ -218,7 +216,6 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -230,7 +227,6 @@ describe("ZeropsMateEmptyState", () => {
       headline: "Sign Fen in to start.",
       sentence:
         "Ada added Fen but hasn't signed it in. Sign it in with your own account and it's yours.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -240,7 +236,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Nobody has signed Fen in yet. Sign it in with your own account and it's yours.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -250,7 +245,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -259,7 +253,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(NOT_SIGNED_IN),
       headline: "Sign Fen in to start.",
       sentence: "Once it's signed in, Fen writes and runs code on its own copy of Acme Docs.",
-      face: "idle",
       signIn: true,
     },
     {
@@ -268,7 +261,6 @@ describe("ZeropsMateEmptyState", () => {
       auth: known(SIGNED_IN_BY_ADA),
       headline: "What should Fen do on Acme Docs?",
       sentence: "",
-      face: "idle",
       signIn: false,
     },
     // Mate signs people in to Claude Code and Codex only; an agent outside the sign-in that is
@@ -280,7 +272,6 @@ describe("ZeropsMateEmptyState", () => {
       providers: CURSOR_READY,
       headline: "Fen is standing up development on Acme Docs.",
       sentence: "Its agent is ready. It starts in a moment.",
-      face: "working",
       signIn: false,
     },
     {
@@ -291,7 +282,6 @@ describe("ZeropsMateEmptyState", () => {
       providers: CURSOR_READY,
       headline: "What should Fen do on Acme Docs?",
       sentence: "",
-      face: "idle",
       signIn: false,
     },
     {
@@ -301,7 +291,6 @@ describe("ZeropsMateEmptyState", () => {
       providers: [agentInstance("opencode")],
       headline: "What should Fen do on Acme Docs?",
       sentence: "",
-      face: "idle",
       signIn: false,
     },
   ])("says, for $name: $headline", (row) => {
@@ -314,25 +303,13 @@ describe("ZeropsMateEmptyState", () => {
     expect(stage(html)).toEqual({
       headline: row.headline,
       sentence: row.sentence,
-      face: row.face,
+      face: undefined,
       signIn: row.signIn,
     });
     // One heading, and no second voice: no status rows under a sign-in (the owner: "this state
     // shouldn't exist").
     expect(html.match(/<h1/gu)).toHaveLength(1);
     expect(html).not.toContain("Not signed in");
-  });
-
-  // Its pose is its row's (`mateFaceFor`): waking while it arrives, read off its own records
-  // (`mateArrivingUntil`) — never off the live sign-in, which a sign-out takes back.
-  it.each([
-    { case: "just added, its sign-in to come", until: Date.now() + 600_000, face: "waking" },
-    { case: "signed in once and signed out since", until: undefined, face: "idle" },
-    { case: "nobody signed it in, past its window", until: Date.now() - 120_000, face: "idle" },
-  ])("wears, $case, $face over its sign-in", ({ until, face }) => {
-    feedState.agentAuth = known(NOT_SIGNED_IN);
-    const html = render({ ...ASKED, arrivingUntil: until });
-    expect(stage(html)).toMatchObject({ face, signIn: true });
   });
 
   it("waits on the sign-in's read with the sign-in's own headline", () => {
@@ -344,9 +321,7 @@ describe("ZeropsMateEmptyState", () => {
     feedState.agentAuth = known(SIGNED_IN_BY_ADA);
     const html = render({ ...ASKED, project: "Acme Docs Portal" });
 
-    expect(html).toContain(
-      '<span class="inline-block">Fen is standing up development on Acme Docs Portal.</span>',
-    );
+    expect(html).toContain("Fen is standing up development on Acme Docs Portal.");
   });
 });
 

@@ -209,3 +209,33 @@ it("an ongoing restart keeps the last-known state alongside every notice line", 
     true,
   );
 });
+
+it("a failed restart separates its cause and Details while retaining last-known words", () => {
+  expect(
+    mateNoticeVoice({
+      reachability: { kind: "not-answering", overdue: false },
+      recovery: {
+        standing: { kind: "unknown" },
+        status: "ACTION_FAILED",
+        process: {
+          id: "restart",
+          actionName: "stack.restart",
+          status: "FAILED",
+          created: "2026-10-07",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          failReason: "500: Internal Server Error",
+        },
+      },
+      conversationShown: false,
+      nowMs: 0,
+      mateName: "Eddy",
+      lastKnown: "Eddy was last working on the build.",
+    }),
+  ).toMatchObject({
+    headline: "Eddy couldn't restart.",
+    secondary: "Zerops returned an error while restarting. Eddy was last working on the build.",
+    details: "500: Internal Server Error",
+    actions: ["restart", "open-in-zerops"],
+  });
+});

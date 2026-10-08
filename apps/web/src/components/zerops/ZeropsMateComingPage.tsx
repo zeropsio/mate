@@ -104,11 +104,8 @@ import { takeMateConversation } from "~/zerops/mateOpening";
 import {
   arrivalHeaderFace,
   arrivalSteps,
-  comingSentence,
   inFirstSeenOrder,
-  KEEP_TAB_OPEN_LINE,
   pressNote,
-  pressRuns,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
   type ArrivalStep,
@@ -123,7 +120,11 @@ import {
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
-import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
+import {
+  mateNoticeVoice,
+  mateArrivalNotice,
+  type MateOperationRefusal,
+} from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity, useLastKnownMateWords } from "~/zerops/useMenuMateReadings";
@@ -142,6 +143,7 @@ import {
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -165,7 +167,6 @@ import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
-import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
 import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import {
@@ -180,9 +181,6 @@ const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
 
 /** The slate face a Mate wears where nobody picked one. */
 const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
-
-/** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
-const HAND_OVER_MS = 280;
 
 const NO_SETUP_FAILURE = Atom.make<ActivityProcess | undefined>(undefined);
 
@@ -351,6 +349,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       return {
         ...(candidate === undefined ? {} : zeropsMateIdentityOf(candidate, tints)),
         ...identity,
+        projectId,
         connected: candidate?.group === "connected",
       };
     if (candidate !== undefined) {
@@ -362,13 +361,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         return listed;
       return { ...listed, name: nameUnderApp(candidate.project.name, app) };
     }
+    // A retained project label is not a Mate identity; only explicit Mate naming survives here.
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
-      name:
-        ("name" in recovery.standing ? recovery.standing.name : undefined) ??
-        creation?.botName ??
-        press?.placement?.displayName ??
-        "",
+      name: creation?.botName ?? press?.placement?.displayName ?? "",
+      projectId,
       tint: face.tint,
       shape: face.shape,
       project: creation?.name ?? press?.placement?.groupName,
@@ -377,17 +374,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [
-    identity,
-    press,
-    candidate,
-    creation,
-    projectId,
-    projectUnavailable,
-    recovery.standing,
-    tints,
-    viewer,
-  ]);
+  }, [identity, press, candidate, creation, projectId, tints, viewer]);
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
@@ -432,10 +419,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   });
   const up = arrivalDecision === "conversation";
 
-  // The hand-over: a new Mate's words turn in place, then the conversation takes the route with
-  // that frame; any other Mate's conversation takes it at once. What the door that opened it asked
-  // to be told of the conversation is told first (`mateOpening`). Once begun it runs to its end,
-  // whatever is read meanwhile.
+  // Preload the destination immediately. The shared opening stage keeps its face across the route;
+  // only the destination's placement readiness starts the wake and hand-off.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
   const handingOver = useMateHandOver((state) => state.handingOver);
@@ -464,11 +449,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       takeMateConversation(projectId)?.(threadRef);
       void navigate(destination);
     };
-    const timer = cameUp ? setTimeout(() => void handOver(), HAND_OVER_MS) : null;
-    if (!cameUp) void handOver();
+    void handOver();
     return () => {
       current = false;
-      if (timer !== null) clearTimeout(timer);
     };
   }, [cameUp, environmentId, handing, handingOver, navigate, projectId, router, threadRef]);
 
@@ -642,9 +625,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           })
             .then(() => forgetPress(projectId))
             .catch((error: unknown) =>
-              setTrouble(
-                error instanceof Error ? error.message : "Zerops didn't accept the setup retry.",
-              ),
+              setTrouble({
+                kind: "retry",
+                attemptId: failedProcess.id,
+                receipt: error instanceof MateRestartError ? error.receipt : undefined,
+                details: error instanceof Error ? error.message : String(error),
+              }),
             )
             .finally(() => setRetryingSetup(false));
         };
@@ -659,7 +645,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   const deleteProject = useDeleteProject();
   const [removing, setRemoving] = useState(false);
-  const [trouble, setTrouble] = useState<string | null>(null);
+  const [trouble, setTrouble] = useState<MateOperationRefusal | null>(null);
   const remove = () => {
     if (activeOrganization === null) return;
     const organization = organizationRef(activeOrganization.id);
@@ -676,12 +662,21 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     }).then((outcome) => {
       setRemoving(false);
       if (!outcome.ok) {
-        setTrouble(outcome.error);
+        setTrouble({ kind: "remove", details: outcome.error });
         return;
       }
       void navigate({ to: "/zerops", replace: true });
     });
   };
+
+  const operationTrouble =
+    trouble ??
+    (mateActions.trouble === null
+      ? null
+      : {
+          kind: "finish" as const,
+          details: mateActions.trouble,
+        });
 
   // On its way to its conversation and not handed over yet — its link being made, its conversation
   // and its sign-in still being read — a new Mate stays coming, its progress whole, until the words
@@ -727,6 +722,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     mateName: named.name,
     lastKnown,
   });
+  const arrivalWords = mateArrivalNotice({
+    coming: shown,
+    progress: lineProgress,
+    nowMs: progress?.nowMs,
+    failureReason: failedReason?.text,
+    details: failedReason?.details,
+    attemptId: failedProcess?.id,
+    refusal: operationTrouble,
+    finish: finish?.line,
+  });
   const view: MateEmptyComing | null =
     page === undefined
       ? null
@@ -737,21 +742,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               kind: shown.kind,
               over: handing,
               pressed: made !== undefined,
-              sentence:
-                finish !== undefined && shown.kind === "coming"
-                  ? finish.line
-                  : comingSentenceOf({
-                      coming: shown,
-                      trouble: trouble ?? mateActions.trouble,
-                      ...(failedReason === undefined ? {} : { failureReason: failedReason.text }),
-                      progress: lineProgress,
-                      nowMs: progress?.nowMs,
-                    }),
+              sentence: arrivalWords.secondary,
               below:
-                finish !== undefined && shown.kind === "coming" ? (
+                finish !== undefined &&
+                shown.kind === "coming" &&
+                arrivalWords.details === undefined ? (
                   <PressSteps name={mate.name} steps={finish.steps} />
                 ) : (
                   <ComingBelow
+                    operationTrouble={operationTrouble}
+                    attemptId={failedProcess?.id}
                     coming={shown}
                     mate={mate}
                     nowMs={progress?.nowMs}
@@ -790,13 +790,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                 severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: "sleep",
                 headline: projectUnavailable
-                  ? recoveryNotice(recovery, named.name)?.text
+                  ? recoveryNotice(recovery, named.name)?.headline
                   : page.reachability === null
                     ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
                     : linkVoice.surface === "none"
                       ? undefined
                       : (linkVoice.headline ?? linkVoice.text ?? undefined),
-                sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                sentence: projectUnavailable
+                  ? recoveryNotice(recovery, named.name)?.secondary
+                  : linkVoice.surface === "none"
+                    ? undefined
+                    : linkVoice.secondary,
                 below: (
                   <MateOpeningLine
                     onTryNow={tryNow}
@@ -808,6 +812,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                       text: null,
                     }}
                     projectUrl={projectUnavailable ? undefined : mate.projectUrl}
+                    details={
+                      projectUnavailable || linkVoice.surface === "none"
+                        ? undefined
+                        : linkVoice.details
+                    }
                   />
                 ),
               }
@@ -821,6 +830,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     : (linkVoice.headline ?? linkVoice.text ?? undefined),
                 sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
                 restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
+                restartLines: linkVoice.surface === "none" ? undefined : linkVoice.restartLines,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}
@@ -897,20 +907,22 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           notice={<MateHealthNotice projectId={projectId} name={named.name} />}
         />
       ) : view === null ? null : (
-        <MateEmptyStateView
-          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
-          coming={view}
-          // Handed over to from the creation's view, whose headline held the focus.
-          focusOnArrival={made !== undefined}
-          mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
-          phase={handingArrival ? empty.phase : phaseAhead}
-          standUpFailure={empty.standUpFailure}
-          signIn={handingArrival ? empty.signIn : null}
-          runtimes={empty.runtimes}
-          signInRequired={empty.signInRequired}
-          agentReady={empty.agentReady}
-          unknown={handingArrival ? empty.unknown : null}
-        />
+        <ConversationOpeningStage ready={false} name={named.name} mate={named}>
+          <MateEmptyStateView
+            notice={<MateHealthNotice projectId={projectId} name={named.name} />}
+            coming={view}
+            // Handed over to from the creation's view, whose headline held the focus.
+            focusOnArrival={made !== undefined}
+            mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
+            phase={handingArrival ? empty.phase : phaseAhead}
+            standUpFailure={empty.standUpFailure}
+            signIn={handingArrival ? empty.signIn : null}
+            runtimes={empty.runtimes}
+            signInRequired={empty.signInRequired}
+            agentReady={empty.agentReady}
+            unknown={handingArrival ? empty.unknown : null}
+          />
+        </ConversationOpeningStage>
       )}
     </MateComingFrame>
   );
@@ -1061,33 +1073,6 @@ export function personOf(
  * The sentence under the headline while it comes up: how long is left, measured from the press;
  * one that did not come, why.
  */
-export function comingSentenceOf(input: {
-  readonly coming: MateComing | undefined;
-  readonly trouble?: string | null;
-  readonly failureReason?: string;
-  readonly progress: ArrivalProgress | undefined;
-  readonly nowMs: number | undefined;
-}): string | undefined {
-  const { coming, progress, nowMs } = input;
-  if (coming === undefined) return undefined;
-  if (coming.kind === "failed") {
-    if (input.trouble != null) return input.trouble;
-    if (input.failureReason !== undefined) return input.failureReason;
-    // Zerops may have made it: the sentence says so, with the way to the projects — never a stop.
-    if (coming.verb === "go-to-projects") return coming.line;
-    // A step this tab ran that stopped it says why in its own place: the sentence, only that it
-    // did. A step left to an owner stopped nothing, and anything else says its own reason here.
-    const said = progress?.press?.some((step) => step.state === "failed" && step.why !== undefined);
-    return said === true ? NOT_SET_UP_LINE : coming.line;
-  }
-  // While the steps this tab runs are under way, the one thing that stops them.
-  if (pressRuns(progress?.press)) return KEEP_TAB_OPEN_LINE;
-  const startedAt = progress?.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
-  return comingSentence(
-    nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt,
-  );
-}
-
 /**
  * In the slot while it comes up: the Mate's own steps (`arrivalSteps`), with their times — and
  * under them, for one that did not come, the view's one verb: *Remove*, *Try again* where a press
@@ -1109,7 +1094,11 @@ export function ComingBelow({
   ends,
   projects,
   setupFailureDetails,
+  operationTrouble,
+  attemptId,
 }: {
+  readonly attemptId?: string | undefined;
+  readonly operationTrouble?: MateOperationRefusal | null;
   readonly setupFailureDetails?: {
     readonly details: string;
     readonly status: string;
@@ -1151,8 +1140,14 @@ export function ComingBelow({
     progress === undefined || nowMs === undefined
       ? null
       : arrivalSteps(progress, mate, nowMs).map((step) => {
-          const { why: _said, ...marked } = step;
-          const shown = coming?.kind === "failed" ? stoppedStep(marked) : step;
+          const { why: _said, substeps, ...marked } = step;
+          const plain = {
+            ...marked,
+            ...(substeps === undefined
+              ? {}
+              : { substeps: substeps.map(({ why: _details, ...substep }) => substep) }),
+          };
+          const shown = coming?.kind === "failed" ? stoppedStep(plain) : plain;
           if (shown.services === undefined) return shown;
           const kept = inFirstSeenOrder(
             seen.get(step.id) ?? [],
@@ -1229,12 +1224,15 @@ export function ComingBelow({
   // What the steps leave to read whole, under them and over the way on — each step keeps one line:
   // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
   // finished, with this person's own *Finish setup*, at once.
-  const note = pressNote(progress?.press);
-  const pressRead =
-    note === null ||
-    (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
-      ? null
-      : note;
+  const copy = mateArrivalNotice({
+    coming,
+    progress,
+    nowMs,
+    refusal: operationTrouble,
+    attemptId,
+    details: setupFailureDetails?.details,
+  });
+  const pressRead = copy.note === null ? null : { text: copy.note };
   const finishVerb =
     coming?.kind === "coming" && onFinishSetup !== undefined ? (
       <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
@@ -1252,7 +1250,12 @@ export function ComingBelow({
       </Button>
     ) : null;
   const acts = verb ?? finishVerb ?? setupVerb;
-  if (acts === null && read === null) {
+  if (
+    acts === null &&
+    read === null &&
+    copy.details === undefined &&
+    setupFailureDetails === undefined
+  ) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
   // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
@@ -1265,11 +1268,11 @@ export function ComingBelow({
       }
     >
       {steps}
-      {setupFailureDetails === undefined ? null : (
+      {setupFailureDetails === undefined && copy.details === undefined ? null : (
         <MateStateDetails>
-          <pre>{setupFailureDetails.details}</pre>
-          {setupFailureDetails.status === "loading" ? <p>Reading the setup log…</p> : null}
-          {setupFailureDetails.status === "error" ? (
+          <pre>{copy.details}</pre>
+          {setupFailureDetails?.status === "loading" ? <p>Reading the setup log…</p> : null}
+          {setupFailureDetails?.status === "error" ? (
             <p>The setup log couldn't be read. Open the process in Zerops.</p>
           ) : null}
         </MateStateDetails>

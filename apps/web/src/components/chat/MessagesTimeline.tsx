@@ -667,6 +667,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
   );
+  const activePause =
+    usagePause === null
+      ? undefined
+      : rows.find((row) => row.kind === "pause" && row.id === livePauseId);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   // The rows a reading position may land on stay drawn while it is put
   // back: its own, the run's line and the row above it.
@@ -682,6 +686,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const [pauseViewportHeight, setPauseViewportHeight] = useState<number | undefined>();
   const [listReady, setListReady] = useState(false);
   const onListLoad = useCallback(() => setListReady(true), []);
   // The list stands where it stays: a reading position put back, or the end
@@ -1109,7 +1114,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     const measure = () => {
-      const viewportWidth = timelineViewportElement.getBoundingClientRect().width;
+      const { width: viewportWidth, height } = timelineViewportElement.getBoundingClientRect();
+      setPauseViewportHeight(height);
       const nextHasPersistentGutter = resolveTimelineMinimapHasPersistentGutter(viewportWidth);
       setMinimapHasPersistentGutter((current) =>
         current === nextHasPersistentGutter ? current : nextHasPersistentGutter,
@@ -1225,6 +1231,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       standUpAsk,
       livePauseId,
       usagePause,
+      pauseStage: {
+        mate: mate ?? null,
+        height:
+          pauseViewportHeight === undefined
+            ? undefined
+            : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
+      },
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
@@ -1255,6 +1268,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       standUpAsk,
       livePauseId,
       usagePause,
+      mate,
+      pauseViewportHeight,
+      contentInsetEndAdjustment,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel,
@@ -1510,7 +1526,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
             data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
-            // The placed rows take the opening stage's place in the readiness frame.
+            // Placement proves readiness; the opening stage owns the conversation's entrance.
             data-timeline-arrives="at-once"
             data-timeline-thread={routeThreadKey}
           >
@@ -1563,7 +1579,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   TIMELINE_LIST_HEADER
                 )
               }
-              ListFooterComponent={TIMELINE_LIST_FOOTER}
+              ListFooterComponent={activePause === undefined ? TIMELINE_LIST_FOOTER : null}
             />
             <TimelineMinimap
               items={minimapItems}
@@ -1590,9 +1606,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   return (
     <>
-      {content}
-      {kept?.shown === false ? null : (
-        <ConversationOpeningStage ready={standing} name={openingName} mate={mate ?? null} />
+      <div className="h-full min-h-0" data-conversation-content="">
+        {content}
+      </div>
+      {kept?.shown === false || activePause !== undefined ? null : (
+        <ConversationOpeningStage
+          ready={standing}
+          readPending={onItsWay}
+          name={openingName}
+          mate={mate ?? null}
+          threadKey={routeThreadKey}
+        />
       )}
     </>
   );
@@ -2430,15 +2454,24 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
     };
   }, [waiting, resetsAt, nowMs]);
   return (
-    <PauseBlock
-      nowMs={nowMs}
-      onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
-      onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
-      row={row}
-      serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
-      speaker={ctx.speaker}
-      timestampFormat={ctx.timestampFormat}
-    />
+    <div
+      style={
+        row.id === ctx.livePauseId && ctx.usagePause !== null
+          ? { height: ctx.pauseStage?.height }
+          : undefined
+      }
+    >
+      <PauseBlock
+        mate={ctx.pauseStage?.mate ?? null}
+        nowMs={nowMs}
+        onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
+        onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
+        row={row}
+        serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
+        speaker={ctx.speaker}
+        timestampFormat={ctx.timestampFormat}
+      />
+    </div>
   );
 }
 

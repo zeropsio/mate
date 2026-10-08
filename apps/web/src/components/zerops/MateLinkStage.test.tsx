@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const detail = vi.hoisted(() => ({ failure: null as null | { message: string } }));
+vi.mock("~/state/entities", () => ({ useThreadDetail: () => false }));
 vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: detail.failure, again: () => undefined }),
   useTryMateAgain: () => () => undefined,

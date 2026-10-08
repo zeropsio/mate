@@ -51,7 +51,7 @@ describe("the usage-limit pause", () => {
     expect(render(true, at(60))).not.toContain("still paused");
     expect(render(true, at(60))).toContain("Reset time passed");
     expect(render(true, at(60))).not.toContain("Limit · until");
-    expect(render(true, at(60))).toContain("hit the Codex limit on Sep 27");
+    expect(render(true, at(60))).toContain("Nova hit the Codex limit.");
     expect(render(true, at(60))).not.toContain("picking up");
   });
   it("a known reset cannot invent an unread continuation choice", () => {

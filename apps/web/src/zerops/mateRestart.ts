@@ -11,7 +11,8 @@ import { useCallback } from "react";
 import { toastManager } from "~/components/ui/toast";
 
 import { useAccountOperations } from "./accountOperations";
-import { restartRefusal } from "./mateRestartRefusal";
+import { MateRestartError } from "./mateRestartRefusal";
+import { restartRefusal } from "./mateNoticeVoice";
 import { useAccountData } from "./ZeropsAccountData";
 import { useHeldZeropsCandidates } from "./useZeropsCandidates";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
@@ -45,7 +46,7 @@ export function useRestartMate(): (target: RestartTarget) => Promise<void> {
         way: restartWay(target.status),
       });
       const refusal = restartRefusal(progress);
-      if (refusal !== null) throw new Error(refusal);
+      if (refusal !== null) throw new MateRestartError(progress);
       intendContainer(target.key, { kind: "restart", initAt });
     },
     [operations, orgId],

@@ -7,6 +7,9 @@ import type { ReachabilityAction } from "@t3tools/client-runtime/zerops/environm
 
 export interface RecoveryNotice {
   readonly text: string;
+  readonly headline: string;
+  readonly secondary: string;
+  readonly details?: string;
   readonly actions: ReadonlyArray<ReachabilityAction>;
   readonly tone: "default" | "warning" | "error";
 }
@@ -24,35 +27,45 @@ export function expiredAgentNotice(
 /** Only owner evidence distinguishes access, deletion, deliberate stop and startup failure. */
 export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNotice | null {
   const { standing, status, process } = read;
-  const name =
-    (standing.kind === "listed"
-      ? standing.project.name
-      : "name" in standing
-        ? standing.name
-        : undefined) ||
-    mateName ||
-    "This Mate";
+  const name = mateName.trim() || "The Mate";
+  const say = (
+    headline: string,
+    secondary: string,
+    actions: RecoveryNotice["actions"],
+    tone: RecoveryNotice["tone"],
+    details?: string,
+  ): RecoveryNotice => ({
+    headline,
+    secondary,
+    text: [headline, secondary].filter(Boolean).join(" "),
+    actions,
+    tone,
+    ...(details ? { details } : {}),
+  });
   if (standing.kind === "deleted")
-    return {
-      text: `${name}'s project was deleted. This conversation is no longer available.`,
-      actions: ["go-to-projects"],
-      tone: "default",
-    };
+    return say(
+      `${name}'s project was deleted.`,
+      "This conversation is no longer available.",
+      ["go-to-projects"],
+      "default",
+    );
   if (standing.kind === "denied")
-    return {
-      text: `You no longer have access to ${name}'s project. Ask a project owner to restore it.`,
-      actions: ["go-to-projects"],
-      tone: "warning",
-    };
+    return say(
+      `You no longer have access to ${name}'s project.`,
+      "Ask a project owner to restore it.",
+      ["go-to-projects"],
+      "warning",
+    );
   if (
     (process?.status === "RUNNING" || process?.status === "PENDING") &&
     (process.actionName === "stack.restart" || process.actionName === "stack.start")
   )
-    return {
-      text: `${name} is ${process.actionName === "stack.restart" ? "restarting" : "starting"}.`,
-      actions: [],
-      tone: "default",
-    };
+    return say(
+      `${name} is ${process.actionName === "stack.restart" ? "restarting" : "starting"}.`,
+      "",
+      [],
+      "default",
+    );
   if (status?.endsWith("FAILED")) {
     const verb =
       process?.actionName === "stack.restart"
@@ -67,24 +80,32 @@ export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNo
         ? "Its startup command failed."
         : result && /ENOSPC|EDQUOT|no space left|disk quota exceeded/iu.test(result)
           ? "Its disk is full. Free space before saving or running more work."
-          : (result ?? "Open the process in Zerops to see what happened.");
-    return {
-      text: `${failed && verb !== null ? `${name} could not ${verb}.` : `${name}'s container failed.`} ${cause}`,
-      actions: ["restart", "open-in-zerops"],
-      tone: "error",
-    };
+          : result && /(?:\b5\d{2}\b|internal server error)/iu.test(result)
+            ? `Zerops returned an error${verb === "restart" ? " while restarting" : verb === "start" ? " while starting" : " while preparing the container"}.`
+            : process?.status === "CANCELED"
+              ? "Zerops canceled the process."
+              : "Open the process in Zerops to see what happened.";
+    return say(
+      failed && verb !== null ? `${name} couldn't ${verb}.` : `${name}'s container failed.`,
+      cause,
+      ["restart", "open-in-zerops"],
+      "error",
+      result,
+    );
   }
   if (status === "STOPPED")
-    return {
-      text: `${name}'s container is stopped. Start ${name} to reconnect.`,
-      actions: ["start"],
-      tone: "default",
-    };
+    return say(
+      `${name}'s container is stopped.`,
+      `Start ${name} to reconnect.`,
+      ["start"],
+      "default",
+    );
   if (read.diskFull === true)
-    return {
-      text: `Zerops last reported ${name}'s disk is full. Free space before saving or running more work.`,
-      actions: ["open-in-zerops"],
-      tone: "warning",
-    };
+    return say(
+      `Zerops last reported ${name}'s disk is full.`,
+      "Free space before saving or running more work.",
+      ["open-in-zerops"],
+      "warning",
+    );
   return null;
 }

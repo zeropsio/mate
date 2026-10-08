@@ -87,7 +87,12 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         press: undefined,
         candidate: { group: "unavailable", creationFailed: { message: "quota exceeded" } },
       },
-      expected: { kind: "failed", line: "Could not be created. Quota exceeded.", verb: "remove" },
+      expected: {
+        kind: "failed",
+        line: "Could not be set up.",
+        details: "quota exceeded",
+        verb: "remove",
+      },
     },
     {
       case: "a creation refused while its press still holds it is refused",
@@ -95,7 +100,12 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         press: HELD,
         candidate: { group: "unavailable", creationFailed: { message: undefined } },
       },
-      expected: { kind: "failed", line: "Could not be created.", verb: "remove" },
+      expected: {
+        kind: "failed",
+        line: "Could not be set up.",
+        details: undefined,
+        verb: "remove",
+      },
     },
     {
       case: "a press that stopped after the platform took the project says why, with Remove",
@@ -106,7 +116,8 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: {
         kind: "failed",
-        line: "Could not be set up. The agent container could not be imported.",
+        line: "Could not be set up.",
+        details: "The agent container could not be imported.",
         verb: "remove",
       },
     },
@@ -119,7 +130,8 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: {
         kind: "failed",
-        line: "Could not be set up. Zerops did not answer.",
+        line: "Could not be set up.",
+        details: "Zerops did not answer.",
         verb: "try-again",
       },
     },
@@ -206,7 +218,8 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: {
         kind: "failed",
-        line: "Could not be set up. The build failed.",
+        line: "Could not be set up.",
+        details: "The build failed.",
         verb: "remove",
       },
     },

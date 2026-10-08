@@ -1,3 +1,5 @@
+import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
+import { MateConnectionState } from "../zerops/ZeropsMateEmptyState";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -383,6 +385,7 @@ export interface ServerUsagePause {
  * block: a centred headline, what it says under its words, and its controls.
  */
 export function PauseBlock({
+  mate = null,
   row,
   speaker,
   nowMs,
@@ -391,6 +394,7 @@ export function PauseBlock({
   onAutoResumeChange,
   onContinue = null,
 }: {
+  readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
   readonly speaker: ConversationSpeaker;
   readonly nowMs: number;
@@ -417,6 +421,49 @@ export function PauseBlock({
           : autoResume
             ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
             : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
+  const actions = !resumed ? (
+    <div className="flex flex-col items-center gap-4">
+      {onContinue === null ? null : (
+        <Button size="sm" variant="ghost" onClick={onContinue}>
+          Continue
+        </Button>
+      )}
+      {serverPause === null || onAutoResumeChange === null ? null : (
+        <label
+          className="flex cursor-pointer items-center gap-2 text-line text-foreground"
+          data-pause-switch
+        >
+          <Switch
+            checked={serverPause.autoResume}
+            onCheckedChange={(checked) => onAutoResumeChange(checked)}
+          />
+          Continue automatically
+        </label>
+      )}
+    </div>
+  ) : null;
+  if (!resumed && serverPause !== null) {
+    const voice = mateNoticeVoice({
+      reachability: null,
+      conversationShown: false,
+      nowMs,
+      mateName: speaker.name,
+      limit: { provider: row.provider ?? "coding agent", detail },
+    });
+    if (voice.surface === "none") return null;
+    return (
+      <div className="h-full" data-conversation-pause="paused">
+        <MateConnectionState
+          mate={mate}
+          face="sleep"
+          headline={voice.headline ?? ""}
+          secondary={voice.secondary ?? ""}
+          severity={voice.severity}
+          actions={actions}
+        />
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -462,25 +509,7 @@ export function PauseBlock({
       <p className="text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
-      {!resumed && onContinue !== null ? (
-        <div className="arrival-acts">
-          <Button size="compact" variant="pill" onClick={onContinue}>
-            Continue
-          </Button>
-        </div>
-      ) : null}
-      {!history && serverPause !== null && onAutoResumeChange !== null ? (
-        <label
-          className="mx-auto flex w-fit cursor-pointer items-center gap-2 text-line text-foreground"
-          data-pause-switch
-        >
-          <Switch
-            checked={serverPause.autoResume}
-            onCheckedChange={(checked) => onAutoResumeChange(checked)}
-          />
-          Continue automatically
-        </label>
-      ) : null}
+      {actions}
     </div>
   );
 }

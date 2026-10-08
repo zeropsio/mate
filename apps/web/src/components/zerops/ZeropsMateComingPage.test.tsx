@@ -1,3 +1,4 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 // @vitest-environment happy-dom
 import { Atom } from "effect/reactivity";
 import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
@@ -16,12 +17,32 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
-import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
+
+function openDetails(rendered: ReactTestRenderer) {
+  const button = rendered.root
+    .findAllByType("button")
+    .find((node) => node.props["data-slot"] === "collapsible-trigger")!;
+  expect(button.props["aria-expanded"]).toBe(false);
+  const target = document.createElement("button");
+  act(() =>
+    button.props.onClick({
+      currentTarget: target,
+      target,
+      nativeEvent: new MouseEvent("click"),
+      preventDefault() {},
+      stopPropagation() {},
+      defaultPrevented: false,
+    }),
+  );
+  return rendered.root;
+}
 
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 
@@ -78,6 +99,11 @@ const app = vi.hoisted(() => ({
     status: undefined,
     process: undefined,
   } as import("@t3tools/client-runtime/data").MateRecovery,
+  setupFailure: undefined as
+    | import("@t3tools/client-runtime/data").MateRecovery["process"]
+    | undefined,
+  restartSetup: vi.fn(async () => undefined),
+  actionTrouble: null as string | null,
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
@@ -177,7 +203,7 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
-  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: null }),
+  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: app.actionTrouble }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
@@ -200,8 +226,12 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => null,
   useAccountOrgId: () => "org-1",
   useDetailDemand: () => undefined,
-  useProjection: () => undefined,
+  useProjection: () => app.setupFailure,
   useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
+}));
+vi.mock("~/zerops/mateRestart", () => ({
+  useRestartMate: () => app.restartSetup,
+  useReviveFailedMate: () => () => false,
 }));
 vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ submit: () => new Promise(() => {}) }),
@@ -242,6 +272,31 @@ vi.mock("~/zerops/activity/useProjectActivity", () => ({
 }));
 vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
+}));
+// The DOM-owned wake/travel is covered by ConversationOpeningStage.test.tsx; this renderer
+// verifies the page keeps requesting the same waiting surface until its route can render.
+vi.mock("../chat/ConversationOpeningStage", () => ({
+  ConversationOpeningStage: ({
+    name,
+    children,
+    notice,
+  }: {
+    name: string | undefined;
+    children?: ReactNode;
+    notice?: ReactNode;
+  }) =>
+    h(
+      "div",
+      { "data-conversation-opening": "waiting" },
+      children ??
+        h(
+          "section",
+          { "data-kind": "reaching", "data-mate-face-state": "sleep" },
+          `${name || "The Mate"} is opening the conversation.`,
+          "Picking up where you left off.",
+          notice,
+        ),
+    ),
 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
   MateConnectionState: ({
@@ -364,6 +419,7 @@ const said = () =>
 const buttons = () =>
   tree?.root
     .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
     .filter((node) => node.props.disabled !== true && node.props.inert !== true)
     .map((node) => node.children.join("")) ?? [];
 
@@ -383,6 +439,9 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
+  app.actionTrouble = null;
+  app.setupFailure = undefined;
+  app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
   app.observeRefused = false;
   app.standUpRetry.mockClear();
@@ -472,6 +531,7 @@ describe("a Mate's own view while its link is made", () => {
     act(() =>
       tree?.root
         .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
         .find((node) => node.children.join("") === "Try now")
         ?.props.onClick(),
     );
@@ -493,6 +553,7 @@ describe("a Mate's own view while its link is made", () => {
     act(() =>
       tree?.root
         .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
         .find((node) => node.children.join("") === "Try again")
         ?.props.onClick(),
     );
@@ -698,18 +759,22 @@ describe("the footer in a Mate's own view", () => {
 });
 
 describe("the header in a Mate's own view", () => {
-  it("a known deleted project stays named and removes its platform link", () => {
-    app.listing = listingOf([]);
-    app.recovery = {
-      standing: { kind: "deleted", name: "Quinn" },
-      status: undefined,
-      process: undefined,
-    };
-    openView();
-    expect(said()).toContain("Quinn's project was deleted");
-    expect(said()).not.toContain("Open in Zerops");
-    expect(buttons()).toContain("Go to projects");
-  });
+  it.each(["deleted", "denied"] as const)(
+    "does not identify a Mate by a retained platform label after %s",
+    (kind) => {
+      app.listing = listingOf([]);
+      app.recovery = {
+        standing: { kind, name: "Radotin - Eddy" },
+        status: undefined,
+        process: undefined,
+      };
+      openView();
+      expect(said()).not.toContain("Radotin - Eddy");
+      expect(said()).toContain("The Mate");
+      expect(said()).not.toContain("Open in Zerops");
+      expect(buttons()).toContain("Go to projects");
+    },
+  );
   it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     app.told = { subject: "Rename the orders column" };
@@ -747,6 +812,22 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     step: "created",
     failed: null,
   };
+
+  it.each(["deleted", "denied"] as const)(
+    "keeps the explicit Mate name after %s removes its listing",
+    (kind) => {
+      app.listing = listingOf([]);
+      app.creations = [{ ...QUINN_MADE, name: "Radotin", botName: "Eddy" }];
+      app.recovery = {
+        standing: { kind, name: "Radotin - Eddy" },
+        status: undefined,
+        process: undefined,
+      };
+      openView();
+      expect(said()).toContain("Eddy");
+      expect(said()).not.toContain("Radotin - Eddy");
+    },
+  );
 
   it("a Mate this tab made is coming up from its first frame, its container up or not", () => {
     app.creations = [QUINN_MADE];
@@ -928,10 +1009,13 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("reaching");
   });
 
-  it("hands over once, its header turning into the conversation's with its words", async () => {
+  it("hands a newly stood-up Mate over as soon as its destination can render, without an animation timer", async () => {
     // The header's actions as the conversation draws them, standing in until it takes the route.
     const headerActions = () =>
-      tree?.root.findAllByType("button").filter((node) => node.props.inert === true) ?? [];
+      tree?.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
+        .filter((node) => node.props.inert === true) ?? [];
     app.listing = listingOf([coming]);
     openView();
     expect(headerActions()).toHaveLength(0);
@@ -946,7 +1030,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(headerActions()).toHaveLength(1);
     expect(app.navigate).not.toHaveBeenCalled();
-    await act(async () => vi.advanceTimersByTime(1_000));
+    await act(async () => undefined);
     expect(app.navigate).toHaveBeenCalledOnce();
   });
 });
@@ -981,14 +1065,20 @@ describe("ComingBelow — a Mate half made", () => {
     const rendered = render(() => {
       finished += 1;
     });
-    const button = rendered.root.findByType("button");
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Finish setup"]);
     act(() => button.props.onClick());
     expect(finished).toBe(1);
   });
 
   it("offers nothing to anyone else", () => {
-    expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
+    expect(
+      render(undefined)
+        .root.findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
+    ).toHaveLength(0);
   });
 
   it.each([
@@ -1011,7 +1101,9 @@ describe("ComingBelow — a Mate half made", () => {
         }),
       );
     });
-    const buttons = rendered!.root.findAllByType("button");
+    const buttons = rendered!.root
+      .findAllByType("button")
+      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
     expect(buttons).toHaveLength(permitted ? 1 : 0);
     if (permitted) {
       expect(buttons[0]!.children).toEqual(["Finish setup"]);
@@ -1116,8 +1208,13 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     const rendered = render(() => {
       finished += 1;
     });
-    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
-    const button = rendered.root.findByType("button");
+    expect(text(rendered)).toEqual(["Not registered."]);
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Finish setup"]);
     act(() => button.props.onClick());
     expect(finished).toBe(1);
@@ -1125,8 +1222,15 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
 
   it("still says why to someone who cannot finish it", () => {
     const rendered = render(undefined);
-    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
-    expect(rendered.root.findAllByType("button")).toHaveLength(0);
+    expect(text(rendered)).toEqual(["Not registered."]);
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
+    expect(
+      rendered.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
+    ).toHaveLength(0);
   });
 });
 
@@ -1170,7 +1274,9 @@ describe("ComingBelow — a setup that can't be read", () => {
       again += 1;
     });
     expect(text(rendered)).toEqual(["Its container turned the read of its setup away."]);
-    const button = rendered.root.findByType("button");
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Try again"]);
     act(() => button.props.onClick());
     expect(again).toBe(1);
@@ -1218,10 +1324,13 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
 
   it("reads it whole over Try again, with no hover", () => {
     const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
-    expect(notes(rendered)).toEqual([REASON]);
-    expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
-      ["Try again"],
-    ]);
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(REASON);
+    expect(
+      rendered.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
+        .map((button) => button.children),
+    ).toEqual([["Try again"]]);
   });
 
   it("leaves it to the sentence where Zerops may have made it", () => {
@@ -1250,7 +1359,9 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
         }),
       );
     });
-    const buttons = rendered!.root.findAllByType("button");
+    const buttons = rendered!.root
+      .findAllByType("button")
+      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
     expect(buttons.map((button) => button.children)).toEqual([["Go to projects"], ["Dismiss"]]);
     act(() => buttons[1]!.props.onClick());
     expect(dismissed).toBe(1);
@@ -1376,7 +1487,10 @@ describe("an added Mate's own view, after its hand-over", () => {
     });
     openView();
     act(() => forgetPress(PROJECT));
-    expect(said()).toContain("Not registered: Its grant timed out.");
+    expect(said()).toContain("Not registered.");
+    expect(openDetails(tree!).findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
     app.registration = { attempt: 2, state: "done" };
     act(() => tree?.update(comingView(PROJECT)));
     expect(said()).not.toContain("Not registered");
@@ -1412,6 +1526,7 @@ it("keeps the failed stand-up's recovery visible before a conversation exists", 
   openView();
   const again = tree?.root
     .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
     .find((node) => node.children.join("") === "Try again");
   expect(again).toBeDefined();
   act(() => again?.props.onClick());
@@ -1426,6 +1541,161 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
   expect(buttons()).not.toContain("Connect");
+});
+
+it.each([
+  {
+    label: "refused",
+    error: new Error("500: Internal Server Error"),
+    text: "Zerops didn't accept the setup retry.",
+  },
+  {
+    label: "uncertain",
+    error: new MateRestartError({
+      stage: "uncertain",
+      next: "asking-owner",
+    }),
+    text: "Zerops did not answer whether it took the restart. Check the Mate before trying again.",
+  },
+  {
+    label: "stopped but not started",
+    error: new MateRestartError({
+      stage: "unresolved",
+      operationId: null,
+      nextActor: "person",
+      nextAction: "Start the Mate",
+      reason: "500: Internal Server Error",
+    }),
+    text: "The Mate was stopped, but it was not started again here. Start the Mate.",
+  },
+])("keeps $label retry guidance visible and diagnostics in Details", async ({ error, text }) => {
+  app.setupFailure = {
+    id: "setup-failed",
+    projectId: PROJECT,
+    serviceStackIds: ["zcp"],
+    actionName: "stack.create",
+    status: "FAILED",
+    created: "2026-10-07T10:00:00Z",
+    failReason: "Original setup diagnostic",
+  };
+  beginPress({
+    projectId: PROJECT,
+    organizationId: "org-beviro",
+    startedAt: 0,
+    placement: null,
+    container: true,
+  });
+  app.restartSetup.mockRejectedValue(error);
+  openView();
+  const retry = tree!.root
+    .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
+    .find((node) => node.children.join("") === "Try again");
+  expect(retry).toBeDefined();
+  await act(async () => {
+    retry!.props.onClick();
+  });
+  expect(app.restartSetup).toHaveBeenCalledOnce();
+  const section = tree!.root.findByType("section");
+  expect(section.children).toContain(text);
+  expect(section.children).not.toContain("500: Internal Server Error");
+  const details = openDetails(tree!);
+  const diagnostics = details.findByType("pre").children.join("");
+  expect(diagnostics).toContain(error.message);
+  expect(diagnostics).toContain("Original setup diagnostic");
+  app.setupFailure = undefined;
+  app.recovery = {
+    standing: { kind: "unknown" },
+    status: "ACTIVE",
+    process: {
+      id: "new-attempt",
+      projectId: PROJECT,
+      serviceStackIds: ["zcp"],
+      actionName: "stack.start",
+      status: "RUNNING",
+      created: "2026-10-08T12:00:00Z",
+    },
+  };
+  act(() => tree!.update(comingView(PROJECT)));
+  expect(said()).not.toContain(text);
+  expect(said()).not.toContain("Original setup diagnostic");
+});
+
+it("keeps a Finish setup refusal out of stage copy without a setup process", () => {
+  app.listing = listingOf([
+    {
+      key: KEY,
+      project: QUINN.project,
+      group: "unavailable",
+      missingContainer: true,
+    },
+  ]);
+  beginPress({
+    projectId: PROJECT,
+    organizationId: "org-beviro",
+    startedAt: 0,
+    placement: null,
+    container: true,
+  });
+  app.actionTrouble = "500: Internal Server Error";
+  openView();
+  const section = tree!.root.findByType("section");
+  expect(section.children).toContain("Zerops couldn't finish setting up the Mate.");
+  expect(section.children).not.toContain(app.actionTrouble);
+  expect(openDetails(tree!).findByType("pre").children.join("")).toBe(app.actionTrouble);
+});
+
+it("keeps a Remove refusal available in Details without a setup process or action slot", () => {
+  let rendered: ReactTestRenderer;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: undefined,
+        progress: undefined,
+        nowMs: undefined,
+        mate: { name: "Quinn", project: undefined },
+        you: null,
+        operationTrouble: {
+          kind: "remove",
+          details: "500: Internal Server Error",
+        },
+      }),
+    );
+  });
+  const details = openDetails(rendered!);
+  expect(details.findByType("pre").children.join("")).toBe("500: Internal Server Error");
+  act(() => rendered!.unmount());
+});
+
+it("keeps an original creation refusal collapsed even before a setup process exists", () => {
+  let rendered: ReactTestRenderer;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: { kind: "failed", line: "500: Internal Server Error", verb: "remove" },
+        progress: {
+          steps: [],
+          active: null,
+          failed: null,
+          doneCount: 0,
+          total: 0,
+          complete: false,
+          press: [
+            { id: "created", label: "Created", state: "failed", why: "500: Internal Server Error" },
+          ],
+        },
+        nowMs: 0,
+        mate: { name: "Quinn", project: undefined },
+        you: null,
+      }),
+    );
+  });
+  const note = rendered!.root.findAll((node) => node.props["data-press-note"] !== undefined);
+  expect(note.map((node) => node.children.join(""))).not.toContain("500: Internal Server Error");
+  expect(openDetails(rendered!).findByType("pre").children.join("")).toContain(
+    "500: Internal Server Error",
+  );
+  act(() => rendered!.unmount());
 });
 
 describe("failed setup recovery fixture", () => {
