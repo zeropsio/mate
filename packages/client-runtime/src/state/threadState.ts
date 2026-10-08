@@ -38,3 +38,7 @@ export function threadHasOlderTurns(state: EnvironmentThreadState): boolean {
     onSome: (page) => page.hasMore,
   });
 }
+
+/** What a V1-only app says of a Mate whose conversation runs on the engine. */
+export const NATIVE_ENGINE_WORDS =
+  "This Mate's conversation runs on its engine, which this app does not read yet. Update the app to keep talking to it.";

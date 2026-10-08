@@ -15,7 +15,7 @@ import {
   engineStartTurn,
   viaEngine,
 } from "./engineCommands.ts";
-import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
+import { mateEngineHostAtom, mateEngineReaderAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
 import { engineConversationId, engineConversationScopes } from "./families/mateEngine.ts";
@@ -331,6 +331,22 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.run(viaEngine(r.registry, ENV, engineModeChange(mode), r.v1)),
         );
         expect(failure.message).toMatch(/mode/);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a client that reads no engine conversation refuses an engine Mate's command at once, never to retry",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.registry.set(mateEngineHostAtom, null);
+        r.registry.set(mateEngineReaderAtom, "none");
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
+        );
+        expect(failure._tag).toBe("MateEngineUnsupported");
+        expect(failure.message).toMatch(/Update the app/);
         expect(r.v1Calls).toEqual([]);
       }),
   );

@@ -21,7 +21,14 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
-import { engineRouteOf, mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
+import {
+  MateEngineUnsupported,
+  engineRouteOf,
+  mateEngineHostAtom,
+  mateEngineReaderAtom,
+  type MateEngineHost,
+} from "./engineHost.ts";
+import { NATIVE_ENGINE_WORDS } from "../state/threadState.ts";
 import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
@@ -45,7 +52,7 @@ export function viaEngine<E, R>(
   v1: Effect.Effect<DispatchResult, E, R>,
 ): Effect.Effect<
   DispatchResult,
-  E | OrchestrationDispatchCommandError | EnvironmentRpcUnavailableError,
+  E | OrchestrationDispatchCommandError | EnvironmentRpcUnavailableError | MateEngineUnsupported,
   R | EnvironmentSupervisor
 > {
   return Effect.gen(function* () {
@@ -54,7 +61,10 @@ export function viaEngine<E, R>(
     if (Option.isNone(prepared)) return yield* v1;
     const route = engineRouteOf(prepared.value);
     if (route.kind === "v1" || route.kind === "unknown") return yield* v1;
-    if (route.kind === "update") return yield* refuse(ENGINE_UPDATE_WORDS);
+    if (route.kind === "update")
+      return yield* Effect.fail(new MateEngineUnsupported({ message: ENGINE_UPDATE_WORDS }));
+    if (registry.get(mateEngineReaderAtom) === "none")
+      return yield* Effect.fail(new MateEngineUnsupported({ message: NATIVE_ENGINE_WORDS }));
     const host = registry.get(mateEngineHostAtom);
     if (host === null)
       return yield* Effect.fail(

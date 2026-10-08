@@ -5,6 +5,7 @@
  *
  * @module data/engineHost
  */
+import * as Schema from "effect/Schema";
 import { Atom } from "effect/unstable/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -29,6 +30,18 @@ export interface MateEngineHost {
   readonly live: EngineLiveText;
   readonly close: () => void;
 }
+
+/**
+ * Whether this client reads engine conversations at all. A V1-only app (mobile today) says `none`:
+ * an engine Mate's writes are then refused at once with the update route, never retried.
+ */
+export const mateEngineReaderAtom = Atom.make<"engine" | "none">("engine").pipe(Atom.keepAlive);
+
+/** This client cannot talk to an engine Mate: the person updates the app. Never retried. */
+export class MateEngineUnsupported extends Schema.TaggedError<MateEngineUnsupported>()(
+  "MateEngineUnsupported",
+  { message: Schema.String },
+) {}
 
 /** The signed-in account's host; `null` until its store mounts. */
 export const mateEngineHostAtom = Atom.make<MateEngineHost | null>(null).pipe(Atom.keepAlive);

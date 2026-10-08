@@ -268,6 +268,7 @@ export function shouldRetryThreadOutboxDelivery(error: unknown): boolean {
     switch (error._tag) {
       case "OrchestrationDispatchCommandError":
       case "EnvironmentAuthorizationError":
+      case "MateEngineUnsupported":
         return false;
       case "ConnectionTransientError":
       case "RpcClientError":
@@ -289,6 +290,14 @@ export function resolveThreadOutboxFailureAction(input: {
   readonly error: unknown;
   readonly interrupted: boolean;
 }): ThreadOutboxFailureAction {
+  // An engine Mate this app cannot talk to: the words go back to the draft, the update route shows.
+  if (
+    typeof input.error === "object" &&
+    input.error !== null &&
+    "_tag" in input.error &&
+    input.error._tag === "MateEngineUnsupported"
+  )
+    return "restore";
   if (
     input.stage === "settings-sync" ||
     input.interrupted ||

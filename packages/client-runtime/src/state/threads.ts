@@ -13,7 +13,11 @@ import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
 import { THREAD_SNAPSHOT_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
-import { EMPTY_ENVIRONMENT_THREAD_STATE, type EnvironmentThreadState } from "./threadState.ts";
+import {
+  EMPTY_ENVIRONMENT_THREAD_STATE,
+  NATIVE_ENGINE_WORDS,
+  type EnvironmentThreadState,
+} from "./threadState.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { engineRouteOf } from "../data/engineHost.ts";
 import * as Option from "effect/Option";
@@ -21,9 +25,7 @@ import * as Option from "effect/Option";
 /** What a V1-only reader shows for a Mate whose conversation runs on the engine. */
 export const NATIVE_ENGINE_THREAD_STATE: EnvironmentThreadState = {
   ...EMPTY_ENVIRONMENT_THREAD_STATE,
-  error: Option.some(
-    "This Mate's conversation runs on its engine, which this app does not read yet. Update the app to keep talking to it.",
-  ),
+  error: Option.some(NATIVE_ENGINE_WORDS),
 };
 
 import {
