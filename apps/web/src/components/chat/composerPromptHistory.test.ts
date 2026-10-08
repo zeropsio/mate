@@ -124,6 +124,15 @@ describe("buildComposerPromptHistoryEntries", () => {
     expect(entries.map((entry) => entry.prompt)).toEqual(["first", "second", "third"]);
   });
 
+  it("leaves out the engine's typed crew card: the crew wrote it, not the person", () => {
+    expect(
+      buildComposerPromptHistoryEntries([
+        { id: "m1", role: "user", text: "first" },
+        { id: "m2", role: "user", text: "#12 Camera rig · from you", crewCard: {} },
+      ]).map((entry) => entry.prompt),
+    ).toEqual(["first"]);
+  });
+
   it("collapses consecutive duplicates onto the newest message id", () => {
     const collapsed = buildComposerPromptHistoryEntries([
       { id: "m1", role: "user", text: "same" },

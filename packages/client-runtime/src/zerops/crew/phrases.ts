@@ -674,7 +674,9 @@ export const crewShipLine = (mateName: string): string =>
   `${mateName} ships what the crew added, like its own work.`;
 
 /** A fold that opens: every piece of work that went in. */
-export const crewShowAllWord = (count: number): string => `Show all ${count}`;
+/** _Show all N_; _Show all_ where how many is not known yet (past the engine's bounded board). */
+export const crewShowAllWord = (count: number | null): string =>
+  count === null ? "Show all" : `Show all ${count}`;
 
 export const CREW_WHAT_CHANGED = "What changed";
 
@@ -996,6 +998,59 @@ export const crewEarlierStintNotice = (
   text: `An earlier conversation with ${name} — it goes on in a newer one.`,
   sendBlock: `Write to ${name} in its current conversation`,
 });
+
+/**
+ * A crew seam's line on the engine, where the record gives the seam but no words of its own: work
+ * that went in, work that closed, a save by when it applies (`CrewApplyChoice`).
+ */
+export function crewSeamWords(
+  seam:
+    | { readonly seam: "landed"; readonly number: number; readonly commit: string }
+    | { readonly seam: "closed"; readonly number: number }
+    | { readonly seam: "saved"; readonly apply: "nextTurn" | "now" | "fresh" }
+    | { readonly seam: "stint" | "swept" },
+): string {
+  switch (seam.seam) {
+    case "landed":
+      return `Task #${seam.number} landed as ${seam.commit.slice(0, 7)}`;
+    case "closed":
+      return `Task #${seam.number} closed — nothing to land`;
+    case "saved":
+      return seam.apply === "nextTurn"
+        ? "Its setup changed — from its next message"
+        : seam.apply === "now"
+          ? "Its setup changed — from now on"
+          : "Its setup changed — its next message starts afresh";
+    case "stint":
+      return CREW_NEW_STINT_WORD;
+    case "swept":
+      return "Its unsaved work was kept";
+  }
+}
+
+/**
+ * Why a crewmate's one conversation started a new session, as the line in it says (engine
+ * `session-rotated`, `CREW_SESSION_REASONS`): the conversation goes on, so the line says what
+ * changed and what it keeps — never a link to another.
+ */
+export function crewSessionWord(reason: string | undefined): string {
+  switch (reason) {
+    case "cleared":
+      return "You cleared its conversation — it keeps its job and its work";
+    case "context":
+      return "It started afresh: its conversation grew too long — it carries on from memory";
+    case "job":
+      return "Its job changed — it started afresh";
+    case "login":
+      return "It runs on a different login now";
+    case "budget":
+      return "Its budget changed — it carries on";
+    case "task":
+      return "It started afresh for unrelated work";
+    default:
+      return "It started afresh";
+  }
+}
 
 /** A conversation that began without a reason of its own, and the link to the one before it. */
 export const CREW_NEW_STINT_WORD = "New conversation";

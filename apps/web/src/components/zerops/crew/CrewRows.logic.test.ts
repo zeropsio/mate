@@ -389,6 +389,31 @@ describe("crewRowModel: what it needs from you", () => {
     ]);
   });
 
+  it("an edit sends what the board showed", () => {
+    const snapshot = quiet();
+    const tasks = snapshot.board.tasks.map((task) =>
+      task.id === "task-12"
+        ? { ...task, state: "queued" as const, attempts: 2, dependsOn: ["task-17"] }
+        : task.id === "task-17"
+          ? { ...task, state: "discarded" as const }
+          : task,
+    );
+    const [startAnyway] = needing(
+      "dependency-gone",
+      {},
+      { ...snapshot, board: { ...snapshot.board, tasks } },
+    ).needs[0]!.actions;
+    expect(startAnyway).toMatchObject({
+      kind: "command",
+      command: {
+        _tag: "taskEdit",
+        taskId: "task-12",
+        dependsOn: [],
+        seen: { state: "queued", attempts: 2 },
+      },
+    });
+  });
+
   it("sends each press as the crew command it names", () => {
     const [carryOn, review, drop] = needing("stalled", { text: "why" }).needs[0]!.actions;
     expect([carryOn, review, drop]).toMatchObject([
@@ -696,6 +721,47 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
     expect(row.needs[0]?.detail).toContain("Last confirmed: ready to start");
   });
 }
+
+it("offers Continue for work the engine's crew could not finish, and Drop it for its task", () => {
+  const engine = quiet({ revision: { epoch: 3, seq: 41 } });
+  const row = (fields: Partial<CrewAttention>) =>
+    needing(
+      "interrupted",
+      { id: "effect:crew.check:task-12", text: "the check could not run", ...fields },
+      engine,
+    ).needs[0];
+  expect(row({})?.line.text).toBe("Interrupted · the check could not run");
+  expect(row({})?.actions).toMatchObject([
+    {
+      label: "Continue",
+      command: {
+        _tag: "operationContinue",
+        handle: "backend",
+        operationId: "effect:crew.check:task-12",
+      },
+    },
+    {
+      label: "Drop it",
+      command: {
+        _tag: "operationDiscard",
+        handle: "backend",
+        operationId: "effect:crew.check:task-12",
+      },
+    },
+  ]);
+  expect(row({ taskId: null })?.actions.map((action) => action.label)).toEqual(["Continue"]);
+});
+
+it("names a redeploy the engine's crew could not read, offering to thaw its service", () => {
+  const engine = quiet({ revision: { epoch: 3, seq: 41 } });
+  const [need] = needing(
+    "deploy-unreadable",
+    { id: "deploy-unreadable:appdev", taskId: null, host: "appdev" },
+    engine,
+  ).needs;
+  expect(need?.line.text).toBe("The redeploy of appdev can't be read. Thaw it if it ended.");
+  expect(need?.actions).toMatchObject([{ command: { _tag: "thawHost", host: "appdev" } }]);
+});
 
 it("offers a selected rebuild for a missing crew copy", () => {
   const row = needing("copy-missing", { taskId: null });

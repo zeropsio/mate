@@ -1,8 +1,13 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import type { CrewTask, Crewmate } from "@t3tools/contracts";
+import {
+  CREW_BOARD_FINISHED_PER_CREWMATE,
+  type CrewTask,
+  type CrewTaskPage,
+  type Crewmate,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewmateEmptyModel } from "./CrewmateEmptyState.logic";
+import { crewmateEmptyModel, readFinishedWork } from "./CrewmateEmptyState.logic";
 
 const crew = crewSnapshotFixture();
 const mate = (handle: string): Crewmate => crew.crewmates.find((each) => each.handle === handle)!;
@@ -166,5 +171,63 @@ describe("crewmateEmptyModel", () => {
         at: null,
       },
     ]);
+  });
+});
+
+describe("crewmateEmptyModel on the engine, its board bounded", () => {
+  const landedTask = (number: number, minute: number) =>
+    task({
+      id: `t${number}`,
+      number,
+      title: `Task ${number}`,
+      owner: "backend",
+      state: "landed",
+      landedCommit: `c${number}`,
+      landedAt: at(`10:${String(minute).padStart(2, "0")}`),
+    });
+  // The board holds a crewmate's newest finished work only: twenty pieces.
+  const board = Array.from({ length: CREW_BOARD_FINISHED_PER_CREWMATE }, (_, index) =>
+    landedTask(index + 11, index + 11),
+  );
+
+  it("lists the work it finished, the newest three, and opens the rest in place", async () => {
+    const pages: Record<string, CrewTaskPage> = {
+      first: { tasks: board.toReversed().slice(0, 10), next: "21" },
+      "21": { tasks: [...board.toReversed().slice(10), landedTask(10, 10)], next: "10" },
+      "10": { tasks: [landedTask(9, 9), landedTask(8, 8)], next: null },
+    };
+    const asked: Array<string | null> = [];
+    const older = await readFinishedWork(async ({ handle, before }) => {
+      expect(handle).toBe("backend");
+      asked.push(before);
+      return pages[before ?? "first"]!;
+    }, "backend");
+    expect(asked).toEqual([null, "21", "10"]);
+
+    const closed = crewmateEmptyModel(mate("backend"), board, "Fen");
+    expect(closed.work).toHaveLength(CREW_BOARD_FINISHED_PER_CREWMATE);
+    expect(closed.more).toBe(true);
+    const opened = crewmateEmptyModel(mate("backend"), board, "Fen", older);
+    expect(opened.work.map((row) => row.title).slice(0, 3)).toEqual([
+      "Task 30",
+      "Task 29",
+      "Task 28",
+    ]);
+    expect(opened.work.map((row) => row.title).slice(-3)).toEqual(["Task 10", "Task 9", "Task 8"]);
+    // What the board held and a page brought again is listed once.
+    expect(opened.work).toHaveLength(CREW_BOARD_FINISHED_PER_CREWMATE + 3);
+    expect(opened.more).toBe(false);
+  });
+
+  it("keeps what it read when a page fails, and says nothing more is known", async () => {
+    const older = await readFinishedWork(async ({ before }) => {
+      if (before === null) return { tasks: [landedTask(10, 10)], next: "10" };
+      throw new Error("socket closed");
+    }, "backend");
+    expect(older.map((each) => each.number)).toEqual([10]);
+  });
+
+  it("knows all its work while the board holds less than its bound", () => {
+    expect(crewmateEmptyModel(mate("backend"), board.slice(0, 5), "Fen").more).toBe(false);
   });
 });

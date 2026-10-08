@@ -196,7 +196,7 @@ const labelled = (verb: keyof typeof CREW_ROW_VERBS, mateName: string): Labelled
  */
 export function crewNeedActions(
   row: CrewAttention,
-  crew: Pick<CrewSnapshot, "crewmates" | "hosts" | "board">,
+  crew: Pick<CrewSnapshot, "crewmates" | "hosts" | "board" | "revision">,
   mateName: string,
 ): ReadonlyArray<CrewRowAction> {
   const { taskId, handle } = row;
@@ -219,7 +219,29 @@ export function crewNeedActions(
             },
           ];
     case "interrupted": {
-      if (handle === null || row.operation === undefined) return [];
+      if (handle === null) return [];
+      // The engine's crew raises the row itself, with no operation: the row is what continues.
+      if (row.operation === undefined) {
+        if (crew.revision === undefined) return [];
+        const engineRow = (tag: "operationContinue" | "operationDiscard") =>
+          ({ _tag: tag, handle, operationId: row.id }) as const;
+        return [
+          {
+            kind: "command",
+            ...labelled("carryOn", mateName),
+            command: engineRow("operationContinue"),
+          },
+          ...(taskId === null
+            ? []
+            : [
+                {
+                  kind: "command" as const,
+                  ...labelled("dropIt", mateName),
+                  command: engineRow("operationDiscard"),
+                },
+              ]),
+        ];
+      }
       const continuation: CrewRowAction = {
         kind: "command",
         ...labelled("carryOn", mateName),
@@ -375,6 +397,8 @@ export function crewNeedActions(
                 _tag: "taskEdit",
                 taskId,
                 dependsOn: task.dependsOn.filter((id) => id !== gone.id),
+                // The engine's crew writes an edit only over the task as this board showed it.
+                seen: { state: task.state, attempts: task.attempts },
               },
             },
             drop(taskId),

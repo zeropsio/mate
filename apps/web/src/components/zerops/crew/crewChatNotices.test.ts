@@ -1,4 +1,8 @@
-import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import {
+  crewConversationId,
+  crewEngineSnapshotFixture,
+  crewSnapshotFixture,
+} from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import { ThreadId, type CrewPromptVersion } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -71,5 +75,15 @@ describe("crewChatNotices", () => {
       },
       pending: null,
     });
+  });
+});
+
+describe("crewChatNotices on the engine", () => {
+  it("never points a crewmate's conversation at another: it talks in it, and sends from it", () => {
+    const view = deriveCrewView(crewEngineSnapshotFixture(), [], () => {
+      throw new Error("no shells here");
+    });
+    const backendRow = view.crewmates.find(({ crewmate }) => crewmate.handle === "backend")!;
+    expect(crewChatNotices(backendRow, crewConversationId("backend")).retired).toBeNull();
   });
 });

@@ -11,7 +11,9 @@
  * first line whole in the person's words, with _Change its job_ for a viewer
  * who may change the crew; and _Its work_, what it finished, so a cleared
  * conversation never reads as if it had done nothing — the newest three, each
- * that went in opening its review, and _Show all N_ opening the rest in place.
+ * that went in opening its review, and _Show all N_ opening the rest in place —
+ * on the engine, whose board holds each crewmate's newest finished work only,
+ * reading the rest through `crew.taskPage` as it opens.
  *
  * Nothing here invites a message: the composer does, or says why this viewer
  * cannot. The conversation's seams stand on top, and why a later
@@ -26,7 +28,7 @@ import {
   CREWMATE_EMPTY_WORDS,
   crewShowAllWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewSeam, EnvironmentId } from "@t3tools/contracts";
+import type { CrewSeam, CrewTask, EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
@@ -39,7 +41,11 @@ import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateFace } from "../primitives";
 import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
 import { CrewTextButton, CrewTip } from "./CrewParts";
-import { crewmateEmptyModel, type CrewmateWorkRow } from "./CrewmateEmptyState.logic";
+import {
+  crewmateEmptyModel,
+  readFinishedWork,
+  type CrewmateWorkRow,
+} from "./CrewmateEmptyState.logic";
 import { CrewSeamLine } from "./CrewSeamLine";
 import { CrewSeamActivity, type CrewTimeline } from "./CrewTaskCard";
 
@@ -67,7 +73,17 @@ export function CrewmateEmptyState({
   readonly bottomInset: number;
 }) {
   const { profile } = crew.crewmate;
-  const model = profile === null ? null : crewmateEmptyModel(profile, crew.tasks, crew.mateName);
+  // Its finished work read past the engine's bounded board, once _Show all_ asks for it.
+  const [older, setOlder] = useState<ReadonlyArray<CrewTask> | null>(null);
+  const model =
+    profile === null ? null : crewmateEmptyModel(profile, crew.tasks, crew.mateName, older);
+  const readTaskPage = crew.readTaskPage;
+  const readOlder =
+    model === null || !model.more || readTaskPage === undefined
+      ? null
+      : () => {
+          void readFinishedWork(readTaskPage, crew.crewmate.handle).then(setOlder);
+        };
   // The crew lives in its Mate's container, and sleeps with it.
   const atRest = mateFaceFor(mateFace?.connected ?? true, undefined);
   const origin = crew.origin;
@@ -153,6 +169,8 @@ export function CrewmateEmptyState({
                   <CrewmateWork
                     environmentId={environmentId}
                     first={model.job === ""}
+                    more={model.more}
+                    onShowAll={readOlder}
                     work={model.work}
                   />
                 )}
@@ -195,11 +213,17 @@ function CrewmateJobLine({
 function CrewmateWork({
   work,
   first,
+  more,
+  onShowAll,
   environmentId,
 }: {
   readonly work: ReadonlyArray<CrewmateWorkRow>;
   /** Nothing stands above it in the card. */
   readonly first: boolean;
+  /** More of it is past the engine's board: how much is not known until it is read. */
+  readonly more: boolean;
+  /** Reads what is past the board as _Show all_ opens the rest; `null` where nothing is. */
+  readonly onShowAll: (() => void) | null;
   readonly environmentId: EnvironmentId;
 }) {
   const [all, setAll] = useState(false);
@@ -249,9 +273,15 @@ function CrewmateWork({
           );
         })}
       </ul>
-      {all || work.length <= WORK_SHOWN ? null : (
+      {all || (work.length <= WORK_SHOWN && !more) ? null : (
         <div className="flex h-7 items-center text-line">
-          <CrewTextButton label={crewShowAllWord(work.length)} onPress={() => setAll(true)} />
+          <CrewTextButton
+            label={crewShowAllWord(more ? null : work.length)}
+            onPress={() => {
+              setAll(true);
+              onShowAll?.();
+            }}
+          />
         </div>
       )}
     </div>

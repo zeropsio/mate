@@ -14,7 +14,14 @@ import {
   crewClosedWord,
   crewWentInWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewSeam, CrewTask, Crewmate, ThreadId } from "@t3tools/contracts";
+import type {
+  CrewSeam,
+  CrewTask,
+  CrewTaskPage,
+  CrewTaskPageInput,
+  Crewmate,
+  ThreadId,
+} from "@t3tools/contracts";
 import { createContext, use, useMemo } from "react";
 
 import type { CrewCard } from "../../chat/conversation.logic";
@@ -37,6 +44,11 @@ export interface CrewTimeline {
    * `null` for a viewer who may not change the crew.
    */
   readonly onChangeJob: (() => void) | null;
+  /**
+   * Reads the crewmate's finished work past the engine's bounded board (`crew.taskPage`); absent
+   * where the board holds all of it (V1), or the Mate does not serve the read.
+   */
+  readonly readTaskPage?: ((input: CrewTaskPageInput) => Promise<CrewTaskPage>) | undefined;
 }
 
 export const CrewTimelineContext = createContext<CrewTimeline | null>(null);

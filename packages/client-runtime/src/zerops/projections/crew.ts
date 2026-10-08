@@ -15,6 +15,12 @@
  * Shells are structural: `crew` is the thread's crew origin, absent on a
  * person's thread, so any shell list passes and only crew threads join.
  *
+ * On the engine a crewmate has one conversation (`conversationId`) and no
+ * stints: it joins the thread shell its conversation's row is laid over
+ * (`overlayEngineShell`), so its face is its row's, read by the same resolver.
+ * That conversation is the one it talks in, retired only once archived; a crew
+ * thread no crewmate on the crew talks in is retired.
+ *
  * Pure (rule 3): no clock, no I/O.
  */
 import type {
@@ -57,7 +63,10 @@ export interface CrewPendingVersions {
 
 export interface CrewmateView<S extends CrewShellInput = CrewShellInput> {
   readonly crewmate: Crewmate;
-  /** The current stint's shell; `null` before its first turn or while the shell is not here. */
+  /**
+   * The current stint's shell — on the engine, its conversation's, with its row laid over it;
+   * `null` before its first turn or while the shell is not here.
+   */
   readonly shell: S | null;
   readonly status: ThreadStatus | null;
   /** The status word from the one phrase producer; `null` for an idle thread or no shell. */
@@ -114,8 +123,8 @@ function crewmateView<S extends CrewShellInput>(
   tasksById: ReadonlyMap<string, CrewTask>,
   readThread: (shell: S) => CrewThreadRead,
 ): CrewmateView<S> {
-  const shell =
-    crewmate.currentThreadId === null ? null : (shellsById.get(crewmate.currentThreadId) ?? null);
+  const threadId = (crewmate.conversationId as ThreadId | undefined) ?? crewmate.currentThreadId;
+  const shell = threadId === null ? null : (shellsById.get(threadId) ?? null);
   const thread = shell === null ? null : readThread(shell);
   return {
     crewmate,
@@ -151,6 +160,19 @@ export function deriveCrewView<S extends CrewShellInput>(
   );
 
   const stints = new Map<ThreadId, CrewStintRef>();
+  // A snapshot from the engine's crew: one conversation per crewmate, no stints.
+  const engine =
+    snapshot.revision !== undefined ||
+    snapshot.crewmates.some((crewmate) => crewmate.conversationId !== undefined);
+  for (const { crewmate, shell } of crewmates) {
+    if (crewmate.conversationId === undefined) continue;
+    stints.set(crewmate.conversationId as ThreadId, {
+      handle: crewmate.handle,
+      stint: shell?.crew?.stint ?? 1,
+      current: true,
+      retired: shell?.archivedAt != null,
+    });
+  }
   for (const { crewmate } of crewmates) {
     for (const stint of crewmate.stints) {
       stints.set(stint.threadId, {
@@ -167,7 +189,7 @@ export function deriveCrewView<S extends CrewShellInput>(
       handle: shell.crew.crewmate,
       stint: shell.crew.stint,
       current: false,
-      retired: shell.archivedAt !== null,
+      retired: engine || shell.archivedAt !== null,
     });
   }
   const retiredThreadIds = new Set(

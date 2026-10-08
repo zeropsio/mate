@@ -7,4 +7,4 @@ export {
 } from "./hqProjectPeople.ts";
 export { seedHqVerdict } from "./hqVerdict.ts";
 export { engineThreadOfRecords } from "./engineThread.ts";
-export { callItem, engineRun, personItem, noteItem } from "./mateEngine.ts";
+export { callItem, engineRow, engineRun, personItem, noteItem } from "./mateEngine.ts";

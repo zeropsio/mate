@@ -1053,3 +1053,200 @@ describe("an engine conversation's row in the menu", () => {
     },
   );
 });
+
+describe("a crewmate's engine conversation", () => {
+  const backend = "crew-main-backend-1";
+  const crewmateAgent = {
+    instanceId: "claudeAgent",
+    driver: "claudeAgent",
+    model: "claude-sonnet-4-5",
+    profile: { kind: "crewmate", id: "backend", name: "Backend" },
+  } as const;
+  const mateShell = (threads: ReadonlyArray<unknown>) =>
+    ({
+      snapshot: Option.some({
+        snapshotSequence: 1,
+        projects: [{ id: "project-ada" }],
+        threads,
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      status: "live",
+      error: Option.none(),
+    }) as unknown as Parameters<typeof overlayEngineShell>[0];
+  const threadsOf = (shell: Parameters<typeof overlayEngineShell>[0]) =>
+    Option.getOrNull(shell.snapshot)?.threads ?? [];
+
+  it("is a crew thread in the Mate's shell, on its row, though V1's shell never had it", () => {
+    const shell = overlayEngineShell(mateShell([]), [
+      engineRow(ENV, backend, {
+        agent: crewmateAgent,
+        state: { kind: "working", since: 1, waitsOnHelpers: false },
+        activeRunId: `${backend}/r/3` as never,
+      }),
+    ]);
+    expect(threadsOf(shell)).toMatchObject([
+      {
+        id: backend,
+        projectId: "project-ada",
+        title: "Backend",
+        crew: { crew: "main", crewmate: "backend", stint: 1 },
+        session: { status: "running", activeTurnId: `${backend}/r/3` },
+        archivedAt: null,
+      },
+    ]);
+  });
+
+  it("adds no thread for a conversation that is no crewmate's, nor a second for one V1 already has", () => {
+    expect(threadsOf(overlayEngineShell(mateShell([]), [engineRow(ENV, "thread-new")]))).toEqual(
+      [],
+    );
+    const imported = { id: backend, projectId: "project-ada", title: "Backend (V1)" };
+    const shell = overlayEngineShell(mateShell([imported]), [
+      engineRow(ENV, backend, { agent: crewmateAgent }),
+    ]);
+    expect(threadsOf(shell).map((each) => [each.id, each.title])).toEqual([
+      [backend, "Backend (V1)"],
+    ]);
+  });
+
+  it("is a crew thread when the conversation is drawn, named by its crewmate", () => {
+    const crewKey: EngineConversationKey = { environmentId: ENV, conversationId: backend };
+    const scopes = Object.values(engineConversationScopes(crewKey));
+    const state = apply(emptyAccount, [
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: scopes.map((scope) => ({ scope, generation: 0 })),
+        reset: true,
+        partial: true,
+        rows: [
+          {
+            family: "mateEngineConversation",
+            id: engineConversationId(crewKey),
+            value: {
+              environmentId: ENV,
+              header: engineHeader(backend, { agent: crewmateAgent }),
+              window: { oldestOrdinal: 1, earlier: false },
+            },
+            revision: revision(9),
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    const drawn = Option.getOrNull(engineThread.derive(readsOfState(state), crewKey).data);
+    expect(drawn).toMatchObject({
+      id: backend,
+      title: "Backend",
+      crew: { crew: "main", crewmate: "backend", stint: 1 },
+    });
+    // The Mate's own conversation is a person's thread.
+    expect(thread(held({}))?.crew).toBeUndefined();
+  });
+});
+
+describe("the crew on an engine conversation's record", () => {
+  const activitiesOf = (items: ReadonlyArray<Item>) =>
+    thread(held({ runs: [engineRun("thread-ada", 1)], items }))?.activities ?? [];
+  const card = {
+    kind: "task",
+    taskId: "task-12",
+    number: 12,
+    title: "Add pagination to /api/items",
+    why: "Cursor based, 50 per page.",
+    doneWhen: "npm test passes",
+    links: [{ kind: "crewmate", handle: "backend" }],
+  } as const;
+
+  it("draws a crew card as its run's opening card, typed, never as the agent's answer", () => {
+    const drawn = thread(
+      held({
+        runs: [engineRun("thread-ada", 1)],
+        items: [
+          noteItem(run1, 1, "#12 Add pagination to /api/items · from you\n\nCursor based.", {
+            by: { kind: "engine" },
+            answer: false,
+            card,
+          } as never),
+          noteItem(run1, 2, "Paginated."),
+        ],
+      }),
+    );
+    expect(drawn?.messages).toMatchObject([
+      { role: "user", turnId: run1, crewCard: card },
+      { role: "assistant", text: "Paginated." },
+    ]);
+    expect(drawn?.messages[1]).not.toHaveProperty("crewCard");
+  });
+
+  it.each([
+    {
+      name: "landed",
+      seam: { seam: "landed", taskId: "task-12", number: 12, commit: "a1b2c3d" },
+      reason: undefined,
+      words: "Task #12 landed as a1b2c3d",
+    },
+    {
+      name: "closed",
+      seam: { seam: "closed", taskId: "task-12", number: 12 },
+      reason: undefined,
+      words: "Task #12 closed — nothing to land",
+    },
+    {
+      name: "saved, in the crew's words",
+      seam: { seam: "saved", apply: "now" },
+      reason: "Its job changed — from now on",
+      words: "Its job changed — from now on",
+    },
+    {
+      name: "saved, the crew giving no words",
+      seam: { seam: "saved", apply: "nextTurn" },
+      reason: undefined,
+      words: "Its setup changed — from its next message",
+    },
+  ] as const)("draws a $name seam as the crew seam V1 draws", ({ seam, reason, words }) => {
+    expect(
+      activitiesOf([
+        markerItem(run1, 2, {
+          kind: "crew.seam",
+          seam,
+          ...(reason === undefined ? {} : { reason }),
+        } as never),
+      ]),
+    ).toMatchObject([{ kind: "crew.seam", summary: words, payload: seam }]);
+  });
+
+  it("draws nothing for a seam of a newer build", () => {
+    expect(
+      activitiesOf([
+        markerItem(run1, 2, {
+          kind: "crew.seam",
+          seam: { seam: "unknown", type: "moved" },
+        } as never),
+      ]),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["cleared", "You cleared its conversation — it keeps its job and its work"],
+    ["context", "It started afresh: its conversation grew too long — it carries on from memory"],
+    ["job", "Its job changed — it started afresh"],
+    ["login", "It runs on a different login now"],
+    ["budget", "Its budget changed — it carries on"],
+    ["task", "It started afresh for unrelated work"],
+    ["unknown", "It started afresh"],
+  ] as const)(
+    "draws a session that rotated for %s as the line saying why, in the same conversation",
+    (reason, words) => {
+      expect(
+        activitiesOf([markerItem(run1, 2, { kind: "session-rotated", reason })]),
+      ).toMatchObject([
+        {
+          kind: "crew.seam",
+          summary: words,
+          payload: { seam: "stint", previousThreadId: null },
+        },
+      ]);
+    },
+  );
+});

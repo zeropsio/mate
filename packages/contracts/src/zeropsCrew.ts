@@ -618,6 +618,13 @@ export const CrewTaskPageInput = Schema.Struct({
 });
 export type CrewTaskPageInput = typeof CrewTaskPageInput.Type;
 
+/**
+ * How much of each crewmate's finished work (landed or dropped) an engine frame's board carries,
+ * newest first; the rest pages through `crew.taskPage`. A crewmate with this many finished on the
+ * board may have more.
+ */
+export const CREW_BOARD_FINISHED_PER_CREWMATE = 20;
+
 /** One page of finished work; `next` reads the page after it, `null` at the oldest. */
 export const CrewTaskPage = Schema.Struct({
   tasks: ForwardCompatibleArray(CrewTask),
@@ -694,6 +701,11 @@ export const CrewCommand = Schema.TaggedUnion({
     brief: Schema.optional(Schema.String),
     doneWhen: Schema.optional(Schema.String),
     dependsOn: Schema.optional(Schema.Array(CrewTaskId)),
+    /**
+     * The task as the person's board showed it. The engine's crew writes an edit only over that
+     * task and refuses one that carries none; a V1 server ignores it.
+     */
+    seen: Schema.optional(Schema.Struct({ state: CrewTaskState, attempts: NonNegativeInt })),
   },
   /** Discards one task, from any state (ARCHITECTURE §4 *Assignment*). */
   discard: taskRef,
