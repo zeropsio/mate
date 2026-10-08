@@ -2061,6 +2061,29 @@ describe("decide: a crew run's continuation is its crew's", () => {
     expect(state.pausedUntil).toBeNull();
   });
 
+  it("a run in a crewmate's chat is its crew's to carry on after a restart, whoever it ran for", () => {
+    const crewmate: ReadonlyArray<Step> = [
+      {
+        command: {
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: null,
+            profile: { kind: "crewmate", id: "backend", name: "Backend" },
+          },
+        },
+        by: crew,
+      },
+    ];
+    const { state, log } = playAll([...crewmate, ...running, recovered()]);
+    expect(state.runs[r(1)]?.end).toEqual({ kind: "cut-by-restart", continuedBy: null });
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain(
+      "restart-continuation",
+    );
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+  });
+
   it("a person's message in a crewmate's chat is continued after a restart like any person's", () => {
     const { state } = playAll([...running, recovered()]);
     expect(Object.values(state.wakes).map((wake) => wake.kind)).toContain("restart-continuation");

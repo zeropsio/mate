@@ -969,7 +969,11 @@ const wakeFired = (
     case "usage-resume":
     case "usage-probe":
       // A crew run's limit only held the queue: its crew decides how it goes on.
-      if (!b.state.archived && !newerPersonMessage(b.state, wake) && !crewCarriesOn(wake)) {
+      if (
+        !b.state.archived &&
+        !newerPersonMessage(b.state, wake) &&
+        !crewCarriesOn(b.state, wake)
+      ) {
         startFromWake(b, wake.kind, id, wake);
       }
       admitNext(b);
@@ -1659,10 +1663,12 @@ const selfStarted = (
 
 /**
  * A run its crew started is its crew's to carry on (CREW-DESIGN §2.2): the engine arms no
- * continuation and no usage resume for it. A person's message in a crewmate's chat is theirs.
+ * continuation and no usage resume for it. So is every run in a crewmate's chat, whoever it ran
+ * for: a person's message reaches it through its crew, which holds it while the crew is paused or
+ * its copy frozen.
  */
-const crewCarriesOn = (run: { readonly principal: Principal }): boolean =>
-  run.principal.kind === "crew";
+const crewCarriesOn = (state: ConversationState, run: { readonly principal: Principal }): boolean =>
+  run.principal.kind === "crew" || state.agent?.profile.kind === "crewmate";
 
 /** Why a cut run is not continued, or null when every guard passes. */
 export const continuationRefusal = (state: ConversationState, run: RunRecord): string | null => {
@@ -1697,7 +1703,7 @@ const recovered = (
     if (effect?.kind === "provider.send" && effect.runId !== null) neverSent.add(effect.runId);
   }
   const run = activeRun(b.state);
-  const crewRun = run !== undefined && crewCarriesOn(run);
+  const crewRun = run !== undefined && crewCarriesOn(b.state, run);
   if (run !== undefined && run.state === "sending" && neverSent.has(run.id) && !crewRun) {
     // Its send never started: nothing reached the agent, so it goes again, as it was.
     b.emit({
