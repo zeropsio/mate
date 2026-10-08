@@ -91,6 +91,7 @@ import {
   type ToolReply,
 } from "./command.ts";
 import { stampCrewEvents, type CrewEventDraft, type TaskPatch } from "./events.ts";
+import type { CrewImport } from "./importV1Crew.ts";
 import { evolveCrew } from "./evolve.ts";
 import {
   DEFAULT_CREW_LOGIN,
@@ -174,7 +175,12 @@ export const busyWords = (handle: string): string =>
   `@${handle} is busy with its copy of the code; try again in a moment`;
 
 /** A rotation's reason as the crewmate's session boundary records it. */
-const SESSION_REASON: Readonly<Record<RotationReason | "budget", CrewSessionReason>> = {
+/** An attention row the flip's import raised: *Continue* takes its task up where it stood. */
+export const IMPORTED_ROW = "imported:";
+/** Why a task V1 left mid-way goes on: what its crewmate reads. */
+export const UPDATE_WHY = "It stopped for an update to the Mate; carry on from where it stood.";
+
+export const SESSION_REASON: Readonly<Record<RotationReason | "budget", CrewSessionReason>> = {
   "transcript-missing": "context",
   "resume-failed": "context",
   "context-overflow": "context",
@@ -298,7 +304,8 @@ export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number
   const b = new Builder(state, envelope, now);
   try {
     handle(b, envelope.input);
-    if (b.state.applied !== null) settle(b);
+    // The import moves nothing of its own: the crew goes on at the next input, never in it.
+    if (b.state.applied !== null && envelope.input._tag !== "ImportV1") settle(b);
   } catch (error) {
     if (error instanceof Rejected) {
       return { _tag: "Reject", rejection: { reason: error.reason, detail: error.detail } };
@@ -343,6 +350,8 @@ const handle = (b: Builder, input: CrewInput): void => {
       return settled(b, input.effectId, input.outcome);
     case "Recovered":
       return recovered(b);
+    case "ImportV1":
+      return importV1(b, input.crew);
   }
 };
 
@@ -1556,6 +1565,14 @@ const pressed = (
       const row = b.state.attention.find((entry) => entry.id === press.operationId);
       if (row === undefined) throw wrongState("that row is gone");
       b.emit({ _tag: "AttentionCleared", id: row.id });
+      if (
+        press._tag === "operationContinue" &&
+        row.id.startsWith(IMPORTED_ROW) &&
+        row.taskId !== null
+      ) {
+        const task = b.state.tasks[row.taskId];
+        if (task !== undefined) continueImported(b, task, as);
+      }
       if (press._tag === "operationDiscard" && row.taskId !== null) {
         const task = b.state.tasks[row.taskId];
         if (task !== undefined && task.state !== "landed" && task.state !== "discarded") {
@@ -1827,7 +1844,7 @@ const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boole
 
 /* ------------------------------------------------------------ the crew home */
 
-const firstLine = (text: string): string =>
+export const firstLine = (text: string): string =>
   text
     .split(/\r?\n/u)
     .map((line) => line.trim())
@@ -2828,6 +2845,67 @@ const recovered = (b: Builder): void => {
   }
 };
 
+/**
+ * V1's crew, taken in one step at the flip: its crewmates get their agents, held claims their dev
+ * server read again, open questions their wake from when they were asked, a frozen host its
+ * redeploy read, and each copy the boot's sweep. A crew that holds one already takes nothing.
+ */
+const importV1 = (b: Builder, crew: CrewImport): void => {
+  if (b.state.applied !== null || Object.keys(b.state.tasks).length > 0) return;
+  b.emit({
+    _tag: "CrewApplied",
+    definition: crew.definition,
+    briefVersion: crew.briefVersion,
+    members: crew.members,
+    removed: [],
+  });
+  for (const [host, set] of Object.entries(crew.hosts)) b.emit({ _tag: "HostUpdated", host, set });
+  for (const task of crew.tasks) b.emit({ _tag: "TaskCreated", task });
+  if (crew.run !== null) b.emit({ _tag: "RunStarted", run: crew.run });
+  for (const [host, claim] of Object.entries(crew.claims)) {
+    b.emit({ _tag: "ClaimUpdated", host, claim });
+    b.effect({ kind: "crew.claim.read", host, handle: claim.handle, purpose: "import" }, host, {
+      host,
+      handle: claim.handle,
+    });
+  }
+  for (const [handle, op] of Object.entries(crew.memory)) {
+    b.emit({ _tag: "MemoryChanged", handle, op });
+  }
+  for (const row of crew.interrupted) b.emit({ _tag: "AttentionRaised", row });
+  for (const task of tasksInOrder(b.state)) {
+    if (task.state === "blocked" && task.askedAt !== null && task.report?.question != null) {
+      b.arm("question", questionKey(task), task.askedAt + QUESTION_TO_PERSON_MS, {
+        kind: "engine",
+      });
+    }
+  }
+  for (const member of membersInOrder(b.state)) assignAgent(b, member);
+  for (const [host, record] of Object.entries(b.state.hosts)) {
+    if (record.frozenSince !== null) {
+      b.effect({ kind: "crew.deploy.poll", host }, host, { host });
+    }
+  }
+  recovered(b);
+};
+
+/** *Continue* on a task the import found mid-way: it goes on from where it stood. */
+const continueImported = (b: Builder, task: TaskRecord, as: Principal): void => {
+  switch (task.state) {
+    case "working":
+      if (isWorking(b.state, task.owner)) throw wrongState(busyWords(task.owner));
+      continueTask(b, task, as, continueCard(task, UPDATE_WHY), "continue");
+      return;
+    case "merging":
+      return mergeIn(b, task);
+    case "ready":
+      b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { landAs: as } });
+      return;
+    default:
+      return;
+  }
+};
+
 const wakeKey = (state: CrewState, wakeId: string, kind: string): string =>
   wakeId.slice(`${state.ownerId}/w/${kind}/`.length);
 
@@ -3389,6 +3467,20 @@ const claimRead = (
     case "after-release":
       moveClaim(b, host, read.served.by === "tree" ? "serves-tree" : "turn-failed");
       return;
+    case "import": {
+      // A claim V1 held: still held while the dev server serves its crewmate's copy.
+      if (claim.state !== "held") return;
+      if (read.served.by === "crewmate" && read.served.handle === claim.handle) {
+        b.emit({
+          _tag: "ClaimUpdated",
+          host,
+          claim: { ...claim, devServer: read.devServer, workDir: read.workDir },
+        });
+      } else {
+        b.emit({ _tag: "ClaimUpdated", host, claim: null });
+      }
+      return;
+    }
     default:
       return;
   }

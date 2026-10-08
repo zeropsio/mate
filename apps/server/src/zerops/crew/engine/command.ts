@@ -39,6 +39,7 @@ import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
+import type { CrewImport } from "./importV1Crew.ts";
 
 /**
  * The revision of a task a person edits from: its state and attempts as their board showed them
@@ -98,7 +99,9 @@ export type CrewInput =
       readonly effectId: EffectId;
       readonly outcome: EffectOutcome;
     }
-  | { readonly _tag: "Recovered"; readonly bootId: BootId };
+  | { readonly _tag: "Recovered"; readonly bootId: BootId }
+  /** V1's crew, taken once at the flip (`importV1Crew.ts`); a crew that holds one takes nothing. */
+  | { readonly _tag: "ImportV1"; readonly crew: CrewImport };
 
 export interface CrewEnvelope {
   readonly commandId: CommandId;
@@ -241,7 +244,7 @@ export type CrewEffectPayload =
       readonly kind: "crew.claim.read";
       readonly host: string;
       readonly handle: string;
-      readonly purpose: "grant" | "after-start" | "after-release";
+      readonly purpose: "grant" | "after-start" | "after-release" | "import";
     }
   | { readonly kind: "crew.app.run"; readonly handle: string }
   | { readonly kind: "crew.app.stop"; readonly handle: string }
