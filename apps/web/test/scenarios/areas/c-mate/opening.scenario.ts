@@ -323,16 +323,20 @@ describe("C: the conversation opening follows readiness", () => {
                       );
                       yield* s.given.signedIn;
                       const frames: Array<{ data: string; timestamp: number | undefined }> = [];
-                      const cdp = yield* Effect.promise(() => s.page.createCDPSession());
-                      cdp.on("Page.screencastFrame", (frame) => {
-                        frames.push({ data: frame.data, timestamp: frame.metadata.timestamp });
-                        void cdp
-                          .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
-                          .catch(() => undefined);
-                      });
-                      yield* Effect.promise(() =>
-                        cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1 }),
-                      );
+                      const cdp = output
+                        ? yield* Effect.promise(() => s.page.createCDPSession())
+                        : undefined;
+                      if (cdp) {
+                        cdp.on("Page.screencastFrame", (frame) => {
+                          frames.push({ data: frame.data, timestamp: frame.metadata.timestamp });
+                          void cdp
+                            .send("Page.screencastFrameAck", { sessionId: frame.sessionId })
+                            .catch(() => undefined);
+                        });
+                        yield* Effect.promise(() =>
+                          cdp.send("Page.startScreencast", { format: "png", everyNthFrame: 1 }),
+                        );
+                      }
                       if (entry === "project") yield* chat.when.visit("/mate/Sage");
                       else yield* chat.when.openReadOnly("Sage");
                       if (person === "reader")
@@ -441,7 +445,7 @@ describe("C: the conversation opening follows readiness", () => {
                           });
                         });
                       }
-                      yield* Effect.promise(() => cdp.send("Page.stopScreencast"));
+                      if (cdp) yield* Effect.promise(() => cdp.send("Page.stopScreencast"));
                       if (output) {
                         const dir = path.join(output, label);
                         yield* Effect.promise(() =>
@@ -491,7 +495,7 @@ describe("C: the conversation opening follows readiness", () => {
                             s.page.evaluate(() => Reflect.get(window, "openingEyesAtReady")),
                           ),
                         ).toEqual({ open: true, shut: false });
-                      yield* Effect.promise(() => cdp.detach());
+                      if (cdp) yield* Effect.promise(() => cdp.detach());
                       yield* s.then.noExternalNetwork;
                     }),
                 );
