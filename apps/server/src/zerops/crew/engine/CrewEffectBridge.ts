@@ -665,7 +665,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
               const pictures = (crewCommand.attachments ?? []).filter(
                 (attachment): attachment is ChatImageAttachment => attachment.type === "image",
               );
-              return told(
+              const send = told(
                 {
                   _tag: "Send",
                   text: crewCommand.text,
@@ -674,6 +674,14 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
                 },
                 crewCommand.principal,
               );
+              // Joins the running run (V1's steer); a turn of its own when that run is gone.
+              return crewCommand.steer === undefined || pictures.length > 0
+                ? send
+                : {
+                    ...send,
+                    command: { _tag: "Steer", runId: crewCommand.steer, text: crewCommand.text },
+                    fallback: send.command,
+                  };
             }
             case "Stop":
               return told(

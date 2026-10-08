@@ -161,6 +161,11 @@ export type DeliverCommand =
       readonly principal: Principal;
       /** A person's pictures, by reference; the actor captures them before it tells the crew. */
       readonly attachments?: ReadonlyArray<ChatAttachment>;
+      /**
+       * The crewmate's running run this joins (V1 steers a message into a running turn); sent as
+       * a turn of its own when that run no longer takes it.
+       */
+      readonly steer?: RunId;
     }
   | { readonly _tag: "Stop"; readonly runId: RunId | null }
   | (RotateSession & {

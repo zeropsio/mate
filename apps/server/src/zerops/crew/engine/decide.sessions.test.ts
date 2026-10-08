@@ -70,6 +70,18 @@ const journeys: ReadonlyArray<Journey> = [
     ],
   },
   {
+    sentence: "a message to a crewmate whose turn runs joins that turn, as V1 steers it",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      w.press({ _tag: "message", handle: "reviewer", text: "Read the README", attachments: [] });
+      const runId = w.run("reviewer");
+      w.press({ _tag: "message", handle: "reviewer", text: "And the docs", attachments: [] });
+      const sent = w.delivered.at(-1)!.command;
+      return sent._tag === "Send" ? [sent.text, sent.steer === runId] : sent._tag;
+    },
+    expected: ["And the docs", true],
+  },
+  {
     sentence: "a job saved for the next turn rotates the session before that turn",
     journey: (w) => {
       w.apply(home(writer("backend")));

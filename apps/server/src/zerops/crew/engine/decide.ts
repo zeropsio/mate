@@ -38,6 +38,7 @@ import {
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
+import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
@@ -635,6 +636,7 @@ const sendTurn = (
   purpose: DeliveryPurpose,
   taskId: string | null,
   attachments: ReadonlyArray<ChatAttachment> = [],
+  steer?: RunId,
 ): void => {
   const fresh = b.state.members[member.handle] ?? member;
   if (fresh.session.running === null || fresh.session.principal === null) {
@@ -663,6 +665,7 @@ const sendTurn = (
       card: sent.card,
       principal,
       ...(attachments.length === 0 ? {} : { attachments }),
+      ...(steer === undefined ? {} : { steer }),
     },
     { purpose, taskId, principal, text: sent.text, card: sent.card },
   );
@@ -1674,7 +1677,16 @@ const message = (
   const member = b.member(handle);
   const sent = { text, card: null };
   if (member.active !== null) {
-    sendTurn(b, member, sent, as, "message", openTaskOf(b.state, handle)?.id ?? null, attachments);
+    sendTurn(
+      b,
+      member,
+      sent,
+      as,
+      "message",
+      openTaskOf(b.state, handle)?.id ?? null,
+      attachments,
+      member.active.runId,
+    );
     return;
   }
   if (member.kind === "lead") {
@@ -2653,6 +2665,10 @@ type Ending =
 const endingOf = (event: Extract<KnownEngineEvent, { _tag: "RunEnded" }>): Ending => {
   if (event.detail === "overflow") return { kind: "overflow" };
   const end = event.end;
+  // Its agent stopped the turn with nobody asking: interrupted, as V1 reads it, not broken.
+  if (end.kind === "failed" && end.reason === AGENT_STOPPED_ITSELF && event.detail === undefined) {
+    return { kind: "stopped" };
+  }
   if (event.detail === "provider-error" || end.kind === "failed" || end.kind === "crashed") {
     return {
       kind: "infrastructure",
@@ -3159,6 +3175,14 @@ const settled = (
         delivery.purpose === "archive" ||
         delivery.purpose === "seam"
       ) {
+        b.emit({ _tag: "DeliveryClosed", effectId });
+      } else if (
+        runId !== undefined &&
+        Object.entries(b.state.deliveries).some(
+          ([other, entry]) => other !== effectId && entry.runId === runId,
+        )
+      ) {
+        // It joined a run another delivery queued (a steer): that one carries the run.
         b.emit({ _tag: "DeliveryClosed", effectId });
       } else if (runId !== undefined && delivery.runId === null) {
         b.emit({ _tag: "DeliveryLinked", effectId, runId });

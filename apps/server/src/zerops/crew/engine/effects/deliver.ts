@@ -16,7 +16,12 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { CommandResult, ConversationId, Principal } from "@t3tools/contracts";
+import {
+  CommandId,
+  type CommandResult,
+  type ConversationId,
+  type Principal,
+} from "@t3tools/contracts";
 
 import type { StepFailure } from "../../../../engine/ConversationActor.ts";
 import { Conversations } from "../../../../engine/Conversations.ts";
@@ -50,6 +55,8 @@ export interface DeliverPayload {
   /** The person, or the run's starter, the command acts for. */
   readonly principal: Principal;
   readonly command: Command;
+  /** Told instead when `command` is refused (a steer whose run no longer takes it). */
+  readonly fallback?: Command;
 }
 
 export type DeliverValue = Omit<Extract<CommandResult, { readonly _tag: "Accepted" }>, "_tag">;
@@ -65,12 +72,23 @@ export const makeDeliver = Effect.gen(function* () {
     run: (row) =>
       Effect.gen(function* () {
         const payload = payloadOf<DeliverPayload>(row);
-        const result = yield* delivery.deliver({
-          commandId: deliveryCommandId(row.effectId),
-          conversationId: payload.conversationId,
-          principal: payload.principal,
-          command: payload.command,
-        });
+        const tell = (command: Command, commandId: string) =>
+          delivery.deliver({
+            commandId: CommandId.make(commandId),
+            conversationId: payload.conversationId,
+            principal: payload.principal,
+            command,
+          });
+        const first = yield* tell(
+          payload.command,
+          payload.fallback === undefined
+            ? deliveryCommandId(row.effectId)
+            : `${deliveryCommandId(row.effectId)}:joined`,
+        );
+        const result =
+          first._tag === "Rejected" && payload.fallback !== undefined
+            ? yield* tell(payload.fallback, deliveryCommandId(row.effectId))
+            : first;
         if (result._tag === "Rejected") {
           return {
             _tag: "Done",

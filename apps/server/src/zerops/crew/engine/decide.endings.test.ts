@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
+
 import {
   CrewWorld,
   OPTIONS,
@@ -23,6 +25,19 @@ interface Journey {
 }
 
 const journeys: ReadonlyArray<Journey> = [
+  {
+    sentence:
+      "a turn its agent stopped on its own is interrupted, not broken: its task stays in its attempt",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      w.end("reviewer", { kind: "failed", reason: AGENT_STOPPED_ITSELF, next: null });
+      const task = w.task(1);
+      return [task.state, task.counters.attempt, task.midway?.ending, task.midway?.why];
+    },
+    expected: ["working", 1, "interrupted", "its turn was interrupted"],
+  },
   {
     sentence: "each attempt keeps its row: how and when it ended, its words, what it cost",
     journey: (w) => {
