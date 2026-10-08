@@ -27,10 +27,6 @@ zerops:
         # HQ Core of the same commit, same-origin under hq-core/: what an
         # organization's HQ birth deploys (apps/hq/scripts/pack-core.ts).
         - node apps/hq/scripts/pack-core.ts apps/web/dist
-        # msw's dev worker ships in apps/web/public and would otherwise be
-        # served publicly. Nothing registers it; it still has no business on
-        # a public origin.
-        - rm -f apps/web/dist/mockServiceWorker.js
       # `~` shortens the deployed path: apps/web/dist lands at /var/www/dist,
       # which documentRoot below points nginx at.
       deployFiles:

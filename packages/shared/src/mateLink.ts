@@ -31,6 +31,7 @@
 import {
   ConversationRow,
   CrewAttention,
+  MateInterruption,
   CrewHandle,
   CrewTask,
   ExecutionEnvironmentDescriptor,
@@ -163,7 +164,11 @@ export const OverviewMain = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   backgroundLiveness: Schema.NullOr(Schema.Literals(["working", "monitoring"])),
   session: Schema.NullOr(
-    Schema.Struct({ status: OrchestrationSessionStatus, lastError: Schema.NullOr(Text) }),
+    Schema.Struct({
+      status: OrchestrationSessionStatus,
+      lastError: Schema.NullOr(Text),
+      interruption: Schema.optional(Schema.NullOr(MateInterruption)),
+    }),
   ),
   latestTurn: Schema.NullOr(
     Schema.Struct({

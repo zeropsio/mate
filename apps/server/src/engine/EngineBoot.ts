@@ -4,7 +4,7 @@
  * 1. A new boot id; the platform's restart evidence, read once.
  * 2. Replay-safe work another boot was running goes back to its queue (a capture, a release).
  * 3. Every conversation the restart touched — process-bound work left behind, a live run, a
- *    session still open — is told `Recovered`, with the restart in the platform's words: what was
+ *    session still open — is told `Recovered`, with typed platform restart evidence: what was
  *    cut is recorded, a live run ends cut by the restart, its continuation is armed when its guards
  *    pass (no newer person message, no Stop, no archive, no maintenance turn), and every open
  *    session is closed, since its process died with the server.
@@ -52,7 +52,7 @@ export const bootEngine = (
     const worker = yield* makeEffectWorker(bootId, options.worker);
     const scheduler = yield* makeWakeScheduler();
     // The conversation's last commit is its last sign of life before the restart.
-    const wordsFor = (conversation: ConversationId) =>
+    const restartFor = (conversation: ConversationId) =>
       sql<{ readonly updated_at: number }>`
         SELECT updated_at FROM engine_conversation WHERE conversation_id = ${conversation}
       `.pipe(
@@ -61,7 +61,7 @@ export const bootEngine = (
         ),
         Effect.orElseSucceed(() => undefined),
       );
-    const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(wordsFor);
+    const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(restartFor);
     yield* pump.start;
     yield* scheduler.start;
     yield* worker.start;

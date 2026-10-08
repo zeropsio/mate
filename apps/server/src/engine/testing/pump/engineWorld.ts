@@ -14,6 +14,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -135,7 +136,10 @@ export const makeEngineWorld = (options: WorldOptions) =>
         RestartEvidence,
         RestartEvidence.of({
           read: Effect.succeed(null),
-          explain: () => "Mate restarted.",
+          explain: (_facts, window) => ({
+            cause: "restarted",
+            at: DateTime.formatIso(DateTime.makeUnsafe(window.bootAt)),
+          }),
         }),
       ),
       Layer.succeed(

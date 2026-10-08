@@ -1,6 +1,7 @@
 import { projectMateLimit, type MateLimit } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
+import { MessageId } from "@t3tools/contracts";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
@@ -3780,4 +3781,42 @@ describe("an engine run whose work the account does not hold yet", () => {
   it("draws an answer alone when its run did nothing else", () => {
     expect(recordOf(rows(scene()))).toBeNull();
   });
+});
+
+it("accepted work cut before the first provider handshake has a recovery card, then a quiet continuation record", () => {
+  const interruption = {
+    turnId: null,
+    messageId: MessageId.make("accepted"),
+    restart: { cause: "restarted" as const, at: at(9) },
+    continuation: "manual" as const,
+  };
+  const cut: TimelineEntry = {
+    id: "restart",
+    kind: "work",
+    createdAt: at(9),
+    entry: {
+      id: "restart",
+      createdAt: at(9),
+      label: "Interrupted",
+      tone: "info",
+      sourceActivityKind: "runtime.interrupted",
+      turnId: null,
+      interruption,
+    },
+  };
+  const entries = [user("accepted", 0, "Inspect the service"), cut];
+  const pending = framed({ entries }).find((row) => row.kind === "record");
+  expect(pending?.kind).toBe("record");
+  if (pending?.kind !== "record") return;
+  expect(pending.status?.interruption).toEqual(interruption);
+  const accepted: TimelineEntry = {
+    ...cut,
+    entry: { ...cut.entry, interruption: { ...interruption, continuation: "requested" } },
+  };
+  const continued = framed({ entries: [entries[0]!, accepted, user("continue", 10)] }).find(
+    (row) => row.kind === "record",
+  );
+  expect(continued?.kind).toBe("record");
+  if (continued?.kind !== "record") return;
+  expect(continued.status?.interruption?.continuation).toBe("requested");
 });

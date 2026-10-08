@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   type OrchestrationCommand,
+  type OrchestrationLatestTurn,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
@@ -8,6 +9,10 @@ import {
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { ProjectionTurnRepository } from "./persistence/Services/ProjectionTurns.ts";
+import { ProjectionThreadActivityRepository } from "./persistence/Services/ProjectionThreadActivities.ts";
+import { ProjectionPendingApprovalRepository } from "./persistence/Services/ProjectionPendingApprovals.ts";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -22,6 +27,14 @@ import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
+const recoveryRepositories = Layer.mergeAll(
+  Layer.mock(ProjectionTurnRepository)({ getPendingTurnStartByThreadId: () => Effect.succeedNone }),
+  Layer.mock(ProjectionThreadActivityRepository)({
+    listUserInputLifecycleByThreadId: () => Effect.succeed([]),
+  }),
+  Layer.mock(ProjectionPendingApprovalRepository)({ listByThreadId: () => Effect.succeed([]) }),
+);
+
 const providerInstanceId = ProviderInstanceId.make("codex");
 const updatedAt = "2026-08-20T12:00:00.000Z";
 
@@ -35,6 +48,17 @@ const makeThread = (
   archivedAt,
   updatedAt,
   deletedAt: null,
+  latestTurn:
+    activeTurnId === null
+      ? null
+      : {
+          turnId: activeTurnId,
+          state: "running" as OrchestrationLatestTurn["state"],
+          requestedAt: updatedAt,
+          startedAt: updatedAt,
+          completedAt: null,
+          assistantMessageId: null,
+        },
   session: {
     threadId: ThreadId.make(id),
     status,
@@ -42,7 +66,7 @@ const makeThread = (
     providerInstanceId,
     runtimeMode: "full-access" as const,
     activeTurnId,
-    lastError: null,
+    lastError: null as string | null,
     updatedAt,
   },
 });
@@ -96,7 +120,7 @@ const runReconciliation = (input: {
       subscribeDomainEvents: Effect.succeed(Stream.empty),
       latestSequence: Effect.succeed(0),
     }),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(Layer.mergeAll(recoveryRepositories, NodeServices.layer)),
   );
 
 it.effect("reconciles multiple active and archived orphans but skips live sessions", () => {
@@ -161,7 +185,7 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
                 }
               : null,
           ),
-          orphanIds.map(() => ({ status: "error" as const, activeTurnId: null })),
+          orphanIds.map(() => ({ status: "interrupted" as const, activeTurnId: null })),
         );
         assert.equal(upserts.length, orphanIds.length);
         for (const binding of upserts) {
@@ -303,14 +327,13 @@ it.effect("does not fail startup when the live provider session inventory cannot
       subscribeDomainEvents: Effect.succeed(Stream.empty),
       latestSequence: Effect.succeed(0),
     }),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(Layer.mergeAll(recoveryRepositories, NodeServices.layer)),
     Effect.tap(() => Effect.sync(() => assert.equal(queried, false))),
   );
 });
 
 const bootAt = "2026-08-20T12:05:00.000Z";
 const processAt = "2026-08-20T12:04:00.000Z";
-const continuation = "its running turn was interrupted. Send a message to continue.";
 const restartProcess = {
   projectId: "project-mate",
   serviceStackId: "zcp-own",
@@ -327,18 +350,18 @@ it.effect.each(
       {
         label: "process with person",
         processes: [restartProcess],
-        expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+        expected: { cause: "restarted" as const, at: processAt },
       },
       {
         label: "process without person",
         processes: [{ ...restartProcess, createdByUser: null }],
-        expected: `Fen was restarted at ${processAt}; ${continuation}`,
+        expected: { cause: "restarted" as const, at: processAt },
       },
       {
         label: "read failed",
         failed: true,
         processes: [],
-        expected: `Mate restarted at ${bootAt}; ${continuation}`,
+        expected: { cause: "restarted" as const, at: bootAt },
       },
       {
         label: "only actions that could interrupt this turn, newest first",
@@ -359,18 +382,24 @@ it.effect.each(
           { ...restartProcess, started: "2026-08-20T12:03:00.000Z" },
           restartProcess,
         ],
-        expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+        expected: { cause: "restarted" as const, at: processAt },
       },
       {
-        label: "no process",
-        processes: [],
-        expected: `Fen restarted at ${bootAt}; ${continuation}`,
+        label: "platform stop",
+        processes: [{ ...restartProcess, actionName: "stack.stop" }],
+        expected: { cause: "stopped" as const, at: processAt },
       },
+      {
+        label: "platform deployment",
+        processes: [{ ...restartProcess, actionName: "stack.deploy" }],
+        expected: { cause: "redeployed" as const, at: processAt },
+      },
+      { label: "no process", processes: [], expected: { cause: "restarted" as const, at: bootAt } },
       {
         label: "container replaced without process",
         processes: [],
         containerStartedAt: processAt,
-        expected: `Fen's container was replaced at ${processAt}; ${continuation}`,
+        expected: { cause: "replaced" as const, at: processAt },
       },
     ],
     (row) => ({
@@ -384,7 +413,10 @@ it.effect.each(
     const commands: OrchestrationCommand[] = [];
     let reads = 0;
     yield* runReconciliation({
-      threads: [makeThread("orphan-one", "running"), makeThread("orphan-two", "running")],
+      threads: [
+        makeThread("orphan-one", "running", TurnId.make("one")),
+        makeThread("orphan-two", "running", TurnId.make("two")),
+      ],
       directory: {
         getBinding: () => Effect.succeedNone,
         upsert: () => Effect.void,
@@ -415,11 +447,36 @@ it.effect.each(
     );
     assert.equal(commands.length, 2);
     for (const command of commands) {
-      assert.equal(
-        command.type === "thread.session.set" && command.session.lastError,
-        row.expected,
-      );
+      assert.strictEqual(command.type, "thread.session.set");
+      if (command.type !== "thread.session.set") continue;
+      assert.strictEqual(command.session.status, "interrupted");
+      assert.strictEqual(command.session.lastError, null);
+      assert.deepStrictEqual(command.session.interruption?.restart, row.expected);
+      assert.strictEqual(command.session.interruption?.continuation, "manual");
     }
     assert.equal(reads, 1);
   }),
+);
+
+it.effect(
+  "an idle restart preserves a provider failure despite its retained active turn id",
+  () => {
+    const failed = makeThread("idle-failed", "error", TurnId.make("failed"));
+    failed.session.lastError = "Provider request failed.";
+    if (failed.latestTurn === null) throw new Error("Missing failed turn fixture");
+    failed.latestTurn.state = "error";
+    const commands: OrchestrationCommand[] = [];
+    return runReconciliation({
+      threads: [failed],
+      directory: {
+        getBinding: () => Effect.succeedNone,
+        upsert: () => Effect.void,
+        getProvider: () => Effect.die("unused"),
+        listThreadIds: () => Effect.die("unused"),
+        listBindings: () => Effect.die("unused"),
+      },
+      dispatch: (command) =>
+        Effect.sync(() => commands.push(command)).pipe(Effect.as({ sequence: 1 })),
+    }).pipe(Effect.tap(() => Effect.sync(() => assert.deepStrictEqual(commands, []))));
+  },
 );

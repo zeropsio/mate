@@ -1718,3 +1718,192 @@ it("retains per-root incomplete history in the live thread projection", () => {
   expect(result.kind).toBe("updated");
   if (result.kind === "updated") expect(result.thread.checkpoints[0]?.history).toEqual(history);
 });
+
+it.each([
+  [false, "running"],
+  [false, "error"],
+  [true, "running"],
+] as const)(
+  "restart recovery survives acceptance and clears on rewind (handshake: %s, cached state: %s)",
+  (handshake, cachedState) => {
+    const turnId = TurnId.make("cut-turn");
+    const at = "2026-10-08T08:24:39.700Z";
+    const interruption = {
+      turnId: handshake ? null : turnId,
+      ...(handshake ? { messageId: MessageId.make("accepted") } : {}),
+      restart: { cause: "replaced" as const, at },
+      continuation: "manual" as const,
+    };
+    const result = applyThreadDetailEvent(
+      {
+        ...baseThread,
+        messages: handshake
+          ? [
+              {
+                id: MessageId.make("accepted"),
+                role: "user",
+                text: "Work",
+                turnId: null,
+                streaming: false,
+                createdAt: at,
+                updatedAt: at,
+              },
+            ]
+          : [],
+        latestTurn: handshake
+          ? null
+          : {
+              turnId,
+              state: cachedState,
+              requestedAt: baseThread.createdAt,
+              startedAt: baseThread.createdAt,
+              completedAt: null,
+              assistantMessageId: null,
+            },
+      },
+      {
+        ...baseEventFields,
+        sequence: 1,
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        occurredAt: at,
+        type: "thread.session-set",
+        payload: {
+          threadId: baseThread.id,
+          session: {
+            threadId: baseThread.id,
+            status: "interrupted",
+            providerName: "codex",
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            interruption,
+            updatedAt: at,
+          },
+        },
+      },
+    );
+    expect(result.kind).toBe("updated");
+    if (result.kind !== "updated") return;
+    expect(result.thread.latestTurn?.state).toBe(handshake ? undefined : "interrupted");
+    expect(result.thread.activities[0]).toMatchObject({
+      turnId: interruption.turnId,
+      kind: "runtime.interrupted",
+      payload: { interruption },
+    });
+    const rebound = applyThreadDetailEvent(result.thread, {
+      ...baseEventFields,
+      sequence: 2,
+      aggregateKind: "thread",
+      aggregateId: baseThread.id,
+      occurredAt: at,
+      type: "thread.session-set",
+      payload: {
+        threadId: baseThread.id,
+        session: {
+          threadId: baseThread.id,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: at,
+        },
+      },
+    });
+    expect(rebound.kind).toBe("updated");
+    if (rebound.kind !== "updated") return;
+    expect(rebound.thread.session?.interruption).toEqual(interruption);
+    expect(rebound.thread.activities).toEqual(result.thread.activities);
+    const compactMessageId = MessageId.make("compact");
+    const compact = applyThreadDetailEvent(
+      {
+        ...rebound.thread,
+        messages: [
+          ...rebound.thread.messages,
+          {
+            id: compactMessageId,
+            role: "user",
+            text: "/compact",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
+      },
+      {
+        ...baseEventFields,
+        sequence: 3,
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        occurredAt: at,
+        type: "thread.turn-start-requested",
+        payload: {
+          threadId: baseThread.id,
+          messageId: compactMessageId,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: at,
+        },
+      },
+    );
+    expect(compact.kind).toBe("updated");
+    if (compact.kind !== "updated") return;
+    expect(compact.thread.session?.interruption).toEqual(interruption);
+    expect(compact.thread.activities).toEqual(rebound.thread.activities);
+    const accepted = applyThreadDetailEvent(
+      {
+        ...compact.thread,
+        messages: [
+          ...compact.thread.messages,
+          {
+            id: MessageId.make("continue"),
+            role: "user",
+            text: "Continue",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
+      },
+      {
+        ...baseEventFields,
+        sequence: 2,
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        occurredAt: at,
+        type: "thread.turn-start-requested",
+        payload: {
+          threadId: baseThread.id,
+          messageId: MessageId.make("continue"),
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: at,
+        },
+      },
+    );
+    expect(accepted.kind).toBe("updated");
+    if (accepted.kind !== "updated") return;
+    expect(accepted.thread.session?.interruption).toBeNull();
+    expect(accepted.thread.activities[0]?.payload).toEqual({
+      interruption: { ...interruption, continuation: "requested" },
+    });
+    const removed = applyThreadDetailEvent(result.thread, {
+      ...baseEventFields,
+      sequence: 3,
+      aggregateKind: "thread",
+      aggregateId: baseThread.id,
+      occurredAt: at,
+      type: "thread.reverted",
+      payload: { threadId: baseThread.id, turnCount: 0 },
+    });
+    expect(removed.kind).toBe("updated");
+    if (removed.kind !== "updated") return;
+    expect(removed.thread.activities).toEqual([]);
+    expect(removed.thread.messages).toEqual([]);
+    expect(removed.thread.session?.interruption).toBeNull();
+    expect(removed.thread.session?.status).toBe("ready");
+  },
+);

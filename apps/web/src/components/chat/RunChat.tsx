@@ -86,6 +86,7 @@ import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
+import { UNNAMED_HELPER } from "@t3tools/client-runtime/state/subagentRuntime";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
@@ -126,6 +127,8 @@ import {
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
+import { Button } from "../ui/button";
+import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
@@ -2307,9 +2310,13 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   if (!spawn) return null;
   const { agents, count, summary, workflowName } = spawnAgents(ctx.agentPanelModel, spawn);
   const words = count === 1 ? "Started a helper" : `Started ${count} helpers`;
+  // A helper no one named says nothing past "Started a helper".
   const what =
     workflowName ??
-    (agents.length === 1 ? agents[0]!.title : agents.map((agent) => agent.title).join(" · "));
+    agents
+      .map((agent) => agent.title)
+      .filter((title) => title !== UNNAMED_HELPER)
+      .join(" · ");
   const failed = summary.tone === "failed";
   // Helpers not known yet: nothing to open onto.
   const opens = opensOnto({ control: "helpers", agents: agents.length });
@@ -3145,7 +3152,7 @@ function NowLine({
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
-  const latest = nowLineOf({
+  const baseLine = nowLineOf({
     status,
     now,
     answering,
@@ -3153,10 +3160,32 @@ function NowLine({
     speaker: ctx.speaker.name,
     effort,
   });
+  const latest =
+    !status.live && status.interruption !== undefined
+      ? {
+          kind: "worked" as const,
+          words:
+            status.interruption.continuation === "automatic"
+              ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continuation scheduled`
+              : status.interruption.continuation === "requested"
+                ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continuation requested`
+                : status.interruption.continuation === "continued"
+                  ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continued automatically`
+                  : `Interrupted — ${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)}`,
+          effort: null,
+        }
+      : baseLine;
   // A line once shown stands a moment, and a burst shows its latest only
   // (`nowLineCalm.logic`); the run's end shows at once.
   const line = useCalmLine(latest, nowLineWords(latest), !status.live);
-  const face = nowLineFace(line, status);
+  const settledFace = nowLineFace(line, status);
+  const restartPending =
+    !status.live &&
+    status.interruption?.continuation === "manual" &&
+    ctx.interruption != null &&
+    ctx.interruption.turnId === status.interruption.turnId &&
+    ctx.interruption.messageId === status.interruption.messageId;
+  const face = restartPending ? { ...settledFace, state: "needs" as const } : settledFace;
   const words = nowLineWords(line);
   // The line's words change in place as the run goes: the old ones leave
   // where they stood as the new ones rise into it, so a change reads as the
@@ -3212,6 +3241,23 @@ function NowLine({
       {status.live ? (
         <span className="flex items-center gap-3">
           <RunTicker status={status} />
+          {end}
+        </span>
+      ) : restartPending && ctx.queueBlockedByAnswer ? (
+        <span className="flex items-center gap-2">
+          <span>Answer the pending question to continue.</span>
+          {end}
+        </span>
+      ) : restartPending ? (
+        <span className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={ctx.onRestartContinue == null}
+            onClick={() => ctx.onRestartContinue?.(status.interruption!)}
+          >
+            Continue
+          </Button>
           {end}
         </span>
       ) : (

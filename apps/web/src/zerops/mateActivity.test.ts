@@ -537,3 +537,84 @@ describe("an expired refusal from HQ", () => {
     expect(mateStatus(activity)).toBeNull();
   });
 });
+
+it("direct and HQ attention keep the same restart item even when conversation words lag", () => {
+  const interruption = {
+    turnId: TurnId.make("cut-turn"),
+    restart: { cause: "replaced" as const, at: DONE },
+    continuation: "manual" as const,
+  };
+  const value: MateAttention = {
+    source: {
+      environmentId: EnvironmentId.make("env-vera"),
+      epoch: 2,
+      incarnation: "boot2",
+      revision: 1,
+    },
+    mainThreadId: ThreadId.make("t1"),
+    lastThreadId: ThreadId.make("t1"),
+    working: 0,
+    waiting: 1,
+    results: [],
+    questions: [
+      { threadId: ThreadId.make("t1"), turnId: interruption.turnId, kind: "failed", interruption },
+    ],
+    truncated: false,
+  };
+  for (const threads of [[], [WORKING]]) {
+    const input: MatesActivityInput = {
+      projectIds: ["vera"],
+      attention: { vera: { attention: value, live: true, unseen: 0 } },
+      overviews: new Map([["vera", VERA]]),
+      hqCurrent: true,
+      threads,
+      sockets: new Map(),
+      standing: new Set(),
+      lastVisitedAtById: {},
+    };
+    const read = matesActivityOf(input).get("vera");
+    expect(read?.interruption).toEqual(interruption);
+    expect(mateStatus(read)).toMatchObject({ kind: "interrupted", severity: "attention" });
+
+    const question = matesActivityOf({
+      ...input,
+      attention: {
+        vera: {
+          attention: {
+            ...value,
+            questions: [
+              {
+                threadId: ThreadId.make("t1"),
+                turnId: interruption.turnId,
+                kind: "input",
+                interruption,
+              },
+            ],
+          },
+          live: true,
+          unseen: 0,
+        },
+      },
+      threads: [{ ...WORKING, hasPendingUserInput: true, pendingQuestion: "Which database?" }],
+    }).get("vera");
+    expect(mateStatus(question)).toMatchObject({ kind: "answer", severity: "attention" });
+    expect(mateRowView(question, "needs", "Vera").reply).toMatchObject({ text: "Which database?" });
+    const continued = matesActivityOf({
+      ...input,
+      attention: {
+        vera: {
+          attention: {
+            ...value,
+            source: { ...value.source, revision: 2 },
+            waiting: 0,
+            questions: [],
+          },
+          live: true,
+          unseen: 0,
+        },
+      },
+    }).get("vera");
+    expect(continued?.interruption).toBeUndefined();
+    expect(mateStatus(continued)).toBeNull();
+  }
+});

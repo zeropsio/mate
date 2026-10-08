@@ -1,3 +1,4 @@
+import { TurnId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 import { MateStatusMarker } from "./MateStatusMarker";
@@ -14,6 +15,26 @@ describe("the menu and conversation status marker", () => {
     expect(html).toContain("Limit");
     expect(html).toContain("Rosa hit the Claude limit.");
     expect(html).not.toContain("until");
+  });
+  it("names the restarted Mate with human time instead of a generic failure", () => {
+    const html = renderToStaticMarkup(
+      <MateStatusMarker
+        mateName="Eddy"
+        timestampFormat="24-hour"
+        status={{
+          kind: "interrupted",
+          severity: "attention",
+          interruption: {
+            turnId: TurnId.make("turn"),
+            restart: { cause: "replaced", at: "2026-10-08T08:24:39.700Z" },
+            continuation: "manual",
+          },
+        }}
+      />,
+    );
+    expect(html).toContain("Eddy restarted at");
+    expect(html).not.toContain("Needs attention");
+    expect(html).not.toContain("2026-10-08T");
   });
   it("uses only the source reset time", () => {
     const html = renderToStaticMarkup(
@@ -39,4 +60,24 @@ describe("the menu and conversation status marker", () => {
       ),
     ).toContain(label);
   });
+});
+
+it("a restart with unknown occurrence time does not invent a clock", () => {
+  const html = renderToStaticMarkup(
+    <MateStatusMarker
+      mateName="Eddy"
+      timestampFormat="24-hour"
+      status={{
+        kind: "interrupted",
+        severity: "attention",
+        interruption: {
+          turnId: TurnId.make("turn"),
+          restart: { cause: "restarted", at: null },
+          continuation: "manual",
+        },
+      }}
+    />,
+  );
+  expect(html).toContain("Eddy restarted");
+  expect(html).not.toContain("Eddy restarted at");
 });

@@ -203,7 +203,6 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           "@t3tools/shared": "workspace:*",
           effect: "catalog:",
           electron: "44.4.2",
-          "electron-store": "^8.2.0",
           "electron-updater": "^6.8.9",
         },
         {

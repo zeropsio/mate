@@ -71,6 +71,7 @@ import Migration0056 from "./Migrations/056_ZeropsStandUp.ts";
 import Migration0057 from "./Migrations/057_ProjectionThreadActivityBudgetColumns.ts";
 import Migration0058 from "./Migrations/058_CrewOperations.ts";
 import Migration0060 from "./Migrations/060_ProviderRefusalDeadline.ts";
+import Migration0061 from "./Migrations/061_RestartInterruption.ts";
 import Migration0059 from "./Migrations/059_ActivityBudgetColumnsWhereSkipped.ts";
 
 /**
@@ -146,6 +147,7 @@ export const migrationEntries = [
   [58, "CrewOperations", Migration0058],
   [59, "ActivityBudgetColumnsWhereSkipped", Migration0059],
   [60, "ProviderRefusalDeadline", Migration0060],
+  [61, "RestartInterruption", Migration0061],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

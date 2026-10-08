@@ -12,6 +12,7 @@
 import type {
   BootId,
   ChatFileAttachment,
+  MateRestart,
   ChatImageAttachment,
   ConversationAgent,
   CommandId,
@@ -235,6 +236,7 @@ export type Command =
       readonly unstartedEffects?: ReadonlyArray<EffectId>;
       /** The platform's evidence of the restart, worded for the person. */
       readonly words?: string;
+      readonly restart?: MateRestart;
     };
 
 export type CommandTag = Command["_tag"];

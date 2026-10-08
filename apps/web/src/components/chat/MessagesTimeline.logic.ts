@@ -45,6 +45,7 @@ import {
   isUsageLimitError,
   isUserMessageEntry,
   messageReceipt,
+  turnsThatCame,
   readCrewCard,
   readSlashCommand,
   stretchFace,
@@ -476,6 +477,7 @@ export type ConversationEvent =
 
 /** A run as its status says it: who, whether it still works, and for how long. */
 export interface RunStatus {
+  readonly interruption?: import("@t3tools/contracts").MateInterruption;
   readonly live: boolean;
   readonly face: WorkLineFace;
   readonly startedAt: string;
@@ -1766,7 +1768,9 @@ function stretchRecord(input: {
           }
           break;
         }
-        if (work.crewSeam !== undefined) {
+        if (work.interruption !== undefined) {
+          break;
+        } else if (work.crewSeam !== undefined) {
           push({
             kind: "crew-seam",
             key: `crew-seam:${entry.id}`,
@@ -2128,6 +2132,7 @@ export function deriveMessagesTimelineRows(input: {
         }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
+  const came = turnsThatCame(entries, input.latestTurn ?? null);
   // Which tasks are the commands they track: a command's words, and no row of their own.
   const tracked = {
     ...trackCommands(
@@ -2310,7 +2315,7 @@ export function deriveMessagesTimelineRows(input: {
       id: entry.id,
       createdAt: entry.createdAt,
       message: entry.message,
-      receipt: messageReceipt(entry.message, structure, index),
+      receipt: messageReceipt(entry.message, structure, index, came),
       aside,
       imageOnly: isImageOnlyPlaceholder(entry.message.text),
       showAssistantMeta: false,
@@ -2624,7 +2629,12 @@ export function deriveMessagesTimelineRows(input: {
     const waiting = turn.waiting;
     const working = (last.live && !answeredAlone) || waiting;
     const carded =
-      (turn.live && !answeredAlone) || waiting || hasRecord || pausedHere || extras.length > 0;
+      (turn.live && !answeredAlone) ||
+      waiting ||
+      hasRecord ||
+      pausedHere ||
+      turn.interruption !== undefined ||
+      extras.length > 0;
     const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =
       turn.live || waiting
@@ -2695,6 +2705,7 @@ export function deriveMessagesTimelineRows(input: {
       startedAt: first.startedAt,
       endedAt: waiting ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
+      ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waitedOn(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
@@ -2717,7 +2728,7 @@ export function deriveMessagesTimelineRows(input: {
     // Who worked and for how long is said once, on the chat's last line,
     // where the Mate's face stands — the live edge while it works, the run's
     // end once it is over. A run with no chat keeps it as a line of its own.
-    const chatted = hasRecord || working;
+    const chatted = hasRecord || working || turn.interruption !== undefined;
     if (carded && (!pausedHere || chatted || extras.length > 0)) {
       const cardStart = rows.length;
       if (!chatted && !pausedHere) {

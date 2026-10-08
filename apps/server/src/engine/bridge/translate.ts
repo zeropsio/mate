@@ -30,6 +30,7 @@ import {
   type RuntimeErrorClass,
   type RuntimeTaskStatus,
   type SpiEvent,
+  WORK_ENDED,
 } from "@t3tools/contracts";
 
 import { applyToolCall } from "../../spi/toolCall.ts";
@@ -69,7 +70,7 @@ export interface TranslatorOptions {
 
 /** An input the fold could not place, kept for logs and tests; it emits nothing. */
 export interface DroppedInput {
-  readonly reason: "no-session" | "other-thread" | "no-turn" | "unknown-turn";
+  readonly reason: "no-session" | "other-thread" | "no-turn" | "unknown-turn" | "unknown-work";
   readonly type: string;
 }
 
@@ -737,7 +738,20 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       case "task.updated":
       case "task.completed": {
         const payload = event.payload;
-        const work = workFor(owner, [String(payload.taskId), payload.toolUseId]);
+        const nativeIds = [String(payload.taskId), payload.toolUseId];
+        // A resumed session's report that work ended which it never saw run: a session before it
+        // ran it (a resumed agent re-reports the task a restart killed), and the engine closed that
+        // work with its session. It opens nothing. A fresh session's first word may be an end (a
+        // child that failed before it began): that is its work.
+        if (
+          owner.from === "resume" &&
+          !nativeIds.some((id) => id !== undefined && owner.work.has(id)) &&
+          WORK_ENDED.has(taskStatus(event, undefined))
+        ) {
+          drop("unknown-work", event.type);
+          return;
+        }
+        const work = workFor(owner, nativeIds);
         const before = JSON.stringify([work.kind, work.status, work.title, work.origin]);
         if (work.origin === "unknown" && event.turnId !== undefined) {
           const origin = owner.nativeTurns.get(String(event.turnId));

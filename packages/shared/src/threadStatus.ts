@@ -75,7 +75,7 @@ export type ThreadStatusFields = Omit<ThreadStatusInput, "latestTurn" | "session
   > | null;
   readonly session:
     | (Pick<OrchestrationSession, "status"> &
-        Partial<Pick<OrchestrationSession, "lastError" | "providerName">>)
+        Partial<Pick<OrchestrationSession, "lastError" | "providerName" | "interruption">>)
     | null;
   readonly usagePause?: { readonly resetsAt: string } | null | undefined;
 };
@@ -144,6 +144,9 @@ export function resolveThreadStatus(
   if (limit === "expired") return status("idle");
   if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
     return status("working");
+  }
+  if (thread.session?.interruption?.continuation === "manual") {
+    return { kind: "failed", toneId: "attention" };
   }
   if (thread.session?.status === "starting") return status("connecting");
   if (thread.session?.status === "error" || thread.latestTurn?.state === "error") {

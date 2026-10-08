@@ -1,6 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   CommandId,
+  EventId,
+  TurnId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EnvironmentId,
   MessageId,
@@ -44,6 +46,8 @@ import * as ServerSettings from "../src/serverSettings.ts";
 const providerInstanceId = ProviderInstanceId.make("codex");
 const projectId = ProjectId.make("project-startup-orphan");
 const threadId = ThreadId.make("thread-startup-orphan");
+const legacyThreadId = ThreadId.make("thread-legacy-restart");
+const legacyTurnId = TurnId.make("turn-legacy-restart");
 const stoppedBindingThreadId = ThreadId.make("thread-startup-orphan-stopped-binding");
 const resumeCursor = { schemaVersion: 1, sessionId: "provider-session-before-restart" };
 const stoppedBindingResumeCursor = {
@@ -123,6 +127,8 @@ it.effect(
       const firstRuntime = makePersistedRuntimeLayer(config.dbPath);
       const now = yield* DateTime.now;
       const createdAt = DateTime.formatIso(now);
+      const legacyError = `Radotin - Eddy's container was replaced at ${createdAt}; its running turn was interrupted. Send a message to continue.`;
+      let preUpgradeCursor = 0;
 
       yield* Effect.gen(function* () {
         const engine = yield* OrchestrationEngine.OrchestrationEngineService;
@@ -180,6 +186,79 @@ it.effect(
           },
           createdAt,
         });
+        for (const [kind, requestId] of [
+          ["user-input.requested", "native-question"],
+          ["approval.requested", "native-approval"],
+        ] as const) {
+          yield* engine.dispatch({
+            type: "thread.activity.append",
+            commandId: CommandId.make(`request:${requestId}`),
+            threadId,
+            createdAt,
+            activity: {
+              id: EventId.make(requestId),
+              kind,
+              tone: "info",
+              summary: "Dead provider request",
+              turnId: null,
+              createdAt,
+              payload: {
+                requestId,
+                responseMode: "native",
+                questions: [
+                  {
+                    id: "where",
+                    header: "Target",
+                    question: "Where?",
+                    options: [],
+                    multiSelect: false,
+                  },
+                ],
+              },
+            },
+          });
+        }
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("create-legacy"),
+          threadId: legacyThreadId,
+          projectId,
+          title: "Legacy restart",
+          modelSelection: { instanceId: providerInstanceId, model: "gpt-5" },
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+        const legacySession = {
+          threadId: legacyThreadId,
+          providerName: "codex",
+          providerInstanceId,
+          runtimeMode: "full-access" as const,
+          lastError: null,
+          updatedAt: createdAt,
+        };
+        yield* engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("legacy-running"),
+          threadId: legacyThreadId,
+          createdAt,
+          session: { ...legacySession, status: "running", activeTurnId: legacyTurnId },
+        });
+        yield* engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make("legacy-error"),
+          threadId: legacyThreadId,
+          createdAt,
+          session: {
+            ...legacySession,
+            status: "error",
+            activeTurnId: null,
+            lastError: legacyError,
+          },
+        });
+        preUpgradeCursor = yield* engine.latestSequence;
         yield* directory.upsert({
           threadId,
           provider: ProviderDriverKind.make("codex"),
@@ -264,6 +343,65 @@ it.effect(
         const restartedStoppedBindingThread = Option.getOrThrow(
           yield* query.getThreadDetailById(stoppedBindingThreadId),
         );
+        const legacy = Option.getOrThrow(yield* query.getThreadDetailById(legacyThreadId));
+        assert.deepStrictEqual(legacy.session?.interruption, {
+          turnId: legacyTurnId,
+          restart: { cause: "replaced", at: createdAt },
+          continuation: "manual",
+        });
+        assert.strictEqual(legacy.latestTurn?.state, "interrupted");
+        const head = yield* engine.latestSequence;
+        const replay = yield* Stream.runCollect(
+          engine.readThreadEvents({
+            threadId: legacyThreadId,
+            fromSequenceExclusive: preUpgradeCursor,
+            toSequenceInclusive: head,
+          }),
+        );
+        assert.strictEqual(replay.length, 1);
+        const correction = replay[0];
+        assert.strictEqual(correction?.type, "thread.session-set");
+        if (correction?.type !== "thread.session-set")
+          throw new Error("Missing replayable restart correction");
+        assert.deepStrictEqual(
+          correction.payload.session.interruption,
+          legacy.session?.interruption,
+        );
+        assert.isAbove(correction.sequence, preUpgradeCursor);
+        const original = yield* Stream.runCollect(
+          engine.readThreadEvents({
+            threadId: legacyThreadId,
+            fromSequenceExclusive: 0,
+            toSequenceInclusive: preUpgradeCursor,
+          }),
+        );
+        assert.isTrue(
+          original.some(
+            (event) =>
+              event.type === "thread.session-set" &&
+              event.payload.session.lastError === legacyError,
+          ),
+        );
+        assert.strictEqual(
+          restartedThread.session?.interruption?.messageId,
+          "message-pending-before-restart",
+        );
+        assert.deepStrictEqual(
+          restartedThread.activities.find((activity) => activity.kind === "runtime.interrupted")
+            ?.payload,
+          { interruption: restartedThread.session?.interruption },
+        );
+        const shell = (yield* query.getShellSnapshot()).threads.find(
+          (thread) => thread.id === threadId,
+        );
+        assert.strictEqual(shell?.hasPendingUserInput, false);
+        assert.strictEqual(shell?.hasPendingApprovals, false);
+        assert.isTrue(
+          restartedThread.activities.some((activity) => activity.kind === "user-input.resolved"),
+        );
+        assert.isTrue(
+          restartedThread.activities.some((activity) => activity.kind === "approval.resolved"),
+        );
         const pendingRows = yield* sql<{ readonly threadId: string }>`
           SELECT thread_id AS "threadId"
           FROM projection_turns
@@ -302,6 +440,14 @@ it.effect(
             createdAt,
           }),
         );
+        const acceptedThread = Option.getOrThrow(yield* query.getThreadDetailById(threadId));
+        assert.strictEqual(acceptedThread.session?.interruption, null);
+        const acceptedRecovery = acceptedThread.activities.find(
+          (activity) => activity.kind === "runtime.interrupted",
+        );
+        assert.deepStrictEqual(acceptedRecovery?.payload, {
+          interruption: { ...restartedThread.session?.interruption, continuation: "requested" },
+        });
         const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
         const stoppedBinding = Option.getOrThrow(
           yield* directory.getBinding(stoppedBindingThreadId),
@@ -310,6 +456,8 @@ it.effect(
         return {
           sessionStatus: restartedThread.session?.status,
           activeTurnId: restartedThread.session?.activeTurnId,
+          interruption: restartedThread.session?.interruption,
+          lastError: restartedThread.session?.lastError,
           latestTurn: restartedThread.latestTurn,
           pendingTurnCount: pendingRows.length,
           settleSucceeded: Exit.isSuccess(settleExit),
@@ -326,8 +474,15 @@ it.effect(
       }).pipe(Effect.provide(startupLayer));
 
       assert.deepStrictEqual(result, {
-        sessionStatus: "error",
+        sessionStatus: "interrupted",
         activeTurnId: null,
+        interruption: {
+          turnId: null,
+          messageId: MessageId.make("message-pending-before-restart"),
+          restart: { cause: "restarted", at: createdAt },
+          continuation: "manual",
+        },
+        lastError: null,
         latestTurn: null,
         pendingTurnCount: 0,
         settleSucceeded: true,
@@ -336,7 +491,7 @@ it.effect(
         bindingStatus: "stopped",
         resumeCursor,
         runtimePayload: { activeTurnId: null, unrelated: "preserve-me" },
-        stoppedBindingSessionStatus: "error",
+        stoppedBindingSessionStatus: "interrupted",
         stoppedBindingStatus: "stopped",
         stoppedBindingResumeCursor,
         stoppedBindingRuntimePayload: {

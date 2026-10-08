@@ -20,7 +20,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import type { BootId, ConversationId, EffectOutcome } from "@t3tools/contracts";
+import type { MateRestart, BootId, ConversationId, EffectOutcome } from "@t3tools/contracts";
 
 import type { StepFailure } from "../ConversationActor.ts";
 import { Conversations } from "../Conversations.ts";
@@ -202,7 +202,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
    * those rows.
    */
   const reconcileAtBoot = (
-    wordsFor: (conversation: ConversationId) => Effect.Effect<string | undefined> = () =>
+    restartFor: (conversation: ConversationId) => Effect.Effect<MateRestart | undefined> = () =>
       Effect.succeed(undefined),
   ) =>
     Effect.gen(function* () {
@@ -219,7 +219,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         for (const effect of [...owner.cut, ...owner.unstarted]) {
           yield* outbox.close(effect, "cut", "the server restarted");
         }
-        const words = yield* wordsFor(owner.conversationId);
+        const restart = yield* restartFor(owner.conversationId);
         const recover = Effect.asVoid(
           conversations.tell({
             commandId: recoveredCommandId(boot, owner.conversationId),
@@ -230,7 +230,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
               bootId: boot,
               cutEffects: owner.cut,
               unstartedEffects: owner.unstarted,
-              ...(words === undefined ? {} : { words }),
+              ...(restart === undefined ? {} : { restart }),
             },
           }),
         );

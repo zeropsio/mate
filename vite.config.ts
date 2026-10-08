@@ -88,7 +88,6 @@ export default defineConfig({
       "**/routeTree.gen.ts",
       "apps/mobile/android/**",
       "apps/mobile/ios/**",
-      "apps/web/public/mockServiceWorker.js",
       "apps/web/src/lib/vendor/qrcodegen.ts",
       // The Import zone is upstream's bytes, pinned by imported.lock; its recorded transform
       // (fork.md §3.1) shortens import paths, which the formatter would reflow.

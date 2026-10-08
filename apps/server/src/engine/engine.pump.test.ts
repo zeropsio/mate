@@ -496,13 +496,14 @@ describe("the running engine", () => {
         yield* send(w);
         for (const command of after) yield* w.tell(command);
         yield* w.crash;
+        const bootAt = yield* Clock.currentTimeMillis;
         yield* w.boot;
         const cut = yield* w.run(r(1));
         assert.deepStrictEqual(cut?.end, {
           kind: "cut-by-restart",
           continuedBy: null,
           notContinued: refusal,
-          words: "Mate restarted.",
+          restart: { cause: "restarted", at: DateTime.formatIso(DateTime.makeUnsafe(bootAt)) },
         });
         assert.isFalse(w.provider.calls.includes(sendLine(w, CONTINUE_TEXT)));
         yield* w.shutdown;
@@ -677,6 +678,55 @@ describe("the running engine", () => {
           yield* w.agent((agent, thread) => agent.say(thread, "The build is green."));
           yield* w.agent((agent, thread) => agent.finish(thread));
           assert.deepStrictEqual(yield* ending(w, 2), ["ended", "completed", "agent"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // Milo, 2026-10-08: Claude said it would reply once its background sleep finished, a restart
+  // killed the sleep, and nothing woke it again.
+  it.effect("background work a restart killed wakes the Mate once with a note naming it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.startWork(thread));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.crash;
+        yield* w.boot;
+        yield* w.advance(0);
+        const woken = yield* w.run(r(2));
+        assert.deepStrictEqual(
+          [woken?.trigger.cause, woken?.joins, woken?.state],
+          ["lost-work", r(1), "running"],
+        );
+        assert.match(
+          w.provider.calls.at(-1) ?? "",
+          /^send .*: Your background work .+ was stopped by a restart before it reported\.$/u,
+        );
+        assert.isUndefined(yield* w.run(r(3)));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "background work its agent's crash took wakes the Mate once with a note naming it",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.crash(thread));
+          yield* w.advance(0);
+          const woken = yield* w.run(r(2));
+          assert.deepStrictEqual([woken?.trigger.cause, woken?.state], ["lost-work", "running"]);
+          assert.match(
+            w.provider.calls.at(-1) ?? "",
+            /^send .*: Your background work .+ was stopped when its session ended before it reported\.$/u,
+          );
+          assert.isUndefined(yield* w.run(r(3)));
           yield* w.shutdown;
         }),
       ),

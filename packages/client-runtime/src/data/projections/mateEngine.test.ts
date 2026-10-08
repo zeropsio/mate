@@ -1,4 +1,5 @@
 import {
+  RunId,
   importedCallFields,
   type ConversationRow,
   type Item,
@@ -726,10 +727,10 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       payload: { taskType: "monitor" },
     },
     {
-      name: "work its session lost ended stopped",
+      name: "work its session lost ended unreported, never as stopped or done",
       item: { workKind: "shell", status: "lost" },
       kinds: ["task.started", "task.completed"],
-      payload: { status: "stopped" },
+      payload: { status: "lost" },
     },
     {
       name: "work that failed ended failed",
@@ -750,6 +751,14 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       ).map(({ title, status }) => ({ title, status }));
     expect(helpers("running")).toEqual([{ title: "Review the api", status: "running" }]);
     expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
+  });
+
+  // Milo, 2026-10-08: "Started a helper · 56c95419-…/s/1.2.w1".
+  it("a helper its agent never named is on the helpers' surface in plain words, never its id", () => {
+    const [helper] = foldSubagentActivities(
+      activitiesOf([workItem(run1, 2, { work: `${run1}/s/1.2.w1`, title: null })]),
+    );
+    expect(helper?.title).toBe("A helper");
   });
 
   it("a thought is the run's reasoning, drawn from its first word while it is written", () => {
@@ -1274,3 +1283,33 @@ describe("an engine conversation's row in the menu", () => {
     },
   );
 });
+
+it.each([
+  { continuedBy: null, notContinued: undefined, continuation: "automatic" },
+  { continuedBy: "thread-ada/r/2", notContinued: undefined, continuation: "continued" },
+  { continuedBy: null, notContinued: "a Stop was asked", continuation: "none" },
+])(
+  "restart continuation is shown only as its run records it: $continuation",
+  ({ continuedBy, notContinued, continuation }) => {
+    const restart = { cause: "replaced" as const, at: "2026-10-08T08:24:39.700Z" };
+    const view = thread(
+      held({
+        runs: [
+          engineRun("thread-ada", 1, {
+            state: "ended",
+            end: {
+              kind: "cut-by-restart",
+              continuedBy: continuedBy === null ? null : RunId.make(continuedBy),
+              restart,
+              ...(notContinued === undefined ? {} : { notContinued }),
+            },
+          }),
+        ],
+      }),
+    );
+    expect(
+      view?.activities.find((activity) => activity.kind === "runtime.interrupted")?.payload,
+    ).toEqual({ interruption: { turnId: run1, restart, continuation } });
+    expect(view?.session?.lastError).toBeNull();
+  },
+);

@@ -183,3 +183,25 @@ describe("a run that broke off", () => {
     expect(brokeOffReason(words)).toBe(reason);
   });
 });
+
+it("pending restart work stays actionable through a provider rebind and yields to an answerable question", () => {
+  const input = {
+    ...threadStatusVectors[0]!.input,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    latestTurn: null,
+    session: {
+      status: "ready" as const,
+      interruption: {
+        turnId: TurnId.make("cut"),
+        restart: { cause: "restarted" as const, at: "2026-10-08T08:24:39.700Z" },
+        continuation: "manual" as const,
+      },
+    },
+  };
+  expect(resolveThreadStatus(input)).toEqual({ kind: "failed", toneId: "attention" });
+  expect(resolveThreadStatus({ ...input, hasPendingUserInput: true })).toEqual({
+    kind: "input",
+    toneId: "input",
+  });
+});

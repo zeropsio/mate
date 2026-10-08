@@ -28,6 +28,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
+import { userAskPreviewText } from "@t3tools/shared/userAsk";
 
 import {
   brokeOffLine,
@@ -101,6 +103,9 @@ const sessionOf = (view: ConversationView, run: ViewRun, at: string): Orchestrat
       lastError: null,
     };
   }
+  if (run.end.kind === "cut-by-restart") {
+    return { ...base, status: "ready", lastError: null };
+  }
   const brokeOff = lineOf(brokeOffLine(run.end) ?? undefined);
   return brokeOff === null
     ? { ...base, status: "ready", lastError: null }
@@ -120,12 +125,14 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
   const person = view.lastPerson;
   const agent = view.lastAgent;
   const personLine = lineOf(person?.text);
-  const agentText = agent?.text.trim() ?? "";
+  // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
+  const agentText = agent === null ? null : messagePreviewText(agent.text);
+  const personText = person === null ? null : userAskPreviewText(person);
   const latest =
-    agent !== null && agentText !== "" && (person === null || agent.at >= person.at)
+    agent !== null && agentText !== null && (person === null || agent.at >= person.at)
       ? { role: "assistant" as const, text: agentText, createdAt: iso(agent.at) }
-      : person !== null && person.text.trim() !== ""
-        ? { role: "user" as const, text: person.text.trim(), createdAt: iso(person.at) }
+      : person !== null && personText !== null
+        ? { role: "user" as const, text: personText, createdAt: iso(person.at) }
         : null;
   const call = view.liveCall;
   return {
@@ -150,9 +157,9 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
     latestUserMessageAt: person === null ? null : iso(person.at),
     latestMessagePreview: latest,
     latestUserMessagePreview:
-      person === null || person.text.trim() === ""
+      person === null || personText === null
         ? null
-        : { role: "user", text: person.text.trim(), createdAt: iso(person.at) },
+        : { role: "user", text: personText, createdAt: iso(person.at) },
     hasPendingApprovals: asked.some((request) => request.ask.kind === "approval"),
     hasPendingUserInput: asked.some((request) => request.ask.kind !== "approval"),
     hasActionableProposedPlan: false,

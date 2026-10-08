@@ -42,8 +42,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
-import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
+import { MateInterruption } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlSchema from "effect/sql/SqlSchema";
 import type * as Statement from "effect/sql/Statement";
@@ -172,7 +173,11 @@ const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
 const ProjectionThreadActivityIdRowSchema = Schema.Struct({
   activityId: ProjectionThreadActivity.fields.activityId,
 });
-const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession;
+const ProjectionThreadSessionDbRowSchema = ProjectionThreadSession.mapFields(
+  Struct.assign({
+    interruption: Schema.optional(Schema.NullOr(Schema.fromJsonString(MateInterruption))),
+  }),
+);
 const ProjectionThreadRuntimeContextDbRowSchema = Schema.Struct({
   titleState: Schema.NullOr(Schema.fromJsonString(ThreadTitleState)),
   id: ThreadId,
@@ -419,6 +424,7 @@ function mapSessionRow(
     runtimeMode: row.runtimeMode,
     activeTurnId: row.activeTurnId,
     lastError: row.lastError,
+    interruption: row.interruption,
     ...(row.usageLimitResetAt != null ? { usageLimitResetAt: row.usageLimitResetAt } : {}),
     updatedAt: row.updatedAt,
   };
@@ -771,6 +777,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           runtime_mode AS "runtimeMode",
           active_turn_id AS "activeTurnId",
           last_error AS "lastError",
+          interruption_json AS "interruption",
           usage_limit_reset_at AS "usageLimitResetAt",
           updated_at AS "updatedAt"
         FROM projection_thread_sessions
@@ -793,6 +800,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           sessions.runtime_mode AS "runtimeMode",
           sessions.active_turn_id AS "activeTurnId",
           sessions.last_error AS "lastError",
+          sessions.interruption_json AS "interruption",
           sessions.usage_limit_reset_at AS "usageLimitResetAt",
           sessions.updated_at AS "updatedAt"
         FROM projection_thread_sessions sessions
@@ -819,6 +827,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           sessions.runtime_mode AS "runtimeMode",
           sessions.active_turn_id AS "activeTurnId",
           sessions.last_error AS "lastError",
+          sessions.interruption_json AS "interruption",
           sessions.usage_limit_reset_at AS "usageLimitResetAt",
           sessions.updated_at AS "updatedAt"
         FROM projection_thread_sessions sessions
@@ -1184,6 +1193,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           sessions.runtime_mode AS "runtimeMode",
           sessions.active_turn_id AS "activeTurnId",
           sessions.last_error AS "lastError",
+          sessions.interruption_json AS "interruption",
           sessions.usage_limit_reset_at AS "usageLimitResetAt",
           sessions.updated_at AS "updatedAt"
         FROM projection_threads AS threads
@@ -1745,6 +1755,7 @@ scoped_activities AS MATERIALIZED (
           runtime_mode AS "runtimeMode",
           active_turn_id AS "activeTurnId",
           last_error AS "lastError",
+          interruption_json AS "interruption",
           usage_limit_reset_at AS "usageLimitResetAt",
           updated_at AS "updatedAt"
         FROM projection_thread_sessions
@@ -2438,6 +2449,7 @@ pending_approval_requests AS (
                   runtimeMode: row.runtimeMode,
                   activeTurnId: row.activeTurnId,
                   lastError: row.lastError,
+                  interruption: row.interruption,
                   ...(row.usageLimitResetAt != null
                     ? { usageLimitResetAt: row.usageLimitResetAt }
                     : {}),

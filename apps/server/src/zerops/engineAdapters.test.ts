@@ -77,14 +77,14 @@ describe("engineAdapters", () => {
           lastActivityAt: Date.parse("2026-10-07T09:59:00.000Z"),
           bootAt: Date.parse("2026-10-07T10:01:00.000Z"),
         };
-        assert.strictEqual(
-          evidence.explain(facts, window),
-          "Fen was restarted by Ana Novak at 2026-10-07T10:00:00.000Z.",
-        );
-        assert.strictEqual(
-          evidence.explain(null, window),
-          "Mate restarted at 2026-10-07T10:01:00.000Z.",
-        );
+        assert.deepStrictEqual(evidence.explain(facts, window), {
+          cause: "restarted",
+          at: "2026-10-07T10:00:00.000Z",
+        });
+        assert.deepStrictEqual(evidence.explain(null, window), {
+          cause: "restarted",
+          at: "2026-10-07T10:01:00.000Z",
+        });
       }).pipe(Effect.provide(engineAdaptersOpen)),
   );
 });

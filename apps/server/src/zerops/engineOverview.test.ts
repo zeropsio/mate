@@ -169,9 +169,9 @@ describe("HQ's overview of a Mate on the engine", () => {
           words: "Fen restarted.",
         }),
       },
-      "error",
+      "ready",
       "interrupted",
-      "failed",
+      "idle",
     ],
   ])("%s: V1's literals, nothing else", (_title, patch, session, turn, kind) => {
     const shell = engineShellOf(view(patch));
@@ -181,7 +181,7 @@ describe("HQ's overview of a Mate on the engine", () => {
     assert.strictEqual(resolveThreadStatus(shell).kind, kind);
   });
 
-  it("names why a cut run was not continued as the session's error", () => {
+  it("a guarded restart stays on its run without a session failure", () => {
     const shell = engineShellOf(
       view({
         lastEnded: ended(1, {
@@ -192,10 +192,8 @@ describe("HQ's overview of a Mate on the engine", () => {
         }),
       }),
     );
-    assert.strictEqual(
-      overviewOf([shell]).main?.session?.lastError,
-      "Fen was restarted by Ana. The run was cut and not continued (archived): send a message to go on.",
-    );
+    assert.strictEqual(overviewOf([shell]).main?.session?.lastError, null);
+    assert.strictEqual(mateAttentionOf([shell], undefined, source).waiting, 0);
   });
 
   it("carries the person's ask and the agent's last words as the row's previews, a usage pause with its reset", () => {
@@ -210,6 +208,45 @@ describe("HQ's overview of a Mate on the engine", () => {
     assert.deepStrictEqual(main?.latestUserMessagePreview, { text: "Deploy the api" });
     assert.deepStrictEqual(main?.latestMessagePreview, { role: "assistant", text: "On it." });
     assert.deepStrictEqual(main?.usagePause, { resetsAt: "2026-10-07T15:00:00.000Z" });
+  });
+
+  // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
+  it.each([
+    {
+      name: "a picture and words",
+      person: {
+        text: "[Picture 1]\nEngine check 9: what number is in the picture?",
+        attachments: [{ type: "image", mimeType: "image/png" }],
+      },
+      said: "Engine check 9: what number is in the picture?",
+    },
+    {
+      name: "a picture alone",
+      person: { text: "[Picture 1]", attachments: [{ type: "image", mimeType: "image/png" }] },
+      said: "1 image",
+    },
+    {
+      name: "words in markdown",
+      person: { text: "Deploy **the api**", attachments: [] },
+      said: "Deploy the api",
+    },
+  ])(
+    "previews the person's message as V1's shell does, never a picture's label: $name",
+    ({ person, said }) => {
+      const lastPerson = { ...person, at: T("2026-10-07T10:05:00.000Z") };
+      const main = overviewOf([engineShellOf(view({ lastPerson }))]).main;
+      assert.deepStrictEqual(main?.latestUserMessagePreview, { text: said });
+      assert.deepStrictEqual(main?.latestMessagePreview, { role: "user", text: said });
+    },
+  );
+
+  it("previews the agent's last words as V1's shell does, its markdown read", () => {
+    const lastAgent = { text: "The number is **42**.", at: T("2026-10-07T10:04:00.000Z") };
+    const main = overviewOf([engineShellOf(view({ lastAgent }))]).main;
+    assert.deepStrictEqual(main?.latestMessagePreview, {
+      role: "assistant",
+      text: "The number is 42.",
+    });
   });
 
   it.effect(

@@ -239,6 +239,9 @@ function mergeUsageMax(
   return merged;
 }
 
+/** What a helper no one named is called: an id is no name a person reads. */
+export const UNNAMED_HELPER = "A helper";
+
 interface MutableAgent {
   id: string;
   kind: RuntimeSubagent["kind"];
@@ -491,6 +494,8 @@ const TASK_COMPLETED_STATUS: ReadonlyMap<string, RuntimeSubagentStatus> = new Ma
   ["completed", "completed"],
   ["failed", "failed"],
   ["stopped", "interrupted"],
+  // The engine's: its session went before it reported.
+  ["lost", "interrupted"],
 ]);
 
 const KNOWN_STATUSES: ReadonlySet<string> = new Set([
@@ -729,6 +734,8 @@ export function foldSubagentActivities(
   for (const agent of agents.values()) {
     const name = agent.toolUseId === null ? undefined : launchNames.get(agent.toolUseId);
     if (name !== undefined) agent.title = name;
+    // Never named at all: plain words, never its id.
+    if (agent.title === agent.id) agent.title = UNNAMED_HELPER;
   }
 
   // Consistency pass: when a workflow coordinator has settled, members that
