@@ -109,6 +109,14 @@ export interface V1Bodies {
 
 export type Entry =
   | { readonly kind: "run"; readonly run: number }
+  /** The bounds left older turns with V1: the first thing the oldest run brought over says so. */
+  | {
+      readonly kind: "cut";
+      readonly run: number;
+      readonly item: number;
+      readonly left: number;
+      readonly at: number;
+    }
   | {
       readonly kind: "message";
       readonly run: number;
@@ -269,7 +277,8 @@ export const planOf = (
   });
   let first = Math.max(0, turns.length - limits.turns);
   let total = sized.slice(first).reduce((sum, size) => sum + size, 0);
-  while (first < turns.length - 1 && total > limits.records) {
+  // The marker a cut leaves counts too.
+  while (first < turns.length - 1 && total + (first > 0 ? 1 : 0) > limits.records) {
     total -= sized[first]!;
     first++;
   }
@@ -382,6 +391,15 @@ export const planOf = (
       });
     }
     entries.push({ kind: "run", run });
+    if (run === 1 && first > 0) {
+      entries.push({
+        kind: "cut",
+        run: 1,
+        item: ++items,
+        left: first,
+        at: ms(turn.requestedAt) - 1,
+      });
+    }
     let lastAt = ms(turn.requestedAt);
     for (const record of placed.toSorted(byTime)) {
       const entry = record.entry(++items);
@@ -768,6 +786,21 @@ export const recordsOf = (
         });
         break;
       }
+      case "cut":
+        item(
+          entry.run,
+          entry.item,
+          ENGINE,
+          {
+            kind: "marker",
+            marker: {
+              kind: "history-cut",
+              reason: `${entry.left} earlier ${entry.left === 1 ? "turn" : "turns"} stayed with the previous engine: this conversation starts here.`,
+            },
+          },
+          entry.at,
+        );
+        break;
       case "marker": {
         const id = item(entry.run, entry.item, ENGINE, markerOf(entry.activity), entry.at);
         // A plan's steps are its data, as V1 recorded them.
