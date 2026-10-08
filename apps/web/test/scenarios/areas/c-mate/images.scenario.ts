@@ -317,17 +317,18 @@ describe("C: conversation images", () => {
           ),
           "base64",
         );
-        let reads = 0;
+        let previewReads = 0;
         s.drivers.onMate.push((mate) => {
           Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
           Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
           mate.rpcHandlers.unshift((request, socket) => {
             if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+            const input = decode(request.payload);
             mate.reply(
               socket,
               request.id,
               encode({
-                relativeUrl: `/api/assets/objects/${"c".repeat(64)}/preview`,
+                relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
                 expiresAt: 0,
                 imageDimensions: { width: 160, height: 80 },
               }),
@@ -337,7 +338,8 @@ describe("C: conversation images", () => {
           const handle = mate.handle;
           mate.handle = (request) => {
             if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-            reads++;
+            // Focusing the opener deliberately warms its original, independently of streaming.
+            if (request.url.pathname.endsWith("/preview")) previewReads++;
             return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
           };
         });
@@ -348,12 +350,16 @@ describe("C: conversation images", () => {
         wire.run("stream", "running");
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Watch the assistant picture");
-        const text = "![assistant picture](/tmp/assistant.png)\n\nHere is the picture";
+        let text = "![assistant picture](/tmp/assistant.png)\n\n[Docs](#docs)";
         wire.message("illustration", "assistant", text, "stream", { streaming: true });
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => {
             const image = document.querySelector<HTMLImageElement>(".run-slot img[data-image-src]");
-            return image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1;
+            if (image?.naturalWidth !== 160) return false;
+            for (let node: Element | null = image; node; node = node.parentElement) {
+              if (Number(getComputedStyle(node).opacity) !== 1) return false;
+            }
+            return true;
           }),
         );
         const held = yield* Effect.promise(() =>
@@ -369,7 +375,9 @@ describe("C: conversation images", () => {
               if (image.src !== src) failures.add("src changed");
               for (let node: Element | null = image; node; node = node.parentElement) {
                 if (Number(getComputedStyle(node).opacity) < 1)
-                  failures.add(`faded by ${node.className} (${getComputedStyle(node).opacity})`);
+                  failures.add(
+                    `faded by ${node.tagName} ${node.className} (${getComputedStyle(node).opacity})`,
+                  );
               }
               if (running) requestAnimationFrame(sample);
             };
@@ -384,7 +392,26 @@ describe("C: conversation images", () => {
             };
           }),
         );
-        const initialReads = reads;
+        const initialReads = previewReads;
+        for (const [index, focus] of ["button", "a[href='#docs']"].entries()) {
+          const focused = yield* Effect.promise(() =>
+            s.page.evaluateHandle((focus) => {
+              const element = document.querySelector<HTMLElement>(`.run-slot ${focus}`)!;
+              element.focus();
+              return element;
+            }, focus),
+          );
+          for (let delta = 0; delta < 4; delta++) {
+            text += `\n\nMore assistant words ${index}-${delta}`;
+            wire.message("illustration", "assistant", text, "stream", { streaming: true });
+            yield* chat.then.text(`More assistant words ${index}-${delta}`);
+            expect(
+              yield* Effect.promise(() =>
+                s.page.evaluate((focused) => document.activeElement === focused, focused),
+              ),
+            ).toBe(true);
+          }
+        }
         wire.message("illustration", "assistant", text, "stream", { streaming: false });
         wire.tool(
           "later",
@@ -411,6 +438,150 @@ describe("C: conversation images", () => {
             s.page.evaluate(
               (held) => ({
                 sameNode: document.querySelector(".run-scroll img[data-image-src]") === held.image,
+                sameSrc: held.image.src === held.src,
+                failures: held.finish(),
+              }),
+              held,
+            ),
+          ),
+        ).toEqual({ sameNode: true, sameSrc: true, failures: [] });
+        expect(previewReads).toBe(initialReads);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+    it.effect("a steering picture lands intact while the turn continues", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        const bytes = Buffer.from(
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const canvas = document.createElement("canvas");
+              canvas.width = 160;
+              canvas.height = 80;
+              canvas.getContext("2d")!.fillRect(0, 0, 160, 80);
+              return canvas.toDataURL("image/png").split(",")[1]!;
+            }),
+          ),
+          "base64",
+        );
+        let reads = 0;
+        s.drivers.onMate.push((mate) => {
+          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+          mate.rpcHandlers.unshift((request, socket) => {
+            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+            mate.reply(
+              socket,
+              request.id,
+              encode({
+                relativeUrl: `/api/assets/objects/${"d".repeat(64)}/preview`,
+                expiresAt: 0,
+                imageDimensions: { width: 160, height: 80 },
+              }),
+            );
+            return true;
+          });
+          const handle = mate.handle;
+          mate.handle = (request) => {
+            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
+            reads++;
+            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
+          };
+        });
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        const wire = chat.fixture();
+        wire.history("Watch the steering picture", "stream");
+        wire.run("stream", "running");
+        yield* s.given.signedIn;
+        yield* chat.when.open("Ada", "Watch the steering picture");
+        wire.tool(
+          "earlier",
+          "tool.completed",
+          { kind: "execute", command: "printf earlier-work" },
+          "stream",
+        );
+        yield* chat.then.text("printf earlier-work");
+        wire.message("steering", "user", "Use this steering picture", "stream", {
+          attachments: [
+            {
+              type: "image",
+              id: "steering-picture",
+              name: "steering.png",
+              mimeType: "image/png",
+              sizeBytes: bytes.length,
+              width: 160,
+              height: 80,
+            },
+          ],
+        });
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() => {
+            const image = document.querySelector<HTMLImageElement>(
+              ".run-slot [data-person-pictures] img[data-image-src]",
+            );
+            return image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1;
+          }),
+        );
+        const held = yield* Effect.promise(() =>
+          s.page.evaluateHandle(() => {
+            const image = document.querySelector<HTMLImageElement>(
+              ".run-slot [data-person-pictures] img[data-image-src]",
+            )!;
+            const src = image.src;
+            const failures = new Set<string>();
+            let running = true;
+            const sample = () => {
+              if (!image.isConnected) failures.add("replaced");
+              if (image.src !== src) failures.add("src changed");
+              for (let node: Element | null = image; node; node = node.parentElement) {
+                if (Number(getComputedStyle(node).opacity) < 1)
+                  failures.add(`faded by ${node.className} (${getComputedStyle(node).opacity})`);
+              }
+              if (running) requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+            return {
+              image,
+              src,
+              finish: () => {
+                running = false;
+                return [...failures];
+              },
+            };
+          }),
+        );
+        const initialReads = reads;
+        wire.tool(
+          "later",
+          "tool.started",
+          { kind: "execute", command: "printf later-0" },
+          "stream",
+        );
+        for (let update = 0; update < 24; update++) {
+          wire.tool(
+            "later",
+            "tool.updated",
+            { kind: "execute", command: `printf later-${update}` },
+            "stream",
+          );
+          yield* chat.then.text(`printf later-${update}`);
+        }
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() =>
+            Boolean(
+              document.querySelector(".run-scroll [data-person-pictures] img[data-image-src]"),
+            ),
+          ),
+        );
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate(
+              (held) => ({
+                sameNode:
+                  document.querySelector(
+                    ".run-scroll [data-person-pictures] img[data-image-src]",
+                  ) === held.image,
                 sameSrc: held.image.src === held.src,
                 failures: held.finish(),
               }),

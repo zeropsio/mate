@@ -744,7 +744,7 @@ export function runCardShows(
 }
 
 /** The runs of each conversation the person watched or opened, by the conversation's key. */
-const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
+const runFolds = new Map<string, Map<string, RunFold>>();
 const runFoldListeners = new Set<() => void>();
 
 function runFoldsChanged(): void {
@@ -761,18 +761,17 @@ export function subscribeRunFolds(listener: () => void): () => void {
  * How a run stands in a conversation: folded unless it runs, folds this
  * moment, stayed open while the person read it, or they opened it.
  */
-export function runFoldOf(conversation: string, run: string): RunFold {
-  return runFolds.get(conversation)?.get(run) ?? "folded";
+export function runFoldOf(conversation: string, run: string, unseen: RunFold = "folded"): RunFold {
+  return runFolds.get(conversation)?.get(run) ?? unseen;
 }
 
 /** Marks how a run stands in a conversation. */
 export function setRunFold(conversation: string, run: string, fold: RunFold): void {
   if (runFoldOf(conversation, run) === fold) return;
-  const runs = runFolds.get(conversation) ?? new Map<string, Exclude<RunFold, "folded">>();
-  if (fold === "folded") runs.delete(run);
-  else runs.set(run, fold);
-  if (runs.size === 0) runFolds.delete(conversation);
-  else runFolds.set(conversation, runs);
+  const runs = runFolds.get(conversation) ?? new Map<string, RunFold>();
+  // Explicitly hiding live work must survive its default changing on completion.
+  runs.set(run, fold);
+  runFolds.set(conversation, runs);
   runFoldsChanged();
 }
 

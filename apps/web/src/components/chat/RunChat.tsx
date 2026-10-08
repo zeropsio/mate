@@ -1382,9 +1382,11 @@ function StepPictures({ step }: { readonly step: WorkStep }) {
 
 type RunContent =
   | { readonly kind: "picture"; readonly path: string }
-  | { readonly kind: "message"; readonly message: ChatMessage };
+  | { readonly kind: "message"; readonly message: ChatMessage }
+  | { readonly kind: "person-pictures"; readonly pictures: ReadonlyArray<ChatImageAttachment> };
 const RunContentTargets = createContext<{
-  readonly attach: (key: string, content: RunContent, host: HTMLElement) => () => void;
+  readonly attach: (key: string, host: HTMLElement) => () => void;
+  readonly update: (key: string, content: RunContent) => void;
 } | null>(null);
 
 /** The rendered content belongs to the run; its anchor can move between slot and history. */
@@ -1402,10 +1404,13 @@ function RetainedRunContent({
   const targets = use(RunContentTargets);
   const attach = useCallback(
     (host: HTMLDivElement | null) => {
-      if (host !== null && targets !== null) return targets.attach(contentKey, content, host);
+      if (host !== null && targets !== null) return targets.attach(contentKey, host);
     },
-    [targets, contentKey, content],
+    [targets, contentKey],
   );
+  useLayoutEffect(() => {
+    targets?.update(contentKey, content);
+  }, [targets, contentKey, content]);
   return targets === null ? children : <div ref={attach} className={className} />;
 }
 
@@ -2764,6 +2769,20 @@ function AnswerFiles({ attachments }: { readonly attachments: ReadonlyArray<Chat
 
 /** The pictures of a message the person sent into the run: a compact strip, each opening the viewer on all of them. */
 function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatImageAttachment> }) {
+  const lineKey = use(ChatLineContext);
+  const content = useMemo(() => ({ kind: "person-pictures" as const, pictures }), [pictures]);
+  return (
+    <RetainedRunContent contentKey={`pictures:${lineKey}`} content={content} className="min-w-0">
+      <PersonPicturesContent pictures={pictures} />
+    </RetainedRunContent>
+  );
+}
+
+function PersonPicturesContent({
+  pictures,
+}: {
+  readonly pictures: ReadonlyArray<ChatImageAttachment>;
+}) {
   const { activeThreadEnvironmentId, onImageExpand } = use(TimelineRowCtx);
   const resources = useMemo(() => selectMessageImageResources(pictures), [pictures]);
   const urls = useAssetUrls(activeThreadEnvironmentId, resources);
@@ -3852,7 +3871,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
   const shows = runCardShows(settled, fold);
   const folded = shows.toggle === "show";
-  const [liveFolded, setLiveFolded] = useState(false);
+  const liveFolded = fold === "folded";
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
   const above = shows.work === "above";
@@ -3876,28 +3895,22 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [now, row.answering, isCompacting, row.items],
   );
   // A row's old anchor releases and its new anchor attaches in the same commit.
-  // Keep the portal target through that handoff; a truly hidden row drops its demand.
+  // Keep the portal target through that handoff; a removed row drops its demand.
   const [contentTargets] = useState(
-    () => new Map<string, { content: RunContent; target: HTMLElement; holders: number }>(),
+    () => new Map<string, { target: HTMLElement; holders: number }>(),
   );
   const [contents, setContents] = useState<
     ReadonlyMap<string, { content: RunContent; target: HTMLElement }>
   >(() => new Map());
   const attachContent = useCallback(
-    (key: string, content: RunContent, host: HTMLElement) => {
+    (key: string, host: HTMLElement) => {
       let held = contentTargets.get(key);
       if (held === undefined) {
-        held = { content, target: document.createElement("div"), holders: 0 };
+        held = { target: document.createElement("div"), holders: 0 };
         contentTargets.set(key, held);
       }
-      held.content = content;
-      host.appendChild(held.target);
-      const first = held.holders === 0;
+      if (held.target.parentElement !== host) host.appendChild(held.target);
       held.holders += 1;
-      if (first) {
-        const picture = held;
-        setContents((paths) => new Map(paths).set(key, picture));
-      }
       return () => {
         held.holders -= 1;
         if (held.holders === 0)
@@ -3910,7 +3923,22 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     },
     [contentTargets],
   );
-  const targets = useMemo(() => ({ attach: attachContent }), [attachContent]);
+  const updateContent = useCallback(
+    (key: string, content: RunContent) => {
+      const held = contentTargets.get(key);
+      if (held === undefined || held.holders === 0) return;
+      setContents((contents) =>
+        contents.get(key)?.content === content
+          ? contents
+          : new Map(contents).set(key, { content, target: held.target }),
+      );
+    },
+    [contentTargets],
+  );
+  const targets = useMemo(
+    () => ({ attach: attachContent, update: updateContent }),
+    [attachContent, updateContent],
+  );
   useEffect(() => {
     for (const [key, picture] of contentTargets) {
       if (picture.holders === 0 && !contents.has(key)) contentTargets.delete(key);
@@ -4234,7 +4262,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                       open={false}
                       onToggle={() => {
                         hold(false);
-                        setLiveFolded(false);
+                        setRunFold(ctx.routeThreadKey, row.turnKey, "watched");
                       }}
                     />
                   }
@@ -4244,7 +4272,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                   open
                   onToggle={() => {
                     hold(true);
-                    setLiveFolded(true);
+                    setRunFold(ctx.routeThreadKey, row.turnKey, "folded");
                   }}
                 />
               )
@@ -4262,8 +4290,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                         threadRef={threadRef}
                         onOpen={ctx.onImageExpand}
                       />
-                    ) : (
+                    ) : picture.content.kind === "message" ? (
                       <NoteWords message={picture.content.message} />
+                    ) : (
+                      <PersonPicturesContent pictures={picture.content.pictures} />
                     ),
                     picture.target,
                     key,
@@ -4311,7 +4341,8 @@ function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>
 }
 
 /**
- * How a run's card stands in this conversation. A live run is watched; as it
+ * How a run's card stands in this conversation. Live work starts watched;
+ * an explicit Show/Hide choice carries through completion. Otherwise, as it
  * settles its work eases shut into its line — unless the person is reading
  * it right then, when it stays open until they leave (`forgetRunFolds`) or it
  * is drawn again. A run that settled out of sight is simply folded, and so is
@@ -4332,9 +4363,9 @@ function useRunFold({
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
 }): { readonly fold: RunFold; readonly foldNow: () => void; readonly settling: boolean } {
-  const read = () => runFoldOf(conversation, run);
+  const read = () => runFoldOf(conversation, run, live ? "watched" : "folded");
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
-  const fold = live ? "watched" : stored;
+  const fold = stored;
   const wasLiveRef = useRef(live);
   // The draw where the run settled, before its fold is measured: the card
   // holds its live height through it, or it jumps first.
@@ -4358,7 +4389,7 @@ function useRunFold({
     wasLiveRef.current = live;
     setDrawnLive(live);
     if (live) {
-      setRunFold(conversation, run, "watched");
+      setRunFold(conversation, run, runFoldOf(conversation, run, "watched"));
       return;
     }
     if (runFoldOf(conversation, run) !== "watched") return;

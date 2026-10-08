@@ -917,6 +917,7 @@ describe("RunChat, as the person uses it", () => {
     frame: globalThis.requestAnimationFrame,
   };
   beforeEach(() => {
+    forgetRunFolds(SHARED.routeThreadKey);
     globalThis.ResizeObserver = class {
       observe() {}
       disconnect() {}
@@ -1589,6 +1590,22 @@ describe("RunChat, as the person uses it", () => {
       const markup = text(renderer);
       expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
       expect(markup).not.toContain("Show work");
+    });
+
+    it("keeps work hidden on completion after the reader explicitly hides it", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      act(() =>
+        scrollsOf(renderer)[0]!.props.onScroll({
+          currentTarget: { scrollTop: 0, scrollHeight: 900, clientHeight: 440 },
+        }),
+      );
+      act(() => button(renderer, "Hide work").props.onClick());
+      settle(renderer);
+      expect(scrollsOf(renderer)).toHaveLength(0);
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(scrollsOf(renderer)).toHaveLength(1);
+      expect(text(renderer)).toContain("Run the tests");
     });
 
     it("folds a run left open once it is drawn again", () => {
