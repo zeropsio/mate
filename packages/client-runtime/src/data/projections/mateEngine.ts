@@ -156,6 +156,10 @@ const STEP_ITEM_TYPES: Readonly<Record<string, string>> = {
   web: "web_search",
   look: "image_view",
   helper: "collab_agent_tool_call",
+  mcp: "mcp_tool_call",
+  tool: "dynamic_tool_call",
+  read: "dynamic_tool_call",
+  search: "dynamic_tool_call",
 };
 
 /** A call's state as V1's lifecycle says it. */
@@ -212,8 +216,24 @@ const helperOf = (item: Item) =>
   item.by.kind === "helper" ? { agentId: item.by.helperId } : ({} as Record<string, never>);
 
 /**
+ * What a call's row reads, as V1's activity payload carries it: the facts the server read the
+ * same way V1 does (`shows`) and its Zerops result; a record with no facts of its own is named
+ * by its tool.
+ */
+function callData(item: Extract<Item, { kind: "call" }>): Record<string, unknown> {
+  const named =
+    item.shows ??
+    ({
+      toolName: item.tool.name,
+      ...(item.tool.server === undefined ? {} : { server: item.tool.server }),
+    } as Record<string, unknown>);
+  return item.result === undefined ? { ...named } : { ...named, zerops: item.result };
+}
+
+/**
  * A call as V1's tool lifecycle: its start (the anchor its row keeps), then its progress while it
- * runs or its completion once it ended. The record carries its words, never its input or output.
+ * runs or its completion once it ended, each with the call's line, facts and result. Its title is
+ * the activity's summary, as V1's: a V1 tool payload carries none of its own.
  */
 function callActivities(
   item: Extract<Item, { kind: "call" }>,
@@ -224,12 +244,9 @@ function callActivities(
     itemType:
       STEP_ITEM_TYPES[item.step] ??
       (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
-    title,
     toolCallId: item.id,
-    data: {
-      toolName: item.tool.name,
-      ...(item.tool.server === undefined ? {} : { server: item.tool.server }),
-    },
+    ...(item.input === undefined ? {} : { detail: item.input }),
+    data: callData(item),
     ...(item.presentation === undefined ? {} : { presentation: item.presentation }),
     ...helperOf(item),
   };
