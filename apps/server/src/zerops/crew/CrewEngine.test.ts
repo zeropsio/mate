@@ -1975,15 +1975,20 @@ describe("CrewEngine", () => {
         started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
         yield* world.showOnDev(thread, { reason: "See the camera" });
+        const admittedBefore = (yield* world.admissions).length;
         yield* world.turnEnds(thread);
         const starting = yield* world.snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
         );
-        // The claim reads starting a moment before its turn is dispatched.
+        // The claim reads starting a moment before its turn is dispatched; the turn's admission
+        // is recorded as its run starts, a moment after it went out.
         yield* eventually(
           Effect.map(turnsSent(world), (turns) =>
             turns.at(-1)!.text.includes("Show your work on appdev"),
           ),
+        );
+        yield* eventually(
+          Effect.map(world.admissions, (admitted) => admitted.length > admittedBefore),
         );
         assert.deepStrictEqual(
           [
