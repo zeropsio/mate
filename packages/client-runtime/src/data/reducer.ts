@@ -181,8 +181,9 @@ export function streamOf(state: AccountState, key: StreamKey): StreamState {
  * replaces it back; another incarnation of an HQ scope is not ordered, so only a baseline replaces
  * it; a Mate's runs order by their epoch, a later run's value replacing an earlier run's by
  * whichever path and delivery it comes, live or stored, and never the other way round; between two
- * environments of a Mate, which have no order, only a live value replaces; a value of another
- * domain never replaces one. Time never decides.
+ * environments of a Mate, which have no order, only a live value replaces; an engine
+ * conversation's records order by epoch, then sequence, and another environment's only through a
+ * baseline; a value of another domain never replaces one. Time never decides.
  */
 export function supersedes(
   current: Revision,
@@ -213,6 +214,12 @@ export function supersedes(
       return current.incarnation === incoming.incarnation && incoming.revision > current.revision;
     case "mate-link":
       return current.kind === "mate-link" && incoming.sequence > current.sequence;
+    case "mate-conversation":
+      if (current.kind !== "mate-conversation") return false;
+      if (current.environmentId !== incoming.environmentId) return method === "baseline";
+      return incoming.epoch !== current.epoch
+        ? incoming.epoch > current.epoch
+        : incoming.seq > current.seq;
   }
 }
 
