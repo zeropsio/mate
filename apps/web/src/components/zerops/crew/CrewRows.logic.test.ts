@@ -389,6 +389,31 @@ describe("crewRowModel: what it needs from you", () => {
     ]);
   });
 
+  it("an edit sends what the board showed", () => {
+    const snapshot = quiet();
+    const tasks = snapshot.board.tasks.map((task) =>
+      task.id === "task-12"
+        ? { ...task, state: "queued" as const, attempts: 2, dependsOn: ["task-17"] }
+        : task.id === "task-17"
+          ? { ...task, state: "discarded" as const }
+          : task,
+    );
+    const [startAnyway] = needing(
+      "dependency-gone",
+      {},
+      { ...snapshot, board: { ...snapshot.board, tasks } },
+    ).needs[0]!.actions;
+    expect(startAnyway).toMatchObject({
+      kind: "command",
+      command: {
+        _tag: "taskEdit",
+        taskId: "task-12",
+        dependsOn: [],
+        seen: { state: "queued", attempts: 2 },
+      },
+    });
+  });
+
   it("sends each press as the crew command it names", () => {
     const [carryOn, review, drop] = needing("stalled", { text: "why" }).needs[0]!.actions;
     expect([carryOn, review, drop]).toMatchObject([

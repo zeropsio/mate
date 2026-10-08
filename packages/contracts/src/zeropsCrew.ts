@@ -694,6 +694,11 @@ export const CrewCommand = Schema.TaggedUnion({
     brief: Schema.optional(Schema.String),
     doneWhen: Schema.optional(Schema.String),
     dependsOn: Schema.optional(Schema.Array(CrewTaskId)),
+    /**
+     * The task as the person's board showed it. The engine's crew writes an edit only over that
+     * task and refuses one that carries none; a V1 server ignores it.
+     */
+    seen: Schema.optional(Schema.Struct({ state: CrewTaskState, attempts: NonNegativeInt })),
   },
   /** Discards one task, from any state (ARCHITECTURE §4 *Assignment*). */
   discard: taskRef,

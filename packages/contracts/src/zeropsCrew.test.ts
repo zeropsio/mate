@@ -189,7 +189,12 @@ const commandSamples = [
     doneWhen: "npm test passes",
     dependsOn: ["task-12"],
   },
-  { _tag: "taskEdit", taskId: "task-12", title: "Paginate /api/items" },
+  {
+    _tag: "taskEdit",
+    taskId: "task-12",
+    title: "Paginate /api/items",
+    seen: { state: "queued", attempts: 0 },
+  },
   { _tag: "discard", taskId: "task-12" },
   { _tag: "markFresh", taskId: "task-12" },
   { _tag: "taskRetry", taskId: "task-17" },

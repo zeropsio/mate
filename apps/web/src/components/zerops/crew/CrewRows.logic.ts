@@ -375,6 +375,8 @@ export function crewNeedActions(
                 _tag: "taskEdit",
                 taskId,
                 dependsOn: task.dependsOn.filter((id) => id !== gone.id),
+                // The engine's crew writes an edit only over the task as this board showed it.
+                seen: { state: task.state, attempts: task.attempts },
               },
             },
             drop(taskId),
