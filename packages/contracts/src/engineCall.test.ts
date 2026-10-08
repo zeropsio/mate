@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { STEP_ITEM_KINDS, callStep } from "./engineCall.ts";
+import { STEP_ITEM_KINDS, callStep, importedCallFields } from "./engineCall.ts";
+
+const PICTURE = {
+  mimeType: "image/png",
+  asset: {
+    id: "a1",
+    threadId: "mate/s/1",
+    ownerId: "call-1",
+    name: "tool-image",
+    provenance: "capture",
+    original: { status: "ready", digest: "a".repeat(64), mimeType: "image/png", sizeBytes: 68 },
+  },
+  width: 1,
+  height: 1,
+};
 
 describe("a call's step", () => {
   it.each([
@@ -33,5 +47,67 @@ describe("a call's step", () => {
     const kind = callStep("dynamic_tool_call", facts, title);
     expect(kind).toBe(step);
     expect(STEP_ITEM_KINDS[kind]).toBe("dynamic_tool_call");
+  });
+});
+
+describe("a call V1 recorded, brought over by the history import", () => {
+  const imported = (payload: Record<string, unknown>, summary = "Tool") =>
+    importedCallFields({ source: "v1", kind: "tool.completed", summary, payload });
+
+  it("carries its step, input line and facts as a live call's record does", () => {
+    expect(
+      imported({
+        itemType: "command_execution",
+        toolCallId: "toolu_1",
+        status: "completed",
+        detail: "Bash: npm run build",
+        data: { toolName: "Bash", command: "npm run build", toolCallId: "toolu_1" },
+      }),
+    ).toEqual({
+      step: "command",
+      input: "Bash: npm run build",
+      shows: { toolName: "Bash", command: "npm run build" },
+    });
+  });
+
+  it("a generic call that read a file is a read", () => {
+    expect(
+      imported({ itemType: "dynamic_tool_call", detail: 'Read: {"file_path":"/a"}' }).step,
+    ).toBe("read");
+  });
+
+  it("keeps a Zerops result and its pictures held by reference, and drops one held inline", () => {
+    expect(
+      imported({
+        itemType: "mcp_tool_call",
+        data: {
+          toolName: "mcp__zerops__zerops_browser",
+          zerops: {
+            toolName: "zerops_browser",
+            resultText: "{}",
+            images: [PICTURE, { mimeType: "image/png", data: "iVBOR" }],
+          },
+        },
+      }).result,
+    ).toEqual({
+      toolName: "zerops_browser",
+      resultText: "{}",
+      images: [PICTURE],
+      imagesDropped: true,
+    });
+  });
+
+  it("keeps what the import already cut: a result too long, pictures it dropped", () => {
+    expect(
+      imported({
+        itemType: "mcp_tool_call",
+        data: { zerops: { toolName: "zerops_deploy", truncated: true, imagesDropped: true } },
+      }).result,
+    ).toEqual({ toolName: "zerops_deploy", truncated: true, imagesDropped: true });
+  });
+
+  it("gives nothing for data that is not a V1 call's", () => {
+    expect(importedCallFields({ toolName: "Write" })).toEqual({});
+    expect(importedCallFields(null)).toEqual({});
   });
 });

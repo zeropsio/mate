@@ -121,3 +121,71 @@ export function callStep(
     title;
   return (own === undefined ? undefined : NAMED_STEPS[own.trim().toLowerCase()]) ?? step;
 }
+
+// ── a V1 call brought over ──────────────────────────────────────────────────────────────────
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isPicture = Schema.is(CallResultPicture);
+
+/** A V1 result as a record holds it: inline pictures out (`imagesDropped`), references kept. */
+const resultOf = (zerops: Record<string, unknown>): CallResult | undefined => {
+  if (typeof zerops.toolName !== "string" || zerops.toolName.length === 0) return undefined;
+  const given = Array.isArray(zerops.images) ? zerops.images : [];
+  const images = given.filter(isPicture);
+  return {
+    toolName: zerops.toolName,
+    ...(typeof zerops.resultText === "string" ? { resultText: zerops.resultText } : {}),
+    ...(zerops.truncated === true ? { truncated: true } : {}),
+    ...(images.length === 0 ? {} : { images }),
+    ...(zerops.imagesDropped === true || images.length < given.length
+      ? { imagesDropped: true }
+      : {}),
+  };
+};
+
+/**
+ * A call V1 recorded, as an engine call's record carries it: its item data from the history
+ * import (`{source: "v1", kind, summary, payload}`, `payload` V1's client-projected tool payload)
+ * read into the step, input line, facts and result a live call's record carries, so an imported
+ * call draws as a live one. Anything else gives nothing.
+ */
+export function importedCallFields(data: unknown): {
+  readonly step?: string;
+  readonly input?: string;
+  readonly shows?: Readonly<Record<string, unknown>>;
+  readonly result?: CallResult;
+} {
+  if (!isRecord(data) || data.source !== "v1" || !isRecord(data.payload)) return {};
+  const payload = data.payload;
+  const itemType = typeof payload.itemType === "string" ? payload.itemType : "dynamic_tool_call";
+  const { zerops, toolCallId: _native, ...shown } = isRecord(payload.data) ? payload.data : {};
+  const shows = Object.keys(shown).length === 0 ? undefined : shown;
+  const input =
+    typeof payload.detail === "string" && payload.detail.length > 0
+      ? payload.detail.length > CALL_INPUT_MAX
+        ? `${payload.detail.slice(0, CALL_INPUT_MAX - 3)}...`
+        : payload.detail
+      : undefined;
+  const result = isRecord(zerops) ? resultOf(zerops) : undefined;
+  const title =
+    typeof payload.title === "string"
+      ? payload.title
+      : typeof data.summary === "string"
+        ? data.summary
+        : undefined;
+  return {
+    step: callStep(
+      itemType,
+      {
+        ...(input === undefined ? {} : { line: input }),
+        ...(shows === undefined ? {} : { shows }),
+      },
+      title,
+    ),
+    ...(input === undefined ? {} : { input }),
+    ...(shows === undefined ? {} : { shows }),
+    ...(result === undefined ? {} : { result }),
+  };
+}
