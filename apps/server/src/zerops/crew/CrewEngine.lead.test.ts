@@ -857,9 +857,10 @@ describe("CrewEngine lead", () => {
               .map((row) => [row.kind, row.handle, row.text]),
             [["question", "lead", "Mobile first?"]],
           );
+          // V1 records the restart's cut as an operation the answer continues: its own mechanism.
           const interruption = waiting.attention.find(
             (need) => need.kind === "interrupted",
-          )!.operation!;
+          )?.operation;
           yield* world.press({
             _tag: "answer",
             handle: "lead",
@@ -869,7 +870,7 @@ describe("CrewEngine lead", () => {
           yield* onV1(world, (v1) =>
             Effect.gen(function* () {
               const settled = yield* v1.v1.run(
-                Effect.flatMap(CrewStore, (store) => store.getOperation(interruption.id)),
+                Effect.flatMap(CrewStore, (store) => store.getOperation(interruption!.id)),
               );
               assert.strictEqual(
                 settled._tag === "Some" ? settled.value.status : null,
