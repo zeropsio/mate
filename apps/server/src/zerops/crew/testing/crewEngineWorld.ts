@@ -828,7 +828,24 @@ const enginePort = (input: {
           new Error(`@${handle}'s sessions never held; the last: ${JSON.stringify(last)}`),
         );
       }),
-    admissions: Effect.map(Ref.get(fx.admitted), (all) => all.map((entry) => entry.principal)),
+    // A turn counts as sent once the crew's delivery is taken, its run's admission a step later
+    // (V1 admitted it before its dispatch): the admissions are read once none is in flight.
+    admissions: waitFor(
+      "the runs' admissions",
+      Effect.flatMap(sql, (client) =>
+        client<{ readonly n: number }>`
+          SELECT count(*) AS n FROM engine_effect
+          WHERE kind = 'run.prepare' AND state IN ('pending', 'running', 'settling')
+        `.pipe(
+          Effect.map((rows) => (rows[0]?.n ?? 0) === 0),
+          Effect.orDie,
+        ),
+      ),
+    ).pipe(
+      Effect.andThen(
+        Effect.map(Ref.get(fx.admitted), (all) => all.map((entry) => entry.principal)),
+      ),
+    ),
     tasks: Effect.map(crewState, (state) =>
       Object.values(state.tasks)
         .toSorted((a, b) => a.number - b.number)
