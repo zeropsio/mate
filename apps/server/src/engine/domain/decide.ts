@@ -526,6 +526,8 @@ const noteLostWork = (b: StepBuilder): void => {
   if (lost.length === 0 || b.state.archived) return;
   const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
   if (latest?.stopAsked != null) return;
+  // A crew's run, or any in a crewmate's chat, is its crew's to carry on: no turn of the engine's.
+  if (crewCarriesOn(b.state, { principal: latest?.principal ?? ENGINE })) return;
   const hows = [...new Set(lost.map((work) => work.how!))];
   const text = hows
     .map((how) =>
@@ -1336,7 +1338,7 @@ const wakeFired = (
       return;
     }
     case "lost-work": {
-      if (b.state.archived) return;
+      if (b.state.archived || crewCarriesOn(b.state, wake)) return;
       // A message waiting to go carries the note: held for it, never a run of its own.
       if (runPending(b.state)) return rearmLostWork(b, wake, HELD_FOR_SEND);
       startFromWake(b, wake.kind, id, wake);

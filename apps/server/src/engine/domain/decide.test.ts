@@ -2791,6 +2791,49 @@ describe("background work its session lost", () => {
 
   it.each([
     {
+      name: "in a crewmate's chat",
+      steps: [
+        {
+          command: {
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              model: null,
+              profile: { kind: "crewmate", id: "backend", name: "Backend" },
+            },
+          },
+          by: { kind: "crew", startedBy: "ana" },
+        } satisfies Input,
+        ...backgrounded,
+        recovered(),
+      ],
+    },
+    {
+      name: "a run its crew started",
+      steps: [
+        { command: send(), by: { kind: "crew", startedBy: "ana" } } satisfies Input,
+        prepared(1),
+        opened(1),
+        sent(1),
+        work("w1", SLEEP),
+        ended(1),
+        recovered(),
+      ],
+    },
+  ])(
+    "work its session lost wakes no turn where its crew carries the task on: $name",
+    ({ steps }) => {
+      const { log, state } = playAll(steps);
+      expect(
+        log.filter((event) => event._tag === "WakeArmed" && event.kind === "lost-work"),
+      ).toEqual([]);
+      expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain("lost-work");
+    },
+  );
+
+  it.each([
+    {
       name: "a message queued before the restart",
       steps: [...running, work("w1", SLEEP), send("next"), ended(1), recovered()],
     },
