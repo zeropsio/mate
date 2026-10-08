@@ -247,6 +247,15 @@ const handle = (b: StepBuilder, command: Command): void => {
       return closeSession(b, command.reason);
     case "RotateSession":
       return rotateSession(b, command);
+    case "MarkSeam":
+      return recordLoose(b, {
+        kind: "marker",
+        marker: {
+          kind: "crew.seam",
+          ...(command.words === null ? {} : { reason: command.words }),
+          seam: command.seam,
+        },
+      });
     case "Archive":
       if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
       return;
@@ -635,15 +644,36 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     runId: run,
     itemId: item,
     key: null,
-    by: { kind: "person", principal: b.envelope.principal },
-    body: {
-      kind: "person",
-      text: command.text,
-      attachments: [...attachments],
-      sendId: b.envelope.commandId,
-      delivery: { state: "queued", at: null },
-    },
+    by:
+      command.card === undefined
+        ? { kind: "person", principal: b.envelope.principal }
+        : ENGINE_ACTOR,
+    body:
+      command.card === undefined
+        ? {
+            kind: "person",
+            text: command.text,
+            attachments: [...attachments],
+            sendId: b.envelope.commandId,
+            delivery: { state: "queued", at: null },
+          }
+        : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },
   });
+  if (command.card !== undefined) {
+    // The card is whole as it is sent: closed at once, as a seam is.
+    b.emit({
+      _tag: "ItemClosed",
+      runId: run,
+      itemId: item,
+      body: {
+        kind: "note",
+        text: command.text,
+        streaming: false,
+        answer: false,
+        card: command.card,
+      },
+    });
+  }
   b.result = { ...b.result, itemId: item };
   if (b.state.pausedUntil === "unknown") {
     // A limit whose reset nobody knows holds the queue until its probe or the person: they wrote.

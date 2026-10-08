@@ -13,6 +13,7 @@ import type {
   ChatImageAttachment,
   ConversationAgent,
   CommandId,
+  CrewCard,
   CommandResult,
   ConversationId,
   EffectId,
@@ -22,6 +23,7 @@ import type {
   ItemBody,
   KnownEngineEvent,
   Principal,
+  RecordedCrewSeam,
   Rejection,
   RequestAsk,
   RequestId,
@@ -140,6 +142,11 @@ export type Command =
       readonly attachments?: ReadonlyArray<ChatImageAttachment>;
       /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
       readonly maintenance?: boolean;
+      /**
+       * The crew's card this turn carries: the record opens the run on it, a `note` of the crew's,
+       * never a person's message; the agent gets `text`.
+       */
+      readonly card?: CrewCard;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   | {
@@ -162,6 +169,13 @@ export type Command =
    * the seed as it starts.
    */
   | RotateSession
+  /** The crew's line between turns (a landing, a close, a save): a `crew.seam` marker. */
+  | {
+      readonly _tag: "MarkSeam";
+      readonly seam: RecordedCrewSeam;
+      /** The line's words; `null` leaves them to the reader. */
+      readonly words: string | null;
+    }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
   | {
