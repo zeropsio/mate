@@ -792,17 +792,39 @@ export const engineThread: Projection<EngineConversationKey, EnvironmentThreadSt
  * Whether older run groups exist before the oldest held — run ordinals are gapless, so any held
  * run past the first says so — and whether reading them is in flight.
  */
+/**
+ * The oldest run the account holds of a conversation, and whether the Mate has runs before it, as
+ * the Mate said: its window for the runs it opened on, the last earlier page for the runs read
+ * since. An ordinal says nothing of it: an import that failed reserved ordinals that hold nothing.
+ */
+export function earlierOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): { readonly before: number; readonly more: boolean } | null {
+  const id = engineConversationId(key);
+  let oldest: number | null = null;
+  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", id))
+    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
+  if (oldest === null) return null;
+  const gauge = read.fact("mateEngineGauge", id);
+  const paged = gauge.kind === "known" ? gauge.value.earlier : undefined;
+  if (paged !== undefined && paged.before === oldest) return paged;
+  const conversation = read.fact("mateEngineConversation", id);
+  const window = conversation.kind === "known" ? conversation.value.window : null;
+  if (window !== null && (window.oldestOrdinal === null || window.oldestOrdinal <= oldest))
+    return { before: oldest, more: window.earlier };
+  return { before: oldest, more: oldest > 1 };
+}
+
 function pageOf(
   read: ProjectionReads,
   key: EngineConversationKey,
 ): Option.Option<EnvironmentThreadPageState> {
-  let oldest: number | null = null;
-  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)))
-    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
-  if (oldest === null || oldest <= 1) return Option.none();
+  const earlier = earlierOf(read, key);
+  if (earlier === null || !earlier.more) return Option.none();
   const phase = read.stream(engineEarlierScope(key)).phase;
   return Option.some({
-    beforeCursor: String(oldest),
+    beforeCursor: String(earlier.before),
     hasMore: true,
     loadingOlder: phase === "connecting" || phase === "baselining",
   });

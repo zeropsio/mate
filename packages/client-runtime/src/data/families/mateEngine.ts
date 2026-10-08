@@ -36,6 +36,8 @@ export interface EngineGaugeValue {
   readonly environmentId: string;
   readonly usage: ThreadTokenUsageSnapshot | null;
   readonly progress: Readonly<Record<string, unknown>>;
+  /** Where the last earlier page this tab read left off, and whether the Mate has more before it. */
+  readonly earlier?: { readonly before: number; readonly more: boolean };
 }
 
 /** The conversation's own facts: its header, and the window of run groups held. */
