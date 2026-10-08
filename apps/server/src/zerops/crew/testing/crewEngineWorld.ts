@@ -135,6 +135,7 @@ const ENGINE_FILE = "engine.sqlite";
 interface DeliveryRow {
   readonly payload_json: string;
   readonly state: string;
+  readonly outcome_json: string | null;
 }
 
 /** The provider, with a send a journey can hold before the agent gets it. */
@@ -426,9 +427,18 @@ const enginePort = (input: {
     yield* settled;
     const rows = yield* Effect.flatMap(sql, (client) =>
       client<DeliveryRow>`
-        SELECT payload_json, state FROM engine_effect
+        SELECT payload_json, state, outcome_json FROM engine_effect
         WHERE kind = 'crew.deliver' AND state = 'done' ORDER BY rowid
       `.pipe(Effect.orDie),
+    );
+    // A turn admission refused never went out (V1 refused it before its dispatch).
+    const refused = new Set(
+      (yield* Effect.flatMap(sql, (client) =>
+        client<{ readonly run_id: string }>`
+          SELECT json_extract(payload_json, '$.runId') AS run_id FROM engine_event
+          WHERE type = 'RunEnded' AND json_extract(payload_json, '$.detail') = 'refused'
+        `.pipe(Effect.orDie),
+      )).map((row) => row.run_id),
     );
     const state = yield* crewState;
     const sessions = new Map<string, number>();
@@ -466,7 +476,11 @@ const enginePort = (input: {
           if (sessions.has(chat)) records.push({ kind: "stop", chat });
           if (command.fresh) opens();
           break;
-        case "Send":
+        case "Send": {
+          const ran = (
+            JSON.parse(row.outcome_json ?? "{}") as { readonly value?: { readonly runId?: string } }
+          ).value?.runId;
+          if (ran !== undefined && refused.has(ran)) break;
           records.push({
             kind: "turn",
             chat,
@@ -476,6 +490,7 @@ const enginePort = (input: {
             runtimeMode: "approval-required",
           });
           break;
+        }
         case "Stop":
           records.push({ kind: "interrupt", chat });
           break;
