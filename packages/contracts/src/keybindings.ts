@@ -66,6 +66,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "rightPanel.toggle",
   "rightPanel.toggleMaximized",
   "rightPanel.new",
+  "view.reopenClosed",
   "diff.toggle",
   "commandPalette.toggle",
   "filePicker.toggle",

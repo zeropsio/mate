@@ -88,6 +88,10 @@ successful pick; its hover glow and badge preview the element and color family t
 `rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
 so add one in **Settings** → **Keybindings** if you want to use it.
 
+`view.reopenClosed` puts the last closed right-panel tab back, in its own conversation, opening that
+conversation when another one is on screen. A terminal is not reopened: its shell ends with its tab.
+Its default shortcut is `mod+shift+t` (the desktop app; a browser keeps `mod+shift+t` for itself).
+
 `rightPanel.new` opens the open right panel's add menu, or moves to its launcher when no tab is
 open. Its default shortcut is `mod+t` (the desktop app; a browser keeps `mod+t` for itself), and it
 does not run while the terminal has focus.
