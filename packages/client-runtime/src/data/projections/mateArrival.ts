@@ -270,22 +270,16 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   if (input.closeOffHold === "open" && press?.container !== true) {
     return { kind: "coming", line: CLOSING_OFF_LINE };
   }
-  // A container that failed, stopped or is restarting shows that, whatever this tab pressed.
+  // The machine ends the arrival wait when its container or link needs attention, whatever this
+  // tab pressed. Until a machine names it, the platform can still say its container is down.
   const reachability = input.link?.reachability;
   if (
-    reachability == null
-      ? containerDown(candidate?.service?.status)
-      : reachability.kind === "container" &&
-        [
-          "inactive",
-          "restarting",
-          "updating",
-          "needs-enable",
-          "needs-update",
-          "not-yet-available",
-        ].includes(reachability.container.level)
+    input.link !== undefined &&
+    reachability != null &&
+    !arrivalHoldsThrough(reachability, input.link)
   )
     return undefined;
+  if (reachability == null && containerDown(candidate?.service?.status)) return undefined;
   if (press !== undefined && press.container) {
     return {
       kind: "coming",

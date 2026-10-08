@@ -609,7 +609,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             .finally(() => setRetryingSetup(false));
         };
   const failedReason =
-    failedProcess === undefined
+    arrival?.kind !== "failed" || failedProcess === undefined
       ? undefined
       : setupFailureReason(
           mate.name,
@@ -657,11 +657,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // can turn into the conversation's own. A half-made Mate names Finish setup only where this
   // viewer has it, and who can where not.
   const shown: MateComing | undefined =
-    arrival === undefined
-      ? undefined
-      : failedReason === undefined
-        ? halfMadeFor(arrival, finishSetup !== undefined)
-        : { kind: "failed", line: failedReason.text, verb: "try-again" };
+    arrival === undefined ? undefined : halfMadeFor(arrival, finishSetup !== undefined);
   // The hand-over: the words turn into the conversation's own, and the header with them — its way
   // into Zerops and its actions arrive here, in place, so the route changes under an unchanged frame.
   const handingArrival = handing && cameUp;
