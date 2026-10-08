@@ -19,6 +19,8 @@ int main(int argc, char **argv) {
   fds[count++] = (struct pollfd){ .fd = changes, .events = POLLIN };
   const char *watched[] = { "memory.events", "memory.high", "memory.max", "memory.swap.max" };
   const char *pressures[] = { "memory.pressure", "cpu.pressure", "io.pressure" };
+  /* Wake on any recorded stall in the kernel tracking window. The TypeScript
+   * sampler owns the verdict; this trigger is not a health threshold. */
   const char trigger[] = "some 1 2000000";
   char path[4096];
   for (int group = 1; group < argc; group++) {

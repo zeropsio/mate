@@ -1,6 +1,4 @@
 import type { MateHealth } from "@t3tools/contracts";
-import { serviceFamily } from "../families/service.ts";
-import { scopeOf } from "../families/spec.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
@@ -11,7 +9,6 @@ import type { MateProjectKey } from "./mateAttention.ts";
 export interface MateHealthRead {
   readonly health: MateHealth | null;
   readonly live: boolean;
-  readonly configuredMinimumBytes: number | null;
 }
 
 /** Health uses source ordering on both its direct subscription and independent HQ relay. */
@@ -36,23 +33,9 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
       read.stream(hqMateScope(orgId, projectId)).phase === "live" &&
       read.stream(hqMateHealthScope(orgId, projectId)).phase === "live";
     const live = directLive || storedLive;
-    const minimums = (
-      read.stream(scopeOf(serviceFamily, orgId)).phase === "live"
-        ? [...read.index("serviceProject", projectId)]
-        : []
-    ).flatMap((key) => {
-      const service = read.fact("service", key);
-      if (service.kind !== "known" || service.value.name !== "zcp") return [];
-      const minimum =
-        service.value.currentAutoscaling?.verticalAutoscaling?.minResource?.memoryGBytes;
-      return typeof minimum === "number" && Number.isFinite(minimum) && minimum >= 0
-        ? [minimum * 1024 ** 3]
-        : [];
-    });
     return {
       health,
       live: health !== null && live,
-      configuredMinimumBytes: minimums.length === 1 ? minimums[0]! : null,
     };
   },
   equals: sameValue,
@@ -60,7 +43,7 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
 
 const gigabytes = (bytes: number) => `${Number((bytes / 1024 ** 3).toFixed(2))} GB`;
 
-/** Presentation names only measured constraints; configuration is separate Zerops evidence. */
+/** Presentation names measured pressure and constraints, never an inferred allocation failure. */
 export function mateHealthCopy(
   name: string,
   read: MateHealthRead,
@@ -69,62 +52,89 @@ export function mateHealthCopy(
   readonly title: string;
   readonly description: string;
 } | null {
-  const { health, live, configuredMinimumBytes } = read;
+  const { health, live } = read;
   if (health === null) return null;
   const evidence = {
     ...health.evidence,
-    // Old avg10-only reports cannot establish current CPU exhaustion, even over a live link.
-    resources: health.evidence.resources.filter(
-      (resource) => resource !== "cpu" || health.evidence.cpu?.window?.saturated === true,
-    ),
+    // Older Mates inferred memory strain from usage/high and called I/O stalls disk
+    // shortage. Retained reports need the same evidence rules as current reports.
+    resources: health.evidence.resources.flatMap((resource) => {
+      const memory = health.evidence.memory;
+      if (resource === "memory")
+        return memory !== null &&
+          (memory.growth.high > 0 ||
+            (memory.growth.max ?? 0) > 0 ||
+            memory.growth.oom > 0 ||
+            memory.growth.oomKill > 0 ||
+            (memory.swapGrowth ?? 0) > 0 ||
+            (memory.pressure?.some.avg10 ?? 0) > 0)
+          ? [resource]
+          : [];
+      if (resource === "cpu")
+        return health.evidence.cpu?.window?.saturated === true ? [resource] : [];
+      if (resource === "disk" && health.evidence.disk?.free !== 0)
+        return (health.evidence.io?.some.avg10 ?? 0) > 0 ? ["io" as const] : [];
+      return [resource];
+    }),
   };
-  const strained = evidence.resources.length > 0;
-  const cap =
-    evidence.memory === null
-      ? null
-      : Math.min(evidence.memory.high ?? Infinity, evidence.memory.max ?? Infinity);
-  const limited = cap !== null && Number.isFinite(cap);
-  const mismatch =
-    live && limited && configuredMinimumBytes !== null && configuredMinimumBytes > cap;
-  if (!strained && !mismatch && (live || !limited)) return null;
+  if (evidence.resources.length === 0) return null;
+  const cap = evidence.memory?.max ?? null;
   const prefix = live ? name : `${name} · last-known health`;
   const resource = evidence.resources[0];
-  const title = !strained
-    ? `${prefix} — the container ${live ? "is" : "was"} capped at ${gigabytes(cap ?? 0)}`
-    : resource === "memory" || mismatch
-      ? `${prefix} is short on memory${limited ? ` — the container is capped at ${gigabytes(cap)}` : ""}`
+  const title =
+    resource === "memory"
+      ? `${prefix} is under memory pressure${cap !== null ? ` — the container is capped at ${gigabytes(cap)}` : ""}`
       : resource === "disk"
-        ? `${prefix} is short on disk resources`
-        : `${prefix} is under CPU pressure`;
+        ? `${prefix} has no free space on its state disk`
+        : resource === "io"
+          ? `${prefix} is slowed by I/O stalls`
+          : `${prefix} is under CPU pressure`;
   const actions = evidence.resources.flatMap((resource) =>
     resource === "memory"
-      ? ["Close idle terminal agents or the IDE in the container, or raise RAM in Zerops."]
+      ? (() => {
+          const memory = evidence.memory!;
+          return [
+            ...(memory.high !== null
+              ? [`Memory reclaim threshold: ${gigabytes(memory.high)}.`]
+              : []),
+            ...(memory.growth.high > 0
+              ? ["The container hit its memory reclaim threshold since the preceding sample."]
+              : []),
+            ...((memory.growth.max ?? 0) > 0
+              ? ["The container hit its hard memory limit since the preceding sample."]
+              : []),
+            ...((memory.pressure?.some.avg10 ?? 0) > 0
+              ? ["The kernel reports recent memory stalls."]
+              : []),
+            ...((memory.swapGrowth ?? 0) > 0 ? ["Container swap use is growing."] : []),
+            ...(memory.growth.oom > 0
+              ? ["The kernel reported an out-of-memory allocation since the preceding sample."]
+              : []),
+            "Close idle terminal agents or the IDE in the container, or raise RAM in Zerops.",
+          ];
+        })()
       : resource === "disk"
-        ? [
-            evidence.disk?.free === 0
-              ? "Free space on the Mate's state disk."
-              : "Reduce container disk activity; the kernel reports I/O stalls.",
-          ]
-        : (() => {
-            const window = evidence.cpu?.window;
-            if (window == null) return [];
-            const cores = (value: number) => Number(value.toFixed(2));
-            const usage = cores(window.usageUsec / window.elapsedUsec);
-            const capacity = cores(window.capacityCpus);
-            const measured = `Measured ${usage} CPU cores used out of a limit of ${capacity} over ${cores(window.elapsedUsec / 1_000_000)} seconds.`;
-            const consumer = window.consumer;
-            return [
-              measured,
-              consumer === null
-                ? "The kernel reports runnable work waiting for CPU. No current process could be attributed; inspect container workloads in Zerops."
-                : `Top measured process: ${consumer.name} (PID ${consumer.pid}) used ${cores(consumer.cpuCores)} CPU cores. Check its workload before changing CPU in Zerops.`,
-            ];
-          })(),
+        ? ["Free space on the Mate's state disk."]
+        : resource === "io"
+          ? [
+              "The kernel reports I/O stalls slowing container work. Reduce container disk activity.",
+            ]
+          : (() => {
+              const window = evidence.cpu?.window;
+              if (window == null) return [];
+              const cores = (value: number) => Number(value.toFixed(2));
+              const usage = cores(window.usageUsec / window.elapsedUsec);
+              const capacity = cores(window.capacityCpus);
+              const measured = `Measured ${usage} CPU cores used out of a limit of ${capacity} over ${cores(window.elapsedUsec / 1_000_000)} seconds.`;
+              const consumer = window.consumer;
+              return [
+                measured,
+                consumer === null
+                  ? "The kernel reports runnable work waiting for CPU. No current process could be attributed; inspect container workloads in Zerops."
+                  : `Top measured process: ${consumer.name} (PID ${consumer.pid}) used ${cores(consumer.cpuCores)} CPU cores. Check its workload before changing CPU in Zerops.`,
+              ];
+            })(),
   );
-  if (mismatch)
-    actions.push(
-      `Zerops is configured for at least ${gigabytes(configuredMinimumBytes)}; that increase hasn't reached the container.`,
-    );
   if (!live)
     actions.push(`Last measured ${health.sampledAt}. The Mate's current resources are unknown.`);
   if (evidence.memory?.growth.oomKill)

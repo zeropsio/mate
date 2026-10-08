@@ -455,7 +455,6 @@ export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
 export const mateHealthAtom = projectReader(mateHealth, mateKey, {
   health: null,
   live: false,
-  configuredMinimumBytes: null,
 });
 export const mateAttentionAtom = projectReader(mateAttention, mateKey, {
   attention: null,

@@ -111,11 +111,14 @@ Counts enumerate every remaining ledger entry, including repeated uses in a file
 
 Mate resource health has its own revision and subscription, independent of conversation reads,
 and travels to HQ in an independent `health` frame, retained in `hq_mate_health`. Both paths enter the `mateHealth` family. The health
-projection joins these with the zcp service's configured RAM minimum. Kernel cgroup v2 evidence
-and state-disk free space determine resource strain; a transport failure never does. An unavailable
+projection uses measured health evidence; a configured RAM minimum cannot prove an allocation
+update failed. The cgroup hard limit is `memory.max`; `memory.high` is a reclaim threshold.
+Memory PSI, increasing high/max/OOM events and swap growth establish memory strain. I/O stalls
+are distinct from state-disk exhaustion. New counters are optional on the wire for retained
+reports and older Mates. Kernel cgroup v2 evidence and state-disk free space determine resource strain; a transport failure never does. An unavailable
 source retains the permitted report labelled last-known. Memory and disk reads run at startup and on
-kernel notifications, PSI triggers and state-directory changes. CPU counter comparisons have a
+kernel notifications, PSI triggers and state-directory changes. CPU and memory/swap counter comparisons have a
 centrally owned two-second observation cadence, including quiet windows for recovery. This is the
 kernel's shortest unprivileged PSI tracking window, not a truth threshold. Current runnable demand
 is compared with the visible cgroup's cpuset and quota allocation; historical PSI averages alone
-cannot establish exhaustion. Requests and unrelated notifications do not replace that CPU window.
+cannot establish exhaustion. Requests and unrelated notifications do not replace that observation window.

@@ -13,10 +13,12 @@ If Headquarters, Zerops or the log backend cannot answer, the tool reports the f
 fixing the problem, ask the agent to check again; the call does not retry automatically.
 
 A Mate can answer while its container is short on resources. Its conversation shows measured
-memory, disk or CPU strain with its name and an action. Memory warnings include the container's
-enforced cap: close idle terminal agents or an IDE in the container, or raise RAM in Zerops. If
-Zerops's configured minimum exceeds the live cap, Mate says the increase has not reached the
-container. After a lost connection, HQ's retained report is labelled **last-known health** with its
+memory, I/O, disk or CPU strain with its name and an action. Memory warnings include the container's
+hard limit (`memory.max`) and distinguish it from the reclaim threshold (`memory.high`).
+Measured memory stalls, increasing reclaim/limit/OOM events or growing swap use establish memory
+pressure; static swap use and historical counters do not. Close idle terminal agents or an IDE
+in the container, or raise RAM in Zerops. I/O stalls have their own warning and do not mean the
+state disk is full. After a lost connection, HQ's retained report is labelled **last-known health** with its
 measurement time; it does not claim the container is still in that condition.
 
 CPU warnings compare recent CPU use and runnable work waiting for CPU with the container's

@@ -34,7 +34,7 @@ async function fixture(values: Record<string, string> = {}) {
     "memory.current": "100",
     "memory.high": "max",
     "memory.max": "max",
-    "memory.events": "high 0\noom 0\noom_kill 0\n",
+    "memory.events": "high 0\nmax 0\noom 0\noom_kill 0\n",
     "memory.swap.current": "0",
     "memory.swap.max": "0",
     "memory.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
@@ -71,10 +71,13 @@ describe("container resource evidence", () => {
     });
   });
   it("distinguishes old OOM counters from new kills, and unlimited from unreadable", async () => {
-    const dir = await fixture({ "memory.events": "high 8\noom 4\noom_kill 2\n" });
+    const dir = await fixture({ "memory.events": "high 8\nmax 0\noom 4\noom_kill 2\n" });
     const previous = await readResourceHealth([dir], dir);
     expect(previous.status).toBe("ok");
-    await NodeFSP.writeFile(NodePath.join(dir, "memory.events"), "high 9\noom 5\noom_kill 3\n");
+    await NodeFSP.writeFile(
+      NodePath.join(dir, "memory.events"),
+      "high 9\nmax 0\noom 5\noom_kill 3\n",
+    );
     const next = await readResourceHealth([dir], dir, previous);
     expect(next).toMatchObject({
       status: "strained",
@@ -85,13 +88,63 @@ describe("container resource evidence", () => {
     expect((await readResourceHealth([dir], dir)).status).toBe("unknown");
   });
   it("uses the ancestor enforcing the tightest cap, not the service's unlimited leaf", async () => {
-    const root = await fixture({ "memory.high": "150", "memory.current": "200" });
+    const root = await fixture({
+      "memory.high": "150",
+      "memory.max": "300",
+      "memory.current": "200",
+    });
     const leaf = await fixture();
     expect(await readResourceHealth([leaf, root], leaf)).toMatchObject({
-      status: "strained",
-      memory: { high: 150, current: 200 },
+      status: "ok",
+      memory: { high: 150, max: 300, current: 200 },
     });
   });
+  it.each([
+    { allocation: 3.375, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 30, resources: ["io"] },
+    { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 0, resources: [] },
+    {
+      allocation: 3.375,
+      highGrowth: 1,
+      maxGrowth: 0,
+      swapGrowth: 0,
+      io: 30,
+      resources: ["memory", "io"],
+    },
+    { allocation: 3.75, highGrowth: 0, maxGrowth: 1, swapGrowth: 0, io: 0, resources: ["memory"] },
+    { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 1, io: 0, resources: ["memory"] },
+  ])(
+    "Rhea distinguishes static readings from growth: %j",
+    async ({ allocation, highGrowth, maxGrowth, swapGrowth, io, resources }) => {
+      const dir = await fixture({
+        "memory.current": String(2 * 1024 ** 3),
+        "memory.max": String(allocation * 1024 ** 3),
+        "memory.high": String((allocation - 2) * 1024 ** 3),
+        "memory.events": "high 2513\nmax 7\noom 0\noom_kill 0\n",
+        "memory.swap.current": String(200 * 1024 ** 2),
+        "memory.swap.max": String(512 * 1024 ** 2),
+        "io.pressure": `some avg10=${io} total=300\nfull avg10=${io ? 24 : 0} total=240\n`,
+      });
+      const previous = await readResourceHealth([dir], dir);
+      expect(previous.resources).toEqual(io ? ["io"] : []);
+      await NodeFSP.writeFile(
+        NodePath.join(dir, "memory.events"),
+        `high ${2513 + highGrowth}\nmax ${7 + maxGrowth}\noom 0\noom_kill 0\n`,
+      );
+      await NodeFSP.writeFile(
+        NodePath.join(dir, "memory.swap.current"),
+        String(200 * 1024 ** 2 + swapGrowth),
+      );
+      const next = await readResourceHealth([dir], dir, previous);
+      expect(next.resources).toEqual(resources);
+      expect(next.severity).toBe("warning");
+      expect(next.memory).toMatchObject({
+        max: allocation * 1024 ** 3,
+        high: (allocation - 2) * 1024 ** 3,
+        growth: { max: maxGrowth },
+        swapGrowth,
+      });
+    },
+  );
   it("does not call an unreadable disk healthy", async () => {
     const dir = await fixture();
     expect(await readResourceHealth([dir], NodePath.join(dir, "missing"))).toMatchObject({
@@ -108,7 +161,12 @@ it.effect("publishes a changed kernel file without a polling timer", () =>
       resourceHealthChanges(dir, [dir]).pipe(
         Stream.tap((sample) =>
           sample.resources.length === 0
-            ? Effect.promise(() => NodeFSP.writeFile(NodePath.join(dir, "memory.high"), "50"))
+            ? Effect.promise(() =>
+                NodeFSP.writeFile(
+                  NodePath.join(dir, "memory.events"),
+                  "high 1\nmax 0\noom 0\noom_kill 0\n",
+                ),
+              )
             : Effect.void,
         ),
         Stream.take(2),
@@ -129,12 +187,12 @@ it("reports CPU and I/O stalls and clears them only when the kernel reports no r
   await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 3800000\nnr_throttled 0\n");
   now = 2_000_000;
   const before = await readKernelResourceHealth([dir], dir, undefined, cpu);
-  expect(before.resources).toEqual(["disk", "cpu"]);
+  expect(before.resources).toEqual(["io", "cpu"]);
   await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=20.00 total=800000\n");
   await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 7600000\nnr_throttled 0\n");
   now = 4_000_000;
   expect((await readKernelResourceHealth([dir], dir, before, cpu)).resources).toEqual([
-    "disk",
+    "io",
     "cpu",
   ]);
   await NodeFSP.writeFile(
@@ -146,17 +204,22 @@ it("reports CPU and I/O stalls and clears them only when the kernel reports no r
   expect(after.status).toBe("ok");
 });
 
-it("counts new kills across a changed RAM cap, but never subtracts counters from another cgroup", async () => {
+it("counts new events and swap across a changed RAM cap, but never subtracts counters from another cgroup", async () => {
   const dir = await fixture({ "memory.high": "150" });
   const previous = await readResourceHealth([dir], dir);
   await NodeFSP.writeFile(NodePath.join(dir, "memory.high"), "200");
-  await NodeFSP.writeFile(NodePath.join(dir, "memory.events"), "high 1\noom 1\noom_kill 1\n");
+  await NodeFSP.writeFile(
+    NodePath.join(dir, "memory.events"),
+    "high 1\nmax 0\noom 1\noom_kill 1\n",
+  );
   expect((await readResourceHealth([dir], dir, previous)).memory?.growth.oomKill).toBe(1);
   const other = await fixture({
     "memory.high": "200",
-    "memory.events": "high 9\noom 9\noom_kill 9\n",
+    "memory.events": "high 9\nmax 0\noom 9\noom_kill 9\n",
   });
-  expect((await readResourceHealth([other], other, previous)).memory?.growth.oomKill).toBe(0);
+  const changedScope = await readResourceHealth([other], other, previous);
+  expect(changedScope.memory?.growth).toEqual({ high: 0, max: 0, oom: 0, oomKill: 0 });
+  expect(changedScope.memory?.swapGrowth).toBe(0);
 });
 
 it.effect("reports missing notification coverage alongside the remaining measured limits", () =>
@@ -206,5 +269,33 @@ it.effect(
       );
       expect(values.map((value) => value.resources)).toEqual([[], ["cpu"], []]);
       expect(values[2]?.cpu?.some.avg10).toBe(20);
+    }),
+);
+
+it.effect(
+  "observes swap growth on the shared cadence and clears it in the first quiet window",
+  () =>
+    Effect.gen(function* () {
+      const dir = yield* Effect.promise(() => fixture({ "memory.swap.max": "536870912" }));
+      const values = yield* Stream.runCollect(
+        resourceHealthChanges(dir, [dir]).pipe(
+          Stream.tap((sample) =>
+            Effect.gen(function* () {
+              if (sample.memory?.swapCurrent === 0) {
+                yield* Effect.promise(() =>
+                  NodeFSP.writeFile(NodePath.join(dir, "memory.swap.current"), "209715200"),
+                );
+                yield* TestClock.adjust(2000);
+              } else if (sample.resources.includes("memory")) {
+                yield* TestClock.adjust(2000);
+              }
+            }),
+          ),
+          Stream.take(3),
+        ),
+      );
+      expect(values.map((value) => value.resources)).toEqual([[], ["memory"], []]);
+      expect(values[1]?.memory?.swapGrowth).toBe(209715200);
+      expect(values[2]?.memory?.swapCurrent).toBe(209715200);
     }),
 );

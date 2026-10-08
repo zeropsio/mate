@@ -12,7 +12,7 @@ const health: MateHealth = {
     memory: {
       current: 1700000000,
       high: 1610612736,
-      max: null,
+      max: 3.75 * 1024 ** 3,
       events: { high: 2, oom: 0, oomKill: 0 },
       growth: { high: 1, oom: 0, oomKill: 0 },
       pressure: null,
@@ -28,16 +28,34 @@ const health: MateHealth = {
 describe("Mate's visible resource warning", () => {
   it.each([true, false])("shows named memory evidence and action, with live=%s", (live) => {
     const text = renderToStaticMarkup(
-      <MateHealthMessage
-        name="Skákala"
-        read={{ health, live, configuredMinimumBytes: 3 * 1024 ** 3 }}
-      />,
+      <MateHealthMessage name="Skákala" read={{ health, live }} />,
     ).replaceAll("&#x27;", "'");
     expect(text).toContain("Skákala");
-    expect(text).toContain("1.5 GB");
+    expect(text).toContain("capped at 3.75 GB");
+    expect(text).toContain("reclaim threshold: 1.5 GB");
     expect(text).toContain("Close idle terminal agents");
     expect(text.includes("last-known health")).toBe(!live);
-    expect(text.includes("hasn't reached the container")).toBe(live);
+    expect(text).not.toContain("hasn't reached the container");
+  });
+  it("names I/O stalls independently of free disk space", () => {
+    const text = renderToStaticMarkup(
+      <MateHealthMessage
+        name="Rhea"
+        read={{
+          health: {
+            ...health,
+            evidence: {
+              ...health.evidence,
+              resources: ["io"],
+              io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+            },
+          },
+          live: true,
+        }}
+      />,
+    );
+    expect(text).toContain("Rhea is slowed by I/O stalls");
+    expect(text).not.toContain("short on disk");
   });
   it("clears after source recovery and says nothing before a sample", () => {
     for (const value of [
@@ -46,10 +64,7 @@ describe("Mate's visible resource warning", () => {
     ])
       expect(
         renderToStaticMarkup(
-          <MateHealthMessage
-            name="Skákala"
-            read={{ health: value, live: true, configuredMinimumBytes: null }}
-          />,
+          <MateHealthMessage name="Skákala" read={{ health: value, live: true }} />,
         ),
       ).toBe("");
   });
