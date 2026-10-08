@@ -2,7 +2,7 @@
  * One fiber per conversation and one writer. Its loop takes the next envelope from a bounded
  * mailbox (producers wait when it is full; nothing is dropped), decides, commits the step in one
  * transaction, adopts the state the commit folded, publishes the committed events in commit order,
- * rings the worker and the scheduler when the step queued effects or touched wakes, and completes
+ * writes the watch lines they call for (`watch.ts`), rings the worker and the scheduler when the step queued effects or touched wakes, and completes
  * the producer's reply. A failed commit reloads the state from the store, so the actor never runs
  * ahead of the record.
  *
@@ -28,6 +28,7 @@ import { decide } from "./domain/decide.ts";
 import type { ConversationState } from "./domain/state.ts";
 import type { EngineSignalsShape } from "./EngineSignals.ts";
 import type { EngineStoreError, EngineStoreShape } from "./store/EngineStore.ts";
+import { watchCommit } from "./watch.ts";
 
 /** The conversation refused the command; the reason is the engine's rule, not a failure. */
 export class CommandRejected extends Schema.TaggedError<CommandRejected>()("CommandRejected", {
@@ -102,6 +103,7 @@ export const makeConversationActor = Effect.fn("makeConversationActor")(function
     if (committed.events.length > 0) {
       yield* PubSub.publishAll(published, committed.events);
       yield* PubSub.publish(signals.commits, conversationId);
+      yield* watchCommit(store, conversationId, committed.events, committed.state);
     }
     if (committed.enqueued) yield* signals.effects.ring;
     if (committed.wakesChanged) yield* signals.wakes.ring;

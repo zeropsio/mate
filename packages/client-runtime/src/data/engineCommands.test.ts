@@ -186,16 +186,30 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
-  it.effect("a Mate serving only a newer protocol refuses with the update route", () =>
-    Effect.gen(function* () {
-      const r = rig(2);
-      const failure = yield* Effect.flip(
-        r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
-      );
-      expect(failure.message).toMatch(/Update the app/);
-      expect(r.calls).toEqual([]);
-      expect(r.v1Calls).toEqual([]);
-    }),
+  it.effect.each([
+    {
+      reader: "engine",
+      words:
+        "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+    },
+    {
+      reader: "none",
+      words:
+        "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.",
+    },
+  ] as const)(
+    "a Mate serving only a newer protocol refuses with its app's way out: a reload or update on the web and desktop, an update on the phone (reader $reader)",
+    ({ reader, words }) =>
+      Effect.gen(function* () {
+        const r = rig(2);
+        r.registry.set(mateEngineReaderAtom, reader);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
+        );
+        expect(failure.message).toBe(words);
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect(

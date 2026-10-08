@@ -57,7 +57,7 @@ const OPS: Readonly<Record<string, EngineOp>> = {
 };
 const PROTOCOL = Math.max(...MATE_ENGINE_PROTOCOLS);
 export const ENGINE_MOVED =
-  "This conversation moved to the Mate's engine. Update Zerops Mate to keep talking to it.";
+  "This Mate moved to its new engine. Reload or update this app to keep talking to it.";
 
 type Changed = { runs: Set<string>; items: Set<string>; requests: Set<string>; header: boolean };
 export type EngineOp = "send" | "answer" | "dismiss" | "stop" | "steer" | "switch-model";
@@ -563,7 +563,8 @@ export class MateEngineFake {
             type: "unserved" as const,
             reason: "protocol" as const,
             protocols: [...MATE_ENGINE_PROTOCOLS],
-            message: "Update Zerops Mate to keep talking to it.",
+            message:
+              "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
           }
         : null;
     switch (tag) {

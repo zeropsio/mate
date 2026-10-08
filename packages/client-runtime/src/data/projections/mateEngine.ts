@@ -50,8 +50,9 @@ import { sameValue } from "./equal.ts";
 const iso = (ms: number | null | undefined) =>
   DateTime.formatIso(DateTime.makeUnsafe(ms === null || ms === undefined ? 0 : ms));
 
+/** What the engine reader (the web and desktop, which load the hosted client) says: a reload fixes it. */
 const UPDATE_WORDS =
-  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
+  "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.";
 
 function valuesOf<F extends "mateEngineRun" | "mateEngineItem" | "mateEngineRequest">(
   read: ProjectionReads,
@@ -832,6 +833,9 @@ function pageOf(
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
+/** The same news on the phone, which reads no engine conversation: only an update fixes it. */
+export const NATIVE_UPDATE_WORDS =
+  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
 
 /** A conversation row onto the thread shell the menu draws: its state, its turn, its agent. */
 export function overlayEngineRow(
