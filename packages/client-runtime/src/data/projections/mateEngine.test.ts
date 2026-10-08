@@ -36,6 +36,7 @@ import {
 import { engineCardPagingOfRecords } from "../__fixtures__/engineThread.ts";
 import {
   engineHeldTurns,
+  engineResendId,
   engineRows,
   engineStopTarget,
   engineThread,
@@ -128,6 +129,14 @@ describe("an engine conversation as the thread the view draws", () => {
       { id: "op-7", role: "user", text: "Deploy the api", turnId: run1 },
       { id: `${run1}/i/2`, role: "assistant", text: "Deployed.", turnId: run1 },
     ]);
+  });
+
+  it("shows a message its steer missed, sent as the next run, under the message's own id", () => {
+    const state = held({
+      runs: [engineRun("thread-ada", 1)],
+      items: [personItem(run1, 1, "And the worker", { sendId: engineResendId("op-7") as never })],
+    });
+    expect(thread(state)?.messages.map(({ id }) => id)).toEqual(["op-7"]);
   });
 
   it.each([

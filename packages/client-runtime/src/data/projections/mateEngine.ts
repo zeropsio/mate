@@ -103,8 +103,20 @@ const latestTurnOf = (run: RunRecord, card: RunRecord): OrchestrationLatestTurn 
   assistantMessageId: run.summary.answerItemId as OrchestrationLatestTurn["assistantMessageId"],
 });
 
+const RESENT = "#next";
+
+/**
+ * The send id of a message whose steer the engine refused as its run ended: it goes as the next
+ * run instead, under its own id with this mark, since the engine keeps the steer's refusal as the
+ * receipt of the message's id (a duplicate returns it).
+ */
+export const engineResendId = (messageId: string) => `${messageId}${RESENT}`;
+
 /** The message id a person's words go by: the send's own id, so its pending bubble is this row. */
-const personMessageId = (item: Extract<Item, { kind: "person" }>) => item.sendId ?? item.id;
+const personMessageId = (item: Extract<Item, { kind: "person" }>) => {
+  const id = item.sendId ?? item.id;
+  return id.endsWith(RESENT) ? id.slice(0, -RESENT.length) : id;
+};
 
 /**
  * The card an item draws on: its run's, or — for a run that continues another (`joins`) — the
