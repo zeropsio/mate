@@ -431,26 +431,32 @@ export function mateChat(
       once: (value: string) =>
         Effect.gen(function* () {
           yield* text(value);
-          expect(
-            yield* Effect.promise(() =>
-              page.evaluate((value) => {
-                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                let count = 0;
-                while (walker.nextNode()) {
-                  const node = walker.currentNode;
-                  if (
-                    node.textContent === value &&
-                    node.parentElement?.getBoundingClientRect().height &&
-                    !node.parentElement.closest(
-                      '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"]',
-                    )
-                  )
-                    count++;
-                }
-                return count;
-              }, value),
-            ),
-          ).toBe(1);
+          // How often the conversation shows `value`; `drawn`: only whether it shows it at all.
+          const shown = (value: string, drawn: boolean) => {
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            let count = 0;
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              if (
+                node.textContent === value &&
+                node.parentElement?.getBoundingClientRect().height &&
+                !node.parentElement.closest(
+                  '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"]',
+                )
+              )
+                count++;
+            }
+            return drawn ? count > 0 : count;
+          };
+          // The words may still be in the composer before the conversation draws them: wait until
+          // the conversation shows them, then count.
+          yield* Effect.promise(() =>
+            page
+              .waitForFunction(shown, { timeout: 8000 }, value, true)
+              .then(() => undefined)
+              .catch(() => undefined),
+          );
+          expect(yield* Effect.promise(() => page.evaluate(shown, value, false))).toBe(1);
         }),
       headerName: (name: string) =>
         Effect.promise(async () => {
