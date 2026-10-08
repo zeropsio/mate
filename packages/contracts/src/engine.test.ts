@@ -309,6 +309,12 @@ describe("an answered question's record", () => {
     };
     expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
   });
+  it("refuses a dismissal of a request its agent waits on, by its own reason", () => {
+    expect(decodeResult({ _tag: "Rejected", rejection: { reason: "not-dismissible" } })).toEqual({
+      _tag: "Rejected",
+      rejection: { reason: "not-dismissible" },
+    });
+  });
   it("an approval's answer is its summary alone", () => {
     const answer = { by: { kind: "person", subject: "owner" }, at: 5, summary: "Approved" };
     expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);

@@ -200,6 +200,8 @@ const handle = (b: StepBuilder, command: Command): void => {
       return stop(b, command.runId);
     case "Answer":
       return answer(b, command);
+    case "Dismiss":
+      return dismiss(b, command.requestId);
     case "Steer":
       return steer(b, command);
     case "SwitchModel":
@@ -613,6 +615,19 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   });
   b.result = { ...b.result, requestId: request.id, runId: run.id };
   resumeIfAnswered(b, run.id);
+};
+
+/**
+ * A request closed unanswered: only one its agent does not wait on, so nothing reaches the agent
+ * (as V1's dismissal). The run it held resumes.
+ */
+const dismiss = (b: StepBuilder, id: RequestId): void => {
+  const request = b.state.requests[id];
+  if (request === undefined) throw new Rejected("unknown-request");
+  if (request.dismissible !== true) throw new Rejected("not-dismissible");
+  b.emit({ _tag: "RequestClosed", runId: request.runId, requestId: id, state: "dismissed" });
+  b.result = { ...b.result, requestId: id, runId: request.runId };
+  resumeIfAnswered(b, request.runId);
 };
 
 /** What a question's record keeps of its answer: the words and pictures, by question id. */

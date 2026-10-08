@@ -99,6 +99,8 @@ export interface OpenRequest {
   readonly answers: number;
   /** What it asks; absent in a snapshot taken before it was kept. */
   readonly kind?: RequestAsk["kind"];
+  /** A question its agent does not wait on (asked by message): it may close unanswered. */
+  readonly dismissible?: boolean;
 }
 
 export interface ArmedWake {

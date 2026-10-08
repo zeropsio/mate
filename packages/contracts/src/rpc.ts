@@ -19,6 +19,7 @@ import {
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   EngineAnswerInput,
+  EngineDismissInput,
   EngineCallResult,
   EngineConversationFrame,
   EngineDetail,
@@ -392,6 +393,7 @@ export const WS_METHODS = {
   engineSend: "engine.send",
   engineStop: "engine.stop",
   engineAnswer: "engine.answer",
+  engineDismiss: "engine.dismiss",
   engineSteer: "engine.steer",
 
   // Streaming subscriptions
@@ -1329,6 +1331,13 @@ const WsEngineAnswerRpc = Rpc.make(WS_METHODS.engineAnswer, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+/** Close a dismissible request unanswered; the engine refuses one its agent waits on. */
+const WsEngineDismissRpc = Rpc.make(WS_METHODS.engineDismiss, {
+  payload: EngineDismissInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 const WsEngineSteerRpc = Rpc.make(WS_METHODS.engineSteer, {
   payload: EngineSteerInput,
   success: EngineCallResult,
@@ -1457,6 +1466,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineSendRpc,
   WsEngineStopRpc,
   WsEngineAnswerRpc,
+  WsEngineDismissRpc,
   WsEngineSteerRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,

@@ -7,6 +7,7 @@ import {
   EngineAnswerInput,
   EngineCallResult,
   EngineConversationFrame,
+  EngineDismissInput,
   EngineRowsFrame,
 } from "./engineWire.ts";
 
@@ -118,6 +119,7 @@ describe("the wire's frames round-trip", () => {
 
 const decodeAnswerInput = Schema.decodeUnknownSync(EngineAnswerInput);
 const encodeAnswerInput = Schema.encodeSync(EngineAnswerInput);
+const decodeDismissInput = Schema.decodeUnknownSync(EngineDismissInput);
 
 describe("a question's answer and its dismissal", () => {
   const picture = {
@@ -147,5 +149,9 @@ describe("a question's answer and its dismissal", () => {
   it("an answer in words alone carries no pictures", () => {
     const input = { ...call, answer: { kind: "input", answers: { target: "stage" } }, summary: "" };
     expect(decodeAnswerInput(input).answer).toEqual(input.answer);
+  });
+
+  it("a dismissal names the request it closes, under its own command id", () => {
+    expect(decodeDismissInput(call)).toEqual(call);
   });
 });

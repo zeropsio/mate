@@ -1189,6 +1189,34 @@ describe("decide: a question's answer carries its pictures", () => {
   });
 });
 
+describe("decide: a dismissible question is dismissed unanswered", () => {
+  const question = (dismissible: boolean) =>
+    signal({
+      kind: "request-opened",
+      key: "q1",
+      ask: { kind: "question", questions: [], dismissible },
+    });
+  const dismiss: Command = { _tag: "Dismiss", requestId: requestId(r(1), 1) };
+  it("closes it dismissed and resumes the run waiting on it, telling the agent nothing", () => {
+    const scene = play([...running, question(true), dismiss]);
+    expect(scene.events.map((e) => e._tag)).toEqual(["RequestClosed", "RunResumed", "WakeArmed"]);
+    expect(scene.events[0]).toMatchObject({ state: "dismissed" });
+    expect(scene.effects).toEqual([]);
+    expect(scene.state.requests).toEqual({});
+    expect(scene.state.runs[r(1)]?.state).toBe("running");
+  });
+  it.each([
+    ["a question its agent waits on", [...running, question(false)], "not-dismissible"],
+    ["an approval", waiting, "not-dismissible"],
+    ["a question already dismissed", [...running, question(true), dismiss], "unknown-request"],
+  ] as const)("refuses to dismiss %s", (_name, given, reason) => {
+    const before = play(given).state;
+    const scene = play([...given, dismiss]);
+    expect(scene.decision).toMatchObject({ _tag: "Reject", rejection: { reason } });
+    expect(scene.state).toEqual(before);
+  });
+});
+
 describe("decide: an answer the provider refused", () => {
   it("a failed answer leaves the run waiting on its request", () => {
     const { state } = playAll([

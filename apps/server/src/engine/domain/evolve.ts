@@ -323,6 +323,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             principal: event.principal,
             answers: 0,
             kind: event.ask.kind,
+            ...(event.ask.kind === "question" && event.ask.dismissible
+              ? { dismissible: true }
+              : {}),
           },
         },
       };
@@ -355,6 +358,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             principal: event.principal,
             answers: event.answers,
             ...(answered?.kind === undefined ? {} : { kind: answered.kind }),
+            ...(answered?.dismissible === true ? { dismissible: true } : {}),
           },
         },
         answering: Object.fromEntries(

@@ -113,6 +113,7 @@ export class Gen {
       ["send", 3],
       ["stop", active === undefined ? 0.2 : 1],
       ["answer", Object.keys(state.requests).length > 0 ? 2 : 0.1],
+      ["dismiss", Object.keys(state.requests).length > 0 ? 0.5 : 0.05],
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
       ["archive", 0.15],
@@ -162,6 +163,14 @@ export class Gen {
           envelope: this.env({ _tag: "Answer", requestId, answer: { ok: true }, summary: "yes" }),
           now: at,
         };
+      }
+      case "dismiss": {
+        const open = Object.values(state.requests);
+        const requestId =
+          open.length > 0 && rng.chance(0.9)
+            ? rng.pick(open).id
+            : (`${this.conversation}/r/1/q/9` as RequestId);
+        return { envelope: this.env({ _tag: "Dismiss", requestId }), now: at };
       }
       case "steer": {
         const runId = active?.id ?? (`${this.conversation}/r/1` as RunId);
@@ -369,7 +378,9 @@ export class Gen {
             kind: "request-opened",
             ...(rng.chance(0.8) ? { turn: turn() } : {}),
             key: `q${n}`,
-            ask: { kind: "approval", requestKind: "command", detail: "rm -rf build" },
+            ask: rng.chance(0.3)
+              ? { kind: "question", questions: [], dismissible: rng.chance(0.5) }
+              : { kind: "approval", requestKind: "command", detail: "rm -rf build" },
             answerable: rng.chance(0.85),
           });
           break;

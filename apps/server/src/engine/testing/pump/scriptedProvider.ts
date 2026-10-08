@@ -426,12 +426,12 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               return;
           }
         }),
-      /** The agent asks: an approval or a question. Returns the driver's request id. */
-      ask: (thread: string, kind: "approval" | "question") =>
+      /** The agent asks: an approval or a question (one asked by message, too). Returns its id. */
+      ask: (thread: string, kind: "approval" | "question" | "message-question") =>
         Effect.gen(function* () {
           const session = live(thread);
           const requestId = `req-${++requests}`;
-          session.requests.set(requestId, kind);
+          session.requests.set(requestId, kind === "approval" ? "approval" : "question");
           if (kind === "approval") {
             yield* emit("request.opened", thread, {
               turnId: session.open,
@@ -439,10 +439,14 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               payload: { requestType: "command_execution_approval", detail: "rm -rf dist" },
             });
           } else {
+            // A question asked by message (Codex's async one): the agent does not wait on it.
             yield* emit("user-input.requested", thread, {
               turnId: session.open,
               requestId,
-              payload: { questions: [] },
+              payload: {
+                questions: [],
+                ...(kind === "message-question" ? { responseMode: "message" } : {}),
+              },
             });
           }
           return requestId;

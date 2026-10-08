@@ -30,6 +30,7 @@ import {
   type CommandId,
   type ConversationId,
   type EngineAnswerInput,
+  type EngineDismissInput,
   type EngineCallResult,
   type EngineConversationFrame,
   type EngineDetail,
@@ -100,6 +101,10 @@ export interface EngineWireShape {
     input: EngineAnswerInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly dismiss: (
+    input: EngineDismissInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
   readonly steer: (
     input: EngineSteerInput,
     caller: WireCaller,
@@ -144,6 +149,7 @@ export const unservedWire: EngineWireShape = {
   send: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   answer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
 
@@ -750,6 +756,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           summary: input.summary,
         });
       },
+      dismiss: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "Dismiss",
+          requestId: input.requestId,
+        }),
       steer: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Steer",

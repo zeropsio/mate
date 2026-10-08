@@ -878,6 +878,8 @@ const rejectionReasons = [
   "stop-already-asked",
   "unknown-request",
   "not-answerable",
+  /** A request its agent waits on: only an answer or a Stop ends it. */
+  "not-dismissible",
   "steer-unsupported",
   "stale-session",
   "unknown-effect",

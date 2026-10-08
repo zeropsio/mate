@@ -360,6 +360,13 @@ export const EngineAnswerInput = Schema.Struct({
 });
 export type EngineAnswerInput = typeof EngineAnswerInput.Type;
 
+/**
+ * Close a request unanswered: only one its agent does not wait on (`dismissible`), which ends
+ * `dismissed`. The agent is not told, as with V1's dismissal.
+ */
+export const EngineDismissInput = Schema.Struct({ ...call, requestId: RequestId });
+export type EngineDismissInput = typeof EngineDismissInput.Type;
+
 /** A message into the running turn: only while the session says it can steer. */
 export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
