@@ -77,6 +77,7 @@ const menuChange = {
 } as const;
 const fixture = Effect.gen(function* () {
   let org = facts;
+  let policyReads = 0;
   let policy = { orgId: "ORG", enabled: true, revision: 0 };
   const policyChanges = yield* PubSub.unbounded<number>();
   let compareFailure: "forbidden" | "unavailable" | undefined;
@@ -297,9 +298,11 @@ const fixture = Effect.gen(function* () {
   const services = Layer.mergeAll(
     Layer.succeed(AutoUpdatePolicy, {
       current: Effect.sync(() => policy),
+      observe: () => Effect.sync(() => policy),
       changes: Stream.fromPubSub(policyChanges),
       read: (userId) =>
         Effect.gen(function* () {
+          policyReads++;
           if (!org.members.some((member) => member.userId === userId && member.status === "ACTIVE"))
             return yield* new StructureRefused({ code: "forbidden", reason: "not_active_member" });
           return policy;
@@ -465,6 +468,7 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    policyReads: () => policyReads,
     revokeMember: (userId: string, remove: boolean) =>
       Effect.gen(function* () {
         org = {
@@ -703,6 +707,34 @@ describe("revisioned HQ values", () => {
           assert.include(json(baseline.removals), "auto-update-policy");
         }),
     );
+  it.effect(
+    "policy broadcasts use validated navigation membership without calling recipient readers",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const retained = yield* f.connect("reader");
+        yield* retained.subscribe([{ scope: nav }]);
+        yield* retained.take;
+        yield* retained.take;
+        yield* f.revokeMember("reader", false);
+        let removed = resetOf(yield* retained.take);
+        while (!removed.removals.some((removal) => removal.key === "auto-update-policy"))
+          removed = resetOf(yield* retained.take);
+        // This journal follows the retained one, so its delivery is the broadcast's barrier.
+        const owner = yield* f.connect("owner");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* owner.take;
+        yield* owner.take;
+        const before = f.policyReads();
+        yield* f.changePolicy(false);
+        const change = resetOf(yield* owner.take);
+        assert.deepInclude(
+          change.values.find((value) => value.key === "auto-update-policy")?.value,
+          { enabled: false },
+        );
+        assert.strictEqual(f.policyReads(), before);
+      }),
+  );
   it.effect("a cold navigation delivery budgets one role read before and one after loading", () =>
     Effect.scoped(
       Effect.gen(function* () {

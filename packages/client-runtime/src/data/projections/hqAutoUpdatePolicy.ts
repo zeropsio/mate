@@ -2,7 +2,6 @@ import {
   autoUpdatePolicyRequestId,
   autoUpdatePolicyScope,
 } from "../families/hqAutoUpdatePolicy.ts";
-import { setAutoUpdatePolicy } from "../operations/hqWrites.ts";
 import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { hqVerdict } from "./hqVerdict.ts";
@@ -43,20 +42,26 @@ export const autoUpdatePolicySettings: Projection<
       protocol.value.autoUpdatePolicy === undefined;
     const record =
       attempt === 1 ? undefined : read.operation(autoUpdatePolicyRequestId(orgId, attempt - 1));
-    const awaitingReflection =
+    const pending =
+      progress !== null &&
+      ["submitting", "accepted", "reflected", "uncertain", "unresolved"].includes(progress.stage);
+    const result =
+      record?.receipt?.acceptance.kind === "accepted"
+        ? record.receipt.acceptance.result
+        : undefined;
+    const confirmed =
       progress?.stage === "done" &&
       progress.outcome === "succeeded" &&
-      record?.intent.kind === "set-auto-update-policy" &&
-      record.receipt !== null &&
-      !setAutoUpdatePolicy.reflected(read, record.intent, record.receipt);
-    const pending =
-      awaitingReflection ||
-      (progress !== null &&
-        ["submitting", "accepted", "reflected", "uncertain", "unresolved"].includes(
-          progress.stage,
-        ));
+      result !== undefined &&
+      "policy" in result &&
+      fact.kind === "known" &&
+      result.policy.epoch !== undefined &&
+      result.policy.epoch === fact.value.epoch &&
+      result.policy.revision > fact.value.revision
+        ? result.policy
+        : null;
     const unconfirmed = progress?.stage === "uncertain" || progress?.stage === "unresolved";
-    const enabled = fact.kind === "known" ? fact.value.enabled : null;
+    const enabled = fact.kind === "known" ? (confirmed ?? fact.value).enabled : null;
     const error =
       progress?.stage === "refused" || progress?.stage === "unsent"
         ? (progress.reason ?? "HQ did not take this change.")

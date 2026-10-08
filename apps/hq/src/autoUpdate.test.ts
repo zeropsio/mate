@@ -18,7 +18,7 @@ describe("HQ's organization auto-update switch", () => {
         });
         assert.strictEqual(result.status, 401);
         const owner = yield* sessionFor(call, "door-owner-2");
-        assert.deepStrictEqual((yield* call("GET", "/api/auto-update", { session: owner })).body, {
+        assert.deepInclude((yield* call("GET", "/api/auto-update", { session: owner })).body, {
           orgId: "ORG",
           enabled: true,
           revision: 0,
@@ -30,7 +30,7 @@ describe("HQ's organization auto-update switch", () => {
         const { call } = yield* startCore(true);
         yield* untilHealth(call, "active");
         const session = yield* sessionFor(call, "door-owner");
-        assert.deepStrictEqual((yield* call("GET", "/api/auto-update", { session })).body, {
+        assert.deepInclude((yield* call("GET", "/api/auto-update", { session })).body, {
           orgId: "ORG",
           enabled: true,
           revision: 0,
@@ -42,7 +42,7 @@ describe("HQ's organization auto-update switch", () => {
         ] as const) {
           const result = yield* call("PUT", "/api/auto-update", { session, body: { enabled } });
           assert.strictEqual(result.status, 200);
-          assert.deepStrictEqual(result.body, { orgId: "ORG", enabled, revision });
+          assert.deepInclude(result.body, { orgId: "ORG", enabled, revision });
           assert.deepStrictEqual(
             (yield* call("GET", "/api/auto-update", { session })).body,
             result.body,
@@ -59,7 +59,7 @@ describe("HQ's organization auto-update switch", () => {
           const session = yield* sessionFor(call, door);
           const result = yield* call("GET", "/api/auto-update", { session });
           assert.strictEqual(result.status, 200);
-          assert.deepStrictEqual(result.body, { orgId: "ORG", enabled: true, revision: 0 });
+          assert.deepInclude(result.body, { orgId: "ORG", enabled: true, revision: 0 });
         }),
       );
     }
@@ -76,14 +76,11 @@ describe("HQ's organization auto-update switch", () => {
           });
           assert.strictEqual(result.status, door === undefined ? 401 : 403);
           const owner = yield* sessionFor(call, "door-owner");
-          assert.deepStrictEqual(
-            (yield* call("GET", "/api/auto-update", { session: owner })).body,
-            {
-              orgId: "ORG",
-              enabled: true,
-              revision: 0,
-            },
-          );
+          assert.deepInclude((yield* call("GET", "/api/auto-update", { session: owner })).body, {
+            orgId: "ORG",
+            enabled: true,
+            revision: 0,
+          });
         }),
       );
     }

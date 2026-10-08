@@ -14,7 +14,7 @@ import {
   type HqValue,
   type HqRemoval,
 } from "@t3tools/shared/hqStream";
-import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1114,15 +1114,32 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             pending.delete(json(signal));
             if (signal.kind === "auto-update")
               return Effect.gen(function* () {
-                for (const entry of journals.values())
-                  if (entry.scope.kind === "navigation" && entry.failure === undefined)
-                    yield* entry.one.withPermits(1)(
-                      Effect.gen(function* () {
-                        const policy = yield* policyFor(entry.userId);
-                        const message = entry.journal.commit(policy.values, policy.removals);
-                        if (message !== undefined) yield* send(entry, [message]);
-                      }),
-                    );
+                // Navigation has already validated these membership facts. Broadcast never enters the HTTP authorization path.
+                if (source === undefined || sourceFence.dirty()) return;
+                const acceptedSource = source;
+                const version = sourceVersion;
+                const policy = yield* autoUpdate.observe(acceptedSource.facts.orgId);
+                if (sourceFence.dirty() || sourceVersion !== version) return;
+                for (const entry of journals.values()) {
+                  if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+                  const member = acceptedSource.facts.members.some(
+                    (member) =>
+                      member.userId === entry.userId &&
+                      member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+                  );
+                  yield* entry.one.withPermits(1)(
+                    Effect.gen(function* () {
+                      if (sourceFence.dirty() || sourceVersion !== version) return;
+                      const message = member
+                        ? entry.journal.commit([{ key: "auto-update-policy", value: policy }])
+                        : entry.journal.commit(
+                            [],
+                            [{ key: "auto-update-policy", reason: "no-access" }],
+                          );
+                      if (message !== undefined) yield* send(entry, [message]);
+                    }),
+                  );
+                }
               }).pipe(Effect.catch(navigationUnavailable("Automatic-update policy unavailable")));
             if (signal.kind === "usage")
               return Effect.gen(function* () {

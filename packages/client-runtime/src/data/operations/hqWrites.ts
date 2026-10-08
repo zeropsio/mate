@@ -208,6 +208,8 @@ export const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
       policy.kind === "known" &&
       result !== undefined &&
       "policy" in result &&
+      result.policy.epoch !== undefined &&
+      policy.value.epoch === result.policy.epoch &&
       policy.value.revision >= result.policy.revision
     );
   },

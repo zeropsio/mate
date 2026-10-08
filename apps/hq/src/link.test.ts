@@ -55,7 +55,7 @@ describe("a Mate's link", () => {
             frame.type === "state" &&
             (frame["autoUpdate"] as { readonly enabled?: boolean } | undefined)?.enabled === false,
         );
-        assert.deepStrictEqual(frame["autoUpdate"], { orgId: "ORG", enabled: false, revision: 1 });
+        assert.deepInclude(frame["autoUpdate"], { orgId: "ORG", enabled: false, revision: 1 });
       }),
     );
     it.effect(
@@ -65,10 +65,9 @@ describe("a Mate's link", () => {
           const { call, owner, link } = yield* linked;
           yield* call("PUT", "/api/auto-update", { session: owner, body: { enabled: false } });
           yield* link.send({ type: "auto-update-policy", requestId: "before-switch" });
-          assert.deepStrictEqual(yield* link.next("auto-update-policy"), {
-            requestId: "before-switch",
-            policy: { orgId: "ORG", enabled: false, revision: 1 },
-          });
+          const reply = yield* link.next("auto-update-policy");
+          assert.strictEqual(reply.requestId, "before-switch");
+          assert.deepInclude(reply.policy, { orgId: "ORG", enabled: false, revision: 1 });
         }),
     );
     it.effect("passes by a frame whose type it does not know and keeps the link", () =>
@@ -179,6 +178,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     Effect.map(makeMateOverviews(memoryStore().store), (overviews) =>
       Layer.mergeAll(
         Layer.succeed(AutoUpdatePolicy, {
+          observe: () => Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
           current: Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
           changes: Stream.make(0),
           read: () => Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),

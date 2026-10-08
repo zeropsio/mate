@@ -201,6 +201,7 @@ it.each(["none", "unreadable"] as const)(
 function observePolicy(
   store: ReturnType<typeof makeAccountStore>,
   policy: { orgId: string; enabled: boolean; revision: number },
+  incarnation = "core",
 ) {
   const scope = `hq:${policy.orgId}:auto-update-policy` as const;
   store.dispatch({
@@ -213,15 +214,15 @@ function observePolicy(
       {
         family: "hqAutoUpdatePolicy",
         id: policy.orgId,
-        value: policy,
-        revision: { kind: "hq", incarnation: "core", revision: policy.revision },
+        value: { epoch: "core", ...policy },
+        revision: { kind: "hq", incarnation, revision: policy.revision },
       },
     ],
   });
 }
 
 it.each(["receipt-first", "stream-first"])(
-  "a confirmed toggle stays locked until reflection in %s order",
+  "a confirmed toggle shows the accepted policy in %s order",
   (order) => {
     observePolicy(store, { orgId: "org", enabled: false, revision: 1 });
     store.dispatch({
@@ -240,7 +241,7 @@ it.each(["receipt-first", "stream-first"])(
           handles: [],
           acceptance: {
             kind: "accepted",
-            result: { policy: { orgId: "org", enabled: true, revision: 2 } },
+            result: { policy: { orgId: "org", enabled: true, revision: 2, epoch: "core" } },
           },
           outcome: { kind: "succeeded", evidence: "HQ answered" },
         },
@@ -248,7 +249,10 @@ it.each(["receipt-first", "stream-first"])(
     const observe = () => observePolicy(store, { orgId: "org", enabled: true, revision: 2 });
     if (order === "receipt-first") answer();
     else observe();
-    expect(control(render())?.props.disabled).toBe(true);
+    expect(control(render())?.props).toMatchObject({
+      checked: true,
+      disabled: order === "stream-first",
+    });
     if (order === "receipt-first") observe();
     else answer();
     const toggle = control(render());
@@ -261,3 +265,54 @@ it.each(["receipt-first", "stream-first"])(
     );
   },
 );
+
+it("a completed toggle stays settled when a fresh HQ starts at revision zero", () => {
+  const accepted = { orgId: "org", enabled: false, revision: 5, epoch: "old-core" };
+  observePolicy(store, accepted, "old-core");
+  store.dispatch({
+    kind: "operation-recorded",
+    requestId: "auto-update-policy/org/1",
+    intent: { kind: "set-auto-update-policy", orgId: "org", enabled: false },
+  });
+  store.dispatch({
+    kind: "operation-receipt",
+    receipt: {
+      requestId: "auto-update-policy/org/1",
+      operationId: "org",
+      executor: "hq",
+      affected: [],
+      handles: [],
+      acceptance: { kind: "accepted", result: { policy: accepted } },
+      outcome: { kind: "succeeded", evidence: "HQ confirmed revision 5" },
+    },
+  });
+  expect(control(render())?.props.disabled).toBe(false);
+  const replacement = { orgId: "org", enabled: true, revision: 0, epoch: "new-core" };
+  store.dispatch({
+    kind: "delivery",
+    via: "hq-stream",
+    reset: true,
+    scopes: [
+      {
+        scope: autoUpdatePolicyScope("org"),
+        generation: readsOfState(store.state()).stream(autoUpdatePolicyScope("org")).generation,
+      },
+    ],
+    rows: [
+      {
+        family: "hqAutoUpdatePolicy",
+        id: "org",
+        value: replacement,
+        revision: { kind: "hq", incarnation: "new-core", revision: 0 },
+      },
+    ],
+    removals: [],
+  });
+  render();
+  expect(fixture.policy).toMatchObject({
+    pending: false,
+    editable: true,
+    enabled: true,
+    words: "On",
+  });
+});
