@@ -1029,6 +1029,42 @@ describe("an engine run its card does not hold whole when it paints", () => {
     }),
   );
 
+  // Catches an open card emptied by a reconnect: the snapshot it resubscribes to said every run
+  // held none of its lines again.
+  it.live("keeps an open card's pages across a reconnect to the same sequence space", () =>
+    Effect.gen(function* () {
+      const long = longRun(1_700);
+      const r = rig(long.pager);
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot({ runs: [long.record], items: long.window }), synchronized(12));
+      r.conversations.readRunPage(ada, run1, "later");
+      yield* settle;
+      expect(span(r)).toEqual({ from: null, to: 200, reading: null });
+      const read = r.pages.length;
+      yield* Queue.fail(r.opens.at(-1)!.frames, { outcome: "transient", message: "socket closed" });
+      yield* settle;
+      r.conversations.retry(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ epoch: 5, head: 14, runs: [long.record], items: long.window }),
+        synchronized(14, 5),
+      );
+      expect(span(r)).toEqual({ from: null, to: 200, reading: null });
+      // What it read stays held: nothing is read again.
+      expect(r.pages).toHaveLength(read);
+      expect(heldSeqs(r).filter((seq) => seq <= 200)).toHaveLength(200);
+      // Another sequence space starts the card afresh.
+      yield* r.send(
+        { type: "reset", reason: "origin" },
+        snapshot({ origin: "origin-b", runs: [long.record], items: long.window }),
+        synchronized(12),
+      );
+      expect(span(r)).toEqual({ from: null, to: 0, reading: null });
+      r.close();
+    }),
+  );
+
   it.live("keeps what a run holds when a page fails, and reads it again when asked", () =>
     Effect.gen(function* () {
       const long = longRun(1_700);
