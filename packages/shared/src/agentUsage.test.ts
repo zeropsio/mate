@@ -1,11 +1,18 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
 import { UsageComponents, UsageQuantity, UsageReportQuery, UsageUtcDay } from "@t3tools/contracts";
-import { usageDigest, usageEntryDigest, USAGE_GENESIS_DIGEST } from "./agentUsage.ts";
+import {
+  usageDigest,
+  usageEntryDigest,
+  usageRefusalDisposition,
+  UsageLinkDown,
+  USAGE_GENESIS_DIGEST,
+} from "./agentUsage.ts";
 import { readLinkUp } from "./mateLink.ts";
 
 const decodeComponents = Schema.decodeUnknownSync(UsageComponents);
 const decodeDay = Schema.decodeUnknownSync(UsageUtcDay);
+const decodeDown = Schema.decodeUnknownSync(UsageLinkDown);
 describe("durable usage wire", () => {
   it("preserves large exact integers and refuses damaged components", () => {
     const quantity = Schema.decodeUnknownSync(UsageQuantity);
@@ -85,5 +92,22 @@ describe("durable usage wire", () => {
     decode(query);
     assert.throws(() => decode({ ...query, timezone: "No/SuchZone" }));
     assert.throws(() => decode({ ...query, since: "2026-10-01T01:00:00.000Z" }));
+  });
+  it("a refusal from a newer socket fences the lane; only a protocol mismatch is unsupported", () => {
+    for (const [code, disposition] of [
+      ["channel_replaced", "fenced"],
+      ["hello_required", "fenced"],
+      ["unsupported_protocol", "unsupported"],
+      ["ledger_rollback_conflict", "refused"],
+      ["fact_identity_conflict", "refused"],
+    ] as const)
+      assert.strictEqual(usageRefusalDisposition(code), disposition, code);
+    const error = {
+      type: "usage-error",
+      ledgerId: "L",
+      code: "channel_replaced",
+      disposition: "fenced",
+    } as const;
+    assert.deepStrictEqual(decodeDown(error), error);
   });
 });

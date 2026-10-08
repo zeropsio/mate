@@ -5,7 +5,26 @@ import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { resourceHealthChanges, readResourceHealth } from "./mateResourceHealth.ts";
+import * as TestClock from "effect/testing/TestClock";
+import {
+  resourceHealthChanges,
+  readResourceHealth as readKernelResourceHealth,
+} from "./mateResourceHealth.ts";
+import { makeCpuSampler } from "./mateCpuHealth.ts";
+import type { MateResourceHealth } from "@t3tools/contracts";
+
+// Memory/disk cases begin with an established, quiet CPU window.
+async function readResourceHealth(
+  groups: ReadonlyArray<string>,
+  stateDir: string,
+  previous?: MateResourceHealth,
+) {
+  let now = 0;
+  const cpu = makeCpuSampler(groups, { nowUsec: () => now });
+  await cpu();
+  now = 2_000_000;
+  return readKernelResourceHealth(groups, stateDir, previous, cpu);
+}
 
 const dirs: string[] = [];
 async function fixture(values: Record<string, string> = {}) {
@@ -20,6 +39,9 @@ async function fixture(values: Record<string, string> = {}) {
     "memory.swap.max": "0",
     "memory.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
     "cpu.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
+    "cpu.max": "max 100000",
+    "cpuset.cpus.effective": "0-1",
+    "cpu.stat": "usage_usec 0\nnr_throttled 0\n",
     "io.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
     ...values,
   };
@@ -85,31 +107,42 @@ it.effect("publishes a changed kernel file without a polling timer", () =>
     const values = yield* Stream.runCollect(
       resourceHealthChanges(dir, [dir]).pipe(
         Stream.tap((sample) =>
-          sample.status === "ok"
+          sample.resources.length === 0
             ? Effect.promise(() => NodeFSP.writeFile(NodePath.join(dir, "memory.high"), "50"))
             : Effect.void,
         ),
         Stream.take(2),
       ),
     );
-    expect(values.map((value) => value.status)).toEqual(["ok", "strained"]);
+    expect(values.map((value) => value.resources)).toEqual([[], ["memory"]]);
   }),
 );
 
 it("reports CPU and I/O stalls and clears them only when the kernel reports no recent stalls", async () => {
   const dir = await fixture({
-    "cpu.pressure": "some avg10=20.00 total=30\n",
     "io.pressure": "some avg10=5.00 total=40\nfull avg10=2.00 total=20\n",
   });
-  const before = await readResourceHealth([dir], dir);
+  let now = 0;
+  const cpu = makeCpuSampler([dir], { nowUsec: () => now });
+  await cpu();
+  await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=20.00 total=400000\n");
+  await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 3800000\nnr_throttled 0\n");
+  now = 2_000_000;
+  const before = await readKernelResourceHealth([dir], dir, undefined, cpu);
   expect(before.resources).toEqual(["disk", "cpu"]);
-  expect((await readResourceHealth([dir], dir, before)).resources).toEqual(["disk", "cpu"]);
-  await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=0.00 total=30\n");
+  await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=20.00 total=800000\n");
+  await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 7600000\nnr_throttled 0\n");
+  now = 4_000_000;
+  expect((await readKernelResourceHealth([dir], dir, before, cpu)).resources).toEqual([
+    "disk",
+    "cpu",
+  ]);
   await NodeFSP.writeFile(
     NodePath.join(dir, "io.pressure"),
     "some avg10=0.00 total=40\nfull avg10=0.00 total=20\n",
   );
-  const after = await readResourceHealth([dir], dir, before);
+  now = 6_000_000;
+  const after = await readKernelResourceHealth([dir], dir, before, cpu);
   expect(after.status).toBe("ok");
 });
 
@@ -134,4 +167,44 @@ it.effect("reports missing notification coverage alongside the remaining measure
     expect(values[0]).toMatchObject({ status: "unknown", memory: { high: 150 } });
     expect(values[0]?.unavailable).toContain("kernel-events");
   }),
+);
+
+it.effect(
+  "publishes CPU exhaustion and the first recovered window without waiting for the PSI average to decay",
+  () =>
+    Effect.gen(function* () {
+      const dir = yield* Effect.promise(() => fixture());
+      let now = 0;
+      const cpu = makeCpuSampler([dir], { nowUsec: () => now, procRoot: dir });
+      const values = yield* Stream.runCollect(
+        resourceHealthChanges(dir, [dir], undefined, cpu).pipe(
+          Stream.tap((sample) =>
+            Effect.gen(function* () {
+              if (sample.cpu?.window === null) {
+                yield* Effect.promise(() =>
+                  Promise.all([
+                    NodeFSP.writeFile(
+                      NodePath.join(dir, "cpu.pressure"),
+                      "some avg10=20.00 total=400000\n",
+                    ),
+                    NodeFSP.writeFile(
+                      NodePath.join(dir, "cpu.stat"),
+                      "usage_usec 3800000\nnr_throttled 0\n",
+                    ),
+                  ]),
+                );
+                now = 2_000_000;
+                yield* TestClock.adjust(2000);
+              } else if (sample.resources.includes("cpu")) {
+                now = 4_000_000;
+                yield* TestClock.adjust(2000);
+              }
+            }),
+          ),
+          Stream.take(3),
+        ),
+      );
+      expect(values.map((value) => value.resources)).toEqual([[], ["cpu"], []]);
+      expect(values[2]?.cpu?.some.avg10).toBe(20);
+    }),
 );

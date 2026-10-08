@@ -25,6 +25,7 @@ import {
   readLinkUp,
 } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -33,11 +34,12 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
 
-import { UsageLane } from "./usageLedger.ts";
+import { UsageLane, type UsageSender } from "./usageLedger.ts";
 import {
   UsageLinkUp,
   AGENT_USAGE_CAPTURE_PROTOCOL,
   AGENT_USAGE_REPORT_PROTOCOL,
+  usageRefusalDisposition,
 } from "@t3tools/shared/agentUsage";
 import { Changes } from "./changes.ts";
 import { Leader } from "./leader.ts";
@@ -69,6 +71,8 @@ const signersOf = (logins: OverviewLogins | undefined): Record<string, string> =
   );
 
 const isUsage = Schema.is(UsageLinkUp);
+/** How long a link's first state may wait for its capture lane to open. */
+const USAGE_OFFER_GRACE = Duration.millis(250);
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
 /**
@@ -92,10 +96,9 @@ export const serveMateLink = (
       const leader = yield* Leader;
       const access = yield* MateAccess;
       const usage = (yield* UsageLane).ledger;
-      const sender =
-        usage === undefined
-          ? undefined
-          : yield* usage.open(projectId, credential).pipe(Effect.catch(() => Effect.undefined));
+      /** This link's capture lane once it opens; until then, and if it cannot, none. */
+      let sender: UsageSender | undefined;
+      const laneSettled = yield* Deferred.make<void>();
       const pingEvery = options.pingEvery ?? Duration.seconds(20);
       const { close, heardClose, ending } = yield* socketEnding(writer);
       yield* (yield* LiveSockets).track(close);
@@ -117,6 +120,7 @@ export const serveMateLink = (
                   capture: AGENT_USAGE_CAPTURE_PROTOCOL,
                   report: AGENT_USAGE_REPORT_PROTOCOL,
                   mateId: sender.mateId,
+                  orgId: sender.orgId,
                 },
               }),
         });
@@ -130,7 +134,12 @@ export const serveMateLink = (
           Stream.filter(structure.mateChanges, (changed) => changed === projectId),
           changes.changes,
         ),
-        () => sendState,
+        // A lane that opens at once rides on the first state; a slow one never holds it back.
+        () =>
+          Deferred.await(laneSettled).pipe(
+            Effect.timeoutOption(USAGE_OFFER_GRACE),
+            Effect.andThen(sendState),
+          ),
       ).pipe(Effect.catch(() => close(1011, "the Mate's state could not be read")));
 
       const listen = Effect.gen(function* () {
@@ -173,9 +182,7 @@ export const serveMateLink = (
                           error._tag === "UsageRefused" ? error.code : "usage_ingest_unavailable",
                         disposition:
                           error._tag === "UsageRefused"
-                            ? error.code === "unsupported_protocol"
-                              ? "unsupported"
-                              : "refused"
+                            ? usageRefusalDisposition(error.code)
                             : "transient",
                       }),
                     ),
@@ -234,7 +241,24 @@ export const serveMateLink = (
         writer.write(frame),
       ).pipe(Effect.ignore, Effect.andThen(Effect.never));
 
-      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames]);
+      // The lane opens beside the link: a lane that cannot open leaves this link without capture,
+      // and the Mate's next link tries again (answer 3). One that opens late re-sends the state.
+      const capture =
+        usage === undefined
+          ? Deferred.succeed(laneSettled, undefined).pipe(Effect.andThen(Effect.never))
+          : usage.open(projectId, credential).pipe(
+              Effect.tap((opened) =>
+                Effect.sync(() => {
+                  sender = opened;
+                }),
+              ),
+              Effect.catchCause(() => Effect.logWarning("Usage lane could not open on this link")),
+              Effect.ensuring(Deferred.succeed(laneSettled, undefined)),
+              Effect.andThen(sendState),
+              Effect.andThen(Effect.never),
+            );
+
+      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames, capture]);
       return yield* ending;
     }),
   );

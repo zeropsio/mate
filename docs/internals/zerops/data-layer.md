@@ -112,6 +112,9 @@ Mate resource health has its own revision and subscription, independent of conve
 and travels to HQ in an independent `health` frame, retained in `hq_mate_health`. Both paths enter the `mateHealth` family. The health
 projection joins these with the zcp service's configured RAM minimum. Kernel cgroup v2 evidence
 and state-disk free space determine resource strain; a transport failure never does. An unavailable
-source retains the permitted report labelled last-known. The server samples at startup and on
-kernel notifications, PSI triggers and state-directory changes. PSI's unprivileged two-second
-trigger window schedules reads only; counter growth and measured limits determine the fact.
+source retains the permitted report labelled last-known. Memory and disk reads run at startup and on
+kernel notifications, PSI triggers and state-directory changes. CPU counter comparisons have a
+centrally owned two-second observation cadence, including quiet windows for recovery. This is the
+kernel's shortest unprivileged PSI tracking window, not a truth threshold. Current runnable demand
+is compared with the visible cgroup's cpuset and quota allocation; historical PSI averages alone
+cannot establish exhaustion. Requests and unrelated notifications do not replace that CPU window.

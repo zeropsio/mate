@@ -103,13 +103,17 @@ export async function openBrowser(
   const browser = await puppeteer.launch({
     executablePath,
     headless: true,
+    // Preserve Chrome's startup cause when a pipe closes before CDP attaches.
+    dumpio: process.env.GITHUB_ACTIONS === "true",
     // Use the owned child's pipe and create only the routed page the driver needs.
     pipe: true,
     waitForInitialPage: false,
     args: [
-      // CI runners restrict the user namespaces Chrome's sandbox needs (Ubuntu 24.04's
-      // AppArmor), and Chrome for Testing carries no profile of its own.
-      ...(process.env.CI ? ["--no-sandbox"] : []),
+      // Ubuntu runners restrict user namespaces for downloaded Chrome for Testing. This
+      // disposable browser can only reach loopback fakes; personal browsers keep their sandbox.
+      ...(HostProcessPlatform.defaultValue() === "linux" && process.env.GITHUB_ACTIONS === "true"
+        ? ["--no-sandbox"]
+        : []),
       "--disable-background-networking",
       "--disable-component-update",
       "--disable-domain-reliability",

@@ -14,6 +14,7 @@ import {
   usageDigest,
   UsageSnapshot,
 } from "@t3tools/shared/agentUsage";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -32,14 +33,25 @@ const validateOrigin = Schema.decodeEffect(UsageOrigin);
 const validateEntry = Schema.decodeEffect(UsageJournalEntry);
 const validatePage = Schema.decodeEffect(UsageSnapshot);
 const bytes = (value: unknown) => new TextEncoder().encode(usageCanonical(value)).byteLength;
+const Binding = Schema.Struct({
+  orgId: Schema.String,
+  projectId: Schema.String,
+  mateId: Schema.String,
+});
 const Metadata = Schema.Struct({
   ledgerId: Schema.String,
   highWater: Schema.Number,
   highDigest: Schema.String,
   ack: Schema.Number,
   ackDigest: Schema.String,
+  /** The registration this ledger captures for, fixed at HQ's first offer. */
+  binding: Schema.optionalKey(Binding),
+  /** When capture began: nothing a transcript held before it is ever a fact. */
+  startedAt: Schema.optionalKey(Schema.String),
+  /** Whether the transcripts on disk when capture began have their checkpoints at their end. */
+  baselined: Schema.optionalKey(Schema.Boolean),
 });
-const decodeMeta = Schema.decodeUnknownSync(Schema.fromJsonString(Metadata));
+const readMeta = Schema.decodeUnknownEffect(Schema.fromJsonString(Metadata));
 export type UsageBinding = Pick<UsageOrigin, "orgId" | "projectId" | "mateId">;
 export const USAGE_LOCAL_SOFT_BYTES = 256 * 1024 * 1024;
 const LOSS_METADATA_RESERVE_BYTES = 4 * 1024 * 1024;
@@ -60,6 +72,8 @@ export const makeUsageLedger = Effect.gen(function* () {
   yield* sql`CREATE TABLE IF NOT EXISTS usage_facts (
     origin TEXT NOT NULL, native TEXT NOT NULL, value TEXT NOT NULL,
     position TEXT NOT NULL, ordinal INTEGER NOT NULL, PRIMARY KEY(origin,native))`;
+  yield* sql`CREATE TABLE IF NOT EXISTS usage_aliases (
+    origin TEXT NOT NULL, alias TEXT NOT NULL, native TEXT NOT NULL, PRIMARY KEY(origin,alias))`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_checkpoints (source TEXT PRIMARY KEY, value TEXT NOT NULL)`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_journal (sequence INTEGER PRIMARY KEY, digest TEXT NOT NULL, value TEXT NOT NULL)`;
   yield* sql`CREATE TABLE IF NOT EXISTS usage_prefix (sequence INTEGER PRIMARY KEY, digest TEXT NOT NULL)`;
@@ -72,12 +86,14 @@ export const makeUsageLedger = Effect.gen(function* () {
     ack: 0,
     ackDigest: USAGE_GENESIS_DIGEST,
   })})`;
+  // A ledger that cannot be read is a typed failure: the lane asks again, never starts anew.
   const metadata = Effect.gen(function* () {
     const rows = yield* sql<{ value: string }>`SELECT value FROM usage_meta WHERE id=1`;
-    return decodeMeta(rows[0]!.value);
+    return yield* readMeta(rows[0]?.value).pipe(Effect.mapError(() => fail("ledger-unreadable")));
   });
   const saveMeta = (meta: typeof Metadata.Type) =>
     sql`UPDATE usage_meta SET value=${usageCanonical(meta)} WHERE id=1`;
+  const now = Effect.map(DateTime.now, DateTime.formatIso);
   const capacity = Effect.fnUntraced(function* (additional: number, reserve: number) {
     const pages = yield* sql<{ page_count: number }>`PRAGMA page_count`;
     const size = yield* sql<{ page_size: number }>`PRAGMA page_size`;
@@ -137,16 +153,21 @@ export const makeUsageLedger = Effect.gen(function* () {
         return yield* fail("source-binding-conflict");
       return origin;
     }
+    const meta = yield* metadata;
+    // A scan that began before a new ledger cannot mint an origin for the registration it replaced.
+    if (meta.binding !== undefined && usageCanonical(meta.binding) !== usageCanonical(binding))
+      return yield* fail("source-binding-conflict");
     if ((yield* origins).length >= 64) return yield* fail("source-capacity");
     const origin: UsageOrigin = {
       // A wiped home with surviving native history must be refused by HQ's existing lineage,
       // rather than minting another origin for the same registration/provider history.
       ...binding,
-      originId: usageDigest([binding, provider, source]),
+      // A new ledger never claims an origin another ledger (a lost or restored home) registered.
+      originId: usageDigest([binding, provider, source, meta.ledgerId]),
       writerId: NodeCrypto.randomUUID(),
       provider,
       label: provider,
-      coverage: { state: "backfilling", since: null, through: null, gaps: [] },
+      coverage: { state: "partial", since: meta.startedAt ?? null, through: null, gaps: [] },
     };
     yield* validateOrigin(origin);
     yield* sql`INSERT INTO usage_origins VALUES (${source}, ${usageCanonical(origin)})`;
@@ -173,11 +194,34 @@ export const makeUsageLedger = Effect.gen(function* () {
   ) {
     const origin = (yield* origins).find((origin) => origin.originId === input.originId);
     if (!origin || origin.provider !== input.provider) return yield* fail("unknown-origin");
+    // A native record seen under more identities over time (an Antigravity generation) keeps the
+    // fact it was first captured as: every identity it has carried resolves to that one.
+    const identities = [input.nativeId, ...input.aliases];
+    const known = yield* sql<{ native: string }>`
+      SELECT DISTINCT native FROM usage_aliases WHERE origin=${input.originId} AND alias IN ${sql.in(identities)}`;
+    if (known.length > 1) {
+      yield* coverage(origin.originId, unknownCoverage("native-identity-conflict"));
+      return false;
+    }
+    const native = known[0]?.native ?? input.nativeId;
     const rows = yield* sql<{ value: string; position: string; ordinal: number }>`
-      SELECT value,position,ordinal FROM usage_facts WHERE origin=${input.originId} AND native=${input.nativeId}`;
+      SELECT value,position,ordinal FROM usage_facts WHERE origin=${input.originId} AND native=${native}`;
     const row = rows[0];
     const previous = row ? decodeFact(row.value) : undefined;
-    const fact = { ...input, revision: previous?.revision ?? "1" };
+    const aliases = [...new Set([...(previous?.aliases ?? []), ...identities])]
+      .filter((alias) => alias !== native)
+      .sort();
+    if (aliases.length > 16) {
+      yield* coverage(origin.originId, unknownCoverage("native-identity-overflow"));
+      return false;
+    }
+    const fact = {
+      ...input,
+      nativeId: native,
+      factId: native === input.nativeId ? input.factId : (previous?.factId ?? native),
+      aliases,
+      revision: previous?.revision ?? "1",
+    };
     yield* validateFact(fact);
     if (previous && usageCanonical(previous) === usageCanonical(fact)) return false;
     if (row && (row.position !== position || ordinal <= row.ordinal)) {
@@ -188,6 +232,8 @@ export const makeUsageLedger = Effect.gen(function* () {
     yield* append([fact], []);
     yield* sql`INSERT INTO usage_facts VALUES (${fact.originId}, ${fact.nativeId}, ${usageCanonical(fact)}, ${position}, ${ordinal})
       ON CONFLICT(origin,native) DO UPDATE SET value=excluded.value, position=excluded.position,ordinal=excluded.ordinal`;
+    for (const alias of [native, ...aliases])
+      yield* sql`INSERT OR IGNORE INTO usage_aliases VALUES (${fact.originId}, ${alias}, ${native})`;
     return true;
   });
   const checkpoint = Effect.fnUntraced(function* (source: string) {
@@ -338,14 +384,67 @@ export const makeUsageLedger = Effect.gen(function* () {
       : meta.ack;
     yield* sql`DELETE FROM usage_journal WHERE sequence<=${through}`;
   });
+  /** Fixes the registration at HQ's first offer; capture begins then, never before. */
+  const begin = Effect.fnUntraced(function* (binding: UsageBinding) {
+    const meta = yield* metadata;
+    if (meta.binding === undefined) {
+      yield* saveMeta({ ...meta, binding, startedAt: yield* now, baselined: false });
+      return;
+    }
+    if (usageCanonical(meta.binding) !== usageCanonical(binding))
+      return yield* fail("source-binding-conflict");
+  });
+  /**
+   * Abandons this ledger for a new one that captures from now (HQ refused its lineage, or the Mate
+   * was registered again): its journal, facts and positions go, and what fell between stays unknown.
+   */
+  const restart = Effect.fnUntraced(function* (binding: UsageBinding) {
+    yield* sql`DELETE FROM usage_journal`;
+    yield* sql`DELETE FROM usage_prefix`;
+    yield* sql`DELETE FROM usage_snapshot`;
+    yield* sql`DELETE FROM usage_facts`;
+    yield* sql`DELETE FROM usage_aliases`;
+    yield* sql`DELETE FROM usage_origins`;
+    yield* sql`DELETE FROM usage_checkpoints`;
+    yield* saveMeta({
+      ledgerId: NodeCrypto.randomUUID(),
+      highWater: 0,
+      highDigest: USAGE_GENESIS_DIGEST,
+      ack: 0,
+      ackDigest: USAGE_GENESIS_DIGEST,
+      binding,
+      startedAt: yield* now,
+      baselined: false,
+    });
+  });
+  /** The baseline of ledger `ledgerId` is done; one started anew meanwhile still needs its own. */
+  const markBaselined = Effect.fnUntraced(function* (ledgerId: string) {
+    const meta = yield* metadata;
+    if (meta.ledgerId === ledgerId) yield* saveMeta({ ...meta, baselined: true });
+  });
   const transaction = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     sql.withTransaction(
       // Obtain a write lock before reading a checkpoint: SQLite's lock is shared across processes.
       sql`UPDATE usage_meta SET value=value WHERE id=1`.pipe(Effect.andThen(effect)),
     );
+  // A ledger from a build that imported history begins capture now, bound as its origins are.
+  const loaded = yield* metadata;
+  const retained = yield* origins;
+  if (loaded.startedAt === undefined && retained.length > 0) {
+    const { orgId, projectId, mateId } = retained[0]!;
+    yield* saveMeta({
+      ...loaded,
+      binding: { orgId, projectId, mateId },
+      startedAt: yield* now,
+      baselined: false,
+    });
+  }
   return {
     metadata,
     origins,
+    begin: (binding: UsageBinding) => transaction(begin(binding)),
+    restart: (binding: UsageBinding) => transaction(restart(binding)),
+    markBaselined: (ledgerId: string) => transaction(markBaselined(ledgerId)),
     hello,
     digestAt,
     batch,

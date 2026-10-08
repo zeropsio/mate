@@ -8,32 +8,9 @@ import type { MateResourceHealth, ResourcePressure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
+import { numberOf, limitOf, pressureOf } from "./mateResourceEvidence.ts";
+import { makeCpuSampler, CPU_SAMPLE_WINDOW_USEC } from "./mateCpuHealth.ts";
 
-const numberOf = (text: string): number => {
-  if (!/^\d+$/.test(text.trim())) throw new Error("Invalid kernel counter");
-  const value = Number(text.trim());
-  if (!Number.isSafeInteger(value)) throw new Error("Kernel counter exceeds wire precision");
-  return value;
-};
-const limitOf = (text: string) => (text.trim() === "max" ? null : numberOf(text));
-function pressureOf(text: string): ResourcePressure {
-  const lines = new Map(
-    text
-      .trim()
-      .split("\n")
-      .map((line) => {
-        const [kind, ...fields] = line.split(/\s+/);
-        const values = Object.fromEntries(fields.map((field) => field.split("=")));
-        const avg10 = Number(values.avg10);
-        if (!Number.isFinite(avg10) || avg10 < 0 || avg10 > 100 || values.total === undefined)
-          throw new Error("Invalid PSI");
-        return [kind, { avg10, total: numberOf(values.total) }] as const;
-      }),
-  );
-  const some = lines.get("some");
-  if (some === undefined) throw new Error("Missing PSI some");
-  return { some, full: lines.get("full") ?? null };
-}
 const growing = (value: number, previous: number | undefined) =>
   previous === undefined ? 0 : Math.max(0, value - previous);
 const stalled = (psi: ResourcePressure | null) => psi !== null && psi.some.avg10 > 0;
@@ -43,6 +20,7 @@ export async function readResourceHealth(
   cgroups: ReadonlyArray<string>,
   stateDir: string,
   previous?: MateResourceHealth,
+  sampleCpu = makeCpuSampler(cgroups),
 ): Promise<MateResourceHealth> {
   const unavailable = new Set<string>();
   async function read<T>(
@@ -125,10 +103,8 @@ export async function readResourceHealth(
           },
         };
   const root = cgroups.at(-1);
-  const [cpu, io, disk] = await Promise.all([
-    root === undefined
-      ? null
-      : read(root, "cpu.pressure", pressureOf).then((value) => value ?? null),
+  const [cpuRead, io, disk] = await Promise.all([
+    sampleCpu(),
     root === undefined
       ? null
       : read(root, "io.pressure", pressureOf).then((value) => value ?? null),
@@ -139,6 +115,8 @@ export async function readResourceHealth(
         return null;
       }),
   ]);
+  const cpu = cpuRead.cpu;
+  for (const file of cpuRead.unavailable) unavailable.add(file);
   if (cgroups.length === 0) unavailable.add("cgroup-v2");
   const resources: Array<"memory" | "disk" | "cpu"> = [];
   if (
@@ -152,7 +130,7 @@ export async function readResourceHealth(
   )
     resources.push("memory");
   if (disk?.free === 0 || stalled(io)) resources.push("disk");
-  if (stalled(cpu)) resources.push("cpu");
+  if (cpuRead.strained) resources.push("cpu");
   const critical =
     memory !== null &&
     (memory.growth.oom > 0 ||
@@ -203,11 +181,12 @@ export async function ownCgroups(): Promise<ReadonlyArray<string>> {
   }
 }
 
-/** No periodic sampler: initial evidence, kernel notifications, PSI wakes and state filesystem changes. */
+/** Kernel wakes plus a bounded current CPU window; quiet windows must also publish recovery. */
 export function resourceHealthChanges(
   stateDir: string,
   fixtureGroups?: ReadonlyArray<string>,
   requested?: Stream.Stream<unknown>,
+  cpuSampler?: ReturnType<typeof makeCpuSampler>,
 ): Stream.Stream<MateResourceHealth> {
   return Stream.unwrap(
     Effect.gen(function* () {
@@ -220,6 +199,24 @@ export function resourceHealthChanges(
             : Promise.resolve([]),
       );
       const wake = yield* Queue.sliding<void>(1);
+      const sampleCpu = cpuSampler ?? makeCpuSampler(groups);
+      let cpuDue = true;
+      let cpuRead: Awaited<ReturnType<typeof sampleCpu>> | undefined;
+      // PSI permits unprivileged notifications once per two-second tracking window. This is
+      // observation cadence, not a timeout verdict: counter deltas alone establish pressure.
+      if (groups.length > 0)
+        yield* Effect.forkScoped(
+          Effect.forever(
+            Effect.sleep(CPU_SAMPLE_WINDOW_USEC / 1000).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  cpuDue = true;
+                }),
+              ),
+              Effect.andThen(Queue.offer(wake, undefined)),
+            ),
+          ),
+        );
       if (requested !== undefined)
         yield* Effect.forkScoped(Stream.runForEach(requested, () => Queue.offer(wake, undefined)));
       const notify = () => {
@@ -276,7 +273,15 @@ export function resourceHealthChanges(
       return Stream.fromQueue(wake).pipe(
         Stream.mapEffect(() =>
           Effect.promise(async () => {
-            const value = await readResourceHealth(groups, stateDir, previous);
+            const value = await readResourceHealth(groups, stateDir, previous, async () => {
+              // Requests and unrelated filesystem changes cannot replace the current CPU
+              // window with a tiny interval or extend it beyond the declared cadence.
+              if (cpuDue || cpuRead === undefined) {
+                cpuDue = false;
+                cpuRead = await sampleCpu();
+              }
+              return cpuRead;
+            });
             previous = value;
             if (!eventsUnavailable) return value;
             return {

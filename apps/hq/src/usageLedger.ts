@@ -38,6 +38,8 @@ export interface UsageSender {
   readonly credential: string;
   readonly channel: string;
   readonly mateId: string;
+  /** The org HQ holds the Mate in, offered on its `state` so the Mate need not ask Zerops. */
+  readonly orgId: string;
 }
 export interface UsageLedgerService {
   readonly open: (
@@ -100,6 +102,18 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   readOrg: Effect.Effect<string, ZeropsError>,
 ) {
   const processId = NodeCrypto.randomUUID();
+  // HQ serves one org. Once known (read, or recorded with any producer) it is offered to Mates
+  // without asking Zerops again, so a slow or absent Zerops never holds a link's capture lane.
+  let knownOrg: string | undefined;
+  const offeredOrg = Effect.gen(function* () {
+    if (knownOrg !== undefined) return knownOrg;
+    const [recorded] = yield* sql<{
+      readonly org_id: string;
+    }>`SELECT org_id FROM hq_usage_producer LIMIT 1`;
+    const org = recorded?.org_id ?? (yield* readOrg);
+    knownOrg = org;
+    return org;
+  });
   const changed = yield* PubSub.unbounded<void>();
   const fail = (code: string) => new UsageRefused({ code });
   const credentialHash = (credential: string) =>
@@ -192,6 +206,12 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
     const [old] =
       yield* sql<ReceiptRow>`SELECT native_id,revision::text,digest,contribution FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND native_id=${nativeId}`;
     const digest = usageDigest(fact);
+    // Another native identity holding this fact id would violate the receipt's uniqueness: the
+    // Mate sent different content under the same ids, so no retry can ever commit it.
+    const holders = yield* sql<{
+      readonly native_id: string;
+    }>`SELECT native_id FROM hq_usage_receipt WHERE origin_id=${fact.originId} AND fact_id=${fact.factId} AND native_id<>${nativeId}`;
+    if (holders.length > 0) return yield* fail("fact_identity_conflict");
     if (old !== undefined) {
       if (BigInt(fact.revision) < BigInt(old.revision)) return false;
       if (fact.revision === old.revision) {
@@ -216,6 +236,49 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
       ON CONFLICT(origin_id,native_id) DO UPDATE SET ingested_at=now(),occurrence=EXCLUDED.occurrence,day=EXCLUDED.day,model=EXCLUDED.model,value=EXCLUDED.value`;
     return true;
   });
+  /** What HQ refused of an origin's facts stays in its coverage, whatever the Mate says later. */
+  const refusedGaps = (gaps: unknown) =>
+    Array.isArray(gaps)
+      ? gaps.filter((gap): gap is string => typeof gap === "string" && gap.startsWith("refused:"))
+      : [];
+  const withRefused = (value: UsageCoverage, refused: ReadonlyArray<string>): UsageCoverage => {
+    const kept = [...new Set(refused)].slice(0, 32);
+    return {
+      ...value,
+      gaps: [...kept, ...value.gaps.filter((gap) => !kept.includes(gap))].slice(0, 32),
+    };
+  };
+  /**
+   * A fact HQ can never accept (another fact's id, a used revision with other content, aliases of
+   * two records, a contribution it cannot count) is refused for good and kept as a gap on its
+   * origin: one such fact never stops the lane (review of answer 4).
+   */
+  const FACT_REFUSALS: ReadonlySet<string> = new Set([
+    "fact_identity_conflict",
+    "fact_revision_conflict",
+    "alias_conflict",
+    "invalid_contribution",
+  ]);
+  const applyOrRefuse = (sender: UsageSender, ledgerId: string, fact: UsageFact, orgId: string) =>
+    apply(sender, ledgerId, fact, orgId).pipe(
+      Effect.catchIf(
+        (error): error is UsageRefused =>
+          error._tag === "UsageRefused" && FACT_REFUSALS.has(error.code),
+        (refusal) =>
+          Effect.gen(function* () {
+            const [origin] = yield* sql<{
+              readonly coverage: UsageCoverage;
+            }>`SELECT coverage FROM hq_usage_origin WHERE origin_id=${fact.originId} FOR UPDATE`;
+            if (origin === undefined) return yield* fail("unregistered_origin");
+            const value = withRefused(origin.coverage, [
+              `refused:${refusal.code}`,
+              ...refusedGaps(origin.coverage.gaps),
+            ]);
+            yield* sql`UPDATE hq_usage_origin SET coverage=${json(value)}::jsonb WHERE origin_id=${fact.originId}`;
+            return true;
+          }),
+      ),
+    );
   const coverage = Effect.fnUntraced(function* (
     sender: UsageSender,
     ledgerId: string,
@@ -225,7 +288,11 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
     }>,
     staging = false,
   ) {
-    for (const item of values) {
+    for (const raw of values) {
+      const [held] = yield* sql<{
+        readonly coverage: UsageCoverage;
+      }>`SELECT coverage FROM hq_usage_origin WHERE origin_id=${raw.originId}`;
+      const item = { ...raw, value: withRefused(raw.value, refusedGaps(held?.coverage.gaps)) };
       const rows = staging
         ? yield* sql`UPDATE hq_usage_origin SET snapshot_coverage=${json(item.value)}::jsonb WHERE origin_id=${item.originId} AND ledger_id=${ledgerId} AND mate_id=${sender.mateId}::uuid RETURNING 1`
         : yield* sql`UPDATE hq_usage_origin SET coverage=${json(item.value)}::jsonb WHERE origin_id=${item.originId} AND ledger_id=${ledgerId} AND mate_id=${sender.mateId}::uuid RETURNING 1`;
@@ -235,7 +302,8 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   const receive = Effect.fnUntraced(function* (sender: UsageSender, message: UsageLinkUp) {
     if (new TextEncoder().encode(json(message)).byteLength > AGENT_USAGE_BATCH_BYTES)
       return yield* fail("usage_frame_too_big");
-    const orgId = yield* readOrg;
+    // The org this lane was opened with: no Zerops read per frame.
+    const orgId = sender.orgId;
     const answer = yield* leader.write(
       Effect.gen(function* () {
         yield* authorize(sender);
@@ -334,7 +402,7 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
           for (const entry of message.entries) {
             if (BigInt(entry.sequence) <= BigInt(cursor)) continue;
             for (const fact of entry.facts)
-              moved = (yield* apply(sender, ledgerId, fact, orgId)) || moved;
+              moved = (yield* applyOrRefuse(sender, ledgerId, fact, orgId)) || moved;
             yield* coverage(sender, ledgerId, entry.coverage);
             moved = moved || entry.coverage.length > 0;
             cursor = entry.sequence;
@@ -401,7 +469,7 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
           )
             return yield* fail("snapshot_page_gap");
           for (const fact of message.facts)
-            moved = (yield* apply(sender, ledgerId, fact, orgId)) || moved;
+            moved = (yield* applyOrRefuse(sender, ledgerId, fact, orgId)) || moved;
           yield* coverage(sender, ledgerId, message.coverage, true);
           // Published pages stay partial until the pinned manifest is complete.
           yield* sql`UPDATE hq_usage_origin SET coverage=jsonb_set(coverage,'{state}','"recovering"') WHERE ledger_id=${ledgerId}`;
@@ -456,20 +524,22 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
   });
   return {
     open: (projectId: string, credential: string) =>
-      leader.write(
-        Effect.gen(function* () {
-          yield* lockProject(sql, projectId);
-          const rows =
-            yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
-          if (rows.length !== 1) return yield* fail("credential_revoked");
-          const [mate] = yield* sql<{
-            readonly id: string;
-          }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
-          if (mate === undefined) return yield* fail("mate_gone");
-          const channel = NodeCrypto.randomUUID();
-          yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
-          return { projectId, credential, channel, mateId: mate.id };
-        }),
+      Effect.flatMap(offeredOrg, (orgId) =>
+        leader.write(
+          Effect.gen(function* () {
+            yield* lockProject(sql, projectId);
+            const rows =
+              yield* sql`SELECT 1 FROM hq_mate_credential WHERE project_id=${projectId} AND credential_hash=${credentialHash(credential)} AND revoked_at IS NULL FOR SHARE`;
+            if (rows.length !== 1) return yield* fail("credential_revoked");
+            const [mate] = yield* sql<{
+              readonly id: string;
+            }>`SELECT usage_id::text AS id FROM hq_mate WHERE project_id=${projectId}`;
+            if (mate === undefined) return yield* fail("mate_gone");
+            const channel = NodeCrypto.randomUUID();
+            yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
+            return { projectId, credential, channel, mateId: mate.id, orgId };
+          }),
+        ),
       ),
     receive,
     changes: Stream.fromPubSub(changed),

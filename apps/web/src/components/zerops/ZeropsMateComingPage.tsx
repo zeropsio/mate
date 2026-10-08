@@ -1,6 +1,7 @@
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { recoveryNotice } from "~/zerops/mateRecovery.logic";
 import { MateHealthNotice } from "./MateHealthNotice";
+import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/unstable/reactivity";
@@ -70,7 +71,7 @@ import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { ConversationFooterStandIn } from "./ConversationFooterStandIn";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
@@ -189,6 +190,7 @@ const EMPTY_SHELL_STATUS =
 
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
   const navigate = useNavigate();
+  const router = useRouter();
   const openMate = useOpenMate();
   const { activeOrganization, user } = useZeropsSession();
   const viewer = user?.id;
@@ -447,19 +449,27 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     if (!handing || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
     if (cameUp) handingOver(threadRef);
-    const timer = setTimeout(
-      () => {
-        takeMateConversation(projectId)?.(threadRef);
-        void navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(threadRef),
-          replace: true,
-        });
-      },
-      cameUp ? HAND_OVER_MS : 0,
-    );
-    return () => clearTimeout(timer);
-  }, [cameUp, environmentId, handing, handingOver, navigate, projectId, threadRef]);
+    let current = true;
+    const handOver = async () => {
+      const destination = {
+        to: "/$environmentId/$threadId" as const,
+        params: buildThreadRouteParams(threadRef),
+        replace: true,
+      };
+      // Keep this stage on screen until the destination can render it; a route's loading
+      // fallback would otherwise hide it before the conversation's stage takes its place.
+      await router.preloadRoute(destination);
+      if (!current) return;
+      takeMateConversation(projectId)?.(threadRef);
+      void navigate(destination);
+    };
+    const timer = cameUp ? setTimeout(() => void handOver(), HAND_OVER_MS) : null;
+    if (!cameUp) void handOver();
+    return () => {
+      current = false;
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [cameUp, environmentId, handing, handingOver, navigate, projectId, router, threadRef]);
 
   // Its environment's conversations read, none of its own to hand over to (an older server):
   // opening it starts one, as its row would — once, telling what its door asked.
@@ -823,6 +833,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                 ),
               };
 
+  const opening =
+    shown === undefined &&
+    view?.kind === "reaching" &&
+    phaseAhead === null &&
+    empty.standUpFailure === undefined &&
+    !empty.signInRequired &&
+    (linkVoice.surface === "none" || linkVoice.opening === true);
+
   // Its face: awake while it is linked, or while the page only waits on a container that runs —
   // not asleep for this page's own wait (`mateStageAwake`).
   const stageAwake = mateStageAwake({
@@ -850,14 +868,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         <MateComingHeader
           arriving={shown !== undefined && !handingArrival}
           face={
-            view === null || shown === undefined || handingArrival
-              ? undefined
-              : arrivalHeaderFace({
-                  kind: view.kind,
-                  over: view.over === true,
-                  connected: environmentId !== null,
-                  arriving: mateArriving(mate.arrivingUntil, clockMs),
-                })
+            opening
+              ? "sleep"
+              : view === null || shown === undefined || handingArrival
+                ? undefined
+                : arrivalHeaderFace({
+                    kind: view.kind,
+                    over: view.over === true,
+                    connected: environmentId !== null,
+                    arriving: mateArriving(mate.arrivingUntil, clockMs),
+                  })
           }
           mate={{
             ...mate,
@@ -868,8 +888,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         />
       }
     >
-      <MateHealthNotice projectId={projectId} name={named.name} />
-      {view === null ? null : (
+      <div className="absolute inset-x-0 top-0 z-20">
+        <MateHealthNotice projectId={projectId} name={named.name} />
+      </div>
+      {opening ? (
+        <ConversationOpeningStage ready={false} name={named.name} mate={named} />
+      ) : view === null ? null : (
         <MateEmptyStateView
           coming={view}
           // Handed over to from the creation's view, whose headline held the focus.
