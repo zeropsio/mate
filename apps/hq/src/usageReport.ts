@@ -151,7 +151,10 @@ export const readUsageReport = Effect.fnUntraced(function* (
             mateId: source.mate_id,
             appId: app,
             ownerUserId: owner,
-            label: source.label,
+            label: live
+              ? (current.facts.projects.find((project) => project.id === source.project_id)?.name ??
+                source.label)
+              : source.label,
             deleted: source.deleted,
             recordedSince: source.recorded_since,
             coverage:

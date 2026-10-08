@@ -683,6 +683,32 @@ describe("HQ immutable usage", () => {
           }),
         ),
     );
+    it.effect("coverage names each current Mate from Zerops, even before its first turn", () =>
+      database(
+        Effect.gen(function* () {
+          const { sql } = yield* setup;
+          const named = {
+            ...access,
+            facts: {
+              ...access.facts,
+              projects: access.facts.projects.map((project) => ({ ...project, name: "Fern" })),
+            },
+          };
+          const report = () =>
+            readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              named,
+              new Map(),
+            );
+          yield* sql`UPDATE hq_usage_origin SET label='claude'`;
+          assert.strictEqual((yield* report()).coverage[0]!.label, "Fern");
+          yield* sql`DELETE FROM hq_usage_origin`;
+          assert.strictEqual((yield* report()).coverage[0]!.label, "Fern");
+        }),
+      ),
+    );
     it.effect(
       "authorized Mates that have not reported remain explicit coverage, never invented usage",
       () =>
