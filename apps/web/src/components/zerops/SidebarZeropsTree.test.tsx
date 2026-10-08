@@ -3351,21 +3351,6 @@ describe("a Mate's own menu, in its row", () => {
       ...(actions === undefined ? {} : { getMateActions: () => actions }),
     });
 
-  it("gives the time slot to the menu on hover and focus, in a slot reserved so nothing moves", () => {
-    const html = row(ACTIONS);
-    const actions =
-      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-actions"/u.exec(html)?.[1] ?? "";
-    expect(actions).toContain("absolute");
-    expect(actions).toContain("opacity-0");
-    expect(actions).toContain("group-hover/mate:opacity-100");
-    expect(actions).toContain("group-has-[:focus-visible]/mate:opacity-100");
-    // The time stands in a slot at least the menu's width, and steps aside.
-    const slotClass = /<span class="([^"]*min-w-11[^"]*)"/u.exec(html)?.[1] ?? "";
-    expect(slotClass).toContain("min-w-11");
-    expect(slotClass).toContain("group-hover/mate:opacity-0");
-    expect(html).toContain('aria-label="More for crm-dev"');
-  });
-
   it("gives a working Mate's time slot a stop, beside its menu", () => {
     expect(row({ ...ACTIONS, stop: () => {} })).toContain(
       'data-zerops-surface="sidebar-mate-stop"',

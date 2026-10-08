@@ -595,7 +595,7 @@ export function searchSidebarThreads<
   return [...titleMatches, ...contentMatches];
 }
 
-type SettledTimestampInput = Pick<
+export type SettledTimestampInput = Pick<
   SidebarThreadSummary,
   "settledAt" | "latestUserMessageAt" | "latestTurn" | "updatedAt"
 >;
@@ -627,17 +627,21 @@ export function resolveSettledTimestamp(thread: SettledTimestampInput): string |
 }
 
 // Settled rows are history, so they order by when the work ENDED, not when
-// the thread was created or last touched.
+// the thread was created or last touched. Each key resolves once per sort,
+// not once per comparison.
 export function sortSettledThreadsForSidebar<
   T extends SettledTimestampInput & { readonly id: string },
 >(threads: readonly T[]): T[] {
-  const timestampMs = (thread: T) => {
-    const timestamp = resolveSettledTimestamp(thread);
-    return timestamp === null ? 0 : Date.parse(timestamp);
-  };
-  return [...threads].toSorted(
-    (left, right) => timestampMs(right) - timestampMs(left) || left.id.localeCompare(right.id),
-  );
+  return threads
+    .map((thread) => {
+      const timestamp = resolveSettledTimestamp(thread);
+      return { thread, timestampMs: timestamp === null ? 0 : Date.parse(timestamp) };
+    })
+    .sort(
+      (left, right) =>
+        right.timestampMs - left.timestampMs || left.thread.id.localeCompare(right.thread.id),
+    )
+    .map(({ thread }) => thread);
 }
 
 /** The timestamp a working thread's elapsed label counts from: the running
@@ -716,13 +720,19 @@ function sortProjectsByActivity<TProject extends SidebarProject>(
     return [...projects];
   }
 
-  return [...projects].toSorted((left, right) => {
-    const rightTimestamp = getProjectSortTimestamp(right, getProjectThreads(right), sortOrder);
-    const leftTimestamp = getProjectSortTimestamp(left, getProjectThreads(left), sortOrder);
-    const byTimestamp =
-      rightTimestamp === leftTimestamp ? 0 : rightTimestamp > leftTimestamp ? 1 : -1;
-    return byTimestamp || compareTies(left, right);
-  });
+  // Each project's timestamp walks all of its threads, so compute it once
+  // per project instead of once per comparison.
+  return projects
+    .map((project) => ({
+      project,
+      timestamp: getProjectSortTimestamp(project, getProjectThreads(project), sortOrder),
+    }))
+    .sort((left, right) => {
+      const byTimestamp =
+        right.timestamp === left.timestamp ? 0 : right.timestamp > left.timestamp ? 1 : -1;
+      return byTimestamp || compareTies(left.project, right.project);
+    })
+    .map(({ project }) => project);
 }
 
 export function sortProjectsForSidebar<
