@@ -7,8 +7,15 @@ import {
   WsRpcGroup,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as RpcTest from "effect/rpc/RpcTest";
 
-import { RPC_REQUIRED_SCOPES, requiredScopeForRpcMethod } from "./RpcAuthorization.ts";
+import {
+  RPC_REQUIRED_SCOPES,
+  requiredScopeForRpcMethod,
+  rpcScopeAuthorizationLayer,
+} from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
@@ -50,4 +57,40 @@ describe("RPC authorization scopes", () => {
       );
     }
   });
+});
+
+describe("RPC scope middleware", () => {
+  const tested = [WS_METHODS.serverProbe, WS_METHODS.serverRetryResourceTelemetry] as const;
+  const group = WsRpcGroup.omit(
+    ...[...WsRpcGroup.requests.keys()].filter(
+      (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, (typeof tested)[number]> =>
+        !(tested as ReadonlyArray<string>).includes(tag),
+    ),
+  );
+
+  it.effect("checks each RPC's declared scope before its handler runs", () =>
+    Effect.gen(function* () {
+      const handled: Array<string> = [];
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.serverProbe, () => Effect.succeed({})),
+            group.toLayerHandler(WS_METHODS.serverRetryResourceTelemetry, () =>
+              Effect.sync(() => handled.push("retry")).pipe(Effect.andThen(Effect.never)),
+            ),
+            rpcScopeAuthorizationLayer([AuthOrchestrationReadScope]),
+          ),
+        ),
+      );
+
+      expect(yield* client[WS_METHODS.serverProbe]({})).toEqual({});
+      expect(
+        yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(Effect.flip),
+      ).toMatchObject({
+        _tag: "EnvironmentAuthorizationError",
+        requiredScope: AuthOrchestrationOperateScope,
+      });
+      expect(handled).toEqual([]);
+    }).pipe(Effect.scoped),
+  );
 });

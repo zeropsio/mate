@@ -22,7 +22,6 @@ import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
-  type AuthEnvironmentScope,
   AuthSessionId,
   ClientSurface,
   CommandId,
@@ -135,7 +134,7 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import { requiredScopeForRpcMethod } from "./auth/RpcAuthorization.ts";
+import { requiredScopeForRpcMethod, rpcScopeAuthorizationLayer } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
@@ -627,25 +626,6 @@ const makeWsRpcLayer = (
           : run(threadFileWrites);
       const crew = yield* CrewEngine;
       const relayClient = yield* RelayClient.RelayClient;
-      const authorizationError = (requiredScope: AuthEnvironmentScope) =>
-        new EnvironmentAuthorizationError({
-          message: `The authenticated token is missing required scope: ${requiredScope}.`,
-          requiredScope,
-        });
-      const authorizeEffect = <A, E, R>(
-        requiredScope: AuthEnvironmentScope,
-        effect: Effect.Effect<A, E, R>,
-      ): Effect.Effect<A, E | EnvironmentAuthorizationError, R> =>
-        currentSession.scopes.includes(requiredScope)
-          ? effect
-          : Effect.fail(authorizationError(requiredScope));
-      const authorizeStream = <A, E, R>(
-        requiredScope: AuthEnvironmentScope,
-        stream: Stream.Stream<A, E, R>,
-      ): Stream.Stream<A, E | EnvironmentAuthorizationError, R> =>
-        currentSession.scopes.includes(requiredScope)
-          ? stream
-          : Stream.fail(authorizationError(requiredScope));
       const observeRpcEffect = <A, E, R>(
         method: string,
         effect: Effect.Effect<A, E, R>,
@@ -654,48 +634,40 @@ const makeWsRpcLayer = (
       ) =>
         instrumentRpcEffect(
           method,
-          authorizeEffect(
-            requiredScopeForRpcMethod(method),
-            updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
-              ? effect
-              : updateAdmission.run(
-                  effect,
-                  new EnvironmentAuthorizationError({
-                    message:
-                      "Update ready; waiting for your work to finish. Try again after the update.",
-                    requiredScope: requiredScopeForRpcMethod(method),
-                  }),
-                  updateContinuation ||
-                    [
-                      WS_METHODS.providerInstallCancel,
-                      WS_METHODS.projectCloneCancel,
-                      WS_METHODS.providerAuthSubscribe,
-                      ORCHESTRATION_WS_METHODS.dispatchCommand,
-                      WS_METHODS.engineAnswer,
-                      WS_METHODS.engineDismiss,
-                      WS_METHODS.engineStop,
-                      WS_METHODS.terminalWrite,
-                      WS_METHODS.terminalClose,
-                      WS_METHODS.providerAuthComplete,
-                      WS_METHODS.providerAuthRespond,
-                      WS_METHODS.providerAuthCancel,
-                      WS_METHODS.zeropsAgentLoginCancel,
-                      WS_METHODS.zeropsAgentLoginSubmitCode,
-                    ].some((candidate) => candidate === method),
-                ),
-          ),
+          updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
+            ? effect
+            : updateAdmission.run(
+                effect,
+                new EnvironmentAuthorizationError({
+                  message:
+                    "Update ready; waiting for your work to finish. Try again after the update.",
+                  requiredScope: requiredScopeForRpcMethod(method),
+                }),
+                updateContinuation ||
+                  [
+                    WS_METHODS.providerInstallCancel,
+                    WS_METHODS.projectCloneCancel,
+                    WS_METHODS.providerAuthSubscribe,
+                    ORCHESTRATION_WS_METHODS.dispatchCommand,
+                    WS_METHODS.engineAnswer,
+                    WS_METHODS.engineDismiss,
+                    WS_METHODS.engineStop,
+                    WS_METHODS.terminalWrite,
+                    WS_METHODS.terminalClose,
+                    WS_METHODS.providerAuthComplete,
+                    WS_METHODS.providerAuthRespond,
+                    WS_METHODS.providerAuthCancel,
+                    WS_METHODS.zeropsAgentLoginCancel,
+                    WS_METHODS.zeropsAgentLoginSubmitCode,
+                  ].some((candidate) => candidate === method),
+              ),
           traceAttributes,
         );
       const observeRpcStream = <A, E, R>(
         method: string,
         stream: Stream.Stream<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
-      ) =>
-        instrumentRpcStream(
-          method,
-          authorizeStream(requiredScopeForRpcMethod(method), stream),
-          traceAttributes,
-        );
+      ) => instrumentRpcStream(method, stream, traceAttributes);
       const observeRpcStreamEffect = <A, StreamError, StreamContext, EffectError, EffectContext>(
         method: string,
         effect: Effect.Effect<
@@ -708,36 +680,33 @@ const makeWsRpcLayer = (
       ) =>
         instrumentRpcStreamEffect(
           method,
-          authorizeEffect(
-            requiredScopeForRpcMethod(method),
-            updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
-              ? effect
-              : updateAdmission.run(
-                  effect,
-                  new EnvironmentAuthorizationError({
-                    message:
-                      "Update ready; waiting for your work to finish. Try again after the update.",
-                    requiredScope: requiredScopeForRpcMethod(method),
-                  }),
-                  updateContinuation ||
-                    [
-                      WS_METHODS.providerInstallCancel,
-                      WS_METHODS.projectCloneCancel,
-                      WS_METHODS.providerAuthSubscribe,
-                      ORCHESTRATION_WS_METHODS.dispatchCommand,
-                      WS_METHODS.engineAnswer,
-                      WS_METHODS.engineDismiss,
-                      WS_METHODS.engineStop,
-                      WS_METHODS.terminalWrite,
-                      WS_METHODS.terminalClose,
-                      WS_METHODS.providerAuthComplete,
-                      WS_METHODS.providerAuthRespond,
-                      WS_METHODS.providerAuthCancel,
-                      WS_METHODS.zeropsAgentLoginCancel,
-                      WS_METHODS.zeropsAgentLoginSubmitCode,
-                    ].some((candidate) => candidate === method),
-                ),
-          ),
+          updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
+            ? effect
+            : updateAdmission.run(
+                effect,
+                new EnvironmentAuthorizationError({
+                  message:
+                    "Update ready; waiting for your work to finish. Try again after the update.",
+                  requiredScope: requiredScopeForRpcMethod(method),
+                }),
+                updateContinuation ||
+                  [
+                    WS_METHODS.providerInstallCancel,
+                    WS_METHODS.projectCloneCancel,
+                    WS_METHODS.providerAuthSubscribe,
+                    ORCHESTRATION_WS_METHODS.dispatchCommand,
+                    WS_METHODS.engineAnswer,
+                    WS_METHODS.engineDismiss,
+                    WS_METHODS.engineStop,
+                    WS_METHODS.terminalWrite,
+                    WS_METHODS.terminalClose,
+                    WS_METHODS.providerAuthComplete,
+                    WS_METHODS.providerAuthRespond,
+                    WS_METHODS.providerAuthCancel,
+                    WS_METHODS.zeropsAgentLoginCancel,
+                    WS_METHODS.zeropsAgentLoginSubmitCode,
+                  ].some((candidate) => candidate === method),
+              ),
           traceAttributes,
         );
       const toDispatchCommandError = (cause: unknown, fallbackMessage: string) =>
@@ -3161,6 +3130,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       // window, so each chunk no longer costs a round trip.
       yield* RpcServer.make(WsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
+        Effect.provide(rpcScopeAuthorizationLayer(session.scopes)),
         Effect.forkScoped,
       );
       // @effect-diagnostics-next-line returnEffectInGen:off

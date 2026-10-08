@@ -2,6 +2,7 @@ import { MateHealth } from "./mateHealth.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
+import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ExecutionEnvironmentUpdate } from "./environment.ts";
 import {
@@ -1363,6 +1364,16 @@ const WsEngineAssignAgentRpc = Rpc.make(WS_METHODS.engineAssignAgent, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+/**
+ * Checks the connection's scopes against the scope each RPC declares, before
+ * the handler runs. Every RPC in `WsRpcGroup` carries it, so a handler cannot
+ * be added without authorization.
+ */
+export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthorization>()(
+  "t3/contracts/RpcScopeAuthorization",
+  { error: EnvironmentAuthorizationError },
+) {}
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1497,4 +1508,4 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
-);
+).middleware(RpcScopeAuthorization);
