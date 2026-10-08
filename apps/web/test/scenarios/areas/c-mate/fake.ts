@@ -1309,6 +1309,29 @@ export class ChatDriver {
       );
   }
 
+  /** Settles with the message the Mate received reading `text`, on whichever wire it speaks. */
+  async waitForTurn(text: string) {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+      return await deadline(
+        new Promise<Extract<ChatIntent, { kind: "turn" }>>((resolve) => {
+          const check = () => {
+            const found = this.wire
+              .intents()
+              .findLast((intent) => intent.kind === "turn" && intent.text === text);
+            if (found?.kind === "turn") resolve(found);
+          };
+          check();
+          timer = setInterval(check, 25);
+        }),
+        `Mate received "${text}"`,
+        8000,
+      );
+    } finally {
+      clearInterval(timer);
+    }
+  }
+
   /** Settles with the answer the Mate applied to `requestId`, on whichever wire it speaks. */
   async waitForAnswer(requestId: string) {
     const applied = () =>

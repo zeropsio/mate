@@ -4,6 +4,7 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { MateEngineFake } from "../../fakes/mateEngine.ts";
 import {
   RESPONSE_RECEIVED,
+  effortOf,
   TARGET_QUESTION,
   type ChatAsk,
   type ChatIntent,
@@ -71,8 +72,24 @@ export class EngineChatWire implements ChatWire {
   }
 
   intents() {
+    // The conversation's options as the engine held them when each message was sent.
+    let options: unknown = undefined;
     return this.engine.applied.flatMap(({ op, payload }): ChatIntent[] => {
-      if (op === "send") return [{ kind: "turn", text: String(payload.text) }];
+      if (op === "switch-model" || op === "assign-agent") {
+        if (payload.options !== undefined) options = payload.options;
+        return [];
+      }
+      if (op === "send") {
+        const effort = effortOf(options as never);
+        return [
+          {
+            kind: "turn",
+            text: String(payload.text),
+            ...(effort === undefined ? {} : { effort }),
+            ...(payload.interactionMode === "plan" ? { plan: true as const } : {}),
+          },
+        ];
+      }
       if (op !== "answer") return [];
       const asked = this.asks.get(String(payload.requestId));
       const ask = asked?.ask ?? "other";

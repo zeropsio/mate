@@ -9,7 +9,13 @@ export type ChatAsk = "approval" | "question" | "other";
 
 /** What the person did, as the Mate received it — never how a wire spells it. */
 export type ChatIntent =
-  | { readonly kind: "turn"; readonly text: string }
+  /** A message, with the effort it ran at and whether it asked for a plan, when it did. */
+  | {
+      readonly kind: "turn";
+      readonly text: string;
+      readonly effort?: string;
+      readonly plan?: true;
+    }
   | {
       readonly kind: "decision";
       readonly ask: ChatAsk;
@@ -59,3 +65,13 @@ export interface ChatWire {
   /** Settles once the conversation durably holds a person message reading exactly `text`. */
   waitForMessage(text: string): Promise<void>;
 }
+
+/** The effort a model selection's options name (`reasoningEffort` or `effort`), if any. */
+export const effortOf = (
+  options: ReadonlyArray<{ readonly id: string; readonly value: unknown }> | undefined,
+): string | undefined => {
+  const effort = options?.find(
+    (option) => option.id === "reasoningEffort" || option.id === "effort",
+  );
+  return typeof effort?.value === "string" ? effort.value : undefined;
+};
