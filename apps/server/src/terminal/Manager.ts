@@ -233,6 +233,7 @@ interface TerminalSubprocessInspectResult {
 interface TerminalSubprocessInspector {
   (
     terminalPid: number,
+    includeShellChildren?: boolean,
   ): Effect.Effect<TerminalSubprocessInspectResult, TerminalSubprocessCheckError>;
 }
 
@@ -692,6 +693,7 @@ function deriveSubprocessInspectResult(
   snapshot: TerminalProcessTableSnapshot,
   terminalPid: number,
   platform: NodeJS.Platform,
+  includeShellChildren = false,
 ): TerminalSubprocessInspectResult {
   const commandName = (pid: number) =>
     normalizeChildCommandName(snapshot.commandById.get(pid) ?? "", platform);
@@ -700,6 +702,7 @@ function deriveSubprocessInspectResult(
   // children of its own. That copy is not a command the user started.
   const childPid = (snapshot.childrenByParent.get(terminalPid) ?? []).find(
     (pid) =>
+      includeShellChildren ||
       shellName === null ||
       commandName(pid) !== shellName ||
       (snapshot.childrenByParent.get(pid)?.length ?? 0) > 0,
@@ -1383,8 +1386,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       : Effect.map(
           fetchProcessTableSnapshot,
           (snapshot): TerminalSubprocessInspector =>
-            (terminalPid) =>
-              Effect.succeed(deriveSubprocessInspectResult(snapshot, terminalPid, platform)),
+            (terminalPid, includeShellChildren) =>
+              Effect.succeed(
+                deriveSubprocessInspectResult(
+                  snapshot,
+                  terminalPid,
+                  platform,
+                  includeShellChildren,
+                ),
+              ),
         );
   const subprocessPollIntervalMs =
     options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
@@ -2855,7 +2865,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       }),
     );
 
-  const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
+  const closeIdleWithPolicy = (
+    input: Parameters<TerminalManager["Service"]["closeIdle"]>[0],
+    includeShellChildren: boolean,
+  ) =>
     withThreadLock(
       input.threadId,
       Effect.gen(function* () {
@@ -2880,7 +2893,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         yield* Effect.forEach(
           running,
           (session) =>
-            inspector(session.pid).pipe(
+            inspector(session.pid, includeShellChildren).pipe(
               Effect.flatMap((result) =>
                 result.hasRunningSubprocess ||
                 activityMark(session) !== marks.get(session.terminalId)
@@ -2900,6 +2913,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         }),
       ),
     );
+
+  const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
+    closeIdleWithPolicy(input, false);
 
   let updateFenced = mateUpdateBootPending();
   let admissions = 0;
@@ -2938,7 +2954,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       for (const threadId of new Set(
         [...state.sessions.values()].map((session) => session.threadId),
       ))
-        yield* closeIdle({ threadId });
+        yield* closeIdleWithPolicy({ threadId }, true);
     }),
   };
   return TerminalManager.of({

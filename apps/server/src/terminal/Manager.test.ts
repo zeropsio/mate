@@ -1277,6 +1277,39 @@ it.layer(
     }),
   );
 
+  it.effect(
+    "an update postpones while a child shell is alive, without guessing it is a prompt helper",
+    () =>
+      Effect.gen(function* () {
+        const processRunner: ProcessRunner.ProcessRunner["Service"] = {
+          run: () =>
+            Effect.succeed({
+              stdout: "9000 1 zsh\n100 9000 zsh",
+              stderr: "",
+              code: ChildProcessSpawner.ExitCode(0),
+              timedOut: false,
+              stdoutTruncated: false,
+              stderrTruncated: false,
+              stdoutInvalidUtf8: false,
+              stderrInvalidUtf8: false,
+            }),
+        };
+        const { manager, ptyAdapter } = yield* createManager(5, {
+          subprocessPollIntervalMs: 60_000,
+        }).pipe(
+          Effect.provideService(ProcessRunner.ProcessRunner, processRunner),
+          Effect.provide(withHostPlatform("linux")),
+        );
+        yield* manager.open(openInput());
+        const drain = manager.updateDrain;
+        assert(drain !== undefined);
+        yield* drain.begin;
+        yield* drain.quiesce;
+        expect((yield* drain.facts).idle).toBe(false);
+        expect(ptyAdapter.processes[0]!.killed).toBe(false);
+      }),
+  );
+
   it.effect("an update fences new terminals and cancellation reopens them", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager();

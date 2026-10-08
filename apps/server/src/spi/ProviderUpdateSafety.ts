@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Scope from "effect/Scope";
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { AntigravityInstallation } from "../provider/AntigravityInstallation.ts";
@@ -29,7 +30,11 @@ export class ProviderUpdateSafety extends Context.Service<
   ProviderUpdateSafety,
   {
     readonly facts: Effect.Effect<UpdateIdleFacts>;
-    readonly changes: Stream.Stream<void>;
+    readonly subscribeChanges: Effect.Effect<
+      { readonly changes: Stream.Stream<void> },
+      never,
+      Scope.Scope
+    >;
   }
 >()("t3/spi/ProviderUpdateSafety") {}
 
@@ -39,6 +44,19 @@ export const providerUpdateSafetyLayer = Layer.effect(
     const provider = yield* ProviderService;
     const registry = yield* ProviderInstanceRegistry;
     const installation = yield* AntigravityInstallation;
+    const authChanges = Effect.gen(function* () {
+      const instances = yield* registry.listInstances;
+      const sources = yield* Effect.all(
+        instances.flatMap((instance) =>
+          instance.auth?.subscribeUpdateChanges === undefined
+            ? []
+            : [instance.auth.subscribeUpdateChanges],
+        ),
+      );
+      return Stream.mergeAll([Stream.make(void 0), ...sources.map((source) => source.changes)], {
+        concurrency: "unbounded",
+      });
+    });
     return ProviderUpdateSafety.of({
       facts: Effect.gen(function* () {
         const instances = yield* registry.listInstances;
@@ -46,7 +64,11 @@ export const providerUpdateSafetyLayer = Layer.effect(
           instances.flatMap((instance) =>
             instance.auth === undefined
               ? []
-              : [instance.auth.isChangingCredentials ?? Effect.succeed(undefined)],
+              : [
+                  instance.auth.subscribeUpdateChanges === undefined
+                    ? Effect.succeed(undefined)
+                    : (instance.auth.isChangingCredentials ?? Effect.succeed(undefined)),
+                ],
           ),
         );
         const blockers = providerUpdateBlockers({
@@ -60,36 +82,28 @@ export const providerUpdateSafetyLayer = Layer.effect(
           Effect.succeed({ idle: false, blockers: ["provider state unreadable"] }),
         ),
       ),
-      changes: Stream.mergeAll(
-        [
-          registry.streamChanges.pipe(
-            Stream.prepend([void 0]),
-            Stream.switchMap(() =>
-              Stream.unwrap(
-                registry.listInstances.pipe(
-                  Effect.map((instances) =>
-                    Stream.mergeAll(
-                      instances.flatMap((instance) =>
-                        instance.auth === undefined
-                          ? []
-                          : [
-                              instance.auth
-                                .subscribe("mate-update-state")
-                                .pipe(Stream.map(() => void 0)),
-                            ],
-                      ),
-                      { concurrency: "unbounded" },
-                    ),
-                  ),
-                ),
+      subscribeChanges: Effect.gen(function* () {
+        const scope = yield* Scope.Scope;
+        const registrySubscription = yield* registry.subscribeChanges;
+        const auth = yield* authChanges;
+        const native = yield* (
+          provider.eventBarrier?.subscribeChanges ?? Effect.succeed({ changes: Stream.empty })
+        );
+        return {
+          changes: Stream.mergeAll(
+            [
+              Stream.fromSubscription(registrySubscription).pipe(
+                Stream.mapEffect(() => authChanges.pipe(Scope.provide(scope))),
+                Stream.prepend([auth]),
+                Stream.switchMap((stream) => stream),
               ),
-            ),
+              installation.changes.pipe(Stream.map(() => void 0)),
+              native.changes,
+            ],
+            { concurrency: "unbounded" },
           ),
-          installation.changes.pipe(Stream.map(() => void 0)),
-          provider.eventBarrier?.changes ?? Stream.empty,
-        ],
-        { concurrency: "unbounded" },
-      ),
+        };
+      }),
     });
   }),
 );

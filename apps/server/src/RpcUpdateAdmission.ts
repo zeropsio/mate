@@ -22,6 +22,9 @@ export const makeRpcUpdateAdmission = Effect.gen(function* () {
       blockers: active === 0 ? [] : ["accepted client operation"],
     })),
     changes: Stream.fromPubSub(changes),
+    subscribeChanges: PubSub.subscribe(changes).pipe(
+      Effect.map((subscription) => ({ changes: Stream.fromSubscription(subscription) })),
+    ),
     run: <A, E, R, F>(
       effect: Effect.Effect<A, E, R>,
       refused: F,

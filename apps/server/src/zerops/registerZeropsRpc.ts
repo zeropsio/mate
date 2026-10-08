@@ -99,6 +99,7 @@ export interface RegisterZeropsRpcDeps {
     method: string,
     effect: Effect.Effect<A, E, R>,
     traceAttributes?: Readonly<Record<string, unknown>>,
+    updateContinuation?: boolean,
   ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
   readonly observeRpcStream: <A, E, R>(
     method: string,

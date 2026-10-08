@@ -1,3 +1,4 @@
+import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { RpcUpdateAdmission } from "../RpcUpdateAdmission.ts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -60,9 +61,16 @@ const drainRoute = HttpRouter.add(
     const policyOption = yield* Effect.serviceOption(MateAutoUpdatePolicy);
     const policy = Option.getOrUndefined(policyOption);
     const { bootId } = yield* environment.getDescriptor;
-    if (engineDrain === undefined || terminals.updateDrain === undefined || safety === undefined) {
+    const subscribeChanges = engineDrain?.subscribeChanges;
+    if (
+      engineDrain === undefined ||
+      terminals.updateDrain === undefined ||
+      safety === undefined ||
+      subscribeChanges === undefined
+    ) {
       return HttpServerResponse.jsonUnsafe({ protocol: 1, drained: false, bootId });
     }
+    const clones = Option.getOrUndefined(yield* Effect.serviceOption(ProjectCloneTracker));
     const crew = Option.getOrUndefined(yield* Effect.serviceOption(CrewEngine));
     const logins = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsAgentLogin));
     const rpcAdmission = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
@@ -73,8 +81,13 @@ const drainRoute = HttpRouter.add(
     });
     const drained = yield* Effect.scoped(
       Effect.gen(function* () {
-        if (crew?.updateChanges !== undefined)
-          yield* crew.updateChanges.pipe(
+        if (clones?.subscribeUpdateChanges !== undefined)
+          yield* (yield* clones.subscribeUpdateChanges).changes.pipe(
+            Stream.runForEach(() => offer),
+            Effect.forkChild,
+          );
+        if (crew?.subscribeUpdateChanges !== undefined)
+          yield* (yield* crew.subscribeUpdateChanges).changes.pipe(
             Stream.runForEach(() => offer),
             Effect.forkChild,
           );
@@ -83,16 +96,16 @@ const drainRoute = HttpRouter.add(
             Stream.runForEach(() => offer),
             Effect.forkChild,
           );
-        yield* safety.changes.pipe(
+        yield* (yield* safety.subscribeChanges).changes.pipe(
           Stream.runForEach(() => offer),
           Effect.forkChild,
         );
         if (rpcAdmission !== undefined)
-          yield* rpcAdmission.changes.pipe(
+          yield* (yield* rpcAdmission.subscribeChanges).changes.pipe(
             Stream.runForEach(() => offer),
             Effect.forkChild,
           );
-        yield* engineDrain.changes.pipe(
+        yield* (yield* subscribeChanges).changes.pipe(
           Stream.runForEach(() => offer),
           Effect.forkChild,
         );
@@ -124,6 +137,10 @@ const drainRoute = HttpRouter.add(
             rpcAdmission?.facts ??
               Effect.succeed({ idle: false, blockers: ["client admission state unknown"] })
           );
+          const cloneFacts = yield* (
+            clones?.updateFacts ??
+              Effect.succeed({ idle: false, blockers: ["clone state unknown"] })
+          );
           const crewFacts = yield* (
             crew?.updateFacts ?? Effect.succeed({ idle: false, blockers: ["crew state unknown"] })
           );
@@ -133,6 +150,7 @@ const drainRoute = HttpRouter.add(
             ...rpcFacts.blockers,
             ...providerFacts.blockers,
             ...crewFacts.blockers,
+            ...cloneFacts.blockers,
           ];
           if (logins === undefined) blockers.push("agent login state unknown");
           else

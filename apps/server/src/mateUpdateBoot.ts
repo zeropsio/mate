@@ -12,13 +12,41 @@ export function mateUpdateBootPending(): boolean {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
     throw error;
   }
-  const state: unknown = JSON.parse(text);
+  return updateBootPending(JSON.parse(text));
+}
+
+export function updateBootPending(state: unknown): boolean {
   if (
     typeof state !== "object" ||
     state === null ||
+    !("protocol" in state) ||
+    state.protocol !== 1 ||
     !("phase" in state) ||
-    typeof state.phase !== "string"
+    typeof state.phase !== "string" ||
+    ![
+      "idle",
+      "staging",
+      "draining",
+      "switching",
+      "verifying",
+      "updated",
+      "postponed",
+      "failed",
+    ].includes(state.phase)
   )
     throw new Error("Mate update state is unreadable; zcp must recover the last-good version.");
-  return state.phase === "switching" || state.phase === "verifying";
+  const pending = state.phase === "switching" || state.phase === "verifying";
+  if (
+    pending &&
+    (!("candidate" in state) ||
+      typeof state.candidate !== "string" ||
+      state.candidate.trim() === "" ||
+      !("previous" in state) ||
+      typeof state.previous !== "string" ||
+      state.previous.trim() === "")
+  )
+    throw new Error(
+      "Mate update switch identities are unreadable; zcp must recover the last-good version.",
+    );
+  return pending;
 }
