@@ -18,6 +18,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   CommandId,
   ItemId,
@@ -430,6 +431,7 @@ const ENGINE: ItemActor = { kind: "engine" };
 
 const isPresentation = Schema.is(ToolPresentation);
 const decodeImage = Schema.decodeUnknownOption(ChatImageAttachment);
+const decodeFile = Schema.decodeUnknownOption(ChatFileAttachment);
 
 /** How a V1 turn ended, as a run's end and who said so. */
 const endOfRun = (run: PlannedRun): { readonly end: RunEnd; readonly source: RunEndSource } => {
@@ -539,6 +541,8 @@ const WORK_STATES: Readonly<Record<string, Extract<ItemBody, { kind: "work" }>["
 const attachmentOf = (raw: unknown): PersonAttachment => {
   const image = decodeImage(raw);
   if (Option.isSome(image)) return image.value;
+  const file = decodeFile(raw);
+  if (Option.isSome(file)) return file.value;
   const type = asText(asRecord(raw)?.type);
   return { type: "unknown", was: type ?? "unknown" };
 };
