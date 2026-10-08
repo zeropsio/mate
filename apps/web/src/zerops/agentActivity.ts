@@ -42,13 +42,14 @@ import {
   type MatePoseFacts,
   type MateRunFacts,
 } from "@t3tools/client-runtime/zerops";
-import type {
-  EnvironmentId,
-  OrchestrationLatestTurn,
-  OrchestrationSession,
+import {
   ThreadId,
-  ThreadLiveStep,
-  ThreadMessagePreview,
+  type ConversationRow,
+  type EnvironmentId,
+  type OrchestrationLatestTurn,
+  type OrchestrationSession,
+  type ThreadLiveStep,
+  type ThreadMessagePreview,
 } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
@@ -57,6 +58,7 @@ import {
   hasUnseenCompletion,
   mateMarkStateForThread,
   resolveThreadStatus,
+  toneIdForKind,
   type ThreadStatusKind,
 } from "@t3tools/shared/threadStatus";
 
@@ -617,8 +619,96 @@ export function activityOfNow(
 }
 
 /**
- * A Mate's activity from HQ's overview of it: its main chat read as its shell is, with this
- * device's visit — at rest unless HQ's word is live (`restingActivity`). Undefined where HQ holds
+ * An engine Mate's activity off its own conversation row (`ConversationRow`, which HQ relays in
+ * the overview's `conversations`): the engine already says what the conversation is on, so the
+ * row's state is the kind — nothing is resolved again from turn and session literals.
+ */
+const isoOf = (millis: number) => new Date(millis).toISOString();
+
+/** The provider a paused engine row names, in the words a row's limit line uses. */
+const providerOf = (row: ConversationRow): string =>
+  row.agent?.driver === "claudeAgent"
+    ? "Claude"
+    : row.agent?.driver === "codex"
+      ? "Codex"
+      : "coding agent";
+
+/** The kind a row's state is, before the person's visit: what the engine says it is on. */
+function kindOf(state: ConversationRow["state"]): ThreadStatusKind {
+  switch (state.kind) {
+    case "queued":
+    case "working":
+      return "working";
+    case "waiting":
+      return state.on === "approval" ? "approval" : state.on === "plan" ? "planReady" : "input";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
+const firstLine = (text: string): string | undefined =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+/** What an engine Mate is up to in one conversation, from its row and this device's visit. */
+export function rowAgentActivity(
+  row: ConversationRow,
+  environmentId: EnvironmentId,
+  lastVisitedAt: string | undefined,
+): ZeropsAgentActivity {
+  const { state } = row;
+  const threadId = ThreadId.make(row.conversationId);
+  const endedAt = row.latestRun?.endedAt ?? null;
+  const unread = hasUnseenCompletion({
+    latestTurn: endedAt === null ? null : { completedAt: isoOf(endedAt) },
+    lastVisitedAt,
+  });
+  const told = kindOf(state);
+  const kind: ThreadStatusKind = told === "idle" && unread ? "done" : told;
+  const paused = state.kind === "paused";
+  const asked = row.subject === null ? null : { text: row.subject };
+  const words = {
+    title: "",
+    planProgress: null,
+    latestUserMessageAt: asked === null ? null : isoOf(row.at),
+    latestUserMessagePreview: asked,
+  };
+  const question = state.kind === "waiting" && kind === "input" ? state.words?.trim() : undefined;
+  const errorLine = state.kind === "failed" ? firstLine(state.errorLine) : undefined;
+  const provider = providerOf(row);
+  const resetsAt = paused && state.resetsAt !== null ? isoOf(state.resetsAt) : undefined;
+  return {
+    threadId,
+    kind,
+    status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
+    face: mateMarkStateForThread(kind, paused),
+    subject: agentActivitySubject(words, kind),
+    at: isoOf(
+      state.kind === "working" || state.kind === "queued" ? state.since : (endedAt ?? row.at),
+    ),
+    // Queued: the person's words are the last thing said, and the reply stands where they will.
+    snippet: state.kind === "queued" || row.snippet === null ? undefined : maskSecrets(row.snippet),
+    ...(state.kind === "queued" ? { awaitingWords: true as const } : {}),
+    unread,
+    pausedUntil: resetsAt,
+    usageLimited: paused,
+    limitProvider: paused ? provider : undefined,
+    ...(paused ? { limitHistory: { provider, resetsAt: resetsAt ?? null } } : {}),
+    threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+    task: agentActivitySubject(words, "idle"),
+    ...(state.kind === "working" && state.waitsOnHelpers ? { waitsOnHelpers: true as const } : {}),
+    ...(question === undefined || question.length === 0 ? {} : { question }),
+    ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
+  };
+}
+
+/**
+ * A Mate's activity from HQ's overview of it: its main chat read as its shell is — an engine Mate's
+ * off its own row (`rowAgentActivity`) — with this device's visit — at rest unless HQ's word is live (`restingActivity`). Undefined where HQ holds
  * no overview of it, or it has no main chat yet.
  */
 export function overviewAgentActivity(
@@ -628,9 +718,15 @@ export function overviewAgentActivity(
 ): ZeropsAgentActivity | undefined {
   if (mate.identity === undefined || !mate.main) return undefined;
   const { environmentId } = mate.identity;
-  const activity = threadAgentActivity(
-    { ...mate.main, environmentId },
-    lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, mate.main.id))],
-  );
-  return live ? activity : restingActivity(activity, mate.main.updatedAt);
+  const main = mate.main;
+  const visited = lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, main.id))];
+  // An engine Mate's own row of its main conversation, where it sends rows; its shell fields else.
+  const row = mate.conversations?.find((each) => (each.conversationId as string) === main.id);
+  const activity =
+    row === undefined
+      ? threadAgentActivity({ ...main, environmentId }, visited)
+      : rowAgentActivity(row, environmentId, visited);
+  return live
+    ? activity
+    : restingActivity(activity, row === undefined ? main.updatedAt : isoOf(row.at));
 }

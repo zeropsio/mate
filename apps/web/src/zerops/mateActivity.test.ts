@@ -4,6 +4,7 @@ import { mateStatus } from "./mateStatus.logic";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
+  ConversationRow,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -220,6 +221,86 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
         standing: new Set(),
       }),
     ).toMatchObject({ kind: "working" });
+  });
+});
+
+const decodeRow = Schema.decodeUnknownSync(ConversationRow);
+/** Vera on the engine: HQ relays her own rows beside her main chat's shell fields. */
+const engineRow = (id: string, patch: Record<string, unknown>) =>
+  decodeRow({
+    conversationId: id,
+    agent: { instanceId: "codex", driver: "codex", model: null, profile: { kind: "mate" } },
+    revision: { environmentId: "env-vera", epoch: 1, seq: 9 },
+    state: { kind: "idle" },
+    activeRunId: null,
+    latestRun: null,
+    subject: "Ship the release",
+    snippet: null,
+    at: Date.parse(DONE),
+    askedAt: null,
+    ...patch,
+  });
+const onEngine = (...rows: ReadonlyArray<ConversationRow>) =>
+  new Map([["p-vera", { ...VERA, conversations: rows }]]);
+
+describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
+  it("reads its words and what it waits on off its own row, not its main chat's fields", () => {
+    const helpers = engineRow("t1", {
+      state: { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: true },
+    });
+    expect(
+      read({ attention: attention(said({ working: 1 })), overviews: onEngine(helpers) }),
+    ).toMatchObject({
+      threadId: "t1",
+      kind: "working",
+      face: "working",
+      subject: "Ship the release",
+      waitsOnHelpers: true,
+      at: ASKED,
+    });
+    const asking = engineRow("t1", {
+      state: { kind: "waiting", on: "question", words: "Which tag?" },
+    });
+    expect(
+      read({
+        attention: attention(
+          said({
+            waiting: 1,
+            questions: [{ threadId: "t1", kind: "input", turnId: null }] as never,
+          }),
+        ),
+        overviews: onEngine(asking),
+      }),
+    ).toMatchObject({ kind: "input", face: "needs", question: "Which tag?" });
+  });
+
+  it("reads a chat its main chat's fields do not name off that chat's own row", () => {
+    const other = engineRow("t9", { subject: "Rotate the keys" });
+    const activity = read({
+      attention: attention(said({ mainThreadId: "t9" as never, working: 1 })),
+      overviews: onEngine(other),
+    });
+    expect(activity).toMatchObject({ threadId: "t9", kind: "working", subject: "Rotate the keys" });
+  });
+
+  it("reads its main conversation off its row without the attention value too", () => {
+    const paused = engineRow("t1", { state: { kind: "paused", resetsAt: null } });
+    expect(read({ overviews: onEngine(paused) })).toMatchObject({
+      threadId: "t1",
+      face: "sleep",
+      usageLimited: true,
+      limitProvider: "Codex",
+      subject: "Ship the release",
+    });
+  });
+
+  it("keeps the shell this page holds of a chat over HQ's row of it", () => {
+    const activity = read({
+      attention: attention(said({ working: 1 })),
+      threads: [{ ...WORKING, title: "Fix the build" }],
+      overviews: onEngine(engineRow("t1", {})),
+    });
+    expect(activity).toMatchObject({ subject: "Fix the build" });
   });
 });
 
