@@ -635,79 +635,88 @@ const crashes: ReadonlyArray<Crash> = Array.from({ length: MOVES }, (_, move) =>
 const FLIP_COMMITS = [0, 1, 2];
 
 describe("the crew import's crash table", () => {
-  it.live("a restart at any of its step boundaries imports the crew once, whole", () =>
-    Effect.gen(function* () {
-      const expected = yield* cached;
-      const broken: Array<string> = [];
-      const table = crashes.flatMap((crash) =>
-        crash.at === 0 && crash.how === "mid-commit"
-          ? FLIP_COMMITS.map((commit) => ({ ...crash, commit }))
-          : [{ ...crash, commit: 0 }],
-      );
-      for (const crash of table) {
-        const file = yield* seeded("crew-crash");
-        let armed = false;
-        let commits = 0;
-        let acted = false;
-        const label = `${crash.at} ${crash.at === 0 ? `flip#${crash.commit}` : "worker"} — ${crash.how}${crash.how === "mid-commit" ? `@${crash.stage}` : ""}`;
-        yield* lifetime(
-          file,
-          ({ worker, flip }) =>
-            Effect.gen(function* () {
-              for (let move = 0; move <= crash.at; move++) {
-                armed = move === crash.at;
-                if (armed && crash.how === "mid-effect") {
-                  yield* Effect.forkDetach(worker.runOnce);
-                  for (let spin = 0; spin < 200; spin++) {
-                    if (acted) break;
-                    yield* Effect.sleep(5);
+  it.live(
+    "a restart at any of its step boundaries imports the crew once, whole",
+    () =>
+      Effect.gen(function* () {
+        const expected = yield* cached;
+        const broken: Array<string> = [];
+        const table = crashes.flatMap((crash) =>
+          crash.at === 0 && crash.how === "mid-commit"
+            ? FLIP_COMMITS.map((commit) => ({ ...crash, commit }))
+            : [{ ...crash, commit: 0 }],
+        );
+        for (const crash of table) {
+          const file = yield* seeded("crew-crash");
+          let armed = false;
+          let commits = 0;
+          let acted = false;
+          const label = `${crash.at} ${crash.at === 0 ? `flip#${crash.commit}` : "worker"} — ${crash.how}${crash.how === "mid-commit" ? `@${crash.stage}` : ""}`;
+          yield* lifetime(
+            file,
+            ({ worker, flip }) =>
+              Effect.gen(function* () {
+                for (let move = 0; move <= crash.at; move++) {
+                  armed = move === crash.at;
+                  if (armed && crash.how === "mid-effect") {
+                    yield* Effect.forkDetach(worker.runOnce);
+                    for (let spin = 0; spin < 200; spin++) {
+                      if (acted) break;
+                      yield* Effect.sleep(5);
+                    }
+                    return;
                   }
-                  return;
+                  if (move === 0) yield* Effect.exit(flip);
+                  else yield* Effect.exit(worker.runOnce);
                 }
-                if (move === 0) yield* Effect.exit(flip);
-                else yield* Effect.exit(worker.runOnce);
-              }
+              }),
+            {
+              fault: (stage) => {
+                if (!armed || crash.how !== "mid-commit" || stage !== crash.stage)
+                  return Effect.void;
+                const commit = commits++;
+                return commit === crash.commit
+                  ? Effect.fail(
+                      new EngineStoreError({
+                        operation: "commit",
+                        cause: new Error("process died"),
+                      }),
+                    )
+                  : Effect.void;
+              },
+              tell: (tell) => (envelope) => {
+                if (!armed) return tell(envelope);
+                if (crash.how === "mid-effect" && envelope.command._tag === "HistoryBatch")
+                  return Effect.andThen(
+                    tell(envelope),
+                    Effect.suspend(() => {
+                      acted = true;
+                      return Effect.never;
+                    }),
+                  );
+                if (crash.how === "outcome-unrecorded" && envelope.command._tag === "EffectSettled")
+                  return Effect.die("process died before the outcome was recorded");
+                return tell(envelope);
+              },
+            },
+          );
+          const after = yield* lifetime(file, ({ worker, flip }) =>
+            Effect.gen(function* () {
+              yield* drain(worker);
+              // Whatever the crash cut, the next boot's flip goes on where it stands.
+              yield* flip;
+              yield* drain(worker);
+              return yield* heldAfter;
             }),
-          {
-            fault: (stage) => {
-              if (!armed || crash.how !== "mid-commit" || stage !== crash.stage) return Effect.void;
-              const commit = commits++;
-              return commit === crash.commit
-                ? Effect.fail(
-                    new EngineStoreError({ operation: "commit", cause: new Error("process died") }),
-                  )
-                : Effect.void;
-            },
-            tell: (tell) => (envelope) => {
-              if (!armed) return tell(envelope);
-              if (crash.how === "mid-effect" && envelope.command._tag === "HistoryBatch")
-                return Effect.andThen(
-                  tell(envelope),
-                  Effect.suspend(() => {
-                    acted = true;
-                    return Effect.never;
-                  }),
-                );
-              if (crash.how === "outcome-unrecorded" && envelope.command._tag === "EffectSettled")
-                return Effect.die("process died before the outcome was recorded");
-              return tell(envelope);
-            },
-          },
-        );
-        const after = yield* lifetime(file, ({ worker, flip }) =>
-          Effect.gen(function* () {
-            yield* drain(worker);
-            // Whatever the crash cut, the next boot's flip goes on where it stands.
-            yield* flip;
-            yield* drain(worker);
-            return yield* heldAfter;
-          }),
-        );
-        if (!same(after, expected)) {
-          broken.push(label);
+          );
+          if (!same(after, expected)) {
+            broken.push(label);
+          }
         }
-      }
-      expect(broken).toEqual([]);
-    }),
+        expect(broken).toEqual([]);
+      }),
+    // About two hundred crashes, two server lifetimes each: under a gate's parallel stages it
+    // outlasts the default deadline.
+    { timeout: 600_000 },
   );
 });

@@ -438,10 +438,20 @@ describe("CrewEngine runs", () => {
         write(world.root, "a.txt", "person\n");
         git(world.root, ["commit", "-q", "-am", "person edits a.txt"]);
         yield* reportDone(world, thread);
+        const admittedBefore = (yield* world.admissions).length;
         yield* ended(world, thread, 0.1);
         const reworked = yield* world.snapshotWhere(
           (current) =>
             current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
+        );
+        // The rework turn goes out, and is admitted as its run starts, a moment after its task moved.
+        yield* eventually(
+          Effect.map(turnsSent(world), (turns) =>
+            turns.at(-1)!.text.includes("resolve the conflicts"),
+          ),
+        );
+        yield* eventually(
+          Effect.map(world.admissions, (admitted) => admitted.length > admittedBefore),
         );
         const resolve = (yield* turnsSent(world)).at(-1)!;
         assert.deepStrictEqual(

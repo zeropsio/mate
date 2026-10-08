@@ -618,25 +618,35 @@ const enginePort = (input: {
       Effect.gen(function* () {
         // A turn the crew stopped already ended on the engine, when its interrupt was taken: the
         // agent's own word that it was interrupted is that end, not the next turn's.
-        const stopped =
-          end.state === "interrupted"
-            ? yield* Effect.flatMap(sql, (client) =>
-                client<{ readonly run_id: string }>`
-                  SELECT json_extract(payload_json, '$.runId') AS run_id FROM engine_event
-                  WHERE conversation_id = ${chat} AND type = 'RunEnded'
-                    AND json_extract(payload_json, '$.end.kind') = 'stopped'
-                  ORDER BY seq
-                `.pipe(
-                  Effect.map((rows) => rows.find((row) => !stopsTaken.has(row.run_id))),
-                  Effect.orDie,
-                ),
-              )
-            : undefined;
         const conversation = run(
           Effect.flatMap(Conversations, (conversations) =>
             conversations.state(ConversationId.make(chat)),
           ),
         ).pipe(Effect.orDie);
+        const stoppedRun = Effect.flatMap(sql, (client) =>
+          client<{ readonly run_id: string }>`
+            SELECT json_extract(payload_json, '$.runId') AS run_id FROM engine_event
+            WHERE conversation_id = ${chat} AND type = 'RunEnded'
+              AND json_extract(payload_json, '$.end.kind') = 'stopped'
+            ORDER BY seq
+          `.pipe(
+            Effect.map((rows) => rows.find((row) => !stopsTaken.has(row.run_id))),
+            Effect.orDie,
+          ),
+        );
+        // A Stop asked of the running turn ends it on the engine when its interrupt is taken,
+        // however late that comes: the agent's word that it was interrupted is that end.
+        const stopAsked = Effect.map(conversation, (state) => {
+          const active = state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+          return active?.stopAsked != null;
+        });
+        if (end.state === "interrupted" && (yield* stopAsked)) {
+          yield* waitFor(
+            `${chat}'s stopped turn to end`,
+            Effect.map(stoppedRun, (found) => found !== undefined),
+          );
+        }
+        const stopped = end.state === "interrupted" ? yield* stoppedRun : undefined;
         let ending: string | null;
         if (stopped !== undefined) {
           stopsTaken.add(stopped.run_id);

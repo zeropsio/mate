@@ -1674,12 +1674,16 @@ describe("CrewEngine", () => {
           const requested = yield* world.snapshotWhere((snapshot) =>
             snapshot.attention.some((row) => row.kind === "show-on-dev"),
           );
+          const turnsBefore = (yield* turnsSent(world)).length;
           yield* eventually(
             world.press({ _tag: "claimGrant", host: "appdev" }).pipe(
               Effect.as(true),
               Effect.orElseSucceed(() => false),
             ),
           );
+          // The claim's turn goes out a moment after the press: its session is read once it has.
+          yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length > turnsBefore));
+          yield* world.turnStarts(thread);
           const claimTurn = (yield* turnsSent(world)).at(-1)!;
           const shaped = Option.getOrThrow(yield* world.member(thread)).gate;
           started.push(startDevServer(world, NodePath.join(world.root, ".crew/backend")));
