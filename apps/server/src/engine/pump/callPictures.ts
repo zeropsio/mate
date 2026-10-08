@@ -58,7 +58,9 @@ export const makeCallPictures = (
   stateDir: string,
   cwdOf: (thread: ThreadId) => Effect.Effect<string | undefined>,
 ): CallPictures => {
-  const store = contentAssetsAt(stateDir);
+  // Opened on first use: a host that never meets a picture never touches the store.
+  let opened: ReturnType<typeof contentAssetsAt> | undefined;
+  const assets = () => (opened ??= contentAssetsAt(stateDir));
   const owner = (thread: ThreadId, key: string) => ({
     threadId: thread,
     ownerId: key,
@@ -67,16 +69,16 @@ export const makeCallPictures = (
   return {
     results: (thread, key, images) =>
       Effect.forEach(images, (image) =>
-        Effect.tryPromise(
-          () =>
-            store.legacy([thread, key, image.data], () =>
-              store.ingestBytes(Buffer.from(image.data, "base64"), {
-                ...owner(thread, key),
-                name: "tool-image",
-                mimeType: image.mimeType,
-              }),
-            ) as Promise<Stored>,
-        ).pipe(
+        Effect.tryPromise(() => {
+          const store = assets();
+          return store.legacy([thread, key, image.data], () =>
+            store.ingestBytes(Buffer.from(image.data, "base64"), {
+              ...owner(thread, key),
+              name: "tool-image",
+              mimeType: image.mimeType,
+            }),
+          ) as Promise<Stored>;
+        }).pipe(
           Effect.map((asset): CallResultPicture | null =>
             asset.original.status === "ready"
               ? {
@@ -99,14 +101,15 @@ export const makeCallPictures = (
       Effect.gen(function* () {
         const cwd = yield* cwdOf(thread);
         if (cwd === undefined) return null;
-        const asset = (yield* Effect.tryPromise(() =>
-          store.legacy([thread, key, path], () =>
+        const asset = (yield* Effect.tryPromise(() => {
+          const store = assets();
+          return store.legacy([thread, key, path], () =>
             store.ingestFile(NodePath.resolve(cwd, path), {
               ...owner(thread, key),
               name: NodePath.basename(path),
             }),
-          ),
-        )) as Stored;
+          );
+        })) as Stored;
         const original = asset.original;
         return {
           imagePath: `mate-asset:${asset.id}${original.status === "failed" ? `:${original.code}` : ""}`,
