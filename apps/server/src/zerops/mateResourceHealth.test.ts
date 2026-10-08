@@ -177,6 +177,46 @@ describe("container resource evidence", () => {
       );
     },
   );
+  it("withholds the container cap when partial root reads leave only child memory evidence", async () => {
+    const root = await fixture({ "memory.max": String(3.75 * 1024 ** 3) });
+    await NodeFSP.unlink(NodePath.join(root, "memory.current"));
+    const child = await fixture({
+      "memory.max": String(1024 ** 3),
+      "memory.high": String(0.5 * 1024 ** 3),
+      "memory.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+    });
+    expect(await readResourceHealth([child, root], root)).toMatchObject({
+      status: "strained",
+      resources: ["memory"],
+      unavailable: ["memory.current"],
+      memory: { scope: child, max: null, high: null, pressure: { some: { avg10: 30 } } },
+    });
+  });
+  it.each(["disabled", "unreadable"])(
+    "preserves descendant I/O stalls with %s root PSI",
+    async (accounting) => {
+      const root = await fixture({ "cgroup.pressure": "0" });
+      const child = await fixture({
+        "io.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+      });
+      if (accounting === "unreadable") await NodeFSP.unlink(NodePath.join(root, "io.pressure"));
+      const health = await readResourceHealth([child, root], root);
+      expect(health).toMatchObject({
+        status: "strained",
+        resources: ["io"],
+        severity: "warning",
+        io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+      });
+      expect(health.unavailable.includes("io.pressure")).toBe(accounting === "unreadable");
+      await NodeFSP.writeFile(
+        NodePath.join(child, "io.pressure"),
+        "some avg10=0.00 total=300\nfull avg10=0.00 total=240\n",
+      );
+      expect((await readResourceHealth([child, root], root, health)).status).toBe(
+        accounting === "unreadable" ? "unknown" : "ok",
+      );
+    },
+  );
   it.each([
     { allocation: 3.375, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 30, resources: ["io"] },
     { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 0, resources: [] },

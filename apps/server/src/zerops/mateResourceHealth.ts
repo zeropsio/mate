@@ -83,6 +83,7 @@ export async function readResourceHealth(
   // scope. A child's limit cannot describe the container's allocation. Events
   // cannot identify which threshold was crossed (memory.events is hierarchical).
   const container = known.at(-1);
+  const root = cgroups.at(-1);
   // cgroup.pressure is independently configurable at each level. A quiet or
   // unreadable ancestor cannot erase measured descendant stalls. Keep the
   // strongest actual PSI reading, rather than summing overlapping accounting.
@@ -97,6 +98,9 @@ export async function readResourceHealth(
       ? null
       : {
           ...container,
+          // A descendant fallback proves pressure, not the container's limits.
+          max: container.scope === root ? container.max : null,
+          high: container.scope === root ? container.high : null,
           pressure,
           swapGrowth: growing(
             container.swapCurrent ?? 0,
@@ -125,12 +129,9 @@ export async function readResourceHealth(
             ),
           },
         };
-  const root = cgroups.at(-1);
-  const [cpuRead, io, disk] = await Promise.all([
+  const [cpuRead, ioReadings, disk] = await Promise.all([
     sampleCpu(),
-    root === undefined
-      ? null
-      : read(root, "io.pressure", pressureOf).then((value) => value ?? null),
+    Promise.all(cgroups.map((dir) => read(dir, "io.pressure", pressureOf))),
     NodeFSP.statfs(stateDir)
       .then((stat) => ({ free: stat.bavail * stat.bsize, total: stat.blocks * stat.bsize }))
       .catch(() => {
@@ -138,6 +139,11 @@ export async function readResourceHealth(
         return null;
       }),
   ]);
+  // I/O PSI accounting has the same independent enablement as memory PSI.
+  const io =
+    ioReadings
+      .filter((value) => value !== undefined)
+      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
   const cpu = cpuRead.cpu;
   for (const file of cpuRead.unavailable) unavailable.add(file);
   if (cgroups.length === 0) unavailable.add("cgroup-v2");
