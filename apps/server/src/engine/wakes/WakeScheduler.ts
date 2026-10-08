@@ -16,6 +16,7 @@ import type * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { ConversationId, WakeId } from "@t3tools/contracts";
 
+import { UPDATE_DRAIN_MESSAGE } from "../updateAdmission.ts";
 import { Conversations } from "../Conversations.ts";
 import { wakeFiredCommandId } from "../domain/ids.ts";
 import { EngineSignals } from "../EngineSignals.ts";
@@ -93,6 +94,8 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
       );
     if (Option.isNone(told)) return;
     const result = told.value;
+    // The armed row is the durable deferral; cancellation or a new boot can fire it later.
+    if (result._tag === "Rejected" && result.rejection.detail === UPDATE_DRAIN_MESSAGE) return;
     // The owner does not hold this arming: drop it so it cannot fire in a loop. A newer arming of
     // the same wake has another sequence and stays armed.
     if (result._tag === "Rejected") {
@@ -108,6 +111,7 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
   const fireDue = Effect.fnUntraced(function* (now: number) {
     let fired = 0;
     while (fired < FIRE_BATCH) {
+      if (yield* conversations.updateAdmission?.closed ?? Effect.succeed(false)) break;
       const next = yield* earliest;
       if (Option.isNone(next) || next.value.at > now) break;
       yield* fire(next.value);
@@ -119,6 +123,8 @@ export const makeWakeScheduler = Effect.fn("makeWakeScheduler")(function* () {
   /** One turn of the loop: fire what is due, else sleep until the earliest is or a ring. */
   const turn = Effect.gen(function* () {
     yield* signals.wakes.arm;
+    if (yield* conversations.updateAdmission?.closed ?? Effect.succeed(false))
+      return yield* signals.wakes.wait;
     const now = yield* Clock.currentTimeMillis;
     if ((yield* fireDue(now)) > 0) return;
     const next = yield* earliest;

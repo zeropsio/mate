@@ -970,6 +970,40 @@ describe("openCodexThread", () => {
     }),
   );
 
+  it.effect.each(["conversation/s/1", "crew-standup/s/42"])(
+    "the engine session %s never silently starts fresh when native resume fails",
+    (threadId) =>
+      Effect.gen(function* () {
+        let started = false;
+        const error = yield* openCodexThread({
+          client: {
+            request: () =>
+              Effect.sync(() => {
+                started = true;
+                return makeThreadOpenResponse("fresh-thread");
+              }),
+            raw: {
+              request: () =>
+                Effect.fail(
+                  new CodexErrors.CodexAppServerRequestError({
+                    code: -32603,
+                    errorMessage: "thread not found",
+                  }),
+                ),
+            },
+          },
+          threadId: ThreadId.make(threadId),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "original-thread",
+        }).pipe(Effect.flip);
+        NodeAssert.ok(isCodexAppServerRequestError(error));
+        NodeAssert.equal(started, false);
+      }),
+  );
+
   it.effect("falls back to thread/start when resume fails recoverably", () =>
     Effect.gen(function* () {
       const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];

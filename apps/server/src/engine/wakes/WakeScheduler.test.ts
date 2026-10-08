@@ -56,6 +56,25 @@ const wakeStates = Effect.gen(function* () {
 });
 
 describe("WakeScheduler", () => {
+  it.layer(engine)("update drain", (it) => {
+    it.effect("a due wake stays durably armed while updating and fires after cancellation", () =>
+      Effect.gen(function* () {
+        const c = ConversationId.make("update-wake");
+        const conversations = yield* Conversations;
+        const admission = conversations.updateAdmission;
+        assert.ok(admission);
+        yield* arm(c, { kind: "schedule", key: "update", dueAt: 0 });
+        const scheduler = yield* makeWakeScheduler();
+        yield* admission.begin;
+        expect(yield* scheduler.fireDue(1)).toBe(0);
+        expect(yield* fired(c)).toEqual({ fires: 0, runs: 0 });
+        expect((yield* wakeStates)[c]).toBe("armed");
+        yield* admission.cancel;
+        expect(yield* scheduler.fireDue(1)).toBe(1);
+        expect(yield* fired(c)).toEqual({ fires: 1, runs: 1 });
+      }),
+    );
+  });
   it.layer(engine)("timing", (it) => {
     it.effect("fires the earliest wake first", () =>
       Effect.gen(function* () {

@@ -789,14 +789,17 @@ export const openCodexThread = (input: {
         ),
       ),
     ),
-    Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-      Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-        threadId: input.threadId,
-        requestedRuntimeMode: input.runtimeMode,
-        resumeThreadId,
-        recoverable: true,
-        cause: error,
-      }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
+    // Engine generations keep their original native thread across a Mate update.
+    Effect.catchIf(
+      (error) => !/\/s\/\d+$/u.test(input.threadId) && isRecoverableThreadResumeError(error),
+      (error) =>
+        Effect.logWarning("codex app-server thread resume fell back to fresh start", {
+          threadId: input.threadId,
+          requestedRuntimeMode: input.runtimeMode,
+          resumeThreadId,
+          recoverable: true,
+          cause: error,
+        }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
     ),
   );
 };
