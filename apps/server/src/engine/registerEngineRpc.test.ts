@@ -11,9 +11,8 @@ import { inertMateEngine } from "./MateEngine.ts";
 import { registerEngineRpc } from "./registerEngineRpc.ts";
 import { unservedWire, type EngineWireShape, type WireCaller } from "./wire/EngineWire.ts";
 
-const observe = {
-  observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
-  observeRpcStream: <A, E, R>(_method: string, stream: Stream.Stream<A, E, R>) => stream,
+const passThrough = {
+  admit: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
 };
 const source = Effect.succeed({ environmentId: "env-1", epoch: 7 });
 const conversationId = ConversationId.make("mate");
@@ -25,7 +24,7 @@ describe("registerEngineRpc", () => {
         engine: inertMateEngine,
         source,
         subject: "ana",
-        ...observe,
+        ...passThrough,
       });
       const frames = yield* Stream.runCollect(
         handlers[WS_METHODS.subscribeEngineConversation]({ protocol: 1, conversationId }),
@@ -52,7 +51,12 @@ describe("registerEngineRpc", () => {
             return { _tag: "Accepted", seq: 1 } as const;
           }),
       };
-      const handlers = registerEngineRpc({ engine: { wire }, source, subject: "ana", ...observe });
+      const handlers = registerEngineRpc({
+        engine: { wire },
+        source,
+        subject: "ana",
+        ...passThrough,
+      });
       yield* handlers[WS_METHODS.engineSend]({
         protocol: 1,
         conversationId,

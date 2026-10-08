@@ -1374,6 +1374,15 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
   { error: EnvironmentAuthorizationError },
 ) {}
 
+/**
+ * Records each RPC's span and request metrics on the server. Added after
+ * `RpcScopeAuthorization`, so it wraps authorization and also records rejected
+ * calls. Clients ignore it.
+ */
+export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation>()(
+  "t3/contracts/RpcInstrumentation",
+) {}
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1508,4 +1517,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
-).middleware(RpcScopeAuthorization);
+)
+  .middleware(RpcScopeAuthorization)
+  // Middleware added later wraps middleware added earlier.
+  .middleware(RpcInstrumentation);

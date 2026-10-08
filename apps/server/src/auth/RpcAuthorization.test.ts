@@ -16,6 +16,7 @@ import {
   requiredScopeForRpcMethod,
   rpcScopeAuthorizationLayer,
 } from "./RpcAuthorization.ts";
+import { rpcInstrumentationLayer } from "../observability/RpcInstrumentation.ts";
 
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
@@ -79,6 +80,7 @@ describe("RPC scope middleware", () => {
               Effect.sync(() => handled.push("retry")).pipe(Effect.andThen(Effect.never)),
             ),
             rpcScopeAuthorizationLayer([AuthOrchestrationReadScope]),
+            rpcInstrumentationLayer,
           ),
         ),
       );

@@ -22,14 +22,16 @@ method.
 ```ts
 // ws.ts: a thin handler
 [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
-  observeRpcEffect(
-    ORCHESTRATION_WS_METHODS.getTurnDiff,
-    checkpointDiffQuery.getTurnDiff(input).pipe(
-      Effect.mapError((cause) => new OrchestrationGetTurnDiffError({ message: "…", cause })),
-    ),
-    { "rpc.aggregate": "orchestration" },
-  ),
+  checkpointDiffQuery
+    .getTurnDiff(input)
+    .pipe(Effect.mapError((cause) => new OrchestrationGetTurnDiffError({ message: "…", cause }))),
 ```
+
+Handlers don't add their own spans or request metrics. Group middleware authorizes every call
+([`RpcAuthorization.ts`](../../apps/server/src/auth/RpcAuthorization.ts)), and the server's group
+also instruments it
+([`RpcInstrumentation.ts`](../../apps/server/src/observability/RpcInstrumentation.ts)). A handler
+with per-call context, such as a thread id, adds it with `Effect.annotateCurrentSpan`.
 
 ## Shape of a service module
 

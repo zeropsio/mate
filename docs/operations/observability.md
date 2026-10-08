@@ -599,8 +599,8 @@ Values are case-insensitive and trimmed. An unrecognized value is ignored with a
 
 Current high-value span and metric boundaries include:
 
-- Effect RPC websocket request spans from `effect/rpc`
-- RPC request metrics in `apps/server/src/observability/RpcInstrumentation.ts`
+- WebSocket RPC request spans (`ws.rpc.<method>`) and metrics in
+  `apps/server/src/observability/RpcInstrumentation.ts`
 - startup phases
 - orchestration command processing
 - orchestration command acknowledgment latency
