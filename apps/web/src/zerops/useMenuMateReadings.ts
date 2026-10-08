@@ -229,7 +229,16 @@ export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): numb
 }
 
 /** HQ transport loss is not evidence that a Mate went offline. */
-export function useMateOfflineSince(projectId: string | null | undefined): string | undefined {
+export function useMateOfflineSince(
+  projectId: string | null | undefined,
+  key?: string,
+): string | undefined {
   const read = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
-  return read.live && read.presence?.online === false ? read.presence.since : undefined;
+  const { mateLink } = useEnvironmentLinks();
+  const link = mateLink({ key: key ?? projectId ?? "", project: { id: projectId ?? "" } });
+  return link.linkLostAt === undefined
+    ? read.live && read.presence?.online === false
+      ? read.presence.since
+      : undefined
+    : new Date(link.linkLostAt).toISOString();
 }

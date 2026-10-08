@@ -200,7 +200,7 @@ export function mateNoticeVoice(
         ? reachability.container
         : null;
   const recovery =
-    (input.recovery === undefined ? null : recoveryNotice(input.recovery, name, input.nowMs)) ??
+    (input.recovery === undefined ? null : recoveryNotice(input.recovery, name)) ??
     (notice?.level === "inactive"
       ? recoveryNotice(
           { standing: { kind: "unknown" }, status: notice.status, process: undefined },

@@ -346,3 +346,24 @@ describe("buildSimpleFields — a request for a vault value", () => {
     );
   });
 });
+
+it("a restart result retains process identity and uses calm failure words after reload", () => {
+  const fields = buildSimpleFields(
+    "manage",
+    simpleCall("zerops_manage", "completed", {
+      process: {
+        ...proc("FAILED", "serviceStack private-id broke"),
+        actionName: "stack.restart",
+        created: "2026-09-01T00:00:00Z",
+        finished: "2026-09-01T00:15:00Z",
+      },
+    }),
+  );
+  expect(fields).toMatchObject({
+    processIds: ["proc-1"],
+    phaseOverride: "failed",
+    statusWord: "Failed",
+    closing: "Zerops couldn't restart apidev after 15 min — platform error.",
+  });
+  expect(fields.explanation).toBeUndefined();
+});

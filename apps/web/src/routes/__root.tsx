@@ -192,19 +192,13 @@ function SignedInRootRouteView() {
         : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
-  // The existing seconds clock counts retry waits and elapsed lifecycle work.
   const recovery = useMateRecovery(
     gateInputs.projectId,
     gateInputs.serviceId,
     linkReachability?.kind !== "ready",
   );
-  const nowMs = useSecondsNowMs(
-    reachabilityCountsDown(linkReachability) ||
-      ((recovery.process?.status === "RUNNING" || recovery.process?.status === "PENDING") &&
-        (recovery.process.actionName === "stack.restart" ||
-          recovery.process.actionName === "stack.start")),
-  );
-  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName, nowMs);
+  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
+  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
   const projectUnavailable =
     recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
   const gatePhrase =
@@ -217,7 +211,12 @@ function SignedInRootRouteView() {
     speakingName,
   );
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const offlineSince = useMateOfflineSince(gateInputs.projectId);
+  const offlineSince = useMateOfflineSince(
+    gateInputs.projectId,
+    gateInputs.serviceId === undefined
+      ? undefined
+      : `${gateInputs.projectId}:${gateInputs.serviceId}`,
+  );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
     speaksFor !== null &&

@@ -24,6 +24,7 @@ vi.mock("react", async (importOriginal) => {
   const { reactHookHarness } = await import("../../test/reactHookHarness");
   return {
     ...actual,
+    useContext: () => null,
     useEffect: reactHookHarness.useEffect,
     useRef: reactHookHarness.useRef,
     useState: reactHookHarness.useState,
@@ -66,6 +67,7 @@ import {
   observationTargetFor,
   pipelineServiceFor,
   useOperationCard,
+  restartCardReadout,
 } from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
@@ -987,5 +989,47 @@ describe("useOperationCard — the browser check's subject host (hook)", () => {
     );
     expect(region.subjectHost).toBe(subjectHost);
     expect("subjectHost" in region).toBe(subjectHost !== undefined);
+  });
+});
+
+it("a restart card retains its failed process after a ready service reload without exposing platform ids", () => {
+  const process: ActivityProcess = {
+    id: "private",
+    projectId: "p",
+    serviceStackIds: ["s"],
+    actionName: "stack.restart",
+    status: "FAILED",
+    created: "2026-10-08T10:00:00Z",
+    finished: "2026-10-08T10:15:00Z",
+    failReason: "serviceStack private platform error",
+  };
+  expect(restartCardReadout(process, "Eddy", NOW)).toEqual({
+    text: "Zerops couldn't restart Eddy after 15 min — platform error.",
+    status: "Failed",
+    duration: "15m",
+  });
+  expect(
+    observationTargetFor(operation({ kind: "manage", phase: "done", processIds: ["private"] }))
+      ?.exact,
+  ).toEqual({ processIds: ["private"] });
+});
+it("a long restart card counts its own process without manufacturing failure", () => {
+  expect(
+    restartCardReadout(
+      {
+        id: "r",
+        projectId: "p",
+        serviceStackIds: ["other-service"],
+        actionName: "stack.restart",
+        status: "RUNNING",
+        created: "2026-10-08T10:00:00Z",
+      },
+      "Eddy",
+      Date.parse("2026-10-08T10:15:00Z"),
+    ),
+  ).toEqual({
+    text: "Eddy is restarting — 15 min elapsed.",
+    status: "Restarting",
+    duration: "15m",
   });
 });

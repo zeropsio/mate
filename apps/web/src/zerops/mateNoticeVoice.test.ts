@@ -258,3 +258,27 @@ it("uses the offline source time without turning retained work time into outage 
   });
 });
 
+it("a recovered Mate does not repeat its old failed process as a connection banner", () => {
+  expect(
+    mateNoticeVoice({
+      mateName: "Eddy",
+      conversationShown: true,
+      reachability: { kind: "ready", notice: null },
+      nowMs: 0,
+      recovery: {
+        standing: { kind: "unknown" },
+        status: "ACTIVE",
+        process: {
+          id: "restart-private",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          actionName: "stack.restart",
+          status: "FAILED",
+          created: "2026-10-08T10:00:00Z",
+          finished: "2026-10-08T10:15:00Z",
+          failReason: "platform error",
+        },
+      },
+    }),
+  ).toMatchObject({ surface: "none" });
+});

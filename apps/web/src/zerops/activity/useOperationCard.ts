@@ -8,8 +8,10 @@
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useEffect, useState, type ReactElement } from "react";
+import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
 
+export { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type {
@@ -35,6 +37,11 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
+import { restartWay } from "@t3tools/client-runtime/data";
+import { AccountOperationsContext } from "../accountOperations";
+import { useAccountDataOptional } from "../ZeropsAccountData";
+import { submitZeropsWrite } from "../zeropsWrite";
+import { toastManager } from "~/components/ui/toast";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import { browserPageUrl } from "../../components/zerops/operation/subject";
 import type {
@@ -92,7 +99,7 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   const processIds = operation.processIds ?? [];
   const named = appVersionIds.length > 0 || processIds.length > 0;
   const running = operation.phase === "running";
-  if (!running && (operation.kind !== "deploy" || !named)) {
+  if (!running && (!["deploy", "manage"].includes(operation.kind) || !named)) {
     return null;
   }
   return {
@@ -341,6 +348,8 @@ function useLiveBrowserFrame(
 
 export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
+  readonly restartProcess?: ActivityProcess;
+  readonly onRestartRetry?: () => Promise<void>;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
   /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
@@ -384,6 +393,8 @@ export function useOperationCard(
   readsLog = true,
   threadId: string | null = null,
 ): OperationCardRegions {
+  const operations = useContext(AccountOperationsContext);
+  const account = useAccountDataOptional();
   const target = observationTargetFor(operation);
   const running = operation.phase === "running";
   // A settled one whose pipeline still runs moves on the clock too: its steps count on.
@@ -398,7 +409,8 @@ export function useOperationCard(
   const unsettled =
     !running &&
     state.kind !== "off" &&
-    state.observation.pipeline !== undefined &&
+    (state.observation.pipeline !== undefined ||
+      state.observation.process?.actionName === "stack.restart") &&
     state.observation.outcome === undefined;
   useEffect(() => setSettledRunning(unsettled), [unsettled]);
   const topology = useZeropsTopology(environmentId);
@@ -412,7 +424,39 @@ export function useOperationCard(
   const subjectHost = browserSubjectHostFor(operation, topology);
   const seen = state.kind === "off" ? undefined : state.observation;
   const service = batchServiceFor(operation, seen, topology);
+  const restartProcess =
+    operation.kind === "manage" && seen?.process?.actionName === "stack.restart"
+      ? seen.process
+      : undefined;
+  const restartService = topology?.services.find((service) =>
+    restartProcess?.serviceStackIds.includes(service.serviceId),
+  );
   const fields = {
+    ...(restartProcess?.status !== "FAILED" ||
+    restartService === undefined ||
+    operations === null ||
+    account?.orgId == null
+      ? {}
+      : {
+          onRestartRetry: async () => {
+            try {
+              await submitZeropsWrite(operations, account.orgId, {
+                kind: "mate-restart",
+                projectId: restartProcess.projectId,
+                serviceId: restartService.serviceId,
+                way: restartWay(restartService.status),
+              });
+            } catch {
+              toastManager.add({
+                type: "error",
+                title: "Zerops could not confirm the restart request.",
+              });
+            }
+          },
+        }),
+    ...(operation.kind === "manage" && seen?.process?.actionName === "stack.restart"
+      ? { restartProcess: seen.process }
+      : {}),
     ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),

@@ -5,6 +5,7 @@
  * it, e.g. a start-without-code deploy with no build) is omitted rather than
  * rendered as an empty row.
  */
+import { formatDuration } from "./pipelineReadout.ts";
 import { platformStatus, processActionWord } from "../operations/phrases.ts";
 import { type PipelineState, type PipelineStepStatus, getPipelineState } from "./pipelineState.ts";
 import type { ActivityAppVersion, ActivityProcess } from "./dto.ts";
@@ -181,5 +182,35 @@ export function observedProcessStep(process: ActivityProcess): ObservedProcessSt
     label: processActionWord(process.actionName),
     state,
     stateLabel: word,
+  };
+}
+
+/** One process reading supplies the restart card's words and duration. */
+export function restartCardReadout(
+  process: Pick<ActivityProcess, "status"> & Partial<ActivityProcess>,
+  name: string,
+  now: number,
+) {
+  const duration = formatDuration(
+    (process.finished === undefined ? now : Date.parse(process.finished)) -
+      Date.parse(process.started ?? process.created ?? ""),
+  );
+  const elapsed = duration?.replaceAll("m", " min").replaceAll("s", " sec").replaceAll("h", " hr");
+  const failed = process.status === "FAILED" || process.status === "CANCELED";
+  const reason = process.failReason ?? process.error?.message;
+  const cause =
+    reason && /init command failed|CommandExec/iu.test(reason)
+      ? "its startup command failed"
+      : reason && /ENOSPC|EDQUOT|no space left|disk quota exceeded/iu.test(reason)
+        ? "its disk is full"
+        : "platform error";
+  return {
+    text: failed
+      ? `Zerops couldn't restart ${name}${elapsed === undefined || process.finished === undefined ? "" : ` after ${elapsed}`} — ${cause}.`
+      : process.status === "FINISHED"
+        ? `${name} restarted.`
+        : `${name} is restarting${elapsed === undefined ? "" : ` — ${elapsed} elapsed`}.`,
+    status: failed ? "Failed" : process.status === "FINISHED" ? "Restarted" : "Restarting",
+    duration,
   };
 }

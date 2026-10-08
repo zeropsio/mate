@@ -1,3 +1,4 @@
+import { restartCardReadout } from "../../activity/observedSteps.ts";
 /**
  * delete / scale / manage / env — no `payloads.ts` card, just a message
  * document plus the process outcome `decodeProcessOutcome` reads off it.
@@ -79,6 +80,12 @@ export function buildSimpleFields(
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
   const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
+  const restart =
+    kind === "manage" && outcome?.process?.actionName === "stack.restart"
+      ? outcome.process
+      : undefined;
+  const restartWords =
+    restart === undefined ? undefined : restartCardReadout(restart, named ?? subject, NaN);
   // An env call's failure never carries an entry it was given: values can be secrets.
   const failure =
     errorInfo === undefined
@@ -97,16 +104,30 @@ export function buildSimpleFields(
 
   return {
     subject,
+    ...(kind === "manage" && outcome?.process !== undefined
+      ? { processIds: [outcome.process.id] }
+      : {}),
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: gatedStatusWord(
-      kind,
-      phase,
-      decoded.document !== undefined,
-      call.resultText !== undefined,
-    ),
-    ...(closing !== undefined ? { closing } : {}),
+    ...(restart === undefined
+      ? {}
+      : {
+          phaseOverride:
+            restart.status === "FAILED" || restart.status === "CANCELED"
+              ? ("failed" as const)
+              : restart.status === "FINISHED"
+                ? ("done" as const)
+                : ("running" as const),
+        }),
+    statusWord:
+      restartWords?.status ??
+      gatedStatusWord(kind, phase, decoded.document !== undefined, call.resultText !== undefined),
+    ...(restartWords === undefined
+      ? closing !== undefined
+        ? { closing }
+        : {}
+      : { closing: restartWords.text }),
     steps: [
       buildStep(
         kind,
@@ -119,9 +140,11 @@ export function buildSimpleFields(
     ...(named === undefined ? {} : { target: { hostname: named } }),
     ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
-    ...(errorInfo !== undefined
-      ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
-      : explanationField(outcomeReason(decoded.document, outcome))),
+    ...(restart !== undefined
+      ? {}
+      : errorInfo !== undefined
+        ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
+        : explanationField(outcomeReason(decoded.document, outcome))),
   };
 }
 

@@ -1891,3 +1891,42 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
     expect(html).toContain("A sign-in was refused, so the deploy never ran.");
   });
 });
+
+it("a failed restart card says the process outcome and offers an explicit retry for its target", () => {
+  const operation = operationFor({
+    id: "c",
+    turnId: "t",
+    toolName: "zerops_manage",
+    input: { serviceHostname: "Eddy", action: "restart" },
+    status: "completed",
+    resultText: JSON.stringify({
+      process: { id: "r", actionName: "stack.restart", status: "RUNNING" },
+    }),
+    truncated: false,
+    startedAt: "2026-10-08T10:00:00Z",
+    settledAt: "2026-10-08T10:00:10Z",
+    anchorActivityId: "a",
+    rowIds: new Set(["a"]),
+    agentInternal: false,
+  });
+  const html = renderToStaticMarkup(
+    <ZeropsOperationCard
+      operation={operation}
+      now={Date.parse("2026-10-08T10:20:00Z")}
+      restartProcess={{
+        id: "r",
+        projectId: "p",
+        serviceStackIds: ["other-service"],
+        actionName: "stack.restart",
+        status: "FAILED",
+        created: "2026-10-08T10:00:00Z",
+        finished: "2026-10-08T10:15:00Z",
+        failReason: "serviceStack private-id broke",
+      }}
+      onRestartRetry={async () => {}}
+    />,
+  );
+  expect(html).toContain("Zerops couldn&#x27;t restart Eddy after 15 min — platform error.");
+  expect(html).toContain("Try again");
+  expect(html).not.toContain("private-id");
+});

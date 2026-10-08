@@ -30,6 +30,8 @@ export interface ObservedPipeline {
 }
 
 export interface Observation {
+  /** The attributed process, including its terminal status and timestamps. */
+  readonly process?: ActivityProcess;
   /** Absent without a step source, or while its pipeline has no step to show. */
   readonly pipeline?: ObservedPipeline;
   /** Every attributed process but the step source — a secondary action in the same window (e.g. a subdomain toggle beside a deploy). */
@@ -166,6 +168,7 @@ function observationFor(attribution: AttributionResult): Observation {
   return {
     ...(pipeline === undefined ? {} : { pipeline }),
     chips: attribution.chips,
+    ...(stepSource === undefined ? {} : { process: stepSource }),
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
     ...(stepSource === undefined ? {} : { serviceIds: stepSource.serviceStackIds }),

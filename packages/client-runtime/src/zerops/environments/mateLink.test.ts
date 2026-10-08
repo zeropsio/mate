@@ -228,6 +228,7 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
         key: KEY,
         environmentId: ENV_A,
         reachability: { kind: "reconnecting" },
+        linkLostAt: 5_000,
       },
     },
     {
@@ -265,6 +266,7 @@ describe("mateLink — what a door opens of a Mate, and what its own view waits 
       ],
       registered: [ENV_A],
       link: {
+        linkLostAt: 5_000,
         key: KEY,
         environmentId: ENV_A,
         reachability: { kind: "container", container: { level: "booting", overdue: false } },

@@ -24,6 +24,17 @@ import {
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
+const socketLoss = vi.hoisted(() => ({ at: undefined as number | undefined }));
+vi.mock("../routes/-environmentTargets", async (original) => {
+  const actual = await original<typeof import("../routes/-environmentTargets")>();
+  return {
+    ...actual,
+    useEnvironmentLinks: () =>
+      socketLoss.at === undefined
+        ? actual.useEnvironmentLinks()
+        : { mateLink: () => ({ linkLostAt: socketLoss.at }) },
+  };
+});
 const AT = "2026-10-03T09:00:00.000Z";
 
 /** Vera, online, at work on her main chat. */
@@ -218,3 +229,16 @@ it.each([
     expect(mountedOver(registry, () => useMateOfflineSince("p-vera"))).toBe(since);
   },
 );
+
+it("a lost browser socket supplies the since-time while HQ still sees the Mate online", () => {
+  const registry = told(VERA);
+  mountHqNavigation(registry, "org-acme", { live: true, mates: { "p-vera": VERA } });
+  socketLoss.at = Date.parse("2026-10-08T10:36:00Z");
+  try {
+    expect(mountedOver(registry, () => useMateOfflineSince("p-vera", "p-vera:s"))).toBe(
+      "2026-10-08T10:36:00.000Z",
+    );
+  } finally {
+    socketLoss.at = undefined;
+  }
+});

@@ -60,6 +60,8 @@ export interface MateLink {
    * is still on its way. Once answered, it is no longer arriving, whatever it waits for now.
    */
   readonly answered: boolean;
+  /** The browser socket loss, independent of HQ presence. */
+  readonly linkLostAt?: number;
 }
 
 export function mateLink(input: {
@@ -97,6 +99,7 @@ export function mateLink(input: {
     key,
     environmentId: opens ? named : undefined,
     reachability,
+    ...(machine.linkLostAt === null ? {} : { linkLostAt: machine.linkLostAt.wall }),
     failuresSinceConnect: machine.failuresSinceConnect,
     errorsSinceConnect: machine.errorsSinceConnect,
     answered:

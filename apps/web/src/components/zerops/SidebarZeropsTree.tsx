@@ -2648,7 +2648,7 @@ function MateRowView<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
-  const offlineSince = useMateOfflineSince(candidate.project.id);
+  const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
   const read = mateRowReading({
     name: projectNameInApp(candidate.project),
     connected: up,

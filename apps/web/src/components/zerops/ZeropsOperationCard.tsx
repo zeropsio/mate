@@ -1,3 +1,6 @@
+import { Button } from "~/components/ui/button";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
@@ -663,6 +666,8 @@ function StepsBody({
 export function ZeropsOperationCard(props: {
   readonly operation: ZeropsOperation;
   readonly observed?: ObservedRegion;
+  readonly restartProcess?: ActivityProcess;
+  readonly onRestartRetry?: () => Promise<void>;
   /**
    * `devServer` only: the subdomain URL resolved by the timeline's own
    * topology view (client-topology-view — server feed, not the tool result).
@@ -702,19 +707,43 @@ export function ZeropsOperationCard(props: {
     live = false,
     liveFrame,
     observed,
-    operation,
     subjectHost,
     threadRef,
   } = props;
-  const tone = operationTone(operation);
-  const isRunning = isRunningPhase(operation);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const sourceOperation = props.operation;
+  const restartProcess = props.restartProcess;
+  const restartRunning =
+    restartProcess !== undefined &&
+    !["FINISHED", "FAILED", "CANCELED"].includes(restartProcess.status);
+  const isRunning = restartProcess === undefined ? isRunningPhase(sourceOperation) : restartRunning;
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
+  const restartReadout =
+    restartProcess === undefined
+      ? undefined
+      : restartCardReadout(restartProcess, sourceOperation.subject, now);
+  const { explanation: _sourceExplanation, ...restartOperation } = sourceOperation;
+  const operation =
+    restartReadout === undefined
+      ? sourceOperation
+      : {
+          ...restartOperation,
+          statusWord: restartReadout.status,
+          phase: restartRunning
+            ? ("running" as const)
+            : restartProcess?.status === "FINISHED"
+              ? ("done" as const)
+              : ("failed" as const),
+          closing: restartReadout.text,
+        };
+  const tone = operationTone(operation);
   const deploy = readsPipeline(operation)
     ? deployHeader(operation, observed?.pipeline, now)
     : undefined;
   const durationText =
-    deploy === undefined ? headerDurationText(operation, now) : deploy.durationText;
+    restartReadout?.duration ??
+    (deploy === undefined ? headerDurationText(operation, now) : deploy.durationText);
   const subject = operationSubject(operation, subjectHost);
   const header = headless ? null : (
     <CardHeader
@@ -743,8 +772,12 @@ export function ZeropsOperationCard(props: {
   // Under its line (headless), the line says how it went: the closing would
   // say it again, and a bare "Failed." carries nothing — why stays, in its
   // explanation.
-  const closing = headless ? undefined : drawnClosing(operation);
-  const hasResultRow = closing !== undefined || version !== undefined || links.length > 0;
+  const closing = restartReadout?.text ?? (headless ? undefined : drawnClosing(operation));
+  const hasResultRow =
+    closing !== undefined ||
+    version !== undefined ||
+    links.length > 0 ||
+    props.onRestartRetry !== undefined;
 
   const Frame = headless ? HeadlessFrame : FlatCard;
   return (
@@ -808,6 +841,24 @@ export function ZeropsOperationCard(props: {
                   {closing}
                 </p>
               ) : null}
+              {props.onRestartRetry === undefined ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={retryBusy}
+                  onClick={async () => {
+                    if (retryBusy) return;
+                    setRetryBusy(true);
+                    try {
+                      await props.onRestartRetry?.();
+                    } finally {
+                      setRetryBusy(false);
+                    }
+                  }}
+                >
+                  {retryBusy ? "Asking Zerops…" : "Try again"}
+                </Button>
+              )}
               {version !== undefined ? (
                 <span
                   className="flex items-baseline gap-1.5 text-muted-foreground text-xs"
