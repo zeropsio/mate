@@ -898,7 +898,8 @@ const wakeFired = (
     }
     case "usage-resume":
     case "usage-probe":
-      if (!b.state.archived && !newerPersonMessage(b.state, wake)) {
+      // A crew run's limit only held the queue: its crew decides how it goes on.
+      if (!b.state.archived && !newerPersonMessage(b.state, wake) && !crewCarriesOn(wake)) {
         startFromWake(b, wake.kind, id, wake);
       }
       admitNext(b);
@@ -1586,6 +1587,13 @@ const selfStarted = (
 
 // ── recovery ────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A run its crew started is its crew's to carry on (CREW-DESIGN §2.2): the engine arms no
+ * continuation and no usage resume for it. A person's message in a crewmate's chat is theirs.
+ */
+const crewCarriesOn = (run: { readonly principal: Principal }): boolean =>
+  run.principal.kind === "crew";
+
 /** Why a cut run is not continued, or null when every guard passes. */
 export const continuationRefusal = (state: ConversationState, run: RunRecord): string | null => {
   if (state.archived) return "archived";
@@ -1619,7 +1627,8 @@ const recovered = (
     if (effect?.kind === "provider.send" && effect.runId !== null) neverSent.add(effect.runId);
   }
   const run = activeRun(b.state);
-  if (run !== undefined && run.state === "sending" && neverSent.has(run.id)) {
+  const crewRun = run !== undefined && crewCarriesOn(run);
+  if (run !== undefined && run.state === "sending" && neverSent.has(run.id) && !crewRun) {
     // Its send never started: nothing reached the agent, so it goes again, as it was.
     b.emit({
       _tag: "RunRequeued",
@@ -1627,7 +1636,8 @@ const recovered = (
       reason: "the server restarted before it was sent",
     });
   } else if (run !== undefined && isLive(run)) {
-    const refusal = continuationRefusal(b.state, run);
+    // A crew run ends cut with no continuation: its crew sends it again, or holds.
+    const refusal = crewRun ? null : continuationRefusal(b.state, run);
     endRun(
       b,
       run,
@@ -1638,8 +1648,9 @@ const recovered = (
         ...(words === undefined ? {} : { words }),
       },
       "inferred-from-restart",
+      neverSent.has(run.id) ? "refused" : "unknown",
     );
-    if (refusal === null) {
+    if (refusal === null && !crewRun) {
       b.emit({
         _tag: "WakeArmed",
         wakeId: deriveWakeId(b.state.conversationId, "restart-continuation", run.id),

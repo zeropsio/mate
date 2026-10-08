@@ -2014,3 +2014,55 @@ describe("decide: a run's end says what it cost, how full its context was, why i
     });
   });
 });
+
+describe("decide: a crew run's continuation is its crew's", () => {
+  const crew: Principal = { kind: "crew", startedBy: "ana" };
+  const crewRunning: ReadonlyArray<Step> = [
+    { command: send("task card"), by: crew },
+    prepared(1),
+    opened(1),
+    sent(1),
+  ];
+
+  it("a restart cuts a crew run and arms no continuation: its crew decides", () => {
+    const { state, log } = playAll([...crewRunning, recovered()]);
+    expect(state.runs[r(1)]?.end).toEqual({ kind: "cut-by-restart", continuedBy: null });
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain(
+      "restart-continuation",
+    );
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+  });
+
+  it("a crew run a restart caught before its send ends cut, for its crew to send again", () => {
+    const { state } = playAll([
+      { command: send("task card"), by: crew },
+      prepared(1),
+      opened(1),
+      {
+        _tag: "Recovered",
+        bootId: "boot-2" as never,
+        cutEffects: [],
+        unstartedEffects: [effectId(r(1), "provider.send", 1)],
+      },
+    ]);
+    expect(state.runs[r(1)]?.state).toBe("ended");
+    expect(state.runs[r(1)]?.end?.kind).toBe("cut-by-restart");
+    expect(state.queue).toEqual([]);
+  });
+
+  it("a usage limit on a crew run resumes nothing: its wake only lifts the pause", () => {
+    const reset = T0 + 60 * MINUTE;
+    const { state, log } = playAll([
+      ...crewRunning,
+      signal({ kind: "usage-limit", resetsAt: reset }),
+      fired("usage-resume", r(1), reset + USAGE_RESUME_GRACE_MS),
+    ]);
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+    expect(state.pausedUntil).toBeNull();
+  });
+
+  it("a person's message in a crewmate's chat is continued after a restart like any person's", () => {
+    const { state } = playAll([...running, recovered()]);
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).toContain("restart-continuation");
+  });
+});
