@@ -366,7 +366,7 @@ describe("vault-write", () => {
       expect(read.fact("projectVariables", "p1").kind).toBe(
         name.startsWith("known") ? "known" : name,
       );
-      expect(vaultWrite.effectHandles?.(read, write)).toEqual(succeeds ? ["vault:gone:e1"] : []);
+      expect(vaultWrite.effectHandles?.(read, write)).toEqual(succeeds ? ["vault:gone:e1"] : null);
       yield* operations.retry("r1");
       expect(progressOf(store)).toMatchObject(
         succeeds
@@ -428,7 +428,7 @@ describe("vault-write", () => {
         }
       }
       expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write)).toEqual(
-        succeeds ? ["vault:gone:u1"] : [],
+        succeeds ? ["vault:gone:u1"] : null,
       );
       yield* operations.retry("r1");
       expect(progressOf(store)).toMatchObject(
@@ -438,6 +438,75 @@ describe("vault-write", () => {
       );
       expect(calls).toHaveLength(1);
     }),
+  );
+
+  it.effect.each([
+    { name: "Shared unknown", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared withheld", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared incomplete", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared deleted", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "service unknown", scope: APP, family: "serviceVariable", id: "u1" },
+    { name: "service withheld", scope: APP, family: "serviceVariable", id: "u1" },
+  ] as const)(
+    "later absence cannot prove removal from an unreadable submission baseline — $name",
+    ({ name, scope, family, id }) =>
+      Effect.gen(function* () {
+        for (const accepted of [false, true]) {
+          const store = vaultAccount();
+          const listing =
+            scope.kind === "shared"
+              ? projectVariablesScope(ORG, "p1")
+              : serviceVariablesScope(ORG, "p1");
+          if (name.endsWith("unknown")) {
+            store.dispatch({ kind: "forget", scopes: [listing] });
+            store.dispatch({ kind: "baseline-begin", scope: listing, generation: 1 });
+            store.dispatch({
+              kind: "baseline-commit",
+              scope: listing,
+              generation: 1,
+              via: "zerops-realtime",
+              members: [id],
+              rows: [],
+            });
+          } else if (name.endsWith("withheld")) {
+            store.dispatch({ kind: "access", family, id, access: "denied" });
+          } else if (name.endsWith("incomplete")) {
+            vaultShows(store, { shared: [], sharedComplete: false });
+          } else {
+            store.dispatch({ kind: "proven-deletion", family, id, evidence: "owner" });
+          }
+          const { operations, calls } = operationsOf(store, () =>
+            accepted
+              ? Promise.resolve({ processId: "proc-env" })
+              : Promise.reject(new ZeropsApiError("No answer.", "network")),
+          );
+          yield* operations.submit(
+            intent(scope, {
+              kind: "remove",
+              id: scope.kind === "shared" ? "e1" : "u1",
+              key: "TOKEN",
+            }),
+          );
+          vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
+          if (accepted) {
+            processRow(
+              store,
+              "proc-env",
+              "FINISHED",
+              scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+              [],
+            );
+          } else {
+            yield* operations.retry("r1");
+          }
+          expect(progressOf(store)).toEqual(
+            accepted
+              ? { stage: "accepted", operationId: "proc-env" }
+              : { stage: "uncertain", next: "ask-owner-again" },
+          );
+          expect(calls).toHaveLength(1);
+        }
+      }),
   );
 
   it.effect("after a lost answer, never adopts a key its vault held before the send", () =>

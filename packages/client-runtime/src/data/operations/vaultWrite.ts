@@ -78,9 +78,9 @@ function heldIn(
 }
 
 /** What the vault shows of the write now, as handles: compared with what it showed at the send. */
-function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string> {
+function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string> | null {
   const held = heldIn(read, intent);
-  if (held === null) return [];
+  if (held === null) return null;
   const { write } = intent;
   switch (write.kind) {
     case "add": {
@@ -101,8 +101,9 @@ function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string>
 
 /** Whether the vault shows the write: an effect it did not show at the send. */
 function shown(read: ProjectionReads, intent: Intent, receipt: OperationReceipt): boolean {
-  const before = read.operation(receipt.requestId)?.before ?? [];
-  return effectsOf(read, intent).some((handle) => !before.includes(handle));
+  const before = read.operation(receipt.requestId)?.before;
+  if (before == null) return false;
+  return effectsOf(read, intent)?.some((handle) => !before.includes(handle)) ?? false;
 }
 
 /** Whether a screen still observes the vault the write goes to. */
