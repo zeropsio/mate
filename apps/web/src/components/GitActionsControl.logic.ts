@@ -1,3 +1,4 @@
+import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
@@ -415,3 +416,16 @@ export function resolveLiveThreadBranchUpdate(input: {
 
 // Re-export from shared for backwards compatibility in this module's exports
 export { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
+
+export function changedFilesPresentation(query: EnvironmentQueryView<VcsStatusResult>) {
+  const view = collectionPresentation(query, (data) => data.workingTree.files, {
+    loading: "Loading changed files...",
+    unavailable: "Changed files unavailable.",
+  });
+  return {
+    files: view.items,
+    message: view.message,
+    emptyMessage: view.state === "ready" && view.items.length === 0 ? "none" : null,
+    retained: view.retained,
+  };
+}

@@ -13,11 +13,11 @@ import type { RpcSession } from "../../rpc/session.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Fiber from "effect/Fiber";
 import type { StreamFault } from "../streamMachine.ts";
-import { mateFeedReadsAtom, readMateFeed } from "../mateFeedReads.ts";
+import { mateFeedReadsAtom, mateFeedAsyncAtom, readMateFeed } from "../mateFeedReads.ts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import { type MateFeedKey } from "../families/mateFeeds.ts";
 import { mateFeed } from "../projections/mateFeeds.ts";
 import { readsOfState, makeAccountStore } from "../store.ts";
@@ -384,6 +384,9 @@ it.live(
           environment: { serverVersion: "0.0.1", capabilities: {} },
           cwd,
         }) as ServerConfig;
+      r.registry.set(mateFeedReadsAtom, { ...feeds, data: r.store.data });
+      const binding = mateFeedAsyncAtom(configKey);
+      const releaseBinding = r.registry.subscribe(binding, () => {}, { immediate: true });
       const release = feeds.hold(configKey);
       yield* settle;
       expect(read().state).not.toBe("known");
@@ -398,6 +401,7 @@ it.live(
         freshness: { kind: "live" },
         value: { config: { cwd: "/first" } },
       });
+      expect(r.registry.get(binding)).toMatchObject({ _tag: "Success", waiting: false });
       yield* SubscriptionRef.set(sessions, Option.none());
       yield* settle;
       expect(read()).toMatchObject({
@@ -405,11 +409,17 @@ it.live(
         freshness: { kind: "stale" },
         value: { config: { cwd: "/first" } },
       });
+      expect(r.registry.get(binding)).toMatchObject({ _tag: "Failure", waiting: false });
       yield* SubscriptionRef.set(sessions, Option.some(session(Deferred.await(second))));
       yield* settle;
       expect(read()).toMatchObject({
         state: "known",
         freshness: { kind: "revalidating" },
+        value: { config: { cwd: "/first" } },
+      });
+      expect(r.registry.get(binding)).toMatchObject({
+        _tag: "Success",
+        waiting: true,
         value: { config: { cwd: "/first" } },
       });
       yield* Deferred.succeed(second, config("/second"));
@@ -419,6 +429,12 @@ it.live(
         freshness: { kind: "live" },
         value: { config: { cwd: "/second" } },
       });
+      expect(r.registry.get(binding)).toMatchObject({
+        _tag: "Success",
+        waiting: false,
+        value: { config: { cwd: "/second" } },
+      });
+      releaseBinding();
       release();
       feeds.close();
       r.close();
@@ -492,6 +508,96 @@ it.live(
       r.close();
     }),
 );
+
+it.live(
+  "a refused subscription keeps the last answer visible with a failure and an enabled retry",
+  () =>
+    Effect.gen(function* () {
+      const r = rig();
+      const refused = yield* Deferred.make<never, StreamFault>();
+      let opens = 0;
+      const feeds = makeMateFeeds({
+        store: r.store,
+        wire: {
+          open: () =>
+            Stream.concat(
+              Stream.make<readonly MateFeedEvent[]>(
+                { kind: "session" },
+                { kind: "value", value: auth },
+              ),
+              ++opens === 1 ? Stream.fromEffect(Deferred.await(refused)) : Stream.never,
+            ),
+        },
+      });
+      r.registry.set(mateFeedReadsAtom, { ...feeds, data: r.store.data });
+      const reading = mateFeedAsyncAtom(key);
+      const release = r.registry.subscribe(reading, () => {}, { immediate: true });
+      try {
+        yield* settle;
+        expect(r.registry.get(reading)._tag).toBe("Success");
+        yield* Deferred.fail(refused, {
+          outcome: "definitive-refusal",
+          message: "Telemetry subscription refused.",
+        });
+        yield* settle;
+        const result = r.registry.get(reading);
+        expect(result._tag).toBe("Failure");
+        expect(result.waiting).toBe(false);
+        expect(Option.getOrNull(AsyncResult.value(result))).toEqual(auth);
+        if (result._tag === "Failure")
+          expect(Cause.squash(result.cause)).toMatchObject({
+            message: "Telemetry subscription refused.",
+          });
+        r.registry.refresh(reading);
+        yield* settle;
+        expect(opens).toBe(2);
+        expect(r.registry.get(reading)).toMatchObject({
+          _tag: "Success",
+          waiting: false,
+          value: auth,
+        });
+      } finally {
+        release();
+        feeds.close();
+        r.close();
+      }
+    }),
+);
+
+it("refresh retries the account in its own registry after another registry reads or an account handover", () => {
+  const a = rig();
+  const b = rig();
+  const calls: Array<string> = [];
+  const host = (r: ReturnType<typeof rig>, name: string) => ({
+    data: r.store.data,
+    hold: () => () => {},
+    revalidate: () => {},
+    onClose: () => () => {},
+    retry: () => {
+      calls.push(name);
+    },
+  });
+  a.registry.set(mateFeedReadsAtom, host(a, "account A"));
+  b.registry.set(mateFeedReadsAtom, host(b, "account B"));
+  const atom = mateFeedAsyncAtom(key);
+  const releaseA = a.registry.subscribe(atom, () => {}, { immediate: true });
+  const releaseB = b.registry.subscribe(atom, () => {}, { immediate: true });
+  try {
+    expect(calls).toEqual([]);
+    a.registry.refresh(atom);
+    expect(calls).toEqual(["account A"]);
+    a.registry.set(mateFeedReadsAtom, host(a, "new account A"));
+    expect(calls).toEqual(["account A"]);
+    b.registry.refresh(atom);
+    a.registry.refresh(atom);
+    expect(calls).toEqual(["account A", "account B", "new account A"]);
+  } finally {
+    releaseA();
+    releaseB();
+    a.close();
+    b.close();
+  }
+});
 
 describe("the crew feed's frames", () => {
   it("takes a frame only when it is newer: its revision's epoch first, then its sequence, V1's seq without one", () => {

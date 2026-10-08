@@ -16,7 +16,11 @@ export interface EnvironmentQueryView<A> {
 
 export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
-  return error instanceof Error && error.message.trim().length > 0
+  return typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim().length > 0
     ? error.message
     : "The environment request failed.";
 }
@@ -32,5 +36,45 @@ export function useEnvironmentQuery<A, E>(
     error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
     isPending: atom !== null && result.waiting,
     refresh,
+  };
+}
+
+export type CollectionReadState = "ready" | "failed" | "loading" | "unavailable";
+
+export interface CollectionPresentation<A> {
+  readonly state: CollectionReadState;
+  readonly items: ReadonlyArray<A>;
+  readonly message: string | null;
+  readonly retained: boolean;
+}
+
+/** Only a settled successful read can prove an empty collection. */
+export function collectionPresentation<A, Item>(
+  query: Pick<EnvironmentQueryView<A>, "data" | "error" | "isPending">,
+  select: (data: A) => ReadonlyArray<Item>,
+  labels: { readonly loading: string; readonly unavailable: string },
+  responseError: string | null = null,
+): CollectionPresentation<Item> {
+  const error = query.error ?? responseError;
+  const state: CollectionReadState =
+    error !== null
+      ? "failed"
+      : query.isPending
+        ? "loading"
+        : query.data === null
+          ? "unavailable"
+          : "ready";
+  return {
+    state,
+    items: query.data === null ? [] : select(query.data),
+    message:
+      state === "failed"
+        ? error
+        : state === "loading"
+          ? labels.loading
+          : state === "unavailable"
+            ? labels.unavailable
+            : null,
+    retained: query.data !== null && state !== "ready",
   };
 }

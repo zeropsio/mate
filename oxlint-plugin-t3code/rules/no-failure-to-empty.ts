@@ -803,6 +803,24 @@ export default defineRule({
           compactSyntax(context, fn).includes("builds:input.builds??UNOBSERVABLE")
         )
           return;
+        // Null is this policy's unknown value; the same view keeps fault, pending and last-known state.
+        if (
+          path === "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts" &&
+          expression === 'fact.kind==="known"?(confirmed??fact.value).enabled:null' &&
+          fn?.type === "ArrowFunctionExpression"
+        ) {
+          const policy = compactSyntax(context, fn);
+          if (
+            policy.includes("return{enabled,pending,recoverable:") &&
+            policy.includes("error,editable:") &&
+            policy.includes("words:") &&
+            policy.includes("enabled===null") &&
+            policy.includes("stream.fault?.message??null") &&
+            policy.includes("retryRead:stream.fault!==null") &&
+            policy.includes('stream.phase==="live"')
+          )
+            return;
+        }
         const check = heldCheck(context, node.test);
         if (check === undefined) return;
         const [held, otherwise] = check.heldInConsequent

@@ -645,3 +645,31 @@ describe("ResourceTelemetry", () => {
     }),
   );
 });
+
+it.effect("an unavailable native history remains a read failure rather than zero samples", () =>
+  Effect.gen(function* () {
+    const failure = new NativeTelemetryClient.NativeTelemetryUnavailable({
+      reason: "History collector unavailable.",
+    });
+    const layer = ResourceTelemetry.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          NativeTelemetryClient.layerTest({ readHistory: () => Effect.fail(failure) }),
+          DesktopTelemetryReceiver.layerTest(),
+          ResourceAttribution.layer,
+        ),
+      ),
+    );
+    const result = yield* Effect.gen(function* () {
+      const telemetry = yield* ResourceTelemetry.ResourceTelemetry;
+      return yield* Effect.result(telemetry.readHistory({ windowMs: 60_000, bucketMs: 10_000 }));
+    }).pipe(Effect.provide(layer));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "ResourceTelemetryHistoryReadFailed",
+        message: "Resource monitor is unavailable: History collector unavailable.",
+      });
+    }
+  }),
+);
