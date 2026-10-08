@@ -11,8 +11,15 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { CommandId, ConversationId, type KnownEngineEvent } from "@t3tools/contracts";
+import {
+  CommandId,
+  ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  type EngineConversationFrame,
+  type KnownEngineEvent,
+} from "@t3tools/contracts";
 
 import { contentAssetsAt } from "../../assets/ContentAssets.ts";
 import { runMigrations } from "../../persistence/Migrations.ts";
@@ -43,6 +50,8 @@ import {
 } from "../testing/history/v1Thread.ts";
 import { audit, engineLayer, newBoot, tempDb, type Engine } from "../testing/world.ts";
 import { itemOfRow } from "../wire/records.ts";
+import { makeEngineWire } from "../wire/EngineWire.ts";
+import * as LiveBusModule from "../LiveBus.ts";
 
 const c = ConversationId.make(THREAD);
 const SCREENSHOT_DIGEST = NodeCrypto.createHash("sha256")
@@ -634,6 +643,51 @@ const cached = Effect.suspend(() =>
 );
 
 // ── once, whatever happens ──────────────────────────────────────────────────────────────────
+
+describe("a client watching while the earlier record comes in", () => {
+  // Catches an import streamed to a subscriber record by record: thousands of items as changes,
+  // the whole thread derived again on each, where the window is what the client asked for.
+  it.live("gets its window once the import is in, never the import record by record", () =>
+    Effect.gen(function* () {
+      const file = yield* seededDb("watched");
+      const frames = yield* lifetime(file, ({ worker }) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const wire = yield* makeEngineWire({ coalesce: 0 });
+            const frames: Array<EngineConversationFrame> = [];
+            yield* Stream.runForEach(
+              wire.subscribe(
+                { protocol: MATE_ENGINE_PROTOCOLS[0]!, conversationId: c },
+                { subject: "ana", environmentId: "env-1", epoch: 1 },
+              ),
+              (frame) => Effect.sync(() => frames.push(frame)),
+            ).pipe(Effect.forkScoped);
+            yield* Effect.sleep(50);
+            yield* start;
+            yield* drain(worker);
+            for (let wait = 0; wait < 100 && frames.at(-1)?.type !== "synchronized"; wait++)
+              yield* Effect.sleep(20);
+            yield* Effect.sleep(100);
+            return frames;
+          }),
+        ).pipe(Effect.provide(LiveBusModule.layer)),
+      );
+      const imported = frames.flatMap((frame) =>
+        frame.type === "changes" ? frame.runs.filter((run) => run.trigger.kind === "imported") : [],
+      );
+      expect(imported).toEqual([]);
+      const reset = frames.findIndex((frame) => frame.type === "reset");
+      expect(reset).toBeGreaterThan(0);
+      expect(frames.slice(reset).map((frame) => frame.type)).toEqual([
+        "reset",
+        "snapshot",
+        "synchronized",
+      ]);
+      const window = frames[reset + 1];
+      expect(window?.type === "snapshot" && window.runs.length).toBeGreaterThan(0);
+    }),
+  );
+});
 
 describe("the import, once", () => {
   it.live("leaves V1's tables as they were, so flipping back finds the conversation", () =>

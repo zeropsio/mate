@@ -355,6 +355,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           }
           const settled = new Set<string>();
           const streaming = new Set<string>();
+          /** The records an import under way brought since this subscriber opened. */
+          const imported = new Set<string>();
           const pending = new Map<string, Map<string, string>>();
 
           const place = (
@@ -388,8 +390,41 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                 }
                 if (event._tag === "ItemClosed") closed.push(event.itemId);
               }
-              if (events.length > 0) {
-                const changed = yield* records.changedSince(conversation, cursor);
+              for (const event of events) {
+                if (event._tag === "RunImported") imported.add(event.runId);
+                if (event._tag === "ItemImported") imported.add(event.itemId);
+                if (event._tag === "RequestImported") imported.add(event.requestId);
+              }
+              if (events.some((event) => event._tag === "HistoryImportEnded")) {
+                // The earlier record is in: the window again, never the import record by record.
+                imported.clear();
+                const head = yield* records.head(conversation);
+                const frame = yield* snapshot(
+                  conversation,
+                  input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
+                  head,
+                  epoch,
+                  origin,
+                );
+                lastHeader = headerJson(frame.header);
+                cursor = Math.max(head, ...events.map((event) => event.seq));
+                frames.push({ type: "reset", reason: "gap" }, frame, {
+                  type: "synchronized",
+                  epoch,
+                  head: cursor,
+                });
+              } else if (events.length > 0) {
+                const all = yield* records.changedSince(conversation, cursor);
+                // What the import brought so far comes with its end, in the window.
+                const changed =
+                  imported.size === 0
+                    ? all
+                    : {
+                        ...all,
+                        runs: all.runs.filter((run) => !imported.has(run.id)),
+                        items: all.items.filter((item) => !imported.has(item.id)),
+                        requests: all.requests.filter((request) => !imported.has(request.id)),
+                      };
                 const top = yield* header(conversation);
                 const topJson = headerJson(top);
                 const to = Math.max(cursor, changed.to, ...events.map((event) => event.seq));
