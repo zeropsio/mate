@@ -453,6 +453,16 @@ const enginePort = (input: {
         `.pipe(Effect.orDie),
       )).map((row) => row.run_id),
     );
+    // A turn is sent once its run goes to the agent, past its admission (V1 dispatched a turn
+    // only once admitted): its admission is on record by then.
+    const sending = new Set(
+      (yield* Effect.flatMap(sql, (client) =>
+        client<{ readonly run_id: string }>`
+          SELECT json_extract(payload_json, '$.runId') AS run_id FROM engine_event
+          WHERE type = 'RunSending'
+        `.pipe(Effect.orDie),
+      )).map((row) => row.run_id),
+    );
     const state = yield* crewState;
     const sessions = new Map<string, number>();
     const records: Array<CrewSent> = [];
@@ -493,7 +503,7 @@ const enginePort = (input: {
           const ran = (
             JSON.parse(row.outcome_json ?? "{}") as { readonly value?: { readonly runId?: string } }
           ).value?.runId;
-          if (ran !== undefined && refused.has(ran)) break;
+          if (ran !== undefined && (refused.has(ran) || !sending.has(ran))) break;
           records.push({
             kind: "turn",
             chat,
