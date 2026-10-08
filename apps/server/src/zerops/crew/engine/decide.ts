@@ -92,6 +92,7 @@ import {
   type CrewToolCall,
   type DeliverCommand,
   deliveryOfCommand,
+  type HostRead,
   type LaneEnvironment,
   type LaneStatsValue,
   taskAssignment,
@@ -345,7 +346,7 @@ export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number
 const handle = (b: Builder, input: CrewInput): void => {
   switch (input._tag) {
     case "Press":
-      return pressed(b, input.press, input.door.refusal, input.home, input.seen, input.ports);
+      return pressed(b, input.press, input.door.refusal, input.home, input.seen, input.hosts);
     case "Tool":
       return tool(b, input.handle, input.call);
     case "Observed":
@@ -1433,7 +1434,7 @@ const pressed = (
   refusal: string | null,
   home: CrewDefinition | undefined,
   seen: TaskSeen | undefined,
-  ports?: Readonly<Record<string, ReadonlyArray<number>>>,
+  hosts?: Readonly<Record<string, HostRead>>,
 ): void => {
   const reach = crewCommandReach(press);
   if (refusal !== null && reach.kind !== "reads" && reach.kind !== "stops") {
@@ -1445,7 +1446,7 @@ const pressed = (
     case "apply":
       if (home === undefined)
         throw new Rejected("invalid-definition", "the crew home is unreadable");
-      applyHome(b, home, "nextTurn", ports);
+      applyHome(b, home, "nextTurn", hosts);
       return;
     case "briefSave":
     case "jobSave":
@@ -2107,7 +2108,7 @@ const applyHome = (
   b: Builder,
   home: CrewDefinition,
   choice: "nextTurn" | "now" | "fresh",
-  ports?: Readonly<Record<string, ReadonlyArray<number>>>,
+  hosts?: Readonly<Record<string, HostRead>>,
 ): { readonly pending: ReadonlyArray<string>; readonly freshOnly: ReadonlyArray<string> } => {
   const previous = b.state.applied;
   const save = versionsAfterSave(
@@ -2128,10 +2129,10 @@ const applyHome = (
   ];
   // A crew port each writer keeps while its service still declares it; the rest take the free.
   const assigned = new Map<string, number | null>();
-  for (const [host, declared] of Object.entries(ports ?? {})) {
+  for (const [host, read] of Object.entries(hosts ?? {})) {
     const writers = ordered.filter((spec) => spec.kind === "writer" && spec.host === host);
     for (const [handle, port] of assignCrewPorts(
-      declared,
+      read.crewPorts,
       writers.map((spec) => ({
         handle: spec.handle,
         crewPort: b.state.members[spec.handle]?.crewPort ?? null,
@@ -2149,11 +2150,14 @@ const applyHome = (
       assigned.has(spec.handle) ? assigned.get(spec.handle)! : undefined,
     ),
   );
-  for (const [host, declared] of Object.entries(ports ?? {})) {
+  for (const [host, read] of Object.entries(hosts ?? {})) {
     b.emit({
       _tag: "HostUpdated",
       host,
-      set: { crewPorts: declared.map((port) => ({ port, routed: null })) },
+      set: {
+        crewPorts: read.crewPorts.map((port) => ({ port, routed: null })),
+        integration: read.integration,
+      },
     });
   }
   const handles = new Set(members.map((member) => member.handle));

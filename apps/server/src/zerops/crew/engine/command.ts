@@ -42,6 +42,12 @@ import type { CrewEventDraft } from "./events.ts";
 import type { CrewImport } from "./importV1Crew.ts";
 import type { CrewTiming } from "./state.ts";
 
+/** A writer's service as Apply reads it. */
+export interface HostRead {
+  readonly crewPorts: ReadonlyArray<number>;
+  readonly integration: { readonly branch: string | null; readonly head: string } | null;
+}
+
 /**
  * The revision of a task a person edits from: its state and attempts as their board showed them
  * (`CrewTask.state`, `CrewTask.attempts`). An edit is refused once the task moved since.
@@ -76,8 +82,11 @@ export type CrewInput =
       readonly home?: CrewDefinition;
       /** For `taskEdit`: the task as the person's board showed it when they edited. */
       readonly seen?: TaskSeen;
-      /** For `apply`: the crew ports each writer's service declares (`zerops.yaml`), read now. */
-      readonly ports?: Readonly<Record<string, ReadonlyArray<number>>>;
+      /**
+       * For `apply`: each writer's service as read now: the crew ports its `zerops.yaml` declares
+       * and your tree's branch and head there.
+       */
+      readonly hosts?: Readonly<Record<string, HostRead>>;
     }
   | {
       readonly _tag: "Tool";

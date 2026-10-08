@@ -87,7 +87,7 @@ import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
 import { CrewShell } from "../CrewShell.ts";
 import { CrewStoreError, type CrewMemoryRow } from "../CrewStore.ts";
 import { closedSeamWords, landedSeamWords, sweptSeamWords } from "../crewCards.ts";
-import type { CrewInput } from "./command.ts";
+import type { CrewInput, HostRead } from "./command.ts";
 import { CrewDeliveryContext, type CrewDeliveryContextShape } from "./CrewDeliveryContext.ts";
 import { observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
@@ -885,21 +885,26 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         }
       });
 
-    /** The crew ports each writer's service declares, read at *Apply*. */
-    const declaredPorts = (definition: CrewDefinition) =>
+    /** Each writer's service as *Apply* reads it: its declared crew ports, your tree there. */
+    const hostReads = (definition: CrewDefinition) =>
       Effect.gen(function* () {
-        const ports: Record<string, ReadonlyArray<number>> = {};
+        const hosts: Record<string, HostRead> = {};
         for (const member of definition.members) {
-          if (member.kind !== "writer" || member.host == null || ports[member.host] !== undefined) {
+          if (member.kind !== "writer" || member.host == null || hosts[member.host] !== undefined) {
             continue;
           }
-          const yaml = yield* reads
-            .zeropsYaml(member.host)
-            .pipe(Effect.orElseSucceed(() => undefined));
-          ports[member.host] =
-            yaml === undefined ? [] : (readDeclaredPorts(yaml, member.host)?.crew ?? []);
+          const host = member.host;
+          const yaml = yield* reads.zeropsYaml(host).pipe(Effect.orElseSucceed(() => undefined));
+          const integration = yield* reads.integration(host).pipe(
+            Effect.map((read) => ({ branch: read.branch, head: read.head })),
+            Effect.orElseSucceed(() => null),
+          );
+          hosts[host] = {
+            crewPorts: yaml === undefined ? [] : (readDeclaredPorts(yaml, host)?.crew ?? []),
+            integration,
+          };
         }
-        return ports;
+        return hosts;
       });
 
     const command: CrewEngineService["command"] = (press, principal) =>
@@ -931,7 +936,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
             ...(definition === undefined ? {} : { home: definition }),
             ...(seen === undefined ? {} : { seen }),
             ...(press._tag === "apply" && definition !== undefined
-              ? { ports: yield* declaredPorts(definition) }
+              ? { hosts: yield* hostReads(definition) }
               : {}),
           },
           principalOf(principal),

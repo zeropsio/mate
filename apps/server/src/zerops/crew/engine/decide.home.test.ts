@@ -20,17 +20,18 @@ const journeys: ReadonlyArray<Journey> = [
           press: { _tag: "apply" },
           door: { refusal: null },
           home: home(writer("backend"), writer("frontend")),
-          ports: { appdev: [3001] },
+          hosts: { appdev: { crewPorts: [3001], integration: { branch: "main", head: "h1" } } },
         },
         { kind: "person", subject: "user-1" },
       );
       return [
+        w.state.hosts.appdev?.integration,
         w.state.hosts.appdev?.crewPorts,
         w.state.members.backend?.crewPort,
         w.state.members.frontend?.crewPort,
       ];
     },
-    expected: [[{ port: 3001, routed: null }], 3001, null],
+    expected: [{ branch: "main", head: "h1" }, [{ port: 3001, routed: null }], 3001, null],
   },
   {
     sentence: "a missing copy comes back at boot from its recorded branch, its work kept",
