@@ -6,7 +6,7 @@ import {
   type MateEngineHost,
 } from "@t3tools/client-runtime/data";
 import type { MessageId, TurnId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
