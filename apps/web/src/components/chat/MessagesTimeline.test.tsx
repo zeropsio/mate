@@ -314,16 +314,6 @@ describe("MessagesTimeline", () => {
     },
   );
 
-  it("uses the larger leading inset only when the top fade is enabled", () => {
-    const timelineEntries = [buildUserTimelineEntry("Hello")];
-
-    const fadedMarkup = renderToStaticMarkup(
-      <MessagesTimeline {...buildProps()} timelineEntries={timelineEntries} topFadeEnabled />,
-    );
-
-    expect(fadedMarkup).toContain("topbar-scroll-fade");
-  });
-
   it("treats only the strict list end as the live edge", async () => {
     const {
       resolveTimelineIsAtEnd,

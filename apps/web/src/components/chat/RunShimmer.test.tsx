@@ -16,9 +16,12 @@ describe("RunShimmer", () => {
   it("lights a copy of the same words that is hidden from readers and from input", () => {
     const html = renderToStaticMarkup(<RunShimmer sweeps>{words}</RunShimmer>);
     const document = markupDom(html);
-    const hidden = document.querySelector('[aria-hidden="true"][inert]');
-    expect(hidden?.textContent).toBe("Reading server.ts");
-    hidden?.remove();
-    expect(document.body.textContent).toBe("Reading server.ts");
+    const duplicate = document.querySelector("[data-sweep-copy]");
+    expect(duplicate?.textContent).toBe("Reading server.ts");
+    expect(duplicate?.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(duplicate?.closest("[inert]")).not.toBeNull();
+    const realWords = document.querySelector("[data-sweep-words]");
+    expect(realWords?.textContent).toBe("Reading server.ts");
+    expect(realWords?.closest('[aria-hidden="true"], [inert]')).toBeNull();
   });
 });

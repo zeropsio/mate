@@ -4,8 +4,8 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
-import { ZeropsGitTab } from "./ZeropsGitTab";
-const effects = vi.hoisted(() => ({ merge: vi.fn(), pull: vi.fn() }));
+import { ZeropsGitSurface } from "./ZeropsGitSurface";
+const effects = vi.hoisted(() => ({ merge: vi.fn(), pull: vi.fn(), review: vi.fn() }));
 vi.mock("../../zerops/useProjectTopology", () => ({
   useProjectTopology: () => ({ view: { services: [{ hostname: "api", group: "runtimes" }] } }),
 }));
@@ -29,49 +29,71 @@ vi.mock("../../state/query", () => ({
 vi.mock("../../state/sourceControlActions", () => ({
   useVcsPullAction: () => ({ run: effects.pull }),
 }));
-vi.mock("../../zerops/flowVerbs", () => ({ useFlowVerbs: () => ({ merge: effects.merge }) }));
+vi.mock("../../zerops/flowVerbs", () => ({
+  useFlowVerbs: () => ({ merge: effects.merge, trouble: null }),
+}));
 vi.mock("../../zerops/useZeropsChangeDetail", () => ({
   mergedMain: () => undefined,
   useZeropsChangeDetail: () => ({ readout: { kind: "none" }, retry: () => {} }),
 }));
-it("Git Review hands the open change and pressed control to the review, and merges nothing", async () => {
+vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
+vi.mock("../../zerops/review", () => ({ useOpenReview: () => effects.review }));
+vi.mock("../../zerops/useHqAppDetail", () => ({ useHqAppDetailHold: () => {} }));
+vi.mock("../../zerops/ZeropsSessionProvider", () => ({ useZeropsSessionOptional: () => null }));
+vi.mock("../../zerops/useZeropsEnvironmentProject", () => ({
+  useZeropsEnvironmentProject: () => ({ projectId: "p1", orgId: "org1" }),
+}));
+vi.mock("../../zerops/ZeropsInventoryProvider", () => ({
+  useZeropsInventory: () => ({
+    projects: [
+      { id: "p1", name: "Invoices - Ada", hq: { appId: "g1", appName: "Invoices", kind: "mate" } },
+    ],
+  }),
+}));
+vi.mock("../../zerops/projectFlows", () => ({
+  useProjectFlows: () => ({
+    flows: new Map([
+      [
+        "g1",
+        {
+          changesKnown: true,
+          declarations: [],
+          merged: [],
+          pullRequests: [
+            {
+              repository: "api",
+              number: 12,
+              title: "Invoices",
+              kind: "code",
+              mateProjectId: "p1",
+              url: "https://hq.example/changes/g1/api/12",
+              mergeability: "mergeable",
+              behind: false,
+              merged: false,
+              mergedAt: undefined,
+              state: "open",
+              headSha: "abc",
+              baseBranch: "main",
+              line: "api #12",
+              updatedAt: undefined,
+            },
+          ],
+        },
+      ],
+    ]),
+  }),
+}));
+it("Git surface Review opens the correct change from the pressed control, and merges nothing", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   effects.merge.mockClear();
   effects.pull.mockClear();
-  const review = vi.fn();
+  effects.review.mockClear();
   const root = createRoot(document.body.appendChild(document.createElement("div")));
   try {
     await act(() =>
       root.render(
-        <ZeropsGitTab
+        <ZeropsGitSurface
           threadRef={scopeThreadRef(EnvironmentId.make("env-ada"), ThreadId.make("thread-ada"))}
-          appId="g1"
-          mateProjectId="p1"
-          isOwner={false}
-          declarations={[]}
-          changes={{
-            merged: [],
-            pullRequests: [
-              {
-                repository: "api",
-                number: 12,
-                title: "Invoices",
-                kind: "code",
-                mateProjectId: "p1",
-                url: "https://hq.example/changes/g1/api/12",
-                mergeability: "mergeable",
-                behind: false,
-                merged: false,
-                mergedAt: undefined,
-                state: "open",
-                headSha: "abc",
-                baseBranch: "main",
-                line: "api #12",
-                updatedAt: undefined,
-              },
-            ],
-          }}
-          onReviewPullRequest={review}
         />,
       ),
     );
@@ -82,13 +104,9 @@ it("Git Review hands the open change and pressed control to the review, and merg
     await act(() => button!.click());
     expect(effects.merge).not.toHaveBeenCalled();
     expect(effects.pull).not.toHaveBeenCalled();
-    expect(review).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        repository: "api",
-        pullRequestNumber: 12,
-        pullRequestHead: "abc",
-      }),
-      button,
+    expect(effects.review).toHaveBeenCalledExactlyOnceWith(
+      { kind: "change", groupId: "g1", repository: "api", number: 12 },
+      { from: button },
     );
   } finally {
     await act(() => root.unmount());
