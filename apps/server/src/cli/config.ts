@@ -26,6 +26,7 @@ import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { crewHeldWords, gatedMateEngine } from "../zerops/crew/engine/crewFlipGate.ts";
 
 export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -461,6 +462,8 @@ export const resolveServerConfig = (
         value: env.mateEngine,
       });
     }
+    const gated = gatedMateEngine(mateEngine.engine, derivedPaths.dbPath);
+    if (gated.held !== null) yield* Effect.logWarning(crewHeldWords(gated.held));
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const otel = yield* OtelEnvironment.load;
@@ -512,7 +515,7 @@ export const resolveServerConfig = (
       zeropsFixtures,
       zerops,
       zeropsCrew: env.zeropsCrew,
-      mateEngine: mateEngine.engine,
+      mateEngine: gated.engine,
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,
