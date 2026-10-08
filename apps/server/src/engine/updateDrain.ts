@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges, mergeUpdateSubscriptions } from "../update/subscribeChanges.ts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -100,6 +101,11 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     cancel: admission.cancel.pipe(Effect.andThen(signals.wakes.ring)),
     facts,
     quiesce,
+    subscribeChanges: mergeUpdateSubscriptions([
+      admission.subscribeChanges,
+      subscribeUpdateChanges(signals.commits),
+      ...(pump.subscribeUpdateChanges === undefined ? [] : [pump.subscribeUpdateChanges]),
+    ]),
     changes: Stream.mergeAll(
       [
         admission.changes,

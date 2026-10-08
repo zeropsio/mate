@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * ProviderService - Service interface for provider sessions, turns, and checkpoints.
  *
@@ -47,6 +48,7 @@ export interface ProviderServiceShape {
           readonly event: ProviderRuntimeEvent;
         }>;
         readonly changes: Stream.Stream<void>;
+        readonly subscribeChanges?: SubscribeUpdateChanges;
         readonly position: Effect.Effect<{
           readonly published: number;
           readonly processing: number;

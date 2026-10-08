@@ -1,3 +1,4 @@
+import { mergeUpdateSubscriptions } from "./subscribeChanges.ts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
@@ -80,7 +81,8 @@ export const makeV1UpdateDrain = Effect.gen(function* () {
     if (
       admission === undefined ||
       engine.updateReadModel === undefined ||
-      provider.eventBarrier === undefined
+      provider.eventBarrier === undefined ||
+      provider.eventBarrier.subscribeChanges === undefined
     )
       return unavailable;
     yield* commands.drain;
@@ -200,6 +202,21 @@ export const makeV1UpdateDrain = Effect.gen(function* () {
     ),
     facts,
     quiesce,
+    subscribeChanges: Effect.gen(function* () {
+      const domain = yield* engine.subscribeDomainEvents;
+      const subscriptions = yield* mergeUpdateSubscriptions([
+        ...(admission === undefined ? [] : [admission.subscribeChanges]),
+        ...(provider.eventBarrier?.subscribeChanges === undefined
+          ? []
+          : [provider.eventBarrier.subscribeChanges]),
+        ...[commands, ingestion, checkpoints, usage].flatMap((reactor) =>
+          reactor.updateBoundary === undefined ? [] : [reactor.updateBoundary.subscribeChanges],
+        ),
+      ]);
+      return {
+        changes: Stream.merge(subscriptions.changes, domain.pipe(Stream.map(() => void 0))),
+      };
+    }),
     changes: Stream.mergeAll(
       [
         admission?.changes ?? Stream.empty,

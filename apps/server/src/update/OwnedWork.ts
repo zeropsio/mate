@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges } from "./subscribeChanges.ts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
@@ -21,6 +22,7 @@ export const makeOwnedWork = Effect.gen(function* () {
   return {
     active: Effect.sync(() => active),
     changes: Stream.fromPubSub(changed),
+    subscribeChanges: subscribeUpdateChanges(changed),
     fork,
     run: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       Effect.acquireUseRelease(

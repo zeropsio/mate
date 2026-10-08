@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -50,6 +51,7 @@ describe("update provider receipt boundary", () => {
             events: Stream.fromPubSub(hub),
             position: Effect.sync(() => ({ published, processing: 0 })),
             changes: Stream.empty,
+            subscribeChanges: subscribeUpdateChanges(hub),
           },
         }),
       );

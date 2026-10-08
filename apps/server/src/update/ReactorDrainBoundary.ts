@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges, type SubscribeUpdateChanges } from "./subscribeChanges.ts";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -9,6 +10,7 @@ export interface ReactorDrainBoundary {
     readonly runtime: number;
   }>;
   readonly changes: Stream.Stream<void>;
+  readonly subscribeChanges: SubscribeUpdateChanges;
 }
 
 /** Watermarks name inputs actually received; a worker's drain separately proves their effects finished. */
@@ -21,6 +23,7 @@ export const makeReactorDrainBoundary = Effect.gen(function* () {
   return {
     position: Effect.sync(() => ({ started, domain, runtime })),
     changes: Stream.fromPubSub(changed),
+    subscribeChanges: subscribeUpdateChanges(changed),
     start: (initialDomain: number, initialRuntime: number) =>
       Effect.sync(() => {
         started = true;

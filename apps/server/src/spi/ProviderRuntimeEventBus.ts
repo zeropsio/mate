@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../update/subscribeChanges.ts";
 /**
  * ProviderRuntimeEventBus - the owned SPI seam for provider runtime events.
  *
@@ -41,6 +42,7 @@ export interface ProviderRuntimeEventBusShape {
     readonly events: Stream.Stream<{ readonly sequence: number; readonly event: SpiEvent }>;
     readonly position: Effect.Effect<{ readonly published: number; readonly processing: number }>;
     readonly changes: Stream.Stream<void>;
+    readonly subscribeChanges?: SubscribeUpdateChanges;
   };
   /**
    * The SPI version this bus was built against (`providerRuntimeSpi.ts`) — a
@@ -139,6 +141,9 @@ export const ProviderRuntimeEventBusLive = Layer.effect(
             eventBarrier: {
               position: barrier.position,
               changes: barrier.changes,
+              ...(barrier.subscribeChanges === undefined
+                ? {}
+                : { subscribeChanges: barrier.subscribeChanges }),
               events: barrier.events.pipe(
                 Stream.mapEffect(({ sequence, event }) =>
                   enriched.enrichEvent(event).pipe(Effect.map((event) => ({ sequence, event }))),

@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * CrewEngine — what the crew RPCs reach: the feed of snapshots, the crew
  * home's files, and every press as one command.
@@ -36,6 +37,7 @@ export interface CrewEngineService {
   readonly snapshot: Stream.Stream<CrewSnapshot>;
   readonly updateFacts?: Effect.Effect<UpdateIdleFacts>;
   readonly updateChanges?: Stream.Stream<void>;
+  readonly subscribeUpdateChanges?: SubscribeUpdateChanges;
   readonly readFiles: Effect.Effect<CrewFiles, CrewCommandError>;
   readonly writeFiles: (
     files: CrewFiles,
@@ -58,6 +60,7 @@ export const inertCrewEngine: CrewEngineService = {
   snapshot: Stream.make(CREW_OFF_SNAPSHOT),
   updateFacts: Effect.succeed({ idle: true, blockers: [] }),
   updateChanges: Stream.empty,
+  subscribeUpdateChanges: Effect.succeed({ changes: Stream.empty }),
   readFiles: unavailable,
   writeFiles: () => unavailable,
   command: () => unavailable,

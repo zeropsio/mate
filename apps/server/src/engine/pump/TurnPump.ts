@@ -1,3 +1,8 @@
+import {
+  subscribeUpdateChanges,
+  mergeUpdateSubscriptions,
+  type SubscribeUpdateChanges,
+} from "../../update/subscribeChanges.ts";
 /**
  * TurnPump: the provider's events into the engine.
  *
@@ -77,6 +82,7 @@ export interface TurnPumpShape {
   readonly updateHosts?: Effect.Effect<ReadonlyArray<SessionHost>>;
   readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
   readonly updateChanges?: Stream.Stream<void>;
+  readonly subscribeUpdateChanges?: SubscribeUpdateChanges;
 }
 
 export class TurnPump extends Context.Service<TurnPump, TurnPumpShape>()(
@@ -197,6 +203,12 @@ export const makeTurnPump = Effect.gen(function* () {
     hostFor,
     updatePosition: Effect.sync(() => processedEvents),
     updateHosts: Effect.sync(() => [...hosts.values()]),
+    subscribeUpdateChanges: mergeUpdateSubscriptions([
+      subscribeUpdateChanges(updateChanges),
+      ...(bus.eventBarrier?.subscribeChanges === undefined
+        ? []
+        : [bus.eventBarrier.subscribeChanges]),
+    ]),
     updateChanges: Stream.merge(
       Stream.fromPubSub(updateChanges),
       bus.eventBarrier?.changes ?? Stream.empty,
@@ -204,7 +216,7 @@ export const makeTurnPump = Effect.gen(function* () {
     updateBlockers: Effect.gen(function* () {
       const blockers: string[] = [];
       if ((yield* Queue.size(queue)) > 0) blockers.push("provider event queue");
-      if (bus.eventBarrier === undefined)
+      if (bus.eventBarrier === undefined || bus.eventBarrier.subscribeChanges === undefined)
         blockers.push("provider event receipt boundary unavailable");
       else {
         const position = yield* bus.eventBarrier.position;

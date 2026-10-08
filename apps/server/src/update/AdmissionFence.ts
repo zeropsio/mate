@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges } from "./subscribeChanges.ts";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Semaphore from "effect/Semaphore";
@@ -20,6 +21,7 @@ export const makeAdmissionFence = <Tag extends string>(allowed: (tag: Tag) => bo
       cancel: set(false),
       closed: Effect.sync(() => closed),
       changes: Stream.fromPubSub(changed),
+      subscribeChanges: subscribeUpdateChanges(changed),
       run: <A, E, R>(
         tag: Tag,
         accept: Effect.Effect<A, E, R>,

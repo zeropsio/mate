@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * ProviderServiceLive - Cross-provider orchestration layer.
  *
@@ -1568,6 +1569,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     uploadFeedback,
     eventBarrier: {
       changes: Stream.fromPubSub(barrierChanges),
+      subscribeChanges: subscribeUpdateChanges(barrierChanges),
       events: Stream.fromPubSub(runtimeEventPubSub),
       position: Effect.sync(() => ({ published: publishedEvents, processing: processingEvents })),
     },

@@ -1,3 +1,4 @@
+import { mergeUpdateSubscriptions } from "../../update/subscribeChanges.ts";
 import { continueOperation, discardOperation, rebuildCopy } from "./crewContinue.ts";
 /**
  * crewLayer — crew mode as one layer (ARCHITECTURE §1 *Principle*, §2
@@ -672,7 +673,12 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
         }),
       ];
       const position = yield* bus.eventBarrier?.position ?? Effect.succeed(undefined);
-      if (position === undefined || position.published !== updateRuntime || position.processing > 0)
+      if (
+        bus.eventBarrier?.subscribeChanges === undefined ||
+        position === undefined ||
+        position.published !== updateRuntime ||
+        position.processing > 0
+      )
         blockers.push("crew provider callback pending or unavailable");
       const memory = core.memory;
       if (memory.working.size > 0 || memory.continueAtTurnEnd.size > 0 || memory.carryOn.size > 0)
@@ -696,6 +702,14 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     );
     const engine: CrewEngineService = {
       updateFacts,
+      subscribeUpdateChanges: mergeUpdateSubscriptions([
+        core.subscribeSignals,
+        core.updateWork.subscribeChanges,
+        core.store.subscribeChanges,
+        ...(bus.eventBarrier?.subscribeChanges === undefined
+          ? []
+          : [bus.eventBarrier.subscribeChanges]),
+      ]),
       updateChanges: Stream.mergeAll(
         [
           core.signals,
