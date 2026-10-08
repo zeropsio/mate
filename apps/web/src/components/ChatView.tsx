@@ -380,6 +380,7 @@ import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import { ConversationReadiness } from "./chat/conversationReadiness";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
@@ -1424,6 +1425,15 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, threadId],
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
+  const [conversationReady, setConversationReady] = useState<{
+    key: string;
+    ready: boolean;
+  } | null>(null);
+  const onConversationReady = useCallback((key: string, ready: boolean) => {
+    setConversationReady((previous) =>
+      previous?.key === key && previous.ready === ready ? previous : { key, ready },
+    );
+  }, []);
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
@@ -8566,37 +8576,41 @@ export default function ChatView(props: ChatViewProps) {
           className="relative bg-background"
         >
           {!rightPanelOpen ? panelLayoutControls : null}
-          <ChatHeader
-            activeThreadEnvironmentId={activeThread.environmentId}
-            activeThreadId={activeThread.id}
-            {...(routeKind === "draft" && draftId ? { draftId } : {})}
-            activeThreadTitle={activeThread.title}
-            isServerThread={isServerThread}
-            changeRequest={activeThreadChangeRequest}
-            activeProjectName={activeProjectDisplayName}
-            activeProjectCwd={activeProject?.workspaceRoot ?? null}
-            activeProjectFaviconPath={activeProject?.faviconPath ?? null}
-            openInCwd={gitCwd}
-            activeProjectScripts={activeProjectScripts}
-            preferredScriptId={
-              activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
-            }
-            keybindings={keybindings}
-            availableEditors={availableEditors}
-            rightPanelOpen={rightPanelOpen}
-            gitCwd={gitCwd}
-            onNewThreadInProject={handleNewThreadInActiveProject}
-            onStartFresh={startFreshConversation}
-            onEditCrewmateJob={editCrewmateJob}
-            onEditBrief={editCrewGoal}
-            {...(activeDraftLogicalProjectKey
-              ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
-              : {})}
-            onRunProjectScript={runProjectScript}
-            onAddProjectScript={saveProjectScript}
-            onUpdateProjectScript={updateProjectScript}
-            onDeleteProjectScript={deleteProjectScript}
-          />
+          <ConversationReadiness
+            value={conversationReady?.key === routeThreadKey && conversationReady.ready}
+          >
+            <ChatHeader
+              activeThreadEnvironmentId={activeThread.environmentId}
+              activeThreadId={activeThread.id}
+              {...(routeKind === "draft" && draftId ? { draftId } : {})}
+              activeThreadTitle={activeThread.title}
+              isServerThread={isServerThread}
+              changeRequest={activeThreadChangeRequest}
+              activeProjectName={activeProjectDisplayName}
+              activeProjectCwd={activeProject?.workspaceRoot ?? null}
+              activeProjectFaviconPath={activeProject?.faviconPath ?? null}
+              openInCwd={gitCwd}
+              activeProjectScripts={activeProjectScripts}
+              preferredScriptId={
+                activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+              }
+              keybindings={keybindings}
+              availableEditors={availableEditors}
+              rightPanelOpen={rightPanelOpen}
+              gitCwd={gitCwd}
+              onNewThreadInProject={handleNewThreadInActiveProject}
+              onStartFresh={startFreshConversation}
+              onEditCrewmateJob={editCrewmateJob}
+              onEditBrief={editCrewGoal}
+              {...(activeDraftLogicalProjectKey
+                ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
+                : {})}
+              onRunProjectScript={runProjectScript}
+              onAddProjectScript={saveProjectScript}
+              onUpdateProjectScript={updateProjectScript}
+              onDeleteProjectScript={deleteProjectScript}
+            />
+          </ConversationReadiness>
         </WorkspacePageHeader>
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
@@ -8673,6 +8687,7 @@ export default function ChatView(props: ChatViewProps) {
                   moment ago is kept, hidden, and shows its rows in place;
                   another's come in as they are placed. */}
               <KeptTimelines
+                onReady={onConversationReady}
                 open={routeThreadKey}
                 warm={warmTimelineAsk}
                 insetMeasured={timelineInsetMeasured}

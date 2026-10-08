@@ -44,7 +44,7 @@ import { environmentShell } from "~/state/shell";
  */
 import { useMateRegistration } from "~/zerops/registration";
 import { useMateOffers } from "~/zerops/useHqOffers";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
   FINISH_MATE_SETUP_VERB,
@@ -162,7 +162,6 @@ import { PanelLayoutControls } from "../chat/PanelLayoutControls";
 import { EllipsisIcon } from "lucide-react";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import { handOverMateConversation } from "~/zerops/mateHandOver";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { ZeropsArrivalSteps, type ArrivalYou } from "./ZeropsArrivalSteps";
@@ -450,7 +449,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     if (cameUp) handingOver(threadRef);
     const timer = setTimeout(
       () => {
-        handOverMateConversation(scopedThreadKey(threadRef), Date.now());
         takeMateConversation(projectId)?.(threadRef);
         void navigate({
           to: "/$environmentId/$threadId",

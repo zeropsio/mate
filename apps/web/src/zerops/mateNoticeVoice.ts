@@ -14,6 +14,8 @@ export type WebMateVoice =
       readonly face?: "idle" | "sleep" | "waking";
       readonly severity?: "info" | "attention" | "danger" | undefined;
       readonly headline?: string;
+      /** The source is still opening the conversation; its waiting pose follows readiness. */
+      readonly opening?: true;
       readonly secondary?: string;
       /** Its container is restarting: its face plays the restart for as long as it lasts. */
       readonly restarting?: true;
@@ -125,13 +127,16 @@ export function mateNoticeVoice(
   ) {
     return conversationShown
       ? { surface: "none" }
-      : say(
-          `${name} is opening the conversation.`,
-          "Picking up where you left off.",
-          "idle",
-          [],
-          false,
-        );
+      : {
+          ...say(
+            `${name} is opening the conversation.`,
+            "Picking up where you left off.",
+            "sleep",
+            [],
+            false,
+          ),
+          opening: true,
+        };
   }
   if (reachability.kind === "ready" && reachability.notice === null) return { surface: "none" };
   const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });

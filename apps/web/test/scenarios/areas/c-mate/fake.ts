@@ -229,8 +229,8 @@ export class ChatDriver {
         const threadId = path.split("/").at(-1)!;
         const thread = this.otherThreads.get(threadId);
         const cursor = request.url.searchParams.get("beforeCursor");
-        if (cursor && this.pages.has(cursor))
-          return this.pages.get(cursor)!().then((snapshot) => ({
+        if (this.pages.has(cursor ?? ""))
+          return this.pages.get(cursor ?? "")!().then((snapshot) => ({
             body: wireEncodeOrchestrationThreadDetailSnapshot(snapshot),
           }));
         return {

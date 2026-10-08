@@ -7748,6 +7748,26 @@ button.rv-relrow:hover .rv-relrow-go {
   }
 }
 
+/* Readiness opens the waiting face and reveals the placed rows in the same render.
+   The fade is presentation only: neither layer waits on an animation or a clock. */
+[data-conversation-opening] {
+  transition: opacity 140ms ease-out;
+}
+
+[data-conversation-opening="ready"] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms ease-out,
+    visibility 0s 140ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-conversation-opening] {
+    transition: none;
+  }
+}
+
 /* ==== end of motion across switches ==== */
 
 /* ==== Pass 23 · the arrival ==== */
