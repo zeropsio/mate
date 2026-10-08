@@ -10,6 +10,7 @@ describe("update admission", () => {
     "Send",
     "Steer",
     "SwitchModel",
+    "ImportHistory",
     "AssignAgent",
     "Archive",
     "Unarchive",
@@ -37,6 +38,8 @@ describe("update admission", () => {
   it.effect.each([
     "Stop",
     "Answer",
+    "Dismiss",
+    "HistoryBatch",
     "CloseSession",
     "CancelWake",
     "EffectSettled",
