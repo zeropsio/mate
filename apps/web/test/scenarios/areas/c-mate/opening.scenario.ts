@@ -419,6 +419,35 @@ describe("C: the conversation opening follows readiness", () => {
                               (node) => getComputedStyle(node).visibility,
                             ),
                           ).toBe("visible");
+                          const exposure = await s.page.evaluate(() => {
+                            const footer = document.querySelector("[data-conversation-footer]")!;
+                            const input = footer.querySelector('[role="textbox"]')!;
+                            const box = input.getBoundingClientRect();
+                            return {
+                              width: box.width,
+                              height: box.height,
+                              exposed: [0.2, 0.5, 0.8].every((fraction) =>
+                                input.contains(
+                                  document.elementFromPoint(
+                                    box.left + box.width * fraction,
+                                    box.top + box.height / 2,
+                                  ),
+                                ),
+                              ),
+                            };
+                          });
+                          expect(
+                            exposure.width,
+                            "ASSERTION: ready composer has a visible input",
+                          ).toBeGreaterThan(32);
+                          expect(
+                            exposure.height,
+                            "ASSERTION: ready composer has a visible input",
+                          ).toBeGreaterThan(8);
+                          expect(
+                            exposure.exposed,
+                            "ASSERTION: nothing covers the ready composer",
+                          ).toBe(true);
                           if (entry === "menu")
                             expect(
                               await stage!.evaluate(

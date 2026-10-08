@@ -22,7 +22,11 @@ export function anotherOrganization(s: Scenario) {
 }
 
 /** zcp's actual git/HTTP boundary: real commits, change records, descriptions and merge receipts. */
-export const changeFixture = Effect.fn(function* (s: Scenario) {
+export const changeFixture = Effect.fn(function* (
+  s: Scenario,
+  content: { title?: string; summary?: string } = {},
+) {
+  const title = content.title ?? TITLE;
   const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
   const appId = s.appIds.get("Shop")!;
   if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
@@ -34,7 +38,7 @@ export const changeFixture = Effect.fn(function* (s: Scenario) {
   expect(created.status).toBe(200);
   const opened = yield* s.drivers.core.call("POST", "/api/mate/changes", {
     headers,
-    body: { repo: "appdev", title: TITLE },
+    body: { repo: "appdev", title },
   });
   expect(opened.status).toBe(200);
   const git = yield* gitClient;
@@ -45,7 +49,10 @@ export const changeFixture = Effect.fn(function* (s: Scenario) {
   ]);
   const work = NodePath.join(git.dir, "work");
   yield* Effect.sync(() =>
-    NodeFS.writeFileSync(NodePath.join(work, "summary.txt"), "Order total: 42\n"),
+    NodeFS.writeFileSync(
+      NodePath.join(work, "summary.txt"),
+      content.summary ?? "Order total: 42\n",
+    ),
   );
   yield* git.checked(["add", "summary.txt"], work);
   yield* git.checked(["commit", "-m", "Add order summary"], work);
@@ -63,7 +70,7 @@ export const changeFixture = Effect.fn(function* (s: Scenario) {
   expect(edited.status).toBe(200);
   const path = `/api/apps/${appId}/changes/appdev/1`;
   return {
-    title: TITLE,
+    title,
     description: DESCRIPTION,
     direct: `/change/${appId}/appdev/1`,
     colleagueMerges: Effect.gen(function* () {

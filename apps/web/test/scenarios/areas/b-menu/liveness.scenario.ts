@@ -1,4 +1,4 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { ThreadId } from "@t3tools/contracts";
@@ -416,9 +416,68 @@ describe("B: menu liveness", () => {
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
         yield* s.menu.chip("^Stage stage-existing, healthy$");
+        const chipContrast = Effect.promise(async () => {
+          for (const theme of ["light", "dark"]) {
+            await s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
+            await s.page.waitForFunction(
+              (dark) => document.documentElement.classList.contains("dark") === dark,
+              {},
+              theme === "dark",
+            );
+            await s.page.evaluate(() => document.fonts.ready);
+            await s.page.evaluate(async () => {
+              await Promise.all(
+                [...document.querySelectorAll("[data-zerops-chip]")].flatMap((chip) =>
+                  chip.getAnimations().map((animation) => animation.finished),
+                ),
+              );
+            });
+            const contrasts = await s.page.evaluate(() => {
+              const sidebar = document.querySelector('[data-sidebar="sidebar"]')!;
+              const chips = [...sidebar.querySelectorAll<HTMLElement>("[data-zerops-chip]")].filter(
+                (node) => node.getBoundingClientRect().width > 0,
+              );
+              const canvas = document.createElement("canvas");
+              canvas.width = canvas.height = 1;
+              const context = canvas.getContext("2d", { willReadFrequently: true })!;
+              const luminance = (bytes: Uint8ClampedArray) =>
+                [...bytes].slice(0, 3).reduce((sum, channel, index) => {
+                  const value = channel / 255;
+                  return (
+                    sum +
+                    [0.2126, 0.7152, 0.0722][index]! *
+                      (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+                  );
+                }, 0);
+              return chips.map((chip) => {
+                // Scoped to these chip/sidebar colour layers; grain, gradients and ancestor opacity remain unverified.
+                context.clearRect(0, 0, 1, 1);
+                context.fillStyle = getComputedStyle(sidebar).backgroundColor;
+                context.fillRect(0, 0, 1, 1);
+                context.fillStyle = getComputedStyle(chip).backgroundColor;
+                context.fillRect(0, 0, 1, 1);
+                const background = luminance(context.getImageData(0, 0, 1, 1).data);
+                context.fillStyle = getComputedStyle(chip).color;
+                context.fillRect(0, 0, 1, 1);
+                const text = luminance(context.getImageData(0, 0, 1, 1).data);
+                return (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05);
+              });
+            });
+            expect(
+              contrasts.length,
+              "ASSERTION: menu has rendered chip text to measure",
+            ).toBeGreaterThan(0);
+            expect(
+              Math.min(...contrasts),
+              `ASSERTION: menu chip colour layers have readable contrast in both themes (${theme})`,
+            ).toBeGreaterThanOrEqual(4.5);
+          }
+        });
+        yield* chipContrast;
         yield* s.colleague.builds("Shop-stage");
         // Three times the 5 s target budget gives a loaded laptop 10 s of headroom.
         yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
+        yield* chipContrast;
       }),
     );
   });

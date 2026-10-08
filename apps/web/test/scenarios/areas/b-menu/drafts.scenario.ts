@@ -176,11 +176,26 @@ describe("B: text-only drafts", () => {
                 newProject.parentElement!.getBoundingClientRect().bottom
               );
             });
-          expect(yield* Effect.promise(footerSpacing)).toBe(0);
+          expect(
+            Math.abs(yield* Effect.promise(footerSpacing)),
+            "ASSERTION: new project stays joined to the account footer",
+          ).toBeLessThanOrEqual(4);
           yield* dropZerops(s.drivers);
           yield* lastingZeropsOutage(s);
-          expect(yield* Effect.promise(geometry)).toEqual(before);
-          expect(yield* Effect.promise(footerSpacing)).toBe(0);
+          const after = yield* Effect.promise(geometry);
+          expect(
+            Math.max(
+              ...after.flatMap((box, index) => [
+                Math.abs(box.y - before[index]!.y),
+                Math.abs(box.height - before[index]!.height),
+              ]),
+            ),
+            "ASSERTION: account failure and recovery preserve footer room",
+          ).toBeLessThanOrEqual(4);
+          expect(
+            Math.abs(yield* Effect.promise(footerSpacing)),
+            "ASSERTION: new project stays joined to the account footer",
+          ).toBeLessThanOrEqual(4);
           s.drivers.zerops.handlers.pop();
           s.drivers.zerops.faults.delete("POST /web-socket/login");
           yield* Effect.promise(async () => {
@@ -189,7 +204,20 @@ describe("B: text-only drafts", () => {
               () => document.querySelector('[data-zerops-surface="sidebar-account-line"]') === null,
             );
           });
-          expect(yield* Effect.promise(geometry)).toEqual(before);
+          const recovered = yield* Effect.promise(geometry);
+          expect(
+            Math.max(
+              ...recovered.flatMap((box, index) => [
+                Math.abs(box.y - before[index]!.y),
+                Math.abs(box.height - before[index]!.height),
+              ]),
+            ),
+            "ASSERTION: account failure and recovery preserve footer room",
+          ).toBeLessThanOrEqual(4);
+          expect(
+            Math.abs(yield* Effect.promise(footerSpacing)),
+            "ASSERTION: new project stays joined to the account footer",
+          ).toBeLessThanOrEqual(4);
           yield* s.then.noExternalNetwork;
         }),
     );

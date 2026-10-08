@@ -48,16 +48,92 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
-    it.effect("first open crosses the door and OAuth", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.path("/env-Ada/thread-Ada");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
+    describe("Decision: catch real breakage only (overlap, overflow, wrong variant/colour role, missing element) — never pixel-exact or 1px nudges; no new expensive visual suites.", () => {
+      // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
+      it.effect("first open crosses the door and OAuth", () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.then.path("/env-Ada/thread-Ada");
+          yield* Effect.promise(async () => {
+            await s.page.evaluate(() => document.fonts.ready);
+            const edges = await s.page.evaluate(() => {
+              const menu = document
+                .querySelector('[data-sidebar="header"]')!
+                .getBoundingClientRect();
+              const header = document.querySelector("[data-chat-header]")!.getBoundingClientRect();
+              return [
+                Math.abs(menu.bottom - header.bottom),
+                Math.abs((menu.top + menu.bottom - header.top - header.bottom) / 2),
+              ];
+            });
+            expect(
+              Math.max(...edges),
+              "ASSERTION: menu and conversation header share their centre and bottom edge",
+            ).toBeLessThanOrEqual(4);
+            await s.page.setViewport({ width: 900, height: 300 });
+            // Observe before opening, including the first paint; a settled check misses cap snaps.
+            await s.page.evaluate(() => {
+              const bounds: number[] = [];
+              let active = true;
+              const sample = () => {
+                const popup = document.querySelector('[data-slot="popover-popup"]');
+                if (popup) {
+                  const box = popup.getBoundingClientRect();
+                  if (
+                    box.width > 0 &&
+                    box.height > 0 &&
+                    getComputedStyle(popup).visibility === "visible" &&
+                    Number(getComputedStyle(popup).opacity) > 0
+                  )
+                    bounds.push(
+                      Math.max(
+                        -box.left,
+                        -box.top,
+                        box.right - innerWidth,
+                        box.bottom - innerHeight,
+                      ),
+                    );
+                }
+                if (active) requestAnimationFrame(sample);
+              };
+              Reflect.set(window, "popoverBounds", bounds);
+              Reflect.set(window, "stopPopoverBounds", () => {
+                active = false;
+              });
+              requestAnimationFrame(sample);
+            });
+            await s.page.locator("[data-chat-provider-model-picker]").click();
+            await s.page.waitForSelector('[data-slot="popover-popup"]');
+            await s.page.waitForFunction(() => {
+              const popup = document.querySelector('[data-slot="popover-popup"]');
+              return (
+                popup &&
+                !popup.hasAttribute("data-starting-style") &&
+                getComputedStyle(popup).opacity === "1"
+              );
+            });
+            const bounds = await s.page.evaluate(async () => {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              Reflect.get(window, "stopPopoverBounds")();
+              return Reflect.get(window, "popoverBounds") as number[];
+            });
+            expect(
+              bounds.length,
+              "ASSERTION: opening popover supplies first and settled frame evidence",
+            ).toBeGreaterThan(1);
+            expect(
+              Math.max(...bounds),
+              "ASSERTION: model popover stays bounded on first and settled frames",
+            ).toBeLessThanOrEqual(4);
+            await s.page.keyboard.press("Escape");
+            await s.page.setViewport({ width: 1280, height: 800 });
+          });
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    });
 
     // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
     it.effect("returning to a parked Mate preserves history", () =>

@@ -172,6 +172,7 @@ export default defineConfig({
       "t3code/no-legacy-notice-policy": "error",
       "t3code/no-retired-mechanism": "error",
       "t3code/no-unknown-classes": "error",
+      "t3code/no-unscoped-has": "error",
       "t3code/require-static-classes": "error",
       "t3code/no-theme-escape-hatches": "error",
       "t3code/namespace-node-imports": "error",
