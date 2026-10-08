@@ -112,6 +112,40 @@ it("conditional setup arguments are not test sentences", () => {
   ]);
 });
 
+it("parameterized and computed test sentences cannot disappear without approval", () => {
+  fixture(({ root, write, commit, git }) => {
+    write(
+      "old.test.ts",
+      [
+        'it.for([1])("decision", () => {});',
+        'test["skip"]("computed decision", () => {});',
+        'describe["only"]("computed suite", () => {});',
+        'test["each"]([1])("computed table %s", () => {});',
+      ].join("\n"),
+    );
+    commit("parameterized and computed baseline");
+    git("branch", "-f", "origin/main");
+    write("old.test.ts", "export {};");
+    expect(checkTestSentences(root, "origin/main")).toEqual([
+      "computed decision",
+      "computed suite",
+      "computed table %s",
+      "decision",
+    ]);
+  });
+});
+
+it("parameterized and computed setup arguments are not test sentences", () => {
+  const source = [
+    'it.for("table data")("parameterized decision", () => {});',
+    'test["runIf"]("run reason")("computed decision", () => {});',
+  ].join("\n");
+  expect([...collectTestTitles(source, "parameterized.test.ts")]).toEqual([
+    "parameterized decision",
+    "computed decision",
+  ]);
+});
+
 it("test sentences retain modifier and each template titles without inventing tests in strings", () => {
   const source = [
     'describe("resource notices", () => {',
@@ -269,6 +303,9 @@ it("GitHub pull requests compare against their base and missing event history fa
     const sha = git("rev-parse", "HEAD");
     write("old.test.ts", "export {};");
     commit("drop sentence");
+    git("branch", "-f", "origin/main");
+    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+    expect(checkTestSentences(root, sha)).toEqual(["routine memory reclaim shows no notice"]);
     installCli(root);
     const event = NodePath.join(root, "event.json");
     const run = () =>

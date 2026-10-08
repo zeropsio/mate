@@ -12,12 +12,20 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     ? (value as Record<string, unknown>)
     : undefined;
 
-// Modifiers and each tables wrap the declaration; the title is the outer call's first argument.
+function memberName(value: unknown): string | undefined {
+  const node = record(value);
+  if (node?.type !== "MemberExpression") return undefined;
+  const property = record(node.property);
+  const name = node.computed ? property?.value : property?.name;
+  return typeof name === "string" ? name : undefined;
+}
+
+// Curried modifiers wrap the declaration; the title is the outer call's first argument.
 function testCallee(value: unknown): boolean {
   const node = record(value);
   if (!node) return false;
   if (node.type === "Identifier") return ["it", "test", "describe"].includes(String(node.name));
-  if (node.type === "MemberExpression" && node.computed === false) return testCallee(node.object);
+  if (memberName(node) !== undefined) return testCallee(node.object);
   if (node.type === "CallExpression" || node.type === "TaggedTemplateExpression")
     return curriedModifier(node.callee ?? node.tag);
   return false;
@@ -27,8 +35,7 @@ function curriedModifier(value: unknown): boolean {
   const node = record(value);
   return (
     node?.type === "MemberExpression" &&
-    node.computed === false &&
-    ["each", "skipIf", "runIf"].includes(String(record(node.property)?.name)) &&
+    ["each", "for", "skipIf", "runIf"].includes(String(memberName(node))) &&
     testCallee(node.object)
   );
 }
