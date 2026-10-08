@@ -1364,35 +1364,50 @@ const interruptedDispatch = (
     }),
   );
 
-for (const [title, recorded, parked] of [
-  ["its own dispatch's reset, to the target it recorded, is adopted", true, false],
-  ["a reset to your tree no dispatch recorded is not the engine's: the copy parks", false, true],
-] as const) {
-  // A crash's operation row is written into, and the lane read from, V1's own tables.
-  it.live.skipIf(CREW_WORLD !== "v1")(title, () =>
-    v1Journey([
-      (world) =>
-        Effect.gen(function* () {
-          const { head, task } = yield* landedCopy(world);
-          yield* interruptedDispatch(world, task, recorded ? { resetTo: head } : null);
-          git(NodePath.join(world.root, ".crew/backend"), ["reset", "-q", "--hard", head]);
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* world.serverReady;
-          const head = git(world.root, ["rev-parse", "HEAD"]);
-          yield* eventually(
-            Effect.map((yield* CrewStore).getLane(CREW_ID, "backend"), (row) => {
-              const lane = Option.getOrThrow(row);
-              return lane.state === "parked" || lane.recordedTip === head;
-            }).pipe(Effect.orElseSucceed(() => false)),
-          );
-          const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
-          assert.deepStrictEqual(
-            [lane.state === "parked", lane.recordedTip === git(world.root, ["rev-parse", "HEAD"])],
-            [parked, !parked],
-          );
-        }),
-    ]),
-  );
-}
+// A crash's operation row is written into, and the lane read from, V1's own tables.
+describe.skipIf(CREW_WORLD !== "v1")(
+  "a dispatch's reset across a restart, on V1's own tables",
+  () => {
+    it.live.each(
+      Array.from(
+        [
+          ["its own dispatch's reset, to the target it recorded, is adopted", true, false],
+          [
+            "a reset to your tree no dispatch recorded is not the engine's: the copy parks",
+            false,
+            true,
+          ],
+        ] as const,
+        ([title, recorded, parked]) => ({ testTitle: title, recorded, parked }),
+      ),
+    )("$testTitle", ({ recorded, parked }) =>
+      v1Journey([
+        (world) =>
+          Effect.gen(function* () {
+            const { head, task } = yield* landedCopy(world);
+            yield* interruptedDispatch(world, task, recorded ? { resetTo: head } : null);
+            git(NodePath.join(world.root, ".crew/backend"), ["reset", "-q", "--hard", head]);
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* world.serverReady;
+            const head = git(world.root, ["rev-parse", "HEAD"]);
+            yield* eventually(
+              Effect.map((yield* CrewStore).getLane(CREW_ID, "backend"), (row) => {
+                const lane = Option.getOrThrow(row);
+                return lane.state === "parked" || lane.recordedTip === head;
+              }).pipe(Effect.orElseSucceed(() => false)),
+            );
+            const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
+            assert.deepStrictEqual(
+              [
+                lane.state === "parked",
+                lane.recordedTip === git(world.root, ["rev-parse", "HEAD"]),
+              ],
+              [parked, !parked],
+            );
+          }),
+      ]),
+    );
+  },
+);
