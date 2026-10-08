@@ -48,6 +48,37 @@ const isAuthorization = Schema.is(EnvironmentAuthorizationError);
 const isUndecodable = Schema.is(CrewFrameUndecodable);
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+/**
+ * Where a crew frame stands: the engine's revision (the crew owner's gapless seq under the Mate's
+ * epoch), or V1's wall-clock `seq` where the frame carries none.
+ */
+export type CrewFrameMark =
+  | { readonly kind: "revision"; readonly epoch: number; readonly seq: number }
+  | { readonly kind: "seq"; readonly seq: number };
+
+export function crewFrameMark(frame: {
+  readonly seq: number;
+  readonly revision?: { readonly epoch: number; readonly seq: number } | undefined;
+}): CrewFrameMark {
+  return frame.revision === undefined
+    ? { kind: "seq", seq: frame.seq }
+    : { kind: "revision", epoch: frame.revision.epoch, seq: frame.revision.seq };
+}
+
+/** A crew frame is taken only when newer than the last: epoch first, then its sequence. */
+export function isNewerCrewFrame(
+  last: CrewFrameMark | null,
+  frame: Parameters<typeof crewFrameMark>[0],
+): boolean {
+  if (last === null) return true;
+  const next = crewFrameMark(frame);
+  if (next.kind === "revision" && last.kind === "revision")
+    return next.epoch !== last.epoch ? next.epoch > last.epoch : next.seq > last.seq;
+  // A server that changed what it speaks within one session: its first frame is a baseline.
+  if (next.kind !== last.kind) return true;
+  return next.seq > last.seq;
+}
+
 export function classifyMateFeedFailure(cause: Cause.Cause<unknown>): StreamFault {
   for (const reason of cause.reasons) {
     if (Cause.isFailReason(reason) && isHttpAuthInvalid(reason.error))
@@ -387,7 +418,7 @@ export function makeMateFeeds(options: {
           for (;;) {
             let based = false;
             let generation: number | undefined;
-            let crewSeq = -1;
+            let crewMark: CrewFrameMark | null = null;
             yield* Stream.runForEach(wire.open(key), (event) =>
               Effect.gen(function* () {
                 if (closed || withheld.has(key.environmentId)) return;
@@ -399,7 +430,7 @@ export function makeMateFeeds(options: {
                 }
                 if (event.kind === "session") {
                   based = false;
-                  crewSeq = -1;
+                  crewMark = null;
                   yield* signal(link, { kind: "handshake" });
                   yield* signal(scope, { kind: "attempt" });
                   yield* signal(scope, { kind: "handshake" });
@@ -413,8 +444,9 @@ export function makeMateFeeds(options: {
                   return;
                 const observationGeneration = generation;
                 if (key.family === "mateCrew" && "seq" in event.value) {
-                  if (event.value.seq <= crewSeq) return;
-                  crewSeq = event.value.seq;
+                  const frame = event.value as Parameters<typeof crewFrameMark>[0];
+                  if (!isNewerCrewFrame(crewMark, frame)) return;
+                  crewMark = crewFrameMark(frame);
                 }
                 const now = yield* Clock.currentTimeMillis;
                 const prior = store.state().facts.get(`${key.family}:${mateFeedId(key)}`)?.revision;
