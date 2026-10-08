@@ -26,6 +26,7 @@ import * as Random from "effect/Random";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
+import * as PubSub from "effect/PubSub";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import {
   CREW_OWNER_ID,
@@ -79,6 +80,7 @@ import { crewLane } from "../CrewDefinition.ts";
 import { proposeCrewPorts, readDeclaredPorts } from "../crewPorts.ts";
 import { CrewWorkspace } from "../CrewWorkspace.ts";
 import { DEFAULT_CREW_LOGIN, noSpendWords } from "../crewCore.ts";
+import { subscribeUpdateChanges } from "../../../update/subscribeChanges.ts";
 import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
 import { makeOver, type CrewMemoryRecords } from "../CrewMemory.ts";
@@ -98,6 +100,7 @@ import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { importV1Crew } from "./importV1Crew.ts";
 import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
+import { crewEngineUpdateFacts } from "./updateIdle.ts";
 import {
   DEFAULT_CREW_TIMING,
   membersInOrder,
@@ -532,6 +535,14 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         ),
       ),
     );
+    /** Each commit the crew's frame was refreshed for: an update's drain reads its facts again. */
+    const updateChanged = yield* PubSub.sliding<void>(1);
+    /** What in the crew's record still holds an update back; an unreadable record holds it. */
+    const updateFacts = Effect.flatMap(state, (current) =>
+      Effect.map(frameOf(current), (frame) => crewEngineUpdateFacts(current, frame)),
+    ).pipe(
+      Effect.catchCause(() => Effect.succeed({ idle: false, blockers: ["crew state unreadable"] })),
+    );
     /** The latest frame at once (its revision current), then one per change of what it shows. */
     const frames = Stream.concat(
       Stream.fromEffect(Ref.get(latest)),
@@ -543,7 +554,9 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       ),
       Stream.map(SubscriptionRef.changes(devHosts), () => undefined),
     ).pipe(
-      Stream.runForEach(() => refresh),
+      Stream.runForEach(() =>
+        refresh.pipe(Effect.andThen(PubSub.publish(updateChanged, undefined))),
+      ),
       Effect.forkIn(scope),
     );
 
@@ -980,6 +993,9 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     const service: CrewEngineService = {
       snapshot: frames,
+      updateFacts,
+      updateChanges: Stream.fromPubSub(updateChanged),
+      subscribeUpdateChanges: subscribeUpdateChanges(updateChanged),
       readFiles: Effect.forkIn(probeDevHosts.pipe(Effect.ignore), scope).pipe(
         Effect.andThen(Effect.map(home.read, (files) => ({ files }))),
       ),
