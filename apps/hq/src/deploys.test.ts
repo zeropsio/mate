@@ -1596,8 +1596,10 @@ describe("deploys", () => {
           world.outcome = () => "BUILDING";
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("building"));
-          // Past the slow-down: still read, never submitted again.
-          yield* Effect.sleep(Duration.millis(600));
+          // The next process read acknowledges the preceding BUILDING follow pass returned.
+          const reads = () => world.calls.filter((call) => call.startsWith("process:")).length;
+          const before = reads();
+          yield* until((rows) => reads() >= before + 2 && settled("building")(rows));
           assert.lengthOf(versions(world), 1);
           world.outcome = () => "ACTIVE";
           yield* until(settled("live"));

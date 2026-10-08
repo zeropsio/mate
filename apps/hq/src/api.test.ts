@@ -12,6 +12,7 @@ import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Stream from "effect/Stream";
+import * as Schedule from "effect/Schedule";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
@@ -306,9 +307,17 @@ describe("HQ API", () => {
             signal: AbortSignal.timeout(300),
           }),
         );
-        yield* Effect.sleep(Duration.millis(2500));
+        const structure = yield* call("GET", "/api/structure", { session }).pipe(
+          Effect.filterOrFail((response) =>
+            (
+              response.body as { readonly apps: ReadonlyArray<{ readonly name: string }> }
+            ).apps.some((app) => app.name === "Store"),
+          ),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout("10 seconds"),
+          Effect.orDie,
+        );
         fake.membersTake = 0;
-        const structure = yield* call("GET", "/api/structure", { session });
         assert.deepStrictEqual(
           (structure.body as { readonly apps: ReadonlyArray<{ readonly name: string }> }).apps.map(
             (app) => app.name,

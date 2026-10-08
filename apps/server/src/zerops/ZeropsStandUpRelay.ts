@@ -290,7 +290,7 @@ export const make = Effect.gen(function* () {
     finished: Effect.suspend(() =>
       Effect.forEach(
         [...following.values()].flatMap((call) => (call.fiber === undefined ? [] : [call.fiber])),
-        Fiber.join,
+        Fiber.await,
         { discard: true },
       ),
     ),

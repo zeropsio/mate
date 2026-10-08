@@ -428,10 +428,14 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
       yield* Effect.gen(function* () {
         yield* Ref.set(status, running("2026-10-01T10:00:01Z", "running"));
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT)));
+        const relay = yield* ZeropsStandUpRelay;
+        const follower = yield* relay.finished.pipe(Effect.forkChild({ startImmediately: true }));
         yield* domain.publish({
           type: "thread.deleted",
           payload: { threadId: ThreadId.make("thread-main"), deletedAt: CALL_AT },
         } as unknown as OrchestrationEvent);
+        const ended = yield* Effect.exit(Fiber.join(follower).pipe(Effect.timeout("5 seconds")));
+        assert.strictEqual(ended._tag, "Success", "the deleted thread's follower must terminate");
         yield* Ref.set(status, running("2026-10-01T10:00:01Z", "done"));
         assert.deepStrictEqual(yield* Ref.get(appended), ["zerops-standup:thread-main:call-1"]);
       }).pipe(Effect.provide(layer), Effect.scoped);

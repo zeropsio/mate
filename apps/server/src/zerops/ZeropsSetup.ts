@@ -55,6 +55,7 @@ import * as Deferred from "effect/Deferred";
 import * as Semaphore from "effect/Semaphore";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -147,6 +148,8 @@ export class ZeropsSetup extends Context.Service<
     readonly noteStandUpCall: (call: StandUpCall) => Effect.Effect<void>;
     /** A scheduled stand-up or flip decision returned; not an in-flight send. */
     readonly nextPoll: Effect.Effect<void>;
+    /** The initial stand-up or flip worker has terminated. */
+    readonly finished: Effect.Effect<void>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
@@ -1007,13 +1010,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       }
     });
 
+    let finished = Effect.void;
     if (environment !== undefined && isZeropsEnvironment(config)) {
-      yield* Effect.forkScoped(wait);
+      const worker = yield* Effect.forkScoped(wait);
+      finished = Fiber.join(worker).pipe(Effect.orDie);
     } else if (onEngine) {
       // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
       // are known.
       yield* Deferred.succeed(settled, undefined);
-      yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
+      const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
+      finished = Fiber.join(worker);
     }
 
     const retry = (subject: string) =>
@@ -1044,6 +1050,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       standUpGone,
       noteStandUpCall,
       retry,
+      finished,
       nextPoll: Effect.suspend(polled.next),
       awaitStandUp: Deferred.await(settled),
     });

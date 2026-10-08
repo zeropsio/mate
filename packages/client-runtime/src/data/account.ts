@@ -181,8 +181,9 @@ export interface AccountObservation {
    * The organization's HQ: its official HQ once known, observed while its organization is the one
    * shown — named before, from then on; else the account's verdict on it — none, the member list
    * deciding it unreadable, or not decided yet. The verdict is held as a fact (`hqVerdict`).
+   * Letting it go returns the completion of the queued release decision.
    */
-  readonly showHq: (hq: ShownHq | null) => void;
+  readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
   /** Asks the shown organization's HQ whom a Mate may be handed over to; refused without one. */
@@ -345,8 +346,11 @@ export function observeAccount(options: {
       if (next !== null) return followHq();
       // Let go at the end of this turn, not at once: what names the HQ remounting names it again
       // in the same turn, and its link and socket go on.
-      queueMicrotask(() => {
-        if (wantedHq === null) followHq();
+      return new Promise<void>((resolve) => {
+        queueMicrotask(() => {
+          if (wantedHq === null) followHq();
+          resolve();
+        });
       });
     },
     moveOffers: (projectId) =>

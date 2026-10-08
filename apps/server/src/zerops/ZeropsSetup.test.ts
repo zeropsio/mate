@@ -411,7 +411,7 @@ const turnsOf = (world: World) =>
 
 /** The next completed worker cycle, with a failing bound if it never runs. */
 const ticks = Effect.flatMap(ZeropsSetup, (setup) =>
-  Effect.raceFirst(setup.nextPoll, setup.awaitStandUp),
+  Effect.raceFirst(setup.nextPoll, setup.finished),
 ).pipe(Effect.timeout("5 seconds"), Effect.orDie);
 
 const eventually = <A>(read: Effect.Effect<A>, holds: (value: A) => boolean) =>
@@ -464,7 +464,9 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* withServer(world, database, () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
       );
-      yield* withServer(world, database, () => ticks);
+      yield* withServer(world, database, (setup) =>
+        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      );
       assert.strictEqual((yield* turnsOf(world)).length, 1);
     }),
   );
@@ -757,12 +759,17 @@ describe("ZeropsSetup: the stand-up", () => {
       const database = freshDatabase();
       yield* withServer(world, database, () =>
         Effect.gen(function* () {
-          yield* ticks;
+          const ended = yield* Effect.exit(
+            (yield* ZeropsSetup).finished.pipe(Effect.timeout("5 seconds")),
+          );
+          assert.strictEqual(ended._tag, "Success", "the settled setup worker must terminate");
           assert.isFalse(yield* stillPolling(world));
         }),
       );
       const reads = yield* Ref.get(world.hqReads);
-      yield* withServer(world, database, () => ticks);
+      yield* withServer(world, database, (setup) =>
+        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      );
       assert.strictEqual(yield* Ref.get(world.hqReads), reads);
     }),
   );
@@ -905,7 +912,9 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.dispatchHangs, false);
       // Someone else entirely holds the agent now.
       yield* Ref.set(world.signers, { "claude-code": "user-c" });
-      yield* withServer(world, database, () => ticks);
+      yield* withServer(world, database, (setup) =>
+        setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      );
       assert.deepStrictEqual(yield* turnsOf(world), []);
       assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
     }),

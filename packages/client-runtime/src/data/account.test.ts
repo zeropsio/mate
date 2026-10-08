@@ -445,13 +445,11 @@ describe("an account's HQ", () => {
         "HQ registration",
       );
       // A remount of what names the HQ lets it go and names it again at once.
-      account.showHq(null);
+      const released = account.showHq(null);
       account.showHq({ orgId: "org-a", wire: hq.wire });
-      yield* until(
-        store,
-        () =>
-          hq.opens() === 1 && streamOf(store.state(), hqAppsScope("org-a")).phase === "baselining",
-        "HQ registration",
+      yield* Effect.promise(() => Promise.resolve(released)).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.orDie,
       );
       expect(hq.opens()).toBe(1);
       expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
