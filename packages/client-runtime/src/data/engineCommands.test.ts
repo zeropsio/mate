@@ -6,7 +6,13 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
-import { engineStartTurn, engineRespondToApproval, viaEngine } from "./engineCommands.ts";
+import {
+  engineDismissUserInput,
+  engineRespondToApproval,
+  engineRespondToUserInput,
+  engineStartTurn,
+  viaEngine,
+} from "./engineCommands.ts";
 import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
@@ -147,6 +153,40 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         answer: { kind: "approval", decision: "accept" },
         summary: "Approved",
       });
+    }),
+  );
+
+  it.effect("an answer carrying pictures is refused in words, never sent without them", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const failure = yield* Effect.flip(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineRespondToUserInput(ENV, {
+              threadId: "thread-ada",
+              requestId: "thread-ada/r/2/q/1",
+              answers: { target: "Inspect the preview" },
+              attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
+            } as never),
+            r.v1,
+          ),
+        ),
+      );
+      expect(failure.message).toMatch(/pictures/);
+      expect(r.calls).toEqual([]);
+    }),
+  );
+
+  it.effect("dismissing a question on the engine is refused in words, never sent over V1", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const failure = yield* Effect.flip(
+        r.run(viaEngine(r.registry, ENV, engineDismissUserInput(), r.v1)),
+      );
+      expect(failure.message).toMatch(/Answer the question/);
+      expect(r.v1Calls).toEqual([]);
     }),
   );
 });

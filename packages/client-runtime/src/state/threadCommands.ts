@@ -66,6 +66,7 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  engineDismissUserInput,
   engineInterruptTurn,
   engineRespondToApproval,
   engineRespondToUserInput,
@@ -263,7 +264,8 @@ export function createThreadEnvironmentAtoms<R, E>(
     }),
     dismissUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:dismiss-user-input",
-      execute: (input: DismissThreadUserInputInput) => dismissThreadUserInput(input),
+      execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
+        viaEngine(registry, environmentId, engineDismissUserInput(), dismissThreadUserInput(input)),
       scheduler,
       concurrency,
     }),

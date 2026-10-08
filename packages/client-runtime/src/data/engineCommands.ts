@@ -123,12 +123,26 @@ export const engineRespondToApproval =
       summary: DECISION_WORDS[input.decision] ?? input.decision,
     });
 
+const ANSWER_PICTURES =
+  "This Mate's engine takes an answer's words, not its pictures yet; answer in words.";
+
 export const engineRespondToUserInput =
   (environmentId: string, input: Command<"thread.user-input.respond">) => (host: MateEngineHost) =>
-    host.operations.answer({
-      environmentId,
-      conversationId: input.threadId,
-      requestId: input.requestId,
-      answer: { kind: "input", answers: input.answers },
-      summary: "Answered",
-    });
+    Object.values(input.attachmentsByQuestionId ?? {}).some((pictures) => pictures.length > 0)
+      ? Effect.fail(new EngineOperationFailed({ outcome: "refused", message: ANSWER_PICTURES }))
+      : host.operations.answer({
+          environmentId,
+          conversationId: input.threadId,
+          requestId: input.requestId,
+          answer: { kind: "input", answers: input.answers },
+          summary: "Answered",
+        });
+
+/** Protocol 1 has no dismissal: the person answers, or Stop ends the run waiting on it. */
+export const engineDismissUserInput = () => () =>
+  Effect.fail(
+    new EngineOperationFailed({
+      outcome: "refused",
+      message: "Answer the question or stop the work; this Mate's engine has no dismissal yet.",
+    }),
+  );
