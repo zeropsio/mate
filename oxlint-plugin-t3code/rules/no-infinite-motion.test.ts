@@ -27,8 +27,8 @@ const nonProtectedZeropsFile = createOxlintRuleHarness("t3code/no-infinite-motio
 const testFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
   filename: "apps/web/src/components/example/MotionSurface.test.tsx",
 });
-const lifecycleStripFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
-  filename: "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+const admissionExplanationFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+  filename: "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
 });
 
 const entry = (path: string, kind: string, fingerprint: string): ExceptionEntry => ({
@@ -330,12 +330,12 @@ it.layer(NodeServices.layer)("temporary infinite-motion ledger", (it) => {
     withFixtureLedger(
       [
         entry(
-          "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+          "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
           "JSXOpeningElement",
           '<Spinner className="size-3 shrink-0" />',
         ),
       ],
-      lifecycleStripFile.run(`
+      admissionExplanationFile.run(`
         import { Spinner } from "~/components/ui/spinner";
         export const indicator = <Spinner className="size-3 shrink-0" />;
       `),

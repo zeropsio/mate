@@ -31,7 +31,7 @@ const INFINITE_ANIMATION_CLASSES = new Set([
 // Keep this list identical to zone rule 6 in scripts/mate-zone-architecture.test.ts.
 const PROTECTED_ROOTS = new Set([
   "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-  "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
+  "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
   "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
   "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
 ]);

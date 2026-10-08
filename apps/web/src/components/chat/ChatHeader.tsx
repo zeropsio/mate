@@ -1,3 +1,4 @@
+import type { AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
@@ -65,6 +66,7 @@ import { useIsMobile } from "~/hooks/useMediaQuery";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
 interface ChatHeaderProps {
+  admission?: AgentAdmissionAttention | null;
   activeThreadEnvironmentId: EnvironmentId;
   activeThreadId: ThreadId;
   draftId?: DraftId;
@@ -182,6 +184,7 @@ export function headerLead(
 }
 
 export const ChatHeader = memo(function ChatHeader({
+  admission,
   activeThreadEnvironmentId,
   activeThreadId,
   draftId,
@@ -277,7 +280,7 @@ export const ChatHeader = memo(function ChatHeader({
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
   const linkVoice = useMateVoice();
-  const status = linkVoice.surface === "none" ? mateStatus(mateActivity) : null;
+  const status = linkVoice.surface === "none" ? mateStatus(mateActivity, admission) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;
@@ -590,6 +593,15 @@ export const ChatHeader = memo(function ChatHeader({
             <MateStatusMarker
               mateName={mate?.name}
               status={status}
+              onOpen={
+                status.admission === undefined
+                  ? undefined
+                  : () => {
+                      const primary = document.getElementById("agent-admission");
+                      primary?.scrollIntoView({ block: "nearest" });
+                      primary?.focus();
+                    }
+              }
               timestampFormat={settings.timestampFormat}
             />
           )}

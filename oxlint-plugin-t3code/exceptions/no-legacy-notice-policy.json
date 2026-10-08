@@ -1,18 +1,1 @@
-[
-  {
-    "path": "apps/web/src/zerops/chatChrome.ts",
-    "kind": "CallExpression",
-    "fingerprint": "zeropsAgentSignInRequired",
-    "owner": "admission slice 1",
-    "reason": "Replaced hosted sign-in derivation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "spentLoginStatusStale",
-    "owner": "admission slice 1",
-    "reason": "Replaced hosted sign-in derivation",
-    "expires": "never"
-  }
-]
+[]

@@ -52,7 +52,7 @@ import {
   zeropsAgentAuthNeedsAttention,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
+import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { FlatCard, StatusDot } from "./primitives";
 
 const AGENT_NAMES: Record<ZeropsAgentId, string> = {

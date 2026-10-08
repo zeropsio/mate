@@ -11,7 +11,7 @@ const check = (assertion: string) => {
       "-e",
       `
     import { strict as assert } from "node:assert";
-    import { checkGuardExceptions, ratchetAdditions, RATCHET_RULES, loadRatchetBaseline } from ${JSON.stringify(script)};
+    import { checkGuardExceptions, ratchetAdditions, RATCHET_RULES, loadRatchetBaseline, ADMISSION_POLICY_BOOTSTRAP } from ${JSON.stringify(script)};
     import * as Effect from "effect/Effect";
     import * as fs from "node:fs";
     import { execFileSync } from "node:child_process";
@@ -78,7 +78,28 @@ describe("identity multiset ratchet", () => {
       assert.ok(result.reports.join("\\n").includes("new exception identity/occurrence"));
     } finally { fs.rmSync(directory, { recursive: true }); }
   `));
-  it("keeps all four empty files in the default scan and rejects removing one", () =>
+  it("both replaced admission policies must leave the frozen baseline", () =>
+    check(`
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "guard-admission-"));
+    const rule = "no-legacy-notice-policy";
+    try {
+      for (const name of RATCHET_RULES) fs.writeFileSync(path.join(directory, name + ".json"), "[]");
+      for (const entries of [ADMISSION_POLICY_BOOTSTRAP, ADMISSION_POLICY_BOOTSTRAP.slice(0, 1), []]) {
+        fs.writeFileSync(path.join(directory, rule + ".json"), JSON.stringify(entries));
+        const result = await Effect.runPromise(checkGuardExceptions({
+          cwd: directory, directory,
+          baseline: new Map(RATCHET_RULES.map(name => [name, name === rule ? ADMISSION_POLICY_BOOTSTRAP : []])),
+          runLint: () => Effect.succeed({ exitCode: 0, stderr: "", stdout: JSON.stringify({ diagnostics: entries.map(entry => ({
+            filename: entry.path, code: "t3code(" + rule + ")",
+            message: "T3CODE_GUARD_FINDING:" + JSON.stringify({ ruleName: rule, kind: entry.kind, fingerprint: entry.fingerprint, ledgered: true, summary: "fixture" })
+          })) }) })
+        }));
+        assert.equal(result.exitCode, entries.length === 0 ? 0 : 1);
+        assert.equal(result.reports.some(report => report.includes("strictly decrease")), entries.length !== 0);
+      }
+    } finally { fs.rmSync(directory, { recursive: true }); }
+  `));
+  it("keeps all empty files in the default scan and rejects removing one", () =>
     check(`
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "guard-empty-"));
     try {
@@ -90,7 +111,7 @@ describe("identity multiset ratchet", () => {
       };
       const result = await Effect.runPromise(checkGuardExceptions({ cwd: directory, directory, baseline, runLint }));
       assert.equal(result.exitCode, 0);
-      assert.equal(result.reports.length, 4);
+      assert.equal(result.reports.length, RATCHET_RULES.length);
       fs.unlinkSync(path.join(directory, RATCHET_RULES[0] + ".json"));
       const error = await Effect.runPromise(checkGuardExceptions({ cwd: directory, directory, baseline, runLint }).pipe(Effect.flip));
       assert.equal(error.detail, "required ledger file is missing");

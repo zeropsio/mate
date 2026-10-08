@@ -1,9 +1,35 @@
-import { projectMateLimit } from "@t3tools/client-runtime/data";
+import { agentAdmission, projectMateLimit } from "@t3tools/client-runtime/data";
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateStatus } from "./mateStatus.logic";
 
+const admission = agentAdmission({
+  environmentId: "rig",
+  instanceId: "claudeAgent",
+  viewerSubject: "owner",
+  snapshot: {
+    available: true,
+    agents: [
+      {
+        agentId: "claude-code",
+        credPresent: false,
+        flagOAuth: false,
+        flagToken: false,
+        providerAuth: "unknown",
+        state: "not-authorized",
+      },
+    ],
+  },
+  providers: [],
+  mateName: "Rosa",
+  availability: new Map([
+    [
+      "claudeAgent" as import("@t3tools/contracts").ProviderInstanceId,
+      { kind: "needs-sign-in", signInKind: "not-authorized" },
+    ],
+  ]),
+}).attention;
 const activity = (patch: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => ({
   threadId: ThreadId.make("thread"),
   threadKey: "thread",
@@ -32,14 +58,6 @@ describe("Mate status across menu and conversation", () => {
   it.each([
     [{ kind: "failed", usageLimited: true }, "limit", "attention"],
     [{ kind: "failed", errorLine: "Claude usage limit reached" }, "limit", "attention"],
-    [
-      {
-        kind: "failed",
-        errorLine: "Claude could not authenticate. For subscription login, run claude auth login.",
-      },
-      "sign-in",
-      "attention",
-    ],
     [{ kind: "input" }, "answer", "attention"],
     [{ kind: "approval" }, "answer", "attention"],
     [{ kind: "failed", errorLine: "The work failed." }, "broken", "danger"],
@@ -52,9 +70,12 @@ describe("Mate status across menu and conversation", () => {
   it("unknown and working states do not invent a stop", () => {
     expect(mateStatus(undefined)).toBeNull();
     expect(mateStatus(activity({ kind: "working" }))).toBeNull();
-    expect(mateStatus(activity({ kind: "working" }), true)).toBeNull();
+    expect(mateStatus(activity({ kind: "working" }), admission)).toBeNull();
   });
   it("a source sign-in requirement needs attention without a failed turn", () => {
-    expect(mateStatus(undefined, true)).toMatchObject({ kind: "sign-in", severity: "attention" });
+    expect(mateStatus(undefined, admission)).toMatchObject({
+      kind: "sign-in",
+      severity: "attention",
+    });
   });
 });

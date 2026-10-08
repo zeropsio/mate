@@ -1,3 +1,5 @@
+import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/data";
+// @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   CheckpointRef,
@@ -55,7 +57,6 @@ import {
   zeropsReadOnlyFooter,
   composerOpenFocus,
   resolveZeropsOwnedAgentSendBlockReason,
-  resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
   readOncePerFile,

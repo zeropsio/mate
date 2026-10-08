@@ -1,3 +1,4 @@
+import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
@@ -267,60 +268,64 @@ function SignedInRootRouteView() {
   }
 
   const appShell = (
-    <ZeropsReviewProvider>
-      <CommandPalette>
-        <ConversationOpeningProvider>
-          <AppSidebarLayout>
-            {/* The organization's gate (ADR 0001): no product without its HQ. */}
-            {hqGate.kind !== "open" ? (
-              <ZeropsHqGate gate={hqGate} />
-            ) : (
-              <RouteGateView
-                gate={gate}
-                phrase={gatePhrase}
-                projectId={projectUnavailable ? null : gateInputs.projectId}
-                recoveryPhrase={recoveryPhrase}
-                projectUnavailable={projectUnavailable}
-                conversation={
-                  projectUnavailable
-                    ? { kind: "suppressed", reason: "access-denied" }
-                    : conversation
-                }
-                voice={voice}
-                stage={
-                  gate.kind === "wait" ||
-                  (gate.kind === "unavailable" && gate.reachability !== null) ? (
-                    <MateLinkStage
-                      readPending={!routeDetailHeld}
-                      threadKey={
-                        routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
-                      }
-                      composer={
-                        routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
-                      }
-                      environmentId={routeEnvironment}
-                      projectId={gateInputs.projectId}
-                      voice={voice.surface === "none" ? SILENT_STAGE : voice}
-                    />
-                  ) : null
-                }
-              >
-                <Outlet />
-              </RouteGateView>
-            )}
-          </AppSidebarLayout>
-        </ConversationOpeningProvider>
-        {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
+    <AgentAdmissionComposition>
+      <ZeropsReviewProvider>
+        <CommandPalette>
+          <ConversationOpeningProvider>
+            <AppSidebarLayout>
+              {/* The organization's gate (ADR 0001): no product without its HQ. */}
+              {hqGate.kind !== "open" ? (
+                <ZeropsHqGate gate={hqGate} />
+              ) : (
+                <RouteGateView
+                  gate={gate}
+                  phrase={gatePhrase}
+                  projectId={projectUnavailable ? null : gateInputs.projectId}
+                  recoveryPhrase={recoveryPhrase}
+                  projectUnavailable={projectUnavailable}
+                  conversation={
+                    projectUnavailable
+                      ? { kind: "suppressed", reason: "access-denied" }
+                      : conversation
+                  }
+                  voice={voice}
+                  stage={
+                    gate.kind === "wait" ||
+                    (gate.kind === "unavailable" && gate.reachability !== null) ? (
+                      <MateLinkStage
+                        readPending={!routeDetailHeld}
+                        threadKey={
+                          routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
+                        }
+                        composer={
+                          routeThreadRef === null ? null : (
+                            <RouteStandIn threadRef={routeThreadRef} />
+                          )
+                        }
+                        environmentId={routeEnvironment}
+                        projectId={gateInputs.projectId}
+                        voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                      />
+                    ) : null
+                  }
+                >
+                  <Outlet />
+                </RouteGateView>
+              )}
+            </AppSidebarLayout>
+          </ConversationOpeningProvider>
+          {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
             same way for every "New project". Neither behind the organization's gate. */}
-        {hqGate.kind === "open" ? (
-          <>
-            <ZeropsNewMateHost />
-            <ZeropsNewProjectHost />
-          </>
-        ) : null}
-      </CommandPalette>
-    </ZeropsReviewProvider>
+          {hqGate.kind === "open" ? (
+            <>
+              <ZeropsNewMateHost />
+              <ZeropsNewProjectHost />
+            </>
+          ) : null}
+        </CommandPalette>
+      </ZeropsReviewProvider>
+    </AgentAdmissionComposition>
   );
 
   return (

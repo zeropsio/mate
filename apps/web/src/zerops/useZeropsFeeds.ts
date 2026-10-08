@@ -11,7 +11,7 @@
  * design-system rule a protected root's whole module graph must satisfy
  * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
  * and every file in this one is reachable from `ZeropsServiceMap.tsx`,
- * `ZeropsLifecycleStrip.tsx`, `ZeropsOperationCard.tsx`,
+ * `ZeropsOperationCard.tsx`,
  * `ZeropsQuickActions.tsx`). It reads the project's topology atom, derived from the
  * account's runtime (`../state/zerops.ts`'s `projectTopologyAtom`), through the environment's
  * project (`useEnvironmentProjectRef`); `useProjectTopology` is where a non-protected host

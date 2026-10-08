@@ -28,8 +28,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
-  type ZeropsAgentAuthKind,
-  zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
 } from "@t3tools/shared/zeropsAgentAuth";
@@ -179,56 +177,4 @@ export function resolveSpentLogin(
   const agentId = resolveOwnedAgentId(instanceId, providers);
   const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
   return agent === undefined ? undefined : { key: agent.agentId, agent };
-}
-
-/** The sign-in states a provider status can speak of, as the server words them. */
-const UNAVAILABLE_KINDS: ReadonlyArray<Exclude<ZeropsAgentAuthKind["kind"], "authorized">> = [
-  "registering",
-  "reconnect",
-  "needs-reauth",
-  "not-authorized",
-];
-
-/**
- * Whether a provider status is only the server's word on a login the Mate signs people in to,
- * and so says nothing the person should read now: its "being registered" ever (that login runs
- * while it is registered, `ZeropsTurnAdmission` admits it, and nothing is the person's to do),
- * and its "not signed in" or "no longer works" once the sign-in feed says otherwise.
- *
- * The server's provider statuses and its sign-in feed are two streams, and either may be ahead —
- * the statuses are debounced, so right after a sign-in they still carry the answer from before
- * it while the composer has already picked the agent off the feed, and a red "unauthenticated"
- * flashed over a sign-in that had just worked. The feed is what the composer and the gate go
- * by, so it decides: a status the feed agrees with shows at once. Any other status — the
- * driver's own warning or error, a login disabled — is the person's to read.
- */
-export function spentLoginStatusStale(
-  status:
-    | {
-        readonly instanceId: string;
-        readonly status: string;
-        readonly message?: string | undefined;
-      }
-    | null
-    | undefined,
-  snapshot: ZeropsAgentAuthSnapshot | null | undefined,
-  providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
-): boolean {
-  if (status == null || status.message === undefined) return false;
-  if (status.status !== "warning" && status.status !== "error") return false;
-  const spent = resolveSpentLogin(status.instanceId, snapshot, providers);
-  if (spent === undefined) return false;
-  const login = snapshot?.logins?.find((entry) => !entry.default && entry.id === spent.key);
-  const spoken = UNAVAILABLE_KINDS.filter(
-    (kind) =>
-      status.message ===
-      (login === undefined
-        ? zeropsAgentUnavailableReason(spent.agent.agentId, kind)
-        : zeropsLoginUnavailableReason(login, kind)),
-  );
-  // The driver's own words.
-  if (spoken.length === 0) return false;
-  if (spoken.includes("registering")) return true;
-  const now = classifyZeropsAgentAuth(spent.agent).kind;
-  return now === "authorized" || !spoken.includes(now);
 }

@@ -545,3 +545,12 @@ export {
   type RestartEvidence,
   type RestartProcess,
 } from "./projections/restart.ts";
+
+export {
+  agentAdmission,
+  admissionRefusalWords,
+  mateAdmissionSummary,
+  admissionExplainsRefusal,
+  resolveZeropsProviderAvailability,
+  type AgentAdmissionAttention,
+} from "./projections/agentAdmission.ts";

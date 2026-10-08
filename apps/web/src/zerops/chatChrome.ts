@@ -6,7 +6,6 @@
  * command wiring.
  */
 import {
-  zeropsAgentSignInRequired,
   type OtherAgentFields,
   type ZeropsAgentAuthView,
 } from "@t3tools/client-runtime/zerops/agentLogin";
@@ -39,13 +38,6 @@ export interface ZeropsChatChrome {
    */
   readonly agentAuthUnknown: KnownMessage | null;
   /**
-   * Whether the lifecycle band asks for a coding-agent sign-in. Narrower than
-   * the card: one authorized agent is enough to work, so this is true only
-   * when no agent is authorized and none outside the sign-in is ready
-   * (`docs/spec-mate.md` §5.4).
-   */
-  readonly agentSignInRequired: boolean;
-  /**
    * The Zerops project's name, for the header and the draft headline. Read
    * from the topology whenever it has answered — a draft has an environment
    * before it has a thread, and "www" (the workspace folder) is not the
@@ -76,7 +68,6 @@ export function resolveZeropsChatChrome(
       panel: "unknown",
       agentAuthCard: null,
       agentAuthUnknown: null,
-      agentSignInRequired: false,
       projectName,
     };
   }
@@ -92,7 +83,5 @@ export function resolveZeropsChatChrome(
     // in-flow entry to that panel, but never render the card over the timeline.
     agentAuthCard: agentAuth !== null && agentAuth.available ? agentAuth : null,
     agentAuthUnknown: input.agentAuth.unknown,
-    agentSignInRequired:
-      agentAuth !== null && zeropsAgentSignInRequired(agentAuth, input.providers),
   };
 }

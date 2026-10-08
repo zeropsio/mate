@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveAgentAuthorizer } from "./agentSigner";
+import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
 
 describe("resolveAgentAuthorizer", () => {
   const login = (phase: "verifying-code" | "succeeded" | "failed" | "cancelled", by?: string) => ({

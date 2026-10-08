@@ -153,7 +153,6 @@ const CASES = THREADS.flatMap((thread) =>
               panel: "unknown" as const,
               agentAuthCard: null,
               agentAuthUnknown: null,
-              agentSignInRequired: false,
               projectName: null,
             }
           : {
@@ -164,7 +163,6 @@ const CASES = THREADS.flatMap((thread) =>
                   ? authState.value.snapshot
                   : null,
               agentAuthUnknown: authState.value.unknown,
-              agentSignInRequired: authState.signInRequired,
               projectName: null,
             },
     })),
@@ -187,7 +185,6 @@ describe("resolveZeropsChatChrome", () => {
       panel: "unknown",
       agentAuthCard: null,
       agentAuthUnknown: null,
-      agentSignInRequired: false,
       projectName: "acme-docs-dev",
     });
   });

@@ -9,7 +9,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 /** Unsupported and broken versions fail mid-turn, so they warn even when ready. */
 function getIncompatibleVersion(status: ServerProvider) {
   const compatibility = status.compatibilityAdvisory;
-  if (status.status === "error" && status.auth.status === "unauthenticated") return null;
   return compatibility?.status === "broken" ||
     (status.status === "ready" && compatibility?.status === "unsupported")
     ? compatibility
@@ -61,25 +60,13 @@ export function hasProviderSetup(status: ServerProvider): boolean {
 
 /** Broken-version guidance takes precedence over startup failures it can cause. */
 export function getProviderStatusMessage(status: ServerProvider): string {
-  if (
-    status.auth.status !== "unauthenticated" &&
-    status.compatibilityAdvisory?.status === "broken" &&
-    status.compatibilityAdvisory.message
-  ) {
+  if (status.compatibilityAdvisory?.status === "broken" && status.compatibilityAdvisory.message) {
     return status.compatibilityAdvisory.message;
   }
   if (status.message) return status.message;
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
   if (!status.installed && hasProviderSetup(status)) {
     return `Open coding agent setup to install ${formatProviderDriverKindLabel(status.driver)} on this environment.`;
-  }
-  if (status.auth.status === "unauthenticated") {
-    if (hasProviderSetup(status)) {
-      return status.driver === "antigravity"
-        ? "Open coding agent setup to sign in with Google."
-        : "Open coding agent setup to sign in.";
-    }
-    return "Sign in via the CLI to authenticate again.";
   }
   return status.status === "ready"
     ? "No models are available for this coding agent."
@@ -102,13 +89,10 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   }
 
   const providerName = status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
-  const isUnauthenticated = status.status === "error" && status.auth.status === "unauthenticated";
   const incompatible = getIncompatibleVersion(status);
-  const title = isUnauthenticated
-    ? `${providerName} needs a sign-in`
-    : incompatible
-      ? `${providerName} ${status.version ?? ""} is ${incompatible.status === "broken" ? "known to be broken" : "unsupported"}`
-      : `${providerName} availability`;
+  const title = incompatible
+    ? `${providerName} ${status.version ?? ""} is ${incompatible.status === "broken" ? "known to be broken" : "unsupported"}`
+    : `${providerName} availability`;
   const message = incompatible?.message ?? getProviderStatusMessage(status);
   const isWarning =
     incompatible?.status !== "broken" && (status.status === "warning" || incompatible !== null);
@@ -116,8 +100,8 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   return (
     <div className="pointer-events-auto mx-auto w-fit max-w-[calc(100%-2rem)] pt-3">
       <Alert
-        variant={isUnauthenticated || isWarning ? "default" : "error"}
-        role={isUnauthenticated || isWarning ? "status" : "alert"}
+        variant={isWarning ? "default" : "error"}
+        role={isWarning ? "status" : "alert"}
         surface="glass"
         controlAlignment="first-line"
       >

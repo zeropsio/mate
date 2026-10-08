@@ -1,12 +1,8 @@
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
-import { resolveAgentAuthorizer } from "../zerops/agentSigner";
 import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
-  resolveZeropsAgentAvailability,
-  zeropsAgentAuthReads,
   zeropsAgentAvailabilityIsRunnable,
-  zeropsLoginAuthReads,
   type ZeropsAgentAvailability,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
@@ -17,7 +13,6 @@ import {
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import type { ConversationFooter } from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
-  agentIdForDriverKind,
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
   isProviderDriverKind,
@@ -435,50 +430,6 @@ export function resolveComposerProviderSelection(input: {
  * back to pre-zerops behavior. While the snapshot is still being read, every
  * agent instance is `unknown` with that read — never `needs-sign-in`.
  */
-export function resolveZeropsProviderAvailability(input: {
-  readonly entries: ReadonlyArray<ProviderInstanceEntry>;
-  readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
-  readonly viewerSubject: string | undefined;
-}): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
-  if (input.agentAuth === undefined) return undefined;
-  /** A row's facts, its signer resolved — an agent's own, or a login's (`mateLoginAsAgentRow`). */
-  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number]) => ({
-    credPresent: agent.credPresent,
-    flagToken: agent.flagToken,
-    providerAuth: agent.providerAuth,
-    verification: agent.verification,
-    registration: agent.registration,
-    state: agent.state,
-    loginPhase: agent.login?.phase,
-    authorizedBy: resolveAgentAuthorizer(agent, input.viewerSubject),
-  });
-  const reads = zeropsAgentAuthReads(input.agentAuth, factsOf);
-  if (reads === undefined) return undefined;
-  // A login beyond the defaults answers for itself, as the server's admission
-  // resolves it; until the feed is known, its driver's agent says `unknown`
-  // for it like for every other instance.
-  const loginReads = zeropsLoginAuthReads(input.agentAuth, factsOf);
-  const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
-  for (const entry of input.entries) {
-    const login = loginReads(entry.instanceId);
-    if (login !== undefined) {
-      map.set(
-        entry.instanceId,
-        resolveZeropsAgentAvailability({ agent: login, viewerSubject: input.viewerSubject }),
-      );
-      continue;
-    }
-    const agentId = agentIdForDriverKind(entry.driverKind);
-    if (agentId === undefined) continue;
-    const agent = reads(agentId);
-    if (agent === undefined) continue;
-    map.set(
-      entry.instanceId,
-      resolveZeropsAgentAvailability({ agent, viewerSubject: input.viewerSubject }),
-    );
-  }
-  return map;
-}
 
 /**
  * Whether the composer's zerops gate should treat `instanceId` as runnable.
