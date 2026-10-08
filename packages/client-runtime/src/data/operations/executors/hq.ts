@@ -1,4 +1,3 @@
-import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 /**
  * HQ as the owner of the operations it executes: each kind's write through the organization's
@@ -192,7 +191,6 @@ export function makeHqExecutor(ports: {
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
-  readonly observeAutoUpdatePolicy?: (policy: HqAutoUpdatePolicy) => void;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
 }): OperationExecutor {
   /** The environment's own token minted, then kept by HQ; a refused one taken back. */
@@ -242,7 +240,6 @@ export function makeHqExecutor(ports: {
                 code: "unreadable",
                 message: "HQ did not confirm this organization's policy change.",
               });
-            if (ports.active?.() !== false) ports.observeAutoUpdatePolicy?.(policy);
             return policy;
           }),
           (policy) => answered(requestId, intent.orgId, { policy }),

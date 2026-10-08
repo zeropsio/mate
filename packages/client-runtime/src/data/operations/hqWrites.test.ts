@@ -10,7 +10,6 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { observeAutoUpdatePolicy } from "../adapters/hqAutoUpdatePolicy.ts";
 import { operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
@@ -500,10 +499,40 @@ describe("organization automatic-update writes", () => {
           },
         });
         yield* operations.submit({ kind: "set-auto-update-policy", orgId: ORG, enabled: false });
-        observeAutoUpdatePolicy(store, { orgId: ORG, enabled: false, revision: 4 });
+        observePolicy(store, { orgId: ORG, enabled: false, revision: 4 });
         yield* operations.retry("r1");
         expect(progress(store)).toMatchObject({ stage: "uncertain" });
         expect(sends).toBe(1);
+      }),
+  );
+  it.effect(
+    "a deliberate fresh policy change completes without resolving the earlier lost answer",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          setAutoUpdatePolicy: async (enabled) => {
+            if (++sends === 1) throw lost;
+            return { orgId: ORG, enabled, revision: 5 };
+          },
+        });
+        yield* operations.submit(
+          { kind: "set-auto-update-policy", orgId: ORG, enabled: false },
+          "r1",
+        );
+        observePolicy(store, { orgId: ORG, enabled: false, revision: 4 });
+        yield* operations.retry("r1");
+        yield* operations.submit(
+          { kind: "set-auto-update-policy", orgId: ORG, enabled: true },
+          "r2",
+        );
+        expect(progress(store).stage).toBe("uncertain");
+        expect(operationProgress.derive(readsOfState(store.state()), "r2")).toMatchObject({
+          stage: "done",
+          outcome: "succeeded",
+        });
+        expect(sends).toBe(2);
       }),
   );
   it.effect("keeps HQ's refusal reason for a policy change", () =>
@@ -526,3 +555,25 @@ describe("organization automatic-update writes", () => {
     }),
   );
 });
+
+function observePolicy(
+  store: ReturnType<typeof makeAccountStore>,
+  policy: { orgId: string; enabled: boolean; revision: number },
+) {
+  const scope = `hq:${policy.orgId}:auto-update-policy` as const;
+  store.dispatch({
+    kind: "rows",
+    scope,
+    generation: readsOfState(store.state()).stream(scope).generation,
+    method: "read",
+    via: "hq-stream",
+    rows: [
+      {
+        family: "hqAutoUpdatePolicy",
+        id: policy.orgId,
+        value: policy,
+        revision: { kind: "hq", incarnation: "core", revision: policy.revision },
+      },
+    ],
+  });
+}

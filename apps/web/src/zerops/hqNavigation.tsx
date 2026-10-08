@@ -113,9 +113,9 @@ export function ZeropsHqNavigation(): null {
         ? null
         : wire === null
           ? { orgId: organizationId, verdict }
-          : { orgId: organizationId, wire },
+          : { orgId: organizationId, wire, ownerId: JSON.stringify([hqProjectId, hqAddress]) },
     );
-  }, [organizationId, showHq, verdict, wire]);
+  }, [organizationId, showHq, verdict, wire, hqProjectId, hqAddress]);
   useEffect(() => () => showHq?.(null), [showHq]);
 
   return null;

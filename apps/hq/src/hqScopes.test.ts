@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Backup } from "./backup.ts";
 import { Changes, ChangeRefused } from "./changes.ts";
 import { DeployKeys } from "./deployKeys.ts";
@@ -71,6 +72,8 @@ const menuChange = {
 } as const;
 const fixture = Effect.gen(function* () {
   let org = facts;
+  let policy = { orgId: "ORG", enabled: true, revision: 0 };
+  const policyChanges = yield* PubSub.unbounded<number>();
   let compareFailure: "forbidden" | "unavailable" | undefined;
   const compareCalls: Array<ReadonlyArray<unknown>> = [];
   let sourceRefused = false;
@@ -287,6 +290,17 @@ const fixture = Effect.gen(function* () {
     },
   });
   const services = Layer.mergeAll(
+    Layer.succeed(AutoUpdatePolicy, {
+      current: Effect.sync(() => policy),
+      changes: Stream.fromPubSub(policyChanges),
+      read: () => Effect.sync(() => policy),
+      set: (_userId, enabled) =>
+        Effect.gen(function* () {
+          policy = { ...policy, enabled, revision: policy.revision + 1 };
+          yield* PubSub.publish(policyChanges, policy.revision);
+          return policy;
+        }),
+    }),
     Layer.succeed(Structure, {
       environments: Effect.sync(() => {
         environmentReads += 1;
@@ -441,6 +455,11 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    changePolicy: (enabled: boolean) =>
+      Effect.gen(function* () {
+        policy = { ...policy, enabled, revision: policy.revision + 1 };
+        yield* PubSub.publish(policyChanges, policy.revision);
+      }),
     compareCalls,
     compareFailure: (failure: typeof compareFailure) => {
       compareFailure = failure;
@@ -589,6 +608,41 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect(
+    "streams the current automatic-update policy and another admin's change to every member",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const reader = yield* f.connect("reader");
+        yield* reader.subscribe([{ scope: nav }]);
+        const first = resetOf(yield* reader.take);
+        assert.deepStrictEqual(
+          first.values.find((value) => value.key === "auto-update-policy")?.value,
+          { orgId: "ORG", enabled: true, revision: 0 },
+        );
+        yield* reader.take; // scope-ready
+        yield* f.changePolicy(false);
+        const change = resetOf(yield* reader.take);
+        assert.deepStrictEqual(change.values, [
+          { key: "auto-update-policy", value: { orgId: "ORG", enabled: false, revision: 1 } },
+        ]);
+        assert.strictEqual(change.incarnation, first.incarnation);
+        assert.strictEqual(change.revision, first.revision + 1);
+        yield* reader.request({ type: "unsubscribe", scopes: [nav] });
+        yield* f.changePolicy(true);
+        yield* reader.subscribe([
+          { scope: nav, cursor: { incarnation: change.incarnation, revision: change.revision } },
+        ]);
+        // Subscribe may resume before the already-published change is consumed; its delta follows.
+        let answer = yield* reader.take;
+        if (answer.type === "scope-ready") answer = yield* reader.take;
+        const resumed = resetOf(answer);
+        assert.deepStrictEqual(
+          resumed.values.find((value) => value.key === "auto-update-policy")?.value,
+          { orgId: "ORG", enabled: true, revision: 2 },
+        );
+      }),
+  );
   it.effect("a cold navigation delivery budgets one role read before and one after loading", () =>
     Effect.scoped(
       Effect.gen(function* () {

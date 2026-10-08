@@ -30,6 +30,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
 import { usageOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Changes } from "./changes.ts";
 import type { ChangeNavigationSource } from "./changeNavigation.ts";
 import { pruneIdleScopes } from "./scopeRetention.ts";
@@ -86,7 +87,10 @@ const validKey = (scope: HqScope, key: string) => {
       return key === "report";
     case "navigation":
       return (
-        key === "org" || key === "status" || /^(?:app|project|person|press):[^:]{1,128}$/u.test(key)
+        key === "org" ||
+        key === "status" ||
+        key === "auto-update-policy" ||
+        /^(?:app|project|person|press):[^:]{1,128}$/u.test(key)
       );
     case "app-detail":
       return [
@@ -149,6 +153,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
+      const autoUpdate = yield* AutoUpdatePolicy;
       const official = yield* Official;
       const sql = yield* SqlClient.SqlClient;
       const leader = yield* Leader;
@@ -544,6 +549,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
+              values.push({ key: "auto-update-policy", value: yield* autoUpdate.current });
               for (const record of view.lifecycle ?? [])
                 values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
@@ -1027,10 +1033,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           Effect.provideService(Scope.Scope, hubScope),
         );
       type Signal =
-        | { kind: "structure" | "detail" | "roles" | "environment" | "usage" }
+        | { kind: "structure" | "detail" | "roles" | "environment" | "usage" | "auto-update" }
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
+          autoUpdate.changes.pipe(Stream.map((): Signal => ({ kind: "auto-update" }))),
           (usageReader.changes ?? Stream.empty).pipe(Stream.map((): Signal => ({ kind: "usage" }))),
           structure.changes.pipe(Stream.map((): Signal => ({ kind: "structure" }))),
           roles.views.pipe(
@@ -1089,6 +1096,20 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.forever(
           Effect.flatMap(Queue.take(signals), (signal) => {
             pending.delete(json(signal));
+            if (signal.kind === "auto-update")
+              return Effect.gen(function* () {
+                for (const entry of journals.values())
+                  if (entry.scope.kind === "navigation" && entry.failure === undefined)
+                    yield* entry.one.withPermits(1)(
+                      Effect.gen(function* () {
+                        const policy = yield* autoUpdate.current;
+                        const message = entry.journal.commit([
+                          { key: "auto-update-policy", value: policy },
+                        ]);
+                        if (message !== undefined) yield* send(entry, [message]);
+                      }),
+                    );
+              }).pipe(Effect.catch(navigationUnavailable("Automatic-update policy unavailable")));
             if (signal.kind === "usage")
               return Effect.gen(function* () {
                 for (const entry of journals.values())

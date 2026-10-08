@@ -4,7 +4,6 @@ import {
   autoUpdatePolicySettings,
   autoUpdatePolicyScope,
   makeAccountStore,
-  observeAutoUpdatePolicy,
   readsOfState,
 } from "@t3tools/client-runtime/data";
 import type { ReactElement } from "react";
@@ -77,7 +76,7 @@ beforeEach(() => {
 it.each([true, false])(
   "an organization admin toggles the observed policy from %s through a receipt",
   (enabled) => {
-    observeAutoUpdatePolicy(store, { orgId: "org", enabled, revision: 1 });
+    observePolicy(store, { orgId: "org", enabled, revision: 1 });
     const tree = render();
     const toggle = control(tree);
     if (toggle === null) throw new Error("Expected an admin toggle");
@@ -94,7 +93,7 @@ it.each([true, false])(
 );
 it.each([true, false])("a non-admin reads %s and sees who may change it", (enabled) => {
   fixture.role = "READ_ONLY";
-  observeAutoUpdatePolicy(store, { orgId: "org", enabled, revision: 1 });
+  observePolicy(store, { orgId: "org", enabled, revision: 1 });
   const tree = render();
   expect(control(tree)).toBeNull();
   expect(words(tree)).toContain(enabled ? "On" : "Off");
@@ -105,7 +104,7 @@ it("does not invent an enabled state before HQ answers", () => {
   expect(words(render())).toContain("Waiting for HQ…");
 });
 it("keeps the observed state while saving and explains HQ's refusal", () => {
-  observeAutoUpdatePolicy(store, { orgId: "org", enabled: true, revision: 1 });
+  observePolicy(store, { orgId: "org", enabled: true, revision: 1 });
   store.dispatch({
     kind: "operation-recorded",
     requestId: "auto-update-policy/org/1",
@@ -129,22 +128,47 @@ it("keeps the observed state while saving and explains HQ's refusal", () => {
   expect(words(tree)).toContain("Your organization admin permission was removed.");
   expect(control(tree)?.props.checked).toBe(true);
 });
-it("keeps an uncertain change blocked after the settings view remounts", () => {
-  observeAutoUpdatePolicy(store, { orgId: "org", enabled: false, revision: 1 });
-  store.dispatch({
-    kind: "operation-recorded",
-    requestId: "auto-update-policy/org/1",
-    intent: { kind: "set-auto-update-policy", orgId: "org", enabled: false },
-  });
-  store.dispatch({
-    kind: "operation-uncertain",
-    requestId: "auto-update-policy/org/1",
-    reason: "Answer lost",
-  });
-  hooks.reset();
-  expect(control(render())?.props.disabled).toBe(true);
-  expect(words(render())).toContain("HQ could not confirm this change.");
-});
+it.each(["uncertain", "unresolved"] as const)(
+  "offers a new change after remount while preserving the %s receipt",
+  (stage) => {
+    observePolicy(store, { orgId: "org", enabled: false, revision: 1 });
+    store.dispatch({
+      kind: "operation-recorded",
+      requestId: "auto-update-policy/org/1",
+      intent: { kind: "set-auto-update-policy", orgId: "org", enabled: false },
+    });
+    store.dispatch({
+      kind: "operation-uncertain",
+      requestId: "auto-update-policy/org/1",
+      reason: "Answer lost",
+    });
+    if (stage === "unresolved")
+      store.dispatch({
+        kind: "operation-exhausted",
+        requestId: "auto-update-policy/org/1",
+        unobservable: { nextActor: "organization admin", reason: "Answer lost" },
+      });
+    const earlier = store.state().operations.get("auto-update-policy/org/1");
+    hooks.reset();
+    expect(control(render())?.props.disabled).toBe(true);
+    const tree = render();
+    expect(words(tree)).toContain("HQ could not confirm this change.");
+    expect(words(tree)).toContain("Current policy: Off");
+    const recovery = visitElements(
+      tree,
+      (element) =>
+        typeof element.props.onClick === "function" &&
+        words(element.props.children).includes("Send new change:"),
+    );
+    if (recovery === null) throw new Error("Expected an explicit recovery action");
+    (recovery.props.onClick as () => void)();
+    expect(fixture.submit).toHaveBeenCalledWith(
+      { kind: "set-auto-update-policy", orgId: "org", enabled: true },
+      "auto-update-policy/org/2",
+    );
+    expect(store.state().operations.get("auto-update-policy/org/1")).toEqual(earlier);
+  },
+);
 
 it.each(["none", "unreadable"] as const)(
   "explains %s HQ instead of waiting forever or inventing a policy",
@@ -173,3 +197,25 @@ it.each(["none", "unreadable"] as const)(
     );
   },
 );
+
+function observePolicy(
+  store: ReturnType<typeof makeAccountStore>,
+  policy: { orgId: string; enabled: boolean; revision: number },
+) {
+  const scope = `hq:${policy.orgId}:auto-update-policy` as const;
+  store.dispatch({
+    kind: "rows",
+    scope,
+    generation: readsOfState(store.state()).stream(scope).generation,
+    method: "read",
+    via: "hq-stream",
+    rows: [
+      {
+        family: "hqAutoUpdatePolicy",
+        id: policy.orgId,
+        value: policy,
+        revision: { kind: "hq", incarnation: "core", revision: policy.revision },
+      },
+    ],
+  });
+}

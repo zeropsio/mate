@@ -14,6 +14,7 @@ export interface AutoUpdatePolicySettings {
   readonly words: string;
   readonly error: string | null;
   readonly retryRead: boolean;
+  readonly recoverable: boolean;
   readonly requestId: string;
 }
 export const autoUpdatePolicySettings: Projection<
@@ -37,21 +38,23 @@ export const autoUpdatePolicySettings: Projection<
     const pending =
       progress !== null &&
       ["submitting", "accepted", "reflected", "uncertain", "unresolved"].includes(progress.stage);
+    const unconfirmed = progress?.stage === "uncertain" || progress?.stage === "unresolved";
     const enabled = fact.kind === "known" ? fact.value.enabled : null;
     const error =
       progress?.stage === "refused" || progress?.stage === "unsent"
         ? (progress.reason ?? "HQ did not take this change.")
         : progress?.stage === "uncertain" || progress?.stage === "unresolved"
-          ? "HQ could not confirm this change. An organization admin must check the policy at HQ before trying again."
+          ? "HQ could not confirm this change. You can send a new change once HQ confirms the current policy. The earlier receipt stays unconfirmed."
           : (stream.fault?.message ?? null);
     return {
       enabled,
       pending,
+      recoverable: admin && available && enabled !== null && stream.phase === "live" && unconfirmed,
       error,
       editable: admin && available && enabled !== null && stream.phase === "live" && !pending,
       words: pending
         ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
-          ? "Change unconfirmed"
+          ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${enabled === null ? "unknown" : enabled ? "On" : "Off"}; change unconfirmed`
           : "Saving…"
         : enabled === null
           ? hq === "none"

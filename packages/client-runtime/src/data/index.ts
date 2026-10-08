@@ -359,10 +359,6 @@ export {
   autoUpdatePolicyRequestId,
 } from "./families/hqAutoUpdatePolicy.ts";
 export {
-  makeAutoUpdatePolicyReads,
-  observeAutoUpdatePolicy,
-} from "./adapters/hqAutoUpdatePolicy.ts";
-export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
