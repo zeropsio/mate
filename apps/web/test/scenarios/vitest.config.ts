@@ -20,6 +20,19 @@ export default defineConfig({
         },
       },
       {
+        // The chat journeys again, against a Mate whose conversation runs on the engine's wire.
+        test: {
+          name: "scenarios-engine",
+          include: ["test/scenarios/areas/c-mate/chat.scenario.ts"],
+          environment: "node",
+          globalSetup: ["test/scenarios/harness/build.ts"],
+          fileParallelism: false,
+          hookTimeout: 120_000,
+          testTimeout: 45_000,
+          provide: { mateWire: "engine" },
+        },
+      },
+      {
         test: {
           name: "scenario-drivers",
           include: ["test/scenarios/fakes/**/*.test.ts"],

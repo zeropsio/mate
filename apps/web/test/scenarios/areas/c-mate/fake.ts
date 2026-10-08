@@ -58,6 +58,8 @@ import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 import { V1ChatWire } from "./v1.ts";
 import type { ChatWire } from "./wire.ts";
+import { EngineChatWire } from "./engine.ts";
+import { inject } from "vite-plus/test";
 
 const wireEncodeSearchEntries = Schema.encodeSync(ProjectSearchEntriesResult);
 
@@ -188,6 +190,7 @@ export class ChatDriver {
     this.mate = mate;
     this.v1 = new V1ChatWire(mate);
     this.wire = wire ?? this.v1;
+    mate.conversation = this.wire;
     this.lifecycle = wireDecodeZeropsLifecycle({ threadId: mate.thread.id, recentTools: [] });
     Object.assign(mate.config, { threadSnapshotPagination: true });
     Object.assign(mate.config.environment.capabilities, {
@@ -1390,9 +1393,21 @@ export class ChatDriver {
   }
 }
 
+declare module "vite-plus/test" {
+  interface ProvidedContext {
+    /** Which wire the area's Mates speak: V1 unless a project says the engine's. */
+    mateWire?: "v1" | "engine";
+  }
+}
+
 const chats = new WeakMap<MateFake, ChatDriver>();
 export const installArea: ScenarioExtension = (drivers) => {
-  drivers.onMate.push((mate) => chats.set(mate, new ChatDriver(mate)));
+  drivers.onMate.push((mate) => {
+    if (inject("mateWire") !== "engine") return void chats.set(mate, new ChatDriver(mate));
+    const wire = new EngineChatWire(mate);
+    chats.set(mate, new ChatDriver(mate, wire));
+    wire.install();
+  });
 };
 export function chatFor(mate: MateFake) {
   const chat = chats.get(mate);
