@@ -11,6 +11,28 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence:
+      "crew ports: Apply gives each writer one, Run and Stop its app, Add crew ports proposes more",
+    journey: (w) => {
+      w.tell(
+        {
+          _tag: "Press",
+          press: { _tag: "apply" },
+          door: { refusal: null },
+          home: home(writer("backend"), writer("frontend")),
+          ports: { appdev: [3001] },
+        },
+        { kind: "person", subject: "user-1" },
+      );
+      return [
+        w.state.hosts.appdev?.crewPorts,
+        w.state.members.backend?.crewPort,
+        w.state.members.frontend?.crewPort,
+      ];
+    },
+    expected: [[{ port: 3001, routed: null }], 3001, null],
+  },
+  {
     sentence: "a missing copy comes back at boot from its recorded branch, its work kept",
     journey: (w) => {
       w.apply(home(writer("backend")));

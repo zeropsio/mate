@@ -76,6 +76,8 @@ import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
+import { proposeCrewPorts, readDeclaredPorts } from "../crewPorts.ts";
+import { CrewWorkspace } from "../CrewWorkspace.ts";
 import { DEFAULT_CREW_LOGIN, noSpendWords } from "../crewCore.ts";
 import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
@@ -91,12 +93,18 @@ import { observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
-import { doorLogins, filesDoorLogins } from "./decide.ts";
+import { doorLogins, filesDoorLogins, noDevServerWords } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { importV1Crew } from "./importV1Crew.ts";
 import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
-import { DEFAULT_CREW_TIMING, membersInOrder, type CrewState, type CrewTiming } from "./state.ts";
+import {
+  DEFAULT_CREW_TIMING,
+  membersInOrder,
+  tasksInOrder,
+  type CrewState,
+  type CrewTiming,
+} from "./state.ts";
 
 /* ------------------------------------------------------------ the link */
 
@@ -244,11 +252,7 @@ export type EngineCrewPolicyInstaller = Effect.Effect<
   | ClaudeThreadExtensionRegistry
 >;
 
-const PRESS_READS: ReadonlySet<CrewCommand["_tag"]> = new Set([
-  "orphanScan",
-  "deliverDraft",
-  "addCrewPorts",
-]);
+const PRESS_READS: ReadonlySet<CrewCommand["_tag"]> = new Set([]);
 
 /** The crew's front on the engine: the feed, the presses, the tools and the policy. */
 export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
@@ -266,6 +270,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const path = yield* Path.Path;
     const home = yield* CrewHome;
     const shell = yield* CrewShell;
+    const workspace = yield* CrewWorkspace;
     const reads = yield* CrewReads;
     const repositories = yield* ZeropsRepositorySource;
     const observer = yield* ZeropsWorkspaceObserver;
@@ -489,6 +494,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       Effect.orElseSucceed(() => 0),
     );
 
+    /** Landed tasks *Deliver* found gone out with your tree, as its draft last read them. */
+    const delivered = new Set<string>();
     const viewOf = (current: CrewState) =>
       Effect.gen(function* () {
         const loginsByHandle: Record<string, CrewLogin> = {};
@@ -502,7 +509,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           devHosts: yield* SubscriptionRef.get(devHosts),
           memory: yield* memoryCounts,
           context: {},
-          delivered: new Set<string>(),
+          delivered,
         } satisfies CrewView;
       });
 
@@ -788,6 +795,113 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (rendered !== undefined) yield* home.write([rendered]);
       }).pipe(Effect.ignore);
 
+    /**
+     * *Allow* on a free crewmate's request reads dev at once, as V1's did: with no dev server
+     * the Mate started it is refused with the way out. During its turn the Allow waits, and the
+     * read at the turn's end says it.
+     */
+    const requireDevServer = (current: CrewState, press: CrewCommand) =>
+      Effect.gen(function* () {
+        if (press._tag !== "claimGrant") return;
+        const claim = current.claims[press.host];
+        const member = claim === undefined ? undefined : current.members[claim.handle];
+        if (claim?.state !== "requested" || member === undefined || member.active !== null) return;
+        const command = yield* reads
+          .devServerCommand(press.host)
+          .pipe(Effect.orElseSucceed(() => undefined));
+        const yaml = yield* reads
+          .zeropsYaml(press.host)
+          .pipe(Effect.orElseSucceed(() => undefined));
+        const port =
+          yaml === undefined ? null : (readDeclaredPorts(yaml, press.host)?.main ?? null);
+        if (command === undefined || port === null) {
+          return yield* refuse("wrong-state", noDevServerWords(press.host, member));
+        }
+      });
+
+    const io = (error: { readonly message: string }) => refuse("io", error.message);
+    const writerHosts = (current: CrewState) => [
+      ...new Set(
+        membersInOrder(current).flatMap((member) =>
+          member.kind === "writer" && member.host !== null ? [member.host] : [],
+        ),
+      ),
+    ];
+
+    /**
+     * The presses that only read (V1's): *Deliver*'s draft (your tree's uncommitted paths, and
+     * which landed tasks went out), the lost-branch scan, and the crew ports to add.
+     */
+    const readPress = (current: CrewState, press: CrewCommand) =>
+      Effect.gen(function* () {
+        switch (press._tag) {
+          case "deliverDraft": {
+            if (current.applied === null) return yield* refuse("no-crew");
+            const dirtyPaths: Array<string> = [];
+            for (const host of writerHosts(current)) {
+              const repository = yield* shell.repository(host).pipe(Effect.mapError(io));
+              for (const path of yield* reads.dirtyPaths(host).pipe(Effect.mapError(io))) {
+                dirtyPaths.push(`${repository.mountPath}/${path}`);
+              }
+              const landed = tasksInOrder(current).filter(
+                (task) => task.landedCommit !== null && current.members[task.owner]?.host === host,
+              );
+              const out = yield* reads
+                .delivered(
+                  host,
+                  landed.map((task) => task.landedCommit!),
+                )
+                .pipe(Effect.mapError(io));
+              for (const task of landed) if (out.has(task.landedCommit!)) delivered.add(task.id);
+            }
+            yield* refresh;
+            return { _tag: "deliverDraft", dirtyPaths } satisfies CrewCommandResult;
+          }
+          case "orphanScan": {
+            if (current.applied === null) return yield* refuse("no-crew");
+            const orphans: Array<{ host: string; branch: string; ahead: number }> = [];
+            for (const host of writerHosts(current)) {
+              for (const orphan of yield* workspace.orphanScan(host).pipe(Effect.mapError(io))) {
+                orphans.push({ host, branch: `crew/${orphan.handle}`, ahead: orphan.unlanded });
+              }
+            }
+            return { _tag: "orphans", orphans } satisfies CrewCommandResult;
+          }
+          case "addCrewPorts": {
+            const yaml = yield* reads.zeropsYaml(press.host).pipe(Effect.mapError(io));
+            const [first, ...rest] = proposeCrewPorts(
+              yaml === undefined ? undefined : readDeclaredPorts(yaml, press.host),
+              press.count,
+            );
+            if (first === undefined) return yield* refuse("wrong-state", "no ports to add");
+            return {
+              _tag: "crewPorts",
+              host: press.host,
+              ports: [first, ...rest],
+            } satisfies CrewCommandResult;
+          }
+          default:
+            return undefined;
+        }
+      });
+
+    /** The crew ports each writer's service declares, read at *Apply*. */
+    const declaredPorts = (definition: CrewDefinition) =>
+      Effect.gen(function* () {
+        const ports: Record<string, ReadonlyArray<number>> = {};
+        for (const member of definition.members) {
+          if (member.kind !== "writer" || member.host == null || ports[member.host] !== undefined) {
+            continue;
+          }
+          const yaml = yield* reads
+            .zeropsYaml(member.host)
+            .pipe(Effect.orElseSucceed(() => undefined));
+          ports[member.host] =
+            yaml === undefined ? [] : (readDeclaredPorts(yaml, member.host)?.crew ?? []);
+        }
+        return ports;
+      });
+
     const command: CrewEngineService["command"] = (press, principal) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
@@ -795,12 +909,15 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         }
         yield* waitsItsTurn(press);
         const current = yield* state;
+        const read = yield* readPress(current, press);
+        if (read !== undefined) return read;
         const needsHome =
           press._tag === "apply" || press._tag === "briefSave" || press._tag === "jobSave";
         const definition = needsHome ? yield* loadHome(current) : undefined;
         const refusal = yield* admitAt(doorLogins(current, press, definition), principal);
         if (refusal !== null) return yield* refuse("not-allowed", refusal);
         yield* requireSpendReported(current, press, definition);
+        yield* requireDevServer(current, press);
         const seen = press._tag === "taskEdit" ? press.seen : undefined;
         const claimed = yield* claimAttachments(current, press);
         yield* askAs(
@@ -813,6 +930,9 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
             door: { refusal: null },
             ...(definition === undefined ? {} : { home: definition }),
             ...(seen === undefined ? {} : { seen }),
+            ...(press._tag === "apply" && definition !== undefined
+              ? { ports: yield* declaredPorts(definition) }
+              : {}),
           },
           principalOf(principal),
         ).pipe(

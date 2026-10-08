@@ -42,6 +42,7 @@ import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
+import { assignCrewPorts } from "../crewPorts.ts";
 import {
   CHECKED_STATES,
   EDITED_AFTER_CHECK,
@@ -344,7 +345,7 @@ export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number
 const handle = (b: Builder, input: CrewInput): void => {
   switch (input._tag) {
     case "Press":
-      return pressed(b, input.press, input.door.refusal, input.home, input.seen);
+      return pressed(b, input.press, input.door.refusal, input.home, input.seen, input.ports);
     case "Tool":
       return tool(b, input.handle, input.call);
     case "Observed":
@@ -1432,6 +1433,7 @@ const pressed = (
   refusal: string | null,
   home: CrewDefinition | undefined,
   seen: TaskSeen | undefined,
+  ports?: Readonly<Record<string, ReadonlyArray<number>>>,
 ): void => {
   const reach = crewCommandReach(press);
   if (refusal !== null && reach.kind !== "reads" && reach.kind !== "stops") {
@@ -1443,7 +1445,7 @@ const pressed = (
     case "apply":
       if (home === undefined)
         throw new Rejected("invalid-definition", "the crew home is unreadable");
-      applyHome(b, home, "nextTurn");
+      applyHome(b, home, "nextTurn", ports);
       return;
     case "briefSave":
     case "jobSave":
@@ -2007,6 +2009,7 @@ const memberFromSpec = (
   crew: string,
   spec: CrewMemberSpec,
   jobVersion: number,
+  crewPort?: number | null,
 ): MemberRecord => {
   const existing = b.state.members[spec.handle];
   const login = spec.login ?? DEFAULT_CREW_LOGIN;
@@ -2025,7 +2028,7 @@ const memberFromSpec = (
     runCommand: spec.run ?? null,
     restartAfterMerge: spec.restartAfterMerge,
     rotateAfter: spec.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT,
-    crewPort: existing?.crewPort ?? null,
+    crewPort: crewPort === undefined ? (existing?.crewPort ?? null) : crewPort,
     jobFirstLine: firstLine(spec.job),
     conversationId: (existing?.conversationId ??
       crewmateConversationId(
@@ -2104,6 +2107,7 @@ const applyHome = (
   b: Builder,
   home: CrewDefinition,
   choice: "nextTurn" | "now" | "fresh",
+  ports?: Readonly<Record<string, ReadonlyArray<number>>>,
 ): { readonly pending: ReadonlyArray<string>; readonly freshOnly: ReadonlyArray<string> } => {
   const previous = b.state.applied;
   const save = versionsAfterSave(
@@ -2122,9 +2126,36 @@ const applyHome = (
     ...home.members.filter((spec) => spec.kind === "lead"),
     ...home.members.filter((spec) => spec.kind !== "lead"),
   ];
+  // A crew port each writer keeps while its service still declares it; the rest take the free.
+  const assigned = new Map<string, number | null>();
+  for (const [host, declared] of Object.entries(ports ?? {})) {
+    const writers = ordered.filter((spec) => spec.kind === "writer" && spec.host === host);
+    for (const [handle, port] of assignCrewPorts(
+      declared,
+      writers.map((spec) => ({
+        handle: spec.handle,
+        crewPort: b.state.members[spec.handle]?.crewPort ?? null,
+      })),
+    )) {
+      assigned.set(handle, port);
+    }
+  }
   const members = ordered.map((spec) =>
-    memberFromSpec(b, home.crew, spec, save.versions.jobs[spec.handle] ?? 1),
+    memberFromSpec(
+      b,
+      home.crew,
+      spec,
+      save.versions.jobs[spec.handle] ?? 1,
+      assigned.has(spec.handle) ? assigned.get(spec.handle)! : undefined,
+    ),
   );
+  for (const [host, declared] of Object.entries(ports ?? {})) {
+    b.emit({
+      _tag: "HostUpdated",
+      host,
+      set: { crewPorts: declared.map((port) => ({ port, routed: null })) },
+    });
+  }
   const handles = new Set(members.map((member) => member.handle));
   const removed = b.state.order.filter((handle) => !handles.has(handle));
   const before = { ...b.state.members };
@@ -2294,6 +2325,17 @@ const requestClaim = (b: Builder, member: MemberRecord, reason: string | null): 
 };
 
 /** *Allow*: the dev server's shape is read first; the claim turn goes when its crewmate is free. */
+/**
+ * Why a claim cannot start (V1's words): the dev service runs no dev server the Mate started,
+ * and the way out — the Mate starts it, or the crewmate's own app on its crew port meanwhile.
+ */
+export const noDevServerWords = (host: string, member: MemberRecord | undefined): string =>
+  `${host} has no dev server started by your Mate — ask your Mate to start it${
+    member?.crewPort == null
+      ? ""
+      : `, or open ${member.displayName}'s own app on :${member.crewPort}`
+  }`;
+
 const grantClaim = (b: Builder, host: string, as: Principal): void => {
   const claim = b.state.claims[host];
   if (claim?.state !== "requested") throw wrongState(`${host} has no request`);
@@ -3976,7 +4018,7 @@ const claimRead = (
       if (read.devServer === null) {
         b.emit({
           _tag: "ErrorNoted",
-          text: `No dev server of this Mate runs on ${host}: start it in a chat with Fen, then Allow again.`,
+          text: noDevServerWords(host, b.state.members[claim.handle]),
         });
         b.emit({ _tag: "ClaimUpdated", host, claim: { ...claim, grantedBy: null } });
         return;

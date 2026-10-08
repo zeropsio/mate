@@ -76,6 +76,8 @@ export type CrewInput =
       readonly home?: CrewDefinition;
       /** For `taskEdit`: the task as the person's board showed it when they edited. */
       readonly seen?: TaskSeen;
+      /** For `apply`: the crew ports each writer's service declares (`zerops.yaml`), read now. */
+      readonly ports?: Readonly<Record<string, ReadonlyArray<number>>>;
     }
   | {
       readonly _tag: "Tool";

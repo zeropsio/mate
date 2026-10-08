@@ -110,7 +110,8 @@ const journeys: ReadonlyArray<Journey> = [
     },
     expected: [
       "requested",
-      "No dev server of this Mate runs on appdev: start it in a chat with Fen, then Allow again.",
+      // V1's words: the way out, the crewmate's own app when it has a crew port.
+      "appdev has no dev server started by your Mate — ask your Mate to start it",
       ["task"],
     ],
   },
