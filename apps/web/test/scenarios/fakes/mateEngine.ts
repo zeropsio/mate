@@ -8,6 +8,7 @@
 import {
   ConversationHeader,
   ConversationRow,
+  ENGINE_WIRE_BUDGETS,
   EngineCallResult,
   EngineConversationFrame,
   EngineDetail,
@@ -67,6 +68,12 @@ export class MateEngineFake {
   /** Every command the engine applied, once per command id, in order. */
   readonly applied: Array<{ commandId: string; op: EngineOp; payload: Record<string, unknown> }> =
     [];
+  /** Run groups a subscription's window opens with, as the server's budget says. */
+  windowGroups: number = ENGINE_WIRE_BUDGETS.windowGroups;
+  /** Items a run's page carries. */
+  runPageItems: number = ENGINE_WIRE_BUDGETS.runPageItems;
+  /** Text streaming now, by item and stream: a subscriber that opens hears it whole. */
+  private readonly streamed = new Map<string, string>();
   /** Told when the person answers a request: the fixture's agent replies. */
   readonly onAnswer: Array<(request: Request) => void> = [];
   /** A refusal the next answer gets instead of being applied (the engine's rule word). */
@@ -182,6 +189,61 @@ export class MateEngineFake {
       if (end !== undefined) this.endRun(change, run, end, item);
       return item;
     });
+  }
+
+  /** The person said `text` and the agent is at work on it: its run, running. */
+  personRun(text: string): string {
+    return this.commit((change) => {
+      const run = this.openRun(change, { kind: "person" });
+      this.addItem(change, run, {
+        kind: "person",
+        by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+        text,
+        attachments: [],
+        sendId: `history-${this.runs.size}`,
+        delivery: { state: "delivered", at: AT },
+      });
+      return run;
+    });
+  }
+
+  /** An item of `run` opens as the engine records it: still being written, or whole. */
+  item(run: string, body: Record<string, unknown>): string {
+    return this.commit((change) => this.addItem(change, run, { by: { kind: "mate" }, ...body }));
+  }
+
+  /** An item's record changes: it settles, ends or says more. */
+  update(itemId: string, patch: Record<string, unknown>): void {
+    this.commit((change) => this.setItem(change, itemId, patch));
+  }
+
+  /** The run ends; `answer`, the note that is its answer. */
+  end(run: string, end: RunEnd = { kind: "completed" }, answer?: string): void {
+    this.commit((change) => this.endRun(change, run, end, answer));
+  }
+
+  /** Text streams into an item, never recorded: each subscriber hears it at its offset. */
+  stream(itemId: string, text: string, stream = "text"): void {
+    const held = this.streamed.get(`${itemId}\u0000${stream}`);
+    this.streamed.set(`${itemId}\u0000${stream}`, (held ?? "") + text);
+    this.live(
+      held === undefined
+        ? { type: "live.open", itemId, stream, text }
+        : { type: "live.append", itemId, stream, offset: held.length, text },
+    );
+  }
+
+  /** An item's record is whole: its streamed text goes. */
+  settle(itemId: string): void {
+    for (const key of this.streamed.keys())
+      if (key.startsWith(`${itemId}\u0000`)) this.streamed.delete(key);
+    this.live({ type: "live.settle", itemId });
+  }
+
+  private live(frame: Record<string, unknown>) {
+    const encoded = encodeFrame(frame as never);
+    for (const [socket, ids] of this.subscribers)
+      for (const id of ids) this.mate.chunk(socket, id, [encoded]);
   }
 
   async waitForMessage(text: string) {
@@ -335,6 +397,53 @@ export class MateEngineFake {
     return result;
   }
 
+  /** The run groups, oldest first: a run and the runs that continue it. */
+  private groups(): Array<Array<RunRecord>> {
+    const groups: Array<Array<RunRecord>> = [];
+    const of = new Map<string, Array<RunRecord>>();
+    for (const run of [...this.runs.values()].sort((a, b) => a.ordinal - b.ordinal)) {
+      const group = run.joins === null ? undefined : of.get(run.joins);
+      if (group === undefined) {
+        const opened = [run];
+        groups.push(opened);
+        of.set(run.id, opened);
+      } else {
+        group.push(run);
+        of.set(run.id, group);
+      }
+    }
+    return groups;
+  }
+
+  /**
+   * What a window shows of its groups, as the server's: the runs, every person message, request
+   * and answer, every open request, and the items of each run not ended; the rest is read on
+   * demand.
+   */
+  private window(groups: ReadonlyArray<ReadonlyArray<RunRecord>>) {
+    const runs = groups.flat();
+    const ids = new Set(runs.map((run) => run.id as string));
+    const answers = new Set(runs.flatMap((run) => run.summary.answerItemId ?? []));
+    const live = new Set(runs.filter((run) => run.state !== "ended").map((run) => run.id));
+    const oldestOrdinal = runs[0]?.ordinal ?? null;
+    return {
+      runs,
+      items: [...this.items.values()].filter(
+        (item) =>
+          item.runId !== null &&
+          ids.has(item.runId) &&
+          (item.kind === "person" ||
+            item.kind === "request" ||
+            answers.has(item.id) ||
+            live.has(item.runId)),
+      ),
+      requests: [...this.requests.values()].filter(
+        (request) => request.state === "open" || ids.has(request.runId),
+      ),
+      window: { oldestOrdinal, earlier: oldestOrdinal !== null && oldestOrdinal > 1 },
+    };
+  }
+
   row(): ConversationRow {
     const runs = [...this.runs.values()];
     const active = runs.findLast((run) => run.state !== "ended") ?? null;
@@ -412,10 +521,7 @@ export class MateEngineFake {
               origin: this.origin,
               head: this.seq,
               header: this.header,
-              runs: [...this.runs.values()],
-              items: [...this.items.values()],
-              requests: [...this.requests.values()],
-              window: { oldestOrdinal: this.runs.size === 0 ? null : 1, earlier: false },
+              ...this.window(this.groups().slice(-this.windowGroups)),
             }),
           );
         } else
@@ -431,6 +537,10 @@ export class MateEngineFake {
             }),
           );
         frames.push(encodeFrame({ type: "synchronized", epoch: this.epoch, head: this.seq }));
+        for (const [key, text] of this.streamed) {
+          const [itemId, stream] = key.split("\u0000");
+          frames.push(encodeFrame({ type: "live.open", itemId, stream, text } as never));
+        }
         this.mate.chunk(socket, id, frames);
         return true;
       }
@@ -480,21 +590,39 @@ export class MateEngineFake {
         );
         return true;
       }
-      case WS_METHODS.engineReadRun:
       case WS_METHODS.engineReadEarlier: {
-        const runId = payload.runId as string | undefined;
+        const before = Number(payload.beforeOrdinal);
+        const groups = this.groups().filter((group) => group[0]!.ordinal < before);
         this.mate.reply(
           socket,
           id,
           encodePage({
             _tag: "Page",
-            runs: runId === undefined ? [...this.runs.values()] : [],
-            items: [...this.items.values()].filter(
-              (item) => runId === undefined || item.runId === runId,
-            ),
-            requests: [],
-            window: { oldestOrdinal: this.runs.size === 0 ? null : 1, earlier: false },
+            ...this.window(groups.slice(-ENGINE_WIRE_BUDGETS.earlierGroupsMax)),
             more: false,
+          }),
+        );
+        return true;
+      }
+      case WS_METHODS.engineReadRun: {
+        const runId = String(payload.runId);
+        const beforeSeq = payload.beforeSeq as number | undefined;
+        const items = [...this.items.values()]
+          .filter(
+            (item) => item.runId === runId && (beforeSeq === undefined || item.seq < beforeSeq),
+          )
+          .sort((left, right) => right.seq - left.seq);
+        const page = items.slice(0, this.runPageItems);
+        this.mate.reply(
+          socket,
+          id,
+          encodePage({
+            _tag: "Page",
+            runs: [],
+            items: page.toReversed(),
+            requests: [],
+            window: { oldestOrdinal: null, earlier: false },
+            more: items.length > page.length,
           }),
         );
         return true;

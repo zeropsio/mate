@@ -60,6 +60,7 @@ import {
   type Stretch,
   type BrokeOff,
   type WorkLineFace,
+  saysNothing,
 } from "./conversation.logic";
 import {
   foldSteps,
@@ -1666,7 +1667,7 @@ function stretchRecord(input: {
         continue;
       }
       flush(entry.createdAt);
-      if (entry.message.text.trim().length > 0) {
+      if (!saysNothing(entry.message)) {
         push({
           kind: "note",
           key: `note:${entry.id}`,

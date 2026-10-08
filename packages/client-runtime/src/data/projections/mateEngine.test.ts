@@ -12,13 +12,19 @@ import {
 import { emptyAccount, type AccountState, type Revision } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
+import { foldSubagentActivities } from "../../state/subagentRuntime.ts";
 import {
+  callItem,
   engineHeader,
   engineRequest,
   engineRow,
   engineRun,
+  markerItem,
   noteItem,
   personItem,
+  thoughtItem,
+  unknownItem,
+  workItem,
 } from "../__fixtures__/mateEngine.ts";
 import { engineRows, engineThread, overlayEngineRow, overlayEngineShell } from "./mateEngine.ts";
 
@@ -322,6 +328,286 @@ describe("an engine conversation as the thread the view draws", () => {
   });
 });
 
+describe("an engine run's work, as the run card draws the same work of a V1 run", () => {
+  const activitiesOf = (items: ReadonlyArray<Item>, runs = [engineRun("thread-ada", 1)]) =>
+    thread(held({ runs, items }))?.activities ?? [];
+  const payloadOf = (items: ReadonlyArray<Item>, kind: string) =>
+    activitiesOf(items).find((activity) => activity.kind === kind)?.payload as
+      | Record<string, unknown>
+      | undefined;
+
+  it.each([
+    {
+      name: "a running call is a step still in progress",
+      state: "running",
+      kinds: ["tool.started", "tool.updated"],
+      status: "inProgress",
+    },
+    {
+      name: "a call that returned is a finished step",
+      state: "done",
+      kinds: ["tool.started", "tool.completed"],
+      status: "completed",
+    },
+    {
+      name: "a call that failed is a failed step",
+      state: "failed",
+      kinds: ["tool.started", "tool.completed"],
+      status: "failed",
+    },
+    {
+      name: "a call the person declined is a declined step",
+      state: "declined",
+      kinds: ["tool.started", "tool.completed"],
+      status: "declined",
+    },
+    {
+      name: "a call its run's stop cut is a stopped step",
+      state: "stopped",
+      kinds: ["tool.started", "tool.completed"],
+      status: "stopped",
+    },
+  ] as const)("$name", ({ state, kinds, status }) => {
+    const activities = activitiesOf([callItem(run1, 2, { state })]);
+    expect(activities.map((activity) => activity.kind)).toEqual(kinds);
+    expect(activities.at(-1)?.payload).toMatchObject({
+      status,
+      title: "Ran command",
+      toolCallId: `${run1}/i/2`,
+    });
+    expect(activities.map((activity) => activity.turnId)).toEqual([run1, run1]);
+  });
+
+  it("a call that never returned shows no result", () => {
+    expect(payloadOf([callItem(run1, 2, { state: "unreturned" })], "tool.completed")).toMatchObject(
+      { unreturned: true },
+    );
+  });
+
+  it.each([
+    { name: "command", step: "command", tool: { name: "Bash" }, itemType: "command_execution" },
+    { name: "edit", step: "edit", tool: { name: "Edit" }, itemType: "file_change" },
+    { name: "web search", step: "web", tool: { name: "WebSearch" }, itemType: "web_search" },
+    { name: "look", step: "look", tool: { name: "view_image" }, itemType: "image_view" },
+    {
+      name: "helper launch",
+      step: "helper",
+      tool: { name: "spawn_agent" },
+      itemType: "collab_agent_tool_call",
+    },
+    { name: "agent tool", step: "tool", tool: { name: "Read" }, itemType: "dynamic_tool_call" },
+    {
+      name: "MCP tool",
+      step: "tool",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      itemType: "mcp_tool_call",
+    },
+  ])("a $name call is the step V1 draws for the same call", ({ step, tool, itemType }) => {
+    expect(payloadOf([callItem(run1, 2, { step, tool })], "tool.completed")).toMatchObject({
+      itemType,
+      data: { toolName: tool.name, ...("server" in tool ? { server: tool.server } : {}) },
+    });
+  });
+
+  it("a call keeps how its agent presents it", () => {
+    const presentation = { title: "Deploy", server: "zerops" } as never;
+    expect(
+      payloadOf([callItem(run1, 2, { words: null, presentation })], "tool.completed"),
+    ).toMatchObject({ title: "Deploy", presentation });
+  });
+
+  it("a helper's own call is the helper's, not its run's", () => {
+    expect(
+      payloadOf([callItem(run1, 2, { by: { kind: "helper", helperId: "h-1" } })], "tool.completed"),
+    ).toMatchObject({ agentId: "h-1" });
+  });
+
+  it.each([
+    {
+      name: "a running helper is a helper on the run",
+      item: { workKind: "helper", status: "running" },
+      kinds: ["task.started"],
+      payload: { taskId: "work-2", agentKind: "agent", taskType: "local_agent" },
+    },
+    {
+      name: "a helper that finished has ended",
+      item: { workKind: "helper", status: "completed" },
+      kinds: ["task.started", "task.completed"],
+      payload: { agentKind: "agent", status: "completed" },
+    },
+    {
+      name: "a shell left running is a background job",
+      item: { workKind: "shell", status: "running" },
+      kinds: ["task.started"],
+      payload: { taskType: "local_bash", title: "Review the api" },
+    },
+    {
+      name: "a monitor is a job the Mate watches",
+      item: { workKind: "monitor", status: "idle" },
+      kinds: ["task.started"],
+      payload: { taskType: "monitor" },
+    },
+    {
+      name: "work its session lost ended stopped",
+      item: { workKind: "shell", status: "lost" },
+      kinds: ["task.started", "task.completed"],
+      payload: { status: "stopped" },
+    },
+    {
+      name: "work that failed ended failed",
+      item: { workKind: "shell", status: "failed" },
+      kinds: ["task.started", "task.completed"],
+      payload: { status: "failed" },
+    },
+  ] as const)("$name", ({ item, kinds, payload }) => {
+    const activities = activitiesOf([workItem(run1, 2, item)]);
+    expect(activities.map((activity) => activity.kind)).toEqual(kinds);
+    expect(activities.at(-1)?.payload).toMatchObject(payload);
+  });
+
+  it("a helper is on the helpers' surface by its title, working until it ends", () => {
+    const helpers = (status: string) =>
+      foldSubagentActivities(
+        activitiesOf([workItem(run1, 2, { status } as Partial<Extract<Item, { kind: "work" }>>)]),
+      ).map(({ title, status }) => ({ title, status }));
+    expect(helpers("running")).toEqual([{ title: "Review the api", status: "running" }]);
+    expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
+  });
+
+  it("a thought is the run's reasoning, drawn from its first word while it is written", () => {
+    const messages = (items: ReadonlyArray<Item>) =>
+      thread(held({ runs: [engineRun("thread-ada", 1)], items }))?.messages.map(
+        ({ id, role, text, streaming }) => ({ id, role, text, streaming }),
+      );
+    expect(messages([thoughtItem(run1, 2, "", { streaming: true })])).toEqual([
+      { id: `${run1}/i/2`, role: "reasoning", text: "", streaming: true },
+    ]);
+    expect(messages([thoughtItem(run1, 2, "Checking the api's logs")])).toEqual([
+      { id: `${run1}/i/2`, role: "reasoning", text: "Checking the api's logs", streaming: false },
+    ]);
+    expect(messages([thoughtItem(run1, 2, "")])).toEqual([]);
+  });
+
+  it("a streaming note is the agent's message from its first word", () => {
+    expect(
+      thread(
+        held({
+          runs: [engineRun("thread-ada", 1, { state: "running", end: null })],
+          items: [noteItem(run1, 2, "", { streaming: true, answer: false })],
+        }),
+      )?.messages.map(({ role, text, streaming }) => ({ role, text, streaming })),
+    ).toEqual([{ role: "assistant", text: "", streaming: true }]);
+  });
+
+  it.each([
+    {
+      marker: { kind: "compacted" },
+      expected: { kind: "context-compaction", summary: "Context compacted", tone: "info" },
+    },
+    {
+      marker: { kind: "error", reason: "The model refused." },
+      expected: {
+        kind: "runtime.error",
+        tone: "error",
+        payload: { message: "The model refused." },
+      },
+    },
+    {
+      marker: { kind: "capture-gap", reason: "api: Snapshot refused: disk full" },
+      expected: {
+        kind: "runtime.warning",
+        summary: "The workspace was not captured",
+        payload: { message: "api: Snapshot refused: disk full" },
+      },
+    },
+  ])("a $marker.kind marker is the event V1 draws for it", ({ marker, expected }) => {
+    expect(activitiesOf([markerItem(run1, 2, marker)])).toMatchObject([expected]);
+  });
+
+  it("a marker this build does not know draws nothing", () => {
+    expect(activitiesOf([markerItem(run1, 2, { kind: "rewound" })])).toEqual([]);
+  });
+
+  it("an item of a newer build shows its summary, or nothing when it gives none", () => {
+    expect(activitiesOf([unknownItem(run1, 2, "Plan updated")])).toMatchObject([
+      { summary: "Plan updated", turnId: run1 },
+    ]);
+    expect(activitiesOf([unknownItem(run1, 2, null)])).toEqual([]);
+  });
+
+  it.each([
+    { end: { kind: "crashed", reason: "The agent exited." }, turnEnd: "crash" },
+    { end: { kind: "failed", reason: "Bad request", next: null }, turnEnd: "failed" },
+    { end: { kind: "usage-limit", resetsAt: null }, turnEnd: "usage-limit" },
+  ] as const)("a run that ended $end.kind ends with V1's break", ({ end, turnEnd }) => {
+    const activities = activitiesOf([], [engineRun("thread-ada", 1, { end })]);
+    expect(activities).toMatchObject([
+      { kind: "runtime.error", tone: "error", turnId: run1, payload: { turnEnd } },
+    ]);
+  });
+
+  it.each([
+    { end: { kind: "completed" } },
+    { end: { kind: "stopped", by: { kind: "person", subject: "u" } } },
+  ] as const)("a run that ended $end.kind has no break", ({ end }) => {
+    expect(activitiesOf([], [engineRun("thread-ada", 1, { end })])).toEqual([]);
+  });
+
+  it("the context meter reads how full the agent's context is, and a call shows its progress", () => {
+    const state = held({ runs: [engineRun("thread-ada", 1)], items: [callItem(run1, 2)] }, [
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: [{ scope: engineConversationScopes(key).gauge, generation: 0 }],
+        reset: false,
+        rows: [
+          {
+            family: "mateEngineGauge",
+            id: engineConversationId(key),
+            value: {
+              environmentId: ENV,
+              usage: { usedTokens: 4_000, maxTokens: 200_000 },
+              progress: { [`${run1}/i/2`]: { step: "deploy" } },
+            },
+            revision: { kind: "mate-link", sequence: 1 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    const activities = thread(state)?.activities ?? [];
+    expect(activities.slice(-2)).toMatchObject([
+      {
+        kind: "tool.progress",
+        turnId: run1,
+        payload: { toolCallId: `${run1}/i/2`, zeropsStandUp: { step: "deploy" } },
+      },
+      { kind: "context-window.updated", payload: { usedTokens: 4_000, maxTokens: 200_000 } },
+    ]);
+  });
+
+  it("a run that continues another shares its card, and is its latest turn", () => {
+    const run2 = "thread-ada/r/2";
+    const state = held({
+      runs: [
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: run1 as never,
+          trigger: { kind: "wake", cause: "helper", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ],
+      items: [personItem(run1, 1, "Review the api"), callItem(run2, 1, { state: "running" })],
+    });
+    const drawn = thread(state);
+    expect(drawn?.activities.map((activity) => activity.turnId)).toEqual([run1, run1]);
+    expect(drawn?.latestTurn).toMatchObject({ turnId: run1, state: "running" });
+    expect(drawn?.session?.activeTurnId).toBe(run1);
+  });
+});
+
 describe("an engine conversation's row in the menu", () => {
   const shellThread = {
     id: "thread-ada",
@@ -383,6 +669,22 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid.hasPendingApprovals).toBe(expected.approvals);
     expect(overlaid.hasPendingUserInput).toBe(expected.input);
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
+  });
+
+  it("gives a thread shell that never had a session its row's: working, on its run", () => {
+    const overlaid = overlayEngineRow(
+      { ...shellThread, session: null },
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: 1, waitsOnHelpers: false },
+        activeRunId: run1 as never,
+      }),
+    );
+    expect(overlaid.session).toMatchObject({
+      threadId: "thread-ada",
+      status: "running",
+      activeTurnId: run1,
+      providerName: "claudeAgent",
+    });
   });
 
   it("leaves a Mate's shell as it is until its rows arrive, then lays them over it", () => {

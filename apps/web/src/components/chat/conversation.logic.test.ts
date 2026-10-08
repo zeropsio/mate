@@ -541,6 +541,14 @@ describe("deriveConversationStructure", () => {
       writing: "a1",
       answer: null,
     },
+    // An engine Mate's note opens before its first word, which the live text
+    // holds (`useEngineLiveMessage`): it is words on their way all the same.
+    {
+      name: "a line whose first words have not reached its record",
+      tail: [assistant("a1", "t1", 1, "", { streaming: true })],
+      writing: "a1",
+      answer: null,
+    },
     // Done streaming, a line is a note: Codex says nothing of a command until
     // it completes, so waiting for a step after the words hid them for the
     // whole command.

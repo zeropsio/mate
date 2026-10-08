@@ -90,6 +90,7 @@ export function defineFamilies(
     once(`family ${spec.family}`);
     once(`scope ${spec.scope.suffix}`);
     for (const listing of spec.details ?? []) once(`scope ${listing.suffix}`);
+    for (const listing of spec.mateDetails ?? []) once(`scope ${listing.suffix}`);
     for (const index of spec.indexes ?? []) once(`index ${index.name}`);
   }
   return families;
@@ -183,6 +184,10 @@ const bySuffix = new Map<string, ScopeListing>(
     [spec.scope.suffix, { spec, leaving: spec.scope.leaving, detail: null }] as const,
     ...(spec.details ?? []).map(
       (detail) => [detail.suffix, { spec, leaving: detail.leaving, detail }] as const,
+    ),
+    // Its adapter reads it into the link's own scopes: no Zerops read describes it.
+    ...(spec.mateDetails ?? []).map(
+      (listing) => [listing.suffix, { spec, leaving: listing.leaving, detail: null }] as const,
     ),
   ]),
 );

@@ -31,12 +31,14 @@ import * as Option from "effect/Option";
 
 import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
+  type EnvironmentThreadPageState,
   type EnvironmentThreadState,
 } from "../../state/threadState.ts";
 import type { EnvironmentShellState } from "../adapters/mateShellReplay.ts";
 import {
   engineConversationId,
   engineConversationScopes,
+  engineEarlierScope,
   engineRowsKey,
   type EngineConversationKey,
   type EngineFact,
@@ -87,11 +89,13 @@ function turnState(run: RunRecord): OrchestrationLatestTurn["state"] {
   }
 }
 
-const latestTurnOf = (run: RunRecord): OrchestrationLatestTurn => ({
-  turnId: TurnId.make(run.id),
+/** The latest run as the turn the view reads: on its card, which a run that continues shares. */
+const latestTurnOf = (run: RunRecord, card: RunRecord): OrchestrationLatestTurn => ({
+  turnId: TurnId.make(card.id),
   state: turnState(run),
-  requestedAt: iso(run.queuedAt),
-  startedAt: run.startedAt === null ? null : iso(run.startedAt),
+  requestedAt: iso(card.queuedAt),
+  startedAt:
+    (card.startedAt ?? run.startedAt) === null ? null : iso(card.startedAt ?? run.startedAt),
   completedAt: run.endedAt === null ? null : iso(run.endedAt),
   assistantMessageId: run.summary.answerItemId as OrchestrationLatestTurn["assistantMessageId"],
 });
@@ -99,9 +103,15 @@ const latestTurnOf = (run: RunRecord): OrchestrationLatestTurn => ({
 /** The message id a person's words go by: the send's own id, so its pending bubble is this row. */
 const personMessageId = (item: Extract<Item, { kind: "person" }>) => item.sendId ?? item.id;
 
-function messageOf(item: Item): OrchestrationMessage | null {
+/**
+ * The card an item draws on: its run's, or — for a run that continues another (`joins`) — the
+ * card of the run it continues, which they share.
+ */
+type CardOf = (runId: string | null) => string | null;
+
+function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
   const base = {
-    turnId: item.runId as OrchestrationMessage["turnId"],
+    turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
     createdAt: iso(item.at),
     updatedAt: iso(item.at),
   };
@@ -127,7 +137,8 @@ function messageOf(item: Item): OrchestrationMessage | null {
         streaming: item.streaming,
       };
     case "thought":
-      return item.preview.length === 0
+      // A thought still being written is drawn from its first word, which the live text holds.
+      return item.preview.length === 0 && !item.streaming
         ? null
         : {
             ...base,
@@ -141,13 +152,38 @@ function messageOf(item: Item): OrchestrationMessage | null {
   }
 }
 
+/** A call's step as V1's runtimes name the item that made it: the inverse of the bridge's. */
 const STEP_ITEM_TYPES: Readonly<Record<string, string>> = {
   command: "command_execution",
   edit: "file_change",
-  read: "file_read",
-  search: "web_search",
   web: "web_search",
-  tool: "mcp_tool_call",
+  look: "image_view",
+  helper: "collab_agent_tool_call",
+};
+
+/** A call's state as V1's lifecycle says it. */
+const CALL_STATUS: Readonly<Record<string, string>> = {
+  running: "inProgress",
+  done: "completed",
+  failed: "failed",
+  declined: "declined",
+  stopped: "stopped",
+  unreturned: "completed",
+};
+
+/** Background work's kind as V1's task lifecycle names it. */
+const WORK_TASK_TYPES: Readonly<Record<string, string>> = {
+  helper: "local_agent",
+  shell: "local_bash",
+  monitor: "monitor",
+};
+
+/** Background work's end as V1's task lifecycle says it; `lost` never reports, so it stopped. */
+const WORK_END_STATUS: Readonly<Record<string, string>> = {
+  completed: "completed",
+  failed: "failed",
+  stopped: "stopped",
+  lost: "stopped",
 };
 
 function activity(
@@ -158,10 +194,13 @@ function activity(
   runId: string | null,
   at: number,
   sequence: number,
+  tone?: OrchestrationThreadActivity["tone"],
 ): OrchestrationThreadActivity {
   return {
     id: id as OrchestrationThreadActivity["id"],
-    tone: kind.startsWith("approval.") ? "approval" : kind.startsWith("tool.") ? "tool" : "info",
+    tone:
+      tone ??
+      (kind.startsWith("approval.") ? "approval" : kind.startsWith("tool.") ? "tool" : "info"),
     kind,
     summary,
     payload,
@@ -171,27 +210,246 @@ function activity(
   };
 }
 
-function callActivity(item: Extract<Item, { kind: "call" }>): OrchestrationThreadActivity {
-  const running = item.state === "running";
-  return activity(
-    item.id,
-    running ? "tool.started" : "tool.completed",
-    item.words ?? item.tool.name,
-    {
-      itemType: STEP_ITEM_TYPES[item.step] ?? "dynamic_tool_call",
-      title: item.presentation?.title ?? item.tool.name,
-      detail: item.words,
-      status: running ? "inProgress" : item.state === "done" ? "completed" : item.state,
+/** Who made an item, as V1 says it of a helper's own calls: they are the helper's, not the run's. */
+const helperOf = (item: Item) =>
+  item.by.kind === "helper" ? { agentId: item.by.helperId } : ({} as Record<string, never>);
+
+/**
+ * A call as V1's tool lifecycle: its start (the anchor its row keeps), then its progress while it
+ * runs or its completion once it ended. The record carries its words, never its input or output.
+ */
+function callActivities(
+  item: Extract<Item, { kind: "call" }>,
+  cardOf: CardOf,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const title = item.words ?? item.presentation?.title ?? item.tool.name;
+  const payload = {
+    itemType:
+      STEP_ITEM_TYPES[item.step] ??
+      (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
+    title,
+    toolCallId: item.id,
+    data: {
+      toolName: item.tool.name,
+      ...(item.tool.server === undefined ? {} : { server: item.tool.server }),
     },
-    item.runId,
-    item.endedAt ?? item.at,
-    item.rev,
+    ...(item.presentation === undefined ? {} : { presentation: item.presentation }),
+    ...helperOf(item),
+  };
+  const card = cardOf(item.runId);
+  const started = activity(
+    `${item.id}#started`,
+    "tool.started",
+    title,
+    { ...payload, status: "inProgress" },
+    card,
+    item.at,
+    item.seq,
+  );
+  if (item.state === "running")
+    return [
+      started,
+      activity(
+        `${item.id}#updated`,
+        "tool.updated",
+        title,
+        { ...payload, status: "inProgress" },
+        card,
+        item.at,
+        item.rev,
+      ),
+    ];
+  return [
+    started,
+    activity(
+      item.id,
+      "tool.completed",
+      title,
+      {
+        ...payload,
+        status: CALL_STATUS[item.state] ?? "completed",
+        ...(item.state === "unreturned" ? { unreturned: true } : {}),
+      },
+      card,
+      item.endedAt ?? item.at,
+      item.rev,
+    ),
+  ];
+}
+
+/** Background work as V1's task lifecycle: a helper on the helpers' surface, the rest jobs. */
+function workActivities(
+  item: Extract<Item, { kind: "work" }>,
+  cardOf: CardOf,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const taskType = WORK_TASK_TYPES[item.workKind];
+  const payload = {
+    taskId: item.work,
+    ...(item.workKind === "helper" ? { agentKind: "agent" } : {}),
+    ...(taskType === undefined ? {} : { taskType }),
+    ...(item.title === null ? {} : { title: item.title }),
+  };
+  const card = cardOf(item.runId);
+  const summary = item.title ?? "Background task";
+  const started = activity(
+    `${item.id}#started`,
+    "task.started",
+    summary,
+    payload,
+    card,
+    item.at,
+    item.seq,
+  );
+  const end = WORK_END_STATUS[item.status];
+  if (end === undefined) return [started];
+  return [
+    started,
+    activity(
+      item.id,
+      "task.completed",
+      summary,
+      { ...payload, status: end },
+      card,
+      item.at,
+      item.rev,
+      end === "failed" ? "error" : "info",
+    ),
+  ];
+}
+
+/** A marker in a run, as V1 draws the same event: a compaction, an error, a capture's gap. */
+function markerActivity(
+  item: Extract<Item, { kind: "marker" }>,
+  cardOf: CardOf,
+): OrchestrationThreadActivity | null {
+  const { marker } = item;
+  const card = cardOf(item.runId);
+  switch (marker.kind) {
+    case "compacted":
+      return activity(
+        item.id,
+        "context-compaction",
+        "Context compacted",
+        {},
+        card,
+        item.at,
+        item.seq,
+      );
+    case "error":
+      return activity(
+        item.id,
+        "runtime.error",
+        "Runtime error",
+        { message: marker.reason ?? "Something went wrong." },
+        card,
+        item.at,
+        item.seq,
+        "error",
+      );
+    case "capture-gap":
+      return activity(
+        item.id,
+        "runtime.warning",
+        "The workspace was not captured",
+        marker.reason === undefined ? {} : { message: marker.reason },
+        card,
+        item.at,
+        item.seq,
+      );
+    default:
+      return null;
+  }
+}
+
+/** An item of a newer build: its summary, when it gives one; nothing, when it does not. */
+function unknownActivity(
+  item: Extract<Item, { kind: "unknown" }>,
+  cardOf: CardOf,
+): OrchestrationThreadActivity | null {
+  return item.summary === null
+    ? null
+    : activity(item.id, "engine.item", item.summary, {}, cardOf(item.runId), item.at, item.seq);
+}
+
+/**
+ * What the engine says live of the conversation, as V1 records it: how full the context is (the
+ * meter reads the latest), and each running call's progress (the stand-up's, by its call).
+ */
+function gaugeActivities(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+  cardOfCall: (itemId: string) => string | null,
+  card: string | null,
+  at: number,
+  after: number,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const gauge = read.fact("mateEngineGauge", engineConversationId(key));
+  if (gauge.kind !== "known") return [];
+  const { usage, progress } = gauge.value;
+  return [
+    ...Object.entries(progress).map(([itemId, value], index) =>
+      activity(
+        `${itemId}#progress`,
+        "tool.progress",
+        "Progress",
+        { toolCallId: itemId, zeropsStandUp: value },
+        cardOfCall(itemId),
+        at,
+        after + 1 + index,
+      ),
+    ),
+    ...(usage === null
+      ? []
+      : [
+          activity(
+            `${key.conversationId}#context`,
+            "context-window.updated",
+            "Context window updated",
+            usage as unknown as Record<string, unknown>,
+            card,
+            at,
+            after + 1 + Object.keys(progress).length,
+          ),
+        ]),
+  ];
+}
+
+/** How a run ended, where V1 records a break: a crash, a failure, the usage limit. */
+function breakActivity(run: RunRecord, card: string): OrchestrationThreadActivity | null {
+  const end = run.end;
+  if (end === null) return null;
+  const turnEnd =
+    end.kind === "crashed"
+      ? "crash"
+      : end.kind === "failed"
+        ? "failed"
+        : end.kind === "usage-limit"
+          ? "usage-limit"
+          : null;
+  if (turnEnd === null) return null;
+  const message =
+    end.kind === "crashed" || end.kind === "failed"
+      ? end.reason
+      : "The agent reached its usage limit.";
+  return activity(
+    `${run.id}#break`,
+    "runtime.error",
+    "Runtime error",
+    { message, turnEnd },
+    card,
+    run.endedAt ?? run.queuedAt,
+    run.rev,
+    "error",
   );
 }
 
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
-function requestActivities(request: Request): ReadonlyArray<OrchestrationThreadActivity> {
+function requestActivities(
+  request: Request,
+  cardOf: CardOf,
+): ReadonlyArray<OrchestrationThreadActivity> {
   const { ask } = request;
+  const card = cardOf(request.runId);
   const asked =
     ask.kind === "approval"
       ? activity(
@@ -199,7 +457,7 @@ function requestActivities(request: Request): ReadonlyArray<OrchestrationThreadA
           "approval.requested",
           "Approval requested",
           { requestId: request.id, requestKind: ask.requestKind, detail: ask.detail },
-          request.runId,
+          card,
           request.at,
           request.seq,
         )
@@ -209,7 +467,7 @@ function requestActivities(request: Request): ReadonlyArray<OrchestrationThreadA
             "user-input.requested",
             "User input requested",
             { requestId: request.id, questions: ask.questions },
-            request.runId,
+            card,
             request.at,
             request.seq,
           )
@@ -223,7 +481,7 @@ function requestActivities(request: Request): ReadonlyArray<OrchestrationThreadA
       ask.kind === "approval" ? "approval.resolved" : "user-input.resolved",
       request.answer?.summary ?? "Resolved",
       { requestId: request.id },
-      request.runId,
+      card,
       request.answer?.at ?? request.at,
       request.rev,
     ),
@@ -258,19 +516,69 @@ export function engineThreadOf(
   const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
     (left, right) => left.seq - right.seq,
   );
+  const byId = new Map(runs.map((run) => [run.id as string, run]));
+  /** The run whose card a run draws on: the first of the runs it continues. */
+  const rootOf = (run: RunRecord): RunRecord => {
+    let root = run;
+    for (let hops = 0; root.joins !== null && hops < runs.length; hops++) {
+      const joined = byId.get(root.joins);
+      if (joined === undefined) break;
+      root = joined;
+    }
+    return root;
+  };
+  const cardOf: CardOf = (runId) => {
+    if (runId === null) return null;
+    const run = byId.get(runId);
+    return run === undefined ? runId : rootOf(run).id;
+  };
   const messages: OrchestrationMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   for (const item of items) {
-    const message = messageOf(item);
+    const message = messageOf(item, cardOf);
     if (message !== null) messages.push(message);
-    if (item.kind === "call") activities.push(callActivity(item));
+    switch (item.kind) {
+      case "call":
+        activities.push(...callActivities(item, cardOf));
+        break;
+      case "work":
+        activities.push(...workActivities(item, cardOf));
+        break;
+      case "marker": {
+        const marked = markerActivity(item, cardOf);
+        if (marked !== null) activities.push(marked);
+        break;
+      }
+      case "unknown": {
+        const said = unknownActivity(item, cardOf);
+        if (said !== null) activities.push(said);
+        break;
+      }
+    }
   }
-  for (const request of requests) activities.push(...requestActivities(request));
+  for (const request of requests) activities.push(...requestActivities(request, cardOf));
+  for (const run of runs) {
+    const broke = breakActivity(run, cardOf(run.id) ?? run.id);
+    if (broke !== null) activities.push(broke);
+  }
   activities.sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
   // The turn is the live run; a queued run is a message waiting its turn (behind a working run, or
   // held by a usage-limit pause), never the work Stop ends.
   const active = runs.findLast((run) => LIVE_RUN_STATES.has(run.state)) ?? null;
   const latest = active ?? runs.findLast((run) => run.state === "ended") ?? null;
+  activities.push(
+    ...gaugeActivities(
+      read,
+      key,
+      (itemId) => {
+        const call = items.find((item) => item.id === itemId);
+        return call === undefined ? null : cardOf(call.runId);
+      },
+      latest === null ? null : rootOf(latest).id,
+      Math.max(items.at(-1)?.at ?? 0, latest?.queuedAt ?? 0),
+      activities.at(-1)?.sequence ?? 0,
+    ),
+  );
   const shell = shellThreadOf(read, key);
   const agent = header.agent;
   const failed = latest?.end?.kind === "failed" || latest?.end?.kind === "crashed";
@@ -285,7 +593,9 @@ export function engineThreadOf(
       ? {}
       : { providerInstanceId: agent.instanceId as OrchestrationSession["providerInstanceId"] }),
     runtimeMode: shell?.runtimeMode ?? "full-access",
-    activeTurnId: (active?.id ?? null) as OrchestrationSession["activeTurnId"],
+    activeTurnId: (active === null
+      ? null
+      : rootOf(active).id) as OrchestrationSession["activeTurnId"],
     lastError:
       latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
         ? (latest.end.reason as OrchestrationSession["lastError"])
@@ -309,7 +619,7 @@ export function engineThreadOf(
     interactionMode: shell?.interactionMode ?? "default",
     branch: shell?.branch ?? null,
     worktreePath: shell?.worktreePath ?? null,
-    latestTurn: latest === null ? null : latestTurnOf(latest),
+    latestTurn: latest === null ? null : latestTurnOf(latest, rootOf(latest)),
     createdAt: shell?.createdAt ?? iso(runs[0]?.queuedAt ?? 0),
     updatedAt,
     archivedAt: header.archived ? updatedAt : null,
@@ -354,10 +664,30 @@ export const engineThread: Projection<EngineConversationKey, EnvironmentThreadSt
       data: Option.some(thread),
       status: stream.phase === "live" ? "live" : "cached",
       error: error === null ? Option.none() : Option.some(error),
-      page: Option.none(),
+      page: pageOf(read, key),
     };
   },
 };
+
+/**
+ * Whether older run groups exist before the oldest held — run ordinals are gapless, so any held
+ * run past the first says so — and whether reading them is in flight.
+ */
+function pageOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): Option.Option<EnvironmentThreadPageState> {
+  let oldest: number | null = null;
+  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)))
+    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
+  if (oldest === null || oldest <= 1) return Option.none();
+  const phase = read.stream(engineEarlierScope(key)).phase;
+  return Option.some({
+    beforeCursor: String(oldest),
+    hasMore: true,
+    loadingOlder: phase === "connecting" || phase === "baselining",
+  });
+}
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
@@ -400,14 +730,24 @@ export function overlayEngineRow(
           } as OrchestrationThreadShell["modelSelection"],
         }),
     latestTurn,
-    session:
-      thread.session === null
-        ? null
-        : {
-            ...thread.session,
-            status: working ? "running" : row.state.kind === "failed" ? "error" : "ready",
-            activeTurnId: (row.activeRunId ?? null) as OrchestrationSession["activeTurnId"],
-          },
+    // A conversation the engine started never had a V1 session: the row is its session.
+    session: {
+      ...(thread.session ?? {
+        threadId: thread.id,
+        providerName: (row.agent?.driver ?? null) as OrchestrationSession["providerName"],
+        ...(row.agent === null
+          ? {}
+          : {
+              providerInstanceId: row.agent
+                .instanceId as OrchestrationSession["providerInstanceId"],
+            }),
+        runtimeMode: thread.runtimeMode,
+        lastError: null,
+      }),
+      status: working ? "running" : row.state.kind === "failed" ? "error" : "ready",
+      activeTurnId: (row.activeRunId ?? null) as OrchestrationSession["activeTurnId"],
+      updatedAt: iso(row.at),
+    },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
     hasPendingUserInput:
       row.state.kind === "waiting" && (row.state.on === "question" || row.state.on === "vault"),

@@ -17,8 +17,11 @@ import {
   type EngineConversationFrame,
   type EnvironmentId,
   type EngineCursor,
+  type EnginePage,
   type EngineRowsFrame,
   type Item,
+  type Request,
+  type RunRecord,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -34,6 +37,7 @@ import { Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import { request } from "../../rpc/client.ts";
 import type { RpcSession } from "../../rpc/session.ts";
 
 import type { EngineLiveText } from "../engineLive.ts";
@@ -41,6 +45,7 @@ import {
   engineConversationId,
   engineConversationLink,
   engineConversationScopes,
+  engineEarlierScope,
   engineFactId,
   engineRowsLink,
   engineRowsScope,
@@ -48,12 +53,21 @@ import {
 } from "../families/mateEngine.ts";
 import type { FamilyValues, LinkKey, Revision, ScopeKey } from "../model.ts";
 import { streamOf, type Row } from "../reducer.ts";
-import type { AccountStore } from "../store.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 
 /** How long a released conversation is kept, so a return resumes instead of reading it again. */
 export const ENGINE_FORGET_AFTER_MS = 5 * 60 * 1_000;
+
+/**
+ * How many pages a run reads back to be whole before it is drawn: past them its card draws its
+ * newest items. A page is up to the wire's `runPageItems`.
+ */
+export const ENGINE_RUN_PAGES = 5;
+
+/** How many runs read their missing items at once. */
+const RUN_READS_AT_ONCE = 4;
 
 /** The engine's wire as this adapter reads it; the transport and its session are the wire's. */
 export interface EngineConversationWire {
@@ -62,6 +76,17 @@ export interface EngineConversationWire {
     after: EngineCursor | null,
   ) => Stream.Stream<EngineConversationFrame, StreamFault>;
   readonly subscribeRows: (environmentId: string) => Stream.Stream<EngineRowsFrame, StreamFault>;
+  /** Older run groups, before the run of `beforeOrdinal`: their runs, words, answers, requests. */
+  readonly readEarlier: (
+    key: EngineConversationKey,
+    beforeOrdinal: number,
+  ) => Effect.Effect<EnginePage, StreamFault>;
+  /** A run's items, the newest page first; `beforeSeq` pages back. */
+  readonly readRun: (
+    key: EngineConversationKey,
+    runId: string,
+    beforeSeq: number | null,
+  ) => Effect.Effect<EnginePage, StreamFault>;
   /** The Mate's access as its connection learns it: a fault, or `null` once verified again. */
   readonly watch?: (
     environmentId: string,
@@ -141,6 +166,29 @@ export function makeEngineConversationWire(
       onSession(environmentId, (client) =>
         client[WS_METHODS.subscribeEngineRows]({ protocol: PROTOCOL }),
       ),
+    readEarlier: (key, beforeOrdinal) =>
+      registry
+        .run(
+          key.environmentId as EnvironmentId,
+          request(WS_METHODS.engineReadEarlier, {
+            protocol: PROTOCOL,
+            conversationId: key.conversationId as never,
+            beforeOrdinal,
+          }),
+        )
+        .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
+    readRun: (key, runId, beforeSeq) =>
+      registry
+        .run(
+          key.environmentId as EnvironmentId,
+          request(WS_METHODS.engineReadRun, {
+            protocol: PROTOCOL,
+            conversationId: key.conversationId as never,
+            runId: runId as never,
+            ...(beforeSeq === null ? {} : { beforeSeq }),
+          }),
+        )
+        .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
     watch: (environmentId, receive) =>
       registry.stateChanges(environmentId as EnvironmentId).pipe(
         Stream.runForEach((state) =>
@@ -355,6 +403,65 @@ export function makeMateEngineConversations(options: {
   const now = () => Effect.runSync(Clock.currentTimeMillis);
   const signal = (key: LinkKey | ScopeKey, event: StreamEvent) =>
     store.dispatch({ kind: "stream", key, now: now(), event });
+  const reads = new Set<Fiber.Fiber<unknown>>();
+  /** The order this tab heard live gauges in: a later one replaces an earlier one. */
+  let heard = 0;
+
+  /**
+   * What the runs a frame or a page carries lack of their own items, read back from the newest
+   * page until each holds as many as its summary counts: a card draws its run whole, as a V1
+   * run's, so a window's or a page's run never paints its effort before its calls are held. A
+   * read that fails leaves the run with what it holds.
+   */
+  const wholeRuns = (
+    key: EngineConversationKey,
+    runs: ReadonlyArray<RunRecord>,
+    items: ReadonlyArray<Item>,
+  ): Effect.Effect<{
+    readonly items: ReadonlyArray<Item>;
+    readonly requests: ReadonlyArray<Request>;
+  }> =>
+    Effect.gen(function* () {
+      const read = readsOfState(store.state());
+      const lacking = runs.flatMap((run) => {
+        const held = new Set<string>(
+          items.flatMap((item) => (item.runId === run.id ? [item.id as string] : [])),
+        );
+        for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, run.id))) {
+          const fact = read.fact("mateEngineItem", id);
+          if (fact.kind === "known") held.add(fact.value.id);
+        }
+        return held.size < run.summary.items ? [{ run, held }] : [];
+      });
+      if (lacking.length === 0) return { items: [], requests: [] };
+      const found = yield* Effect.forEach(
+        lacking,
+        ({ run, held }) =>
+          Effect.gen(function* () {
+            const items: Item[] = [];
+            const requests: Request[] = [];
+            let before: number | null = null;
+            for (let page = 0; page < ENGINE_RUN_PAGES && held.size < run.summary.items; page++) {
+              const answer = yield* wire.readRun(key, run.id, before);
+              if (answer._tag !== "Page") break;
+              for (const item of answer.items)
+                if (!held.has(item.id)) {
+                  held.add(item.id);
+                  items.push(item);
+                }
+              requests.push(...answer.requests);
+              if (!answer.more || answer.items.length === 0) break;
+              before = Math.min(...answer.items.map((item) => item.seq));
+            }
+            return { items, requests };
+          }).pipe(Effect.orElseSucceed(() => ({ items: [], requests: [] }))),
+        { concurrency: RUN_READS_AT_ONCE },
+      );
+      return {
+        items: found.flatMap((run) => run.items),
+        requests: found.flatMap((run) => run.requests),
+      };
+    });
 
   const forget = (key: EngineConversationKey) => {
     cursors.delete(engineConversationId(key));
@@ -431,10 +538,18 @@ export function makeMateEngineConversations(options: {
                   (cursor.origin !== frame.origin || frame.epoch < cursor.epoch)
                 )
                   forget(key);
-                Atom.batch(() => deliver(rowsOf(key, frame.epoch, frame, frame.window), true));
-                settleClosed(frame.items);
-                cursors.set(id, { epoch: frame.epoch, origin: frame.origin, seq: frame.head });
-                return Effect.void;
+                return Effect.map(wholeRuns(key, frame.runs, frame.items), (lacked) => {
+                  // A denial told while the run was read keeps nothing of this frame either.
+                  if (closed || withheld.has(key.environmentId)) return;
+                  const whole = {
+                    ...frame,
+                    items: [...frame.items, ...lacked.items],
+                    requests: [...frame.requests, ...lacked.requests],
+                  };
+                  Atom.batch(() => deliver(rowsOf(key, frame.epoch, whole, frame.window), true));
+                  settleClosed(whole.items);
+                  cursors.set(id, { epoch: frame.epoch, origin: frame.origin, seq: frame.head });
+                });
               }
               case "changes": {
                 if (cursor === undefined || frame.from !== cursor.seq)
@@ -521,8 +636,37 @@ export function makeMateEngineConversations(options: {
                 return Effect.void;
               case "unserved":
                 return Effect.fail(unservedFault(frame));
+              case "context":
+              case "progress": {
+                const held = readsOfState(store.state()).fact("mateEngineGauge", id);
+                const gauge: FamilyValues["mateEngineGauge"] =
+                  held.kind === "known"
+                    ? held.value
+                    : { environmentId: key.environmentId, usage: null, progress: {} };
+                const progress = { ...gauge.progress };
+                if (frame.type === "progress") {
+                  if (frame.value === null) delete progress[frame.itemId];
+                  else progress[frame.itemId] = frame.value;
+                }
+                deliver(
+                  [
+                    {
+                      family: "mateEngineGauge",
+                      id,
+                      value: {
+                        ...gauge,
+                        usage: frame.type === "context" ? frame.usage : gauge.usage,
+                        progress,
+                      },
+                      revision: { kind: "mate-link", sequence: ++heard },
+                    },
+                  ],
+                  false,
+                );
+                return Effect.void;
+              }
               default:
-                // progress, context and frames of a newer build: nothing this build draws yet.
+                // Frames of a newer build: nothing this build draws.
                 return Effect.void;
             }
           });
@@ -557,7 +701,87 @@ export function makeMateEngineConversations(options: {
     );
   };
 
+  /**
+   * Reads the run groups before the oldest held, each run whole, into the conversation's own
+   * scopes; the earlier listing's stream says while it is in flight. Nothing when the oldest held
+   * is the first run, a read is in flight, or the conversation has not opened.
+   */
+  const readEarlier = (key: EngineConversationKey): boolean => {
+    if (closed || withheld.has(key.environmentId)) return false;
+    const id = engineConversationId(key);
+    const cursor = cursors.get(id);
+    if (cursor === undefined) return false;
+    const read = readsOfState(store.state());
+    let oldest: number | null = null;
+    for (const runId of read.index("engineRunsIn", id)) {
+      const run = read.fact("mateEngineRun", runId);
+      if (run.kind === "known" && (oldest === null || run.value.ordinal < oldest))
+        oldest = run.value.ordinal;
+    }
+    if (oldest === null || oldest <= 1) return false;
+    const scope = engineEarlierScope(key);
+    const phase = streamOf(store.state(), scope).phase;
+    if (phase === "connecting" || phase === "baselining") return false;
+    if (phase === "idle") signal(scope, { kind: "demand", demanded: true });
+    signal(scope, phase === "refused" ? { kind: "manual-retry" } : { kind: "attempt" });
+    signal(scope, { kind: "handshake" });
+    const generations = Object.values(engineConversationScopes(key)).map((owned) => ({
+      scope: owned,
+      generation: streamOf(store.state(), owned).generation,
+    }));
+    const beforeOrdinal = oldest;
+    const fiber = Effect.runFork(
+      wire.readEarlier(key, beforeOrdinal).pipe(
+        Effect.flatMap((page) =>
+          page._tag === "Page"
+            ? Effect.map(wholeRuns(key, page.runs, page.items), (lacked) => ({ page, lacked }))
+            : Effect.fail(unservedFault(page.unserved)),
+        ),
+        Effect.match({
+          onFailure: (fault) => {
+            if (!closed) signal(scope, { kind: "fault", fault, jitter: 0 });
+          },
+          onSuccess: ({ page, lacked }) => {
+            if (closed) return;
+            // Denied or unverified while the page was read: nothing of it is kept.
+            const access = withheld.get(key.environmentId);
+            if (access !== undefined) {
+              signal(scope, { kind: "fault", fault: access, jitter: 0 });
+              return;
+            }
+            Atom.batch(() => {
+              store.dispatch({
+                kind: "delivery",
+                via: "mate-direct",
+                scopes: generations,
+                reset: false,
+                partial: true,
+                rows: rowsOf(
+                  key,
+                  cursor.epoch,
+                  {
+                    runs: page.runs,
+                    items: [...page.items, ...lacked.items],
+                    requests: [...page.requests, ...lacked.requests],
+                    head: cursor.seq,
+                  },
+                  undefined,
+                ),
+                removals: [],
+              });
+              signal(scope, { kind: "baseline-committed" });
+            });
+          },
+        }),
+      ),
+    );
+    reads.add(fiber);
+    fiber.addObserver(() => reads.delete(fiber));
+    return true;
+  };
+
   return {
+    readEarlier,
     /** Holds the conversation while drawn; the returned release lets it go. */
     hold(key: EngineConversationKey): () => void {
       if (closed) return () => {};
@@ -655,6 +879,8 @@ export function makeMateEngineConversations(options: {
     close() {
       closed = true;
       links.close();
+      for (const fiber of reads) void Effect.runFork(Fiber.interrupt(fiber));
+      reads.clear();
       for (const fiber of watches.values()) void Effect.runFork(Fiber.interrupt(fiber));
       watches.clear();
       cursors.clear();

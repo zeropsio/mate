@@ -21,7 +21,11 @@ import { followStreamInEnvironment } from "../../state/runtime.ts";
 import type { ShellSnapshotLoader } from "../../state/shellSnapshotHttp.ts";
 import type { ThreadSnapshotLoader } from "../../state/threadSnapshotHttp.ts";
 import { openShellReplay } from "./mateShellReplay.ts";
-import { openThreadReplay, type ThreadResumeCache } from "./mateThreadReplay.ts";
+import {
+  openThreadReplay,
+  registerOlderThreadTurns,
+  type ThreadResumeCache,
+} from "./mateThreadReplay.ts";
 import type { AccountStore } from "../store.ts";
 import type { MateThreadValue } from "../families/mateConversation.ts";
 import {
@@ -312,13 +316,23 @@ export function createAccountConversationAtoms<R, E>(
     Atom.make((get) => {
       const host = get(mateEngineHostAtom);
       const key = JSON.parse(encoded) as Required<ConversationKey>;
-      if (host !== null)
+      if (host !== null) {
+        const conversation = {
+          environmentId: key.environmentId as string,
+          conversationId: key.threadId as string,
+        };
+        get.addFinalizer(host.conversations.hold(conversation));
+        // "Load earlier" asks the same registry a V1 thread's machine answers.
         get.addFinalizer(
-          host.conversations.hold({
-            environmentId: key.environmentId,
-            conversationId: key.threadId,
-          }),
+          registerOlderThreadTurns(
+            key.environmentId as EnvironmentId,
+            key.threadId as ThreadId,
+            () => {
+              host.conversations.readEarlier(conversation);
+            },
+          ),
         );
+      }
       return host;
     }),
   );

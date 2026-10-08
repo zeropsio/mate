@@ -142,3 +142,82 @@ export const engineRow = (
     askedAt: null,
     ...patch,
   }) as ConversationRow;
+
+const itemBase = (runId: string, ordinal: number) => ({
+  id: `${runId}/i/${ordinal}`,
+  conversationId: runId.split("/r/")[0]!,
+  runId,
+  seq: ordinal,
+  rev: ordinal,
+  at: at + ordinal,
+});
+
+export const callItem = (
+  runId: string,
+  ordinal: number,
+  patch: Partial<Extract<Item, { kind: "call" }>> = {},
+): Item =>
+  ({
+    ...itemBase(runId, ordinal),
+    by: { kind: "mate" },
+    kind: "call",
+    step: "command",
+    tool: { name: "Bash" },
+    words: "Ran command",
+    state: "done",
+    endedAt: at + ordinal + 500,
+    ...patch,
+  }) as Item;
+
+export const thoughtItem = (
+  runId: string,
+  ordinal: number,
+  preview: string,
+  patch: Partial<Extract<Item, { kind: "thought" }>> = {},
+): Item =>
+  ({
+    ...itemBase(runId, ordinal),
+    by: { kind: "mate" },
+    kind: "thought",
+    preview,
+    length: preview.length,
+    streaming: false,
+    ...patch,
+  }) as Item;
+
+export const workItem = (
+  runId: string,
+  ordinal: number,
+  patch: Partial<Extract<Item, { kind: "work" }>> = {},
+): Item =>
+  ({
+    ...itemBase(runId, ordinal),
+    by: { kind: "mate" },
+    kind: "work",
+    work: `work-${ordinal}`,
+    workKind: "helper",
+    status: "running",
+    title: "Review the api",
+    ...patch,
+  }) as Item;
+
+export const markerItem = (
+  runId: string,
+  ordinal: number,
+  marker: Extract<Item, { kind: "marker" }>["marker"],
+): Item =>
+  ({
+    ...itemBase(runId, ordinal),
+    by: { kind: "engine" },
+    kind: "marker",
+    marker,
+  }) as Item;
+
+export const unknownItem = (runId: string, ordinal: number, summary: string | null): Item =>
+  ({
+    ...itemBase(runId, ordinal),
+    by: { kind: "engine" },
+    kind: "unknown",
+    type: "plan-v2",
+    summary,
+  }) as Item;
