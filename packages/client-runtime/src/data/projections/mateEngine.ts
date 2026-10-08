@@ -124,8 +124,8 @@ function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
         role: "user",
         text: item.text,
         attachments: item.attachments.filter(
-          (attachment): attachment is Extract<ChatAttachment, { type: "image" }> =>
-            attachment.type === "image",
+          (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
+            attachment.type === "image" || attachment.type === "file",
         ),
         streaming: false,
       };
