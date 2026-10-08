@@ -534,6 +534,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       turnKey: string;
+      /** The turn it draws (an engine card's id: what it holds of a long run, `engineCardPaging`). */
+      turnId?: TurnId | null;
       live: boolean;
       items: ReadonlyArray<RecordItem>;
       /** What its hands are on right now, the newest bubble; null once the run is over. */
@@ -2693,6 +2695,7 @@ export function deriveMessagesTimelineRows(input: {
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
+          turnId: turn.turnId,
           live: turn.live || waiting,
           items,
           now: waiting

@@ -148,6 +148,13 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
+import {
+  heldLines,
+  pageReached,
+  withPagedEffort,
+  type ScrollPages,
+} from "~/zerops/engineCardPaging.logic";
+import { useEngineCardPaging } from "~/zerops/useEngineCardPaging";
 import { foldWork } from "./foldWork";
 import {
   type EaseBudget,
@@ -3724,6 +3731,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
   const [carriedOpen] = useState(() => new Map<string, Carried>());
   const ctx = use(TimelineRowCtx);
+  // An engine run too long to read whole: its effort from its summary, its lines a page at a time.
+  const paged = useEngineCardPaging(row.turnId ?? null);
+  const paging = paged?.paging ?? null;
+  const outcome = useMemo(() => withPagedEffort(row.outcome, paging), [row.outcome, paging]);
+  const rowItems = useMemo(() => heldLines(row.items, paging), [row.items, paging]);
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
   const aboveRef = useRef<HTMLDivElement>(null);
@@ -3970,8 +3982,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // left out: it folds in once the call lands.
   const history =
     holds.size === 0
-      ? row.items
-      : row.items.flatMap((item): RecordItem[] => {
+      ? rowItems
+      : rowItems.flatMap((item): RecordItem[] => {
           if (holds.has(item.key)) return [];
           if (item.kind !== "step" || item.parts === undefined) return [item];
           if (!item.parts.some((part) => holds.has(part.key))) return [item];
@@ -4013,6 +4025,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         eases={slotted && !ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
+        {...(paged === null ? {} : { pages: paged.pages })}
       />
     );
   const settledOutcome = settled ? row.outcome : null;
@@ -4056,7 +4069,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <NowLine
               key="line"
               answering={false}
-              outcome={row.outcome}
+              outcome={outcome}
               settledHere={watchedLive}
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
@@ -4300,6 +4313,7 @@ function RunScroll({
   opensAtStart = false,
   roomsRef,
   motionRef,
+  pages,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -4321,6 +4335,11 @@ function RunScroll({
   readonly roomsRef?: { current: Rooms | null };
   /** Its card's motion: the live slot's ease beside it. */
   readonly motionRef?: { readonly current: RunMotion };
+  /**
+   * An engine run too long to read whole: the lines past the ones held, read a page at a time
+   * as the scroll nears them (`pageReached`).
+   */
+  readonly pages?: ScrollPages;
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -4652,6 +4671,41 @@ function RunScroll({
     }
     markEdges(element);
   }, [from, follow]);
+  // A page of earlier lines read in above the first one drawn keeps that one where it stood: the
+  // scroll moves by what came in over it, before the frame paints. Never a glide: nothing moved.
+  const firstDrawnRef = useRef<{ readonly key: string; readonly top: number } | null>(null);
+  const prependedRef = useRef(false);
+  useLayoutEffect(() => {
+    prependedRef.current = false;
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (pages === undefined || element === null || list === null) return;
+    const was = firstDrawnRef.current;
+    const first = from === 0 ? lines[0] : undefined;
+    const topOf = (row: HTMLElement) =>
+      row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    if (was !== null && first !== undefined && first.key !== was.key) {
+      const row = rowByKey(list, was.key);
+      if (row !== null) {
+        prependedRef.current = true;
+        const moved = topOf(row) - was.top;
+        if (Math.abs(moved) > 0.5) follow.putAt(element, element.scrollTop + moved);
+      }
+    }
+    const row = first === undefined ? null : rowByKey(list, first.key);
+    firstDrawnRef.current =
+      first === undefined || row === null ? null : { key: first.key, top: topOf(row) };
+  });
+  // Near an end with lines past it still to read: the next page, before the person reaches it.
+  const readPage = (position: RunScrollPosition) => {
+    if (pages === undefined) return;
+    const reached = pageReached(position, from, pages);
+    if (reached !== null) pages.read(reached);
+  };
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (pages !== undefined && element !== null) readPage(positionOf(element));
+  });
   // A line joining above lines already there, or a call moving past the
   // ones still running (F3, run 9), glides what it moved from where it
   // stood, as a landing does; one joining at the foot makes its room there
@@ -4692,7 +4746,7 @@ function RunScroll({
     // A landing glides the history itself, and plops what lands.
     if (drawn === null || drawn.landing !== landing || !shownRef.current) return;
     // Earlier lines drawn over the ones in view keep their place by the scroll.
-    glideShifted(list, drawn.rows, rows, drawn.from === from);
+    glideShifted(list, drawn.rows, rows, drawn.from === from && !prependedRef.current);
   });
   // A line arriving, a bubble growing as its words stream, a call opening,
   // the live slot under it growing into its room: a scroll that follows its
@@ -4760,6 +4814,7 @@ function RunScroll({
               } else markEdges(element, position);
             }
             drawEarlier(position);
+            readPage(position);
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}

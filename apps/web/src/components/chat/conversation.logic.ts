@@ -1111,7 +1111,7 @@ export type ActivityKind =
   | "helpers";
 
 /** One fixed order, so the effort's words never reorder. */
-const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
+export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
@@ -1167,7 +1167,7 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
 }
 
 /** Zerops tools with no card of their own, counted by what they did. */
-const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
+export const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
   zerops_workflow: "workflow",
   zerops_knowledge: "guides",
 };
