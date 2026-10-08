@@ -207,6 +207,11 @@ export const crewEngineHooksLayer = Layer.effectContext(
         >
       >();
     const front = Deferred.await(link).pipe(Effect.timeoutOption(FRONT_WAIT));
+    const frontNow = Effect.flatMap(Deferred.isDone(link), (done) =>
+      done
+        ? Effect.map(Deferred.await(link), Option.some)
+        : Effect.succeed(Option.none<CrewFront>()),
+    );
     const context: CrewDeliveryContextShape = {
       seed: (input) =>
         Effect.flatMap(front, (found) =>
@@ -228,7 +233,9 @@ export const crewEngineHooksLayer = Layer.effectContext(
     });
     return Context.make(OwnerDomains, [crewDomain]).pipe(
       Context.add(EngineEffectExtensions, extensions),
-      Context.add(CrewWorkspaceDirectory, { workspaceOf: crewWorkspaceOf(front) }),
+      // Read without waiting: a front not up yet fails the open, which the worker tries again
+      // later rather than holding its fiber.
+      Context.add(CrewWorkspaceDirectory, { workspaceOf: crewWorkspaceOf(frontNow) }),
     );
   }),
 );

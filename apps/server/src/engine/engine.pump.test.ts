@@ -571,7 +571,7 @@ describe("the running engine", () => {
           const w = yield* world("codex", { workspaceUnavailable: 2 });
           yield* send(w);
           assert.isFalse(w.provider.calls.some((call) => call.startsWith("start")));
-          yield* w.advance(100);
+          yield* w.advance(1_000);
           assert.include(w.provider.calls, sendLine(w, "hello"));
           assert.deepStrictEqual(
             w.provider.starts.map((start) => (start as { readonly cwd: string }).cwd),

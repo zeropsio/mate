@@ -779,6 +779,38 @@ describe("EffectWorker: another owner kind", () => {
     }),
   );
 
+  it.effect(
+    "a conversation's effect that waits on a crewmate's copy rides out the outage a crew effect does",
+    () =>
+      Effect.gen(function* () {
+        const waits: EffectHandler = {
+          kind: "test.copy",
+          run: (row) =>
+            Effect.succeed<HandlerResult>(
+              row.attempt < 7
+                ? {
+                    _tag: "Retry",
+                    reason: "The crewmate's copy cannot be read now.",
+                    patient: true,
+                  }
+                : { _tag: "Done", outcome: { kind: "ok" } },
+            ),
+        };
+        const state = yield* Effect.gen(function* () {
+          yield* enqueue(mate, [{ id: "mate/e/test.copy/1", kind: "test.copy", lane: "side" }]);
+          const worker = yield* makeEffectWorker(boot1);
+          for (let tick = 0; tick < 40; tick++) {
+            while (yield* worker.runOnce) {
+              // everything due now
+            }
+            yield* TestClock.adjust(5_000);
+          }
+          return yield* rowState("mate/e/test.copy/1");
+        }).pipe(Effect.provide(withCrew([waits])));
+        expect(state).toBe("done");
+      }),
+  );
+
   it.effect("a crew effect rides out a minute's outage that fails a conversation's for good", () =>
     Effect.gen(function* () {
       const states = yield* Effect.gen(function* () {

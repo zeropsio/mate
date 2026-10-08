@@ -104,8 +104,9 @@ export const makeSessionOpen = Effect.gen(function* () {
             Effect.catchTag("WorkspaceUnavailable", (unavailable) => Effect.succeed(unavailable)),
           );
         // A workspace that cannot be told now (a crewmate's copy unread) opens nothing anywhere
-        // else: the open is tried again.
-        if ("_tag" in setup) return { _tag: "Retry", reason: setup.message } as const;
+        // else: the open is tried again, over minutes, as the copy's own effects are.
+        if ("_tag" in setup)
+          return { _tag: "Retry", reason: setup.message, patient: true } as const;
         yield* host.begin(session);
         const live = (yield* provider.listSessions()).find(
           (candidate) =>

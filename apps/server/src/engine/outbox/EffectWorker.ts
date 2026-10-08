@@ -44,7 +44,15 @@ import {
 /** What a handler's attempt came to. */
 export type HandlerResult =
   | { readonly _tag: "Done"; readonly outcome: EffectOutcome }
-  | { readonly _tag: "Retry"; readonly reason: string };
+  | {
+      readonly _tag: "Retry";
+      readonly reason: string;
+      /**
+       * It waits on something outside the engine that comes back (a crewmate's copy over ssh): it
+       * is tried again as an owner's effect is, over minutes, whatever owns it.
+       */
+      readonly patient?: boolean;
+    };
 
 export interface EffectHandler {
   readonly kind: string;
@@ -190,7 +198,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
       const row = claimed.value;
       const result = yield* Effect.uninterruptible(attempt(row));
       if (result._tag === "Retry") {
-        const policy = retryPolicyOf(row, policies);
+        const policy = result.patient === true ? policies.owner : retryPolicyOf(row, policies);
         if (row.attempt >= policy.maxAttempts) {
           yield* settle(row, { kind: "failed", reason: result.reason });
         } else {
