@@ -18,7 +18,10 @@ const evidence: MateResourceHealth = {
     max: 3.75 * 1024 ** 3,
     events: { high: 2, oom: 0, oomKill: 0 },
     growth: { high: 1, oom: 0, oomKill: 0 },
-    pressure: { some: { avg10: 60, total: 3 }, full: { avg10: 40, total: 2 } },
+    pressure: {
+      some: { avg10: 60, avg60: 40, avg300: 40, total: 3 },
+      full: { avg10: 40, avg60: 10, avg300: 10, total: 2 },
+    },
     swapCurrent: 536870912,
     swapMax: 536870912,
   },
@@ -125,7 +128,7 @@ describe("health at the screen boundary", () => {
       severity: "warning",
       memory: null,
       cpu: {
-        some: { avg10: 25, total: 500000 },
+        some: { avg10: 25, avg60: 40, avg300: 40, total: 500000 },
         full: null,
         window: {
           scope: "/sys/fs/cgroup",
@@ -179,15 +182,6 @@ describe("health at the screen boundary", () => {
     expect(copy?.description).toContain("No current process could be attributed");
     expect(copy?.description).not.toContain("Close idle container workloads");
   });
-  it("names measured starvation, the cap, actions, swap and severity", () => {
-    const copy = mateHealthCopy("Skákala", project(direct()));
-    expect(copy?.title).toBe(
-      "Skákala is under memory pressure — the container is capped at 3.75 GB",
-    );
-    expect(copy?.severity).toBe("critical");
-    expect(copy?.description).toContain("Close idle terminal agents or the IDE");
-    expect(copy?.description).toContain("Container swap is full");
-  });
   it("uses HQ's independent live health even without a conversation overview", () => {
     expect(project(relay(health, true))).toMatchObject({ health, live: true });
     expect(mateHealthCopy("Skákala", project(relay(health, true)))?.title).not.toContain(
@@ -219,91 +213,113 @@ describe("health at the screen boundary", () => {
     expect(mateHealthCopy("Skákala", project([]))).toBeNull();
   });
   it.each([
-    { live: true, growth: 0, swapGrowth: 0, io: false, title: null },
-    { live: false, growth: 0, swapGrowth: 0, io: false, title: null },
-    { live: true, growth: 0, swapGrowth: 0, io: true, title: "Rhea is slowed by I/O stalls" },
     {
+      sentence: "Routine reclaim, swap growth and brief stalls leave the composer quiet",
+      pressure: { some: { avg10: 5, total: 3 }, full: null },
+      oomKill: 0,
+      severity: null,
+    },
+    {
+      sentence: "Sustained full memory stalls show one calm warning",
+      pressure: {
+        some: { avg10: 5, total: 3 },
+        full: { avg10: 0, avg60: 10, avg300: 10, total: 2 },
+      },
+      oomKill: 0,
+      severity: "warning",
+    },
+    {
+      sentence: "Sustained partial memory stalls show one calm warning",
+      pressure: { some: { avg10: 5, avg60: 40, avg300: 40, total: 3 }, full: null },
+      oomKill: 0,
+      severity: "warning",
+    },
+    {
+      sentence:
+        "A minute of stalls without sustained five-minute evidence leaves the composer quiet",
+      pressure: {
+        some: { avg10: 50, avg60: 40, avg300: 39, total: 3 },
+        full: { avg10: 20, avg60: 10, avg300: 9, total: 2 },
+      },
+      oomKill: 0,
+      severity: null,
+    },
+    {
+      sentence: "An OOM kill since the preceding sample shows a critical notice",
+      pressure: null,
+      oomKill: 1,
+      severity: "critical",
+    },
+    {
+      sentence: "Full swap and failed allocations without kills leave the composer quiet",
+      pressure: null,
+      oomKill: 0,
+      severity: null,
+    },
+  ])("$sentence", ({ pressure, oomKill, severity }) => {
+    const value: MateHealth = {
+      ...health,
+      evidence: {
+        ...evidence,
+        memory: {
+          ...evidence.memory!,
+          growth: { high: 1, max: 1, oom: 1, oomKill },
+          swapGrowth: 1024,
+          pressure,
+        },
+      },
+    };
+    const copy = mateHealthCopy("Toby", project(direct(value)));
+    if (severity === null) expect(copy).toBeNull();
+    else {
+      expect(copy).toEqual({
+        severity,
+        title: "Toby is short of memory — work may be slow",
+        description:
+          "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
+      });
+    }
+  });
+  it.each(["io", "cpu"] as const)("A brief %s stall leaves the composer quiet", (resource) => {
+    const value = cpuHealth(true);
+    const pressure = { some: { avg10: 50, total: 300 }, full: null };
+    expect(
+      mateHealthCopy(
+        "Toby",
+        project(
+          direct({
+            ...value,
+            evidence: {
+              ...value.evidence,
+              cpu: resource === "cpu" ? { ...value.evidence.cpu!, ...pressure } : null,
+              io: resource === "io" ? pressure : null,
+            },
+          }),
+        ),
+      ),
+    ).toBeNull();
+  });
+});
+it.each([1000, 0])(
+  "Sustained I/O stalls remain distinct from disk exhaustion with free=%s",
+  (free) => {
+    const copy = mateHealthCopy("Rhea", {
       live: true,
-      growth: 1,
-      swapGrowth: 1,
-      io: true,
-      title: "Rhea is under memory pressure — the container is capped at 3.38 GB",
-    },
-    {
-      live: false,
-      growth: 1,
-      swapGrowth: 0,
-      io: false,
-      title:
-        "Rhea · last-known health is under memory pressure — the container is capped at 3.38 GB",
-    },
-  ])(
-    "Rhea copy follows measured pressure rather than allocation configuration: %j",
-    ({ live, growth, swapGrowth, io, title }) => {
-      const value: MateHealth = {
+      health: {
         ...health,
         evidence: {
           ...evidence,
-          // Even an older server's false memory flag must not manufacture a notice.
-          resources: io ? ["memory", "disk"] : ["memory"],
-          severity: "warning",
-          memory: {
-            ...evidence.memory!,
-            current: 2 * 1024 ** 3,
-            max: 3.375 * 1024 ** 3,
-            high: 1.375 * 1024 ** 3,
-            events: { high: 2513, max: 0, oom: 0, oomKill: 0 },
-            growth: { high: growth, max: 0, oom: 0, oomKill: 0 },
-            swapGrowth,
-            pressure: { some: { avg10: 0, total: 0 }, full: { avg10: 0, total: 0 } },
-            swapCurrent: 200 * 1024 ** 2,
-            swapMax: 512 * 1024 ** 2,
+          disk: { free, total: 5000 },
+          memory: null,
+          io: {
+            some: { avg10: 30, total: 300 },
+            full: { avg10: 24, avg60: 10, avg300: 10, total: 240 },
           },
-          io: io ? { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } } : null,
         },
-      };
-      const copy = mateHealthCopy("Rhea", { health: value, live });
-      expect(copy?.title ?? null).toBe(title);
-      expect(copy?.description ?? "").not.toContain("hasn't reached");
-      if (growth) expect(copy?.description).toContain("Memory reclaim threshold: 1.38 GB");
-      if (swapGrowth) expect(copy?.description).toContain("swap use is growing");
-      if (io) expect(copy?.description).toContain("I/O stalls");
-    },
-  );
-});
-
-it("describes hierarchical reclaim without attributing it to the displayed threshold", () => {
-  const copy = mateHealthCopy("Rhea", {
-    live: true,
-    health: {
-      ...health,
-      evidence: {
-        ...evidence,
-        memory: { ...evidence.memory!, current: 1024 ** 3, high: 1.75 * 1024 ** 3 },
       },
-    },
-  });
-  expect(copy?.description).toContain("Memory reclaim threshold: 1.75 GB");
-  expect(copy?.description).toContain("within the container hierarchy");
-  expect(copy?.description).not.toContain("container hit its memory reclaim threshold");
-});
-it.each([1000, 0])("normalizes legacy severity and concurrent I/O with disk free=%s", (free) => {
-  const copy = mateHealthCopy("Rhea", {
-    live: true,
-    health: {
-      ...health,
-      evidence: {
-        ...evidence,
-        resources: ["memory", "disk"],
-        severity: "critical",
-        disk: { free, total: 5000 },
-        memory: { ...evidence.memory!, growth: { high: 0, oom: 0, oomKill: 0 }, pressure: null },
-        io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
-      },
-    },
-  });
-  expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
-  expect(copy?.description).toContain("I/O stalls");
-  expect(copy?.description).not.toContain("swap is full");
-  if (free === 0) expect(copy?.title).toContain("no free space");
-});
+    });
+    expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
+    expect(copy?.description).toContain("I/O stalls");
+    if (free === 0) expect(copy?.title).toContain("no free space");
+  },
+);

@@ -15,7 +15,10 @@ const health: MateHealth = {
       max: 3.75 * 1024 ** 3,
       events: { high: 2, oom: 0, oomKill: 0 },
       growth: { high: 1, oom: 0, oomKill: 0 },
-      pressure: null,
+      pressure: {
+        some: { avg10: 5, total: 3 },
+        full: { avg10: 0, avg60: 10, avg300: 10, total: 2 },
+      },
       swapCurrent: 536870912,
       swapMax: 536870912,
     },
@@ -26,13 +29,14 @@ const health: MateHealth = {
   },
 };
 describe("Mate's visible resource warning", () => {
-  it.each([true, false])("shows named memory evidence and action, with live=%s", (live) => {
+  it.each([true, false])("shows a calm memory warning and action, with live=%s", (live) => {
     const text = renderToStaticMarkup(
       <MateHealthMessage name="Skákala" read={{ health, live }} />,
     ).replaceAll("&#x27;", "'");
     expect(text).toContain("Skákala");
-    expect(text).toContain("capped at 3.75 GB");
-    expect(text).toContain("reclaim threshold: 1.5 GB");
+    expect(text).toContain("is short of memory — work may be slow");
+    expect(text).not.toContain("capped at");
+    expect(text).not.toContain("reclaim threshold");
     expect(text).toContain("Close idle terminal agents");
     expect(text.includes("last-known health")).toBe(!live);
     expect(text).not.toContain("hasn't reached the container");
@@ -48,7 +52,10 @@ describe("Mate's visible resource warning", () => {
               ...health.evidence,
               resources: ["io"],
               memory: null,
-              io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+              io: {
+                some: { avg10: 30, total: 300 },
+                full: { avg10: 24, avg60: 10, avg300: 10, total: 240 },
+              },
             },
           },
           live: true,
@@ -57,6 +64,22 @@ describe("Mate's visible resource warning", () => {
     );
     expect(text).toContain("Rhea is slowed by I/O stalls");
     expect(text).not.toContain("short on disk");
+  });
+  it("Routine reclaim, swap growth and brief stalls leave no notice", () => {
+    const value = {
+      ...health,
+      evidence: {
+        ...health.evidence,
+        memory: {
+          ...health.evidence.memory!,
+          swapGrowth: 1024,
+          pressure: { some: { avg10: 5, total: 3 }, full: null },
+        },
+      },
+    };
+    expect(
+      renderToStaticMarkup(<MateHealthMessage name="Toby" read={{ health: value, live: true }} />),
+    ).toBe("");
   });
   it("clears after source recovery and says nothing before a sample", () => {
     for (const value of [
