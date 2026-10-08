@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Optional frame recording uses Node filesystem tools.
 import { describe, expect, it } from "@effect/vitest";
 import { WS_METHODS, AssetCreateUrlInput, AssetCreateUrlResult } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -6,11 +7,288 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
 const decode = Schema.decodeUnknownSync(AssetCreateUrlInput);
 const encode = Schema.encodeSync(AssetCreateUrlResult);
 const picture = ".message-picture-open img";
 describe("C: conversation images", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("decoded conversation and work pictures stay in place while a turn streams", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        const bytes = Buffer.from(
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const canvas = document.createElement("canvas");
+              canvas.width = 160;
+              canvas.height = 80;
+              const ctx = canvas.getContext("2d")!;
+              ctx.fillStyle = "#e66432";
+              ctx.fillRect(0, 0, 160, 80);
+              return canvas.toDataURL("image/png").split(",")[1]!;
+            }),
+          ),
+          "base64",
+        );
+        const requests: string[] = [];
+        s.drivers.onMate.push((mate) => {
+          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+          mate.rpcHandlers.unshift((request, socket) => {
+            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+            const input = decode(request.payload);
+            const id =
+              input.resource._tag === "attachment"
+                ? String(["one", "two", "three"].indexOf(input.resource.attachmentId) + 1)
+                : "4";
+            mate.reply(
+              socket,
+              request.id,
+              encode({
+                relativeUrl: `/api/assets/objects/${id.padEnd(64, "a")}/preview`,
+                expiresAt: 0,
+                imageDimensions: { width: 160, height: 80 },
+              }),
+            );
+            return true;
+          });
+          const handle = mate.handle;
+          mate.handle = (request) => {
+            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
+            requests.push(request.url.pathname);
+            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
+          };
+        });
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        const wire = chat.fixture();
+        wire.history("Earlier work", "earlier");
+        wire.tool(
+          "earlier-command",
+          "tool.completed",
+          { toolName: "Bash", command: "printf earlier", rawOutput: { content: "Earlier output" } },
+          "earlier",
+        );
+        wire.run("earlier", "completed");
+        wire.message(
+          "pictures",
+          "user",
+          "[Picture 1]\n[Picture 2]\n[Picture 3]\nWatch these pictures while you work",
+          "stream",
+          {
+            attachments: ["one", "two", "three"].map((id) => ({
+              type: "image" as const,
+              id,
+              name: `${id}.png`,
+              mimeType: "image/png",
+              sizeBytes: bytes.length,
+              width: 160,
+              height: 80,
+            })),
+          },
+        );
+        const work = {
+          toolName: "Read",
+          input: { file_path: "/tmp/work.png" },
+          imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        };
+        wire.run("stream", "running");
+        yield* s.given.signedIn;
+        yield* chat.when.open("Ada", "Watch these pictures while you work");
+        wire.tool("work-image", "tool.completed", work, "stream", { itemType: "image_view" });
+        yield* Effect.promise(() =>
+          s.page
+            .waitForFunction(
+              () => {
+                const images = [
+                  ...document.querySelectorAll<HTMLImageElement>("img[data-image-src]"),
+                ];
+                return (
+                  images.length === 4 &&
+                  images.every(
+                    (image) =>
+                      image.getBoundingClientRect().top >= 0 &&
+                      image.getBoundingClientRect().bottom <= innerHeight &&
+                      image.naturalWidth === 160 &&
+                      [
+                        image,
+                        ...Array.from(
+                          (function* () {
+                            for (
+                              let parent = image.parentElement;
+                              parent !== null;
+                              parent = parent.parentElement
+                            )
+                              yield parent;
+                          })(),
+                        ),
+                      ].every((node) => Number(getComputedStyle(node).opacity) === 1),
+                  )
+                );
+              },
+              { timeout: 8000 },
+            )
+            .catch(async (cause) => {
+              throw new Error(
+                JSON.stringify({
+                  requests,
+                  text: await s.page.evaluate(() => document.body.innerText),
+                  images: await s.page.$$eval("img[data-image-src]", (images) =>
+                    images.map((image) => ({
+                      src: image.getAttribute("src"),
+                      alt: image.getAttribute("alt"),
+                      box: image.getBoundingClientRect().toJSON(),
+                      opacity: getComputedStyle(image).opacity,
+                      width: (image as HTMLImageElement).naturalWidth,
+                    })),
+                  ),
+                }),
+                { cause },
+              );
+            }),
+        );
+        const initialRequests = requests.length;
+        const frames = process.env.MATE_IMAGE_FRAMES;
+        const recording = yield* Effect.promise(() => s.page.createCDPSession());
+        const recorded: Promise<unknown>[] = [];
+        let frame = 0;
+        if (frames) {
+          yield* Effect.promise(() => NodeFSP.mkdir(frames, { recursive: true }));
+          recording.on("Page.screencastFrame", (event) => {
+            recorded.push(
+              NodeFSP.writeFile(
+                NodePath.join(frames, `${String(frame++).padStart(5, "0")}.png`),
+                Buffer.from(event.data, "base64"),
+              ),
+            );
+            recorded.push(
+              recording.send("Page.screencastFrameAck", { sessionId: event.sessionId }),
+            );
+          });
+          yield* Effect.promise(() =>
+            recording.send("Page.startScreencast", { format: "png", everyNthFrame: 1 }),
+          );
+        }
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(async () => {
+            if (frames) await recording.send("Page.stopScreencast");
+            await Promise.all(recorded);
+            await recording.detach();
+          }),
+        );
+        const watched = yield* Effect.promise(() =>
+          s.page.evaluateHandle(() => {
+            const images = [...document.querySelectorAll<HTMLImageElement>("img[data-image-src]")];
+            const held = images.map((image) => ({
+              image,
+              src: image.src,
+              width: image.getBoundingClientRect().width,
+              height: image.getBoundingClientRect().height,
+            }));
+            const violations = new Set<string>();
+            let frame = 0;
+            let running = true;
+            const sample = () => {
+              frame++;
+              for (const { image, src, width, height } of held) {
+                if (!image.isConnected) violations.add(`${image.alt}: replaced`);
+                if (image.src !== src) violations.add(`${image.alt}: src changed`);
+                if (
+                  image.getBoundingClientRect().width !== width ||
+                  image.getBoundingClientRect().height !== height
+                )
+                  violations.add(`${image.alt}: size changed`);
+                for (let node: Element | null = image; node !== null; node = node.parentElement) {
+                  const style = getComputedStyle(node);
+                  if (Number(style.opacity) < 1) violations.add(`${image.alt}: faded`);
+                  const box = node.getBoundingClientRect();
+                  const picture = image.getBoundingClientRect();
+                  if (
+                    (style.clipPath !== "none" ||
+                      ["hidden", "clip", "auto", "scroll"].includes(style.overflowY)) &&
+                    (picture.top < box.top - 1 || picture.bottom > box.bottom + 1)
+                  ) {
+                    violations.add(`${image.alt}: clipped by ${node.className}`);
+                  }
+                }
+              }
+              if (running) requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+            return {
+              held,
+              violations,
+              finish: () => {
+                running = false;
+                return { frames: frame, violations: [...violations] };
+              },
+            };
+          }),
+        );
+        const samples: unknown[] = [];
+        wire.tool(
+          "progress",
+          "tool.started",
+          { command: "printf work-update-0", kind: "execute" },
+          "stream",
+        );
+        for (let update = 0; update < 24; update++) {
+          wire.tool(
+            "progress",
+            "tool.updated",
+            {
+              kind: "execute",
+              command: `printf work-update-${update}`,
+              rawOutput: { content: `Work update ${update}` },
+            },
+            "stream",
+          );
+          yield* chat.then.text(`printf work-update-${update}`);
+          if (update === 8) yield* chat.when.activate("Show work");
+          if (update === 16) yield* chat.when.activate("Hide work");
+          const images = yield* Effect.promise(() =>
+            s.page.evaluate(
+              (watched) =>
+                watched.held.map((held) => {
+                  const image = document.querySelector<HTMLImageElement>(
+                    `img[data-image-src="${held.image.dataset.imageSrc}"]`,
+                  );
+                  return {
+                    sameNode: image === held.image,
+                    sameSrc: image?.src === held.src,
+                    decoded:
+                      image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1,
+                    sameSize:
+                      image?.getBoundingClientRect().width === held.width &&
+                      image?.getBoundingClientRect().height === held.height,
+                  };
+                }),
+              watched,
+            ),
+          );
+          samples.push(images);
+        }
+        expect(samples).toEqual(
+          Array.from({ length: 24 }, () =>
+            Array.from({ length: 4 }, () => ({
+              sameNode: true,
+              sameSrc: true,
+              decoded: true,
+              sameSize: true,
+            })),
+          ),
+        );
+        expect(requests.length).toBe(initialRequests);
+        const film = yield* Effect.promise(() =>
+          s.page.evaluate((watched) => watched.finish(), watched),
+        );
+        expect(film.frames).toBeGreaterThan(0);
+        expect(film.violations).toEqual([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
     it.effect(
       "messages appear before image bytes, reserve their size, and reuse previews on reopen",
       () =>
