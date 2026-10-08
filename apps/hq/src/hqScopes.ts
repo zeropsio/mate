@@ -30,6 +30,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
 import { usageOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
+import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Changes } from "./changes.ts";
 import type { ChangeNavigationSource } from "./changeNavigation.ts";
@@ -210,7 +211,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         string,
         { userId: string; projectId: string; epoch: number; ids: Set<string> }
       >();
-      let source: StructureSource | undefined;
+      type NavigationSource = StructureSource & { readonly autoUpdatePolicy: HqAutoUpdatePolicy };
+      let source: NavigationSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
       let changeSource: ChangeNavigationSource | undefined;
       let releaseSource: ReleaseNavigationSource | undefined;
@@ -249,7 +251,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           while (source === undefined || sourceFence.dirty()) {
             const started = sourceFence.capture();
             yield* recomputes.count;
-            source = yield* structure.navigation;
+            const navigation = yield* structure.navigation;
+            source = {
+              ...navigation,
+              autoUpdatePolicy: yield* autoUpdate.observe(navigation.facts.orgId),
+            };
             environmentSource = source.environmentSource;
             sourceFence.accept(started);
             sourceVersion += 1;
@@ -425,20 +431,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           standupRequestedBy: mate?.standupRequestedBy ?? null,
         });
       };
-      const policyFor = (userId: string) =>
-        autoUpdate.read(userId).pipe(
-          Effect.map((policy) => ({
-            values: [{ key: "auto-update-policy", value: policy }] as HqValue[],
-            removals: [] as HqRemoval[],
-          })),
-          Effect.catchTag("StructureRefused", () =>
-            Effect.succeed({
-              values: [] as HqValue[],
-              removals: [{ key: "auto-update-policy", reason: "no-access" }] as HqRemoval[],
-            }),
-          ),
+      const policyMember = (current: StructureSource, userId: string) =>
+        current.facts.members.some(
+          (member) => member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
         );
-      const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
+      const load = (entry: Entry, current: NavigationSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
@@ -563,9 +560,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
-              const policy = yield* policyFor(entry.userId);
-              values.push(...policy.values);
-              policyRemovals.push(...policy.removals);
+              if (policyMember(current, entry.userId))
+                values.push({
+                  key: "auto-update-policy",
+                  value: current.autoUpdatePolicy,
+                });
+              else policyRemovals.push({ key: "auto-update-policy", reason: "no-access" });
               for (const record of view.lifecycle ?? [])
                 values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
@@ -1120,13 +1120,10 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 const version = sourceVersion;
                 const policy = yield* autoUpdate.observe(acceptedSource.facts.orgId);
                 if (sourceFence.dirty() || sourceVersion !== version) return;
+                source = { ...acceptedSource, autoUpdatePolicy: policy };
                 for (const entry of journals.values()) {
                   if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
-                  const member = acceptedSource.facts.members.some(
-                    (member) =>
-                      member.userId === entry.userId &&
-                      member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
-                  );
+                  const member = policyMember(acceptedSource, entry.userId);
                   yield* entry.one.withPermits(1)(
                     Effect.gen(function* () {
                       if (sourceFence.dirty() || sourceVersion !== version) return;
