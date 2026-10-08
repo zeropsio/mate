@@ -2294,6 +2294,27 @@ describe("decide: a conversation's settings reach its agent as V1's do", () => {
     expect(play([...afterRestart, approvalRequired]).decision._tag).toBe("Accept");
   });
 
+  it("a message held for background work whose session dies goes on a new session", () => {
+    const held = [
+      ...firstRun(["effort"]),
+      send("next"),
+      approvalRequired,
+      work("running"),
+      ended(1),
+      prepared(2),
+    ];
+    const scene = play([...held, signal({ kind: "session-exited", reason: "exit 137" })]);
+    expect(scene.events).toContainEqual(
+      expect.objectContaining({
+        _tag: "ItemClosed",
+        body: expect.objectContaining({ status: "lost" }),
+      }),
+    );
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", runId: r(2), payload: { runtimeMode: "approval-required" } },
+    ]);
+  });
+
   it.each([
     ["plan", { interactionMode: "plan" } as const, "plan"],
     ["default", {}, undefined],

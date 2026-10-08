@@ -1677,6 +1677,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         }
       }
       sessionClosed(b, sessionId, "exited");
+      // A run held for a setting the lost work stood against goes on a new session now.
+      const admitted = activeRun(b.state);
+      if (admitted?.state === "admitted") return dispatch(b, admitted);
       admitNext(b);
       return;
     }
