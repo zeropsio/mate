@@ -103,11 +103,17 @@ describe("CrewEngine lead", () => {
         const creates = yield* opened(world);
         assert.deepStrictEqual(
           {
-            opened: open.crewmates.map((mate) => [
-              mate.handle,
-              mate.currentThreadId === creates.find((entry) => entry.handle === mate.handle)?.chat,
-              mate.stints.map((stint) => [stint.state, stint.reason]),
-            ]),
+            opened: yield* Effect.forEach(open.crewmates, (mate) =>
+              Effect.map(
+                world.sessionsWhere(mate.handle, () => true),
+                (sessions) => [
+                  mate.handle,
+                  mate.currentThreadId ===
+                    creates.find((entry) => entry.handle === mate.handle)?.chat,
+                  sessions,
+                ],
+              ),
+            ),
             turns: (yield* turnsSent(world)).length,
             worktree: creates
               .find((entry) => entry.handle === "backend")
@@ -115,8 +121,8 @@ describe("CrewEngine lead", () => {
           },
           {
             opened: [
-              ["lead", true, [["open", null]]],
-              ["backend", true, [["open", null]]],
+              ["lead", true, { count: 1, latest: "open", reasons: [null] }],
+              ["backend", true, { count: 1, latest: "open", reasons: [null] }],
             ],
             turns: 0,
             worktree: true,

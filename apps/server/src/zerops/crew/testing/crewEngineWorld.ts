@@ -164,6 +164,8 @@ const enginePort = (input: {
   readonly sendHold: Ref.Ref<CrewHold | undefined>;
   /** Every hold's release, run when the life ends. */
   readonly releases: Array<Effect.Effect<void>>;
+  /** The session each conversation's agent last started (its session-start hook), across lives. */
+  readonly hooked: Map<string, number>;
 }): CrewWorld => {
   const { fx, fixture, context, provider } = input;
   const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -334,7 +336,6 @@ const enginePort = (input: {
       }
       const member = state.members[handle];
       if (member === undefined) return undefined;
-      const thread = yield* threadOf(member.conversationId);
       const pending =
         member.rotateWhenFree !== null ||
         (member.rotateAfter > 0 && member.session.compactions >= member.rotateAfter);
@@ -342,7 +343,7 @@ const enginePort = (input: {
         count: reasons.length,
         latest: pending
           ? "rotate-pending"
-          : provider.sessions.get(thread)?.alive === true
+          : input.hooked.get(member.conversationId) === reasons.length
             ? "active"
             : "open",
         reasons,
@@ -352,6 +353,8 @@ const enginePort = (input: {
 
   /** Each conversation's latest turn end, to deliver again. */
   const lastEnds = new Map<CrewChat, Record<string, unknown>>();
+  /** Runs the crew stopped whose interrupted end a journey already played. */
+  const stopsTaken = new Set<string>();
 
   let mateTurns = 0;
   /** The Mate's own conversation's running turn: a message of the person's, open until ended. */
@@ -435,7 +438,11 @@ const enginePort = (input: {
           if (!sessions.has(chat) || member?.login !== undefined) opens();
           break;
         case "RotateSession":
-          if (command.fresh) opens();
+          // A fresh session stops the one before it, in the same conversation.
+          if (command.fresh) {
+            if (sessions.has(chat)) records.push({ kind: "stop", chat });
+            opens();
+          }
           break;
         case "Send":
           records.push({
@@ -506,20 +513,62 @@ const enginePort = (input: {
     turnStarts: (chat) => waitFor(`a turn in ${chat}`, turnRunning(chat)),
     turnEnds: (chat, end = {}) =>
       Effect.gen(function* () {
-        yield* waitFor(`a turn in ${chat} to end`, turnRunning(chat));
-        const thread = yield* threadOf(chat);
-        const payload = {
-          state: end.state ?? "completed",
-          ...(end.reason === undefined ? {} : { terminalReason: end.reason }),
-          ...(end.sessionCostUsd === undefined ? {} : { totalCostUsd: end.sessionCostUsd }),
-        };
-        lastEnds.set(chat, payload);
-        yield* provider.agent.end(thread, payload);
+        // A turn the crew stopped already ended on the engine, when its interrupt was taken: the
+        // agent's own word that it was interrupted is that end, not the next turn's.
+        const stopped =
+          end.state === "interrupted"
+            ? yield* Effect.flatMap(sql, (client) =>
+                client<{ readonly run_id: string }>`
+                  SELECT json_extract(payload_json, '$.runId') AS run_id FROM engine_event
+                  WHERE conversation_id = ${chat} AND type = 'RunEnded'
+                    AND json_extract(payload_json, '$.end.kind') = 'stopped'
+                  ORDER BY seq
+                `.pipe(
+                  Effect.map((rows) => rows.find((row) => !stopsTaken.has(row.run_id))),
+                  Effect.orDie,
+                ),
+              )
+            : undefined;
+        if (stopped !== undefined) stopsTaken.add(stopped.run_id);
+        else {
+          yield* waitFor(`a turn in ${chat} to end`, turnRunning(chat));
+          const thread = yield* threadOf(chat);
+          const payload = {
+            state: end.state ?? "completed",
+            ...(end.reason === undefined ? {} : { terminalReason: end.reason }),
+            ...(end.sessionCostUsd === undefined ? {} : { totalCostUsd: end.sessionCostUsd }),
+          };
+          lastEnds.set(chat, payload);
+          yield* provider.agent.end(thread, payload);
+        }
         const member = yield* handleOf(chat);
-        // The crew took the end in: its crewmate no longer runs that turn.
+        // The engine recorded the run's end, and the crew read its record past it.
+        const conversation = run(
+          Effect.flatMap(Conversations, (conversations) =>
+            conversations.state(ConversationId.make(chat)),
+          ),
+        ).pipe(Effect.orDie);
+        yield* waitFor(
+          `${chat}'s run to end`,
+          Effect.map(conversation, (state) => state.activeRunId === null),
+        );
+        const ended = yield* Effect.flatMap(sql, (client) =>
+          client<{ readonly seq: number | null }>`
+            SELECT MAX(seq) AS seq FROM engine_event
+            WHERE conversation_id = ${chat} AND type = 'RunEnded'
+          `.pipe(
+            Effect.map((rows) => rows[0]?.seq ?? 0),
+            Effect.orDie,
+          ),
+        );
         yield* waitFor(
           `the crew to take ${chat}'s turn end in`,
-          Effect.map(crewState, (state) => state.members[member?.handle ?? ""]?.active == null),
+          Effect.map(
+            crewState,
+            (state) =>
+              (state.cursors[chat] ?? 0) >= ended &&
+              state.members[member?.handle ?? ""]?.active == null,
+          ),
         );
         // As V1's turn end returned once the turn's work was saved in its copy.
         yield* waitFor(
@@ -553,7 +602,17 @@ const enginePort = (input: {
     review: (chat, review) => tool(chat, (host, member) => host.review(member, review)),
     finish: (chat, summary) => tool(chat, (host, member) => host.finish(member, summary)),
     memory: (chat, op) => tool(chat, (host, member) => host.memory(member, op)),
-    sessionStart: (chat, event) => tool(chat, (host, member) => host.sessionStart(member, event)),
+    sessionStart: (chat, event) =>
+      Effect.tap(
+        tool(chat, (host, member) => host.sessionStart(member, event)),
+        () =>
+          Effect.flatMap(crewState, (state) =>
+            Effect.sync(() => {
+              const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
+              if (member !== undefined) input.hooked.set(chat, member.session.count);
+            }),
+          ),
+      ),
     mateTurnRunning: mateTurn,
     deploy: (phase, options = {}) =>
       phase === "finished"
@@ -765,6 +824,7 @@ export const engineWorld: CrewWorldRunner = <E>(
         : countingInstaller(fixture.world.installs);
     let first = true;
     const releases: Array<Effect.Effect<void>> = [];
+    const hooked = new Map<string, number>();
     for (const phase of phases) {
       const scripted = yield* makeScriptedProvider({ driver: "claudeAgent" });
       const sendHold = yield* Ref.make<CrewHold | undefined>(undefined);
@@ -811,6 +871,7 @@ export const engineWorld: CrewWorldRunner = <E>(
         start,
         sendHold,
         releases,
+        hooked,
       });
       const exit = yield* Effect.exit(phase(world));
       // Whatever a journey still holds goes on, so the life's own work can wind down.

@@ -2,6 +2,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
 import { ThreadId, type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
@@ -141,9 +142,7 @@ describe("CrewEngine", () => {
             transcriptPath: transcript,
           });
           assert.isTrue(packet?.startsWith("crew-state seq"));
-          yield* world.snapshotWhere(
-            (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active",
-          );
+          yield* world.sessionsWhere("backend", (sessions) => sessions.latest === "active");
           yield* world.press({
             _tag: "message",
             handle: "backend",
@@ -163,13 +162,17 @@ describe("CrewEngine", () => {
               ]),
               open: snapshot.crewmates[0]!.openTaskId === snapshot.board.tasks[0]!.id,
               turns: (yield* turnsSent(world)).map((turn) => turn.text.split("\n")[0]),
-              principals: yield* world.admissions,
+              // As whom its turns ran; how often each world asks is its own mechanism.
+              principals: (yield* world.admissions).filter(
+                (principal, at, all) =>
+                  all.findIndex((other) => NodeUtil.isDeepStrictEqual(other, principal)) === at,
+              ),
             },
             {
               tasks: [[1, "Add pagination to /api/items", "working", "message"]],
               open: true,
               turns: ["[Crew task card]", "Also sort them."],
-              principals: [KAREL, KAREL, KAREL],
+              principals: [KAREL],
             },
           );
         }),
@@ -773,29 +776,32 @@ describe("CrewEngine", () => {
         )).crewmates[0]!.promptVersions;
         yield* world.press({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
         const creates = yield* opened(world);
-        const snapshot = yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints.length === 2,
+        const sessions = yield* world.sessionsWhere("backend", (seen) => seen.count === 2);
+        const snapshot = yield* world.snapshot;
+        // V1 keeps each session in a conversation of its own and archives the one it left.
+        yield* onV1(world, () =>
+          Effect.map(sentKind(world, "archive"), (archived) =>
+            assert.deepStrictEqual(
+              archived.map((entry) => entry.chat),
+              [first!.chat],
+            ),
+          ),
         );
         assert.deepStrictEqual(
           {
             pending,
-            archived: (yield* sentKind(world, "archive")).map((entry) => entry.chat),
             stopped: (yield* sentKind(world, "stop")).map((entry) => entry.chat),
             stints: creates.map((entry) => entry.session),
-            reason: snapshot.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
+            reason: sessions,
             running: snapshot.crewmates[0]!.promptVersions.running,
             carried: (yield* turnsSent(world)).at(-1)!.text,
             seams: yield* seamsOf(world),
           },
           {
             pending: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 2 } },
-            archived: [first!.chat],
             stopped: [first!.chat],
             stints: [1, 2],
-            reason: [
-              ["retired", null],
-              ["open", "Its job changed"],
-            ],
+            reason: { count: 2, latest: "open", reasons: [null, "Its job changed"] },
             running: { brief: 1, job: 2 },
             carried: [
               "[Crew task card]",
@@ -1428,28 +1434,39 @@ describe("CrewEngine", () => {
               Effect.orElseSucceed(() => false),
             ),
           );
-          const snapshot = yield* world.snapshotWhere(
-            (current) => current.crewmates[0]!.stints.length === 3,
-          );
+          const sessions = yield* world.sessionsWhere("backend", (seen) => seen.count === 3);
+          const snapshot = yield* world.snapshot;
           const fresh = (yield* opened(world)).at(-1)!;
+          const seams = yield* seamsOf(world);
+          // V1 opens a stint in a conversation of its own and says so in a seam; the engine's
+          // session boundary is its own record's.
+          yield* onV1(world, () =>
+            Effect.sync(() =>
+              assert.deepStrictEqual(
+                seams.filter(([, , seam]) => (seam as { seam?: string }).seam === "stint"),
+                [
+                  [
+                    fresh.chat,
+                    "You cleared its conversation",
+                    { seam: "stint", previousThreadId: creates[1]!.chat },
+                  ],
+                ],
+              ),
+            ),
+          );
           assert.deepStrictEqual(
             {
-              seams: yield* seamsOf(world),
+              seams: seams.filter(([, , seam]) => (seam as { seam?: string }).seam !== "stint"),
               busy: busy.reason,
               interrupts,
               continueIn: continued.chat === creates[1]!.chat,
               continueAs: yield* lastAdmitted(world),
-              reasons: snapshot.crewmates[0]!.stints.map((stint) => stint.reason),
+              reasons: sessions.reasons,
               brief: snapshot.crew?.briefVersion,
             },
             {
               seams: [
                 [thread, "The crew's goal changed — from now on", { seam: "saved", apply: "now" }],
-                [
-                  fresh.chat,
-                  "You cleared its conversation",
-                  { seam: "stint", previousThreadId: creates[1]!.chat },
-                ],
               ],
               busy: "wrong-state",
               interrupts: [thread],
