@@ -2567,7 +2567,7 @@ describe("background work its session lost", () => {
     plural
       ? `Your background work ${titles} were stopped ${how} before they reported.`
       : `Your background work ${titles} was stopped ${how} before it reported.`;
-  const work = (key: string, title: string | null, n = 1): Command =>
+  const work = (key: string, title: string, n = 1): Command =>
     signal({
       kind: "work-upserted",
       work: key,

@@ -17,7 +17,10 @@ import { deriveMessagesTimelineRows } from "../components/chat/MessagesTimeline.
 
 const key = { environmentId: "env-ada", conversationId: "thread-ada" };
 const runId = (ordinal: number) => `thread-ada/r/${ordinal}`;
-const STOPPED = { end: { kind: "stopped" }, endSource: "person" } as Partial<RunRecord>;
+const STOPPED: Partial<RunRecord> = {
+  end: { kind: "stopped", by: { kind: "person", subject: "user-ada" } },
+  endSource: "stop-confirmed",
+};
 
 function receipts(runs: ReadonlyArray<RunRecord>, items: ReadonlyArray<Item>) {
   const thread = engineThreadOfRecords(key, { runs, items });
