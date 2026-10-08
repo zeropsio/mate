@@ -314,7 +314,10 @@ export function readRestartRecovery(
       ? { details: reading.failure.details }
       : {}),
     actions:
-      verb === null || reading === undefined || reading.retry?.action?.kind === "submit"
+      verb === null ||
+      reading === undefined ||
+      reading.phase === "done" ||
+      reading.retry?.action?.kind === "submit"
         ? ["restart", "open-in-zerops"]
         : ["open-in-zerops"],
   };

@@ -5,6 +5,7 @@ import {
   makeAccountStore,
   readsOfState,
   runningScope,
+  historyScope,
   NO_RESTARTS,
   readRestartRecovery,
   type MateRecovery,
@@ -268,6 +269,92 @@ it.each(["stack.deploy", "stack.create", "stack.stop"])(
         "Wren",
       ),
     ).toMatchObject({
+      headline: "Wren's container failed.",
+      actions: ["restart", "open-in-zerops"],
+    });
+  },
+);
+
+it.each([
+  { actionName: "stack.start", request: "none" },
+  { actionName: "stack.restart", request: "none" },
+  { actionName: "stack.start", request: "completed retry" },
+  { actionName: "stack.restart", request: "completed retry" },
+])(
+  "a failed service keeps Try again after completed $actionName history ($request)",
+  ({ actionName, request }) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({
+      projects: [{ id: "p", name: "Wren" }],
+      services: [{ id: "s", projectId: "p", status: "ACTION_FAILED" }],
+      running: [],
+    }).forEach(store.dispatch);
+    const scope = historyScope(ORG, "p");
+    store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+    store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-read",
+      members: ["finished"],
+      rows: [
+        {
+          family: "process",
+          id: "finished",
+          value: {
+            id: "finished",
+            projectId: "p",
+            serviceStackIds: ["s"],
+            actionName,
+            status: "FINISHED",
+            created: "2026-10-08T10:00:00Z",
+            finished: "2026-10-08T10:01:00Z",
+          },
+          revision: { kind: "zerops", version: 1 },
+        },
+      ],
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+    if (request === "completed retry") {
+      store.dispatch({
+        kind: "operation-recorded",
+        requestId: "retry",
+        intent: {
+          kind: "mate-restart",
+          orgId: ORG,
+          projectId: "p",
+          serviceId: "s",
+          sourceProcessId: "original",
+          way: actionName === "stack.start" ? "stop-then-start" : "restart",
+        },
+      });
+      store.dispatch({
+        kind: "operation-receipt",
+        receipt: {
+          requestId: "retry",
+          operationId: "retry",
+          executor: "zerops",
+          affected: [],
+          handles: ["finished"],
+          acceptance: { kind: "accepted" },
+          outcome: { kind: "pending" },
+        },
+      });
+    }
+    const read = mateRecovery.derive(readsOfState(store.state()), {
+      orgId: ORG,
+      projectId: "p",
+      serviceId: "s",
+    });
+    expect(recoveryNotice(read, "Wren")).toMatchObject({
       headline: "Wren's container failed.",
       actions: ["restart", "open-in-zerops"],
     });
