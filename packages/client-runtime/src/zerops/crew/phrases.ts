@@ -674,7 +674,9 @@ export const crewShipLine = (mateName: string): string =>
   `${mateName} ships what the crew added, like its own work.`;
 
 /** A fold that opens: every piece of work that went in. */
-export const crewShowAllWord = (count: number): string => `Show all ${count}`;
+/** _Show all N_; _Show all_ where how many is not known yet (past the engine's bounded board). */
+export const crewShowAllWord = (count: number | null): string =>
+  count === null ? "Show all" : `Show all ${count}`;
 
 export const CREW_WHAT_CHANGED = "What changed";
 

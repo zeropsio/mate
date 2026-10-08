@@ -15,7 +15,13 @@ import {
   crewmateWhoseLine,
   crewWentInOutcome,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewTask, Crewmate } from "@t3tools/contracts";
+import {
+  CREW_BOARD_FINISHED_PER_CREWMATE,
+  type CrewTask,
+  type CrewTaskPage,
+  type CrewTaskPageInput,
+  type Crewmate,
+} from "@t3tools/contracts";
 
 /** One piece of the crewmate's finished work. */
 export interface CrewmateWorkRow {
@@ -36,14 +42,27 @@ export interface CrewmateEmptyModel {
   readonly job: string;
   /** Its finished work, newest first. */
   readonly work: ReadonlyArray<CrewmateWorkRow>;
+  /** More of its finished work is past the engine's bounded board, not read yet. */
+  readonly more: boolean;
 }
 
+/**
+ * `older` is its finished work read past the board (`readFinishedWork`), `null` while not read:
+ * the engine's board holds each crewmate's newest finished work only, so one whose board is full
+ * may have more.
+ */
 export function crewmateEmptyModel(
   crewmate: Pick<Crewmate, "handle" | "kind" | "jobFirstLine" | "displayName">,
   tasks: ReadonlyArray<CrewTask>,
   mateName: string,
+  older: ReadonlyArray<CrewTask> | null = null,
 ): CrewmateEmptyModel {
-  const work = tasks
+  const own = tasks.filter((task) => task.owner === crewmate.handle);
+  const finishedOnBoard = own.filter(
+    (task) => task.state === "landed" || task.state === "discarded",
+  ).length;
+  const held = new Set(own.map((task) => task.id));
+  const work = [...own, ...(older ?? []).filter((task) => !held.has(task.id))]
     .filter((task) => task.owner === crewmate.handle && task.state === "landed")
     .toSorted(
       (left, right) =>
@@ -62,5 +81,29 @@ export function crewmateEmptyModel(
     whose: crewmateWhoseLine(crewmate.kind, mateName),
     job: crewJobLine(crewmate.jobFirstLine, crewmate.displayName),
     work,
+    more: older === null && finishedOnBoard >= CREW_BOARD_FINISHED_PER_CREWMATE,
   };
+}
+
+/**
+ * A crewmate's finished work past the engine's board, read page by page to the oldest. A page
+ * that fails ends the read with what came before it: the list shows what is known.
+ */
+export async function readFinishedWork(
+  page: (input: CrewTaskPageInput) => Promise<CrewTaskPage>,
+  handle: string,
+): Promise<ReadonlyArray<CrewTask>> {
+  const read: CrewTask[] = [];
+  let before: string | null = null;
+  for (;;) {
+    let next: CrewTaskPage;
+    try {
+      next = await page({ handle, before });
+    } catch {
+      return read;
+    }
+    read.push(...next.tasks);
+    if (next.next === null || next.next === before) return read;
+    before = next.next;
+  }
 }
