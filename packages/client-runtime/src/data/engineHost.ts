@@ -6,7 +6,7 @@
  * @module data/engineHost
  */
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import type { PreparedConnection } from "../connection/model.ts";
