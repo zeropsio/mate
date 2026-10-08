@@ -94,6 +94,7 @@ import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
 import { doorLogins, filesDoorLogins } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
+import { importV1Crew } from "./importV1Crew.ts";
 import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
 import { DEFAULT_CREW_TIMING, membersInOrder, type CrewState, type CrewTiming } from "./state.ts";
 
@@ -872,6 +873,30 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     yield* Deferred.succeed(link, { workspaceOf, seed, agentOf: agentOfAsk });
 
     /* ------------------------------------------------------- boot */
+
+    // A Mate flipped from V1 keeps its crew: taken once, before the observer reads any record
+    // (part G). A crew that holds one takes nothing, so every boot may ask.
+    const imported = yield* importV1Crew(
+      {
+        history: (conversation, source) => engine.importHistory(conversation, source),
+        crew: (envelope) =>
+          door.tell({
+            commandId: envelope.commandId,
+            conversationId: CREW_OWNER_ID,
+            principal: envelope.principal,
+            command: envelope.input,
+          }),
+      },
+      yield* Clock.currentTimeMillis,
+    ).pipe(
+      Effect.provideService(SqlClient.SqlClient, sql),
+      Effect.catchCause((cause) =>
+        Effect.as(Effect.logWarning("crew: V1's crew could not be imported", cause), undefined),
+      ),
+    );
+    if (imported?.crew === true) {
+      yield* Effect.logInfo("crew: the flip took V1's crew", imported);
+    }
 
     yield* tell(
       { _tag: "Configure", timing: yield* CrewTimingConfig },

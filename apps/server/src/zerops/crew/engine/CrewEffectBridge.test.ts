@@ -651,6 +651,32 @@ const rows: ReadonlyArray<Row> = [
     }),
   },
   {
+    sentence: "the claim read a flip's import asks reads the host as a grant's does",
+    scene: scene((root) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          yield* createLane("backend");
+          write(
+            root,
+            "zerops.yaml",
+            "zerops:\n  - setup: appdev\n    run:\n      ports:\n        - port: 3000\n",
+          );
+          yield* devServer(root, lane(root));
+          return yield* value("crew.claim.read", {
+            host: TEST_HOST,
+            handle: "backend",
+            purpose: "import",
+          });
+        }),
+      ),
+    ),
+    expected: (root) => ({
+      served: { by: "crewmate", handle: "backend" },
+      devServer: { port: 3000, command: "sleep 30" },
+      workDir: `${root}/.crew/backend`,
+    }),
+  },
+  {
     sentence: "a crewmate's app runs on its crew port, and stops",
     scene: scene((root) =>
       Effect.gen(function* () {

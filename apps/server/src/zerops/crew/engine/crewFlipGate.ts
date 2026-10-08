@@ -14,7 +14,7 @@ import * as NodeSqlite from "node:sqlite";
  * Crew runs on the engine: the crew owner is wired and imports V1's crew at the flip
  * (`importV1Crew.ts`). The wiring turns this on when it lands.
  */
-export const CREW_ON_ENGINE: boolean = false;
+export const CREW_ON_ENGINE: boolean = true;
 
 /**
  * The crewmates of V1's applied crew in the server's database, read only; `null` when it has none

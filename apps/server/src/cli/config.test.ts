@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { CREW_ON_ENGINE } from "../zerops/crew/engine/crewFlipGate.ts";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodeSqlite from "node:sqlite";
@@ -201,10 +202,13 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     [
       "keeps a Mate with an applied crew on V1, naming its crew, until its crew runs on the engine",
       "applied",
-      "v1",
-      [
-        "Mate engine held: this Mate's crew (@lead, @ana) stays on V1 until crew runs on the engine.",
-      ],
+      // Crew runs on the engine now (`CREW_ON_ENGINE`): the hold itself is crewFlipGate's row.
+      CREW_ON_ENGINE ? "mate" : "v1",
+      CREW_ON_ENGINE
+        ? []
+        : [
+            "Mate engine held: this Mate's crew (@lead, @ana) stays on V1 until crew runs on the engine.",
+          ],
     ],
     ["flips a Mate whose crew was never applied", "draft", "mate", []],
     ["flips a Mate that never had a crew", null, "mate", []],
