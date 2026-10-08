@@ -4040,10 +4040,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
     setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
   };
-  // "Show work" pressed before its lines were read: it opens as their first page lands, or
-  // stays closed if the read fails (pressed again, it reads again).
+  // "Show work" pressed before its lines were read: it opens once their first page is held, or
+  // stays closed if the read fails.
   const openingRef = useRef<{ reading: boolean } | null>(null);
-  const openWhenHeld = useEffectEvent(toggleWork);
+  const openWhenHeld = useEffectEvent(() => toggleWork());
   useLayoutEffect(() => {
     const opening = openingRef.current;
     if (opening === null || paging === null) return;
@@ -4053,6 +4053,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     } else if (paging.reading !== null) opening.reading = true;
     else if (opening.reading) openingRef.current = null;
   }, [paging]);
+
   // What the result's strip draws, as it said (`resultStripFiles`); the first six until then.
   const stripGuess = useMemo(
     () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(allResultPictures(settledOutcome))),
@@ -4106,6 +4107,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                       // Its lines not read yet: it opens once their first page is held.
                       if (folded && paged !== null && !paged.paging.holdsLines) {
                         if (openingRef.current !== null) return;
+                        hold(folded);
                         openingRef.current = { reading: false };
                         paged.pages.read("later");
                         return;
@@ -4113,6 +4115,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                       toggleWork();
                     }}
                     open={!folded}
+                    {...(paged !== null && !paged.paging.holdsLines
+                      ? { onIntent: () => paged.pages.read("later") }
+                      : {})}
                   />
                 ) : null
               }
@@ -4303,9 +4308,25 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
-function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onToggle: () => void }) {
+function WorkToggle({
+  open,
+  onToggle,
+  onIntent,
+}: {
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  /** The person is about to press it (a pointer over it, focus on it): what it opens is read. */
+  readonly onIntent?: () => void;
+}) {
   return (
-    <button aria-expanded={open} className="run-now-fold" onClick={onToggle} type="button">
+    <button
+      aria-expanded={open}
+      className="run-now-fold"
+      onClick={onToggle}
+      onFocus={onIntent}
+      onPointerEnter={onIntent}
+      type="button"
+    >
       {open ? "Hide work" : "Show work"}
       <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
     </button>

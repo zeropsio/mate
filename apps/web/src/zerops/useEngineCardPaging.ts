@@ -9,6 +9,7 @@ import {
   mateEngineHostAtom,
   type EngineCardPaging,
 } from "@t3tools/client-runtime/data";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { use, useCallback, useMemo } from "react";
 
@@ -22,9 +23,8 @@ export interface CardPaging {
   readonly pages: ScrollPages;
 }
 
-/** The card of turn `turnId` as its run's paging holds it; null when it is held whole. */
-export function useEngineCardPaging(turnId: string | null): CardPaging | null {
-  const threadRef = use(TimelineRowCtx).threadRef;
+/** A conversation's cards not held whole, by the turn each draws. */
+function useCards(threadRef: ScopedThreadRef | null) {
   const host = useAtomValue(mateEngineHostAtom);
   const environmentId = threadRef?.environmentId ?? null;
   const conversationId = threadRef?.threadId ?? null;
@@ -33,6 +33,26 @@ export function useEngineCardPaging(turnId: string | null): CardPaging | null {
       ? NO_CARDS
       : host.store.data.project(engineCardPaging, { environmentId, conversationId }),
   );
+  return { host, environmentId, conversationId, cards };
+}
+
+/**
+ * The turns of a conversation whose work its account does not hold whole, each still a card
+ * (`deriveMessagesTimelineRows`' `unheldWork`); none for a V1 Mate's.
+ */
+export function useEngineUnheldWork(
+  threadRef: ScopedThreadRef | null,
+): ReadonlySet<string> | undefined {
+  const { cards } = useCards(threadRef);
+  return useMemo(() => {
+    const turns = Object.entries(cards).flatMap(([turnId, card]) => (card.hasWork ? [turnId] : []));
+    return turns.length === 0 ? undefined : new Set(turns);
+  }, [cards]);
+}
+
+/** The card of turn `turnId` as its run's paging holds it; null when it is held whole. */
+export function useEngineCardPaging(turnId: string | null): CardPaging | null {
+  const { host, environmentId, conversationId, cards } = useCards(use(TimelineRowCtx).threadRef);
   const paging = turnId === null ? null : (cards[turnId] ?? null);
   const runId = paging?.runId ?? null;
   const read = useCallback(
