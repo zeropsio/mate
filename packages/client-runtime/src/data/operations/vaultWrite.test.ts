@@ -446,7 +446,6 @@ describe("vault-write", () => {
     { name: "Shared incomplete", scope: SHARED, family: "projectVariables", id: "p1" },
     { name: "Shared deleted", scope: SHARED, family: "projectVariables", id: "p1" },
     { name: "service unknown", scope: APP, family: "serviceVariable", id: "u1" },
-    { name: "service withheld", scope: APP, family: "serviceVariable", id: "u1" },
   ] as const)(
     "later absence cannot prove removal from an unreadable submission baseline — $name",
     ({ name, scope, family, id }) =>
@@ -506,6 +505,117 @@ describe("vault-write", () => {
           );
           expect(calls).toHaveLength(1);
         }
+      }),
+  );
+
+  it.effect.each([
+    { name: "Shared", scope: SHARED, id: "e1" },
+    { name: "service", scope: APP, id: "u1" },
+  ] as const)(
+    "known presence in an incomplete listing proves the removal baseline — $name",
+    ({ scope, id }) =>
+      Effect.gen(function* () {
+        for (const accepted of [false, true]) {
+          const store = vaultAccount();
+          if (scope.kind === "shared") {
+            vaultShows(store, { shared: HELD_SHARED, sharedComplete: false });
+          } else {
+            const listing = serviceVariablesScope(ORG, "p1");
+            store.dispatch({ kind: "forget", scopes: [listing] });
+            const { id: rowId, ...row } = HELD_APP[0]!;
+            store.dispatch({
+              kind: "delivery",
+              scopes: [{ scope: listing, generation: 1 }],
+              via: "zerops-realtime",
+              reset: false,
+              partial: true,
+              removals: [],
+              rows: [
+                {
+                  family: "serviceVariable",
+                  id: rowId,
+                  value: { ...row, serviceId: "s1" },
+                  revision: { kind: "zerops", version: null },
+                },
+              ],
+            });
+          }
+          const { operations, calls } = operationsOf(store, () =>
+            accepted
+              ? Promise.resolve({ processId: "proc-env" })
+              : Promise.reject(new ZeropsApiError("No answer.", "network")),
+          );
+          yield* operations.submit(intent(scope, { kind: "remove", id, key: "TOKEN" }));
+          vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
+          if (accepted) {
+            processRow(
+              store,
+              "proc-env",
+              "FINISHED",
+              scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+              [],
+            );
+          } else {
+            yield* operations.retry("r1");
+          }
+          expect(progressOf(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+          expect(calls).toHaveLength(1);
+        }
+      }),
+  );
+
+  it.effect.each([
+    {
+      name: "Shared add",
+      write: ADD_SHARED,
+      shown: { shared: [variable("e9", "STRIPE_KEY", null, { sensitive: true })] },
+    },
+    {
+      name: "service add",
+      write: ADD_APP,
+      shown: { services: [variable("u9", "LOG_LEVEL", "debug")] },
+    },
+    {
+      name: "Shared update",
+      write: intent(SHARED, {
+        kind: "update",
+        id: "e1",
+        key: "LOG_LEVEL",
+        value: "warn",
+        sensitive: false,
+      }),
+      shown: { shared: [variable("e1", "LOG_LEVEL", "warn", { lastUpdate: T(12) })] },
+    },
+    {
+      name: "service update",
+      write: intent(APP, { kind: "update", id: "u1", key: "TOKEN", value: "t2", sensitive: false }),
+      shown: { services: [variable("u1", "TOKEN", "t2", { lastUpdate: T(12) })] },
+    },
+  ])(
+    "an acknowledged write finishes from matching contents after an unreadable baseline — $name",
+    ({ write, shown }) =>
+      Effect.gen(function* () {
+        const store = vaultAccount();
+        const listing =
+          write.scope.kind === "shared"
+            ? projectVariablesScope(ORG, "p1")
+            : serviceVariablesScope(ORG, "p1");
+        store.dispatch({ kind: "forget", scopes: [listing] });
+        const { operations } = operationsOf(store, async () => ({ processId: "proc-env" }));
+        yield* operations.submit(write);
+        vaultShows(store, shown);
+        processRow(
+          store,
+          "proc-env",
+          "FINISHED",
+          write.scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+          [],
+        );
+        expect(progressOf(store)).toEqual({
+          stage: "done",
+          operationId: "proc-env",
+          outcome: "succeeded",
+        });
       }),
   );
 

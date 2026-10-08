@@ -50,19 +50,28 @@ function heldIn(
 ): ReadonlyArray<Held> | null {
   const removing = write.kind === "remove";
   if (scope.kind === "shared") {
-    const coverage = read.coverage(projectVariablesScope(orgId, projectId));
-    if (coverage === "unknown" || (removing && coverage !== "complete")) return null;
     const fact = read.fact("projectVariables", projectId);
-    if (fact.kind !== "known" || (removing && !fact.value.complete)) return null;
+    if (fact.kind !== "known") return null;
+    // A readable target proves presence even when other rows are missing.
+    if (removing && fact.value.rows.some((row) => row.id === write.id)) return fact.value.rows;
+    const coverage = read.coverage(projectVariablesScope(orgId, projectId));
+    if (coverage === "unknown" || (removing && (coverage !== "complete" || !fact.value.complete)))
+      return null;
     return fact.value.rows;
   }
+  const listing = read.members(serviceVariablesScope(orgId, projectId));
   // Deletion of this keyed row is owner evidence; deletion of the Shared aggregate is not.
   if (removing) {
     const target = read.fact("serviceVariable", write.id);
     if (target.kind === "deleted") return [];
     if (target.kind === "withheld") return null;
+    if (
+      target.kind === "known" &&
+      target.value.serviceId === scope.serviceId &&
+      listing.ids.includes(write.id)
+    )
+      return [{ id: write.id, ...target.value }];
   }
-  const listing = read.members(serviceVariablesScope(orgId, projectId));
   if (listing.coverage === "unknown") return null;
   if (removing && (listing.coverage !== "complete" || listing.unverified.length > 0)) return null;
   const held: Held[] = [];
@@ -80,7 +89,7 @@ function heldIn(
 /** What the vault shows of the write now, as handles: compared with what it showed at the send. */
 function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string> | null {
   const held = heldIn(read, intent);
-  if (held === null) return null;
+  if (held === null) return intent.write.kind === "remove" ? null : [];
   const { write } = intent;
   switch (write.kind) {
     case "add": {
@@ -102,8 +111,8 @@ function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string>
 /** Whether the vault shows the write: an effect it did not show at the send. */
 function shown(read: ProjectionReads, intent: Intent, receipt: OperationReceipt): boolean {
   const before = read.operation(receipt.requestId)?.before;
-  if (before == null) return false;
-  return effectsOf(read, intent)?.some((handle) => !before.includes(handle)) ?? false;
+  if (before == null && intent.write.kind === "remove") return false;
+  return effectsOf(read, intent)?.some((handle) => !(before ?? []).includes(handle)) ?? false;
 }
 
 /** Whether a screen still observes the vault the write goes to. */
