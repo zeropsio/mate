@@ -1235,8 +1235,7 @@ const KNOWN_IMAGE_SIZES_MAX = 256;
  * Seen for the first time, a picture that holds a place (a workspace one)
  * takes the room a picture usually takes, 16:9 across the text, its opener
  * as wide as that room: a width in percent inside a button that shrinks to
- * its content is no width at all. Only a first sight fades in — a row the
- * list draws again shows its picture as it was.
+ * its content is no width at all. Decoded pixels are revealed by AssetImage.
  */
 function useImageRoom(
   key: string,
@@ -1247,14 +1246,13 @@ function useImageRoom(
   const fresh = () => ({
     key,
     size: knownImageSizes.get(key),
-    firstSight: !knownImageSizes.has(key),
     loaded: false,
   });
   const [room, setRoom] = useState(fresh);
   // Another picture in the same place starts from what is known of it.
   const current = room.key === key ? room : fresh();
   if (current !== room) setRoom(current);
-  const { firstSight, loaded } = current;
+  const { loaded } = current;
   const size =
     current.size ??
     (given !== undefined && given.width > 0 && given.height > 0 ? given : undefined);
@@ -1270,7 +1268,6 @@ function useImageRoom(
       placeholder && "aspect-video w-full rounded-lg bg-muted/60",
       // Its box stands at its size while its bytes come, a quiet fill in it.
       holdsPlace && !loaded && "bg-muted/60",
-      firstSight && loaded && "animate-zerops-appear motion-reduce:animate-none",
     ),
     openerClassName: placeholder ? "w-full max-w-[30rem]" : undefined,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
@@ -1285,7 +1282,6 @@ function useImageRoom(
       setRoom({
         key,
         size: width > 0 && height > 0 ? { width, height } : current.size,
-        firstSight: current.firstSight,
         loaded: true,
       });
     },

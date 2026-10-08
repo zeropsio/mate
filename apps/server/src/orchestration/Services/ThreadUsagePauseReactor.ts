@@ -6,11 +6,14 @@
  *
  * @module ThreadUsagePauseReactor
  */
+import type { ReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 
 export interface ThreadUsagePauseReactorShape {
+  readonly updateBoundary?: ReactorDrainBoundary;
+  readonly resumeDeferred?: Effect.Effect<void>;
   /**
    * Re-arm the resets of pauses that outlived a restart, then follow provider
    * runtime events. Must run in a scope so its fibers end with it.

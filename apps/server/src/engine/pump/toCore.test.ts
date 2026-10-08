@@ -187,13 +187,15 @@ const goldens: ReadonlyArray<{
     driver: "codex",
     dir: "codex",
     name: "async-question",
-    title: "a question asked by message stays open past its turn",
+    title:
+      "a question asked by message takes the place of the message that asked it, and stays open past its turn",
     lines: [
       ...OPENS,
       "h1.i1 opened: note",
+      "s1.r1 asks question in h1, by h1.i1",
+      "h1.i2 opened: note",
       "h1 alive",
-      "s1.r1 asks question in h1",
-      'h1.i1 closed: note "Which package manager?"',
+      'h1.i2 closed: note "Red"',
       "h1 ended completed — agent",
     ],
   },

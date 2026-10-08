@@ -2786,276 +2786,285 @@ export function makeOpenCodeAdapter(
       );
     });
 
-    const startSession: OpenCodeAdapterShape["startSession"] = Effect.fn("startSession")(
-      function* (input) {
-        const binaryPath = openCodeSettings.binaryPath;
-        const serverUrl = openCodeSettings.serverUrl;
-        const serverPassword = openCodeSettings.serverPassword;
-        const directory = input.cwd ?? serverConfig.cwd;
-        const resumeSessionId = parseOpenCodeResume(input.resumeCursor)?.sessionId;
-        const existing = sessions.get(input.threadId);
-        if (existing) {
-          if (existing.session.status === "connecting" && !(yield* Ref.get(existing.stopped))) {
-            return (yield* awaitOpenCodeContextReady(existing)).session;
-          }
-          yield* stopOpenCodeContext(existing);
-          deleteContextIfCurrent(existing);
+    const startSession: OpenCodeAdapterShape["startSession"] = Effect.fn("startSession")(function* (
+      input,
+    ) {
+      const binaryPath = openCodeSettings.binaryPath;
+      const serverUrl = openCodeSettings.serverUrl;
+      const serverPassword = openCodeSettings.serverPassword;
+      const directory = input.cwd ?? serverConfig.cwd;
+      const resumeSessionId = parseOpenCodeResume(input.resumeCursor)?.sessionId;
+      const existing = sessions.get(input.threadId);
+      if (existing) {
+        if (existing.session.status === "connecting" && !(yield* Ref.get(existing.stopped))) {
+          return (yield* awaitOpenCodeContextReady(existing)).session;
         }
+        yield* stopOpenCodeContext(existing);
+        deleteContextIfCurrent(existing);
+      }
 
-        const started = yield* Effect.gen(function* () {
-          const sessionScope = yield* Scope.make();
-          const startedExit = yield* Effect.exit(
-            Effect.gen(function* () {
-              // The runtime binds the server's lifetime to the Scope.Scope
-              // we provide below — closing `sessionScope` kills the child
-              // process automatically. No manual `server.close()` needed.
-              // A crewmate's thread: its tools served for this session, its gate in the person's place.
-              const threadSetup = yield* openCodeThreadSetup(threadPolicies, {
-                threadId: input.threadId,
-                instanceId: boundInstanceId,
-                cwd: directory,
-              });
-              const permissionRules = threadSetup
-                ? [...threadSetup.permission]
-                : buildOpenCodePermissionRules(input.runtimeMode);
-              const server = yield* openCodeRuntime.connectToOpenCodeServer({
-                binaryPath,
-                directory,
-                serverUrl,
-                ...(serverPassword ? { serverPassword } : {}),
-                ...(options?.environment ? { environment: options.environment } : {}),
-              });
-              const client = openCodeRuntime.createOpenCodeSdkClient({
-                baseUrl: server.url,
-                directory,
-                ...(server.serverPassword ? { serverPassword: server.serverPassword } : {}),
-              });
-              const crewMcp = threadSetup?.mcp;
-              if (crewMcp) {
-                yield* runOpenCodeSdk("mcp.add", () =>
-                  client.mcp.add({ name: crewMcp.name, config: crewMcp.config }),
-                );
-              }
-              // Resume: re-adopt the session named by the durable cursor —
-              // OpenCode scopes history by session id. The probe recovers only
-              // a confirmed not-found (start fresh); transport/auth/server
-              // errors propagate instead of masking as a new empty session.
-              const resolved = yield* Effect.gen(function* () {
-                const adopted = resumeSessionId
-                  ? yield* runOpenCodeSdk("session.get", () =>
-                      client.session.get({ sessionID: resumeSessionId }),
-                    ).pipe(
-                      Effect.map((response) => response.data),
-                      Effect.catchIf(
-                        (cause) => isOpenCodeNotFound(cause),
-                        () => Effect.void,
-                      ),
-                    )
+      // Until the session is published below, its server is this start's alone. A start that
+      // ends before then closes it: interrupted, too, which `Effect.exit` below never sees.
+      const sessionScope = yield* Scope.make();
+      let sessionScopeTransferred = false;
+      yield* Effect.addFinalizer(() =>
+        sessionScopeTransferred
+          ? Effect.void
+          : Scope.close(sessionScope, Exit.void).pipe(Effect.ignore),
+      );
+      const started = yield* Effect.gen(function* () {
+        const startedExit = yield* Effect.exit(
+          Effect.gen(function* () {
+            // The runtime binds the server's lifetime to the Scope.Scope
+            // we provide below — closing `sessionScope` kills the child
+            // process automatically. No manual `server.close()` needed.
+            // A crewmate's thread: its tools served for this session, its gate in the person's place.
+            const threadSetup = yield* openCodeThreadSetup(threadPolicies, {
+              threadId: input.threadId,
+              instanceId: boundInstanceId,
+              cwd: directory,
+            });
+            const permissionRules = threadSetup
+              ? [...threadSetup.permission]
+              : buildOpenCodePermissionRules(input.runtimeMode);
+            const server = yield* openCodeRuntime.connectToOpenCodeServer({
+              binaryPath,
+              directory,
+              serverUrl,
+              ...(serverPassword ? { serverPassword } : {}),
+              ...(options?.environment ? { environment: options.environment } : {}),
+            });
+            const client = openCodeRuntime.createOpenCodeSdkClient({
+              baseUrl: server.url,
+              directory,
+              ...(server.serverPassword ? { serverPassword: server.serverPassword } : {}),
+            });
+            const crewMcp = threadSetup?.mcp;
+            if (crewMcp) {
+              yield* runOpenCodeSdk("mcp.add", () =>
+                client.mcp.add({ name: crewMcp.name, config: crewMcp.config }),
+              );
+            }
+            // Resume: re-adopt the session named by the durable cursor —
+            // OpenCode scopes history by session id. The probe recovers only
+            // a confirmed not-found (start fresh); transport/auth/server
+            // errors propagate instead of masking as a new empty session.
+            const resolved = yield* Effect.gen(function* () {
+              const adopted = resumeSessionId
+                ? yield* runOpenCodeSdk("session.get", () =>
+                    client.session.get({ sessionID: resumeSessionId }),
+                  ).pipe(
+                    Effect.map((response) => response.data),
+                    Effect.catchIf(
+                      (cause) => isOpenCodeNotFound(cause),
+                      () => Effect.void,
+                    ),
+                  )
+                : undefined;
+
+              // Reuse in place only when the session still matches the
+              // requested cwd; on a cwd change it is forked below instead.
+              const reusable =
+                adopted &&
+                (!adopted.directory || (yield* sameDirectory(adopted.directory, directory)))
+                  ? adopted
                   : undefined;
 
-                // Reuse in place only when the session still matches the
-                // requested cwd; on a cwd change it is forked below instead.
-                const reusable =
-                  adopted &&
-                  (!adopted.directory || (yield* sameDirectory(adopted.directory, directory)))
-                    ? adopted
-                    : undefined;
-
-                if (reusable) {
-                  // Resume skips `session.create`, so re-assert the ruleset —
-                  // a runtime-mode change would otherwise leave the session on
-                  // its original permissions.
-                  yield* runOpenCodeSdk("session.update", () =>
-                    client.session.update({
-                      sessionID: reusable.id,
-                      permission: permissionRules,
-                    }),
-                  );
-                  return { openCodeSession: reusable, created: false };
-                }
-
-                // The session lives under a different cwd (e.g. the thread
-                // moved into a git worktree). Fork it into the requested
-                // directory instead of minting an empty one — the fork carries
-                // the full history, so the follow-up keeps its context (#3604).
-                if (adopted) {
-                  yield* Effect.logInfo(
-                    `OpenCode session '${adopted.id}' was created under a different working directory; forking into '${directory}' to preserve conversation history.`,
-                  );
-                  const forkedSession = yield* runOpenCodeSdk("session.fork", () =>
-                    client.session.fork({ sessionID: adopted.id, directory }),
-                  );
-                  const forked = forkedSession.data;
-                  if (!forked) {
-                    return yield* new OpenCodeRuntimeError({
-                      operation: "session.fork",
-                      detail: "OpenCode session.fork returned no session payload.",
-                    });
-                  }
-                  yield* runOpenCodeSdk("session.update", () =>
-                    client.session.update({
-                      sessionID: forked.id,
-                      permission: permissionRules,
-                    }),
-                  );
-                  return { openCodeSession: forked, created: true };
-                }
-
-                if (resumeSessionId) {
-                  yield* Effect.logWarning(
-                    `OpenCode session '${resumeSessionId}' no longer exists; starting a fresh session.`,
-                  );
-                }
-                const createdSession = yield* runOpenCodeSdk("session.create", () =>
-                  client.session.create({
-                    ...(input.title ? { title: input.title } : {}),
+              if (reusable) {
+                // Resume skips `session.create`, so re-assert the ruleset —
+                // a runtime-mode change would otherwise leave the session on
+                // its original permissions.
+                yield* runOpenCodeSdk("session.update", () =>
+                  client.session.update({
+                    sessionID: reusable.id,
                     permission: permissionRules,
                   }),
                 );
-                if (!createdSession.data) {
+                return { openCodeSession: reusable, created: false };
+              }
+
+              // The session lives under a different cwd (e.g. the thread
+              // moved into a git worktree). Fork it into the requested
+              // directory instead of minting an empty one — the fork carries
+              // the full history, so the follow-up keeps its context (#3604).
+              if (adopted) {
+                yield* Effect.logInfo(
+                  `OpenCode session '${adopted.id}' was created under a different working directory; forking into '${directory}' to preserve conversation history.`,
+                );
+                const forkedSession = yield* runOpenCodeSdk("session.fork", () =>
+                  client.session.fork({ sessionID: adopted.id, directory }),
+                );
+                const forked = forkedSession.data;
+                if (!forked) {
                   return yield* new OpenCodeRuntimeError({
-                    operation: "session.create",
-                    detail: "OpenCode session.create returned no session payload.",
+                    operation: "session.fork",
+                    detail: "OpenCode session.fork returned no session payload.",
                   });
                 }
-                return { openCodeSession: createdSession.data, created: true };
-              });
+                yield* runOpenCodeSdk("session.update", () =>
+                  client.session.update({
+                    sessionID: forked.id,
+                    permission: permissionRules,
+                  }),
+                );
+                return { openCodeSession: forked, created: true };
+              }
 
-              return {
-                threadSetup,
-                sessionScope,
-                server,
-                client,
-                openCodeSession: resolved.openCodeSession,
-                created: resolved.created,
-              };
-            }).pipe(Effect.provideService(Scope.Scope, sessionScope)),
-          );
-          if (Exit.isFailure(startedExit)) {
-            yield* Scope.close(sessionScope, Exit.void).pipe(Effect.ignore);
-            return yield* toProcessError(input.threadId, Cause.squash(startedExit.cause));
-          }
-          return startedExit.value;
-        });
-
-        const createdAt = yield* nowIso;
-        const session: ProviderSession = {
-          provider: PROVIDER,
-          providerInstanceId: boundInstanceId,
-          status: "connecting",
-          // A crewmate asks before every call, whatever mode its thread names.
-          runtimeMode: profiledRuntimeMode(started.threadSetup !== undefined, input.runtimeMode),
-          cwd: directory,
-          ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
-          threadId: input.threadId,
-          // ProviderService persists this cursor and feeds it back into
-          // `startSession` after the in-memory session is lost (reaper /
-          // restart), so follow-ups continue the same conversation (#3604).
-          resumeCursor: {
-            schemaVersion: OPENCODE_RESUME_VERSION,
-            sessionId: started.openCodeSession.id,
-          },
-          createdAt,
-          updatedAt: createdAt,
-        };
-
-        const context: OpenCodeSessionContext = {
-          session,
-          threadSetup: started.threadSetup,
-          toolInputByCallId: new Map(),
-          client: started.client,
-          server: started.server,
-          directory,
-          openCodeSessionId: started.openCodeSession.id,
-          relatedSessionIds: new Set([started.openCodeSession.id]),
-          resolvedRequestIds: new Set(),
-          autoRepliedRequestIds: new Set(),
-          emittedTerminalRequestIds: new Set(),
-          requestRelationRetries: new Map(),
-          pendingPermissions: new Map(),
-          pendingQuestions: new Map(),
-          textPartsByMessageId: new Map(),
-          messageRoleById: new Map(),
-          costByMessageId: new Map(),
-          activeTurnId: undefined,
-          activeAgent: undefined,
-          activeVariant: undefined,
-          cancellation: undefined,
-          interruptedTurnId: undefined,
-          reconcileIdleStatus: false,
-          awaitingBusyAfterInterruption: false,
-          pendingIdleReconciliation: undefined,
-          pendingRequestRecovery: undefined,
-          promptGeneration: 0,
-          promptAdmission: undefined,
-          commandFibers: new Set(),
-          promptSemaphore: Semaphore.makeUnsafe(1),
-          firstConnection: Deferred.makeUnsafe<void, ProviderAdapterRequestError>(),
-          stopped: yield* Ref.make(false),
-          sessionScope: started.sessionScope,
-        };
-        if (resumeSessionId !== undefined) {
-          // A resumed or forked session's total carries what it ran before, as
-          // Claude's does across its resumes; a crew run counts a turn's spend
-          // as what the total rose by.
-          yield* seedSessionCost(context);
-        }
-        const raceWinner = sessions.get(input.threadId);
-        if (raceWinner) {
-          // Another start published first. A newly created remote session
-          // belongs to this loser; a resumed session is shared upstream state.
-          yield* closeStartingOpenCodeContext(context, started.created);
-          return (yield* awaitOpenCodeContextReady(raceWinner)).session;
-        }
-        sessions.set(input.threadId, context);
-        const cleanupStartingContext = closeStartingOpenCodeContext(context, started.created).pipe(
-          Effect.ensuring(Effect.sync(() => deleteContextIfCurrent(context))),
-        );
-        const connectionExit = yield* Effect.gen(function* () {
-          yield* startEventPump(context);
-          yield* Deferred.await(context.firstConnection).pipe(
-            Effect.timeout("10 seconds"),
-            Effect.mapError(
-              (cause) =>
-                new ProviderAdapterRequestError({
-                  provider: PROVIDER,
-                  method: "event.subscribe",
-                  detail: "OpenCode event stream did not connect within 10 seconds.",
-                  cause,
+              if (resumeSessionId) {
+                yield* Effect.logWarning(
+                  `OpenCode session '${resumeSessionId}' no longer exists; starting a fresh session.`,
+                );
+              }
+              const createdSession = yield* runOpenCodeSdk("session.create", () =>
+                client.session.create({
+                  ...(input.title ? { title: input.title } : {}),
+                  permission: permissionRules,
                 }),
-            ),
-          );
-        }).pipe(
-          Effect.onInterrupt(() => cleanupStartingContext),
-          Effect.exit,
+              );
+              if (!createdSession.data) {
+                return yield* new OpenCodeRuntimeError({
+                  operation: "session.create",
+                  detail: "OpenCode session.create returned no session payload.",
+                });
+              }
+              return { openCodeSession: createdSession.data, created: true };
+            });
+
+            return {
+              threadSetup,
+              sessionScope,
+              server,
+              client,
+              openCodeSession: resolved.openCodeSession,
+              created: resolved.created,
+            };
+          }).pipe(Effect.provideService(Scope.Scope, sessionScope)),
         );
-        if (Exit.isFailure(connectionExit)) {
-          yield* cleanupStartingContext;
-          return yield* Effect.failCause(connectionExit.cause);
+        if (Exit.isFailure(startedExit)) {
+          yield* Scope.close(sessionScope, Exit.void).pipe(Effect.ignore);
+          return yield* toProcessError(input.threadId, Cause.squash(startedExit.cause));
         }
-        yield* awaitOpenCodeContextReady(context);
-        if (!started.created) {
-          yield* schedulePendingRequestRecovery(context);
-        }
+        return startedExit.value;
+      });
 
-        yield* emit({
-          ...(yield* buildEventBase({ threadId: input.threadId })),
-          type: "session.started",
-          payload: {
-            message: "OpenCode session started",
-          },
-        });
-        yield* emit({
-          ...(yield* buildEventBase({ threadId: input.threadId })),
-          type: "thread.started",
-          payload: {
-            providerThreadId: started.openCodeSession.id,
-          },
-        });
+      const createdAt = yield* nowIso;
+      const session: ProviderSession = {
+        provider: PROVIDER,
+        providerInstanceId: boundInstanceId,
+        status: "connecting",
+        // A crewmate asks before every call, whatever mode its thread names.
+        runtimeMode: profiledRuntimeMode(started.threadSetup !== undefined, input.runtimeMode),
+        cwd: directory,
+        ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
+        threadId: input.threadId,
+        // ProviderService persists this cursor and feeds it back into
+        // `startSession` after the in-memory session is lost (reaper /
+        // restart), so follow-ups continue the same conversation (#3604).
+        resumeCursor: {
+          schemaVersion: OPENCODE_RESUME_VERSION,
+          sessionId: started.openCodeSession.id,
+        },
+        createdAt,
+        updatedAt: createdAt,
+      };
 
-        return context.session;
-      },
-    );
+      const context: OpenCodeSessionContext = {
+        session,
+        threadSetup: started.threadSetup,
+        toolInputByCallId: new Map(),
+        client: started.client,
+        server: started.server,
+        directory,
+        openCodeSessionId: started.openCodeSession.id,
+        relatedSessionIds: new Set([started.openCodeSession.id]),
+        resolvedRequestIds: new Set(),
+        autoRepliedRequestIds: new Set(),
+        emittedTerminalRequestIds: new Set(),
+        requestRelationRetries: new Map(),
+        pendingPermissions: new Map(),
+        pendingQuestions: new Map(),
+        textPartsByMessageId: new Map(),
+        messageRoleById: new Map(),
+        costByMessageId: new Map(),
+        activeTurnId: undefined,
+        activeAgent: undefined,
+        activeVariant: undefined,
+        cancellation: undefined,
+        interruptedTurnId: undefined,
+        reconcileIdleStatus: false,
+        awaitingBusyAfterInterruption: false,
+        pendingIdleReconciliation: undefined,
+        pendingRequestRecovery: undefined,
+        promptGeneration: 0,
+        promptAdmission: undefined,
+        commandFibers: new Set(),
+        promptSemaphore: Semaphore.makeUnsafe(1),
+        firstConnection: Deferred.makeUnsafe<void, ProviderAdapterRequestError>(),
+        stopped: yield* Ref.make(false),
+        sessionScope: started.sessionScope,
+      };
+      if (resumeSessionId !== undefined) {
+        // A resumed or forked session's total carries what it ran before, as
+        // Claude's does across its resumes; a crew run counts a turn's spend
+        // as what the total rose by.
+        yield* seedSessionCost(context);
+      }
+      const raceWinner = sessions.get(input.threadId);
+      if (raceWinner) {
+        // Another start published first. A newly created remote session
+        // belongs to this loser; a resumed session is shared upstream state.
+        yield* closeStartingOpenCodeContext(context, started.created);
+        return (yield* awaitOpenCodeContextReady(raceWinner)).session;
+      }
+      sessions.set(input.threadId, context);
+      sessionScopeTransferred = true;
+      const cleanupStartingContext = closeStartingOpenCodeContext(context, started.created).pipe(
+        Effect.ensuring(Effect.sync(() => deleteContextIfCurrent(context))),
+      );
+      const connectionExit = yield* Effect.gen(function* () {
+        yield* startEventPump(context);
+        yield* Deferred.await(context.firstConnection).pipe(
+          Effect.timeout("10 seconds"),
+          Effect.mapError(
+            (cause) =>
+              new ProviderAdapterRequestError({
+                provider: PROVIDER,
+                method: "event.subscribe",
+                detail: "OpenCode event stream did not connect within 10 seconds.",
+                cause,
+              }),
+          ),
+        );
+      }).pipe(
+        Effect.onInterrupt(() => cleanupStartingContext),
+        Effect.exit,
+      );
+      if (Exit.isFailure(connectionExit)) {
+        yield* cleanupStartingContext;
+        return yield* Effect.failCause(connectionExit.cause);
+      }
+      yield* awaitOpenCodeContextReady(context);
+      if (!started.created) {
+        yield* schedulePendingRequestRecovery(context);
+      }
+
+      yield* emit({
+        ...(yield* buildEventBase({ threadId: input.threadId })),
+        type: "session.started",
+        payload: {
+          message: "OpenCode session started",
+        },
+      });
+      yield* emit({
+        ...(yield* buildEventBase({ threadId: input.threadId })),
+        type: "thread.started",
+        payload: {
+          providerThreadId: started.openCodeSession.id,
+        },
+      });
+
+      return context.session;
+    }, Effect.scoped);
 
     /** Each earlier assistant message's cost, read once when a session is resumed. */
     const seedSessionCost = (context: OpenCodeSessionContext) =>

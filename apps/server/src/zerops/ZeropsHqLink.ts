@@ -28,6 +28,7 @@
  * @module ZeropsHqLink
  */
 import { isAgentWithoutSignInReady } from "@t3tools/shared/zeropsAgentAuth";
+import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
 import type * as NodeNet from "node:net";
@@ -85,9 +86,9 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
-import { makeUsageLink, type UsageLink } from "../usage/UsageLink.ts";
-import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
-import * as UsageSqlite from "../persistence/NodeSqliteClient.ts";
+import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
+import type { UsageLink } from "../usage/UsageLink.ts";
+import { makeUsageCapture } from "../usage/UsageCapture.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -130,6 +131,7 @@ export type HqStanding =
   | { readonly kind: "linked"; readonly mate: MateState };
 
 export interface ZeropsHqLinkOptions {
+  readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;
   readonly health?: Stream.Stream<MateHealth>;
   readonly usage?: UsageLink;
   /** The enrollment as it stands now; none until zcp has enrolled. */
@@ -295,6 +297,27 @@ export const makeZeropsHqLink = (
         }
 
         const usage = options.usage ? yield* options.usage.open(send) : undefined;
+        let requestSerial = 0;
+        const policyRequests = new Map<
+          string,
+          Deferred.Deferred<Option.Option<HqAutoUpdatePolicy>>
+        >();
+        const verifyPolicy = Effect.gen(function* () {
+          const requestId = String(++requestSerial);
+          const answer = yield* Deferred.make<Option.Option<HqAutoUpdatePolicy>>();
+          policyRequests.set(requestId, answer);
+          return yield* send({ type: "auto-update-policy", requestId }).pipe(
+            Effect.andThen(Deferred.await(answer)),
+            Effect.timeoutOrElse({
+              duration: HQ_AUTO_UPDATE_VERIFY_BUDGET,
+              orElse: () => Effect.succeedNone,
+            }),
+            Effect.ensuring(Effect.sync(() => policyRequests.delete(requestId))),
+          );
+        });
+        const autoUpdatePolicy = options.autoUpdatePolicy
+          ? yield* options.autoUpdatePolicy.open(verifyPolicy)
+          : undefined;
 
         const openedAt = yield* Clock.currentTimeMillis;
         const family = socket.family?.();
@@ -335,10 +358,20 @@ export const makeZeropsHqLink = (
             const message = decodeDown(event.raw);
             if (Option.isNone(message)) return Effect.void;
             switch (message.value.type) {
+              case "auto-update-policy": {
+                const answer = policyRequests.get(message.value.requestId);
+                return answer === undefined
+                  ? Effect.void
+                  : Deferred.succeed(answer, Option.some(message.value.policy));
+              }
               case "ping":
                 return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
               case "state":
                 return SubscriptionRef.set(state, Option.some(message.value.mate)).pipe(
+                  Effect.andThen(
+                    autoUpdatePolicy?.receive(Option.fromUndefinedOr(message.value.autoUpdate)) ??
+                      Effect.void,
+                  ),
                   Effect.andThen(Deferred.succeed(answered, undefined)),
                   Effect.andThen(usage?.state(message.value) ?? Effect.void),
                 );
@@ -358,7 +391,7 @@ export const makeZeropsHqLink = (
             Effect.all([overviews, heard, attention, health, ...(usage ? [usage.run] : [])], {
               concurrency: "unbounded",
             }),
-          ).pipe(Effect.ensuring(quit)),
+          ).pipe(Effect.ensuring(quit), Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
         );
         return Option.some({
           openedAt,
@@ -444,6 +477,8 @@ export const makeZeropsHqLink = (
 
 /** How long a link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
+/** A missing correlated answer withholds permission; the deadline never substitutes a policy. */
+export const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
 const EnrollmentFile = Schema.fromJsonString(
   Schema.Struct({ hq: Schema.String, credential: Schema.String }),
@@ -554,6 +589,13 @@ export const layer = (crew: OverviewSources["crew"]) =>
     ZeropsHqLink,
     Effect.gen(function* () {
       const config = yield* ServerConfig;
+      const paths = yield* Path.Path;
+      const projection = yield* ProjectionSnapshotQuery;
+      const engine = yield* OrchestrationEngineService;
+      const providers = yield* ProviderInstances;
+      // Separate home database: capture IO cannot lock the orchestration event store.
+      // Admission waits for a subscribed capture service, including across storage recovery.
+      const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
       const path = config.zerops?.hqEnrollmentPath;
       if (path === undefined) {
         return ZeropsHqLink.of({
@@ -561,25 +603,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         });
       }
       const fs = yield* FileSystem.FileSystem;
-      const paths = yield* Path.Path;
-      const projection = yield* ProjectionSnapshotQuery;
-      const engine = yield* OrchestrationEngineService;
-      const providers = yield* ProviderInstances;
-      const runtimeEvents = yield* ProviderRuntimeEventBus;
-      // Separate home database: capture IO cannot lock the orchestration event store.
-      const usage = yield* Effect.gen(function* () {
-        const usageDatabase = yield* Layer.build(
-          UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
-        );
-        return yield* makeUsageLink(runtimeEvents.events).pipe(Effect.provide(usageDatabase));
-      }).pipe(
-        Effect.asSome,
-        Effect.catchCause(() =>
-          Effect.logWarning("Usage ledger unavailable; HQ link remains active").pipe(
-            Effect.as(Option.none<UsageLink>()),
-          ),
-        ),
-      );
       // While the Mate engine owns the conversation, its conversations are the chats: V1's
       // projections (a thread left running at the flip among them) are never read.
       const chats = chatsSource(yield* MateEngine, {
@@ -618,9 +641,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(OutcomeFile)), Effect.option),
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
+        autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: (yield* ZeropsMateAttention).changes,
         health: (yield* ZeropsMateAttention).healthChanges,
-        ...(Option.isSome(usage) ? { usage: usage.value } : {}),
+        usage,
         ...feed,
       });
     }),

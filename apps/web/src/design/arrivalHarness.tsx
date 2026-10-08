@@ -1,3 +1,8 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
+import type { MateRecovery } from "@t3tools/client-runtime/data";
+import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
+import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
+import { PauseBlock } from "~/components/chat/ConversationRows";
 import { setupFailureReason } from "@t3tools/client-runtime/data";
 /**
  * A Mate's arrival, in every state, at the owner's size (1786 × 1000, the menu at 435): the
@@ -46,11 +51,7 @@ import {
   ZeropsAgentSignInDialogPopup,
   type SignInAgent,
 } from "~/components/zerops/ZeropsAgentSignIn";
-import {
-  ComingBelow,
-  comingSentenceOf,
-  type ArrivalProgress,
-} from "~/components/zerops/ZeropsMateComingPage";
+import { ComingBelow, type ArrivalProgress } from "~/components/zerops/ZeropsMateComingPage";
 import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import type { Spoken } from "~/components/zerops/MateLinkLine";
@@ -211,10 +212,180 @@ interface HarnessState {
   /** The dialog's agent holds a colleague's sign-in: their name. */
   readonly heldBy?: string;
   readonly crew?: boolean;
+  readonly unnamed?: boolean;
+  readonly agentReady?: boolean;
+  readonly standUpFailure?: boolean;
+  readonly retryingStandUp?: boolean;
   readonly watching?: boolean;
 }
 
+// Every source-backed recovery/refusal copy branch joins the same production composition.
+const linkFixtures: ReadonlyArray<readonly [string, Reachability | null]> = [
+  ["immediate-opening", null],
+  [
+    "ready-restart-overdue",
+    { kind: "ready", notice: { level: "restarting", by: "platform", overdue: true } },
+  ],
+  ["ready-update-overdue", { kind: "ready", notice: { level: "updating", overdue: true } }],
+  ["redeployed", { kind: "replaced", by: EnvironmentId.make("replacement") }],
+  ["configuration-refused", { kind: "refused-configuration" }],
+  ["credential-refused", { kind: "refused-credential" }],
+  ["role-refused", { kind: "refused-role" }],
+  ...(["direct-not-found", "direct-forbidden", "complete-scope-omits-verified"] as const).map(
+    (because) => [`gone-${because}`, { kind: "gone", because }] as const,
+  ),
+  ["update-required", { kind: "update-required", actual: "0.10.0", minimum: "0.14.0" }],
+  ["update-unavailable", { kind: "update-unavailable" }],
+  ["no-address", { kind: "no-address", reason: "subdomain-off" }],
+  ["zerops-unavailable", { kind: "waiting-for-zerops" }],
+  ["not-answering", { kind: "not-answering", overdue: false }],
+  ["not-answering-last-known", { kind: "not-answering", overdue: true }],
+  [
+    "retry-scheduled",
+    { kind: "retrying", retryAtMs: 5000, last: { kind: "network" }, restart: false },
+  ],
+  ["reconnect-scheduled", { kind: "reconnecting", retryAtMs: 5000 }],
+  ["background-tab", { kind: "connecting", waitingOn: "visible" }],
+  ...(["creating", "provisioning", "booting", "updating"] as const).flatMap((level) =>
+    [false, true].map(
+      (overdue) =>
+        [
+          `${level}-${overdue ? "overdue" : "running"}`,
+          { kind: "container", container: { level, overdue } },
+        ] as const,
+    ),
+  ),
+  [
+    "restart-overdue",
+    { kind: "container", container: { level: "restarting", by: "platform", overdue: true } },
+  ],
+  ...(["needs-enable", "needs-update", "not-yet-available"] as const).map(
+    (level) => [level, { kind: "container", container: { level } }] as const,
+  ),
+];
+const recoveryFixtures: ReadonlyArray<readonly [string, MateRecovery]> = [
+  ...(["deleted", "denied"] as const).map(
+    (kind) =>
+      [
+        kind,
+        { standing: { kind, name: "Application - Wren" }, status: undefined, process: undefined },
+      ] as const,
+  ),
+  [
+    "container-failed",
+    { standing: { kind: "unknown" }, status: "ACTION_FAILED", process: undefined },
+  ],
+  [
+    "disk-full",
+    { standing: { kind: "unknown" }, status: "ACTIVE", process: undefined, diskFull: true },
+  ],
+  ...(["stack.restart", "stack.start"] as const).flatMap((actionName) =>
+    (["RUNNING", "PENDING", "FAILED", "CANCELED"] as const).map(
+      (status) =>
+        [
+          `${actionName}-${status}`,
+          {
+            standing: { kind: "unknown" },
+            status: "ACTION_FAILED",
+            process: {
+              id: "process",
+              projectId: "project",
+              serviceStackIds: ["zcp"],
+              created: "2026-10-07",
+              actionName,
+              status,
+              failReason: "500: Internal Server Error",
+            },
+          },
+        ] as const,
+    ),
+  ),
+  [
+    "restart-unknown-cause",
+    {
+      standing: { kind: "unknown" },
+      status: "ACTION_FAILED",
+      process: {
+        id: "process",
+        projectId: "project",
+        serviceStackIds: ["zcp"],
+        created: "2026-10-07",
+        actionName: "stack.restart",
+        status: "FAILED",
+        failReason: "Unclassified diagnostic",
+      },
+    },
+  ],
+];
+const voiceFixture = (
+  id: string,
+  reachability: Reachability | null,
+  recovery?: MateRecovery,
+): HarnessState => ({
+  id,
+  label: id,
+  mate: WREN,
+  phase: null,
+  coming: "reaching",
+  voice: mateNoticeVoice({
+    reachability,
+    ...(recovery === undefined ? {} : { recovery }),
+    conversationShown: false,
+    nowMs: 0,
+    mateName: WREN.name,
+    lastKnown: id === "not-answering" ? undefined : "Wren was last working on the build.",
+  }) as Spoken,
+});
+
 const STATES: ReadonlyArray<HarnessState> = [
+  ...linkFixtures.map(([id, reachability]) => voiceFixture(id, reachability)),
+  ...recoveryFixtures.map(([id, recovery]) => voiceFixture(id, null, recovery)),
+  {
+    id: "unnamed-opening",
+    label: "Unnamed opening",
+    mate: WREN,
+    unnamed: true,
+    phase: null,
+    coming: "reaching",
+  },
+  {
+    id: "agent-ready",
+    label: "Agent needs no sign-in",
+    mate: WREN,
+    phase: "sign-in",
+    agentReady: true,
+  },
+  { id: "inventory-failed", label: "Inventory read failed", mate: WREN, phase: null },
+  {
+    id: "creation-refused",
+    label: "Create/Add refused before a setup process",
+    mate: WREN,
+    phase: null,
+    coming: "not-created",
+  },
+  { id: "limit", label: "Provider usage limit (production stage)", mate: WREN, phase: null },
+  ...[false, true].map((retryingStandUp) => ({
+    id: retryingStandUp ? "stand-up-retrying" : "stand-up-failed",
+    label: "Stand-up send failure",
+    mate: WREN,
+    phase: null,
+    standUpFailure: true,
+    retryingStandUp,
+  })),
+  {
+    id: "auth-checking",
+    label: "Auth checking",
+    mate: WREN,
+    phase: null,
+    unknown: { text: "Checking Wren's sign-in…", afterMs: 0, tone: "quiet" },
+  },
+  {
+    id: "auth-read-failed",
+    label: "Auth read failed",
+    mate: WREN,
+    phase: null,
+    unknown: { text: "Wren's sign-in could not be checked.", afterMs: 0, tone: "alert" },
+  },
   {
     id: "coming",
     label: "1 Coming up · 1:09 after Add",
@@ -262,18 +433,27 @@ const STATES: ReadonlyArray<HarnessState> = [
     }) as Spoken,
     restarting: true,
   },
+  voiceFixture("reconnecting", { kind: "reconnecting" }),
   {
-    id: "reconnecting",
-    label: "0 Reconnecting · its link lost past 1.5 s, no conversation shown",
+    id: "stopped",
+    label: "0 Stopped · its container is not running",
     mate: { ...WREN, connected: false },
     phase: null,
     coming: "reaching",
     voice: {
       surface: "stage",
-      text: "Reconnecting to Wren…",
+      headline: "Wren's container is stopped.",
+      text: null,
+      secondary: "Start Wren to reconnect.",
       actions: ["try-now"],
       processes: false,
     },
+  },
+  {
+    id: "empty",
+    label: "4 Empty conversation · ready for its first ask",
+    mate: WREN,
+    phase: null,
   },
   { id: "signin", label: "2 Sign-in · the choice", mate: WREN, phase: "sign-in", logins: {} },
   {
@@ -537,7 +717,48 @@ const PROCESSES: ReadonlyArray<ArrivalService> = [
 ];
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
+  if (state.id === "creation-refused") {
+    const coming = { kind: "failed", line: "Could not be set up.", verb: "try-again" } as const;
+    const progress = {
+      steps: [],
+      active: null,
+      failed: null,
+      doneCount: 0,
+      total: 0,
+      complete: false,
+      press: [
+        {
+          id: "created",
+          label: "Created",
+          state: "failed",
+          why: "500: Internal Server Error",
+        } as const,
+      ],
+    };
+    return {
+      kind: "failed",
+      sentence: comingSentenceOf({ coming, progress, nowMs }),
+      below: (
+        <ComingBelow
+          coming={coming}
+          progress={progress}
+          nowMs={nowMs}
+          mate={WREN}
+          you={null}
+          onTryAgain={() => undefined}
+        />
+      ),
+    };
+  }
   if (state.coming === undefined) return null;
+  if (state.id === "opening")
+    return {
+      kind: "reaching",
+      face: "sleep",
+      headline: "Wren is opening the conversation.",
+      sentence: "Picking up where you left off.",
+      below: null,
+    };
   if (state.coming === "reaching") {
     const voice: Spoken = state.voice?.surface === "stage" ? state.voice : SILENT;
     // A restart speaks on the stage as the Mate (`MateLinkStage`): its line is the headline.
@@ -551,6 +772,12 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           }
         : {};
     return {
+      headline: voice.headline,
+      sentence: voice.secondary,
+      severity: voice.severity,
+      face: voice.face,
+      restarting: voice.restarting,
+      restartLines: voice.restartLines,
       ...restart,
       kind: "reaching",
       below: (
@@ -558,8 +785,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           onTryNow={askAgainLabel(voice.actions) === null ? undefined : () => undefined}
           processes={voice.processes ? <MateLinkProcessesView services={PROCESSES} /> : null}
           projects={<a href="#projects" />}
-          projectUrl={undefined}
-          voice={state.restarting === true ? { ...voice, text: null } : voice}
+          projectUrl={WREN.projectUrl}
+          voice={{ ...voice, text: null }}
         />
       ),
     };
@@ -709,15 +936,24 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     window.setTimeout(() => go("conversation"), 1400);
   }, [go]);
   const signingIn = state.logins !== undefined;
+  const [autoResume, setAutoResume] = useState(false);
   const stage = (
     <MateEmptyStateView
       addedBy={state.addedBy}
+      agentReady={state.agentReady}
       coming={comingOf(state, nowMs)}
       // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
+      standUpFailure={
+        state.standUpFailure
+          ? { retrying: state.retryingStandUp === true, retry: () => undefined }
+          : undefined
+      }
       mate={
-        state.logins === undefined
-          ? state.mate
-          : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
+        state.unnamed
+          ? null
+          : state.logins === undefined
+            ? state.mate
+            : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
       }
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
@@ -733,7 +969,49 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
   );
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-harness-pane>
-      {state.conversation === true ? <Conversation /> : stage}
+      <div className="relative min-h-0 flex-1">
+        {state.id === "inventory-failed" ? (
+          <MateDetailFailure
+            mate={WREN}
+            message="Zerops could not read the project."
+            again={() => undefined}
+          />
+        ) : state.id === "limit" ? (
+          <div className="h-full">
+            <PauseBlock
+              mate={WREN}
+              row={{
+                kind: "pause",
+                id: "limit",
+                createdAt: "2026-10-08T08:00:00Z",
+                resetsAt: "2026-10-08T12:00:00Z",
+                resumedAt: null,
+                held: 0,
+                provider: "Claude",
+              }}
+              speaker={WREN}
+              nowMs={Date.parse("2026-10-08T08:00:00Z")}
+              timestampFormat="24-hour"
+              serverPause={{ resetsAt: "2026-10-08T12:00:00Z", autoResume }}
+              onAutoResumeChange={setAutoResume}
+              onContinue={() => go("conversation")}
+            />
+          </div>
+        ) : state.conversation === true ? (
+          <Conversation />
+        ) : (
+          stage
+        )}
+      </div>
+      {state.id === "empty" ? (
+        <div className="shrink-0 px-6 pb-5" data-harness-composer>
+          <textarea
+            aria-label="Message Wren"
+            className="mx-auto block min-h-17.5 w-full max-w-3xl rounded-2xl border border-border bg-background p-4"
+            placeholder="Ask Wren to do something…"
+          />
+        </div>
+      ) : null}
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
           <div className="self-start p-4">
@@ -811,7 +1089,7 @@ function Harness() {
   return (
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <aside
-        className="flex shrink-0 flex-col gap-1 border-border border-r p-4"
+        className="flex shrink-0 flex-col gap-1 overflow-y-auto border-border border-r p-4"
         style={{ width: 435 }}
       >
         <p className="pb-1 text-muted-foreground text-xs">

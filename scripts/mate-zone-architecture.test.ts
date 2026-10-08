@@ -1513,6 +1513,7 @@ const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
   `${SPI_DIR}/openCodeThreadProfile.ts`,
   `${SPI_DIR}/mcpControl.ts`,
   `${SPI_DIR}/mcpToolTitle.ts`,
+  `${SPI_DIR}/responseUsage.ts`,
 ]);
 
 const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(function* (
@@ -1563,13 +1564,22 @@ const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(funct
 // dependency rules name. Never `provider/**`: a crewmate's thread is shaped
 // through the SPI files, not by importing a driver. Tests may reach further
 // (the database, the ssh shim, the membership watch's subject prefix).
+const UPDATE_NEUTRAL_SEAMS = [
+  "apps/server/src/update/AdmissionFence.ts",
+  "apps/server/src/update/MateUpdateDrain.ts",
+  "apps/server/src/update/NativeResume.ts",
+  "apps/server/src/update/OwnedWork.ts",
+  "apps/server/src/update/subscribeChanges.ts",
+] as const;
 const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/zerops/mateUpdateHttp.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
   "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
 ]);
 const CREW_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  ...UPDATE_NEUTRAL_SEAMS,
   "apps/server/src/config.ts",
   "apps/server/src/processRunner.ts",
   "apps/server/src/orchestration/Services/MessageAttachments.ts",
@@ -1638,6 +1648,8 @@ const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engine/registerEngineRpc.ts",
 ]);
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/zerops/mateUpdateHttp.ts",
+  "apps/server/src/zerops/ZeropsMateUpdate.ts",
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/ThreadFileWrites.ts",
@@ -1652,18 +1664,36 @@ const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  // The Mate's content-addressed picture store, and the one keep of a tool result's inline
+  // picture V1's capture, the history import and a live call share.
+  "apps/server/src/assets/ContentAssets.ts",
+  "apps/server/src/assets/ConversationMedia.ts",
+  ...UPDATE_NEUTRAL_SEAMS,
   "apps/server/src/attachmentStore.ts",
   "apps/server/src/checkpointing/WorkspaceHistory.ts",
   "apps/server/src/config.ts",
+  // V1's own projection of a tool activity: an engine call (live or imported) carries what V1's
+  // row of it shows by construction, and the Zerops result it decodes.
+  "apps/server/src/orchestration/ActivityPayloadProjection.ts",
+  // V1's model option diff, pure: both engines decide alike which change needs a new session.
+  "apps/server/src/orchestration/modelSelectionChange.ts",
   "apps/server/src/provider/Services/ProviderService.ts",
+  // The resume state another instance of the same driver left on the thread, read when a
+  // person's agent pick keeps the thread (optional: absent, the session starts fresh).
+  "apps/server/src/provider/Services/ProviderSessionDirectory.ts",
   "apps/server/src/terminal/Manager.ts",
+  "apps/server/src/zerops/zeropsActivityResult.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 
 // The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
-// `ProviderService` and its bridge, and no other provider file. Its tests and the
-// `testing/` harness may record through real drivers.
-const ENGINE_PROVIDER_DOOR = "apps/server/src/provider/Services/ProviderService.ts";
+// `ProviderService` and its bridge, and no other provider file but the session directory it
+// reads a handed-over resume cursor from. Its tests and the `testing/` harness may record
+// through real drivers.
+const ENGINE_PROVIDER_DOORS: ReadonlySet<string> = new Set([
+  "apps/server/src/provider/Services/ProviderService.ts",
+  "apps/server/src/provider/Services/ProviderSessionDirectory.ts",
+]);
 
 const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
 
@@ -1684,7 +1714,7 @@ const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolatio
             .join("/")
         : specifier;
       const reachesProvider = target.includes("/provider/") || /\bProviderService\b/.test(clause);
-      if (reachesProvider && target !== ENGINE_PROVIDER_DOOR) {
+      if (reachesProvider && !ENGINE_PROVIDER_DOORS.has(target)) {
         violations.push({ file: relativeFile, specifier });
       }
     }
@@ -1945,6 +1975,35 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           {
             file: "apps/server/src/zerops/zeropsFeedsLayer.ts",
             specifier: "../engine/store/EngineStore.ts",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "update wiring reaches public engine and crew services, while neutral seams do not admit V1",
+    () =>
+      Effect.gen(function* () {
+        const root = yield* makeRepoFixture({
+          "apps/server/src/zerops/mateUpdateHttp.ts":
+            'import { MateEngine } from "../engine/MateEngine.ts";\nimport { CrewEngine } from "./crew/CrewEngine.ts";\n',
+          "apps/server/src/zerops/ZeropsMateUpdate.ts":
+            'import { MateEngine } from "../engine/MateEngine.ts";\n',
+          "apps/server/src/engine/updateDrain.ts":
+            'import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";\nimport { V1UpdateDrain } from "../update/V1UpdateDrain.ts";\n',
+          "apps/server/src/zerops/crew/CrewEngine.ts":
+            'import type { MateUpdateDrain } from "../../update/MateUpdateDrain.ts";\nimport { V1UpdateDrain } from "../../update/V1UpdateDrain.ts";\n',
+        });
+        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(root), [
+          {
+            file: "apps/server/src/engine/updateDrain.ts",
+            specifier: "../update/V1UpdateDrain.ts",
+          },
+        ]);
+        assert.deepStrictEqual(yield* collectCrewBoundaryViolations(root), [
+          {
+            file: "apps/server/src/zerops/crew/CrewEngine.ts",
+            specifier: "../../update/V1UpdateDrain.ts",
           },
         ]);
       }).pipe(Effect.scoped),

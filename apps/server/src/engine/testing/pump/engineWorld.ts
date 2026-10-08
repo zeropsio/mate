@@ -36,8 +36,16 @@ import type { Command } from "../../domain/command.ts";
 import { liveEngineLayer } from "../../live.ts";
 import { LiveBus } from "../../LiveBus.ts";
 import { MateEngine } from "../../MateEngine.ts";
-import { AgentWorkspace, RestartEvidence, RunAdmission, RunRefused } from "../../ports.ts";
+import {
+  AgentWorkspace,
+  MessagePictures,
+  RestartEvidence,
+  RunAdmission,
+  RunRefused,
+} from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
+import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../../../zerops/ZeropsMembershipWatch.ts";
 import { makeFakeWorkspaceHistory } from "./fakeWorkspaceHistory.ts";
 import {
   makeScriptedProvider,
@@ -54,7 +62,8 @@ export const DRIVERS: ReadonlyArray<BridgeDriver> = [
   "antigravity",
 ];
 
-export const ana: Principal = { kind: "person", subject: "zerops:ana" };
+/** A person as the server names them: their Zerops session's subject. */
+export const ana: Principal = { kind: "person", subject: `${ZEROPS_SUBJECT_PREFIX}ana` };
 export const mate = ConversationId.make("mate");
 
 export interface RunRow {
@@ -90,15 +99,29 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         RunAdmission,
         RunAdmission.of({
-          admit: ({ principal }) => {
+          admit: ({ principal, trigger }) => {
             if (options.admissionDies !== undefined) {
               return Effect.die(new Error(options.admissionDies));
             }
             const refusal =
               typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
-            return refusal === undefined
+            if (refusal !== undefined) return Effect.fail(new RunRefused({ message: refusal }));
+            // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
+            // session by its Zerops subject, a wake by the bare Zerops user id it continues.
+            const acting = turnPrincipalOf(principal, trigger);
+            const user =
+              acting === null
+                ? null
+                : acting.kind === "session"
+                  ? acting.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+                    ? acting.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
+                    : null
+                  : acting.startedBy;
+            return user !== null && /^[^:]+$/.test(user)
               ? Effect.void
-              : Effect.fail(new RunRefused({ message: refusal }));
+              : Effect.fail(
+                  new RunRefused({ message: `No Zerops user this run acts for: ${String(user)}.` }),
+                );
           },
         }),
       ),
@@ -112,6 +135,14 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         AgentWorkspace,
         AgentWorkspace.of({ of: () => Effect.succeed({ cwd: dir, runtimeMode: "full-access" }) }),
+      ),
+      // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
+      Layer.succeed(
+        MessagePictures,
+        MessagePictures.of({
+          claim: (_conversation, attachments) => Effect.succeed(attachments),
+          release: () => Effect.void,
+        }),
       ),
     );
 

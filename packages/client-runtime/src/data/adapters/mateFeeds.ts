@@ -9,7 +9,6 @@ import {
   type EnvironmentId,
   type ThreadId,
   type TerminalSummary,
-  type UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -164,6 +163,7 @@ export function makeMateFeedWire(
                         client[WS_METHODS.subscribeServerConfig]({
                           usageLimitSources: true,
                           usageLimitsCommand: true,
+                          mateUpdate: true,
                         }),
                       ).pipe(
                         Stream.mapAccum(
@@ -253,13 +253,6 @@ export function makeMateFeedWire(
                       break;
                     case "mateCrewFiles":
                       values = Stream.fromEffect(client[WS_METHODS.zeropsCrewFilesGet]({}));
-                      break;
-                    case "mateUsage":
-                      values = Stream.fromEffect(
-                        client[WS_METHODS.serverGetUsageSummary](
-                          key.input as unknown as UsageSummaryInput,
-                        ),
-                      );
                       break;
                     case "mateTerminal":
                       values = Stream.suspend(() => {

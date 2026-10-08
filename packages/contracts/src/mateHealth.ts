@@ -4,6 +4,8 @@ import { MateAttentionSource } from "./zeropsAttention.ts";
 
 const Counter = Schema.Struct({
   high: NonNegativeInt,
+  // Optional for retained reports and older Mates that did not sample max events.
+  max: Schema.optionalKey(NonNegativeInt),
   oom: NonNegativeInt,
   oomKill: NonNegativeInt,
 });
@@ -16,7 +18,7 @@ export type ResourcePressure = typeof ResourcePressure.Type;
 export const MateResourceHealth = Schema.Struct({
   status: Schema.Literals(["ok", "strained", "unknown"]),
   severity: Schema.Literals(["warning", "critical"]),
-  resources: Schema.Array(Schema.Literals(["memory", "disk", "cpu"])),
+  resources: Schema.Array(Schema.Literals(["memory", "disk", "io", "cpu"])),
   memory: Schema.NullOr(
     Schema.Struct({
       scope: Schema.optionalKey(Schema.String),
@@ -28,6 +30,7 @@ export const MateResourceHealth = Schema.Struct({
       pressure: Schema.NullOr(ResourcePressure),
       swapCurrent: Schema.NullOr(NonNegativeInt),
       swapMax: Schema.NullOr(NonNegativeInt),
+      swapGrowth: Schema.optionalKey(NonNegativeInt),
     }),
   ),
   cpu: Schema.NullOr(

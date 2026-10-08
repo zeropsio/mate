@@ -7,15 +7,24 @@
  *
  * @module engineAdapters
  */
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import type { Principal, RunTrigger } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import {
+  claimMessageAttachments,
+  releaseClaimedAttachments,
+} from "../orchestration/Services/MessageAttachments.ts";
+import {
   AgentWorkspace,
+  MessagePictures,
+  PicturesRefused,
   RestartEvidence,
   RunAdmission,
   RunRefused,
@@ -23,10 +32,9 @@ import {
 } from "../engine/ports.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
-
-const ZEROPS_SUBJECT = "zerops:";
 
 /**
  * A person at the keyboard is their session; a crew wake is crew's, every other wake a stand-up's
@@ -41,8 +49,8 @@ export const turnPrincipalOf = (
       if (trigger.kind === "person") return { kind: "session", subject: principal.subject };
       return {
         kind: "standup",
-        startedBy: principal.subject.startsWith(ZEROPS_SUBJECT)
-          ? principal.subject.slice(ZEROPS_SUBJECT.length)
+        startedBy: principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+          ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
           : principal.subject,
       };
     case "crew":
@@ -111,6 +119,31 @@ export const serverWorkspace = Layer.effect(
   }),
 );
 
+/** A call's pictures claimed for its conversation exactly as V1 claims a message's. */
+export const serverMessagePictures = Layer.effect(
+  MessagePictures,
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    // The server's own files, as V1's claim reads them.
+    const files = <A, E>(
+      effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | ServerConfig>,
+    ) =>
+      effect.pipe(Effect.provideService(ServerConfig, config), Effect.provide(NodeServices.layer));
+    return MessagePictures.of({
+      claim: (conversation, attachments) =>
+        files(claimMessageAttachments(conversation, attachments)).pipe(
+          Effect.mapError((error) => new PicturesRefused({ message: error.message })),
+        ),
+      release: (claimed) =>
+        files(releaseClaimedAttachments(claimed)).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Mate engine: a claimed picture could not be let go", cause),
+          ),
+        ),
+    });
+  }),
+);
+
 /** Outside Zerops: every run is admitted, and there is no restart to read. */
 export const engineAdaptersOpen = Layer.mergeAll(
   Layer.succeed(RunAdmission, RunAdmission.of({ admit: () => Effect.void })),
@@ -135,11 +168,12 @@ const zeropsAdapters = Layer.mergeAll(
  * The ports for this process: Zerops's inside a Zerops project, open everywhere else; the agent
  * works in the server's directory either way.
  */
-export const engineAdaptersLayer = Layer.merge(
+export const engineAdaptersLayer = Layer.mergeAll(
   Layer.unwrap(
     Effect.gen(function* () {
       return isZeropsEnvironment(yield* ServerConfig) ? zeropsAdapters : engineAdaptersOpen;
     }),
   ),
   serverWorkspace,
+  serverMessagePictures,
 );

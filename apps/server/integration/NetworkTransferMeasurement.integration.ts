@@ -19,6 +19,10 @@ export class TransferHttpRequestError extends Schema.TaggedError<TransferHttpReq
 ) {}
 
 export interface HttpTransferMeasurement {
+  readonly headersMs: number;
+  readonly bodyMs: number;
+  readonly decompressMs: number;
+  readonly serverTiming: string | null;
   readonly status: number;
   readonly contentEncoding: string | null;
   readonly encodedBody: Uint8Array;
@@ -36,6 +40,7 @@ export const measureHttpGet = Effect.fn("TransferBudget.measureHttpGet")(functio
   return yield* Effect.tryPromise({
     try: () =>
       new Promise<HttpTransferMeasurement>((resolve, reject) => {
+        const started = performance.now();
         let socketBytesBeforeResponse = 0;
         const request = NodeHttp.get(
           input.url,
@@ -48,11 +53,13 @@ export const measureHttpGet = Effect.fn("TransferBudget.measureHttpGet")(functio
             },
           },
           (response) => {
+            const received = performance.now();
             const chunks: Buffer[] = [];
             response.on("data", (chunk: Buffer) => chunks.push(chunk));
             response.once("error", reject);
             response.once("end", () => {
               try {
+                const bodyReceived = performance.now();
                 const encodedBody = Buffer.concat(chunks);
                 const header = response.headers["content-encoding"];
                 const contentEncoding = Array.isArray(header)
@@ -61,6 +68,13 @@ export const measureHttpGet = Effect.fn("TransferBudget.measureHttpGet")(functio
                 const decodedBody =
                   contentEncoding === "gzip" ? NodeZlib.gunzipSync(encodedBody) : encodedBody;
                 resolve({
+                  headersMs: received - started,
+                  bodyMs: bodyReceived - received,
+                  decompressMs: performance.now() - bodyReceived,
+                  serverTiming:
+                    typeof response.headers["server-timing"] === "string"
+                      ? response.headers["server-timing"]
+                      : null,
                   status: response.statusCode ?? 0,
                   contentEncoding,
                   encodedBody,

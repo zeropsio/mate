@@ -466,14 +466,13 @@ export const roomFor = (
   incoming: { readonly id: string; readonly bytes: number },
   limit: number,
   now: DateTime.Utc,
-  protectedSet?: string,
 ): Room => {
   const oldestFirst = [...stored].sort((a, b) => (a.id < b.id ? -1 : 1));
   const whole = oldestFirst.filter((set) => set.whole).map((set) => set.id);
   const total = stored.reduce((sum, set) => sum + set.bytes, 0);
   const goingAnyway = (kept: ReadonlySet<string>) => [
-    ...oldestFirst.filter((set) => !set.whole && set.id !== protectedSet),
-    ...oldestFirst.filter((set) => set.whole && !kept.has(set.id) && set.id !== protectedSet),
+    ...oldestFirst.filter((set) => !set.whole),
+    ...oldestFirst.filter((set) => set.whole && !kept.has(set.id)),
   ];
   const kept = retained([...whole, incoming.id], now);
   const gone = goingAnyway(kept);
@@ -481,7 +480,7 @@ export const roomFor = (
   const cut: Array<StoredSet> = [];
   for (const set of oldestFirst) {
     if (used + incoming.bytes <= limit) break;
-    if (set.whole && kept.has(set.id) && set.id !== whole.at(-1) && set.id !== protectedSet) {
+    if (set.whole && kept.has(set.id) && set.id !== whole.at(-1)) {
       cut.push(set);
       used -= set.bytes;
     }
@@ -643,23 +642,7 @@ export const backupLayer = (
             (yield* io("stat", () => NodeFSP.stat(NodePath.join(dir, "manifest.json")))).size;
           const quota =
             options.quotaGb === undefined ? Number.POSITIVE_INFINITY : options.quotaGb * 1e9;
-          let protectedSet: string | undefined;
-          const [usageTable] = yield* sql<{
-            readonly present: boolean;
-          }>`SELECT to_regclass('public.hq_usage_state') IS NOT NULL AS present`;
-          if (usageTable?.present === true) {
-            const [usageProtection] = yield* sql<{
-              readonly set: string | null;
-            }>`SELECT protected_set AS set FROM hq_usage_state WHERE id=1`;
-            protectedSet = usageProtection?.set ?? undefined;
-          }
-          const room = roomFor(
-            stored,
-            { id: manifest.id, bytes: needed },
-            quota * 0.9,
-            now,
-            protectedSet,
-          );
+          const room = roomFor(stored, { id: manifest.id, bytes: needed }, quota * 0.9, now);
           for (const id of room.remove) {
             // Its manifest first: a set half removed is incomplete, never whole with files missing.
             const files = [...(objects.get(id) ?? [])].sort(

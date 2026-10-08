@@ -61,7 +61,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
-import { currentProviderLimit, usageLimitProvider } from "./providerLimit.logic";
+import { projectMateLimit, type MateLimit } from "@t3tools/client-runtime/data";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**
@@ -86,6 +86,7 @@ export type AgentActivityThread = Pick<
     readonly lastError: string | null;
     readonly usageLimitResetAt?: string | null | undefined;
     readonly providerName?: string | null;
+    readonly updatedAt?: string | undefined;
   } | null;
   readonly latestTurn: Pick<
     OrchestrationLatestTurn,
@@ -95,7 +96,10 @@ export type AgentActivityThread = Pick<
   readonly latestMessagePreview?: Pick<ThreadMessagePreview, "role" | "text"> | null | undefined;
   readonly planProgress?: { readonly step: string } | null | undefined;
   readonly pendingQuestion?: string | null | undefined;
-  readonly usagePause?: { readonly resetsAt: string } | null | undefined;
+  readonly usagePause?:
+    | { readonly resetsAt: string; readonly pausedAt?: string | undefined }
+    | null
+    | undefined;
   readonly liveStep?: ThreadLiveStep | null | undefined;
 };
 
@@ -164,6 +168,7 @@ export interface ZeropsAgentActivity {
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
   /** A provider refusal can prove a limit without knowing its reset. */
+  readonly limit?: MateLimit;
   readonly usageLimited?: boolean;
   readonly limitProvider?: string | undefined;
   /** A retained refusal record, independent of whether its deadline still applies. */
@@ -400,60 +405,11 @@ export function threadAgentActivity(
   thread: AgentActivityThread,
   lastVisitedAt: string | undefined,
   nowMs = Date.now(),
-): ZeropsAgentActivity {
-  // A shell is immutable, and kept while nothing in it changes: every Mate read again on each
-  // event of one streaming chat reads its own unchanged shell.
-  const known = activityByThread.get(thread);
-  if (
-    known !== undefined &&
-    known.lastVisitedAt === lastVisitedAt &&
-    (known.activity.limitHistory?.resetsAt == null ||
-      known.activity.usageLimited === Date.parse(known.activity.limitHistory.resetsAt) > nowMs)
-  )
-    return known.activity;
-  const activity = readThreadAgentActivity(thread, lastVisitedAt, nowMs);
-  activityByThread.set(thread, { lastVisitedAt, activity });
-  return activity;
-}
-
-const activityByThread = new WeakMap<
-  AgentActivityThread,
-  { readonly lastVisitedAt: string | undefined; readonly activity: ZeropsAgentActivity }
->();
-
-function readThreadAgentActivity(
-  thread: AgentActivityThread,
-  lastVisitedAt: string | undefined,
-  nowMs: number,
+  limit = projectMateLimit(thread, nowMs),
 ): ZeropsAgentActivity {
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
-  const pause = thread.usagePause ?? undefined;
-  const limit = currentProviderLimit({
-    pause,
-    resetAt: thread.session?.usageLimitResetAt,
-    lastError: thread.session?.lastError,
-    lastMessage:
-      thread.latestMessagePreview?.role === "assistant"
-        ? thread.latestMessagePreview.text
-        : undefined,
-    noticeAt: thread.latestTurn?.completedAt ?? thread.latestTurn?.startedAt,
-    nowMs,
-  });
-  const provider =
-    limit.provider ??
-    (thread.session?.providerName === "claudeAgent"
-      ? "Claude"
-      : thread.session?.providerName === "codex"
-        ? "Codex"
-        : "coding agent");
-  const usageLimited = limit.current;
-  const settledRefusal = limit.expired;
-  const status = resolveThreadStatus({ ...thread, ...visited });
-  // An expired refusal is a stopped attempt, not an ongoing failure or a successful turn.
-  const resolved =
-    settledRefusal && status.kind === "failed"
-      ? { kind: "idle" as const, toneId: "neutral" as const }
-      : status;
+  const usageLimited = limit.kind === "limited";
+  const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
   return {
     threadId: thread.id,
     kind: resolved.kind,
@@ -464,11 +420,12 @@ function readThreadAgentActivity(
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
-    pausedUntil: usageLimited ? limit.resetsAt : undefined,
+    limit,
+    pausedUntil: usageLimited ? (limit.resetsAt ?? undefined) : undefined,
     usageLimited,
-    limitProvider: usageLimited ? provider : undefined,
-    ...(limit.provider !== null || pause !== undefined
-      ? { limitHistory: { provider, resetsAt: limit.resetsAt ?? null } }
+    limitProvider: usageLimited ? limit.provider : undefined,
+    ...(limit.kind !== "none"
+      ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
       : {}),
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
@@ -478,7 +435,7 @@ function readThreadAgentActivity(
       ? { waitsOnHelpers: true as const }
       : {}),
     ...agentActivityQuestion(thread, resolved.kind),
-    ...(settledRefusal ? {} : agentActivityErrorLine(thread, resolved.kind)),
+    ...(limit.kind === "expired" ? {} : agentActivityErrorLine(thread, resolved.kind)),
   };
 }
 
@@ -535,7 +492,7 @@ export function agentActivityErrorLine(
   thread: Pick<AgentActivityThread, "session">,
   kind: ThreadStatusKind,
 ): { readonly errorLine?: string } {
-  if (kind !== "failed" && usageLimitProvider(thread.session?.lastError) === null) return {};
+  if (kind !== "failed") return {};
   const first = thread.session?.lastError
     ?.split("\n")
     .map((line) => line.trim())
@@ -547,6 +504,7 @@ export function agentActivityErrorLine(
 export function deriveZeropsAgentActivity(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit>,
 ): ReadonlyMap<EnvironmentId, ZeropsAgentActivity> {
   const shellsByEnvironment = new Map<EnvironmentId, Array<EnvironmentThreadShell>>();
   for (const thread of threads) {
@@ -564,6 +522,8 @@ export function deriveZeropsAgentActivity(
       threadAgentActivity(
         primary,
         lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
+        undefined,
+        limits?.get(scopedThreadKey(scopeThreadRef(environmentId, primary.id))),
       ),
     );
   }
@@ -625,12 +585,15 @@ export function overviewAgentActivity(
   mate: MateLiveView,
   live: boolean,
   lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit> | undefined,
 ): ZeropsAgentActivity | undefined {
   if (mate.identity === undefined || !mate.main) return undefined;
   const { environmentId } = mate.identity;
   const activity = threadAgentActivity(
     { ...mate.main, environmentId },
     lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, mate.main.id))],
+    undefined,
+    limits?.get(scopedThreadKey(scopeThreadRef(environmentId, mate.main.id))),
   );
   return live ? activity : restingActivity(activity, mate.main.updatedAt);
 }

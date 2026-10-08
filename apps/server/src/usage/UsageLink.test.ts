@@ -1,509 +1,337 @@
-// @effect-diagnostics nodeBuiltinImport:off -- tests own disposable transcript/home directories.
-import * as NodeFS from "node:fs";
-import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-import * as NodeSqlite from "node:sqlite";
-import { assert, it } from "@effect/vitest";
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { AGENT_USAGE_CAPTURE_PROTOCOL } from "@t3tools/contracts";
-import { usageCanonical, type UsageLinkUp } from "@t3tools/shared/agentUsage";
-import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
-import type { MateLinkDown, MateLinkUp } from "@t3tools/shared/mateLink";
-import * as Clock from "effect/Clock";
-import * as DateTime from "effect/DateTime";
+import { assert, describe, it } from "@effect/vitest";
+import { ProviderRuntimeEvent, type SpiEvent } from "@t3tools/contracts";
+import { MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Fiber from "effect/Fiber";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/sql/SqlClient";
 import { ServerConfig } from "../config.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
-import * as ServerSettings from "../serverSettings.ts";
-import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
-import { makeUsageLink, type UsageLinkOptions, type UsageRuntimeEvent } from "./UsageLink.ts";
-import type { WatchDirectory } from "./usageCapture.ts";
-import { protoBytes, protoNumber, protoText } from "./testing/protobuf.ts";
+import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
+import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { makeUsageLink } from "./UsageLink.ts";
+import { makeUsageOutbox } from "./UsageOutbox.ts";
 
-const response = (id: string, amount: number) =>
-  usageCanonical({
-    type: "assistant",
-    sessionId: "session",
-    requestId: "request",
-    timestamp: DateTime.formatIso(DateTime.nowUnsafe()),
-    message: {
-      id,
-      model: "claude",
-      usage: {
-        input_tokens: amount,
-        output_tokens: 0,
-        cache_read_input_tokens: 0,
-        cache_creation_input_tokens: 0,
+const decodeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
+const event = decodeEvent({
+  eventId: "completion",
+  provider: "codex",
+  threadId: "mate-thread",
+  createdAt: "2026-10-08T10:00:00.000Z",
+  type: "turn.usage.completed",
+  payload: {
+    nativeThreadId: "native-thread",
+    nativeTurnId: "turn",
+    models: [
+      {
+        model: "gpt-5.6-sol",
+        components: {
+          uncachedInput: "20",
+          cachedInput: "0",
+          cacheCreation: "0",
+          output: "10",
+          reasoning: null,
+          inclusiveTotal: "30",
+        },
+        nativeCost: null,
       },
-    },
-  }) + "\n";
-
-const state = {
+    ],
+    nativeCost: null,
+    parentId: null,
+  },
+});
+const state = Schema.decodeUnknownSync(MateLinkDown)({
   type: "state",
-  mate: { projectId: "project" },
-  usage: { capture: AGENT_USAGE_CAPTURE_PROTOCOL, report: 1, mateId: "mate", orgId: "org" },
-} as unknown as Extract<MateLinkDown, { type: "state" }>;
+  mate: {
+    projectId: "project",
+    name: "Mate",
+    face: "face",
+    standupRequestedBy: null,
+    closedOff: false,
+    appId: null,
+    appName: null,
+    changes: [],
+  },
+  usage: { capture: 2, report: 1, mateId: "mate" },
+});
+const config = ServerConfig.of({
+  zerops: resolveZeropsEnvironment({
+    projectId: "project",
+    apiHost: undefined,
+    apiToken: undefined,
+  }),
+} as ServerConfig["Service"]);
+const org = ZeropsOrgRead.of({
+  project: () => Effect.succeed({ kind: "answered", status: 200, body: { clientId: "org" } }),
+  members: () => Effect.succeed({ kind: "no-key" }),
+});
 
-const temporary = Effect.acquireRelease(
-  Effect.tryPromise(() => NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "usage-link-test-"))),
-  (path) => Effect.promise(() => NodeFSP.rm(path, { recursive: true, force: true })),
-);
-
-const recorded = (ledger: UsageLedger) =>
-  Effect.gen(function* () {
-    const frame = yield* ledger.batch("0", "test");
-    const facts = new Map<
-      string,
-      Extract<UsageLinkUp, { type: "usage-batch" }>["entries"][number]["facts"][number]
-    >();
-    for (const entry of frame?.entries ?? [])
-      for (const fact of entry.facts) facts.set(fact.nativeId, fact);
-    return [...facts.values()].reduce(
-      (sum, fact) => sum + BigInt(fact.components.uncachedInput ?? "0"),
-      0n,
-    );
-  });
-
-const eventually = <A, E>(read: Effect.Effect<A, E>, ok: (value: A) => boolean) =>
-  Effect.gen(function* () {
-    let value = yield* read;
-    for (let attempt = 0; attempt < 250 && !ok(value); attempt++) {
-      yield* Effect.sleep("20 millis");
-      value = yield* read;
-    }
-    return value;
-  });
-
-/** Every provider a fact was journaled for. */
-const providers = (ledger: UsageLedger) =>
-  Effect.gen(function* () {
-    const frame = yield* ledger.batch("0", "test");
-    return new Set(
-      (frame?.entries ?? []).flatMap((entry) => entry.facts.map((fact) => fact.provider)),
-    );
-  });
-
-/** A Mate whose HQ link negotiated capture, every provider's home under `root`, nothing from V1. */
-const mate = (
-  options: UsageLinkOptions & {
-    readonly projects?: boolean;
-    readonly offer?: Extract<MateLinkDown, { type: "state" }>;
-  } = {},
-) =>
-  Effect.gen(function* () {
-    const root = yield* temporary;
-    const claudeHome = NodePath.join(root, "claude");
-    const transcripts = NodePath.join(claudeHome, "projects");
-    yield* Effect.tryPromise(() =>
-      NodeFSP.mkdir(options.projects === false ? claudeHome : transcripts, { recursive: true }),
-    );
-    const database = NodePath.join(root, "usage.sqlite");
-    const context = yield* Layer.build(
-      Layer.mergeAll(
-        Sqlite.layer({ filename: database }),
-        Layer.succeed(HostProcessEnvironment, {
-          GROK_HOME: NodePath.join(root, "grok"),
-          OPENCODE_DATA_DIR: NodePath.join(root, "opencode"),
-          ANTIGRAVITY_DATA_DIR: NodePath.join(root, "antigravity"),
-        }),
-        ServerSettings.layerTest({
-          providers: {
-            claudeAgent: { homePath: claudeHome },
-            codex: { homePath: NodePath.join(root, "codex") },
-          },
-        }),
-        Layer.succeed(ServerConfig, {
-          zerops: { projectId: "project", apiBaseUrl: "http://zerops.invalid" },
-        } as unknown as ServerConfig["Service"]),
-        NodeServices.layer,
-      ),
-    );
-    const runtime = yield* Queue.unbounded<UsageRuntimeEvent>();
-    const link = yield* makeUsageLink(Stream.fromQueue(runtime), options).pipe(
-      Effect.provide(context),
-    );
-    const sent: MateLinkUp[] = [];
-    const send = (frame: MateLinkUp) => Effect.sync(() => void sent.push(frame));
-    let lane = yield* link.open(send);
-    yield* lane.state(options.offer ?? state);
-    const reader = yield* makeUsageLedger.pipe(
-      Effect.provide(yield* Layer.build(Sqlite.layer({ filename: database }))),
-    );
-    const write = (name: string, body: string) =>
-      Effect.tryPromise(async () => {
-        await NodeFSP.mkdir(NodePath.join(transcripts, "project"), { recursive: true });
-        await NodeFSP.writeFile(NodePath.join(transcripts, "project", name), body);
-      });
-    return {
-      root,
-      transcripts,
-      write,
-      providers: providers(reader),
-      emit: (type: UsageRuntimeEvent["type"]) => Queue.offer(runtime, { type }),
-      total: recorded(reader),
-      origins: reader.origins,
-      offer: (message: Extract<MateLinkDown, { type: "state" }>) => lane.state(message),
-      /** HQ's answer on the current link. */
-      answer: (message: MateLinkDown) => lane.receive(message),
-      /** HQ's ping on the current link. */
-      ping: Effect.suspend(() => lane.ping),
-      database,
-      /** A new link, whose first state is `message`. */
-      reconnect: (message: Extract<MateLinkDown, { type: "state" }>) =>
+describe("Mate usage on the existing HQ link", () => {
+  for (const failures of [1, 3])
+    it.effect(
+      `after ${failures} SQLite rejection(s), the 100-token completion is captured before the later 130-token turn`,
+      () =>
         Effect.gen(function* () {
-          lane = yield* link.open(send);
-          yield* lane.state(message);
-        }),
-      /** The hellos sent so far, oldest first. */
-      hellos: Effect.sync(() =>
-        sent.flatMap((frame) => (frame.type === "usage-hello" ? [frame] : [])),
-      ),
-    };
-  });
-
-/**
- * Watches as Linux inotify reports them: a watch sees its directory's own entries, and a recursive
- * one everything beneath it. Changes are reported when the test says, synchronously.
- */
-const inotify = () => {
-  const watches: Array<{
-    readonly directory: string;
-    readonly recursive: boolean;
-    readonly changed: (name: string | null) => void;
-    closed: boolean;
-  }> = [];
-  const watch: WatchDirectory = (directory, { recursive, changed }) => {
-    // As fs.watch does, a directory that is not there cannot be watched.
-    if (!NodeFS.existsSync(directory))
-      throw Object.assign(new Error(`ENOENT: ${directory}`), { code: "ENOENT" });
-    const entry = { directory, recursive, changed, closed: false };
-    watches.push(entry);
-    return () => {
-      entry.closed = true;
-    };
-  };
-  return {
-    watch,
-    watching: (directory: string) =>
-      watches.some((entry) => !entry.closed && entry.directory === directory),
-    /** `path` was created or written. */
-    touch: (path: string) => {
-      // Only the watches already there see this change; one it brings about sees the next.
-      const count = watches.length;
-      for (let index = 0; index < count; index++) {
-        const entry = watches[index]!;
-        if (entry.closed) continue;
-        const name = NodePath.relative(entry.directory, path);
-        if (name === "" || name.startsWith("..")) continue;
-        if (!entry.recursive && name.includes(NodePath.sep)) continue;
-        entry.changed(name);
-      }
-    },
-  };
-};
-
-/** A watch that attaches and never reports; each attach is kept so a test can fail or close it. */
-const silentWatch = () => {
-  const attached: Array<{ directory: string; failed: () => void; closed: boolean }> = [];
-  const watch: WatchDirectory = (directory, { failed }) => {
-    const entry = { directory, failed, closed: false };
-    attached.push(entry);
-    return () => {
-      entry.closed = true;
-    };
-  };
-  return { watch, attached };
-};
-
-it.live("a completed turn is captured under the Mate engine, with no V1 orchestration event", () =>
-  Effect.scoped(
+          const sql = yield* SqlClient.SqlClient;
+          const rejected = yield* Queue.unbounded<void>();
+          const withTransaction: typeof sql.withTransaction = (effect) =>
+            sql
+              .withTransaction(effect)
+              .pipe(Effect.tapError(() => Queue.offer(rejected, undefined)));
+          const faultObserved = new Proxy(sql, {
+            get: (target, property, receiver) =>
+              property === "withTransaction"
+                ? withTransaction
+                : Reflect.get(target, property, receiver),
+          });
+          const hub = yield* PubSub.unbounded<SpiEvent>();
+          const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+          const link = yield* makeUsageLink.pipe(
+            Effect.provide(bus),
+            Effect.provideService(SqlClient.SqlClient, faultObserved),
+          );
+          yield* sql`CREATE TRIGGER reject_capture BEFORE INSERT ON usage_outbox BEGIN SELECT RAISE(ABORT, 'injected_capture_failure'); END`;
+          if (event.type !== "turn.usage.completed") throw new Error("Expected usage fixture");
+          const usage = event.payload;
+          const completion = (id: string, tokens: string) =>
+            decodeEvent({
+              ...event,
+              eventId: id,
+              payload: {
+                ...usage,
+                nativeTurnId: id,
+                models: [
+                  {
+                    ...usage.models[0],
+                    components: {
+                      ...usage.models[0]!.components,
+                      uncachedInput: tokens,
+                      output: "0",
+                      inclusiveTotal: tokens,
+                    },
+                  },
+                ],
+              },
+            });
+          yield* PubSub.publish(hub, completion("rejected-100", "100"));
+          yield* Queue.take(rejected);
+          yield* PubSub.publish(hub, completion("later-130", "130"));
+          for (let attempt = 1; attempt < failures; attempt++) {
+            yield* TestClock.adjust(`${2 ** (attempt - 1)} seconds`);
+            yield* Queue.take(rejected);
+          }
+          assert.deepEqual(yield* sql`SELECT identity FROM usage_outbox`, []);
+          yield* sql`DROP TRIGGER reject_capture`;
+          yield* TestClock.adjust(`${2 ** (failures - 1)} seconds`);
+          const sent = yield* Queue.unbounded<MateLinkUp>();
+          const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+          yield* Effect.forkScoped(lane.run);
+          if (state.type !== "state") throw new Error("Expected state fixture");
+          yield* lane.state(state);
+          const first = yield* Queue.take(sent);
+          if (first.type !== "usage-facts") throw new Error("Expected immutable usage facts");
+          assert.equal(first.facts[0]!.nativeId, "rejected-100");
+          const facts = [...first.facts];
+          yield* lane.receive({
+            type: "usage-ack",
+            batchId: first.batchId,
+            accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+          });
+          if (facts.length < 2) {
+            const next = yield* Queue.take(sent);
+            if (next.type !== "usage-facts") throw new Error("Expected later turn");
+            facts.push(...next.facts);
+          }
+          assert.deepEqual(
+            facts.map((fact) => fact.nativeId),
+            ["rejected-100", "later-130"],
+          );
+          assert.equal(
+            facts.reduce(
+              (sum, fact) => sum + BigInt(fact.models[0]!.components.inclusiveTotal!),
+              0n,
+            ),
+            230n,
+          );
+        }).pipe(
+          Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+          Effect.provideService(ServerConfig, config),
+          Effect.provideService(ZeropsOrgRead, org),
+        ),
+    );
+  it.effect("a rejected conflicting fact does not stop the later 130-token turn", () =>
     Effect.gen(function* () {
-      const { watch, attached } = silentWatch();
-      const subject = yield* mate({ watch });
-      yield* eventually(
-        Effect.sync(() => attached.some((entry) => entry.directory === subject.transcripts)),
-        Boolean,
-      );
-      yield* subject.write("session.jsonl", response("one", 120));
-      yield* subject.emit("turn.completed");
-      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-    }),
-  ),
-);
-
-it.live(
-  "a transcript directory created after startup is captured after the first session starts",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const events = inotify();
-        const subject = yield* mate({ watch: events.watch, projects: false });
-        const home = NodePath.dirname(subject.transcripts);
-        yield* eventually(
-          Effect.sync(() => events.watching(home)),
-          Boolean,
-        );
-        // Startup's own scans settle; nothing else looks at the disk until a watch reports.
-        yield* Effect.sleep("300 millis");
-        const one = response("one", 120);
-        yield* subject.write("session.jsonl", one);
-        const file = NodePath.join(subject.transcripts, "project", "session.jsonl");
-        events.touch(subject.transcripts);
-        // The directory's own watch is attached as its parent sees it appear, before any scan.
-        assert.isTrue(events.watching(subject.transcripts));
-        assert.isFalse(events.watching(home));
-        yield* subject.emit("session.started");
-        events.touch(file);
-        assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-        yield* subject.write("session.jsonl", one + response("two", 30));
-        events.touch(file);
-        assert.equal(yield* eventually(subject.total, (total) => total === 150n), 150n);
-      }),
-    ),
-);
-
-it.live("a watcher that errors is replaced", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { watch, attached } = silentWatch();
-      const subject = yield* mate({ watch, retry: { baseMs: 10, maxMs: 100 } });
-      const ofTranscripts = Effect.sync(() =>
-        attached.filter((entry) => entry.directory === subject.transcripts),
-      );
-      const [first] = yield* eventually(ofTranscripts, (entries) => entries.length === 1);
-      first!.failed();
-      const after = yield* eventually(ofTranscripts, (entries) => entries.length === 2);
-      assert.equal(after.length, 2);
-      assert.isTrue(first!.closed);
-      assert.isFalse(after[1]!.closed);
-    }),
-  ),
-);
-
-it.live("a watcher that keeps erroring is retried with growing delays, never in a loop", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const attached: string[] = [];
-      const watch: WatchDirectory = (directory, { failed }) => {
-        attached.push(directory);
-        queueMicrotask(failed);
-        return () => {};
-      };
-      const subject = yield* mate({ watch, retry: { baseMs: 40, maxMs: 1_000 } });
-      yield* Effect.sleep("450 millis");
-      const attempts = attached.filter((directory) => directory === subject.transcripts).length;
-      // 40 + 80 + 160 ms of backoff: four attaches in the window; a tight loop makes hundreds.
-      assert.isAtLeast(attempts, 2);
-      assert.isAtMost(attempts, 6);
-    }),
-  ),
-);
-
-it.live("capture waits for HQ to name the org and never asks Zerops for it", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { watch } = silentWatch();
-      const { orgId: _, ...older } = state.usage!;
-      const subject = yield* mate({ watch, offer: { ...state, usage: older } });
-      yield* subject.emit("session.started");
-      yield* Effect.sleep("200 millis");
-      assert.lengthOf(yield* subject.origins, 0);
-      yield* subject.offer(state);
-      yield* eventually(subject.origins, (origins) => origins.length > 0);
-      yield* subject.write("session.jsonl", response("one", 120));
-      yield* subject.emit("turn.completed");
-      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-      assert.isTrue((yield* subject.origins).every((origin) => origin.orgId === "org"));
-    }),
-  ),
-);
-
-it.live(
-  "capture starts at HQ's first offer: what transcripts held before it is never counted",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { watch } = silentWatch();
-        const { orgId: _, ...older } = state.usage!;
-        const subject = yield* mate({ watch, offer: { ...state, usage: older } });
-        const before = response("before", 500);
-        yield* subject.write("session.jsonl", before);
-        yield* subject.offer(state);
-        yield* eventually(subject.origins, (origins) => origins.length > 0);
-        yield* subject.emit("turn.completed");
-        yield* Effect.sleep("200 millis");
-        yield* subject.write("session.jsonl", before + response("after", 120));
-        yield* subject.emit("turn.completed");
-        assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-        yield* Effect.sleep("200 millis");
-        assert.equal(yield* subject.total, 120n);
-      }),
-    ),
-);
-
-it.live("a Mate registered again starts a new ledger from that moment and keeps capturing", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { watch } = silentWatch();
-      const subject = yield* mate({ watch });
-      yield* eventually(subject.origins, (origins) => origins.length > 0);
-      const first = (yield* subject.hellos)[0]!;
-      const before = response("before", 500);
-      yield* subject.write("session.jsonl", before);
-      yield* subject.emit("turn.completed");
-      yield* eventually(subject.total, (total) => total === 500n);
-      yield* subject.reconnect({ ...state, usage: { ...state.usage!, mateId: "mate-2" } });
-      const hellos = yield* eventually(subject.hellos, (sent) =>
-        sent.some((hello) => hello.ledgerId !== first.ledgerId),
-      );
-      const renewed = hellos.find((hello) => hello.ledgerId !== first.ledgerId)!;
-      assert.isTrue(renewed.origins.every((origin) => origin.mateId === "mate-2"));
-      yield* eventually(subject.origins, (origins) => origins.length > 0);
-      yield* subject.emit("turn.completed");
-      yield* Effect.sleep("200 millis");
-      yield* subject.write("session.jsonl", before + response("after", 120));
-      yield* subject.emit("turn.completed");
-      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-      assert.isTrue((yield* subject.origins).every((origin) => origin.mateId === "mate-2"));
-    }),
-  ),
-);
-
-for (const code of ["ledger_rollback_conflict", "origin_lineage_conflict"])
-  it.live(`HQ refusing the ledger (${code}) starts a new one and capture goes on`, () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { watch } = silentWatch();
-        const subject = yield* mate({ watch });
-        const [first] = yield* eventually(subject.hellos, (sent) => sent.length > 0);
-        const before = response("before", 500);
-        yield* subject.write("session.jsonl", before);
-        yield* subject.emit("turn.completed");
-        yield* eventually(subject.total, (total) => total === 500n);
-        yield* subject.answer({
-          type: "usage-error",
-          ledgerId: first!.ledgerId,
-          code,
-          disposition: "refused",
+      const sql = yield* SqlClient.SqlClient;
+      const hub = yield* PubSub.unbounded<SpiEvent>();
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+      const link = yield* makeUsageLink.pipe(Effect.provide(bus));
+      if (event.type !== "turn.usage.completed" || state.type !== "state")
+        throw new Error("Expected fixtures");
+      const completion = (id: string, tokens: string) =>
+        decodeEvent({
+          ...event,
+          eventId: `${id}-${tokens}`,
+          payload: {
+            ...event.payload,
+            nativeTurnId: id,
+            models: [
+              {
+                ...event.payload.models[0],
+                components: {
+                  ...event.payload.models[0]!.components,
+                  uncachedInput: tokens,
+                  output: "0",
+                  inclusiveTotal: tokens,
+                },
+              },
+            ],
+          },
         });
-        const hellos = yield* eventually(subject.hellos, (sent) =>
-          sent.some((hello) => hello.ledgerId !== first!.ledgerId),
-        );
-        const renewed = hellos.find((hello) => hello.ledgerId !== first!.ledgerId)!;
-        assert.equal(renewed.highWater, "0");
-        assert.notInclude(
-          renewed.origins.map((origin) => origin.originId),
-          first!.origins[0]?.originId,
-        );
-        // The refused ledger's journal is gone: nothing grows behind a stopped lane.
-        assert.equal(yield* subject.total, 0n);
-        yield* eventually(subject.origins, (origins) => origins.length > 0);
-        yield* subject.emit("turn.completed");
-        yield* Effect.sleep("200 millis");
-        yield* subject.write("session.jsonl", before + response("after", 120));
-        yield* subject.emit("turn.completed");
-        assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-      }),
+      yield* PubSub.publish(hub, completion("first", "100"));
+      yield* PubSub.publish(hub, completion("first", "150"));
+      yield* PubSub.publish(hub, completion("later", "130"));
+      yield* TestClock.adjust("0 seconds");
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 2);
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      yield* lane.state(state);
+      const frame = yield* Queue.take(sent);
+      if (frame.type !== "usage-facts") throw new Error("Expected known usage");
+      assert.deepEqual(
+        frame.facts.map((fact) => fact.models[0]!.components.inclusiveTotal),
+        ["100", "130"],
+      );
+    }).pipe(
+      Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
     ),
   );
-
-it.live("Grok, OpenCode and Antigravity are captured while Cursor is still unsupported", () =>
-  Effect.scoped(
+  it.effect("an ACK delete failure retains both turns and recovers on the same lane", () =>
     Effect.gen(function* () {
-      const { watch } = silentWatch();
-      const subject = yield* mate({ watch });
-      yield* eventually(subject.origins, (origins) => origins.length > 0);
-      yield* subject.emit("turn.completed");
-      yield* Effect.sleep("200 millis");
-      const now = (yield* Clock.currentTimeMillis) + 1000;
-      yield* Effect.tryPromise(async () => {
-        const grok = NodePath.join(subject.root, "grok", "sessions", "grok-session");
-        await NodeFSP.mkdir(grok, { recursive: true });
-        await NodeFSP.writeFile(
-          NodePath.join(grok, "updates.jsonl"),
-          usageCanonical({
-            params: {
-              sessionId: "grok-session",
-              update: {
-                sessionUpdate: "turn_completed",
-                prompt_id: "prompt",
-                usage: { inputTokens: 10, outputTokens: 2, cachedReadTokens: 0 },
-              },
-              _meta: { agentTimestampMs: now },
-            },
-          }) + "\n",
-        );
-        const opencode = NodePath.join(subject.root, "opencode");
-        await NodeFSP.mkdir(opencode, { recursive: true });
-        const messages = new NodeSqlite.DatabaseSync(NodePath.join(opencode, "opencode.db"));
-        messages.exec("CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)");
-        messages.prepare("INSERT INTO message VALUES (?, ?, ?)").run(
-          "msg",
-          "session",
-          usageCanonical({
-            role: "assistant",
-            modelID: "model",
-            time: { created: now },
-            tokens: { input: 10, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
-          }),
-        );
-        messages.close();
-        const antigravity = NodePath.join(subject.root, "antigravity", "conversations");
-        await NodeFSP.mkdir(antigravity, { recursive: true });
-        const conversation = new NodeSqlite.DatabaseSync(NodePath.join(antigravity, "c.db"));
-        conversation.exec("CREATE TABLE steps (idx INTEGER, metadata BLOB)");
-        conversation
-          .prepare("INSERT INTO steps VALUES (?, ?)")
-          .run(
-            0,
-            new Uint8Array([
-              ...protoBytes(9, [...protoNumber(2, 10), ...protoText(11, "response")]),
-              ...protoBytes(8, protoNumber(1, Math.ceil(now / 1000))),
-            ]),
-          );
-        conversation.close();
+      const sql = yield* SqlClient.SqlClient;
+      const rejected = yield* Queue.unbounded<void>();
+      const withTransaction: typeof sql.withTransaction = (effect) =>
+        sql.withTransaction(effect).pipe(Effect.tapError(() => Queue.offer(rejected, undefined)));
+      const observed = new Proxy(sql, {
+        get: (target, property, receiver) =>
+          property === "withTransaction"
+            ? withTransaction
+            : Reflect.get(target, property, receiver),
       });
-      yield* subject.emit("turn.completed");
-      const captured = yield* eventually(subject.providers, (found) => found.size >= 3);
-      assert.sameMembers([...captured], ["grok", "opencode", "antigravity"]);
-      const coverage = new Map(
-        (yield* subject.origins).map((origin) => [origin.provider, origin.coverage.state]),
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.empty));
+      const link = yield* makeUsageLink.pipe(
+        Effect.provide(bus),
+        Effect.provideService(SqlClient.SqlClient, observed),
       );
-      assert.equal(coverage.get("cursor"), "unsupported");
-      for (const provider of ["grok", "opencode", "antigravity"] as const)
-        assert.equal(coverage.get(provider), "partial");
-    }),
-  ),
-);
-
-it.live("a ledger that cannot be read at the offer is asked again later, never replaced", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const { watch } = silentWatch();
-      const subject = yield* mate({ watch, beginRetry: { baseMs: 50, maxMs: 200 } });
-      const [first] = yield* eventually(subject.hellos, (sent) => sent.length > 0);
-      yield* eventually(subject.origins, (origins) => origins.length > 0);
-      yield* subject.write("session.jsonl", response("kept", 120));
-      yield* subject.emit("turn.completed");
-      assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-      // The ledger cannot be read when HQ offers capture again (another process mid-write).
-      const raw = new NodeSqlite.DatabaseSync(subject.database);
-      const held = raw.prepare("SELECT value FROM usage_meta WHERE id=1").get()!["value"];
-      raw.prepare("UPDATE usage_meta SET value='damaged' WHERE id=1").run();
-      yield* subject.reconnect(state);
-      assert.lengthOf(yield* subject.hellos, 1);
-      raw.prepare("UPDATE usage_meta SET value=? WHERE id=1").run(String(held));
-      raw.close();
-      const hellos = yield* eventually(
-        Effect.andThen(subject.ping, subject.hellos),
-        (sent) => sent.length > 1,
-      );
-      assert.isTrue(hellos.every((hello) => hello.ledgerId === first!.ledgerId));
-      assert.equal(yield* subject.total, 120n);
-    }),
-  ),
-);
+      const box = yield* makeUsageOutbox;
+      if (event.type !== "turn.usage.completed" || state.type !== "state")
+        throw new Error("Expected fixtures");
+      const completion = (id: string, tokens: string) => ({
+        ...event.payload,
+        provider: "codex" as const,
+        at: event.createdAt,
+        nativeTurnId: id,
+        models: [
+          {
+            ...event.payload.models[0]!,
+            components: {
+              ...event.payload.models[0]!.components,
+              uncachedInput: tokens,
+              output: "0",
+              inclusiveTotal: tokens,
+            },
+          },
+        ],
+      });
+      yield* box.record(completion("first-100", "100"));
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      yield* lane.state(state);
+      const first = yield* Queue.take(sent);
+      if (first.type !== "usage-facts") throw new Error("Expected first turn");
+      yield* box.record(completion("later-130", "130"));
+      yield* sql`CREATE TRIGGER reject_ack BEFORE DELETE ON usage_outbox BEGIN SELECT RAISE(ABORT, 'injected_ack_failure'); END`;
+      const ack = {
+        type: "usage-ack" as const,
+        batchId: first.batchId,
+        accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+      };
+      yield* lane.receive(ack);
+      yield* Queue.take(rejected);
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 2);
+      yield* sql`DROP TRIGGER reject_ack`;
+      yield* lane.ping;
+      yield* lane.receive(ack);
+      yield* TestClock.adjust("1 second");
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 1);
+      const next = yield* Queue.take(sent);
+      if (next.type !== "usage-facts") throw new Error("Expected later turn");
+      assert.equal(next.facts[0]!.nativeId, "later-130");
+      assert.equal(next.facts[0]!.models[0]!.components.inclusiveTotal, "130");
+      yield* lane.receive({
+        type: "usage-ack",
+        batchId: next.batchId,
+        accepted: next.facts.map(({ originId, factId }) => ({ originId, factId })),
+      });
+      yield* TestClock.adjust("0 seconds");
+      assert.isUndefined(yield* box.batch);
+    }).pipe(
+      Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
+    ),
+  );
+  it.effect(
+    "completion capture is subscribed before the first turn and survives loss of its HQ acknowledgement",
+    () =>
+      Effect.gen(function* () {
+        const hub = yield* PubSub.unbounded<SpiEvent>();
+        const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+        const link = yield* makeUsageLink.pipe(Effect.provide(bus));
+        // There is no connection or report consumer when the provider completes.
+        yield* PubSub.publish(hub, event);
+        const sent = yield* Queue.unbounded<MateLinkUp>();
+        const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+        const running = yield* Effect.forkScoped(lane.run);
+        if (state.type !== "state") throw new Error("Expected state fixture");
+        yield* lane.state(state);
+        const first = yield* Queue.take(sent);
+        if (first.type !== "usage-facts") throw new Error("Expected immutable usage facts");
+        assert.equal(first.facts.length, 1);
+        assert.equal(first.facts[0]!.models[0]!.components.inclusiveTotal, "30");
+        const reconnect = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+        yield* Effect.forkScoped(reconnect.run);
+        yield* reconnect.state(state);
+        const repeated = yield* Queue.take(sent);
+        assert.deepEqual(repeated, first);
+        yield* lane.receive({
+          type: "usage-ack",
+          batchId: first.batchId,
+          accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+        });
+        const box = yield* makeUsageOutbox;
+        assert.isDefined(yield* box.batch);
+        yield* reconnect.receive({
+          type: "usage-ack",
+          batchId: first.batchId,
+          accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+        });
+        yield* TestClock.adjust("0 seconds");
+        assert.isUndefined(yield* box.batch);
+        yield* Fiber.interrupt(running);
+      }).pipe(
+        Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+        Effect.provideService(ServerConfig, config),
+        Effect.provideService(ZeropsOrgRead, org),
+      ),
+  );
+});

@@ -219,6 +219,46 @@ it("switches the conversation's model and sends the new header", async () => {
   }
 });
 
+// Catches an engine fake whose settings a client cannot see take, or that lets a started
+// conversation move to another driver.
+it("applies a model's options, a runtime mode and an agent pick, and refuses another driver once the conversation ran", async () => {
+  const r = await connect();
+  try {
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    const call = async (id: string, tag: string, payload: Record<string, unknown>) =>
+      decodeCall((await r.call(id, tag, { ...conversation, commandId: id, ...payload })).value);
+    const effort = [{ id: "reasoningEffort", value: "high" }];
+    expect(
+      (await call("o", WS_METHODS.engineSwitchModel, { model: "gpt-5.4", options: effort }))._tag,
+    ).toBe("Accepted");
+    expect(
+      (await call("m", WS_METHODS.engineSetRuntimeMode, { runtimeMode: "approval-required" }))._tag,
+    ).toBe("Accepted");
+    await r.until(() =>
+      r
+        .stream("c")
+        .some(
+          (frame) =>
+            frame.type === "changes" &&
+            frame.header?.runtimeMode === "approval-required" &&
+            JSON.stringify(frame.header.agent?.options) === JSON.stringify(effort),
+        ),
+    );
+    expect(
+      (await call("a", WS_METHODS.engineAssignAgent, { instanceId: "claudeAgent", model: "opus" }))
+        ._tag,
+    ).toBe("Accepted");
+    r.wire.engine.personTurn("Deploy the api");
+    const refused = await call("b", WS_METHODS.engineAssignAgent, {
+      instanceId: "codex",
+      model: "gpt-5.4",
+    });
+    expect(refused._tag === "Rejected" && refused.rejection.reason).toBe("agent-locked");
+  } finally {
+    await r.close();
+  }
+});
+
 const decodePage = Schema.decodeUnknownSync(EnginePage);
 
 // Catches a fake that hands the client every record at once, so paging is never exercised.
@@ -279,6 +319,56 @@ it("opens on a window of the newest run groups, the rest a page away", async () 
       runs: [{ ordinal: 1 }],
       items: [{ kind: "person", text: "Earlier words" }],
       window: { oldestOrdinal: 1, earlier: false },
+    });
+  } finally {
+    await r.close();
+  }
+});
+
+it("serves a long run from its start or its outcome alone, its summary counting its calls", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    engine.runPageItems = 2;
+    const run = engine.personRun("Bring it up");
+    const call = (step: string, tool: string, patch: Record<string, unknown> = {}) =>
+      engine.item(run, {
+        kind: "call",
+        step,
+        tool: { name: tool },
+        words: tool,
+        state: "done",
+        endedAt: null,
+        ...patch,
+      });
+    call("command", "Bash");
+    call("edit", "File change", { shows: { files: [{ path: "a.ts" }, { path: "b.ts" }] } });
+    call("edit", "File change", { shows: { files: [{ path: "a.ts" }] } });
+    call("mcp", "zerops_deploy", { result: { toolName: "zerops_deploy" } });
+    call("mcp", "zerops_knowledge");
+    engine.end(run);
+    const read = async (id: string, input: Record<string, unknown>) =>
+      decodePage(
+        (await r.call(id, WS_METHODS.engineReadRun, { ...conversation, runId: run, ...input }))
+          .value,
+      );
+    const first = await read("f", { afterSeq: 0 });
+    expect(first).toMatchObject({
+      items: [{ kind: "person" }, { kind: "call", step: "command" }],
+      more: true,
+    });
+    expect(await read("o", { afterSeq: 0, only: "outcome" })).toMatchObject({
+      items: [{ kind: "call", tool: { name: "zerops_deploy" } }],
+      more: false,
+    });
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    const [snapshot] = r.stream("c");
+    expect(snapshot?.type === "snapshot" && snapshot.runs[0]?.summary).toMatchObject({
+      items: 6,
+      calls: { command: 1, edit: 2, mcp: 2 },
+      tools: { zerops_deploy: 1, zerops_knowledge: 1 },
+      edited: 2,
     });
   } finally {
     await r.close();
@@ -472,6 +562,30 @@ it("serves a call's line, facts and result, a long result cut and read whole, it
       text: "Deploying api…\nDeployed.",
     });
     expect(await part("d", "data")).toEqual({ _tag: "Missing" });
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches a fake that stops whatever runs, so a Stop aimed at an ended card never goes red.
+it("stops the run a Stop names, and refuses one that ended, as the engine does", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    const first = engine.personRun("Deploy the api");
+    engine.end(first, { kind: "completed" });
+    const continued = engine.startRun();
+    const stop = async (id: string, runId: string) =>
+      decodeCall(
+        (await r.call(id, WS_METHODS.engineStop, { ...conversation, commandId: id, runId })).value,
+      );
+    expect(await stop("s1", first)).toMatchObject({
+      _tag: "Rejected",
+      rejection: { reason: "run-ended" },
+    });
+    expect(engine.runs.get(continued)?.state).toBe("running");
+    expect(await stop("s2", continued)).toMatchObject({ _tag: "Accepted", runId: continued });
+    expect(engine.runs.get(continued)?.state).toBe("ended");
   } finally {
     await r.close();
   }

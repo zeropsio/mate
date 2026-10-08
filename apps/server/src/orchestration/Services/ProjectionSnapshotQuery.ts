@@ -158,6 +158,11 @@ export interface ProjectionSnapshotQueryShape {
     workspaceRoot: string,
   ) => Effect.Effect<Option.Option<OrchestrationProject>, ProjectionRepositoryError>;
 
+  /** Read the persisted media root without resolving Git or repository metadata. */
+  readonly getProjectWorkspaceRootById: (
+    projectId: ProjectId,
+  ) => Effect.Effect<Option.Option<string>, ProjectionRepositoryError>;
+
   /**
    * Read a single active project shell row by id.
    */

@@ -90,3 +90,6 @@ describe("ZeropsAccountData on mobile", () => {
 vi.mock("./MateImagesProvider", () => ({
   MateImages: ({ children }: { readonly children: ReactNode }) => children,
 }));
+vi.mock("./MateEngineHostProvider", () => ({
+  MateEngineHost: ({ children }: { readonly children: ReactNode }) => children,
+}));

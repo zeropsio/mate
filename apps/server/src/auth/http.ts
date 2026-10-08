@@ -27,6 +27,7 @@ import type { AuthEnvironmentScope } from "@t3tools/contracts";
 import { parseAllowedOAuthScope } from "@t3tools/shared/oauthScope";
 import { causeErrorTag } from "@t3tools/shared/observability";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
 import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as HttpEffect from "effect/http/HttpEffect";
@@ -43,6 +44,12 @@ const CREDENTIAL_RESPONSE_HEADERS = {
   "cache-control": "no-store",
   pragma: "no-cache",
 } as const;
+
+/** The authenticated request starts before session lookup and proof verification. */
+export class EnvironmentHttpRequestStartedAt extends Context.Reference<number | null>(
+  "mate/auth/EnvironmentHttpRequestStartedAt",
+  { defaultValue: () => null },
+) {}
 
 const appendCredentialResponseHeaders = HttpEffect.appendPreResponseHandler((_request, response) =>
   Effect.succeed(HttpServerResponse.setHeaders(response, CREDENTIAL_RESPONSE_HEADERS)),
@@ -199,6 +206,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     return (httpEffect) =>
       Effect.gen(function* () {
+        const started = performance.now();
         const request = yield* HttpServerRequest.HttpServerRequest;
         const session = yield* serverAuth.authenticateHttpRequest(request).pipe(
           Effect.catchIf(EnvironmentAuth.isServerAuthCredentialError, (error) =>
@@ -209,6 +217,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
           ),
         );
         return yield* httpEffect.pipe(
+          Effect.provideService(EnvironmentHttpRequestStartedAt, started),
           Effect.provideService(EnvironmentAuthenticatedPrincipal, {
             ...session,
             scopes: new Set(session.scopes),

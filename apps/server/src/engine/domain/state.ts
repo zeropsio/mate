@@ -14,6 +14,8 @@ import type {
   ItemBody,
   ItemId,
   Principal,
+  ProviderInteractionMode,
+  ProviderOptionSelection,
   RequestAsk,
   RequestId,
   RotateSessionReason,
@@ -22,6 +24,7 @@ import type {
   RunId,
   RunState,
   RunTrigger,
+  RuntimeMode,
   SessionCapabilities,
   SessionCloseReason,
   SessionId,
@@ -71,6 +74,8 @@ export interface RunRecord {
   readonly prepare: "none" | "asked" | "done";
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;
+  /** The turn's interaction mode: `plan` asks the agent for a plan. */
+  readonly interactionMode: ProviderInteractionMode;
 }
 
 export type PersonBody = Extract<ItemBody, { readonly kind: "person" }>;
@@ -134,6 +139,10 @@ export interface SessionRecord {
   readonly instanceId: string | null;
   /** The model the driver reports, in its own spelling. */
   readonly model: string | null;
+  /** The model options it opened with; null for one opened before the engine said. */
+  readonly options: ReadonlyArray<ProviderOptionSelection> | null;
+  /** The runtime mode it opened with; null for one opened before the engine said. */
+  readonly runtimeMode: RuntimeMode | null;
   readonly nativeRef: string | null;
   readonly capabilities: SessionCapabilities;
   /** Closes asked of it: one an idle check kept is asked again later as a new effect. */
@@ -158,6 +167,10 @@ export interface ConversationState {
   /** The agent the conversation belongs to, once assigned. */
   readonly agent: ConversationAgent | null;
   readonly model: string | null;
+  /** How freely the agent works, once a person set it; null: the workspace's mode. */
+  readonly runtimeMode: RuntimeMode | null;
+  /** The interaction mode of the person's latest message; null before one. */
+  readonly interactionMode: ProviderInteractionMode | null;
   /**
    * The generation of the conversation's provider thread: bumped when the conversation moves to
    * another instance or driver, whose saved resume state does not carry over, so its next session
@@ -224,6 +237,8 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   archived: false,
   agent: null,
   model: null,
+  runtimeMode: null,
+  interactionMode: null,
   threadGeneration: 1,
   nextRunOrdinal: 1,
   runs: {},

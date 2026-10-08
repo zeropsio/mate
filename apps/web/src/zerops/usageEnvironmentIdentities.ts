@@ -1,4 +1,4 @@
-/** Current-owner attribution and stable HQ app identity for sampled agent usage. */
+/** Current-owner attribution and stable HQ app identity for current Mate labels and quota presentation. */
 import type { HqMateOwner, HqProjectPeople, HqNavigationRead } from "@t3tools/client-runtime/data";
 import { hasMate, projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -33,7 +33,7 @@ export interface UsageEnvironmentIdentity {
 export type UsageEnvironmentIdentities = ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>;
 
 /** The owner as the Mate's corner badge draws them, keyed by person; null when HQ names nobody. */
-function usageOwner(
+export function usageEnvironmentOwner(
   owner: HqMateOwner | null | undefined,
   viewerUserId: string | null,
 ): UsageEnvironmentOwner | null {
@@ -64,7 +64,7 @@ export function usageEnvironmentIdentities(input: {
             ? "known"
             : "unknown",
       projectName: candidate.project.hq?.appName?.trim() || null,
-      owner: usageOwner(input.owners[candidate.project.id]?.owner, input.viewerUserId),
+      owner: usageEnvironmentOwner(input.owners[candidate.project.id]?.owner, input.viewerUserId),
     });
   }
   return identities;

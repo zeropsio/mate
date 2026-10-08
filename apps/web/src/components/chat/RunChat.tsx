@@ -148,6 +148,13 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
+import {
+  heldLines,
+  pageReached,
+  withPagedEffort,
+  type ScrollPages,
+} from "~/zerops/engineCardPaging.logic";
+import { useEngineCardPaging } from "~/zerops/useEngineCardPaging";
 import { foldWork } from "./foldWork";
 import {
   type EaseBudget,
@@ -209,6 +216,8 @@ import {
   operationNowWords,
   reachesEarlier,
   runCardShows,
+  chooseLiveRunFold,
+  liveRunFold,
   runFoldOf,
   setRunFold,
   severalCallsWords,
@@ -1349,15 +1358,19 @@ const NO_PATHS: ReadonlySet<string> = new Set();
 const ResultPicturesContext = createContext<ReadonlySet<string>>(NO_PATHS);
 
 /** The pictures a step looked at, as themselves: small, each one opening the picture viewer. */
-function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
+function StepPictures({ step }: { readonly step: WorkStep }) {
   const inResult = use(ResultPicturesContext);
   const { threadRef, onImageExpand } = use(TimelineRowCtx);
-  const shown = paths.filter((path) => !inResult.has(path));
+  const shown = step.entries.flatMap((entry) =>
+    stepOf(entry, undefined, false)
+      .images.filter((path) => !inResult.has(path))
+      .map((path) => ({ key: `picture:${entry.id}:${path}`, path })),
+  );
   if (shown.length === 0 || threadRef === null) return null;
   return (
     <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
-      {shown.map((path) => (
-        <StepPicture key={path} onOpen={onImageExpand} path={path} threadRef={threadRef} />
+      {shown.map(({ key, path }) => (
+        <StepPicture key={key} onOpen={onImageExpand} path={path} threadRef={threadRef} />
       ))}
     </span>
   );
@@ -1627,7 +1640,7 @@ function StepBubble({
           />
         </div>
       ) : null}
-      <StepPictures paths={step.images} />
+      <StepPictures step={step} />
       {disclosure.open && outputs.length > 0 ? (
         <div
           className={cn("grid gap-2 px-3 pb-2", rises(disclosure.made))}
@@ -3120,7 +3133,7 @@ function NowLine({
   readonly answering: boolean;
   /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
   readonly outcome: OutcomeModel | null;
-  /** What stands in the right column once the run is over. */
+  /** A control in the right column, beside the clock while the run is live. */
   readonly end?: ReactNode;
   /**
    * The person watched the run end here: its worked line takes the working
@@ -3196,7 +3209,14 @@ function NowLine({
           </span>
         ) : null}
       </div>
-      {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
+      {status.live ? (
+        <span className="flex items-center gap-3">
+          <RunTicker status={status} />
+          {end}
+        </span>
+      ) : (
+        (end ?? <span />)
+      )}
       {/* A run that broke off ends on why, under its line, in the words the
           server gave it: never a stack. Watched as it ends, its room opens
           as the line settles — never a jump of the card. */}
@@ -3462,6 +3482,7 @@ function fillerKey(filler: SlotFiller): string {
 
 function LiveSlot({
   ref,
+  folded,
   slot,
   live,
   items,
@@ -3473,6 +3494,7 @@ function LiveSlot({
   motionRef,
 }: {
   readonly ref: Ref<HTMLDivElement>;
+  readonly folded: boolean;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3636,6 +3658,8 @@ function LiveSlot({
     <div
       ref={ref}
       className="run-slot"
+      hidden={folded}
+      style={folded ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
       data-work-line={status.face}
@@ -3724,6 +3748,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
   const [carriedOpen] = useState(() => new Map<string, Carried>());
   const ctx = use(TimelineRowCtx);
+  // An engine run too long to read whole: its effort from its summary, its lines a page at a time.
+  const paged = useEngineCardPaging(row.turnId ?? null);
+  const paging = paged?.paging ?? null;
+  const outcome = useMemo(() => withPagedEffort(row.outcome, paging), [row.outcome, paging]);
+  const rowItems = useMemo(() => heldLines(row.items, paging), [row.items, paging]);
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
   const aboveRef = useRef<HTMLDivElement>(null);
@@ -3780,6 +3809,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
   const shows = runCardShows(settled, fold);
   const folded = shows.toggle === "show";
+  const liveFolded = fold === "folded";
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
   const above = shows.work === "above";
@@ -3884,17 +3914,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   useLayoutEffect(() => {
     // Each landing once: it stays the last one heard until the next.
     if (landing === null) return;
-    if (prefersReducedMotion()) {
-      for (const key of landing.from.keys()) {
-        // Faded from its first frame: never a frame at full opacity first.
-        rowByKey(aboveRef.current, key)?.animate([{ opacity: 0 }, { opacity: 1 }], {
-          duration: 200,
-          easing: "ease",
-          fill: "backwards",
-        });
-      }
-      return;
-    }
+    if (prefersReducedMotion()) return;
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
     // A history that follows its foot follows it to where the landed line
     // ends; a move up the person made just before is read first, and stops it.
@@ -3970,8 +3990,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // left out: it folds in once the call lands.
   const history =
     holds.size === 0
-      ? row.items
-      : row.items.flatMap((item): RecordItem[] => {
+      ? rowItems
+      : rowItems.flatMap((item): RecordItem[] => {
           if (holds.has(item.key)) return [];
           if (item.kind !== "step" || item.parts === undefined) return [item];
           if (!item.parts.some((part) => holds.has(part.key))) return [item];
@@ -4013,9 +4033,35 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         eases={slotted && !ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
+        {...(paged === null ? {} : { pages: paged.pages })}
       />
     );
   const settledOutcome = settled ? row.outcome : null;
+  const toggleWork = () => {
+    hold(folded);
+    // Watched to its end and still open over its line: it
+    // folds into the line as a run settling does.
+    if (fold === "watched") {
+      foldNow();
+      return;
+    }
+    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+  };
+  // "Show work" pressed before its lines were read: it opens once their first page is held, or
+  // stays closed if the read fails.
+  const openingRef = useRef<{ reading: boolean } | null>(null);
+  const openWhenHeld = useEffectEvent(() => toggleWork());
+  useLayoutEffect(() => {
+    const opening = openingRef.current;
+    if (opening === null || paging === null) return;
+    if (paging.holdsLines) {
+      openingRef.current = null;
+      openWhenHeld();
+    } else if (paging.reading !== null) opening.reading = true;
+    else if (opening.reading) openingRef.current = null;
+  }, [paging]);
+
   // What the result's strip draws, as it said (`resultStripFiles`); the first six until then.
   const stripGuess = useMemo(
     () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(allResultPictures(settledOutcome))),
@@ -4037,7 +4083,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           // commit the fold measures, the history jumped to its own height first.
           data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
           style={
-            { "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})` } as CSSProperties
+            {
+              "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
+            } as CSSProperties
           }
         >
           {above && scroll !== null ? (
@@ -4045,6 +4093,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="above"
               ref={aboveRef}
               className="run-above"
+              hidden={row.live && liveFolded}
+              style={row.live && liveFolded ? { display: "none" } : undefined}
               data-folding={fold === "folding" ? "" : undefined}
             >
               {scroll}
@@ -4056,27 +4106,30 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <NowLine
               key="line"
               answering={false}
-              outcome={row.outcome}
+              outcome={outcome}
               settledHere={watchedLive}
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.
                 shows.toggle !== null &&
-                opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
+                ((paging?.hasWork ?? false) ||
+                  opensOnto({ control: "work", lines: chatLineCount(row.items) })) ? (
                   <WorkToggle
                     onToggle={() => {
-                      hold(folded);
-                      // Watched to its end and still open over its line: it
-                      // folds into the line as a run settling does.
-                      if (fold === "watched") {
-                        foldNow();
+                      // Its lines not read yet: it opens once their first page is held.
+                      if (folded && paged !== null && !paged.paging.holdsLines) {
+                        if (openingRef.current !== null) return;
+                        hold(folded);
+                        openingRef.current = { reading: false };
+                        paged.pages.read("later");
                         return;
                       }
-                      fromHeightRef.current =
-                        feedRef.current?.getBoundingClientRect().height ?? null;
-                      setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                      toggleWork();
                     }}
                     open={!folded}
+                    {...(paged !== null && !paged.paging.holdsLines
+                      ? { onIntent: () => paged.pages.read("later") }
+                      : {})}
                   />
                 ) : null
               }
@@ -4086,6 +4139,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           ) : (
             <LiveSlot
               key="slot"
+              folded={liveFolded}
               ref={slotRef}
               items={row.items}
               live={model.live}
@@ -4098,6 +4152,34 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               motionRef={motionRef}
             />
           )}
+          {row.live && row.status !== null ? (
+            liveFolded ? (
+              <NowLine
+                key="live-summary"
+                answering={row.answering}
+                outcome={null}
+                now={now}
+                status={row.status}
+                end={
+                  <WorkToggle
+                    open={false}
+                    onToggle={() => {
+                      hold(false);
+                      chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "watched");
+                    }}
+                  />
+                }
+              />
+            ) : (
+              <WorkToggle
+                open
+                onToggle={() => {
+                  hold(true);
+                  chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "folded");
+                }}
+              />
+            )
+          ) : null}
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
@@ -4142,7 +4224,8 @@ function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>
 }
 
 /**
- * How a run's card stands in this conversation. A live run is watched; as it
+ * How a run's card stands in this conversation. Live work starts watched;
+ * an explicit Show/Hide choice carries through completion. Otherwise, as it
  * settles its work eases shut into its line — unless the person is reading
  * it right then, when it stays open until they leave (`forgetRunFolds`) or it
  * is drawn again. A run that settled out of sight is simply folded, and so is
@@ -4163,9 +4246,9 @@ function useRunFold({
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
 }): { readonly fold: RunFold; readonly foldNow: () => void; readonly settling: boolean } {
-  const read = () => runFoldOf(conversation, run);
+  const read = () => runFoldOf(conversation, run, live ? "watched" : "folded");
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
-  const fold = live ? "watched" : stored;
+  const fold = stored;
   const wasLiveRef = useRef(live);
   // The draw where the run settled, before its fold is measured: the card
   // holds its live height through it, or it jumps first.
@@ -4189,7 +4272,7 @@ function useRunFold({
     wasLiveRef.current = live;
     setDrawnLive(live);
     if (live) {
-      setRunFold(conversation, run, "watched");
+      setRunFold(conversation, run, liveRunFold(conversation, run));
       return;
     }
     if (runFoldOf(conversation, run) !== "watched") return;
@@ -4267,9 +4350,25 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
-function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onToggle: () => void }) {
+function WorkToggle({
+  open,
+  onToggle,
+  onIntent,
+}: {
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  /** The person is about to press it (a pointer over it, focus on it): what it opens is read. */
+  readonly onIntent?: () => void;
+}) {
   return (
-    <button aria-expanded={open} className="run-now-fold" onClick={onToggle} type="button">
+    <button
+      aria-expanded={open}
+      className="run-now-fold"
+      onClick={onToggle}
+      onFocus={onIntent}
+      onPointerEnter={onIntent}
+      type="button"
+    >
       {open ? "Hide work" : "Show work"}
       <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
     </button>
@@ -4300,6 +4399,7 @@ function RunScroll({
   opensAtStart = false,
   roomsRef,
   motionRef,
+  pages,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -4321,6 +4421,11 @@ function RunScroll({
   readonly roomsRef?: { current: Rooms | null };
   /** Its card's motion: the live slot's ease beside it. */
   readonly motionRef?: { readonly current: RunMotion };
+  /**
+   * An engine run too long to read whole: the lines past the ones held, read a page at a time
+   * as the scroll nears them (`pageReached`).
+   */
+  readonly pages?: ScrollPages;
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -4344,13 +4449,13 @@ function RunScroll({
   const drawingEarlierRef = useRef(false);
   // When the person last gave it an input: what tells their move from its own motion's.
   const personAtRef = useRef(Number.NEGATIVE_INFINITY);
-  const heardPerson = () => {
+  const heardPerson = useEffectEvent(() => {
     personAtRef.current = performance.now();
-  };
+  });
   // A pointer or a finger held on it is their input until it lifts: a
   // drag-select scrolling at its edge, a finger resting on the lines.
   const holdsRef = useRef({ pointer: false, touch: false });
-  const heardHold = (kind: "pointer" | "touch") => {
+  const heardHold = useEffectEvent((kind: "pointer" | "touch") => {
     heardPerson();
     const holds = holdsRef.current;
     if (holds[kind]) return;
@@ -4372,7 +4477,25 @@ function RunScroll({
     };
     const cap = setTimeout(lifted, HOLD_LONGEST_MS);
     for (const type of ends) window.addEventListener(type, lifted, true);
-  };
+  });
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const pointer = () => heardHold("pointer");
+    const touch = () => heardHold("touch");
+    element.addEventListener("keydown", heardPerson, true);
+    element.addEventListener("wheel", heardPerson, { capture: true, passive: true });
+    element.addEventListener("touchmove", heardPerson, { capture: true, passive: true });
+    element.addEventListener("pointerdown", pointer, true);
+    element.addEventListener("touchstart", touch, { capture: true, passive: true });
+    return () => {
+      element.removeEventListener("keydown", heardPerson, true);
+      element.removeEventListener("wheel", heardPerson, true);
+      element.removeEventListener("touchmove", heardPerson, true);
+      element.removeEventListener("pointerdown", pointer, true);
+      element.removeEventListener("touchstart", touch, true);
+    };
+  }, []);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
@@ -4402,6 +4525,10 @@ function RunScroll({
   // it, and again once they move it down onto its foot or close what they
   // opened; where its top last stood tells their move from the page's. It
   // opens at its foot.
+  const laterRef = useRef(pages?.later ?? false);
+  useLayoutEffect(() => {
+    laterRef.current = pages?.later ?? false;
+  });
   const followRef = useRef<RunScrollFollow>({
     follows: !opensAtStart,
     stood: opensAtStart ? 0 : Number.POSITIVE_INFINITY,
@@ -4416,6 +4543,10 @@ function RunScroll({
     const heard = (event: RunScrollEvent) => {
       const stood = followRef.current.stood;
       followRef.current = followAfter(followRef.current, event);
+      // Its foot is not its run's end while later lines are still to read: what pages in joins
+      // under what the person reads, and the scroll never follows it there.
+      if (laterRef.current && followRef.current.follows)
+        followRef.current = { ...followRef.current, follows: false };
       const element = scrollRef.current;
       if (element !== null && (event.kind === "set" || followRef.current.stood !== stood)) {
         stoodAt.max = element.scrollHeight - element.clientHeight;
@@ -4652,6 +4783,41 @@ function RunScroll({
     }
     markEdges(element);
   }, [from, follow]);
+  // A page of earlier lines read in above the first one drawn keeps that one where it stood: the
+  // scroll moves by what came in over it, before the frame paints. Never a glide: nothing moved.
+  const firstDrawnRef = useRef<{ readonly key: string; readonly top: number } | null>(null);
+  const prependedRef = useRef(false);
+  useLayoutEffect(() => {
+    prependedRef.current = false;
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (pages === undefined || element === null || list === null) return;
+    const was = firstDrawnRef.current;
+    const first = from === 0 ? lines[0] : undefined;
+    const topOf = (row: HTMLElement) =>
+      row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    if (was !== null && first !== undefined && first.key !== was.key) {
+      const row = rowByKey(list, was.key);
+      if (row !== null) {
+        prependedRef.current = true;
+        const moved = topOf(row) - was.top;
+        if (Math.abs(moved) > 0.5) follow.putAt(element, element.scrollTop + moved);
+      }
+    }
+    const row = first === undefined ? null : rowByKey(list, first.key);
+    firstDrawnRef.current =
+      first === undefined || row === null ? null : { key: first.key, top: topOf(row) };
+  });
+  // Near an end with lines past it still to read: the next page, before the person reaches it.
+  const readPage = (position: RunScrollPosition) => {
+    if (pages === undefined) return;
+    const reached = pageReached(position, from, pages);
+    if (reached !== null) pages.read(reached);
+  };
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (pages !== undefined && element !== null) readPage(positionOf(element));
+  });
   // A line joining above lines already there, or a call moving past the
   // ones still running (F3, run 9), glides what it moved from where it
   // stood, as a landing does; one joining at the foot makes its room there
@@ -4692,7 +4858,7 @@ function RunScroll({
     // A landing glides the history itself, and plops what lands.
     if (drawn === null || drawn.landing !== landing || !shownRef.current) return;
     // Earlier lines drawn over the ones in view keep their place by the scroll.
-    glideShifted(list, drawn.rows, rows, drawn.from === from);
+    glideShifted(list, drawn.rows, rows, drawn.from === from && !prependedRef.current);
   });
   // A line arriving, a bubble growing as its words stream, a call opening,
   // the live slot under it growing into its room: a scroll that follows its
@@ -4760,14 +4926,10 @@ function RunScroll({
               } else markEdges(element, position);
             }
             drawEarlier(position);
+            readPage(position);
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
-          onKeyDown={heardPerson}
-          onPointerDown={() => heardHold("pointer")}
-          onTouchStart={() => heardHold("touch")}
-          onTouchMove={heardPerson}
-          onWheel={heardPerson}
           role="region"
           tabIndex={0}
         >
@@ -4843,8 +5005,29 @@ function glideFrom(element: HTMLElement, stood: number): number {
   return glideBy(element, stood - element.getBoundingClientRect().top);
 }
 
+/** A translated row stays inside the scroll that clips it, including its first frame. */
+function visibleTravel(element: HTMLElement, moved: number): number {
+  if (typeof getComputedStyle !== "function") return moved;
+  const box = element.getBoundingClientRect();
+  let lower = Number.NEGATIVE_INFINITY;
+  let upper = Number.POSITIVE_INFINITY;
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (
+      style.clipPath === "none" &&
+      !["auto", "scroll", "hidden", "clip"].includes(style.overflowY)
+    )
+      continue;
+    const view = parent.getBoundingClientRect();
+    lower = Math.max(lower, Math.min(0, view.top - box.top));
+    upper = Math.min(upper, Math.max(0, view.bottom - box.bottom));
+  }
+  return Math.max(lower, Math.min(upper, moved));
+}
+
 /** An element gliding from `moved` px off its place to it, on the plop's curve. */
 function glideBy(element: HTMLElement, moved: number): number {
+  moved = visibleTravel(element, moved);
   if (Math.abs(moved) < 0.5) return 0;
   // Added to what moves it already: a call's rise keeps the rest of its way.
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
@@ -5084,67 +5267,11 @@ function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): bool
   return from !== undefined && Number.isFinite(from);
 }
 
-/** The plop (pass 35, the board's "Plop"): a translate on the strong ease-out, then a 1.5 px settle. */
+/** A landed row uses the same bounded travel as every other line moving in a scroll. */
 const PLOP_MS = 340;
-const PLOP_SETTLE_PX = 1.5;
-/** The settle starts this far into the plop, and swings once past the place and back. */
-const PLOP_SETTLE_FROM = 0.42;
-/** The plop is drawn a frame at a time: WAAPI goes linearly between them. */
-const PLOP_FRAME_MS = 1000 / 60;
-
-/**
- * A row that left the live slot lands where the history drew it: it starts
- * where it stood (`from`, its top on screen) and travels to its place on the
- * strong ease-out, settling 1.5 px past it and back; its kind's mark fades in
- * where the slot's face stood. Under reduced motion it fades in, in place.
- */
 function plop(row: HTMLElement, from: number) {
-  const mark = row.querySelector<HTMLElement>("[data-run-mark] > span");
-  if (prefersReducedMotion() || !Number.isFinite(from)) {
-    row.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 200,
-      easing: "ease",
-      fill: "backwards",
-    }).currentTime = 0;
-    return;
-  }
-  stopGliding(row);
-  const travel = from - row.getBoundingClientRect().top;
-  if (Math.abs(travel) < 0.5) {
-    mark?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease" });
-    return;
-  }
-  // Past its place on the side it travels towards, and back.
-  const past = travel > 0 ? -PLOP_SETTLE_PX : PLOP_SETTLE_PX;
-  // Its way, a frame at a time, on the card's own curve (`approach`): a long
-  // travel goes at the card's top speed, never a 40 px frame.
-  const way = [travel];
-  while (way.at(-1) !== 0 && way.length < 120) {
-    way.push(approach(way.at(-1)!, 0, PLOP_FRAME_MS, ROOM_TAU_MS));
-  }
-  const steps = Math.max(1, way.length - 1);
-  const frames = way.map((at, frame) => {
-    const progress = frame / steps;
-    const settle =
-      progress > PLOP_SETTLE_FROM
-        ? Math.sin((Math.PI * (progress - PLOP_SETTLE_FROM)) / (1 - PLOP_SETTLE_FROM))
-        : 0;
-    return { translate: `0 ${at + past * settle}px` };
-  });
-  // In effect from this frame: a new animation waits a frame for its start
-  // time, and the row would stand a frame at its place before travelling.
-  row.animate(frames, {
-    id: GLIDE_ID,
-    duration: Math.max(PLOP_MS, steps * PLOP_FRAME_MS),
-    easing: "linear",
-  }).currentTime = 0;
-  const fade = mark?.animate([{ opacity: 0 }, { opacity: 1 }], {
-    duration: 240,
-    delay: 60,
-    easing: "ease",
-    fill: "backwards",
-  });
-  if (fade !== undefined) fade.currentTime = 0;
+  if (prefersReducedMotion() || !Number.isFinite(from)) return;
+  glideFrom(row, from);
 }
 
 /**

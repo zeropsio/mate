@@ -7,9 +7,11 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
-  engineModeChange,
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
   engineUpdateMetadata,
   engineDismissUserInput,
+  engineInterruptTurn,
   engineRespondToApproval,
   engineRespondToUserInput,
   engineStartTurn,
@@ -18,8 +20,13 @@ import {
 import { mateEngineHostAtom, mateEngineReaderAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
-import { engineConversationId, engineConversationScopes } from "./families/mateEngine.ts";
-import { engineHeader } from "./__fixtures__/mateEngine.ts";
+import {
+  engineConversationId,
+  engineConversationScopes,
+  engineFactId,
+} from "./families/mateEngine.ts";
+import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
+import { engineResendId } from "./projections/mateEngine.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -30,7 +37,13 @@ const turn = (attachments: ReadonlyArray<unknown> = []) =>
     interactionMode: "default",
   }) as unknown as Parameters<typeof engineStartTurn>[1];
 
-function rig(mateEngine: number | undefined) {
+const ACCEPTED = { _tag: "Accepted", seq: 16, itemId: "x" } as EngineCallResult;
+
+function rig(
+  mateEngine: number | undefined,
+  /** How the Mate's engine answers each command: accepted unless said otherwise. */
+  answer: (command: EngineCommand) => EngineCallResult = () => ACCEPTED,
+) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const calls: EngineCommand[] = [];
@@ -40,7 +53,7 @@ function rig(mateEngine: number | undefined) {
     wire: {
       call: (_environmentId, command) => {
         calls.push(command);
-        return Effect.succeed({ _tag: "Accepted", seq: 16, itemId: "x" } as EngineCallResult);
+        return Effect.succeed(answer(command));
       },
       receipt: () => Effect.succeed({ _tag: "None" }),
     },
@@ -60,6 +73,35 @@ function rig(mateEngine: number | undefined) {
         Effect.provideService(EnvironmentSupervisor, { prepared } as never),
       );
     });
+  /** The conversation the account holds, with these runs (and its header so patched). */
+  const runs = (
+    held: ReadonlyArray<ReturnType<typeof engineRun>>,
+    headerPatch: Parameters<typeof engineHeader>[1] = {},
+  ) => {
+    const key = { environmentId: ENV, conversationId: "thread-ada" };
+    header(headerPatch);
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+        scope,
+        generation: 0,
+      })),
+      reset: false,
+      rows: held.map((run) => ({
+        family: "mateEngineRun" as const,
+        id: engineFactId(ENV, run.id),
+        value: { ...run, environmentId: ENV },
+        revision: {
+          kind: "mate-conversation" as const,
+          environmentId: ENV,
+          epoch: 1,
+          seq: run.rev,
+        },
+      })),
+      removals: [],
+    });
+  };
   /** The conversation the account holds: its agent and model, as the engine's header says. */
   const header = (patch: Parameters<typeof engineHeader>[1] = {}) => {
     const key = { environmentId: ENV, conversationId: "thread-ada" };
@@ -86,10 +128,128 @@ function rig(mateEngine: number | undefined) {
       removals: [],
     });
   };
-  return { registry, calls, v1, v1Calls, run, header };
+  return { registry, calls, v1, v1Calls, run, header, runs };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
+  // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
+  // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
+  const SESSION = (steer: boolean) => ({
+    session: { driver: "claudeAgent", model: "claude-sonnet-4-5", steer },
+  });
+  const working = (state: "running" | "waiting" | "admitted") =>
+    engineRun("thread-ada", 2, { state, end: null, endedAt: null } as never);
+
+  it.effect.each(["running", "waiting"] as const)(
+    "a message sent while the conversation's run is %s steers that run, as V1's mid-turn send does",
+    (state) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs([engineRun("thread-ada", 1), working(state)], SESSION(true));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        expect(r.calls).toEqual([
+          {
+            kind: "steer",
+            conversationId: "thread-ada",
+            commandId: "message-7",
+            runId: "thread-ada/r/2",
+            text: "And the worker",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  const picture = {
+    type: "image",
+    id: "img-1",
+    name: "a.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+  } as const;
+  const file = {
+    type: "file",
+    id: "file-1",
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 9,
+  } as const;
+  it.effect.each([
+    { name: "no run works", runs: [engineRun("thread-ada", 1)], steer: true, carries: [] },
+    { name: "the run is not started yet", runs: [working("admitted")], steer: true, carries: [] },
+    { name: "its session cannot steer", runs: [working("running")], steer: false, carries: [] },
+    { name: "it carries pictures", runs: [working("running")], steer: true, carries: [picture] },
+    { name: "it carries a file", runs: [working("running")], steer: true, carries: [file] },
+  ])("a message sent when $name goes as the conversation's next run", ({ runs, steer, carries }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs(runs, SESSION(steer));
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
+      expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
+    }),
+  );
+
+  // Catches a steer racing the run's end: the engine refuses it, and the person saw "Nothing is
+  // running to stop." for a message. V1 starts a new turn with it.
+  it.effect.each([
+    { why: "the run ended", reason: "run-not-running" },
+    { why: "its session can no longer steer", reason: "steer-unsupported" },
+  ])(
+    "a message steered as $why goes as the conversation's next run, under its own message",
+    ({ reason }) =>
+      Effect.gen(function* () {
+        const r = rig(1, (command) =>
+          command.kind === "steer"
+            ? ({ _tag: "Rejected", rejection: { reason } } as EngineCallResult)
+            : ACCEPTED,
+        );
+        r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        expect(result).toEqual({ sequence: 16 });
+        expect(r.calls).toMatchObject([
+          { kind: "steer", commandId: "message-7" },
+          { kind: "send", text: "And the worker", attachments: [] },
+        ]);
+        // The engine keeps the steer's refusal under the message's id: the send goes under its own.
+        expect(r.calls[1]?.commandId).toBe(engineResendId("message-7"));
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs([
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: "thread-ada/r/1" as never,
+          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ]);
+      yield* Effect.forkChild(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineInterruptTurn(ENV, {
+              type: "thread.turn.interrupt",
+              commandId: "stop-1",
+              threadId: "thread-ada",
+              turnId: "thread-ada/r/1",
+              createdAt: "2026-10-08T00:00:00.000Z",
+            } as never),
+            r.v1,
+          ),
+        ),
+      );
+      yield* Effect.yieldNow;
+      expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
+    }),
+  );
+
   it.effect(
     "a turn on a Mate on the engine goes as the engine's send, under its message's id",
     () =>
@@ -119,16 +279,30 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
-  it.effect("a Mate serving only a newer protocol refuses with the update route", () =>
-    Effect.gen(function* () {
-      const r = rig(2);
-      const failure = yield* Effect.flip(
-        r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
-      );
-      expect(failure.message).toMatch(/Update the app/);
-      expect(r.calls).toEqual([]);
-      expect(r.v1Calls).toEqual([]);
-    }),
+  it.effect.each([
+    {
+      reader: "engine",
+      words:
+        "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+    },
+    {
+      reader: "none",
+      words:
+        "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.",
+    },
+  ] as const)(
+    "a Mate serving only a newer protocol refuses with its app's way out: a reload or update on the web and desktop, an update on the phone (reader $reader)",
+    ({ reader, words }) =>
+      Effect.gen(function* () {
+        const r = rig(2);
+        r.registry.set(mateEngineReaderAtom, reader);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
+        );
+        expect(failure.message).toBe(words);
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect(
@@ -311,7 +485,14 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     {
       name: "another agent",
       input: { modelSelection: { instanceId: "codex", model: "gpt-5.4" } },
-      words: /one agent/,
+      call: {
+        kind: "assign-agent",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        instanceId: "codex",
+        model: "gpt-5.4",
+      },
+      route: "the engine's agent pick",
     },
     {
       name: "a changed effort",
@@ -322,40 +503,241 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           options: [{ id: "effort", value: "high" }],
         },
       },
-      words: /effort/,
+      call: {
+        kind: "switch-model",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        model: "claude-sonnet-4-5",
+        options: [{ id: "effort", value: "high" }],
+      },
+      route: "the engine's model switch, with its options",
     },
-    { name: "a branch", input: { branch: "feature" }, words: /branch/ },
-  ])("$name for an engine conversation is refused in words, sending nothing", ({ input, words }) =>
+  ])("$name for an engine conversation goes as $route, never over V1", ({ input, call }) =>
     Effect.gen(function* () {
       const r = rig(1);
       r.header();
-      const failure = yield* Effect.flip(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
-            r.v1,
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+          r.v1,
         ),
       );
-      expect(failure.message).toMatch(words);
+      expect(r.calls).toEqual([call]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  /** Claude's options as its model reports them: an effort, a context window, Fast Mode. */
+  const CLAUDE = {
+    optionDescriptors: [
+      {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium", isDefault: true },
+          { id: "high", label: "High" },
+          { id: "xhigh", label: "Extra High" },
+        ],
+      },
+      { id: "fastMode", label: "Fast Mode", type: "boolean" },
+      {
+        id: "contextWindow",
+        label: "Context Window",
+        type: "select",
+        options: [
+          { id: "200k", label: "200k" },
+          { id: "1m", label: "1M", isDefault: true },
+        ],
+      },
+    ],
+  } as const;
+  const DEFAULTS = [
+    { id: "effort", value: "medium" },
+    { id: "fastMode", value: false },
+    { id: "contextWindow", value: "1m" },
+  ];
+
+  it.effect.each([
+    { name: "the composer's spelled-out defaults", runs: undefined, picked: DEFAULTS },
+    {
+      name: "the same options in another order",
+      runs: [
+        { id: "contextWindow", value: "200k" },
+        { id: "effort", value: "xhigh" },
+      ],
+      picked: [
+        { id: "effort", value: "xhigh" },
+        { id: "fastMode", value: false },
+        { id: "contextWindow", value: "200k" },
+      ],
+    },
+    { name: "no options against the defaults it runs on", runs: DEFAULTS, picked: undefined },
+  ])("$name on the conversation's model change nothing and send nothing", ({ runs, picked }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header({
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          ...(runs === undefined ? {} : { options: runs }),
+          profile: { kind: "mate" },
+        },
+      } as never);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(
+            ENV,
+            {
+              threadId: "thread-ada",
+              modelSelection: {
+                instanceId: "claudeAgent",
+                model: "claude-sonnet-4-5",
+                ...(picked === undefined ? {} : { options: picked }),
+              },
+            } as never,
+            () => CLAUDE as never,
+          ),
+          r.v1,
+        ),
+      );
       expect(r.calls).toEqual([]);
       expect(r.v1Calls).toEqual([]);
     }),
   );
 
-  it.effect.each(["runtime", "interaction"] as const)(
-    "a %s mode change for an engine conversation is refused in words, never sent over V1",
-    (mode) =>
+  it.effect.each([
+    { name: "an effort", option: { id: "effort", value: "xhigh" } },
+    { name: "Fast Mode", option: { id: "fastMode", value: true } },
+    { name: "a context window", option: { id: "contextWindow", value: "200k" } },
+  ])(
+    "a change to $name goes as the engine's model switch carrying only what changed",
+    ({ option }) =>
       Effect.gen(function* () {
         const r = rig(1);
-        const failure = yield* Effect.flip(
-          r.run(viaEngine(r.registry, ENV, engineModeChange(mode), r.v1)),
+        r.header();
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineUpdateMetadata(
+              ENV,
+              {
+                threadId: "thread-ada",
+                modelSelection: {
+                  instanceId: "claudeAgent",
+                  model: "claude-sonnet-4-5",
+                  options: DEFAULTS.map((each) => (each.id === option.id ? option : each)),
+                },
+              } as never,
+              () => CLAUDE as never,
+            ),
+            r.v1,
+          ),
         );
-        expect(failure.message).toMatch(/mode/);
+        expect(r.calls).toEqual([
+          {
+            kind: "switch-model",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            model: "claude-sonnet-4-5",
+            options: [option],
+          },
+        ]);
         expect(r.v1Calls).toEqual([]);
       }),
+  );
+
+  it.effect.each([{ name: "a branch", input: { branch: "feature" }, words: /branch/ }])(
+    "$name for an engine conversation is refused in words, sending nothing",
+    ({ input, words }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.header();
+        const failure = yield* Effect.flip(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+              r.v1,
+            ),
+          ),
+        );
+        expect(failure.message).toMatch(words);
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a runtime mode change for an engine conversation goes as the engine's own call, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineSetRuntimeMode(ENV, {
+              threadId: "thread-ada",
+              runtimeMode: "approval-required",
+            } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "set-runtime-mode",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            runtimeMode: "approval-required",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "an interaction mode change for an engine conversation is never sent over V1: the mode goes with the next message",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode, r.v1));
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind: "send", interactionMode: "plan" }]);
+      }),
+  );
+
+  it.effect("a turn's files go to the engine with it, by the id they were uploaded under", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const file = {
+        type: "file",
+        id: "file-1",
+        name: "spec.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 9,
+      };
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file])), r.v1));
+      expect(r.calls).toMatchObject([{ kind: "send", attachments: [file] }]);
+      expect(r.v1Calls).toEqual([]);
+    }),
   );
 
   it.effect(

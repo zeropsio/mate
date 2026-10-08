@@ -84,6 +84,8 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - A release is `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run`
   prints the plan): it bumps the three versions in a throwaway worktree of `origin/main`, pushes,
   tags, and waits until `stable.json` serves the new version.
+- Tested work ships at once: when a change's checks pass and nothing blocks it, push and release
+  in the same run. Unreleased work is invisible — nobody can use it, judge it or build on it.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
@@ -135,6 +137,12 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 - TDD for behaviour: RED → GREEN, table-driven tests.
 - Atomic commits, English, never a `Co-Authored-By` trailer.
 - Delete, don't disable — no commented-out code or compat shims.
+- An invariant that matters goes into a deterministic check — a lint rule, a script, a test — with an
+  exception ledger that may only shrink (the data-layer guards are the model). Fast checks catch drift
+  that reviews and prompts miss.
+- Any part can fail — HQ, a Mate's container, the Zerops platform, a provider. Code assumes it with
+  reasonable defence: bounded waits, an honest state for the user, recovery when the part returns.
+  No over-engineering: no machinery for failures that have not happened or cost more than they save.
 - Ported-zone edits stay minimal; a diverged port is an expensive port next time.
 - The ledger has one writer — subagents report facts as text, never edit `verified.md` /
   `questions.md` / `hacks.md` / `map.md` / `poc-findings.md` directly.

@@ -166,6 +166,7 @@ describe("ProviderRuntimeEventBus (the owned wrapper)", () => {
   it.effect("forwards ProviderService.streamEvents as its own events stream, unaltered", () =>
     Effect.gen(function* () {
       const providerLayer = Layer.mock(ProviderService)({
+        eventBarrier: undefined,
         streamEvents: Stream.make(
           { id: "evt-1" } as unknown as SpiEvent,
           { id: "evt-2" } as unknown as SpiEvent,
@@ -183,7 +184,10 @@ describe("ProviderRuntimeEventBus (the owned wrapper)", () => {
 
   it.effect("exposes the SPI version it was built against", () =>
     Effect.gen(function* () {
-      const providerLayer = Layer.mock(ProviderService)({ streamEvents: Stream.empty });
+      const providerLayer = Layer.mock(ProviderService)({
+        eventBarrier: undefined,
+        streamEvents: Stream.empty,
+      });
 
       const version = yield* Effect.gen(function* () {
         const bus = yield* ProviderRuntimeEventBus;
@@ -200,6 +204,7 @@ describe("ProviderRuntimeEventBus (the owned wrapper)", () => {
       Effect.gen(function* () {
         const runtimeEventPubSub = yield* PubSub.unbounded<SpiEvent>();
         const providerLayer = Layer.mock(ProviderService)({
+          eventBarrier: undefined,
           get streamEvents() {
             return Stream.fromPubSub(runtimeEventPubSub);
           },
@@ -275,6 +280,7 @@ describe("ProviderRuntimeEventBus — SPI-4 tool-call enrichment", () => {
   it.effect("adds toolCall to a recognized item event, on the Live bus", () =>
     Effect.gen(function* () {
       const providerLayer = Layer.mock(ProviderService)({
+        eventBarrier: undefined,
         streamEvents: Stream.make(claudeToolCallEvent({})),
       });
 
@@ -306,6 +312,7 @@ describe("ProviderRuntimeEventBus — SPI-4 tool-call enrichment", () => {
   it.effect("leaves a non-tool event untouched (no toolCall added)", () =>
     Effect.gen(function* () {
       const providerLayer = Layer.mock(ProviderService)({
+        eventBarrier: undefined,
         streamEvents: Stream.make({ id: "evt-1" } as unknown as SpiEvent),
       });
 
@@ -324,6 +331,7 @@ describe("ProviderRuntimeEventBus — SPI-4 tool-call enrichment", () => {
       Effect.scoped(
         Effect.gen(function* () {
           const providerLayer = Layer.mock(ProviderService)({
+            eventBarrier: undefined,
             streamEvents: Stream.make(unrecognizedCommandExecutionEvent("evt-bad")),
           });
 
@@ -377,6 +385,7 @@ describe("ProviderRuntimeEventBus — SPI-4 tool-call enrichment", () => {
           });
 
           const providerLayer = Layer.mock(ProviderService)({
+            eventBarrier: undefined,
             streamEvents: Stream.make(
               unrecognizedCommandExecutionEvent("evt-bad-1"),
               unrecognizedCommandExecutionEvent("evt-bad-2"),

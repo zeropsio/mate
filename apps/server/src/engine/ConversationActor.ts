@@ -2,7 +2,7 @@
  * One fiber per owner (a conversation, or a crew) and one writer. Its loop takes the next envelope from a bounded
  * mailbox (producers wait when it is full; nothing is dropped), decides, commits the step in one
  * transaction, adopts the state the commit folded, publishes the committed events in commit order,
- * rings the worker and the scheduler when the step queued effects or touched wakes, and completes
+ * writes the watch lines they call for (`watch.ts`), rings the worker and the scheduler when the step queued effects or touched wakes, and completes
  * the producer's reply. A failed commit reloads the state from the store, so the actor never runs
  * ahead of the record.
  *
@@ -30,6 +30,7 @@ import type { ConversationState } from "./domain/state.ts";
 import type { EngineSignalsShape } from "./EngineSignals.ts";
 import type { Domain, OwnerEnvelope, OwnerEvent } from "./owners.ts";
 import type { EngineStoreError, EngineStoreShape, OwnerStore } from "./store/EngineStore.ts";
+import { watchCommit } from "./watch.ts";
 
 /** The conversation refused the command; the reason is the engine's rule, not a failure. */
 export class CommandRejected extends Schema.TaggedError<CommandRejected>()("CommandRejected", {
@@ -90,6 +91,9 @@ export const makeConversationActor = (
     store as unknown as OwnerStore<ConversationState, Command, EngineEvent, EventDraft>,
     signals,
     options,
+    // The watch lines name known events; an unknown one writes none.
+    (events, state) =>
+      watchCommit(store, conversationId, events as ReadonlyArray<KnownEngineEvent>, state),
   ) as unknown as Effect.Effect<ConversationActor, EngineStoreError, Scope.Scope>;
 
 export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
@@ -103,6 +107,8 @@ export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
   store: OwnerStore<S, C, E, D>,
   signals: EngineSignalsShape,
   options: ConversationActorOptions = {},
+  /** What a conversation's commit writes beside its events (its watch lines). */
+  afterCommit?: (events: ReadonlyArray<E>, state: S) => Effect.Effect<void>,
 ) {
   const initial = yield* store.load(conversationId);
   const state = yield* Ref.make(initial);
@@ -133,7 +139,10 @@ export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
     yield* Ref.set(state, committed.state);
     if (committed.events.length > 0) {
       yield* PubSub.publishAll(published, committed.events);
-      if (publishesChanges) yield* PubSub.publish(signals.commits, conversationId);
+      if (publishesChanges) {
+        yield* PubSub.publish(signals.commits, conversationId);
+      }
+      if (afterCommit !== undefined) yield* afterCommit(committed.events, committed.state);
     }
     if (committed.enqueued) yield* signals.effects.ring;
     if (committed.wakesChanged) yield* signals.wakes.ring;

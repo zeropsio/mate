@@ -1,3 +1,7 @@
+import {
+  subscribeUpdateChanges,
+  type SubscribeUpdateChanges,
+} from "../../update/subscribeChanges.ts";
 /**
  * CrewStore - the crew tables (migration `055_Crew`) plus a change feed.
  *
@@ -401,6 +405,7 @@ export interface CrewStoreService {
   /** The crew's run started last, in any state. */
   readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
   readonly changes: Stream.Stream<CrewStoreChange>;
+  readonly subscribeChanges: SubscribeUpdateChanges;
 }
 
 export class CrewStore extends Context.Service<CrewStore, CrewStoreService>()(
@@ -1299,6 +1304,7 @@ export const make = Effect.gen(function* () {
         ),
       ),
     changes: Stream.fromPubSub(changes),
+    subscribeChanges: subscribeUpdateChanges(changes),
   });
 });
 

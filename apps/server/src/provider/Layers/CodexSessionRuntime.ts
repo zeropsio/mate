@@ -58,14 +58,6 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
 const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
-const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
-  "not found",
-  "missing thread",
-  "no such thread",
-  "unknown thread",
-  "does not exist",
-  "no rollout found",
-];
 
 export const CodexResumeCursorSchema = Schema.Struct({
   threadId: Schema.String,
@@ -702,14 +694,6 @@ function isArchivedSessionResumeError(error: CodexErrors.CodexAppServerError): b
   );
 }
 
-export function isRecoverableThreadResumeError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  if (!message.includes("thread")) {
-    return false;
-  }
-  return RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS.some((snippet) => message.includes(snippet));
-}
-
 const CodexThreadResumeMetadata = Schema.Struct({
   cwd: Schema.String,
   model: Schema.String,
@@ -720,8 +704,11 @@ const decodeCodexThreadResumeMetadata = Schema.decodeUnknownEffect(CodexThreadRe
 interface CodexThreadOpenClient {
   readonly raw: {
     request(
-      method: "thread/resume" | "thread/unarchive",
+      method: "thread/start" | "thread/resume" | "thread/unarchive",
       payload:
+        | (CodexRpc.ClientRequestParamsByMethod["thread/start"] & {
+            readonly experimentalRawEvents: true;
+          })
         | (CodexRpc.ClientRequestParamsByMethod["thread/resume"] & {
             readonly excludeTurns?: boolean;
           })
@@ -746,7 +733,10 @@ export const openCodexThread = (input: {
   readonly serviceTier: CodexServiceTier | undefined;
   readonly resumeThreadId: string | undefined;
   readonly overrides?: CodexThreadSetup["thread"];
-}): Effect.Effect<typeof CodexThreadResumeMetadata.Type, CodexErrors.CodexAppServerError> => {
+}): Effect.Effect<
+  typeof CodexThreadResumeMetadata.Type & { readonly rawUsageEnabled: boolean },
+  CodexErrors.CodexAppServerError
+> => {
   const resumeThreadId = input.resumeThreadId;
   const startParams = buildThreadStartParams({
     cwd: input.cwd,
@@ -756,9 +746,25 @@ export const openCodexThread = (input: {
     ...(input.overrides ? { overrides: input.overrides } : {}),
   });
 
-  if (resumeThreadId === undefined) {
-    return input.client.request("thread/start", startParams);
-  }
+  // The installed native protocol exposes this internal opt-in on start only.
+  // Use the raw SPI request: the generated public start schema omits the option.
+  const start = Effect.suspend(() =>
+    input.client.raw.request("thread/start", { ...startParams, experimentalRawEvents: true }),
+  ).pipe(
+    Effect.flatMap((response) =>
+      decodeCodexThreadResumeMetadata(response).pipe(
+        Effect.mapError((error) =>
+          CodexErrors.CodexAppServerRequestError.invalidPayload(
+            "thread/start",
+            "decode-payload",
+            error,
+          ),
+        ),
+      ),
+    ),
+    Effect.map((opened) => ({ ...opened, rawUsageEnabled: true })),
+  );
+  if (resumeThreadId === undefined) return start;
 
   // Older providers may still return history despite excludeTurns. Only the
   // session metadata is needed here, so unrelated historical items cannot
@@ -787,17 +793,18 @@ export const openCodexThread = (input: {
             error,
           ),
         ),
+        Effect.filterOrFail(
+          (metadata) => metadata.thread.id === resumeThreadId,
+          () =>
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32603,
+              errorMessage:
+                "Native resume returned a different thread; the original conversation was preserved.",
+            }),
+        ),
       ),
     ),
-    Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-      Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-        threadId: input.threadId,
-        requestedRuntimeMode: input.runtimeMode,
-        resumeThreadId,
-        recoverable: true,
-        cause: error,
-      }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
-    ),
+    Effect.map((opened) => ({ ...opened, rawUsageEnabled: false })),
   );
 };
 
@@ -818,6 +825,7 @@ function readNotificationThreadId(notification: CodexServerNotification): string
     case "hook/started":
     case "turn/completed":
     case "hook/completed":
+    case "rawResponse/completed":
     case "turn/diff/updated":
     case "turn/plan/updated":
     case "item/started":
@@ -915,6 +923,7 @@ function readRouteFields(notification: CodexServerNotification): {
         turnId: TurnId.make(notification.params.turnId),
         itemId: undefined,
       };
+    case "rawResponse/completed":
     case "turn/diff/updated":
     case "turn/plan/updated":
       return {
@@ -1113,6 +1122,7 @@ const CHILD_AGENT_EVENT_METHODS: ReadonlySet<string> = new Set([
   "turn/completed",
   "thread/status/changed",
   "thread/tokenUsage/updated",
+  "rawResponse/completed",
   "thread/settings/updated",
   "model/rerouted",
   "item/started",
@@ -1815,6 +1825,7 @@ export const makeCodexSessionRuntime = (
               payload: {
                 ...childIdentity,
                 tokenUsage: notification.params.tokenUsage,
+                nativeTurnId: notification.params.turnId,
               },
             });
             return true;
@@ -1923,6 +1934,33 @@ export const makeCodexSessionRuntime = (
 
     const handleRawNotification = (notification: CodexServerNotification) =>
       Effect.gen(function* () {
+        // Usage belongs to this dedicated Mate app-server connection. Child UI registration
+        // can follow the child's first response; accounting must not wait for that metadata.
+        if (
+          notification.method === "rawResponse/completed" ||
+          notification.method === "turn/completed"
+        ) {
+          const nativeThreadId = notification.params.threadId;
+          const child = (yield* Ref.get(collabChildAgentsRef)).get(nativeThreadId);
+          yield* emitEvent({
+            kind: "notification",
+            threadId: options.threadId,
+            turnId: TurnId.make(
+              notification.method === "turn/completed"
+                ? notification.params.turn.id
+                : notification.params.turnId,
+            ),
+            method:
+              notification.method === "turn/completed"
+                ? "usage/turnCompleted"
+                : "rawResponse/completed",
+            payload: {
+              ...notification.params,
+              ...(child ? { parentThreadId: child.parentThreadId } : {}),
+            },
+          });
+          if (notification.method === "rawResponse/completed") return;
+        }
         const isMemoryConsolidationNotification =
           suppressMemoryConsolidationNotification(notification);
 
@@ -2598,6 +2636,17 @@ export const makeCodexSessionRuntime = (
         resumeThreadId: readResumeCursorThreadId(options.resumeCursor),
         ...(options.threadSetup ? { overrides: options.threadSetup.thread } : {}),
       });
+      if (!opened.rawUsageEnabled) {
+        yield* emitEvent({
+          kind: "notification",
+          threadId: options.threadId,
+          method: "session/usageUnavailable",
+          payload: {
+            message:
+              "Exact usage is unavailable for this resumed Codex session: the native resume protocol has no raw-usage opt-in.",
+          },
+        });
+      }
 
       const providerThreadId = opened.thread.id;
       const session = {

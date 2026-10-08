@@ -4,13 +4,10 @@
  */
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import type { ZeropsWire } from "../adapters/zerops.ts";
 import type { StreamFault } from "../streamMachine.ts";
-
-const encodeFrame = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export interface WireRequest {
   readonly method: "POST" | "GET";
@@ -39,7 +36,7 @@ export function fixtureWire(
   answer: (request: WireRequest) => Effect.Effect<unknown, StreamFault>,
 ): FixtureWire {
   const requests: WireRequest[] = [];
-  let frames: Queue.Queue<string, StreamFault> | null = null;
+  let frames: Queue.Queue<unknown, StreamFault> | null = null;
   let opens = 0;
   const subscription = (path: string, wsOutputType: string) => {
     for (let index = requests.length - 1; index >= 0; index -= 1) {
@@ -57,9 +54,7 @@ export function fixtureWire(
       Effect.suspend(() =>
         frames === null
           ? Effect.die("No receiver is open.")
-          : Effect.asVoid(
-              Queue.offer(frames, encodeFrame({ type: "search", subscriptionName, data })),
-            ),
+          : Effect.asVoid(Queue.offer(frames, { type: "search", subscriptionName, data })),
       ),
     drop: (fault) =>
       Effect.suspend(() =>
@@ -68,7 +63,7 @@ export function fixtureWire(
     wire: {
       open: Effect.gen(function* () {
         opens += 1;
-        const queue = yield* Queue.unbounded<string, StreamFault>();
+        const queue = yield* Queue.unbounded<unknown, StreamFault>();
         frames = queue;
         return {
           receiverId: `receiver-${opens}`,

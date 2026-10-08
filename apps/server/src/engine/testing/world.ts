@@ -132,13 +132,20 @@ export class World {
             this.act(row);
             const id = `w${++this.sessionCount}`;
             this.sessions.set(id, { alive: true });
-            const payload = row.payload as { readonly model: string | null };
+            const payload = row.payload as {
+              readonly model: string | null;
+              readonly options?: SessionOpenedValue["options"];
+              readonly runtimeMode?: SessionOpenedValue["runtimeMode"];
+            };
             const value: SessionOpenedValue = {
               sessionId: id as SessionOpenedValue["sessionId"],
               driver: "fake",
               model: payload.model,
               nativeRef: `native-${id}`,
-              capabilities: { steer: false },
+              // Every option change waits for a new session, as a runtime mode change does.
+              capabilities: { steer: false, inSessionOptions: [] },
+              options: payload.options ?? [],
+              runtimeMode: payload.runtimeMode ?? "full-access",
             };
             return hang(row, ok(value));
           }),

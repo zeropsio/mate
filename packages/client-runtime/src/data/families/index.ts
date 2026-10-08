@@ -1,3 +1,4 @@
+import { agentUsageFamily } from "./agentUsage.ts";
 import { mateShellFamily, mateThreadFamily } from "./mateConversation.ts";
 import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
@@ -97,6 +98,7 @@ export function defineFamilies(
 }
 
 export const FAMILIES = defineFamilies([
+  agentUsageFamily,
   mateShellFamily,
   mateThreadFamily,
   ...MATE_ENGINE_FAMILIES,

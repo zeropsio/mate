@@ -1,7 +1,8 @@
 /**
  * What enters a conversation's actor, and what `decide` makes of it.
  *
- * People send `Send`, `Stop`, `Answer`, `Dismiss`, `Steer`, `SwitchModel`, `Archive`, `Unarchive`; the
+ * People send `Send`, `Stop`, `Answer`, `Dismiss`, `Steer`, `SwitchModel`, `SetRuntimeMode`,
+ * `ChooseAgent`, `Archive`, `Unarchive`; the
  * engine's own fibers tell `WakeFired` (scheduler), `EffectSettled` (worker), `ProviderSignals`
  * (the pump, boundaries only) and `Recovered` (boot). Every input carries a command id: a client's,
  * or one derived from its cause (`ids.ts`).
@@ -10,6 +11,7 @@
  */
 import type {
   BootId,
+  ChatFileAttachment,
   ChatImageAttachment,
   ConversationAgent,
   CommandId,
@@ -24,12 +26,15 @@ import type {
   KnownEngineEvent,
   Principal,
   RecordedCrewSeam,
+  ProviderInteractionMode,
+  ProviderOptionSelection,
   Rejection,
   RequestAsk,
   RequestId,
   RequestState,
   RotateSession,
   RunId,
+  RuntimeMode,
   SessionId,
   TurnEndSource,
   TurnHandle,
@@ -88,6 +93,8 @@ export type ProviderSignal =
       readonly key: string;
       readonly ask: RequestAsk;
       readonly answerable?: boolean;
+      /** The agent's item that asked it: the request takes its place in the record. */
+      readonly item?: string;
     }
   | {
       readonly kind: "request-closed";
@@ -138,8 +145,11 @@ export type Command =
   | {
       readonly _tag: "Send";
       readonly text: string;
-      /** Pictures by reference, captured into the asset store before the command is told. */
-      readonly attachments?: ReadonlyArray<ChatImageAttachment>;
+      /**
+       * Pictures by reference, captured into the asset store before the command is told; files by
+       * the id they were uploaded under.
+       */
+      readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
       /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
       readonly maintenance?: boolean;
       /**
@@ -147,6 +157,8 @@ export type Command =
        * never a person's message; the agent gets `text`.
        */
       readonly card?: CrewCard;
+      /** `plan`: the agent plans the turn and changes nothing. Absent: default. */
+      readonly interactionMode?: ProviderInteractionMode;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   | {
@@ -159,7 +171,26 @@ export type Command =
   /** Close a request unanswered: only one its agent does not wait on. The agent is not told. */
   | { readonly _tag: "Dismiss"; readonly requestId: RequestId }
   | { readonly _tag: "Steer"; readonly runId: RunId; readonly text: string }
-  | { readonly _tag: "SwitchModel"; readonly model: string }
+  /** The next model and, when given, its options: they apply from the next run on. */
+  | {
+      readonly _tag: "SwitchModel";
+      readonly model: string;
+      readonly options?: ReadonlyArray<ProviderOptionSelection>;
+    }
+  /** How freely the agent works: from the next run on. */
+  | { readonly _tag: "SetRuntimeMode"; readonly runtimeMode: RuntimeMode }
+  /**
+   * A person's pick of the conversation's agent: another provider instance. `resumes`: the
+   * instance runs the current one's driver and its sessions resume the current one's.
+   */
+  | {
+      readonly _tag: "ChooseAgent";
+      readonly instanceId: string;
+      readonly driver: string;
+      readonly model: string;
+      readonly options?: ReadonlyArray<ProviderOptionSelection>;
+      readonly resumes: boolean;
+    }
   /** The conversation is given the agent it belongs to: instance, driver, model and profile. */
   | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
   /** Close the conversation's session from outside: the person signed out. */
@@ -205,7 +236,13 @@ export type Command =
    * Copy the conversation's earlier record in, once, before it runs anything of its own: its
    * first `runs` ordinals are the imported turns'. The `history.import` effect reads it in batches.
    */
-  | { readonly _tag: "ImportHistory"; readonly source: HistorySource; readonly runs: number }
+  | {
+      readonly _tag: "ImportHistory";
+      readonly source: HistorySource;
+      readonly runs: number;
+      /** The earlier record could not be read, for good: why. The gap is said, nothing copied. */
+      readonly unread?: string;
+    }
   /** One batch of the earlier record, as the import read it: its plan's records `from`..`to`. */
   | {
       readonly _tag: "HistoryBatch";

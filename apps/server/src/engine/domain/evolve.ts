@@ -107,6 +107,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         sendAttempts: 0,
         prepare: "none",
         personBody: null,
+        interactionMode: event.interactionMode ?? "default",
       };
       const next: ConversationState = {
         ...state,
@@ -114,6 +115,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         queue: [...state.queue, run.id],
         nextRunOrdinal: Math.max(state.nextRunOrdinal, event.ordinal + 1),
         latestRunId: run.id,
+        interactionMode:
+          event.trigger.kind === "person" ? run.interactionMode : state.interactionMode,
       };
       const continuesCut =
         event.trigger.kind === "wake" && event.trigger.cause === "restart-continuation";
@@ -398,6 +401,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           requestedModel: event.requestedModel,
           instanceId: event.instanceId ?? null,
           model: event.model,
+          options: event.options ?? null,
+          runtimeMode: event.runtimeMode ?? null,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
           closeAttempts: 0,
@@ -411,9 +416,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...state,
         session: state.session?.id === event.sessionId ? null : state.session,
         closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
-        // A session replaced (a model switch, a rotation) hands its place to the next one.
+        // A session replaced (a model switch, a setting, a rotation) hands its place to the next one.
         rotatingFrom:
-          event.reason === "model" || state.rotation !== null
+          event.reason === "model" || event.reason === "settings" || state.rotation !== null
             ? event.sessionId
             : state.rotatingFrom,
       };
@@ -432,6 +437,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         agent: event.agent,
         model: event.agent.model,
         threadGeneration:
+          event.keepsThread !== true &&
           state.agent !== null &&
           (state.agent.instanceId !== event.agent.instanceId ||
             state.agent.driver !== event.agent.driver)
@@ -442,8 +448,17 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...state,
         model: event.model,
-        agent: state.agent === null ? null : { ...state.agent, model: event.model },
+        agent:
+          state.agent === null
+            ? null
+            : {
+                ...state.agent,
+                model: event.model,
+                ...(event.options === undefined ? {} : { options: event.options }),
+              },
       };
+    case "RuntimeModeSet":
+      return { ...state, runtimeMode: event.runtimeMode };
     case "ConversationArchived":
       return { ...state, archived: true };
     case "ConversationUnarchived":
@@ -482,7 +497,12 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...prepared,
         effects: without(prepared.effects, event.effectId),
-        answering: without(prepared.answering, event.effectId),
+        // An answer whose call failed stays until the step reopens or closes its request, which
+        // rebuilds the open request from it.
+        answering:
+          event.outcome.kind === "ok"
+            ? without(prepared.answering, event.effectId)
+            : prepared.answering,
         closing: prepared.closing?.effectId === event.effectId ? null : prepared.closing,
       };
     }

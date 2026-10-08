@@ -3,61 +3,57 @@ import * as NodeCrypto from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
-import * as DateTime from "effect/DateTime";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import * as Redacted from "effect/Redacted";
+import { migrate } from "./migrations.ts";
+import { treeMigrations } from "./migrationFiles.ts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as Redacted from "effect/Redacted";
-import * as PgClient from "@effect/sql-pg/PgClient";
 import * as SqlClient from "effect/sql/SqlClient";
-import { type UsageCoverage, type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
-import {
-  USAGE_GENESIS_DIGEST,
-  usageEntryDigest,
-  usageSnapshotDigest,
-  type UsageLinkUp,
-} from "@t3tools/shared/agentUsage";
+import { UsageFact, UsageReport, type UsageReportQuery } from "@t3tools/contracts";
+import { usageOriginId, usageFactId, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { tempDir } from "../test/harness/tempDir.ts";
 import { activeCoreLayer } from "../test/harness/activeCore.ts";
 import { Leader } from "./leader.ts";
-import { ZeropsUnavailable } from "./zerops/api.ts";
 import { makeUsageLedger } from "./usageLedger.ts";
 import { zeroUsage, contributionOf } from "./usageAccounting.ts";
-import { usageCheckpoint, protectUsageCut, pruneUsageDetail } from "./usageRetention.ts";
+import { pruneUsageDetail } from "./usageRetention.ts";
 import { readUsageReport, type UsageReportAccess } from "./usageReport.ts";
-import { runTool, libpqEnv } from "./backup.ts";
 import { installAutomaticUsageRates } from "./usagePrices.ts";
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeFact = Schema.decodeUnknownEffect(UsageFact);
+const decodeReport = Schema.decodeUnknownEffect(UsageReport);
+const binding = { orgId: "ORG", projectId: "P", mateId: "00000000-0000-0000-0000-000000000001" };
+const originId = usageOriginId(binding, "claude");
 const fact = (
   id: string,
   tokens: string,
-  revision = "1",
   at = "2020-01-01T12:00:00.000Z",
   model = "model-a",
 ): UsageFact => ({
-  originId: "origin",
-  factId: id,
+  originId,
+  factId: usageFactId("native-thread", id),
   nativeId: id,
-  aliases: [],
-  revision,
   provider: "claude",
-  model,
-  pricingBand: "standard",
-  components: {
-    uncachedInput: tokens,
-    cachedInput: "0",
-    cacheCreation: "0",
-    output: "0",
-    reasoning: "0",
-    inclusiveTotal: tokens,
-  },
+  models: [
+    {
+      model,
+      components: {
+        uncachedInput: tokens,
+        cachedInput: "0",
+        cacheCreation: "0",
+        output: "0",
+        reasoning: "0",
+        inclusiveTotal: tokens,
+      },
+      nativeCost: null,
+    },
+  ],
   nativeCost: null,
   time: { kind: "instant", at, provenance: "native" },
-  evidence: "native-request",
-  meterVersion: "claude-1",
-  state: "settled",
-  sessionId: null,
-  runId: null,
+  evidence: "live-provider-turn",
+  meterVersion: "native-turn-v1",
+  sessionId: "native-thread",
   parentId: null,
 });
 const baseQuery: UsageReportQuery = {
@@ -110,18 +106,17 @@ const setup = Effect.gen(function* () {
     readonly id: string;
   }>`INSERT INTO hq_app(name,created_by) VALUES('Usage rig','owner') RETURNING id::text`;
   yield* sql`INSERT INTO hq_app_project(project_id,app_id,kind,created_by) VALUES('P',${app!.id}::uuid,'mate','owner')`;
-  yield* sql`INSERT INTO hq_mate(project_id,face) VALUES('P','')`;
+  yield* sql`INSERT INTO hq_mate(project_id,face,usage_id) VALUES('P','',${binding.mateId}::uuid)`;
   const credential = "test-credential";
   yield* sql`INSERT INTO hq_mate_credential(credential_hash,project_id) VALUES(${NodeCrypto.createHash("sha256").update(credential).digest("hex")},'P')`;
   const ledger = yield* makeUsageLedger(sql, leader, Effect.succeed("ORG"));
   const sender = yield* ledger.open("P", credential);
   const origin = {
-    originId: "origin",
+    originId,
     orgId: "ORG",
     projectId: "P",
     mateId: sender.mateId,
     provider: "claude" as const,
-    writerId: "writer",
     label: "Rig",
     coverage: {
       state: "complete" as const,
@@ -130,39 +125,22 @@ const setup = Effect.gen(function* () {
       gaps: [],
     },
   };
-  const hello: UsageLinkUp = {
-    type: "usage-hello",
-    protocol: 1,
-    ledgerId: "ledger",
-    highWater: "0",
-    highDigest: USAGE_GENESIS_DIGEST,
-    replayFloor: "1",
-    origins: [origin],
-  };
-  yield* ledger.receive(sender, hello);
   let seq = 0;
-  let digest = USAGE_GENESIS_DIGEST;
-  const batch = (
-    facts: ReadonlyArray<UsageFact>,
-    coverage: ReadonlyArray<{ originId: string; value: UsageCoverage }> = [],
-  ) => {
-    seq++;
-    const body = { sequence: String(seq), previousDigest: digest, facts, coverage };
-    digest = usageEntryDigest(body);
-    return {
-      type: "usage-batch" as const,
-      ledgerId: "ledger",
-      channel: sender.channel,
-      entries: [{ ...body, digest }],
-    };
-  };
+  const batch = (facts: ReadonlyArray<UsageFact>): UsageLinkUp => ({
+    type: "usage-facts",
+    protocol: 2,
+    batchId: `batch-${++seq}`,
+    origins: [origin],
+    facts,
+  });
+  yield* ledger.receive(sender, batch([]));
   const total = Effect.map(
     sql<{
       readonly tokens: string;
     }>`SELECT coalesce(sum((statistics->>'tokens')::numeric),0)::text AS tokens FROM hq_usage_daily`,
     (rows) => rows[0]!.tokens,
   );
-  return { sql, leader, ledger, sender, origin, hello, batch, total };
+  return { sql, leader, ledger, sender, origin, batch, total };
 });
 const database = <E>(run: Effect.Effect<void, E, SqlClient.SqlClient | Leader>) =>
   Effect.gen(function* () {
@@ -170,109 +148,318 @@ const database = <E>(run: Effect.Effect<void, E, SqlClient.SqlClient | Leader>) 
     const url = yield* pg.createDatabase;
     yield* run.pipe(Effect.provide(activeCoreLayer(url)));
   });
-describe("HQ usage ledger boundaries", () => {
+describe("HQ immutable usage", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
-      "ACK loss, equal genuine requests, late correction, redating and tombstones survive raw expiry",
+      "one multi-model turn counts once while native header and model charges stay separate",
       () =>
         database(
           Effect.gen(function* () {
-            const { sql, leader, ledger, sender, batch, total } = yield* setup;
-            const first = batch([fact("a", "1000")]);
-            yield* ledger.receive(sender, first);
-            yield* ledger.receive(sender, first);
-            assert.strictEqual(yield* total, "1000");
-            const equal = batch([fact("b", "200"), fact("c", "200")]);
-            yield* ledger.receive(sender, equal);
-            assert.strictEqual(yield* total, "1400");
-            const checkpoint = yield* usageCheckpoint(sql);
-            const pinned = yield* Effect.result(pruneUsageDetail(sql, leader, "2026-01-01"));
-            assert.isTrue(pinned._tag === "Failure");
-            yield* protectUsageCut(sql, leader, {
-              setId: "verified-fixture",
-              independent: true,
-              expected: checkpoint,
-              restored: checkpoint,
+            const { ledger, sender, batch, sql, leader, total } = yield* setup;
+            const charge = (amount: string) => ({
+              amount,
+              scale: 9,
+              currency: "USD",
+              basis: "provider-reported",
             });
+            const a = fact("turn", "30");
+            const b = fact("turn", "120", "2020-01-01T12:00:00.000Z", "model-b");
+            const turn = {
+              ...a,
+              nativeCost: charge("900"),
+              models: [
+                {
+                  model: "model-a",
+                  components: a.models[0]!.components,
+                  nativeCost: charge("300"),
+                },
+                {
+                  model: "model-b",
+                  components: b.models[0]!.components,
+                  nativeCost: charge("600"),
+                },
+              ],
+            };
+            const sent = batch([turn]);
+            yield* ledger.receive(sender, sent);
+            yield* ledger.receive(sender, sent);
+            yield* ledger.receive(sender, batch([{ ...turn, models: turn.models.toReversed() }]));
+            assert.strictEqual(yield* total, "150");
+            yield* installAutomaticUsageRates(sql, leader, {
+              "model-a": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
+              "model-b": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
+            });
+            for (const groupBy of ["model", "provider", "day", "mate"] as const) {
+              const report = yield* readUsageReport(
+                sql,
+                "owner",
+                { kind: "agentUsage", query: { ...baseQuery, groupBy } },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(report.totals.tokens, "150");
+              assert.strictEqual(report.totals.records, "1");
+              assert.strictEqual(report.pricing.costUsdNanos, "150000");
+              assert.deepStrictEqual(Object.values(report.nativeCosts ?? {}), ["900"]);
+              if (groupBy === "model") {
+                assert.deepStrictEqual(
+                  report.groups.map((row) => row.totals.records),
+                  ["1", "1"],
+                );
+                assert.deepStrictEqual(
+                  report.groups.map((row) => row.totals.tokens),
+                  ["30", "120"],
+                );
+                assert.deepStrictEqual(
+                  report.groups.map((row) => Object.values(row.nativeCosts ?? {})),
+                  [["300"], ["600"]],
+                );
+                assert.strictEqual(report.pricing.pricedModelEntries, "2");
+              } else assert.strictEqual(report.groups[0]!.totals.records, "1");
+            }
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            for (const groupBy of ["hour", "model", "mate"] as const) {
+              const exact = yield* readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: {
+                    ...baseQuery,
+                    mode: "exact",
+                    since: "2020-01-01T11:00:00.000Z",
+                    until: "2020-01-01T13:00:00.000Z",
+                    groupBy,
+                  },
+                  detail: { tier: "exact" },
+                },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(exact.totals.tokens, "150");
+              assert.strictEqual(exact.totals.records, "1");
+              assert.lengthOf(exact.detail, 1);
+            }
+            const selected = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: { ...baseQuery, model: "model-b" } },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(selected.totals.tokens, "120");
+            assert.strictEqual(selected.totals.records, "1");
+            assert.deepStrictEqual(Object.values(selected.nativeCosts ?? {}), ["600"]);
             const [boundary] = yield* sql<{
               readonly day: string;
             }>`SELECT to_char((now() AT TIME ZONE 'UTC')::date-30,'YYYY-MM-DD') AS day`;
-            assert.strictEqual(yield* pruneUsageDetail(sql, leader, boundary!.day), 3);
-            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 0);
-            yield* ledger.receive(sender, equal);
-            assert.strictEqual(yield* total, "1400");
-            const correction = batch([fact("b", "150", "2")]);
-            yield* ledger.receive(sender, correction);
-            yield* ledger.receive(sender, correction);
-            assert.strictEqual(yield* total, "1350");
+            assert.strictEqual(yield* pruneUsageDetail(sql, leader, boundary!.day), 1);
+            yield* ledger.receive(sender, batch([turn]));
+            const retained = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(retained.totals.tokens, "150");
+            assert.strictEqual(retained.totals.records, "1");
+            assert.deepStrictEqual(
+              retained.groups.map((row) => row.totals.records),
+              ["1", "1"],
+            );
+            assert.deepStrictEqual(Object.values(retained.nativeCosts ?? {}), ["900"]);
+          }),
+        ),
+    );
+    for (const mode of [
+      "duplicate batch",
+      "lost ACK",
+      "clone resend",
+      "new observation timestamp",
+    ]) {
+      it.effect(`${mode} acknowledges one permanent response contribution`, () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, total, sql } = yield* setup;
+            const completed = {
+              ...fact("response", "150"),
+              time: {
+                kind: "instant" as const,
+                at: "2020-01-01T12:00:00.000Z",
+                provenance: "server-completion",
+              },
+            };
+            const first = batch([completed]);
+            const ack = yield* ledger.receive(sender, first);
+            assert.deepStrictEqual(ack, {
+              type: "usage-ack",
+              batchId: first.batchId,
+              accepted: [{ originId, factId: usageFactId("native-thread", "response") }],
+            });
+            const active =
+              mode === "clone resend" ? yield* ledger.open("P", sender.credential) : sender;
+            const repeat =
+              mode === "new observation timestamp"
+                ? { ...completed, time: { ...completed.time, at: "2020-01-01T13:00:00.000Z" } }
+                : completed;
+            yield* ledger.receive(active, mode === "duplicate batch" ? first : batch([repeat]));
+            assert.strictEqual(yield* total, "150");
+            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt`, 1);
+            const [stored] = yield* sql<{
+              readonly value: UsageFact;
+            }>`SELECT value FROM hq_usage_fact`;
+            assert.deepStrictEqual(stored!.value.time, completed.time);
+          }),
+        ),
+      );
+    }
+    it.effect(
+      "parents and child responses remain distinct even when their reported counts match",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, total } = yield* setup;
             yield* ledger.receive(
               sender,
-              batch([fact("b", "150", "3", "2020-01-02T12:00:00.000Z", "model-b")]),
+              batch([
+                fact("parent", "30"),
+                {
+                  ...fact("child", "30"),
+                  parentId: "native-thread",
+                  sessionId: "child-thread",
+                  factId: usageFactId("child-thread", "child"),
+                },
+              ]),
             );
-            const day = yield* sql<{
-              readonly day: string;
-              readonly tokens: string;
-            }>`SELECT day,(statistics->>'tokens') AS tokens FROM hq_usage_daily WHERE model='model-b'`;
-            assert.deepStrictEqual(day, [{ day: "2020-01-02", tokens: "150" }]);
-            const retraction = batch([{ ...fact("b", "150", "4"), state: "retracted" }]);
-            yield* ledger.receive(sender, retraction);
-            yield* ledger.receive(sender, retraction);
-            assert.strictEqual(yield* total, "1200");
-            yield* ledger.receive(sender, batch([fact("b", "200", "1")]));
-            assert.strictEqual(yield* total, "1200");
-            const late = batch([fact("year-old", "200")]);
-            yield* ledger.receive(sender, late);
-            yield* ledger.receive(sender, late);
-            assert.strictEqual(yield* total, "1400");
+            assert.strictEqual(yield* total, "60");
           }),
         ),
     );
     it.effect(
-      "expiry preserves recent redating and refuses detail that disagrees with permanent receipts",
+      "equal native response IDs in different child threads remain separate completions",
       () =>
         database(
           Effect.gen(function* () {
-            const { sql, leader, ledger, sender, batch, total } = yield* setup;
-            const [clock] = yield* sql<{
-              readonly at: string;
-              readonly boundary: string;
-            }>`SELECT to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at,to_char((now() AT TIME ZONE 'UTC')::date-30,'YYYY-MM-DD') AS boundary`;
-            yield* ledger.receive(sender, batch([fact("recent", "100")]));
-            yield* sql`UPDATE hq_usage_fact SET ingested_at='2019-01-01'`;
-            yield* ledger.receive(sender, batch([fact("recent", "100", "2", clock!.at)]));
-            // Even an old ingestion timestamp must not override a proved recent occurrence.
-            yield* sql`UPDATE hq_usage_fact SET ingested_at='2019-01-01'`;
-            let point = yield* usageCheckpoint(sql);
-            yield* protectUsageCut(sql, leader, {
-              setId: "verified",
-              independent: true,
-              expected: point,
-              restored: point,
+            const { ledger, sender, batch, total } = yield* setup;
+            const parent = fact("native-response", "30");
+            const child = {
+              ...parent,
+              sessionId: "child-thread",
+              parentId: "native-thread",
+              factId: usageFactId("child-thread", "native-response"),
+            };
+            yield* ledger.receive(sender, batch([parent, child]));
+            yield* ledger.receive(sender, batch([parent, child]));
+            assert.strictEqual(yield* total, "60");
+          }),
+        ),
+    );
+    for (const damage of [
+      "tokens",
+      "native-time",
+      "provider",
+      "origin",
+      "channel",
+      "protocol",
+      "fact-key",
+      "origin-key",
+    ]) {
+      it.effect(`${damage} conflict refuses the whole batch and preserves accepted usage`, () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, origin, batch, total, sql } = yield* setup;
+            yield* ledger.receive(sender, batch([fact("same", "30")]));
+            const current = sender;
+            let changed = fact("same", "30");
+            if (damage === "tokens") changed = fact("same", "50");
+            if (damage === "native-time")
+              changed = {
+                ...changed,
+                time: { kind: "instant", at: "2020-01-01T13:00:00.000Z", provenance: "native" },
+              };
+            if (damage === "provider") changed = { ...changed, provider: "codex" };
+            if (damage === "fact-key") changed = { ...changed, factId: "reminted-response" };
+            if (damage === "channel") {
+              yield* ledger.open("P", sender.credential);
+            }
+            const message = batch([fact("new", "100"), changed]);
+            const refused = yield* Effect.result(
+              ledger.receive(current, {
+                ...message,
+                ...(damage === "protocol" ? { protocol: 1 } : {}),
+                ...(damage === "origin-key"
+                  ? {
+                      origins: [{ ...origin, originId: "reminted-origin" }],
+                      facts: [{ ...fact("same", "30"), originId: "reminted-origin" }],
+                    }
+                  : {}),
+                ...(damage === "origin"
+                  ? { origins: [{ ...origin, mateId: "00000000-0000-0000-0000-000000000000" }] }
+                  : {}),
+              }),
+            );
+            assert.strictEqual(refused._tag, "Failure");
+            assert.strictEqual(yield* total, "30");
+            assert.lengthOf(
+              yield* sql`SELECT 1 FROM hq_usage_receipt WHERE fact_id=${usageFactId("native-thread", "new")}`,
+              0,
+            );
+          }),
+        ),
+      );
+    }
+    it.effect(
+      "a known zero turn does not infer participation from Haiku 10 and Opus 100 history",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, sql } = yield* setup;
+            const zero = yield* decodeFact({
+              ...fact("zero", "0"),
+              models: [],
+              nativeCost: { amount: "0", scale: 9, currency: "USD", basis: "reported-turn" },
             });
-            assert.strictEqual(yield* pruneUsageDetail(sql, leader, clock!.boundary), 0);
-            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 1);
             yield* ledger.receive(
               sender,
               batch([
-                { ...fact("undated", "100"), time: { kind: "undated" } },
-                fact(
-                  "future",
-                  "100",
-                  "1",
-                  DateTime.formatIso(DateTime.add(DateTime.makeUnsafe(clock!.at), { years: 1 })),
-                ),
+                fact("haiku", "10", undefined, "haiku"),
+                fact("opus", "100", undefined, "opus"),
+                zero,
               ]),
             );
-            yield* sql`UPDATE hq_usage_fact SET ingested_at='2019-01-01' WHERE native_id<>'recent'`;
-            point = yield* usageCheckpoint(sql);
-            yield* protectUsageCut(sql, leader, {
-              setId: "bounded-clock",
-              independent: true,
-              expected: point,
-              restored: point,
-            });
-            assert.strictEqual(yield* pruneUsageDetail(sql, leader, clock!.boundary), 2);
-            const recent = yield* readUsageReport(
+            yield* ledger.receive(sender, batch([zero]));
+            for (const groupBy of ["model", "provider", "mate"] as const) {
+              const report = yield* readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: { ...baseQuery, groupBy },
+                },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(report.totals.records, "3");
+              assert.strictEqual(report.totals.tokens, "110");
+              assert.strictEqual(report.pricing.unpricedModelEntries, "2");
+              if (groupBy === "model") {
+                assert.deepStrictEqual(
+                  report.groups.map((group) => [
+                    group.model,
+                    group.totals.records,
+                    group.totals.tokens,
+                  ]),
+                  [
+                    ["haiku", "1", "10"],
+                    ["opus", "1", "100"],
+                  ],
+                );
+              } else assert.strictEqual(report.groups[0]!.totals.records, "3");
+              yield* decodeReport(report);
+            }
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            const exact = yield* readUsageReport(
               sql,
               "owner",
               {
@@ -280,278 +467,119 @@ describe("HQ usage ledger boundaries", () => {
                 query: {
                   ...baseQuery,
                   mode: "exact",
-                  since: clock!.at,
-                  until: DateTime.formatIso(
-                    DateTime.add(DateTime.makeUnsafe(clock!.at), { milliseconds: 1 }),
-                  ),
+                  groupBy: "hour",
+                  since: "2020-01-01T11:00:00.000Z",
+                  until: "2020-01-01T13:00:00.000Z",
                 },
+                detail: { tier: "exact" },
               },
               access,
               new Map(),
             );
-            assert.strictEqual(recent.totals.tokens, "100");
-            yield* ledger.receive(sender, batch([fact("old", "200")]));
-            point = yield* usageCheckpoint(sql);
-            yield* protectUsageCut(sql, leader, {
-              setId: "verified-new",
-              independent: true,
-              expected: point,
-              restored: point,
-            });
-            yield* sql`UPDATE hq_usage_fact SET value=jsonb_set(jsonb_set(value,'{components,uncachedInput}','"199"'),'{components,inclusiveTotal}','"199"') WHERE native_id='old'`;
-            const refused = yield* Effect.flip(pruneUsageDetail(sql, leader, clock!.boundary));
-            assert.strictEqual(refused._tag, "UsageRefused");
-            assert.strictEqual(yield* total, "500");
-            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 2);
+            assert.strictEqual(exact.totals.records, "3");
+            assert.strictEqual(exact.totals.tokens, "110");
+            assert.lengthOf(exact.detail, 3);
+            const recordedZero = exact.detail.find(
+              (detail) => "nativeId" in detail && detail.nativeId === "zero",
+            );
+            assert.deepStrictEqual(recordedZero, zero);
           }),
         ),
     );
     it.effect(
-      "gaps, corrupt prefix, unregistered origins and replaced channels commit nothing",
+      "summary groupings share access binding while filters, access and detail groupings stay fenced",
       () =>
         database(
           Effect.gen(function* () {
-            const { sql, ledger, sender, batch, total } = yield* setup;
-            yield* ledger.receive(sender, batch([fact("a", "100")]));
-            const bad = batch([fact("b", "10"), { ...fact("c", "200"), originId: "elsewhere" }]);
-            const failure = yield* Effect.result(ledger.receive(sender, bad));
-            assert.isTrue(failure._tag === "Failure");
-            assert.strictEqual(yield* total, "100");
-            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt WHERE native_id='b'`, 0);
-            const gap = {
-              sequence: "3",
-              previousDigest: USAGE_GENESIS_DIGEST,
-              facts: [],
-              coverage: [],
+            const { ledger, sender, batch, sql } = yield* setup;
+            yield* ledger.receive(sender, batch([fact("binding", "10")]));
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            const query = {
+              ...baseQuery,
+              mode: "exact" as const,
+              since: "2020-01-01T11:00:00.000Z",
+              until: "2020-01-01T13:00:00.000Z",
             };
-            const replay = yield* ledger.receive(sender, {
-              type: "usage-batch",
-              ledgerId: "ledger",
-              channel: sender.channel,
-              entries: [{ ...gap, digest: usageEntryDigest(gap) }],
-            });
-            assert.strictEqual(replay.type, "usage-resume");
-            assert.strictEqual("cursor" in replay ? replay.cursor : null, "1");
-            assert.strictEqual(yield* total, "100");
-            const replacement = yield* ledger.open("P", sender.credential);
-            assert.isTrue((yield* Effect.result(ledger.receive(sender, bad)))._tag === "Failure");
-            const hello = {
-              type: "usage-hello" as const,
-              protocol: 1,
-              ledgerId: "ledger",
-              highWater: "1",
-              highDigest: (yield* sql<{
-                readonly digest: string;
-              }>`SELECT digest FROM hq_usage_producer`)[0]!.digest,
-              replayFloor: "2",
-              origins: [],
+            const read = (
+              groupBy: UsageReportQuery["groupBy"],
+              model: string | null = null,
+              admitted = access,
+              detail = false,
+            ) =>
+              readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: { ...query, groupBy, model },
+                  ...(detail ? { detail: { tier: "exact" as const } } : {}),
+                },
+                admitted,
+                new Map(),
+              );
+            const model = yield* read("model");
+            for (const groupBy of ["provider", "hour", "day", "mate"] as const) {
+              const grouped = yield* read(groupBy);
+              assert.deepStrictEqual(grouped.generation, model.generation);
+            }
+            const filtered = yield* read("model", "model-a");
+            assert.notStrictEqual(filtered.generation.access, model.generation.access);
+            const changedAccess: UsageReportAccess = {
+              ...access,
+              facts: {
+                ...access.facts,
+                projects: [
+                  {
+                    ...access.facts.projects[0]!,
+                    userRoles: [{ clientUserId: "C-owner", roleCode: "ADMIN" }],
+                  },
+                ],
+              },
             };
-            yield* ledger.receive(replacement, hello);
-            yield* sql`UPDATE hq_mate_credential SET revoked_at=now() WHERE project_id='P'`;
-            assert.isTrue(
-              (yield* Effect.result(ledger.receive(replacement, hello)))._tag === "Failure",
-            );
-            assert.strictEqual(yield* total, "100");
+            const changed = yield* read("model", null, changedAccess);
+            assert.notStrictEqual(changed.generation.access, model.generation.access);
+            const modelDetail = yield* read("model", null, access, true);
+            const providerDetail = yield* read("provider", null, access, true);
+            assert.notStrictEqual(modelDetail.generation.access, providerDetail.generation.access);
           }),
         ),
     );
-    it.effect(
-      "snapshot pages upsert without absence deletion and cannot revive a newer retraction",
-      () =>
-        database(
-          Effect.gen(function* () {
-            const { ledger, sender, batch, total } = yield* setup;
-            yield* ledger.receive(sender, batch([fact("a", "100"), fact("b", "200")]));
-            const body = {
-              ledgerId: "ledger",
-              snapshotId: "S",
-              highWater: "5",
-              highDigest: "1".repeat(64),
-              page: 0,
-              pages: 1,
-              totalFacts: "1",
-              previousDigest: USAGE_GENESIS_DIGEST,
-              facts: [fact("a", "50", "2")],
-              coverage: [],
-            };
-            const digest = usageSnapshotDigest(body);
-            const page = {
-              ...body,
-              type: "usage-snapshot" as const,
-              channel: sender.channel,
-              digest,
-              manifestDigest: digest,
-            };
-            yield* ledger.receive(sender, page);
-            yield* ledger.receive(sender, page);
-            assert.strictEqual(yield* total, "250");
-            const retract = {
-              sequence: "6",
-              previousDigest: body.highDigest,
-              facts: [{ ...fact("a", "0", "3"), state: "retracted" as const }],
-              coverage: [],
-            };
-            yield* ledger.receive(sender, {
-              type: "usage-batch",
-              ledgerId: "ledger",
-              channel: sender.channel,
-              entries: [{ ...retract, digest: usageEntryDigest(retract) }],
-            });
-            assert.strictEqual(yield* total, "200");
-          }),
-        ),
+    it.effect("exact expiry preserves permanent daily facts and clone deduplication", () =>
+      database(
+        Effect.gen(function* () {
+          const { ledger, sender, batch, total, sql, leader } = yield* setup;
+          const completed = fact("old", "150");
+          yield* ledger.receive(sender, batch([completed]));
+          const [clock] = yield* sql<{
+            readonly boundary: string;
+          }>`SELECT to_char((now() AT TIME ZONE 'UTC')::date-30,'YYYY-MM-DD') AS boundary`;
+          assert.strictEqual(yield* pruneUsageDetail(sql, leader, clock!.boundary), 1);
+          assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 0);
+          const clone = yield* ledger.open("P", sender.credential);
+          yield* ledger.receive(clone, batch([completed]));
+          assert.strictEqual(yield* total, "150");
+          assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 0);
+          assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt`, 1);
+          const [retainedReceipt] = yield* sql<{
+            readonly detail: unknown;
+          }>`SELECT to_jsonb(r)-'origin_id'-'fact_id'-'digest' AS detail FROM hq_usage_receipt r`;
+          assert.deepStrictEqual(retainedReceipt!.detail, {});
+        }),
+      ),
     );
     it.effect(
-      "interrupted snapshots resume exactly or are explicitly abandoned without losing accepted usage",
+      "exact subday edges, hours, providers and models use reported responses and independent pricing",
       () =>
         database(
           Effect.gen(function* () {
-            const { sql, ledger, sender, total } = yield* setup;
-            const body = {
-              ledgerId: "ledger",
-              snapshotId: "interrupted",
-              highWater: "5",
-              highDigest: "1".repeat(64),
-              page: 0,
-              pages: 2,
-              totalFacts: "2",
-              previousDigest: USAGE_GENESIS_DIGEST,
-              facts: [fact("a", "100")],
-              coverage: [],
-            };
-            const page = {
-              ...body,
-              type: "usage-snapshot" as const,
-              channel: sender.channel,
-              digest: usageSnapshotDigest(body),
-              manifestDigest: "2".repeat(64),
-            };
-            const ack = yield* ledger.receive(sender, page);
-            assert.strictEqual(ack.type, "usage-snapshot-ack");
-            assert.strictEqual(yield* total, "100");
-            yield* ledger.receive(sender, page);
-            assert.strictEqual(yield* total, "100");
-            assert.strictEqual(
-              (yield* sql<{
-                readonly coverage: { state: string };
-              }>`SELECT coverage FROM hq_usage_origin`)[0]!.coverage.state,
-              "recovering",
-            );
-            const abandoned = yield* ledger.receive(sender, {
-              type: "usage-snapshot-abandon",
-              ledgerId: "ledger",
-              channel: sender.channel,
-              snapshotId: "interrupted",
-            });
-            assert.strictEqual(abandoned.type, "usage-resume");
-            assert.strictEqual(yield* total, "100");
-            assert.isNull(
-              (yield* sql<{
-                readonly snapshot: unknown;
-              }>`SELECT snapshot FROM hq_usage_producer`)[0]!.snapshot,
-            );
-            const fresh = {
-              ...body,
-              snapshotId: "replacement",
-              pages: 1,
-              totalFacts: "1",
-              facts: [fact("a", "100")],
-            };
-            const digest = usageSnapshotDigest(fresh);
-            yield* ledger.receive(sender, {
-              ...fresh,
-              type: "usage-snapshot",
-              channel: sender.channel,
-              digest,
-              manifestDigest: digest,
-            });
-            assert.strictEqual(yield* total, "100");
-          }),
-        ),
-    );
-    it.effect(
-      "coverage from every pinned snapshot page becomes visible only at manifest completion",
-      () =>
-        database(
-          Effect.gen(function* () {
-            const { sql, ledger, sender, origin, hello, total } = yield* setup;
-            const second = { ...origin, originId: "second" };
-            yield* ledger.receive(sender, { ...hello, origins: [second] });
-            const first = {
-              ledgerId: "ledger",
-              snapshotId: "paged",
-              highWater: "5",
-              highDigest: "1".repeat(64),
-              page: 0,
-              pages: 2,
-              totalFacts: "2",
-              previousDigest: USAGE_GENESIS_DIGEST,
-              facts: [fact("a", "100")],
-              coverage: [{ originId: origin.originId, value: origin.coverage }],
-            };
-            const firstDigest = usageSnapshotDigest(first);
-            const last = {
-              ...first,
-              page: 1,
-              previousDigest: firstDigest,
-              facts: [{ ...fact("b", "200"), originId: "second" }],
-              coverage: [{ originId: "second", value: second.coverage }],
-            };
-            const manifestDigest = usageSnapshotDigest(last);
-            yield* ledger.receive(sender, {
-              ...first,
-              type: "usage-snapshot",
-              channel: sender.channel,
-              digest: firstDigest,
-              manifestDigest,
-            });
-            const partial = yield* readUsageReport(
-              sql,
-              "owner",
-              { kind: "agentUsage", query: baseQuery },
-              access,
-              new Map(),
-            );
-            assert.isTrue(partial.coverage.every((source) => source.value.state === "recovering"));
-            yield* ledger.receive(sender, {
-              ...last,
-              type: "usage-snapshot",
-              channel: sender.channel,
-              digest: manifestDigest,
-              manifestDigest,
-            });
-            assert.strictEqual(yield* total, "300");
-            const complete = yield* readUsageReport(
-              sql,
-              "owner",
-              { kind: "agentUsage", query: baseQuery },
-              access,
-              new Map(),
-            );
-            assert.lengthOf(complete.coverage, 2);
-            assert.isTrue(complete.coverage.every((source) => source.value.state === "complete"));
-            assert.strictEqual(
-              (yield* sql<{
-                readonly cursor: string;
-              }>`SELECT cursor::text FROM hq_usage_producer`)[0]!.cursor,
-              "5",
-            );
-          }),
-        ),
-    );
-    it.effect(
-      "exact subday edges replace daily cells, prices remain independent, pages invalidate on corrections",
-      () =>
-        database(
-          Effect.gen(function* () {
-            const { sql, leader, ledger, sender, batch } = yield* setup;
+            const { ledger, sender, batch, sql, leader } = yield* setup;
             yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
             yield* ledger.receive(
               sender,
               batch([
-                fact("before", "100", "1", "2020-01-01T01:00:00.000Z"),
-                fact("inside", "200", "1", "2020-01-01T13:00:00.000Z"),
-                fact("next", "300", "1", "2020-01-02T03:00:00.000Z"),
+                fact("before", "100", "2020-01-01T01:00:00.000Z"),
+                fact("inside", "200", "2020-01-01T13:00:00.000Z"),
+                fact("next", "300", "2020-01-02T03:00:00.000Z"),
               ]),
             );
             const query = {
@@ -560,66 +588,42 @@ describe("HQ usage ledger boundaries", () => {
               since: "2020-01-01T12:00:00.000Z",
               until: "2020-01-02T12:00:00.000Z",
             };
-            let report = yield* readUsageReport(
-              sql,
-              "owner",
-              { kind: "agentUsage", query },
-              access,
-              new Map(),
-            );
-            assert.strictEqual(report.totals.tokens, "500");
-            assert.isNull(report.pricing.costUsdNanos);
-            assert.strictEqual(report.pricing.unpricedRecords, "2");
             yield* installAutomaticUsageRates(sql, leader, {
               "model-a": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
             });
-            report = yield* readUsageReport(
-              sql,
-              "owner",
-              { kind: "agentUsage", query },
-              access,
-              new Map(),
-            );
-            assert.strictEqual(report.pricing.costUsdNanos, "500000");
-            const cursor = { generation: report.generation, after: "" };
-            yield* ledger.receive(
-              sender,
-              batch([fact("inside", "250", "2", "2020-01-01T13:00:00.000Z")]),
-            );
-            assert.isTrue(
-              (yield* Effect.result(
-                readUsageReport(
-                  sql,
-                  "owner",
-                  { kind: "agentUsage", query, detail: { tier: "exact", cursor } },
-                  access,
-                  new Map(),
-                ),
-              ))._tag === "Failure",
-            );
-            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-02T00:00:00Z'`;
-            report = yield* readUsageReport(
-              sql,
-              "owner",
-              { kind: "agentUsage", query },
-              access,
-              new Map(),
-            );
-            assert.strictEqual(report.state, "unsupported-exact-boundary");
+            for (const groupBy of ["hour", "day", "provider", "model"] as const) {
+              const report = yield* readUsageReport(
+                sql,
+                "owner",
+                { kind: "agentUsage", query: { ...query, groupBy } },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(report.totals.tokens, "500");
+              assert.strictEqual(report.pricing.costUsdNanos, "500000");
+              assert.strictEqual(report.recordedSince, "2020-01-01T01:00:00.000Z");
+              if (groupBy === "hour")
+                assert.deepStrictEqual(
+                  report.groups.map((group) => group.period),
+                  ["2020-01-01T13:00:00.000Z", "2020-01-02T03:00:00.000Z"],
+                );
+              if (groupBy === "model") assert.strictEqual(report.groups[0]!.provider, "claude");
+            }
           }),
         ),
     );
     it.effect(
-      "current owner/application regroup retained history and only authorized unregistered Mates appear as gaps",
+      "new completed responses invalidate pages while current owner and application regroup retained history",
       () =>
         database(
           Effect.gen(function* () {
-            const { sql, ledger, sender, batch } = yield* setup;
-            yield* ledger.receive(sender, batch([fact("a", "100")]));
+            const { ledger, sender, batch, sql } = yield* setup;
+            yield* ledger.receive(sender, batch([fact("first", "100")]));
+            const query = { ...baseQuery, groupBy: "owner" as const };
             const before = yield* readUsageReport(
               sql,
               "owner",
-              { kind: "agentUsage", query: { ...baseQuery, groupBy: "owner" } },
+              { kind: "agentUsage", query },
               access,
               new Map(),
             );
@@ -645,7 +649,7 @@ describe("HQ usage ledger boundaries", () => {
             const after = yield* readUsageReport(
               sql,
               "owner",
-              { kind: "agentUsage", query: { ...baseQuery, groupBy: "owner" } },
+              { kind: "agentUsage", query },
               handover,
               new Map(),
             );
@@ -661,37 +665,212 @@ describe("HQ usage ledger boundaries", () => {
               new Map(),
             );
             assert.strictEqual(detached.groups[0]!.key, "ungrouped");
-            yield* sql`INSERT INTO hq_mate(project_id,face) VALUES('old-Mate',''),('hidden-Mate','')`;
-            const withMissing: UsageReportAccess = {
-              ...access,
-              facts: {
-                ...access.facts,
-                projects: [
-                  ...access.facts.projects,
-                  { ...access.facts.projects[0]!, id: "old-Mate" },
-                  {
-                    ...access.facts.projects[0]!,
-                    id: "hidden-Mate",
-                    userRoles: [{ clientUserId: "C-owner", roleCode: "NO_ACCESS" }],
-                  },
-                ],
-              },
-            };
-            const gaps = yield* readUsageReport(
+            yield* ledger.receive(sender, batch([fact("second", "50")]));
+            const stale = yield* Effect.result(
+              readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query,
+                  detail: { tier: "daily", cursor: { generation: before.generation, after: "" } },
+                },
+                access,
+                new Map(),
+              ),
+            );
+            assert.strictEqual(stale._tag, "Failure");
+          }),
+        ),
+    );
+    it.effect("coverage names each current Mate from Zerops, even before its first turn", () =>
+      database(
+        Effect.gen(function* () {
+          const { sql } = yield* setup;
+          const named = {
+            ...access,
+            facts: {
+              ...access.facts,
+              projects: access.facts.projects.map((project) => ({ ...project, name: "Fern" })),
+            },
+          };
+          const report = () =>
+            readUsageReport(
               sql,
               "owner",
               { kind: "agentUsage", query: baseQuery },
-              withMissing,
+              named,
               new Map(),
             );
-            assert.strictEqual(gaps.totals.tokens, "100");
-            assert.strictEqual(gaps.state, "partial");
-            assert.deepStrictEqual(
-              gaps.captureGaps?.map((gap) => gap.projectId),
-              ["old-Mate"],
+          yield* sql`UPDATE hq_usage_origin SET label='claude'`;
+          assert.strictEqual((yield* report()).coverage[0]!.label, "Fern");
+          yield* sql`DELETE FROM hq_usage_origin`;
+          assert.strictEqual((yield* report()).coverage[0]!.label, "Fern");
+        }),
+      ),
+    );
+    it.effect(
+      "authorized Mates that have not reported remain explicit coverage, never invented usage",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql } = yield* setup;
+            yield* sql`DELETE FROM hq_usage_origin`;
+            const report = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
             );
+            assert.lengthOf(report.coverage, 1);
+            assert.strictEqual(report.coverage[0]!.mateId, binding.mateId);
+            assert.isUndefined(report.coverage[0]!.originId);
+            assert.deepStrictEqual(report.coverage[0]!.value, {
+              state: "unknown",
+              since: null,
+              through: null,
+              gaps: [],
+            });
+            assert.isNull(report.recordedSince);
+            assert.strictEqual(report.totals.tokens, "0");
+            const denied = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              {
+                ...access,
+                facts: {
+                  ...access.facts,
+                  members: [{ ...access.facts.members[0]!, roleCode: "NO_ACCESS" }],
+                  projects: [],
+                },
+              },
+              new Map(),
+            );
+            assert.lengthOf(denied.coverage, 0);
           }),
         ),
+    );
+    it.effect("only admitted origins establish the first recorded date", () =>
+      database(
+        Effect.gen(function* () {
+          const { ledger, sender, batch, sql } = yield* setup;
+          yield* ledger.receive(sender, batch([fact("visible", "100")]));
+          yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,provider,label,coverage,recorded_since) VALUES('hidden','ORG','P-hidden','00000000-0000-0000-0000-000000000001','claude','Hidden',${json({ state: "partial", since: null, through: null, gaps: [] })}::jsonb,'2019-01-01')`;
+          const projectOnly: UsageReportAccess = {
+            ...access,
+            facts: {
+              ...access.facts,
+              members: [{ ...access.facts.members[0]!, roleCode: "NO_ACCESS" }],
+              projects: [
+                ...access.facts.projects,
+                {
+                  ...access.facts.projects[0]!,
+                  id: "P-hidden",
+                  userRoles: [{ clientUserId: "C-owner", roleCode: "NO_ACCESS" }],
+                },
+              ],
+            },
+          };
+          const report = yield* readUsageReport(
+            sql,
+            "owner",
+            { kind: "agentUsage", query: baseQuery },
+            projectOnly,
+            new Map(),
+          );
+          assert.strictEqual(report.recordedSince, "2020-01-01T12:00:00.000Z");
+          assert.deepStrictEqual(
+            report.coverage.map((row) => row.originId),
+            [originId],
+          );
+        }),
+      ),
+    );
+    it.effect(
+      "forward migration preserves old provenance and 32 original gaps without adding scanner accounting to live totals",
+      () =>
+        Effect.gen(function* () {
+          const pg = yield* TempPostgres;
+          const url = yield* pg.createDatabase;
+          yield* Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const old = treeMigrations().filter((file) => file.name < "0050_usage_turns.sql");
+            yield* migrate(old);
+            const originalGaps = Array.from({ length: 32 }, (_, index) => `source-gap-${index}`);
+            yield* sql`INSERT INTO hq_usage_producer(ledger_id,org_id,project_id,mate_id,channel,process_id,digest) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old',repeat('0',64))`;
+            yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,ledger_id,writer_id,provider,label,coverage) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old','claude','Old Mate',${json({ state: "partial", since: "2020-01-01T00:00:00.000Z", through: "2020-01-02T00:00:00.000Z", gaps: originalGaps })}::jsonb)`;
+            const historicalTurn = fact("old", "150");
+            const { models, ...historicalIdentity } = historicalTurn;
+            const original = {
+              ...historicalIdentity,
+              originId: "old",
+              model: models[0]!.model,
+              components: models[0]!.components,
+              pricingBand: "standard",
+              aliases: ["request"],
+              revision: "1",
+              state: "settled",
+            };
+            const oldContribution = {
+              ...contributionOf(historicalTurn).models[0]!,
+              pricingBand: "standard",
+            };
+            yield* sql`INSERT INTO hq_usage_receipt(origin_id,native_id,fact_id,revision,digest,contribution) VALUES('old','old','old',1,repeat('0',64),${json(oldContribution)}::jsonb)`;
+            yield* sql`INSERT INTO hq_usage_fact(origin_id,native_id,day,model,value) VALUES('old','old','2020-01-01','model-a',${json(original)}::jsonb)`;
+            yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics) VALUES('old','2020-01-01','model-a','standard','claude-1','1111',${json(oldContribution.statistics)}::jsonb)`;
+            yield* migrate(treeMigrations());
+            const [historical] = yield* sql<{
+              readonly value: unknown;
+            }>`SELECT value FROM hq_usage_history_fact`;
+            assert.deepStrictEqual(historical!.value, original);
+            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_history_receipt`, 1);
+            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_history_daily`, 1);
+            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 0);
+            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_daily`, 0);
+            for (const name of ["hq_usage_alias", "hq_usage_producer", "hq_usage_prefix"]) {
+              const [table] = yield* sql<{
+                readonly present: boolean;
+              }>`SELECT to_regclass(${name}) IS NOT NULL AS present`;
+              assert.isFalse(table!.present);
+            }
+            const historic = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: { ...baseQuery, provenance: "legacy-scanner" } },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(historic.provenance, "legacy-scanner");
+            assert.strictEqual(historic.totals.tokens, "150");
+            assert.deepStrictEqual(historic.coverage[0]!.value.gaps, originalGaps);
+            assert.strictEqual(historic.state, "partial");
+            yield* decodeReport(historic);
+            const exactLegacy = yield* Effect.result(
+              readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: { ...baseQuery, mode: "exact", provenance: "legacy-scanner" },
+                },
+                access,
+                new Map(),
+              ),
+            );
+            assert.strictEqual(exactLegacy._tag, "Failure");
+            const live = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(live.totals.tokens, "0");
+            assert.strictEqual(live.provenance, "live-responses");
+          }).pipe(Effect.provide(PgClient.layer({ url: Redacted.make(url) })));
+        }),
     );
     it.effect("unknown components qualify their own price cells after exact detail expires", () =>
       database(
@@ -703,7 +882,12 @@ describe("HQ usage ledger boundaries", () => {
               fact("known", "100"),
               {
                 ...fact("unknown", "200"),
-                components: { ...fact("unknown", "200").components, output: null },
+                models: [
+                  {
+                    ...fact("unknown", "200").models[0]!,
+                    components: { ...fact("unknown", "200").models[0]!.components, output: null },
+                  },
+                ],
               },
             ]),
           );
@@ -720,8 +904,8 @@ describe("HQ usage ledger boundaries", () => {
           );
           assert.strictEqual(report.totals.tokens, "300");
           assert.strictEqual(report.pricing.costUsdNanos, "100000");
-          assert.strictEqual(report.pricing.pricedRecords, "1");
-          assert.strictEqual(report.pricing.unpricedRecords, "1");
+          assert.strictEqual(report.pricing.pricedModelEntries, "1");
+          assert.strictEqual(report.pricing.unpricedModelEntries, "1");
         }),
       ),
     );
@@ -772,7 +956,7 @@ describe("HQ usage ledger boundaries", () => {
             );
             assert.deepStrictEqual(hidden.totals, zeroUsage());
             assert.lengthOf(hidden.coverage, 0);
-            assert.strictEqual(hidden.state, "partial");
+            assert.strictEqual(hidden.state, "unknown");
             assert.isTrue(
               (yield* Effect.result(
                 readUsageReport(
@@ -812,124 +996,6 @@ describe("HQ usage ledger boundaries", () => {
           }),
         ),
     );
-    it.effect("aliases, coarse replacement and uncertain dates remain disjoint", () =>
-      database(
-        Effect.gen(function* () {
-          const { sql, ledger, sender, batch, total } = yield* setup;
-          yield* ledger.receive(sender, batch([fact("coarse", "100")]));
-          yield* ledger.receive(
-            sender,
-            batch([
-              { ...fact("coarse", "0", "2"), state: "retracted" },
-              { ...fact("detail", "100"), aliases: ["native-detail"] },
-            ]),
-          );
-          yield* ledger.receive(
-            sender,
-            batch([
-              { ...fact("detail", "80", "2"), nativeId: "native-detail", aliases: ["detail"] },
-              { ...fact("undated", "20"), time: { kind: "undated" } },
-            ]),
-          );
-          assert.strictEqual(yield* total, "100");
-          const dated = yield* readUsageReport(
-            sql,
-            "owner",
-            { kind: "agentUsage", query: baseQuery },
-            access,
-            new Map(),
-          );
-          assert.strictEqual(dated.totals.tokens, "80");
-          assert.strictEqual(dated.state, "partial");
-          const all = yield* readUsageReport(
-            sql,
-            "owner",
-            { kind: "agentUsage", query: { ...baseQuery, since: null } },
-            access,
-            new Map(),
-          );
-          assert.strictEqual(all.totals.tokens, "100");
-          assert.strictEqual(all.coverage[0]!.label, "Rig");
-          const conflicting = { ...fact("another", "50"), aliases: ["detail", "coarse"] };
-          // Refused alone, as a gap: the lane goes on.
-          assert.strictEqual(
-            (yield* ledger.receive(sender, batch([conflicting]))).type,
-            "usage-ack",
-          );
-          assert.strictEqual(yield* total, "100");
-        }),
-      ),
-    );
-    it.effect(
-      "same ids with different content are a permanent conflict, kept as a gap while the rest of the lane flows; an identical repeat is acknowledged",
-      () =>
-        database(
-          Effect.gen(function* () {
-            const { sql, ledger, sender, batch, total } = yield* setup;
-            const first = batch([fact("a", "100")]);
-            yield* ledger.receive(sender, first);
-            const repeated = yield* ledger.receive(sender, first);
-            assert.strictEqual(repeated.type, "usage-ack");
-            const reused = { ...fact("b", "50"), factId: "a" };
-            const changed = fact("a", "999");
-            const answer = yield* ledger.receive(sender, batch([reused, changed, fact("c", "30")]));
-            assert.strictEqual(answer.type, "usage-ack");
-            assert.strictEqual(yield* total, "130");
-            // A later coverage from the Mate keeps HQ's record of what it refused.
-            yield* ledger.receive(
-              sender,
-              batch(
-                [],
-                [
-                  {
-                    originId: "origin",
-                    value: { state: "partial", since: null, through: null, gaps: ["mate-gap"] },
-                  },
-                ],
-              ),
-            );
-            const [origin] = yield* sql<{
-              readonly gaps: ReadonlyArray<string>;
-            }>`SELECT coverage->'gaps' AS gaps FROM hq_usage_origin WHERE origin_id='origin'`;
-            assert.includeMembers(
-              [...origin!.gaps],
-              ["refused:fact_identity_conflict", "refused:fact_revision_conflict"],
-            );
-          }),
-        ),
-    );
-    it.effect("a native record that gains an identity replaces its fact by a higher revision", () =>
-      database(
-        Effect.gen(function* () {
-          const { ledger, sender, batch, total } = yield* setup;
-          yield* ledger.receive(sender, batch([fact("x", "10")]));
-          const answer = yield* ledger.receive(
-            sender,
-            batch([{ ...fact("x", "15", "2"), aliases: ["y"] }]),
-          );
-          assert.strictEqual(answer.type, "usage-ack");
-          assert.strictEqual(yield* total, "15");
-        }),
-      ),
-    );
-    it.effect(
-      "a Mate is offered capture with HQ's last known org while Zerops is slow or down",
-      () =>
-        database(
-          Effect.gen(function* () {
-            // `setup` registered a producer under ORG; a fresh process finds it there.
-            const { sql, leader } = yield* setup;
-            const down = Effect.fail(new ZeropsUnavailable({ operation: "org", message: "down" }));
-            const fresh = yield* makeUsageLedger(sql, leader, down);
-            assert.strictEqual((yield* fresh.open("P", "test-credential")).orgId, "ORG");
-            const slow = yield* makeUsageLedger(sql, leader, Effect.never);
-            const opened = yield* slow
-              .open("P", "test-credential")
-              .pipe(Effect.timeoutOption("2 seconds"));
-            assert.strictEqual(opened._tag === "Some" ? opened.value.orgId : "", "ORG");
-          }),
-        ),
-    );
     it.effect("39,000 real-schema facts keep summary and keyset detail bounded", () =>
       database(
         Effect.gen(function* () {
@@ -937,17 +1003,16 @@ describe("HQ usage ledger boundaries", () => {
           yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
           // Fast fixture loading uses the same canonical full facts and contribution shape as ingest.
           const sample = fact("sample", "100");
+          yield* sql`INSERT INTO hq_usage_receipt(origin_id,fact_id,digest)
+          SELECT ${originId},'request-'||i,repeat('0',64) FROM generate_series(1,39000)i`;
           yield* sql`WITH fixture AS (
-          SELECT ('request-'||i)::text AS id, to_char('2020-01-01'::date + ((i-1)/1000)::int,'YYYY-MM-DD') AS day, ('model-'||(i%4))::text AS model FROM generate_series(1,39000) i)
-          INSERT INTO hq_usage_receipt(origin_id,native_id,fact_id,revision,digest,contribution)
-          SELECT 'origin',id,id,1,repeat('0',64),${json(contributionOf(sample))}::jsonb||jsonb_build_object('day',day,'model',model) FROM fixture`;
-          yield* sql`INSERT INTO hq_usage_alias SELECT origin_id,native_id,native_id FROM hq_usage_receipt`;
-          yield* sql`INSERT INTO hq_usage_fact(origin_id,native_id,occurrence,day,model,value)
-          SELECT origin_id,native_id,(contribution->>'day')::timestamptz+interval '12 hours',contribution->>'day',contribution->>'model',
-          ${json(sample)}::jsonb||jsonb_build_object('factId',native_id,'nativeId',native_id,'model',contribution->>'model','time',jsonb_build_object('kind','instant','at',(contribution->>'day')||'T12:00:00.000Z','provenance','native')) FROM hq_usage_receipt`;
-          yield* sql`INSERT INTO hq_usage_daily SELECT origin_id,contribution->>'day',contribution->>'model',contribution->>'pricingBand',contribution->>'meterVersion',contribution->>'knownComponents',hq_usage_sum(contribution->'statistics'),hq_usage_sum(contribution->'nativeCost') FROM hq_usage_receipt GROUP BY 1,2,3,4,5,6`;
-          yield* sql`INSERT INTO hq_usage_prefix(ledger_id,sequence,digest) SELECT 'ledger',i,encode(sha256(convert_to('fixture-'||i,'UTF8')),'hex') FROM generate_series(1,39000)i`;
-          yield* sql`UPDATE hq_usage_producer SET cursor=39000,digest=(SELECT digest FROM hq_usage_prefix WHERE ledger_id='ledger' AND sequence=39000)`;
+          SELECT ('request-'||i)::text AS id,to_char('2020-01-01'::date+((i-1)/1000)::int,'YYYY-MM-DD') AS day,('model-'||(i%4))::text AS model FROM generate_series(1,39000)i)
+          INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,value,contribution)
+          SELECT ${originId},id,day::timestamptz+interval '12 hours',day,
+          ${json(sample)}::jsonb||jsonb_build_object('factId',id,'nativeId',id,'models',jsonb_build_array(${json(sample.models[0])}::jsonb||jsonb_build_object('model',model)),'time',jsonb_build_object('kind','instant','at',day||'T12:00:00.000Z','provenance','native')),
+          jsonb_build_object('headline',${json(contributionOf(sample).headline)}::jsonb||jsonb_build_object('day',day),'models',jsonb_build_array(${json(contributionOf(sample).models[0])}::jsonb||jsonb_build_object('day',day,'model',model))) FROM fixture`;
+          yield* sql`INSERT INTO hq_usage_daily SELECT origin_id,contribution->'headline'->>'day',contribution->'headline'->>'meterVersion',hq_usage_sum(contribution->'headline'->'statistics'),hq_usage_sum(contribution->'headline'->'nativeCost') FROM hq_usage_fact GROUP BY 1,2,3`;
+          yield* sql`INSERT INTO hq_usage_model_daily SELECT origin_id,line.value->>'day',line.value->>'model',line.value->>'pricingBand',line.value->>'meterVersion',line.value->>'knownComponents',hq_usage_sum(line.value->'statistics'),hq_usage_sum(line.value->'nativeCost') FROM hq_usage_fact CROSS JOIN LATERAL jsonb_array_elements(contribution->'models') line(value) GROUP BY 1,2,3,4,5,6`;
           yield* sql`ANALYZE hq_usage_fact`;
           yield* sql`ANALYZE hq_usage_daily`;
           const query = { ...baseQuery, until: "2020-02-09T00:00:00.000Z" };
@@ -975,7 +1040,7 @@ describe("HQ usage ledger boundaries", () => {
           const sizes = yield* sql<{
             readonly tier: string;
             readonly bytes: string;
-          }>`SELECT name AS tier,pg_total_relation_size(name::regclass)::text AS bytes FROM unnest(ARRAY['hq_usage_fact','hq_usage_receipt','hq_usage_alias','hq_usage_daily','hq_usage_prefix']) name`;
+          }>`SELECT name AS tier,pg_total_relation_size(name::regclass)::text AS bytes FROM unnest(ARRAY['hq_usage_fact','hq_usage_receipt','hq_usage_daily','hq_usage_model_daily']) name`;
           const latency: number[] = [];
           for (let i = 0; i < 5; i++) {
             const started = yield* Clock.currentTimeMillis;
@@ -995,54 +1060,6 @@ describe("HQ usage ledger boundaries", () => {
           );
         }),
       ),
-    );
-    it.effect(
-      "a real independently restored dump verifies a coherent permanent cut before expiry",
-      () =>
-        Effect.gen(function* () {
-          const pg = yield* TempPostgres;
-          const url = yield* pg.createDatabase;
-          const restoredUrl = yield* pg.createDatabase;
-          const dir = yield* tempDir("usage-protect-");
-          yield* Effect.gen(function* () {
-            const { sql, leader, ledger, sender, batch } = yield* setup;
-            yield* ledger.receive(sender, batch([fact("a", "9007199254740993")]));
-            const expected = yield* usageCheckpoint(sql);
-            const dump = `${dir}/usage.dump`;
-            yield* runTool("pg_dump", ["--format=custom", `--file=${dump}`], Redacted.make(url));
-            yield* runTool(
-              "pg_restore",
-              [
-                "--no-owner",
-                "--no-acl",
-                `--dbname=${libpqEnv(Redacted.make(restoredUrl))["PGDATABASE"]}`,
-                dump,
-              ],
-              Redacted.make(restoredUrl),
-            );
-            const restored = yield* Effect.flatMap(SqlClient.SqlClient, usageCheckpoint).pipe(
-              Effect.provide(PgClient.layer({ url: Redacted.make(restoredUrl) })),
-            );
-            assert.deepStrictEqual(restored, expected);
-            yield* protectUsageCut(sql, leader, {
-              setId: "independent-restored",
-              independent: true,
-              expected,
-              restored,
-            });
-            const mixed = { ...restored, digest: "bad" };
-            assert.isTrue(
-              (yield* Effect.result(
-                protectUsageCut(sql, leader, {
-                  setId: "mixed",
-                  independent: true,
-                  expected,
-                  restored: mixed,
-                }),
-              ))._tag === "Failure",
-            );
-          }).pipe(Effect.provide(activeCoreLayer(url)));
-        }),
     );
   });
 });

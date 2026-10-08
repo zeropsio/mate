@@ -13,7 +13,7 @@
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
 import { readUsageLimitNotice, type UsageLimitNotice } from "../../zerops/providerLimit.logic";
-import type { CrewCard as ContractCrewCard, TurnId } from "@t3tools/contracts";
+import { isEngineItemId, type CrewCard as ContractCrewCard, type TurnId } from "@t3tools/contracts";
 import {
   envChangeWords,
   isReadOperationKind,
@@ -746,12 +746,13 @@ function countsAsLastWord(entry: TimelineEntry): boolean {
 }
 
 /**
- * A message of nothing: no words, and none on their way. A message still being written is words
- * all the same before its first one reaches its record (an engine Mate's, whose leaf reads them
- * from the live text); a V1 message is born with its first words.
+ * A message of nothing: no words, and none on their way. An engine Mate's item still being
+ * written is words all the same before its first one reaches its record (its leaf reads them from
+ * the live text); a V1 message is born with its first delta and judged by it, as it always was.
  */
-export function saysNothing(message: Pick<ChatMessage, "text" | "streaming">): boolean {
-  return message.streaming !== true && message.text.trim().length === 0;
+export function saysNothing(message: Pick<ChatMessage, "id" | "text" | "streaming">): boolean {
+  if (message.streaming === true && isEngineItemId(message.id)) return false;
+  return message.text.trim().length === 0;
 }
 
 /**
@@ -1123,7 +1124,7 @@ export type ActivityKind =
   | "helpers";
 
 /** One fixed order, so the effort's words never reorder. */
-const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
+export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
@@ -1179,7 +1180,7 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
 }
 
 /** Zerops tools with no card of their own, counted by what they did. */
-const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
+export const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
   zerops_workflow: "workflow",
   zerops_knowledge: "guides",
 };
@@ -2589,6 +2590,11 @@ export function deriveOutcome(input: {
   readonly activity?: ReadonlyArray<OutcomeActivity>;
   /** The conversation's turns after it (`turnsAfter`): what they took over since. */
   readonly later?: ReadonlyArray<ConversationTurn>;
+  /**
+   * Its work is not all held (an engine run read for its closed card alone): its effort is
+   * counted elsewhere (`withPagedEffort`), so it has an outcome however little is held.
+   */
+  readonly unheld?: boolean;
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
@@ -2754,7 +2760,9 @@ export function deriveOutcome(input: {
     activity: input.activity ?? [],
     later: laterClaims(input.later ?? []),
   };
-  return outcome.activity.length === 0 && !outcomeDraws(outcome) ? null : outcome;
+  return outcome.activity.length === 0 && !outcomeDraws(outcome) && input.unheld !== true
+    ? null
+    : outcome;
 }
 
 /**

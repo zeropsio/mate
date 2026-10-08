@@ -1,3 +1,4 @@
+import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -162,12 +163,17 @@ function stubDomGlobals() {
 
 beforeAll(async () => {
   stubDomGlobals();
-  ({ MessagesTimeline, messageEnters } = await import("./MessagesTimeline"));
+  try {
+    ({ MessagesTimeline, messageEnters } = await import("./MessagesTimeline"));
+  } finally {
+    vi.unstubAllGlobals();
+  }
 }, 30_000);
 
-// The scroll-settling test clears every global stub; mounted timeline rows
-// still touch `window` through the tooltip's focus handling.
+// Timeline rows need the DOM during render; later files must not inherit
+// this fixture's browser storage when choosing their persistence backend.
 beforeEach(stubDomGlobals);
+afterEach(() => vi.unstubAllGlobals());
 
 const ACTIVE_THREAD_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const MESSAGE_CREATED_AT = "2026-03-17T19:12:28.000Z";
@@ -1898,6 +1904,34 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("You&#x27;ve hit your session limit");
   });
 
+  it("the server's current limit owns one named stage until a resume receipt", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        limit={{
+          kind: "limited",
+          turnId: settled.turnId,
+          provider: "coding agent",
+          resetsAt: "2026-09-27T10:00:00Z",
+        }}
+        usagePause={{ resetsAt: "2026-09-27T10:00:00Z", autoResume: false }}
+        onUsageContinue={() => undefined}
+        onUsageAutoResumeChange={() => undefined}
+        timelineEntries={[
+          buildUserTimelineEntry("Keep going"),
+          assistant("limited", 30, "You've hit your session limit · resets 9:20pm (UTC)"),
+        ]}
+      />,
+    );
+    expect(markup.match(/data-conversation-pause=/g)).toHaveLength(1);
+    expect(markup).toContain("data-mate-stage-area");
+    expect(markup).toContain("This Mate hit the coding agent&#x27;s limit.");
+    expect(markup).toContain("Continue automatically");
+    expect(markup).toContain("Keep going");
+    expect(markup).not.toContain("is opening the conversation");
+  });
+
   it("draws a slash command as an event, never the person's bubble", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -2089,7 +2123,48 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 
-  it("keeps the opening stage waiting until the list reports its rows ready, however long that takes", async () => {
+  it("a parked refusal hands over the opening stage when its conversation list loads", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const lateList = createRef<LegendListRef>();
+    const limit = projectMateLimit(
+      {
+        latestTurn: {
+          turnId: "refused",
+          state: "running",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: null,
+        },
+        session: { lastError: "Claude usage limit reached", providerName: "claudeAgent" },
+      },
+      Date.parse(MESSAGE_CREATED_AT),
+    );
+    let renderer!: ReactTestRenderer;
+    await act(() => {
+      renderer = create(
+        <MessagesTimeline
+          {...buildProps()}
+          routeThreadKey="environment-local:refused"
+          listRef={lateList}
+          timelineEntries={[buildUserTimelineEntry("Continue the work")]}
+          limit={limit}
+        />,
+      );
+    });
+    try {
+      expect(outOfSight(renderer)).toBe(true);
+      lateList.current = listRef.current;
+      await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(outOfSight(renderer)).toBe(false);
+      expect(
+        renderer.root.findAll((node) => node.props["data-conversation-opening"] === "waiting"),
+      ).toHaveLength(0);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  it("keeps already read rows hidden until placement without inventing a waiting pose", async () => {
     let now = 0;
     const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
     const renderer = await mount({ timelineEntries: [buildUserTimelineEntry("Not placed yet.")] });
@@ -2099,19 +2174,17 @@ describe("MessagesTimeline — placing its rows", () => {
       expect(outOfSight(renderer)).toBe(true);
       expect(
         renderer.root.findAll((node) => node.props["data-conversation-opening"] === "waiting"),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     } finally {
       clock.mockRestore();
       await act(() => renderer.unmount());
     }
   });
 
-  // Handed over from its Mate's own view, its Mate stays at
-  // work in the pane while the rows are placed out of sight: a face on screen
-  // the whole way, never an empty pane.
+  // Held rows still need measured placement, but that does not make their source pending again.
   it.each([
-    { case: "handed over from its Mate's own view", handedOver: true, face: true },
-    { case: "opened from another conversation", handedOver: false, face: true },
+    { case: "handed over from its Mate's own view", handedOver: true, face: false },
+    { case: "opened from another conversation", handedOver: false, face: false },
   ])("while its rows are placed, $case: its Mate at work $face", async ({ handedOver, face }) => {
     const { LegendList } = await import("@legendapp/list/react");
     const key = `environment-local:thread-handed-${String(handedOver)}`;

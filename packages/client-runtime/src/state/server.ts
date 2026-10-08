@@ -4,6 +4,9 @@ import {
   type ServerConfigStreamEvent,
   type ServerLifecycleWelcomePayload,
   WS_METHODS,
+  UsageReadError,
+  type UsageSummary,
+  type UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -33,6 +36,15 @@ import {
 
 // Exported server state includes this type in its inferred public return type.
 export type { ServerConfigProjection } from "./serverConfigProjection.ts";
+
+const unavailableMobileUsage = Atom.make(
+  AsyncResult.fail<UsageReadError, UsageSummary>(
+    new UsageReadError({
+      reason: "unsupported",
+      detail: "Recorded Mate usage is available through HQ on web and desktop.",
+    }),
+  ),
+);
 
 export function projectServerConfig(
   current: Option.Option<ServerConfigProjection>,
@@ -260,38 +272,6 @@ export function createServerEnvironmentAtoms<R, E>(
       Atom.withLabel(`environment-data:server:settings:${environmentId}`),
     ),
   );
-  const usagePricesAtom = Atom.family((environmentId: EnvironmentId) =>
-    Atom.make((get) => {
-      const overrides = get(settingsValueAtom(environmentId))?.usagePriceOverrides ?? {};
-      // Only changed prices should trigger another transcript scan. Settings
-      // snapshots can recreate the same mapping in a different property order.
-      return JSON.stringify(
-        Object.keys(overrides)
-          .sort()
-          .map((model) => {
-            const price = overrides[model]!;
-            return [
-              model,
-              price.inputCostPerMillionTokens,
-              price.outputCostPerMillionTokens,
-              price.cacheReadCostPerMillionTokens,
-              price.cacheWriteCostPerMillionTokens,
-            ];
-          }),
-      );
-    }).pipe(Atom.withLabel(`environment-data:server:usage-prices:${environmentId}`)),
-  );
-  const usageScanSettingsAtom = Atom.family((environmentId: EnvironmentId) =>
-    Atom.make((get) => {
-      const aliases = get(settingsValueAtom(environmentId))?.usageModelAliases ?? {};
-      return JSON.stringify([
-        get(usagePricesAtom(environmentId)),
-        Object.keys(aliases)
-          .sort()
-          .map((model) => [model, aliases[model]]),
-      ]);
-    }).pipe(Atom.withLabel(`environment-data:server:usage-scan-settings:${environmentId}`)),
-  );
   const providersValueAtom = Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => get(configValueAtom(environmentId))?.providers ?? null).pipe(
       Atom.withLabel(`environment-data:server:providers:${environmentId}`),
@@ -374,14 +354,11 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.serverGetResourceTelemetryHistory,
       staleTimeMs: 5_000,
     }),
-    // A cold transcript scan is measured in seconds, so keep the result around
-    // long enough that switching windows or re-rendering does not rescan.
-    usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:server:usage-summary",
-      tag: WS_METHODS.serverGetUsageSummary,
-      staleTimeMs: 60_000,
-      refreshTrigger: ({ environmentId }) => usageScanSettingsAtom(environmentId),
-    }),
+    // Mobile later: its existing presentation remains, but transcript usage no longer exists.
+    usageSummary: (_target: {
+      readonly environmentId: EnvironmentId;
+      readonly input: UsageSummaryInput;
+    }) => unavailableMobileUsage,
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:welcome",

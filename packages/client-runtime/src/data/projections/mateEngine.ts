@@ -44,6 +44,7 @@ import {
   engineConversationId,
   engineConversationScopes,
   engineEarlierScope,
+  engineFactId,
   engineRowsKey,
   type EngineConversationKey,
   type EngineFact,
@@ -55,8 +56,9 @@ import { sameValue } from "./equal.ts";
 const iso = (ms: number | null | undefined) =>
   DateTime.formatIso(DateTime.makeUnsafe(ms === null || ms === undefined ? 0 : ms));
 
+/** What the engine reader (the web and desktop, which load the hosted client) says: a reload fixes it. */
 const UPDATE_WORDS =
-  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
+  "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.";
 
 function valuesOf<F extends "mateEngineRun" | "mateEngineItem" | "mateEngineRequest">(
   read: ProjectionReads,
@@ -106,8 +108,20 @@ const latestTurnOf = (run: RunRecord, card: RunRecord): OrchestrationLatestTurn 
   assistantMessageId: run.summary.answerItemId as OrchestrationLatestTurn["assistantMessageId"],
 });
 
+const RESENT = "#next";
+
+/**
+ * The send id of a message whose steer the engine refused as its run ended: it goes as the next
+ * run instead, under its own id with this mark, since the engine keeps the steer's refusal as the
+ * receipt of the message's id (a duplicate returns it).
+ */
+export const engineResendId = (messageId: string) => `${messageId}${RESENT}`;
+
 /** The message id a person's words go by: the send's own id, so its pending bubble is this row. */
-const personMessageId = (item: Extract<Item, { kind: "person" }>) => item.sendId ?? item.id;
+const personMessageId = (item: Extract<Item, { kind: "person" }>) => {
+  const id = item.sendId ?? item.id;
+  return id.endsWith(RESENT) ? id.slice(0, -RESENT.length) : id;
+};
 
 /**
  * The card an item draws on: its run's, or — for a run that continues another (`joins`) — the
@@ -137,8 +151,8 @@ function messageOf(item: Item, cardOf: CardOf): EngineMessage | null {
         role: "user",
         text: item.text,
         attachments: item.attachments.filter(
-          (attachment): attachment is Extract<ChatAttachment, { type: "image" }> =>
-            attachment.type === "image",
+          (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
+            attachment.type === "image" || attachment.type === "file",
         ),
         streaming: false,
       };
@@ -666,6 +680,38 @@ function cardsOf(read: ProjectionReads, conversationKey: string) {
   return { runs, rootOf, cardOf, latest, turn };
 }
 
+/**
+ * The run a Stop on a turn ends: the live run drawn on that card (a run that continues another
+ * draws on its root's, which ended), else the run the turn names.
+ */
+export function engineStopTarget(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+  turnId: string,
+): string {
+  const { runs, rootOf } = cardsOf(read, engineConversationId(key));
+  return (
+    runs.findLast((run) => LIVE_RUN_STATES.has(run.state) && rootOf(run).id === turnId)?.id ??
+    turnId
+  );
+}
+
+/**
+ * The run a message sent now goes into, as V1 sends a message into its running turn: the run that
+ * works (or waits on the person) while the session it runs in can take a message; else none, and
+ * the message is the conversation's next run.
+ */
+export function engineSteerTarget(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): string | null {
+  const conversation = read.fact("mateEngineConversation", engineConversationId(key));
+  if (conversation.kind !== "known" || conversation.value.header.session?.steer !== true)
+    return null;
+  const { runs } = cardsOf(read, engineConversationId(key));
+  return runs.findLast((run) => run.state === "running" || run.state === "waiting")?.id ?? null;
+}
+
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
 export interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;
@@ -745,7 +791,7 @@ export function engineThreadOf(
     ...(agent === null
       ? {}
       : { providerInstanceId: agent.instanceId as OrchestrationSession["providerInstanceId"] }),
-    runtimeMode: shell?.runtimeMode ?? "full-access",
+    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
     activeTurnId: turn.activeTurnId as OrchestrationSession["activeTurnId"],
     lastError:
       latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
@@ -769,8 +815,9 @@ export function engineThreadOf(
           } as OrchestrationThread["modelSelection"])
         : (shell?.modelSelection ??
           ({ instanceId: "unknown", model: "default" } as OrchestrationThread["modelSelection"])),
-    runtimeMode: shell?.runtimeMode ?? "full-access",
-    interactionMode: shell?.interactionMode ?? "default",
+    // The engine's own word once a person set the mode or sent a message; V1's until then.
+    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
+    interactionMode: header.interactionMode ?? shell?.interactionMode ?? "default",
     branch: shell?.branch ?? null,
     worktreePath: shell?.worktreePath ?? null,
     latestTurn: turn.latestTurn,
@@ -788,6 +835,125 @@ export function engineThreadOf(
     ...(crew === null ? {} : { crew }),
   };
 }
+
+/** What a card's runs' calls came to, as the server counts them (`RunSummary`). */
+export interface EngineCardCounts {
+  readonly calls: Readonly<Record<string, number>>;
+  readonly tools: Readonly<Record<string, number>>;
+  /** Files edited, each once; `null` when a summary did not count them. */
+  readonly edited: number | null;
+}
+
+/**
+ * A card whose runs were not held whole when it painted: its worked line counts its effort from its
+ * runs' summaries, whatever of them is held, and its scroll holds the lines from `since` through
+ * `through` (times; `null` is its start, or its end) — the rest page in as it opens and reaches
+ * them, through the pages of the run each way names (`pageRuns`): one run at a time, in the order
+ * the card draws them.
+ */
+export interface EngineCardPaging {
+  /** The run its scroll reads its next page from, each way; null where it holds every line. */
+  readonly pageRuns: { readonly earlier: string | null; readonly later: string | null };
+  readonly counts: EngineCardCounts;
+  /** Whether its runs did anything its scroll draws: its "Show work" has something to open. */
+  readonly hasWork: boolean;
+  /** Whether any of its lines are held: none until its card first opens. */
+  readonly holdsLines: boolean;
+  readonly since: string | null;
+  readonly through: string | null;
+  readonly reading: "earlier" | "later" | null;
+}
+
+const sumInto = (into: Record<string, number>, counts: Readonly<Record<string, number>>) => {
+  for (const [name, count] of Object.entries(counts)) into[name] = (into[name] ?? 0) + count;
+};
+
+/** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
+export function engineCardPagingOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): Readonly<Record<string, EngineCardPaging>> {
+  const conversationKey = engineConversationId(key);
+  const spans = [...read.index("engineSpansIn", conversationKey)].flatMap((id) => {
+    const fact = read.fact("mateEngineSpan", id);
+    return fact.kind === "known" ? [fact.value] : [];
+  });
+  if (spans.length === 0) return NO_PAGING;
+  const { runs, cardOf } = cardsOf(read, conversationKey);
+  /** When the run's item at `seq` happened: where its card's held lines end. */
+  const timeAt = (runId: string, seq: number, otherwise: number) => {
+    for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, runId))) {
+      const fact = read.fact("mateEngineItem", id);
+      if (fact.kind === "known" && fact.value.seq === seq) return iso(fact.value.at);
+    }
+    return iso(otherwise);
+  };
+  const spanOf = new Map(spans.map((span) => [span.runId as string, span]));
+  const cards: Record<string, EngineCardPaging> = {};
+  for (const span of spans) {
+    const card = cardOf(span.runId);
+    if (card === null || cards[card] !== undefined) continue;
+    // The card's runs in the order it draws them. Its scroll holds one stretch: from the start, or
+    // from the last run before the first gap whose start is not held, through the first run whose
+    // end is not held (a run read from its start), so the next page each way is always beside it.
+    const members = runs.filter((member) => cardOf(member.id) === card);
+    if (members.length === 0) continue;
+    const laterAt = members.findIndex((member) => (spanOf.get(member.id)?.to ?? null) !== null);
+    const later = laterAt === -1 ? undefined : members[laterAt];
+    const earlier = (laterAt === -1 ? members : members.slice(0, laterAt + 1)).findLast(
+      (member) => (spanOf.get(member.id)?.from ?? null) !== null,
+    );
+    const laterSpan = later === undefined ? undefined : spanOf.get(later.id);
+    const earlierSpan = earlier === undefined ? undefined : spanOf.get(earlier.id);
+    const calls: Record<string, number> = {};
+    const tools: Record<string, number> = {};
+    let edited: number | null = 0;
+    let hasWork = false;
+    for (const member of members) {
+      // Past the person's words and its answer, something it did.
+      const asked = member.trigger.kind === "person" || member.trigger.kind === "imported" ? 1 : 0;
+      const answered = member.summary.answerItemId === null ? 0 : 1;
+      if (member.summary.items > asked + answered) hasWork = true;
+      sumInto(calls, member.summary.calls);
+      sumInto(tools, member.summary.tools ?? {});
+      edited =
+        edited === null || member.summary.edited === undefined
+          ? null
+          : edited + member.summary.edited;
+    }
+    cards[card] = {
+      pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
+      counts: { calls, tools, edited },
+      hasWork,
+      // None until it first opens: its first run read from its start, nothing of it read yet.
+      holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,
+      since:
+        earlier === undefined || earlierSpan === undefined || earlierSpan.from === null
+          ? null
+          : timeAt(earlier.id, earlierSpan.from, earlier.endedAt ?? earlier.queuedAt),
+      through:
+        later === undefined || laterSpan === undefined || laterSpan.to === null
+          ? null
+          : timeAt(later.id, laterSpan.to, later.queuedAt),
+      reading:
+        members.map((member) => spanOf.get(member.id)?.reading ?? null).find(Boolean) ?? null,
+    };
+  }
+  return cards;
+}
+
+const NO_PAGING: Readonly<Record<string, EngineCardPaging>> = {};
+
+/** A conversation's cards not held whole: what their worked lines count, what their scrolls hold. */
+export const engineCardPaging: Projection<
+  EngineConversationKey,
+  Readonly<Record<string, EngineCardPaging>>
+> = {
+  name: "engineCardPaging",
+  keyOf: engineConversationId,
+  equals: sameValue,
+  derive: engineCardPagingOf,
+};
 
 /** What a fault on the conversation's link says to a person, if anything. */
 function faultWords(read: ProjectionReads, key: EngineConversationKey): string | null {
@@ -828,17 +994,39 @@ export const engineThread: Projection<EngineConversationKey, EnvironmentThreadSt
  * Whether older run groups exist before the oldest held — run ordinals are gapless, so any held
  * run past the first says so — and whether reading them is in flight.
  */
+/**
+ * The oldest run the account holds of a conversation, and whether the Mate has runs before it, as
+ * the Mate said: its window for the runs it opened on, the last earlier page for the runs read
+ * since. An ordinal says nothing of it: an import that failed reserved ordinals that hold nothing.
+ */
+export function earlierOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): { readonly before: number; readonly more: boolean } | null {
+  const id = engineConversationId(key);
+  let oldest: number | null = null;
+  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", id))
+    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
+  if (oldest === null) return null;
+  const gauge = read.fact("mateEngineGauge", id);
+  const paged = gauge.kind === "known" ? gauge.value.earlier : undefined;
+  if (paged !== undefined && paged.before === oldest) return paged;
+  const conversation = read.fact("mateEngineConversation", id);
+  const window = conversation.kind === "known" ? conversation.value.window : null;
+  if (window !== null && (window.oldestOrdinal === null || window.oldestOrdinal <= oldest))
+    return { before: oldest, more: window.earlier };
+  return { before: oldest, more: oldest > 1 };
+}
+
 function pageOf(
   read: ProjectionReads,
   key: EngineConversationKey,
 ): Option.Option<EnvironmentThreadPageState> {
-  let oldest: number | null = null;
-  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)))
-    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
-  if (oldest === null || oldest <= 1) return Option.none();
+  const earlier = earlierOf(read, key);
+  if (earlier === null || !earlier.more) return Option.none();
   const phase = read.stream(engineEarlierScope(key)).phase;
   return Option.some({
-    beforeCursor: String(oldest),
+    beforeCursor: String(earlier.before),
     hasMore: true,
     loadingOlder: phase === "connecting" || phase === "baselining",
   });
@@ -846,6 +1034,9 @@ function pageOf(
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
+/** The same news on the phone, which reads no engine conversation: only an update fixes it. */
+export const NATIVE_UPDATE_WORDS =
+  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
 
 /** A conversation row onto the thread shell the menu draws: its state, its turn, its agent. */
 export function overlayEngineRow(

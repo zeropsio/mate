@@ -16,6 +16,7 @@ describe("the thread's error banner", () => {
     expect(html).toContain("Rosa hit the Claude limit.");
     expect(html).not.toContain("Send the message again");
     expect(html).toContain('role="status"');
+    expect(html).not.toContain("<svg");
     expect(
       renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={error} usageLimitShown />),
     ).toBe("");
@@ -28,6 +29,7 @@ describe("the thread's error banner", () => {
     expect(html).toContain("Rosa needs a Claude sign-in to continue.");
     // The machine the driver names is a container the person has no shell on.
     expect(html).not.toContain("claude auth login");
+    expect(html).not.toContain("<svg");
   });
 
   // F7: the Mate is the subject, the agent only what the person signs in to — for a sign-in the
@@ -69,6 +71,7 @@ describe("the thread's error banner", () => {
     expect(html).toContain("Rosa needs a Claude sign-in to continue.");
     expect(html).not.toContain("claude auth login");
     expect(html).toContain('role="status"');
+    expect(html).not.toContain("<svg");
   });
 
   it("leaves every other failure exactly as it came back", () => {

@@ -14,8 +14,11 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { CommandId, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
+  ProviderInteractionMode,
   ProviderUserInputAnswers,
+  RuntimeMode,
   UserInputAttachments,
 } from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
@@ -57,6 +60,8 @@ export const runId = (conversation: ConversationId, ordinal: number): RunId =>
   RunId.make(`${conversation}/r/${ordinal}`);
 /** `${run}/i/${ordinal}`: the run's n-th item. */
 export const itemId = (run: RunId, ordinal: number): ItemId => ItemId.make(`${run}/i/${ordinal}`);
+/** Whether an id is an engine item's (`${run}/i/${ordinal}`), never a V1 message's. */
+export const isEngineItemId = (id: string): boolean => /\/r\/\d+\/i\/\d+$/.test(id);
 /** `${run}/q/${ordinal}`: the run's n-th request. */
 export const requestId = (run: RunId, ordinal: number): RequestId =>
   RequestId.make(`${run}/q/${ordinal}`);
@@ -386,8 +391,8 @@ export type RecordedCrewSeam = typeof RecordedCrewSeam.Type;
  */
 export const PersonAttachment = forwardCompatibleUnion({
   key: "type",
-  known: ["image", "unknown"],
-  members: [ChatImageAttachment],
+  known: ["image", "file", "unknown"],
+  members: [ChatImageAttachment, ChatFileAttachment],
   fallback: Schema.Struct({ type: Schema.Literal("unknown"), was: Schema.String }),
   toFallback: (_raw, was) => ({ type: "unknown" as const, was }),
 });
@@ -411,7 +416,7 @@ export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "
 const itemBodyFields = {
   person: {
     text: Schema.String,
-    /** Pictures by reference (their asset occurrence), never bytes. */
+    /** Pictures by reference (their asset occurrence) and files by id, never bytes. */
     attachments: Schema.Array(PersonAttachment),
     sendId: CommandId,
     delivery: Schema.Struct({
@@ -698,7 +703,7 @@ export type ConversationRow = typeof ConversationRow.Type;
 /**
  * Why a session closed: a model switch rotated it; it exited; the server restarted; it was closed
  * (a newer session replaced it); the person signed out; a second Stop; a usage limit parked its
- * turn; it sat idle.
+ * turn; it sat idle; a setting only a new session runs with (a model option, the runtime mode).
  */
 export const SESSION_CLOSE_REASONS = [
   "model",
@@ -709,6 +714,7 @@ export const SESSION_CLOSE_REASONS = [
   "stop",
   "usage-limit",
   "idle",
+  "settings",
 ] as const;
 export const SessionCloseReason = forwardCompatibleLiterals(SESSION_CLOSE_REASONS);
 export type SessionCloseReason = typeof SessionCloseReason.Type;
@@ -716,6 +722,13 @@ export type SessionCloseReason = typeof SessionCloseReason.Type;
 export const SessionCapabilities = Schema.Struct({
   /** The driver really injects a message into a running turn. */
   steer: Schema.Boolean,
+  /**
+   * The model options the session takes on its next send (`all`: every option goes per turn); a
+   * change of any other needs a new session. Absent: none.
+   */
+  inSessionOptions: Schema.optionalKey(
+    Schema.Union([Schema.Literal("all"), Schema.Array(Schema.String)]),
+  ),
 });
 export type SessionCapabilities = typeof SessionCapabilities.Type;
 
@@ -779,6 +792,8 @@ export const RunQueued = event("RunQueued", {
   maintenance: Schema.Boolean,
   /** What the run sends the agent when admitted. */
   text: Schema.String,
+  /** The turn's interaction mode (`plan`: the agent plans, changes nothing); absent: default. */
+  interactionMode: Schema.optionalKey(ProviderInteractionMode),
 });
 export const RunAdmitted = event("RunAdmitted", { runId: RunId });
 export const RunSending = event("RunSending", {
@@ -895,6 +910,10 @@ export const SessionOpened = event("SessionOpened", {
   rotatedFrom: Schema.NullOr(SessionId),
   /** The provider instance the engine opened it on: a session fits only its own instance. */
   instanceId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The model options it opened with. */
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+  /** The runtime mode it opened with: a session fits only the conversation's. */
+  runtimeMode: Schema.optionalKey(RuntimeMode),
 });
 /** The engine asked the session to close; nothing goes into it until it has. */
 export const SessionClosing = event("SessionClosing", {
@@ -923,9 +942,23 @@ export const SessionRotated = event("SessionRotated", {
 });
 /** A usage limit whose reset nobody knew stops holding the queue (the person wrote again). */
 export const UsagePauseLifted = event("UsagePauseLifted", { reason: Schema.String });
-/** The conversation is given the agent it belongs to (and runs that agent's model). */
-export const AgentAssigned = event("AgentAssigned", { agent: ConversationAgent, by: Principal });
-export const ModelSwitched = event("ModelSwitched", { model: Schema.String, by: Principal });
+/**
+ * The conversation is given the agent it belongs to (and runs that agent's model). `keepsThread`:
+ * an instance of the same driver whose sessions resume the old one's, so its thread carries over.
+ */
+export const AgentAssigned = event("AgentAssigned", {
+  agent: ConversationAgent,
+  by: Principal,
+  keepsThread: Schema.optionalKey(Schema.Boolean),
+});
+/** The conversation's next model and, when given, its options (absent: the options it had). */
+export const ModelSwitched = event("ModelSwitched", {
+  model: Schema.String,
+  by: Principal,
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+});
+/** How freely the agent works from its next session on (a live session reopens between runs). */
+export const RuntimeModeSet = event("RuntimeModeSet", { runtimeMode: RuntimeMode, by: Principal });
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
 export const EffectRequested = event("EffectRequested", {
@@ -1054,6 +1087,7 @@ const knownEvents = [
   UsagePauseLifted,
   AgentAssigned,
   ModelSwitched,
+  RuntimeModeSet,
   ConversationArchived,
   ConversationUnarchived,
   EffectRequested,
@@ -1122,6 +1156,8 @@ const rejectionReasons = [
   /** A request its agent waits on: only an answer or a Stop ends it. */
   "not-dismissible",
   "steer-unsupported",
+  /** A picture the call carries could not be claimed: the detail says why, in V1's words. */
+  "attachment-refused",
   "stale-session",
   "unknown-effect",
   "wake-not-armed",
@@ -1130,6 +1166,10 @@ const rejectionReasons = [
   "invalid-principal",
   /** The id names another owner (the crew), which takes no conversation's command. */
   "not-a-conversation",
+  /** The agent's background work lives in the session a change would replace. */
+  "background-work",
+  /** The conversation started on another driver: its agent cannot change to this one. */
+  "agent-locked",
   "unknown",
 ] as const;
 const knownRejectionReasons = new Set<string>(rejectionReasons);

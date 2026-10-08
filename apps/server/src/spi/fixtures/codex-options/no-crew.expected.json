@@ -29,10 +29,11 @@
       {
         "method": "thread/start",
         "params": {
-          "approvalPolicy": "never",
-          "approvalsReviewer": "user",
           "cwd": "/srv/app",
-          "sandbox": "danger-full-access"
+          "approvalPolicy": "never",
+          "sandbox": "danger-full-access",
+          "approvalsReviewer": "user",
+          "experimentalRawEvents": true
         }
       },
       {
@@ -249,10 +250,11 @@
       {
         "method": "thread/start",
         "params": {
-          "approvalPolicy": "on-request",
-          "approvalsReviewer": "user",
           "cwd": "/srv/app",
-          "sandbox": "workspace-write"
+          "approvalPolicy": "on-request",
+          "sandbox": "workspace-write",
+          "approvalsReviewer": "user",
+          "experimentalRawEvents": true
         }
       },
       {

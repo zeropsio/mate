@@ -23,6 +23,7 @@ import type {
   CommandResult,
   ConversationId,
   EngineEvent,
+  KnownEngineEvent,
   OwnerKind,
   Rejection,
 } from "@t3tools/contracts";
@@ -37,7 +38,13 @@ import {
 import type { Envelope } from "./domain/command.ts";
 import { conversationDomain } from "./domain/conversationDomain.ts";
 import type { ConversationState } from "./domain/state.ts";
+import {
+  makeUpdateAdmission,
+  UPDATE_DRAIN_MESSAGE,
+  type UpdateAdmission,
+} from "./updateAdmission.ts";
 import { EngineSignals } from "./EngineSignals.ts";
+import { watchCommit } from "./watch.ts";
 import {
   ENGINE_INPUTS,
   OwnerDomains,
@@ -65,6 +72,7 @@ export interface OwnerHandle<S, C, E> {
 }
 
 export interface ConversationsShape {
+  readonly updateAdmission?: UpdateAdmission;
   /** People and the wire: the accepted result, or why it was refused. */
   readonly ask: (
     envelope: Envelope,
@@ -133,6 +141,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
   const storeOf = (domain: AnyDomain) =>
     domain === conversationDomain ? conversationStore : store.owner(domain);
 
+  const updateAdmission = yield* makeUpdateAdmission;
   const actors = yield* RcMap.make({
     lookup: (owner: ConversationId) =>
       Effect.gen(function* () {
@@ -149,6 +158,16 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
           storeOf(domain),
           signals,
           options.mailboxCapacity === undefined ? {} : { mailboxCapacity: options.mailboxCapacity },
+          domain === conversationDomain
+            ? // A conversation's commit writes its watch lines; an unknown event writes none.
+              (events, state) =>
+                watchCommit(
+                  store,
+                  owner,
+                  events as ReadonlyArray<KnownEngineEvent>,
+                  state as ConversationState,
+                )
+            : undefined,
         )) as AnyActor;
       }),
     idleTimeToLive: options.idleTimeToLive ?? DEFAULT_IDLE_TIME_TO_LIVE,
@@ -237,11 +256,36 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
   const engineInputs = new Set<string>(ENGINE_INPUTS);
 
   return Conversations.of({
-    ask: conversations.ask,
+    updateAdmission,
+    ask: (envelope) =>
+      updateAdmission.run(envelope.command._tag, conversations.ask(envelope)).pipe(
+        Effect.flatMap((accepted) =>
+          accepted === undefined
+            ? Effect.fail(
+                new CommandRejected({
+                  rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+                }),
+              )
+            : Effect.succeed(accepted),
+        ),
+      ),
     tell: (envelope) =>
-      engineInputs.has(envelope.command._tag) && domainOf(envelope.conversationId) !== undefined
-        ? withActor(envelope.conversationId, (held) => held.tell(envelope))
-        : conversations.tell(envelope),
+      updateAdmission
+        .run(
+          envelope.command._tag,
+          engineInputs.has(envelope.command._tag) && domainOf(envelope.conversationId) !== undefined
+            ? withActor(envelope.conversationId, (held) => held.tell(envelope))
+            : conversations.tell(envelope),
+        )
+        .pipe(
+          Effect.map(
+            (result): CommandResult =>
+              result ?? {
+                _tag: "Rejected",
+                rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+              },
+          ),
+        ),
     state: conversations.state,
     subscribe: conversations.subscribe,
     kindOf: (owner) => domainOf(owner)?.kind,

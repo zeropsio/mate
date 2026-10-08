@@ -14,7 +14,10 @@ import * as NodeOS from "node:os";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 import { ServerConfig } from "../config.ts";
-import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+import {
+  projectActivityPayload,
+  projectThreadDetailSnapshot,
+} from "../orchestration/ActivityPayloadProjection.ts";
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
@@ -28,6 +31,9 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
   workspaceRoot: string,
   legacy = false,
 ) {
+  // Both inline and reference Markdown images require this opener. Ordinary code and
+  // prose need no media read and no Markdown AST on every warm snapshot.
+  if (!text.includes("![")) return text;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
   const tree = fromMarkdown(text);
@@ -246,11 +252,34 @@ export const keepInlineImage = async (
   return { mimeType: image.mimeType, asset, ...size };
 };
 
+function payloadMediaNeedsCapture(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(payloadMediaNeedsCapture);
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    isInlineImage(value) ||
+    (typeof record.imagePath === "string" && !record.imagePath.startsWith("mate-asset:")) ||
+    Object.values(record).some(payloadMediaNeedsCapture)
+  );
+}
+
+function activityMediaNeedsCapture(
+  activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
+): boolean {
+  // Native Read/image-view paths are media only after the shared tool projection names them.
+  return (
+    payloadMediaNeedsCapture(activity.payload) ||
+    payloadMediaNeedsCapture(projectActivityPayload(activity).payload)
+  );
+}
+
 export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
   activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
   threadId: ThreadId,
   workspaceRoot: string,
 ) {
+  // A captured or image-free tool result needs no asset store and no async payload clone.
+  if (!activityMediaNeedsCapture(activity)) return activity;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
   const owner = { threadId: threadId, ownerId: activity.id, provenance: "capture" as const };
@@ -301,9 +330,25 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
 });
 
 export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
-  snapshot: OrchestrationThreadDetailSnapshot,
+  source: OrchestrationThreadDetailSnapshot,
   workspaceRoot: string,
 ) {
+  // Compare provider echoes before capture gives each activity its own asset occurrence.
+  // Only the rows the snapshot retains need media; their cursor and watermarks stay intact.
+  const snapshot = projectThreadDetailSnapshot(source);
+  if (
+    !snapshot.thread.messages.some(
+      (message) =>
+        message.text.includes("![") ||
+        message.attachments?.some(
+          (attachment) =>
+            attachment.type === "image" &&
+            (!("asset" in attachment) || attachment.asset === undefined),
+        ),
+    ) &&
+    !snapshot.thread.activities.some(activityMediaNeedsCapture)
+  )
+    return snapshot;
   return {
     ...snapshot,
     thread: {
@@ -358,7 +403,7 @@ export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
         }),
       ),
       activities: yield* Effect.forEach(snapshot.thread.activities, (activity) =>
-        captureActivityMedia(projectActivityPayload(activity), snapshot.thread.id, workspaceRoot),
+        captureActivityMedia(activity, snapshot.thread.id, workspaceRoot),
       ),
     },
   };

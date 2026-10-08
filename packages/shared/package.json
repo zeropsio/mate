@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./mateAutoUpdatePolicy": {
+      "types": "./src/mateAutoUpdatePolicy.ts",
+      "import": "./src/mateAutoUpdatePolicy.ts"
+    },
     "./hqStream": {
       "types": "./src/hqStream.ts",
       "import": "./src/hqStream.ts"

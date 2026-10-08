@@ -8,10 +8,22 @@ import type { ModelSelection } from "@t3tools/contracts";
  */
 export type ModelSelectionChange = "none" | "in-session" | "new-session";
 
-type OptionValue = NonNullable<ModelSelection["options"]>[number]["value"];
+type ModelOptions = ModelSelection["options"];
+type OptionValue = NonNullable<ModelOptions>[number]["value"];
 
-function optionValues(selection: ModelSelection): ReadonlyMap<string, OptionValue> {
-  return new Map((selection.options ?? []).map((option) => [option.id, option.value]));
+function optionValues(options: ModelOptions): ReadonlyMap<string, OptionValue> {
+  return new Map((options ?? []).map((option) => [option.id, option.value]));
+}
+
+/** Option ids whose values differ; order and absent vs empty options don't count. */
+export function changedOptionIds(
+  previous: ModelOptions,
+  requested: ModelOptions,
+): ReadonlyArray<string> {
+  const before = optionValues(previous);
+  const after = optionValues(requested);
+  const ids = new Set([...before.keys(), ...after.keys()]);
+  return [...ids].filter((id) => before.get(id) !== after.get(id)).toSorted();
 }
 
 /** Option ids whose values differ; order and absent vs empty options don't count. */
@@ -19,10 +31,7 @@ export function changedModelOptionIds(
   previous: ModelSelection,
   requested: ModelSelection,
 ): ReadonlyArray<string> {
-  const before = optionValues(previous);
-  const after = optionValues(requested);
-  const ids = new Set([...before.keys(), ...after.keys()]);
-  return [...ids].filter((id) => before.get(id) !== after.get(id)).toSorted();
+  return changedOptionIds(previous.options, requested.options);
 }
 
 export function sameModelSelection(a: ModelSelection, b: ModelSelection): boolean {

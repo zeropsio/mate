@@ -33,6 +33,7 @@ const world = (
       holdNextSend: boolean;
       interruptHangs: boolean;
       slowSendMs: number;
+      startHangs: boolean;
     }>;
   } = {},
 ) =>
@@ -529,7 +530,7 @@ describe("the running engine", () => {
     ),
   );
 
-  it.effect("a known reset resumes 30 s after it", () =>
+  it.effect("a known reset holds work until that exact instant", () =>
     scene(
       Effect.gen(function* () {
         const w = yield* world("claudeAgent");
@@ -540,9 +541,9 @@ describe("the running engine", () => {
         );
         const limited = yield* w.run(r(1));
         assert.deepStrictEqual(limited?.end, { kind: "usage-limit", resetsAt });
-        yield* w.advance(resetsAt + 29_000 - (yield* Clock.currentTimeMillis));
+        yield* w.advance(resetsAt - 1 - (yield* Clock.currentTimeMillis));
         assert.isUndefined(yield* w.run(r(2)));
-        yield* w.advance(1_000);
+        yield* w.advance(1);
         const resumed = yield* w.run(r(2));
         assert.deepStrictEqual(
           [resumed?.trigger.cause, resumed?.joins, resumed?.state],
@@ -866,6 +867,32 @@ describe("the running engine", () => {
       ),
   );
 
+  // The engine interrupts the call rather than leaving it running: ProviderService then stops
+  // whatever session the start opened, which nothing would stop otherwise.
+  it.effect("a session open the driver never answers is let go at the bound", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { startHangs: true } });
+        yield* send(w);
+        yield* w.advance(PROVIDER_CALL_BOUND_MS);
+        assert.strictEqual(w.provider.calls.at(-1), `let-go ${w.thread}`);
+        const outcome = yield* w.within(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ readonly kind: string }>`
+              SELECT json_extract(outcome_json, '$.kind') AS kind FROM engine_effect
+              WHERE kind = 'session.open'`;
+          }),
+        );
+        assert.deepStrictEqual(
+          outcome.map((row) => row.kind),
+          ["timed-out"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a server stopping never waits on a wedged call", () =>
     scene(
       Effect.gen(function* () {
@@ -917,6 +944,88 @@ describe("the running engine", () => {
         assert.isUndefined(yield* (yield* w.pump).existing(mate));
         yield* send(w, "back");
         assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "back"));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  // The settings a person picks reach every driver as V1 sends them: options and plan mode with
+  // each message, the runtime mode when its session opens (V1: `ProviderCommandReactor`).
+  for (const driver of DRIVERS) {
+    it.effect(
+      `a message carries the conversation's model options and its interaction mode; a runtime mode change reopens the session with it (${driver})`,
+      () =>
+        scene(
+          Effect.gen(function* () {
+            const w = yield* world(driver);
+            const effort = [{ id: "effort", value: "high" }];
+            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: effort });
+            yield* w.tell({ _tag: "Send", text: "plan it", interactionMode: "plan" });
+            assert.deepInclude(w.provider.sends.at(-1), {
+              modelSelection: { instanceId: driver, model: "m1", options: effort },
+              interactionMode: "plan",
+            });
+            assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "full-access" });
+            yield* w.agent((agent, thread) => agent.finish(thread));
+            yield* w.tell({ _tag: "SetRuntimeMode", runtimeMode: "approval-required" });
+            yield* send(w, "next");
+            assert.deepStrictEqual(w.provider.calls.slice(-3), [
+              `stop ${w.thread}`,
+              `start ${w.thread}`,
+              sendLine(w, "next"),
+            ]);
+            assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
+            assert.notProperty(w.provider.sends.at(-1), "interactionMode");
+            yield* w.shutdown;
+          }),
+        ),
+    );
+  }
+
+  for (const driver of DRIVERS) {
+    it.effect(
+      `a model option goes with the next message where the driver reads it per turn, else in a new session (${driver})`,
+      () =>
+        scene(
+          Effect.gen(function* () {
+            const w = yield* world(driver);
+            yield* send(w, "first");
+            yield* w.agent((agent, thread) => agent.finish(thread));
+            const fast = [{ id: "fastMode", value: true }];
+            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: fast });
+            yield* send(w, "fast");
+            const starts = w.provider.calls.filter((call) => call.startsWith("start")).length;
+            assert.strictEqual(starts, driver === "claudeAgent" ? 2 : 1);
+            assert.deepInclude(w.provider.sends.at(-1), {
+              modelSelection: { instanceId: driver, model: "m1", options: fast },
+            });
+            yield* w.agent((agent, thread) => agent.finish(thread));
+            const effort = [{ id: "effort", value: "low" }];
+            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: [...fast, ...effort] });
+            yield* send(w, "low effort");
+            assert.strictEqual(
+              w.provider.calls.filter((call) => call.startsWith("start")).length,
+              starts,
+            );
+            yield* w.shutdown;
+          }),
+        ),
+    );
+  }
+
+  it.effect("a message's files reach the driver with it, by the id they were uploaded under", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        const file = {
+          type: "file" as const,
+          id: "file-1",
+          name: "notes.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 4096,
+        };
+        yield* w.tell({ _tag: "Send", text: "read this", attachments: [file as never] });
+        assert.deepInclude(w.provider.sends.at(-1), { attachments: [file] });
         yield* w.shutdown;
       }),
     ),

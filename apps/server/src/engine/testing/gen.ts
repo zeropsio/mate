@@ -120,6 +120,9 @@ export class Gen {
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
       ["rotate", 0.3],
+      ["options", 0.3],
+      ["mode", 0.2],
+      ["agent", 0.1],
       ["archive", 0.15],
       ["sign-out", 0.05],
       ["unarchive", state.archived ? 1 : 0.05],
@@ -138,7 +141,12 @@ export class Gen {
         const text = rng.chance(0.05) ? "   " : `message ${this.commands + 1}`;
         return {
           envelope: this.env(
-            { _tag: "Send", text, ...(rng.chance(0.05) ? { maintenance: true } : {}) },
+            {
+              _tag: "Send",
+              text,
+              ...(rng.chance(0.05) ? { maintenance: true } : {}),
+              ...(rng.chance(0.2) ? { interactionMode: "plan" as const } : {}),
+            },
             // A crew's card now and then: its run is the crew's to carry on.
             rng.chance(0.1) ? crew : rng.chance(0.8) ? ana : bo,
           ),
@@ -205,6 +213,38 @@ export class Gen {
             },
             crew,
           ),
+          now: at,
+        };
+      // A model option a session takes per turn (effort) or only in a new one (fast mode).
+      case "options":
+        return {
+          envelope: this.env({
+            _tag: "SwitchModel",
+            model: state.model ?? "m1",
+            options: [
+              { id: "effort", value: rng.pick(["low", "high"]) },
+              ...(rng.chance(0.5) ? [{ id: "fastMode", value: rng.chance(0.5) }] : []),
+            ],
+          }),
+          now: at,
+        };
+      case "mode":
+        return {
+          envelope: this.env({
+            _tag: "SetRuntimeMode",
+            runtimeMode: rng.pick(["full-access", "approval-required"] as const),
+          }),
+          now: at,
+        };
+      case "agent":
+        return {
+          envelope: this.env({
+            _tag: "ChooseAgent",
+            instanceId: rng.pick(["claude", "claude-2", "codex"]),
+            driver: rng.chance(0.7) ? "claude" : "codex",
+            model: rng.pick(["m1", "m2"]),
+            resumes: rng.chance(0.5),
+          }),
           now: at,
         };
       case "archive":
@@ -354,7 +394,12 @@ export class Gen {
         driver: "claude",
         model: rng.chance(0.9) ? state.model : "alias-of-" + String(state.model),
         nativeRef: `native-${this.sessions}`,
-        capabilities: { steer: rng.chance(0.5) },
+        capabilities: {
+          steer: rng.chance(0.5),
+          inSessionOptions: rng.pick<"all" | ReadonlyArray<string>>(["all", ["effort"], []]),
+        },
+        options: state.agent?.options ?? [],
+        runtimeMode: state.runtimeMode ?? "full-access",
       };
     } else if (effect.kind === "provider.send") {
       value = { providerTurnId: `t${++this.turns}` };

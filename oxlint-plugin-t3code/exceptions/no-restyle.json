@@ -1786,14 +1786,6 @@
   {
     "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
     "kind": "Literal",
-    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
-    "kind": "Literal",
     "fingerprint": "<SidebarHeader> drag-region in \"drag-region\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
@@ -1835,30 +1827,6 @@
     "path": "apps/web/src/components/sidebar/SidebarUpdatePill.tsx",
     "kind": "Literal",
     "fingerprint": "<TooltipPopup> text-balance in \"pointer-events-auto text-balance\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> gap-5 in \"grid gap-5 space-y-0 pb-6\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> pb-6 in \"grid gap-5 space-y-0 pb-6\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/usage/UsagePriceOverrides.tsx",
-    "kind": "Literal",
-    "fingerprint": "<DialogPanel> space-y-0 in \"grid gap-5 space-y-0 pb-6\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"

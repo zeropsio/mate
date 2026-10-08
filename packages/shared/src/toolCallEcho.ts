@@ -84,7 +84,7 @@ function sameValue(left: unknown, right: unknown): boolean {
 
 /**
  * Whether `update` is `completion`'s echo: the same call, turn and instant,
- * and the same payload but for its status and its `data.wrote` mark.
+ * and the same payload but for status, `data.wrote` and captured-image ownership.
  */
 export function isToolCallEcho(
   update: OrchestrationThreadActivity,
@@ -103,12 +103,31 @@ export function isToolCallEcho(
  * What of a payload an echo shares with its completion: all but its status,
  * and but the projection's `data.wrote` mark — an update stored projected
  * before the mark existed lacks it, while its completion, stored whole, gains
- * it on every read.
+ * it on every read. Captured pictures compare their retained original, not
+ * the occurrence metadata each activity owns.
  */
 function comparedPart(payload: Record<string, unknown>): Record<string, unknown> {
   const { status: _status, ...rest } = payload;
   const data = asRecord(rest.data);
-  if (data === null || !("wrote" in data)) return rest;
+  if (data === null) return rest;
   const { wrote: _wrote, ...dataRest } = data;
+  const zerops = asRecord(dataRest.zerops);
+  if (zerops && Array.isArray(zerops.images)) {
+    dataRest.zerops = {
+      ...zerops,
+      images: zerops.images.map((value: unknown) => {
+        const image = asRecord(value);
+        const original = asRecord(asRecord(image?.asset)?.original);
+        // An occurrence owns bytes for one activity; its identity is not picture content.
+        // Only a retained digest proves equality. Failed captures keep their identities.
+        return image &&
+          original?.status === "ready" &&
+          typeof original.digest === "string" &&
+          /^[a-f0-9]{64}$/u.test(original.digest)
+          ? { ...image, asset: { original } }
+          : value;
+      }),
+    };
+  }
   return { ...rest, data: dataRest };
 }

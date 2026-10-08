@@ -212,7 +212,6 @@ import * as DesktopTelemetryReceiver from "./resourceTelemetry/DesktopTelemetryR
 import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClient.ts";
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
-import * as UsageService from "./usage/UsageService.ts";
 import * as Data from "effect/Data";
 
 import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
@@ -852,6 +851,7 @@ const buildAppUnderTest = (options?: {
         }),
       searchThreads: () => Effect.succeed({ matches: [] }),
       getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
+      getProjectWorkspaceRootById: () => Effect.succeedNone,
       getProjectShellById: () => Effect.succeedNone,
       getThreadShellById: () => Effect.succeedNone,
       getThreadDetailById: () => Effect.succeedNone,
@@ -1100,7 +1100,6 @@ const buildAppUnderTest = (options?: {
 
     const appLayer = servedRoutesLayer.pipe(
       Layer.provide(resourceTelemetryLayer),
-      Layer.provide(UsageService.layerTest),
       Layer.provide(
         Layer.mock(BrowserTraceCollector.BrowserTraceCollector)({
           record: () => Effect.void,
@@ -2588,7 +2587,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect(
-    "refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation",
+    'refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation: "This Mate moved to its new engine. Reload or update this app to keep talking to it."',
     () =>
       Effect.gen(function* () {
         const dispatched: Array<string> = [];
@@ -2624,7 +2623,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           ),
         );
 
-        assert.equal(refused.message, ENGINE_MOVED);
+        assert.equal(
+          refused.message,
+          "This Mate moved to its new engine. Reload or update this app to keep talking to it.",
+        );
         assert.deepEqual(dispatched, []);
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -8476,9 +8478,41 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("history remains readable when repository metadata is unavailable", () =>
+    Effect.gen(function* () {
+      const thread = { ...makeDefaultOrchestrationReadModel().threads[0]!, worktreePath: null };
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 1, thread }),
+            getProjectWorkspaceRootById: () => Effect.succeedSome("/tmp/history-workspace"),
+            getProjectShellById: () => Effect.die("Repository metadata is unavailable"),
+          },
+        },
+      });
+      const response = yield* fetchEffect(
+        yield* getHttpServerUrl(`/api/orchestration/threads/${thread.id}?turnLimit=1`),
+        { headers: { authorization: yield* getAuthenticatedAuthorizationHeader() } },
+      );
+      assert.equal(response.status, 200);
+      const snapshot = yield* responseJsonEffect<OrchestrationThreadDetailSnapshot>(response);
+      assert.deepEqual(snapshot.thread.messages, thread.messages);
+      const items = yield* Effect.scoped(
+        withWsRpcClient(yield* getWsServerUrl("/ws"), (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+            threadId: thread.id,
+            turnLimit: 1,
+          }).pipe(Stream.take(1), Stream.runCollect),
+        ),
+      );
+      assert.equal(items[0]?.kind, "snapshot");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   for (const reasoningMessages of [undefined, true] as const) {
     it.effect(`preserves reasoning wire compatibility with opt-in ${reasoningMessages}`, () =>
       Effect.gen(function* () {
+        let timingNow = 0;
         const message = {
           id: MessageId.make("thinking-compatibility"),
           role: "reasoning" as const,
@@ -8535,6 +8569,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             projectionSnapshotQuery: {
               getThreadDetailSnapshot: () =>
                 Effect.gen(function* () {
+                  timingNow += 30;
                   yield* PubSub.publishAll(liveEvents, [event, answer]);
                   return Option.some({
                     snapshotSequence: 1,
@@ -8551,12 +8586,51 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         });
         const role = reasoningMessages ? "reasoning" : "system";
+        const authorization = yield* getAuthenticatedAuthorizationHeader();
+        const auth = yield* testAuth;
+        const authenticate = auth.authenticateHttpRequest;
+        const authenticateSpy = vi
+          .spyOn(auth, "authenticateHttpRequest")
+          .mockImplementation((request) =>
+            authenticate(request).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  timingNow += 200;
+                }),
+              ),
+            ),
+          );
+        timingNow = 0;
+        const timingClock = vi.spyOn(performance, "now").mockImplementation(() => timingNow);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            timingClock.mockRestore();
+            authenticateSpy.mockRestore();
+          }),
+        );
         const response = yield* fetchEffect(
           yield* getHttpServerUrl(
             `/api/orchestration/threads/${defaultThreadId}?turnLimit=1${reasoningMessages ? "&reasoningMessages=true" : ""}`,
           ),
-          { headers: { authorization: yield* getAuthenticatedAuthorizationHeader() } },
+          { headers: { authorization } },
         );
+        const timing = response.headers["server-timing"];
+        assert.isNotNull(timing);
+        // Authentication, including the session/DPoP middleware, is visible before headers.
+        assert.include(timing!, "authorize;dur=200.00");
+        assert.include(timing!, "snapshot;dur=230.00");
+        for (const stage of [
+          "authorize",
+          "read",
+          "project",
+          "media",
+          "projection",
+          "encode",
+          "snapshot",
+        ]) {
+          assert.match(timing!, new RegExp(`(?:^|, )${stage};dur=\\d+\\.\\d+`));
+        }
+        assert.include(response.headers["access-control-expose-headers"], "Server-Timing");
         const httpSnapshot = yield* responseJsonEffect<OrchestrationThreadDetailSnapshot>(response);
         assert.equal(response.status, 200);
         assert.deepEqual(httpSnapshot.thread.messages, [{ ...message, role }]);

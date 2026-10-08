@@ -12,6 +12,7 @@ import {
 import { MateLinkUp, type MateOverview, type MateState } from "@t3tools/shared/mateLink";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -24,6 +25,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
+import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import {
   type HqEnrollment,
   type HqOutcome,
@@ -31,6 +33,7 @@ import {
   HQ_LINK_ADDRESS_ORDER,
   makeZeropsHqLink,
   MATE_LINK_ROTATE_MS,
+  HQ_AUTO_UPDATE_VERIFY_BUDGET,
   mateOverviewFeed,
   preferringIpv6,
   type OverviewSources,
@@ -39,6 +42,7 @@ import {
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 const encodeHeard = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMateLinkUp = Schema.decodeUnknownEffect(MateLinkUp);
+const decodeMateHealth = Schema.decodeUnknownEffect(MateHealth);
 
 type Sent = { readonly type: string } & Readonly<Record<string, unknown>>;
 
@@ -177,7 +181,9 @@ const rig = (
         );
       }),
     );
+    const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy;
     const link = yield* makeZeropsHqLink({
+      autoUpdatePolicy,
       readEnrollment: Ref.get(enrollment),
       readOutcome: Ref.get(outcome),
       connect: (url) => {
@@ -212,6 +218,7 @@ const rig = (
         Effect.orDie,
       );
     return {
+      autoUpdatePolicy,
       link,
       enrollment,
       outcome,
@@ -228,6 +235,84 @@ const rig = (
   });
 
 describe("ZeropsHqLink", () => {
+  it.live(
+    "checks the current org policy with a fresh correlated reply before granting update permission",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { autoUpdatePolicy, connected } = yield* rig({ enrolled: true });
+          const socket = yield* Queue.take(connected);
+          socket.over = "IPv6";
+          socket.emit("open");
+          socket.hear({
+            type: "state",
+            mate: STATE,
+            autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
+          });
+          yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)));
+          const held = { orgId: "ORG", enabled: false, revision: 1 };
+          socket.onSent = (message) => {
+            if (message.type !== "auto-update-policy") return;
+            socket.hear({
+              type: "auto-update-policy",
+              requestId: "unrelated",
+              policy: { orgId: "ORG", enabled: true, revision: 0 },
+            });
+            socket.hear({
+              type: "auto-update-policy",
+              requestId: message["requestId"],
+              policy: held,
+            });
+          };
+          assert.deepStrictEqual(yield* autoUpdatePolicy.verify, Option.some(held));
+          assert.deepStrictEqual(yield* autoUpdatePolicy.current, Option.some(held));
+        }),
+      ),
+  );
+
+  it.effect(
+    "a silent HQ withholds permission at the verification deadline instead of reusing its old allow",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { autoUpdatePolicy, connected } = yield* rig({ enrolled: true });
+          const socket = yield* Queue.take(connected);
+          socket.over = "IPv6";
+          socket.emit("open");
+          socket.hear({
+            type: "state",
+            mate: STATE,
+            autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
+          });
+          yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)));
+          const verification = yield* Effect.forkScoped(autoUpdatePolicy.verify);
+          yield* TestClock.adjust(HQ_AUTO_UPDATE_VERIFY_BUDGET);
+          assert.isTrue(Option.isNone(yield* Fiber.join(verification)));
+          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
+        }),
+      ),
+  );
+  it.live(
+    "requires HQ's policy on a live authenticated link and clears it when that link closes",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { autoUpdatePolicy, connected } = yield* rig({ enrolled: true });
+          const socket = yield* Queue.take(connected);
+          socket.over = "IPv6";
+          socket.emit("open");
+          const value = { orgId: "ORG", enabled: true, revision: 0 };
+          socket.hear({ type: "state", mate: STATE, autoUpdate: value });
+          const policy = yield* Stream.runHead(
+            autoUpdatePolicy.changes.pipe(Stream.filter(Option.isSome)),
+          );
+          assert.deepStrictEqual(policy, Option.some(Option.some(value)));
+          socket.emit("close");
+          yield* Stream.runHead(autoUpdatePolicy.changes.pipe(Stream.filter(Option.isNone)));
+          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
+        }),
+      ),
+  );
   it.live(
     "waits for an enrollment, links with a ticket for its credential, sends its overview, answers pings and keeps HQ's state",
     () =>
@@ -786,14 +871,25 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
 it.effect("sends measured health even when the conversation overview cannot answer", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const health = yield* Schema.decodeUnknownEffect(MateHealth)({
+      const health = yield* decodeMateHealth({
         source: { environmentId: "env-1", epoch: 1, incarnation: "run", revision: 1 },
         sampledAt: "2026-10-07T12:00:00Z",
         evidence: {
           status: "strained",
           severity: "critical",
           resources: ["memory"],
-          memory: null,
+          memory: {
+            scope: "/sys/fs/cgroup",
+            current: 2 * 1024 ** 3,
+            high: 1.375 * 1024 ** 3,
+            max: 3.375 * 1024 ** 3,
+            events: { high: 2514, max: 7, oom: 0, oomKill: 0 },
+            growth: { high: 1, max: 1, oom: 0, oomKill: 0 },
+            pressure: null,
+            swapCurrent: 200 * 1024 ** 2,
+            swapMax: 512 * 1024 ** 2,
+            swapGrowth: 1024,
+          },
           cpu: null,
           io: null,
           disk: null,

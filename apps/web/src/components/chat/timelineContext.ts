@@ -1,3 +1,4 @@
+import type { MateLimit } from "@t3tools/client-runtime/data";
 /**
  * What every row of the conversation reads from the list around it: shared
  * callbacks and state, through context, so they pass the list's memo
@@ -18,7 +19,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { createContext } from "react";
 
-import type { ConversationSpeaker, ServerUsagePause } from "./ConversationRows";
+import type { ConversationSpeaker, ServerUsagePause, PauseBlock } from "./ConversationRows";
 import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
@@ -45,6 +46,12 @@ export interface TimelineRowSharedState {
   /** The pause row that holds the thread now, and the server's reading of it. */
   livePauseId: string | null;
   usagePause: ServerUsagePause | null;
+  /** The live pause occupies the measured message room; history stays in the same scroll. */
+  pauseStage?: {
+    readonly mate: Parameters<typeof PauseBlock>[0]["mate"];
+    readonly height: number | undefined;
+  };
+  limit?: MateLimit;
   onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   onUsageContinue?: (() => void) | null;
   agentPanelModel: AgentPanelModel;

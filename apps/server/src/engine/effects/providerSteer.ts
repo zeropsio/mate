@@ -1,12 +1,13 @@
 /**
  * `provider.steer` (process-bound, lane `turn`): a person's message into the running turn, only
- * on a driver that really takes one (Claude, OpenCode), admitted for the person steering first;
- * it settles on the bridge's evidence, as a send does.
+ * on a driver that really takes one (Claude, OpenCode), or an answer into the turn that waits on
+ * it (Codex takes a mid-turn turn start into its running turn); admitted for the person steering
+ * first, it settles on the bridge's evidence, as a send does.
  *
  * @module engine/effects/providerSteer
  */
 import * as Effect from "effect/Effect";
-import type { Principal, TurnHandle } from "@t3tools/contracts";
+import type { ChatAttachment, Principal, TurnHandle } from "@t3tools/contracts";
 
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { makeAdmit } from "./admission.ts";
@@ -18,6 +19,8 @@ interface SteerPayload {
   readonly sessionId: string;
   readonly itemId: string;
   readonly text: string;
+  /** Pictures by reference: an answer's, steered into the turn that waits on it. */
+  readonly attachments?: ReadonlyArray<ChatAttachment>;
   /** Whose words these are, on whose agent (absent from a payload a build before them wrote). */
   readonly instanceId?: string | null;
   readonly principal?: Principal;
@@ -45,7 +48,7 @@ export const makeProviderSteer = Effect.gen(function* () {
           turn: payload.itemId as TurnHandle,
           mode: "steer",
           text: payload.text,
-          attachments: [],
+          attachments: payload.attachments ?? [],
         });
         if (!sent.live) return failed(NO_LIVE_SESSION, { undelivered: true });
         const evidence = sent.evidence;

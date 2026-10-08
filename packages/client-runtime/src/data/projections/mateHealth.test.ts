@@ -15,7 +15,7 @@ const evidence: MateResourceHealth = {
   memory: {
     current: 1700000000,
     high: 1610612736,
-    max: null,
+    max: 3.75 * 1024 ** 3,
     events: { high: 2, oom: 0, oomKill: 0 },
     growth: { high: 1, oom: 0, oomKill: 0 },
     pressure: { some: { avg10: 60, total: 3 }, full: { avg10: 40, total: 2 } },
@@ -181,7 +181,9 @@ describe("health at the screen boundary", () => {
   });
   it("names measured starvation, the cap, actions, swap and severity", () => {
     const copy = mateHealthCopy("Skákala", project(direct()));
-    expect(copy?.title).toBe("Skákala is short on memory — the container is capped at 1.5 GB");
+    expect(copy?.title).toBe(
+      "Skákala is under memory pressure — the container is capped at 3.75 GB",
+    );
     expect(copy?.severity).toBe("critical");
     expect(copy?.description).toContain("Close idle terminal agents or the IDE");
     expect(copy?.description).toContain("Container swap is full");
@@ -216,11 +218,92 @@ describe("health at the screen boundary", () => {
   it("does not invent health for a Mate with no sample", () => {
     expect(mateHealthCopy("Skákala", project([]))).toBeNull();
   });
-  it("says RAM has not reached the container only with live cap evidence", () => {
-    const read = { health, live: true, configuredMinimumBytes: 3 * 1024 ** 3 };
-    expect(mateHealthCopy("Skákala", read)?.description).toContain("hasn't reached the container");
-    expect(mateHealthCopy("Skákala", { ...read, live: false })?.description).not.toContain(
-      "hasn't reached",
-    );
+  it.each([
+    { live: true, growth: 0, swapGrowth: 0, io: false, title: null },
+    { live: false, growth: 0, swapGrowth: 0, io: false, title: null },
+    { live: true, growth: 0, swapGrowth: 0, io: true, title: "Rhea is slowed by I/O stalls" },
+    {
+      live: true,
+      growth: 1,
+      swapGrowth: 1,
+      io: true,
+      title: "Rhea is under memory pressure — the container is capped at 3.38 GB",
+    },
+    {
+      live: false,
+      growth: 1,
+      swapGrowth: 0,
+      io: false,
+      title:
+        "Rhea · last-known health is under memory pressure — the container is capped at 3.38 GB",
+    },
+  ])(
+    "Rhea copy follows measured pressure rather than allocation configuration: %j",
+    ({ live, growth, swapGrowth, io, title }) => {
+      const value: MateHealth = {
+        ...health,
+        evidence: {
+          ...evidence,
+          // Even an older server's false memory flag must not manufacture a notice.
+          resources: io ? ["memory", "disk"] : ["memory"],
+          severity: "warning",
+          memory: {
+            ...evidence.memory!,
+            current: 2 * 1024 ** 3,
+            max: 3.375 * 1024 ** 3,
+            high: 1.375 * 1024 ** 3,
+            events: { high: 2513, max: 0, oom: 0, oomKill: 0 },
+            growth: { high: growth, max: 0, oom: 0, oomKill: 0 },
+            swapGrowth,
+            pressure: { some: { avg10: 0, total: 0 }, full: { avg10: 0, total: 0 } },
+            swapCurrent: 200 * 1024 ** 2,
+            swapMax: 512 * 1024 ** 2,
+          },
+          io: io ? { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } } : null,
+        },
+      };
+      const copy = mateHealthCopy("Rhea", { health: value, live });
+      expect(copy?.title ?? null).toBe(title);
+      expect(copy?.description ?? "").not.toContain("hasn't reached");
+      if (growth) expect(copy?.description).toContain("Memory reclaim threshold: 1.38 GB");
+      if (swapGrowth) expect(copy?.description).toContain("swap use is growing");
+      if (io) expect(copy?.description).toContain("I/O stalls");
+    },
+  );
+});
+
+it("describes hierarchical reclaim without attributing it to the displayed threshold", () => {
+  const copy = mateHealthCopy("Rhea", {
+    live: true,
+    health: {
+      ...health,
+      evidence: {
+        ...evidence,
+        memory: { ...evidence.memory!, current: 1024 ** 3, high: 1.75 * 1024 ** 3 },
+      },
+    },
   });
+  expect(copy?.description).toContain("Memory reclaim threshold: 1.75 GB");
+  expect(copy?.description).toContain("within the container hierarchy");
+  expect(copy?.description).not.toContain("container hit its memory reclaim threshold");
+});
+it.each([1000, 0])("normalizes legacy severity and concurrent I/O with disk free=%s", (free) => {
+  const copy = mateHealthCopy("Rhea", {
+    live: true,
+    health: {
+      ...health,
+      evidence: {
+        ...evidence,
+        resources: ["memory", "disk"],
+        severity: "critical",
+        disk: { free, total: 5000 },
+        memory: { ...evidence.memory!, growth: { high: 0, oom: 0, oomKill: 0 }, pressure: null },
+        io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+      },
+    },
+  });
+  expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
+  expect(copy?.description).toContain("I/O stalls");
+  expect(copy?.description).not.toContain("swap is full");
+  if (free === 0) expect(copy?.title).toContain("no free space");
 });

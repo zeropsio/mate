@@ -64,6 +64,7 @@ export const registerCrewRpc = ({
         WS_METHODS.zeropsCrewCommand,
         crew.command(input, { kind: "session", subject }),
         traceAttributes,
+        input._tag === "pause" || input._tag === "stop",
       ),
     [WS_METHODS.zeropsCrewTaskPage]: (input) =>
       observeRpcEffect(

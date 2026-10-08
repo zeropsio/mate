@@ -13,6 +13,9 @@ import { makeCpuSampler, CPU_SAMPLE_WINDOW_USEC } from "./mateCpuHealth.ts";
 
 const growing = (value: number, previous: number | undefined) =>
   previous === undefined ? 0 : Math.max(0, value - previous);
+// PSI avg10 is the percentage of recent time tasks stalled on this resource. Any
+// positive value is measured stall time, not an allocation/usage threshold.
+// https://docs.kernel.org/accounting/psi.html
 const stalled = (psi: ResourcePressure | null) => psi !== null && psi.some.avg10 > 0;
 
 /** Read the visible hierarchy: ancestor limits include sibling/container work, not only Mate's unit. */
@@ -50,6 +53,7 @@ export async function readResourceHealth(
           );
           return {
             high: numberOf(fields.high ?? ""),
+            max: numberOf(fields.max ?? ""),
             oom: numberOf(fields.oom ?? ""),
             oomKill: numberOf(fields.oom_kill ?? ""),
           };
@@ -75,39 +79,59 @@ export async function readResourceHealth(
   // The root of a cgroup namespace can omit the memory controller. A readable descendant still
   // supplies evidence; unreadable ancestors stay explicitly unavailable.
   const known = memories.filter((memory) => memory !== null);
-  const tightest = known.toSorted(
-    (a, b) =>
-      Math.min(a.high ?? Infinity, a.max ?? Infinity) -
-      Math.min(b.high ?? Infinity, b.max ?? Infinity),
-  )[0];
+  // Usage, limits, hierarchical events and swap stay at the outermost readable
+  // scope. A child's limit cannot describe the container's allocation. Events
+  // cannot identify which threshold was crossed (memory.events is hierarchical).
+  const container = known.at(-1);
+  const root = cgroups.at(-1);
+  // cgroup.pressure is independently configurable at each level. A quiet or
+  // unreadable ancestor cannot erase measured descendant stalls. Keep the
+  // strongest actual PSI reading, rather than summing overlapping accounting.
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
+  const pressure =
+    known
+      .map((memory) => memory.pressure)
+      .filter((value) => value !== null)
+      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
   const memory =
-    tightest === undefined
+    container === undefined
       ? null
       : {
-          ...tightest,
+          ...container,
+          // A descendant fallback proves pressure, not the container's limits.
+          max: container.scope === root ? container.max : null,
+          high: container.scope === root ? container.high : null,
+          pressure,
+          swapGrowth: growing(
+            container.swapCurrent ?? 0,
+            previous?.memory?.scope === container.scope
+              ? (previous.memory.swapCurrent ?? undefined)
+              : undefined,
+          ),
           growth: {
+            max: growing(
+              container.events.max,
+              previous?.memory?.scope === container.scope ? previous.memory.events.max : undefined,
+            ),
             high: growing(
-              tightest.events.high,
-              previous?.memory?.scope === tightest.scope ? previous.memory.events.high : undefined,
+              container.events.high,
+              previous?.memory?.scope === container.scope ? previous.memory.events.high : undefined,
             ),
             oom: growing(
-              tightest.events.oom,
-              previous?.memory?.scope === tightest.scope ? previous.memory.events.oom : undefined,
+              container.events.oom,
+              previous?.memory?.scope === container.scope ? previous.memory.events.oom : undefined,
             ),
             oomKill: growing(
-              tightest.events.oomKill,
-              previous?.memory?.scope === tightest.scope
+              container.events.oomKill,
+              previous?.memory?.scope === container.scope
                 ? previous.memory.events.oomKill
                 : undefined,
             ),
           },
         };
-  const root = cgroups.at(-1);
-  const [cpuRead, io, disk] = await Promise.all([
+  const [cpuRead, ioReadings, disk] = await Promise.all([
     sampleCpu(),
-    root === undefined
-      ? null
-      : read(root, "io.pressure", pressureOf).then((value) => value ?? null),
+    Promise.all(cgroups.map((dir) => read(dir, "io.pressure", pressureOf))),
     NodeFSP.statfs(stateDir)
       .then((stat) => ({ free: stat.bavail * stat.bsize, total: stat.blocks * stat.bsize }))
       .catch(() => {
@@ -115,21 +139,32 @@ export async function readResourceHealth(
         return null;
       }),
   ]);
+  // I/O PSI accounting has the same independent enablement as memory PSI.
+  const io =
+    ioReadings
+      .filter((value) => value !== undefined)
+      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
   const cpu = cpuRead.cpu;
   for (const file of cpuRead.unavailable) unavailable.add(file);
   if (cgroups.length === 0) unavailable.add("cgroup-v2");
-  const resources: Array<"memory" | "disk" | "cpu"> = [];
+  // memory.high triggers reclaim/throttling; memory.max is the hard limit. Usage
+  // above either alone proves no stall. New high/max events mean active reclaim or
+  // limit hits; OOM events mean failed allocation, swap growth means active swapping.
+  // Historical counters and static swap occupancy do not establish current strain.
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  const resources: Array<"memory" | "disk" | "io" | "cpu"> = [];
   if (
     memory !== null &&
-    ((memory.high !== null && memory.current >= memory.high) ||
-      (memory.max !== null && memory.current >= memory.max) ||
-      memory.growth.high > 0 ||
+    (memory.growth.high > 0 ||
+      memory.growth.max > 0 ||
+      memory.swapGrowth > 0 ||
       memory.growth.oom > 0 ||
       memory.growth.oomKill > 0 ||
       stalled(memory.pressure))
   )
     resources.push("memory");
-  if (disk?.free === 0 || stalled(io)) resources.push("disk");
+  if (disk?.free === 0) resources.push("disk");
+  if (stalled(io)) resources.push("io");
   if (cpuRead.strained) resources.push("cpu");
   const critical =
     memory !== null &&
@@ -203,7 +238,7 @@ export function resourceHealthChanges(
       let cpuDue = true;
       let cpuRead: Awaited<ReturnType<typeof sampleCpu>> | undefined;
       // PSI permits unprivileged notifications once per two-second tracking window. This is
-      // observation cadence, not a timeout verdict: counter deltas alone establish pressure.
+      // observation cadence, not a timeout verdict: measured stalls and growth establish pressure.
       if (groups.length > 0)
         yield* Effect.forkScoped(
           Effect.forever(
@@ -269,20 +304,32 @@ export function resourceHealthChanges(
         }),
       );
       let previous: MateResourceHealth | undefined;
+      let observed: MateResourceHealth | undefined;
       notify();
       return Stream.fromQueue(wake).pipe(
         Stream.mapEffect(() =>
           Effect.promise(async () => {
+            const observationDue = cpuDue;
+            // Consume the tick once, before any await. A tick arriving during this
+            // read remains pending for the next read, for both CPU and memory.
+            if (observationDue) {
+              cpuDue = false;
+              previous = observed;
+            }
             const value = await readResourceHealth(groups, stateDir, previous, async () => {
               // Requests and unrelated filesystem changes cannot replace the current CPU
               // window with a tiny interval or extend it beyond the declared cadence.
-              if (cpuDue || cpuRead === undefined) {
-                cpuDue = false;
+              if (observationDue || cpuRead === undefined) {
                 cpuRead = await sampleCpu();
               }
               return cpuRead;
             });
-            previous = value;
+            // Requests and unrelated wakes do not consume the memory/swap window.
+            // The shared cadence observes swap growth and publishes quiet recovery.
+            if (observationDue) {
+              observed = value;
+              previous ??= value;
+            }
             if (!eventsUnavailable) return value;
             return {
               ...value,

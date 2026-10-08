@@ -190,6 +190,7 @@ const projectWith = (
     case "SessionClosing":
     case "SessionRotated":
     case "ModelSwitched":
+    case "RuntimeModeSet":
     case "UsagePauseLifted":
     case "ConversationArchived":
     case "ConversationUnarchived":

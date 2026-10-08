@@ -15,6 +15,37 @@ import {
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
 
 describe("resolveThreadStatus", () => {
+  it.each([null, "You've hit your weekly limit"])(
+    "a refused SDK turn is not admitted work, even while its session stays running (%s)",
+    (lastError) => {
+      const thread = {
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        hasActionableProposedPlan: false,
+        interactionMode: "default" as const,
+        backgroundLiveness: null,
+        latestTurn: {
+          turnId: TurnId.make("refused"),
+          state: "running" as const,
+          startedAt: "2026-10-08T10:00:00Z",
+          completedAt: null,
+        },
+        session: { status: "running" as const, providerName: "claudeAgent", lastError },
+        usagePause: lastError === null ? { resetsAt: "2026-10-10T00:00:00Z" } : null,
+      };
+      expect(resolveThreadStatus(thread, "limited")).toEqual({ kind: "failed", toneId: "danger" });
+      expect(resolveThreadStatus({ ...thread, hasPendingUserInput: true }, "limited").kind).toBe(
+        "input",
+      );
+      expect(
+        resolveThreadStatus({
+          ...thread,
+          usagePause: null,
+          session: { status: "running", lastError: null },
+        }).kind,
+      ).toBe("working");
+    },
+  );
   it.each(threadStatusVectors)("resolves $name", (vector) => {
     expect(resolveThreadStatus(vector.input)).toEqual(vector.expected);
     if (vector.expectedAwarenessPhase === null) return;

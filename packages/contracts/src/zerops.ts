@@ -767,6 +767,7 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   from: Schema.optional(Schema.String),
   to: Schema.optional(Schema.String),
   restarted: Schema.Boolean,
+  started: Schema.optional(Schema.Boolean),
   error: Schema.optional(Schema.String),
   serverVersion: Schema.String,
 });

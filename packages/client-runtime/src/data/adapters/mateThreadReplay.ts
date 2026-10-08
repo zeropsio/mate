@@ -24,6 +24,7 @@ import * as ConnectionWakeups from "../../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../../platform/persistence.ts";
 import { subscribeDynamic } from "../../rpc/client.ts";
 import type { RpcSession } from "../../rpc/session.ts";
+import { mateDiagnostics } from "../../zerops/diagnostics.ts";
 import { ThreadSnapshotLoader, type ThreadSnapshotWindow } from "../../state/threadSnapshotHttp.ts";
 import { threadKey } from "../../state/entities.ts";
 import { mergeFirstPageSnapshot } from "../../state/threadSnapshotMerge.ts";
@@ -468,7 +469,9 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
   const setSnapshot = Effect.fn("EnvironmentThreadState.setSnapshot")(function* (
     snapshot: OrchestrationThreadDetailSnapshot,
     connecting: boolean,
+    source: "http" | "socket" = "socket",
   ) {
+    const started = performance.now();
     // A fresh snapshot replaces the loaded history, but the older turns the
     // client already holds stay below its page unless it proves they
     // changed (a revert while disconnected) — see mergeFirstPageSnapshot.
@@ -485,6 +488,14 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
       snapshot,
     });
     yield* setThread(merged.thread, Option.fromNullishOr(merged.page), connecting);
+    mateDiagnostics.record({
+      kind: "history-stage",
+      environmentId,
+      threadId,
+      stage: "baseline",
+      source,
+      durationMs: performance.now() - started,
+    });
   });
 
   const applyItemLocked = Effect.fn("EnvironmentThreadState.applyItemLocked")(function* (
@@ -849,7 +860,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
                         Effect.gen(function* () {
                           const current = yield* SubscriptionRef.get(state);
                           if (Option.isSome(current.data) || current.status === "deleted") return;
-                          yield* setSnapshot(response.value, true);
+                          yield* setSnapshot(response.value, true, "http");
                           yield* remember;
                         }),
                       ),
@@ -939,7 +950,9 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
                   supportsReasoningMessages,
                 );
           if (Option.isSome(httpSnapshot)) {
-            yield* applyItem({ kind: "snapshot", snapshot: httpSnapshot.value });
+            yield* applyLock.withPermits(1)(
+              setSnapshot(httpSnapshot.value, false, "http").pipe(Effect.andThen(remember)),
+            );
             current = yield* SubscriptionRef.get(state);
           }
         }

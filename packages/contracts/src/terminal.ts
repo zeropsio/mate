@@ -341,7 +341,17 @@ export class TerminalResizeError extends Schema.TaggedError<TerminalResizeError>
   }
 }
 
+export class TerminalUpdateInProgressError extends Schema.TaggedError<TerminalUpdateInProgressError>()(
+  "TerminalUpdateInProgressError",
+  {},
+) {
+  override get message() {
+    return "Updating Mate; wait before opening a terminal.";
+  }
+}
+
 export const TerminalError = Schema.Union([
+  TerminalUpdateInProgressError,
   TerminalCwdError,
   TerminalHistoryError,
   TerminalSessionLookupError,

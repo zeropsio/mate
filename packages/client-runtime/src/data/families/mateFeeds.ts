@@ -3,7 +3,6 @@ import type {
   CrewFiles,
   CrewSnapshot,
   TerminalSummary,
-  UsageSummary,
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
 } from "@t3tools/contracts";
@@ -27,7 +26,6 @@ export interface MateFeedValues {
   readonly mateAgentAuth: ZeropsAgentAuthSnapshot;
   readonly mateCrew: CrewSnapshot;
   readonly mateCrewFiles: CrewFiles;
-  readonly mateUsage: UsageSummary;
   readonly mateTerminal: ReadonlyArray<TerminalSummary>;
 }
 export type MateFeedFacts = {
@@ -70,6 +68,5 @@ export const MATE_FEED_FAMILIES = {
   mateAgentAuth: spec("mateAgentAuth", "realtime"),
   mateCrew: spec("mateCrew", "realtime"),
   mateCrewFiles: spec("mateCrewFiles", "sampled"),
-  mateUsage: spec("mateUsage", "once"),
   mateTerminal: spec("mateTerminal", "realtime"),
 };

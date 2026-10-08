@@ -1,3 +1,8 @@
+import {
+  subscribeUpdateChanges,
+  mergeUpdateSubscriptions,
+  type SubscribeUpdateChanges,
+} from "../../update/subscribeChanges.ts";
 /**
  * TurnPump: the provider's events into the engine.
  *
@@ -22,6 +27,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -72,6 +78,11 @@ export interface TurnPumpShape {
   readonly start: Effect.Effect<void, never, Scope.Scope>;
   /** Events for threads no host owns, counted per thread. */
   readonly foreign: Effect.Effect<ReadonlyMap<string, number>>;
+  readonly updatePosition?: Effect.Effect<number>;
+  readonly updateHosts?: Effect.Effect<ReadonlyArray<SessionHost>>;
+  readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
+  readonly updateChanges?: Stream.Stream<void>;
+  readonly subscribeUpdateChanges?: SubscribeUpdateChanges;
 }
 
 export class TurnPump extends Context.Service<TurnPump, TurnPumpShape>()(
@@ -96,9 +107,19 @@ export const makeTurnPump = Effect.gen(function* () {
           ),
       )
     : undefined;
-  const queue = yield* Queue.unbounded<SpiEvent>();
+  const queue = yield* Queue.unbounded<{
+    readonly sequence: number | null;
+    readonly event: SpiEvent;
+  }>();
+  let processedEvents = 0;
+  const updateChanges = yield* PubSub.sliding<void>(1);
+  const changed = Effect.asVoid(PubSub.publish(updateChanges, void 0));
+  const incoming: Stream.Stream<{ readonly sequence: number | null; readonly event: SpiEvent }> =
+    bus.eventBarrier?.events ?? bus.events.pipe(Stream.map((event) => ({ sequence: null, event })));
+  if (bus.eventBarrier !== undefined)
+    processedEvents = (yield* bus.eventBarrier.position).published;
   // Subscribed now: the fork runs at once up to its first wait, which is after the subscription.
-  yield* Stream.runForEach(bus.events, (event) => Queue.offer(queue, event)).pipe(
+  yield* Stream.runForEach(incoming, (event) => Queue.offer(queue, event)).pipe(
     Effect.forkScoped({ startImmediately: true }),
   );
   let stopping = false;
@@ -126,6 +147,7 @@ export const makeTurnPump = Effect.gen(function* () {
           scope,
           stopping: () => stopping,
           quiet,
+          changed,
           ...(pictures === undefined ? {} : { pictures }),
         },
       );
@@ -179,9 +201,51 @@ export const makeTurnPump = Effect.gen(function* () {
 
   return TurnPump.of({
     hostFor,
+    updatePosition: Effect.sync(() => processedEvents),
+    updateHosts: Effect.sync(() => [...hosts.values()]),
+    subscribeUpdateChanges: mergeUpdateSubscriptions([
+      subscribeUpdateChanges(updateChanges),
+      ...(bus.eventBarrier?.subscribeChanges === undefined
+        ? []
+        : [bus.eventBarrier.subscribeChanges]),
+    ]),
+    updateChanges: Stream.merge(
+      Stream.fromPubSub(updateChanges),
+      bus.eventBarrier?.changes ?? Stream.empty,
+    ),
+    updateBlockers: Effect.gen(function* () {
+      const blockers: string[] = [];
+      if ((yield* Queue.size(queue)) > 0) blockers.push("provider event queue");
+      if (bus.eventBarrier === undefined || bus.eventBarrier.subscribeChanges === undefined)
+        blockers.push("provider event receipt boundary unavailable");
+      else {
+        const position = yield* bus.eventBarrier.position;
+        if (position.processing > 0 || position.published !== processedEvents)
+          blockers.push("pending provider publication");
+      }
+      for (const host of hosts.values()) {
+        yield* host.settled;
+        const found = yield* host.updateBlockers ?? Effect.succeed(["provider host unknown"]);
+        blockers.push(...found.map((reason) => `${host.conversationId}: ${reason}`));
+      }
+      return blockers;
+    }),
     existing: (conversation) => Effect.sync(() => hosts.get(conversation)),
     start: Effect.gen(function* () {
-      yield* Effect.forkScoped(Effect.forever(Effect.flatMap(Queue.take(queue), route)));
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.flatMap(Queue.take(queue), ({ sequence, event }) =>
+            route(event).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  if (sequence !== null) processedEvents = sequence;
+                }),
+              ),
+              Effect.andThen(changed),
+            ),
+          ),
+        ),
+      );
       yield* Effect.forkScoped(Effect.forever(Effect.andThen(Effect.sleep(HOST_SWEEP_MS), sweep)));
     }),
     foreign: Effect.sync(() => new Map(foreign)),

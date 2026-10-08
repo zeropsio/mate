@@ -828,8 +828,28 @@
     }
   },
   {
-    "type": "thread.token-usage.updated",
     "eventId": "evt-21",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "turn.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "3f6c2a9e-8d41-4b7a-9c5e-1a2b3c4d5e6f",
+      "nativeTurnId": "00000000-0000-4000-8000-000000000025",
+      "models": [],
+      "nativeCost": {
+        "amount": "42100000",
+        "scale": 9,
+        "currency": "USD",
+        "basis": "provider-reported-estimate"
+      },
+      "parentId": null
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-22",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -883,7 +903,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-22",
+    "eventId": "evt-23",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

@@ -992,6 +992,7 @@
         "apps/web/src/components/zerops/whatHappensNext.logic.ts",
         "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
         "apps/web/src/components/zerops/MateLinkLine.tsx",
+        "apps/web/src/components/zerops/MateStateDetails.tsx",
         "apps/web/src/components/zerops/MateLinkStage.tsx",
         "apps/web/src/components/zerops/MateDetailFailure.tsx",
         "apps/web/src/components/zerops/RouteStandIn.tsx",

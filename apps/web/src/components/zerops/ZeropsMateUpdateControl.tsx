@@ -63,7 +63,12 @@ export function ZeropsMateUpdateControl({
   );
   const checkThenAsk = useCallback(() => {
     void check().then((answer) => {
-      if (capable && answer?.available === true) ask(answer.latest);
+      if (
+        capable &&
+        answer?.available === true &&
+        !["staging", "draining", "switching", "verifying"].includes(answer.automatic?.phase ?? "")
+      )
+        ask(answer.latest);
     });
   }, [ask, capable, check]);
 
@@ -75,7 +80,10 @@ export function ZeropsMateUpdateControl({
     mateUpdate.checked === undefined ? environment.update : mateUpdate.checked;
   const line = mateUpdateLine(effectiveUpdate ?? undefined, environment.serverVersion);
   const { state } = mateUpdate;
-  const running = state.phase === "checking" || state.phase === "updating";
+  const automaticBusy = ["staging", "draining", "switching", "verifying"].includes(
+    effectiveUpdate?.automatic?.phase ?? "",
+  );
+  const running = state.phase === "checking" || state.phase === "updating" || automaticBusy;
 
   // The check has its own capability: a server that offers `mateUpdate` but
   // predates `zerops.mate.checkUpdate` would answer the check with an
@@ -99,11 +107,11 @@ export function ZeropsMateUpdateControl({
   const latest = effectiveUpdate?.available === true ? effectiveUpdate.latest : null;
   // What was asked is answered where the verb stands; a failure keeps the
   // verb, to try again, and says why under the line.
-  const status = mateUpdateStatus(state);
+  const status = automaticBusy ? null : mateUpdateStatus(state);
   const verb =
     status !== null && state.phase !== "failed" ? (
       <MateUpdateStatusText className="text-muted-foreground" status={status} />
-    ) : latest === null ? undefined : (
+    ) : latest === null || automaticBusy ? undefined : (
       <ZeropsMateVerb label="Update" onClick={() => ask(latest)} />
     );
   const updateAction: ZeropsMenuAction | null =
@@ -115,8 +123,8 @@ export function ZeropsMateUpdateControl({
     line: (
       <>
         <MateUpdateLine line={line} verb={verb} />
-        {mateUpdate.notice ? <span>{mateUpdate.notice}</span> : null}
-        {state.phase === "failed" ? (
+        {mateUpdate.notice && !automaticBusy ? <span>{mateUpdate.notice}</span> : null}
+        {state.phase === "failed" && effectiveUpdate?.automatic?.phase !== "postponed" ? (
           <span
             className="text-[var(--zerops-status-failed-text,var(--foreground))]"
             data-zerops-surface="mate-update-error"

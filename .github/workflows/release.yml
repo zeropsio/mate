@@ -30,6 +30,7 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+          fetch-depth: 0
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -177,6 +178,7 @@ jobs:
 
       - name: Write stable.json
         env:
+          GH_TOKEN: ${{ github.token }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
           TARBALL_NAME: ${{ steps.pack.outputs.tarball_name }}
           APP_VERSION: ${{ steps.version.outputs.version }}
@@ -185,6 +187,9 @@ jobs:
           sha256="$(cd "$release_dir" && sha256sum "$TARBALL_NAME" | cut -d ' ' -f1)"
           size="$(stat -c%s "$TARBALL" 2>/dev/null || stat -f%z "$TARBALL")"
           published_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Only the preceding published stable release can establish the rollback floor.
+          # A missing/unreadable release leaves the gate closed and still permits manual updates.
+          previous_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
           node apps/server/scripts/releaseManifestAsset.ts \
             --version "$APP_VERSION" \
             --asset "$TARBALL_NAME" \
@@ -193,6 +198,7 @@ jobs:
             --sha256 "$sha256" \
             --size "$size" \
             --published-at "$published_at" \
+            --previous-tag "$previous_tag" \
             --out "$release_dir/stable.json"
           cat "$release_dir/stable.json"
 

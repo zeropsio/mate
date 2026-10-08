@@ -246,6 +246,7 @@ export const browserApiCorsLayer = Layer.unwrap(
         : {}),
       allowedMethods: browserApiCorsAllowedMethods,
       allowedHeaders: browserApiCorsAllowedHeaders,
+      exposedHeaders: ["Server-Timing"],
       maxAge: 600,
     });
   }),

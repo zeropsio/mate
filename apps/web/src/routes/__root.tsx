@@ -1,8 +1,14 @@
+import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
+import { useThreadDetail } from "~/state/entities";
 import { useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { recoveryNotice } from "../zerops/mateRecovery.logic";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopedThreadKey,
+} from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   type Reachability,
@@ -32,6 +38,7 @@ import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
 import { QueuedMessageSender } from "../components/QueuedMessageSender";
+import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
 import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
@@ -224,6 +231,7 @@ function SignedInRootRouteView() {
     environmentId: routeEnvironmentId ?? undefined,
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
+  const routeDetailHeld = useThreadDetail(routeThreadRef, (detail) => detail !== null);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",
@@ -253,39 +261,47 @@ function SignedInRootRouteView() {
   const appShell = (
     <ZeropsReviewProvider>
       <CommandPalette>
-        <AppSidebarLayout>
-          {/* The organization's gate (ADR 0001): no product without its HQ. */}
-          {hqGate.kind !== "open" ? (
-            <ZeropsHqGate gate={hqGate} />
-          ) : (
-            <RouteGateView
-              gate={gate}
-              phrase={gatePhrase}
-              projectId={projectUnavailable ? null : gateInputs.projectId}
-              recoveryPhrase={recoveryPhrase}
-              projectUnavailable={projectUnavailable}
-              conversation={
-                projectUnavailable ? { kind: "suppressed", reason: "access-denied" } : conversation
-              }
-              voice={voice}
-              stage={
-                gate.kind === "wait" ||
-                (gate.kind === "unavailable" && gate.reachability !== null) ? (
-                  <MateLinkStage
-                    composer={
-                      routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
-                    }
-                    environmentId={routeEnvironment}
-                    projectId={gateInputs.projectId}
-                    voice={voice.surface === "none" ? SILENT_STAGE : voice}
-                  />
-                ) : null
-              }
-            >
-              <Outlet />
-            </RouteGateView>
-          )}
-        </AppSidebarLayout>
+        <ConversationOpeningProvider>
+          <AppSidebarLayout>
+            {/* The organization's gate (ADR 0001): no product without its HQ. */}
+            {hqGate.kind !== "open" ? (
+              <ZeropsHqGate gate={hqGate} />
+            ) : (
+              <RouteGateView
+                gate={gate}
+                phrase={gatePhrase}
+                projectId={projectUnavailable ? null : gateInputs.projectId}
+                recoveryPhrase={recoveryPhrase}
+                projectUnavailable={projectUnavailable}
+                conversation={
+                  projectUnavailable
+                    ? { kind: "suppressed", reason: "access-denied" }
+                    : conversation
+                }
+                voice={voice}
+                stage={
+                  gate.kind === "wait" ||
+                  (gate.kind === "unavailable" && gate.reachability !== null) ? (
+                    <MateLinkStage
+                      readPending={!routeDetailHeld}
+                      threadKey={
+                        routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
+                      }
+                      composer={
+                        routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
+                      }
+                      environmentId={routeEnvironment}
+                      projectId={gateInputs.projectId}
+                      voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                    />
+                  ) : null
+                }
+              >
+                <Outlet />
+              </RouteGateView>
+            )}
+          </AppSidebarLayout>
+        </ConversationOpeningProvider>
         {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
             same way for every "New project". Neither behind the organization's gate. */}
@@ -309,6 +325,7 @@ function SignedInRootRouteView() {
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <ThreadNotificationCoordinator />
         <QueuedMessageSender />
+        <ReopenClosedViewShortcut />
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
         <SlowRpcRequestToastCoordinator />

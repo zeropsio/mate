@@ -15,6 +15,141 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const cases = ["owner", "colleague", "reader"] as const;
 
 describe("C: the conversation opening follows readiness", () => {
+  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a slow empty conversation stays behind one waking face, and a warm return never waits",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Sage", { mate: true });
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          const wire = chat.fixture("Sage");
+          wire.holdReplay = true;
+          const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+          yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
+          yield* s.given.signedIn;
+          yield* chat.when.openReadOnly("Sage");
+          yield* Effect.promise(() => read.requested());
+          yield* Effect.promise(() =>
+            s.page.waitForSelector('[data-conversation-opening="waiting"]'),
+          );
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const samples: Array<{
+                phase: string | undefined;
+                bodyOpacity: string | undefined;
+                faces: number;
+                transform: string | undefined;
+              }> = [];
+              Reflect.set(window, "emptyOpeningSamples", samples);
+              const sample = () => {
+                const column = document.querySelector("[data-chat-workspace-drop-target]");
+                const phase = column?.querySelector<HTMLElement>("[data-conversation-opening]")
+                  ?.dataset.conversationOpening;
+                const body = column?.querySelector("[data-conversation-content]");
+                const actor = column?.querySelector("[data-opening-actor]");
+                const visible = (face: Element) => {
+                  for (let node: Element | null = face; node !== null; node = node.parentElement) {
+                    const style = getComputedStyle(node);
+                    if (
+                      style.opacity === "0" ||
+                      style.visibility === "hidden" ||
+                      node.hasAttribute("inert")
+                    )
+                      return false;
+                  }
+                  return face.getBoundingClientRect().width > 0;
+                };
+                samples.push({
+                  phase,
+                  bodyOpacity: body ? getComputedStyle(body).opacity : undefined,
+                  faces: [...(column?.querySelectorAll("[data-mate-face-state]") ?? [])].filter(
+                    visible,
+                  ).length,
+                  transform: actor ? getComputedStyle(actor).transform : undefined,
+                });
+                requestAnimationFrame(sample);
+              };
+              requestAnimationFrame(sample);
+            }),
+          );
+          read.release();
+          wire.ready();
+          yield* Effect.promise(() =>
+            s.page.waitForSelector('[data-conversation-opening="complete"]'),
+          );
+          const samples = yield* Effect.promise(() =>
+            s.page.evaluate(
+              () =>
+                Reflect.get(window, "emptyOpeningSamples") as Array<{
+                  phase: string | undefined;
+                  bodyOpacity: string | undefined;
+                  faces: number;
+                  transform: string | undefined;
+                }>,
+            ),
+          );
+          expect(
+            samples
+              .filter(
+                (sample) =>
+                  sample.phase === "wake" ||
+                  sample.phase === "hand-off" ||
+                  sample.phase === "complete",
+              )
+              .every((sample) => sample.faces === 1),
+          ).toBe(true);
+          const waking = samples.filter((sample) => sample.phase === "wake");
+          expect(waking.length).toBeGreaterThan(0);
+          expect(
+            waking.every(
+              (sample) =>
+                sample.bodyOpacity === "0" && sample.faces === 1 && sample.transform === "none",
+            ),
+          ).toBe(true);
+          yield* chat.when.openReadOnly("Ada");
+          yield* chat.then.ready("Ada");
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => {
+              const body = document.querySelector(
+                "[data-chat-workspace-drop-target] [data-conversation-content]",
+              );
+              return body !== null && getComputedStyle(body).opacity === "1";
+            }),
+          );
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const phases: string[] = [];
+              Reflect.set(window, "warmOpeningPhases", phases);
+              const sample = () => {
+                const phase = document.querySelector<HTMLElement>("[data-conversation-opening]")
+                  ?.dataset.conversationOpening;
+                if (phase) phases.push(phase);
+                requestAnimationFrame(sample);
+              };
+              requestAnimationFrame(sample);
+            }),
+          );
+          yield* chat.when.openReadOnly("Sage");
+          yield* chat.then.ready("Sage");
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => {
+              const body = document.querySelector(
+                "[data-chat-workspace-drop-target] [data-conversation-content]",
+              );
+              return body !== null && getComputedStyle(body).opacity === "1";
+            }),
+          );
+          const phases = yield* Effect.promise(() =>
+            s.page.evaluate(() => Reflect.get(window, "warmOpeningPhases") as string[]),
+          );
+          expect(phases).not.toContain("waiting");
+          expect(phases).not.toContain("wake");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+  });
   it.layer(Layer.merge(tempPostgresLayer, NodeServices.layer), { excludeTestServices: true })(
     (it) => {
       for (const entry of ["menu", "project"] as const)
@@ -59,6 +194,9 @@ describe("C: the conversation opening follows readiness", () => {
                             columnX: number;
                             columnWidth: number;
                             stages: number;
+                            leadY: number;
+                            leadHeight: number;
+                            areaHeight: number;
                           }> = [];
                           let seenStage = false;
                           let conversationReady = false;
@@ -95,11 +233,14 @@ describe("C: the conversation opening follows readiness", () => {
                             if (stage && column) {
                               const box = stage.getBoundingClientRect();
                               const pane = column.getBoundingClientRect();
+                              const lead = stage
+                                .querySelector("[data-mate-empty-lead]")!
+                                .getBoundingClientRect();
                               const phase = stage
                                 .closest("[data-conversation-opening]")
                                 ?.getAttribute("data-conversation-opening");
                               if (
-                                phase === "ready" &&
+                                phase === "hand-off" &&
                                 Reflect.get(window, "openingEyesAtReady") === null
                               ) {
                                 const eyes = [...stage.querySelectorAll("[data-mate-face-eye]")];
@@ -112,7 +253,7 @@ describe("C: the conversation opening follows readiness", () => {
                                 });
                               }
                               if (box.width > 0 && visible(stage)) seenStage = true;
-                              else if (seenStage && !conversationReady && phase !== "ready")
+                              else if (seenStage && !conversationReady && phase !== "complete")
                                 Reflect.set(window, "openingStageGap", true);
                               samples.push({
                                 phase:
@@ -125,6 +266,9 @@ describe("C: the conversation opening follows readiness", () => {
                                 columnX: pane.x,
                                 columnWidth: pane.width,
                                 stages: stages.length,
+                                leadY: lead.y,
+                                leadHeight: lead.height,
+                                areaHeight: box.height,
                               });
                             } else if (seenStage && !conversationReady) {
                               Reflect.set(window, "openingStageGap", true);
@@ -173,9 +317,18 @@ describe("C: the conversation opening follows readiness", () => {
                               .querySelector("[data-mate-face-state]")
                               ?.getAttribute("data-mate-face-state"),
                           ),
-                        ).toBe("sleep");
+                        ).toBe(person === "reader" ? "sleep" : "waking");
                         // Time passing and a finished face animation cannot make the held source read ready.
                         if (person !== "reader") {
+                          expect(
+                            await s.page.evaluate(() => {
+                              const footer = document.querySelector("[data-conversation-footer]");
+                              const held = document.querySelector("[data-composer-room-held]");
+                              return footer !== null
+                                ? getComputedStyle(footer).opacity !== "0"
+                                : held !== null && getComputedStyle(held).visibility !== "hidden";
+                            }),
+                          ).toBe(false);
                           await s.clock.advance(10_000);
                           expect(
                             await stage!.evaluate((node) =>
@@ -213,7 +366,13 @@ describe("C: the conversation opening follows readiness", () => {
                         wire.ready();
                         yield* chat.then.text("Sage's conversation is ready");
                         yield* Effect.promise(async () => {
-                          await s.page.waitForSelector('[data-conversation-opening="ready"]');
+                          await s.page.waitForSelector('[data-conversation-opening="complete"]');
+                          expect(
+                            await s.page.$eval(
+                              "[data-conversation-footer]",
+                              (node) => getComputedStyle(node).visibility,
+                            ),
+                          ).toBe("visible");
                           if (entry === "menu")
                             expect(
                               await stage!.evaluate(
@@ -225,7 +384,7 @@ describe("C: the conversation opening follows readiness", () => {
                               ),
                             ).toBe(true);
                           expect(
-                            await s.page.$eval('[data-conversation-opening="ready"]', (node) =>
+                            await s.page.$eval("[data-conversation-avatar]", (node) =>
                               node
                                 .querySelector("[data-mate-face-state]")
                                 ?.getAttribute("data-mate-face-state"),
@@ -234,7 +393,7 @@ describe("C: the conversation opening follows readiness", () => {
                           expect(await s.page.$$("[data-conversation-opening]")).toHaveLength(1);
                           await s.page.waitForFunction(() => {
                             const stage = document.querySelector(
-                              '[data-conversation-opening="ready"]',
+                              '[data-conversation-opening="complete"]',
                             );
                             return stage && getComputedStyle(stage).visibility === "hidden";
                           });

@@ -63,6 +63,46 @@ function makeHarness(options?: {
 }
 
 describe("ProjectCloneTracker", () => {
+  it.effect("update waits for the detached clone and its final post-clone work", () => {
+    const cloned = Deferred.makeUnsafe<void>();
+    const refreshed = Deferred.makeUnsafe<void>();
+    const harness = makeHarness({
+      clone: (input) =>
+        Deferred.await(cloned).pipe(
+          Effect.as({
+            cwd: input.destinationPath,
+            remoteUrl: input.remoteUrl ?? "",
+            repository: null,
+          }),
+        ),
+    });
+    return Effect.gen(function* () {
+      const tracker = yield* ProjectCloneTracker.ProjectCloneTracker;
+      expect(tracker.updateFacts && tracker.subscribeUpdateChanges).toBeTruthy();
+      const { changes } = yield* tracker.subscribeUpdateChanges!;
+      expect((yield* tracker.updateFacts!).idle).toBe(true);
+      yield* tracker.start(startInput, {
+        ...harness.hooks,
+        onCloned: () => Deferred.await(refreshed),
+      });
+      expect((yield* tracker.updateFacts!).idle).toBe(false);
+      yield* Deferred.succeed(cloned, void 0);
+      yield* tracker.stream.pipe(
+        Stream.filter((clones) => clones[0]?.phase === "done"),
+        Stream.runHead,
+      );
+      // The visible clone has finished, while its accepted refresh hook still runs.
+      expect((yield* tracker.updateFacts!).idle).toBe(false);
+      yield* Deferred.succeed(refreshed, void 0);
+      yield* changes.pipe(
+        Stream.mapEffect(() => tracker.updateFacts!),
+        Stream.filter((facts) => facts.idle),
+        Stream.runHead,
+      );
+      expect((yield* tracker.updateFacts!).idle).toBe(true);
+    }).pipe(Effect.provide(harness.layer));
+  });
+
   it.effect("creates the project first and reports the clone through the stream", () => {
     const release = Deferred.makeUnsafe<void>();
     const harness = makeHarness({

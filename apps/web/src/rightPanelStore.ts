@@ -27,6 +27,7 @@ const storage = {
   },
 };
 import { DROPPED_RIGHT_PANEL_KINDS, type RightPanelKind } from "./rightPanelKinds";
+import { useClosedViewStore } from "./closedViewStore";
 
 export type RightPanelSurface =
   | {
@@ -128,6 +129,8 @@ interface RightPanelStoreState {
   closeOtherSurfaces: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
+  /** Puts a closed tab back as it was and shows it (Mod+Shift+T). */
+  restoreSurface: (ref: ScopedThreadRef, surface: RightPanelSurface) => void;
   reconcileFileSurfaces: (ref: ScopedThreadRef, workspaceAvailable: boolean) => void;
   show: (ref: ScopedThreadRef) => void;
   close: (ref: ScopedThreadRef) => void;
@@ -216,6 +219,35 @@ const updateThread = (
   if (next === current) return byThreadKey;
   return { ...byThreadKey, [threadKey]: next };
 };
+
+/**
+ * Applies a person's close and remembers the tabs it removed, so they can come
+ * back: the one that was showing goes last, so it is the first to return. A
+ * terminal's shell ends with its tab, so it is not remembered.
+ */
+function closeWith(
+  set: (update: (state: RightPanelStoreState) => Partial<RightPanelStoreState>) => void,
+  get: () => RightPanelStoreState,
+  ref: ScopedThreadRef,
+  updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
+): void {
+  const threadKey = scopedThreadKey(ref);
+  const before = get().byThreadKey[threadKey];
+  set((state) => ({ byThreadKey: updateThread(state.byThreadKey, threadKey, updater) }));
+  if (!before) return;
+  const after = get().byThreadKey[threadKey];
+  const removed = before.surfaces.filter(
+    (surface) => !after?.surfaces.some((entry) => entry.id === surface.id),
+  );
+  const inOrder = [
+    ...removed.filter((surface) => surface.id !== before.activeSurfaceId),
+    ...removed.filter((surface) => surface.id === before.activeSurfaceId),
+  ];
+  for (const surface of inOrder) {
+    if (surface.kind === "terminal") continue;
+    useClosedViewStore.getState().remember({ threadRef: ref, surface });
+  }
+}
 
 function normalizeRevealLine(line: number | undefined): number | null {
   if (line === undefined || !Number.isFinite(line)) return null;
@@ -351,7 +383,7 @@ export function migratePersistedRightPanelState(
 
 export const useRightPanelStore = create<RightPanelStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       byThreadKey: {},
       open: (ref, kind) =>
         set((state) => ({
@@ -558,58 +590,56 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ),
         })),
       closeSurface: (ref, surfaceId) =>
-        set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
-            if (index < 0) return current;
-            const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
-            if (current.activeSurfaceId !== surfaceId) {
-              return { ...current, isOpen: surfaces.length > 0 && current.isOpen, surfaces };
-            }
-            const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
-            return {
-              ...current,
-              isOpen: surfaces.length > 0 && current.isOpen,
-              surfaces,
-              activeSurfaceId: fallback?.id ?? null,
-            };
-          }),
-        })),
+        closeWith(set, get, ref, (current) => {
+          const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
+          if (index < 0) return current;
+          const surfaces = current.surfaces.filter((surface) => surface.id !== surfaceId);
+          if (current.activeSurfaceId !== surfaceId) {
+            return { ...current, isOpen: surfaces.length > 0 && current.isOpen, surfaces };
+          }
+          const fallback = surfaces[Math.min(index, surfaces.length - 1)] ?? null;
+          return {
+            ...current,
+            isOpen: surfaces.length > 0 && current.isOpen,
+            surfaces,
+            activeSurfaceId: fallback?.id ?? null,
+          };
+        }),
       closeOtherSurfaces: (ref, surfaceId) =>
-        set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const surface = current.surfaces.find((entry) => entry.id === surfaceId);
-            if (!surface || current.surfaces.length === 1) return current;
-            return {
-              ...current,
-              isOpen: true,
-              surfaces: [surface],
-              activeSurfaceId: surface.id,
-            };
-          }),
-        })),
+        closeWith(set, get, ref, (current) => {
+          const surface = current.surfaces.find((entry) => entry.id === surfaceId);
+          if (!surface || current.surfaces.length === 1) return current;
+          return {
+            ...current,
+            isOpen: true,
+            surfaces: [surface],
+            activeSurfaceId: surface.id,
+          };
+        }),
       closeSurfacesToRight: (ref, surfaceId) =>
-        set((state) => ({
-          byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
-            const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
-            if (index < 0 || index === current.surfaces.length - 1) return current;
-            const surfaces = current.surfaces.slice(0, index + 1);
-            const activeStillExists = surfaces.some(
-              (surface) => surface.id === current.activeSurfaceId,
-            );
-            return {
-              ...current,
-              surfaces,
-              activeSurfaceId: activeStillExists ? current.activeSurfaceId : surfaceId,
-            };
-          }),
-        })),
+        closeWith(set, get, ref, (current) => {
+          const index = current.surfaces.findIndex((surface) => surface.id === surfaceId);
+          if (index < 0 || index === current.surfaces.length - 1) return current;
+          const surfaces = current.surfaces.slice(0, index + 1);
+          const activeStillExists = surfaces.some(
+            (surface) => surface.id === current.activeSurfaceId,
+          );
+          return {
+            ...current,
+            surfaces,
+            activeSurfaceId: activeStillExists ? current.activeSurfaceId : surfaceId,
+          };
+        }),
       closeAllSurfaces: (ref) =>
+        closeWith(set, get, ref, (current) =>
+          current.surfaces.length === 0
+            ? current
+            : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null },
+        ),
+      restoreSurface: (ref, surface) =>
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) =>
-            current.surfaces.length === 0
-              ? current
-              : { ...current, isOpen: false, surfaces: [], activeSurfaceId: null },
+            upsertSurface(current, surface),
           ),
         })),
       reconcileFileSurfaces: (ref, workspaceAvailable) =>

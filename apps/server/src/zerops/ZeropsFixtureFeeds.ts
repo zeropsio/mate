@@ -41,7 +41,12 @@ import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { engineLayer } from "../engine/layer.ts";
-import { noRestartEvidence, serverWorkspace, zeropsRunAdmission } from "./engineAdapters.ts";
+import {
+  noRestartEvidence,
+  serverMessagePictures,
+  serverWorkspace,
+  zeropsRunAdmission,
+} from "./engineAdapters.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
@@ -592,7 +597,14 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     // The engine the switch names, as on a live Mate: its runs pass the same
     // gate, and a scene has no platform to read a restart from.
     engineLayer.pipe(
-      Layer.provideMerge(Layer.mergeAll(zeropsRunAdmission, noRestartEvidence, serverWorkspace)),
+      Layer.provideMerge(
+        Layer.mergeAll(
+          zeropsRunAdmission,
+          noRestartEvidence,
+          serverWorkspace,
+          serverMessagePictures,
+        ),
+      ),
       Layer.provide(admission),
     ),
     // A fixture scene has no live env store either: the reader answers

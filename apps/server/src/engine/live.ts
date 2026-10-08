@@ -12,6 +12,7 @@
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Random from "effect/Random";
@@ -28,12 +29,14 @@ import {
   RunEndSource,
 } from "@t3tools/contracts";
 
+import { makeEngineUpdateDrain } from "./updateDrain.ts";
 import * as ConversationsModule from "./Conversations.ts";
 import { Conversations } from "./Conversations.ts";
 import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
-import { askImport } from "./effects/historyImport.ts";
+import { importOrSayGap } from "./effects/historyImport.ts";
+import { MessagePictures } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import {
   DeliveryUnrecorded,
@@ -215,12 +218,12 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       );
 
     const importHistory: MateEngineService["importHistory"] = (conversationId, source) =>
-      askImport(conversationId, source).pipe(
+      importOrSayGap(conversationId, source).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),
         Effect.provideService(Conversations, conversations),
         Effect.catchCause((cause) =>
           Effect.logWarning(
-            "Mate engine: the earlier conversation could not be brought",
+            "Mate engine: the earlier conversation's gap could not be said",
             cause,
           ).pipe(Effect.as(0)),
         ),
@@ -359,11 +362,20 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         .events(conversationId, afterSeq, limit)
         .pipe(Effect.mapError(() => new EventsUnreadable({ conversationId })));
 
-    const wire = yield* makeEngineWire(options.wire);
+    // Open unless a flipped Mate holds its people's sends until its main conversation is adopted.
+    const sends = yield* Latch.make(true);
+    const wire = yield* makeEngineWire({
+      ...options.wire,
+      sendsWait: sends.await,
+      pictures: yield* MessagePictures,
+    });
+    const updateDrain = yield* makeEngineUpdateDrain;
 
     return MateEngine.of({
       live: true,
+      ...(updateDrain === undefined ? {} : { updateDrain }),
       wire,
+      holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),
       start,
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),

@@ -3,12 +3,17 @@ import * as Schema from "effect/Schema";
 
 import { ConversationId, itemId, runId } from "./engine.ts";
 import {
+  ConversationHeader,
   EngineAnswer,
   EngineAnswerInput,
+  EngineAssignAgentInput,
   EngineCallResult,
   EngineConversationFrame,
   EngineDismissInput,
   EngineRowsFrame,
+  EngineSendInput,
+  EngineSetRuntimeModeInput,
+  EngineSwitchModelInput,
 } from "./engineWire.ts";
 
 const conversation = ConversationId.make("mate");
@@ -153,5 +158,55 @@ describe("a question's answer and its dismissal", () => {
 
   it("a dismissal names the request it closes, under its own command id", () => {
     expect(decodeDismissInput(call)).toEqual(call);
+  });
+});
+
+describe("a conversation's settings on the wire", () => {
+  const call = { protocol: 1, conversationId: "mate", commandId: "c1" };
+  const roundTrips = (schema: Schema.Codec<unknown, unknown>, input: unknown) => {
+    const decoded = Schema.decodeUnknownSync(schema)(input);
+    expect(decoded).toEqual(input);
+    expect(Schema.encodeUnknownSync(schema)(decoded)).toEqual(input);
+  };
+
+  it("a send carries files by the id they were uploaded under, beside pictures, and its interaction mode", () => {
+    roundTrips(EngineSendInput, {
+      ...call,
+      text: "Read the spec and plan it",
+      attachments: [
+        { type: "image", id: "img-1", name: "a.png", mimeType: "image/png", sizeBytes: 10 },
+        { type: "file", id: "file-1", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 9 },
+      ],
+      interactionMode: "plan",
+    });
+  });
+
+  it("a model switch carries the model's options; one without them keeps the conversation's", () => {
+    roundTrips(EngineSwitchModelInput, {
+      ...call,
+      model: "claude-opus-4-5",
+      options: [{ id: "effort", value: "max" }],
+    });
+    roundTrips(EngineSwitchModelInput, { ...call, model: "claude-opus-4-5" });
+  });
+
+  it("a runtime mode and an agent pick are calls of their own", () => {
+    roundTrips(EngineSetRuntimeModeInput, { ...call, runtimeMode: "approval-required" });
+    roundTrips(EngineAssignAgentInput, { ...call, instanceId: "codex", model: "gpt-5.4" });
+  });
+
+  it("an older client reads a header that names the runtime and interaction modes", () => {
+    const header = {
+      conversationId: "mate",
+      agent: null,
+      archived: false,
+      model: null,
+      session: null,
+      pausedUntil: null,
+      queued: 0,
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+    };
+    roundTrips(ConversationHeader, header);
   });
 });

@@ -4,6 +4,8 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
+import { mateLimitAtom } from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSettle, canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -278,7 +280,11 @@ export function useThreadActions() {
       const resolved = resolveThreadTarget(target);
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
-      if (thread.session?.status === "running" && thread.session.activeTurnId != null) {
+      if (
+        thread.session?.status === "running" &&
+        thread.session.activeTurnId != null &&
+        appAtomRegistry.get(mateLimitAtom(scopedThreadKey(threadRef))).kind === "none"
+      ) {
         return AsyncResult.failure(
           Cause.fail(
             new ThreadArchiveBlockedError({

@@ -72,7 +72,10 @@ export const makeMateImageWire = (
   registry: EnvironmentRegistry["Service"],
   signer: Option.Option<ManagedRelayDpopSigner["Service"]>,
 ) => ({
-  read: (key: MateImageKey): Effect.Effect<MateImageValue, StreamFault> =>
+  read: (
+    key: MateImageKey,
+    retained?: (digest: string) => Blob | undefined,
+  ): Effect.Effect<MateImageValue, StreamFault> =>
     registry
       .run(
         key.environmentId,
@@ -145,6 +148,17 @@ export const makeMateImageWire = (
             };
           const url = resolveAssetUrl(prepared.value.httpBaseUrl, metadata.relativeUrl);
           if (url === null) return yield* Effect.fail(classifyImageHttp(404));
+          const digest = metadata.representation?.digest;
+          const held = digest === undefined ? undefined : retained?.(digest);
+          if (held !== undefined && digest !== undefined)
+            return {
+              blob: held,
+              digest,
+              ...(metadata.imageDimensions === undefined
+                ? {}
+                : { dimensions: metadata.imageDimensions }),
+              ...(metadata.occurrence === undefined ? {} : { occurrence: metadata.occurrence }),
+            };
           const headers = modern
             ? yield* buildEnvironmentAuthHeaders(
                 prepared.value.httpAuthorization,
@@ -203,6 +217,7 @@ export const makeMateImageWire = (
               }
               return {
                 blob,
+                ...(digest === undefined ? {} : { digest }),
                 ...(metadata.imageDimensions === undefined
                   ? {}
                   : { dimensions: metadata.imageDimensions }),
@@ -276,9 +291,14 @@ export const makeMateImageWire = (
 export function makeMateImages(options: {
   /** Hosted images reuse immutable facts; native readers retain their current path. */
   readonly reuseRetained?: boolean;
+  /** A hosted presentation releases browser resources when access is withdrawn. */
+  readonly onWithhold?: (environmentId: EnvironmentId) => void;
   readonly store: AccountStore;
   readonly wire: {
-    readonly read: (key: MateImageKey) => Effect.Effect<MateImageValue, StreamFault>;
+    readonly read: (
+      key: MateImageKey,
+      retained?: (digest: string) => Blob | undefined,
+    ) => Effect.Effect<MateImageValue, StreamFault>;
     readonly repair: (id: EnvironmentId) => Effect.Effect<void, StreamFault>;
     readonly watch?: (
       id: EnvironmentId,
@@ -301,6 +321,7 @@ export function makeMateImages(options: {
   const withheld = new Map<EnvironmentId, StreamFault>();
   const withhold = (environmentId: EnvironmentId, fault: StreamFault, notify = true) => {
     withheld.set(environmentId, fault);
+    options.onWithhold?.(environmentId);
     for (const id of seen.get(environmentId) ?? []) {
       options.store.dispatch({
         kind: "access",
@@ -374,7 +395,24 @@ export function makeMateImages(options: {
                     options.store.state().facts.get(`mateImage:${id}`)?.access === "allowed" &&
                     retained.value.blob !== null
                       ? Effect.succeed(retained.value)
-                      : options.wire.read(key)
+                      : options.wire.read(
+                          key,
+                          options.reuseRetained
+                            ? (digest) => {
+                                const read = readsOfState(options.store.state());
+                                for (const retainedId of read.index("mateImageDigest", digest)) {
+                                  const retained = read.fact("mateImage", retainedId);
+                                  if (
+                                    retained.kind === "known" &&
+                                    retained.value.blob !== null &&
+                                    options.store.state().facts.get(`mateImage:${retainedId}`)
+                                      ?.access === "allowed"
+                                  )
+                                    return retained.value.blob;
+                                }
+                              }
+                            : undefined,
+                        )
                   ).pipe(
                     Effect.tapError((fault) =>
                       Effect.sync(() => {

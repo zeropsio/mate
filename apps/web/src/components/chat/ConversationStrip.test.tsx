@@ -19,6 +19,10 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: vi.fn() }) }));
+vi.mock("~/routes/-environmentTargets", async (original) => ({
+  ...(await original<typeof import("~/routes/-environmentTargets")>()),
+  useEnvironmentReachability: () => null,
+}));
 vi.mock("~/state/entities", () => ({ useThreadShells: () => state.shells }));
 vi.mock("~/uiStateStore", () => ({
   useUiStateStore: (select: (value: { threadLastVisitedAtById: object }) => unknown) =>
@@ -197,6 +201,76 @@ beforeEach(() => {
 });
 
 describe("ConversationStrip", () => {
+  it.each([false, true])(
+    "the header arrival follows the first open and a different Mate once, with reduced motion=%s",
+    (reduced) => {
+      vi.stubGlobal("window", {
+        setTimeout,
+        clearTimeout,
+        setInterval,
+        clearInterval,
+        matchMedia: () => ({ matches: reduced, addEventListener() {}, removeEventListener() {} }),
+      });
+      let renderer: ReactTestRenderer | undefined;
+      const draw = (environmentId: EnvironmentId) => (
+        <ConversationStrip
+          environmentId={environmentId}
+          currentThreadId={ThreadId.make("main")}
+          crewChat={null}
+          subject={null}
+          onEditBrief={() => {}}
+          onEditJob={() => {}}
+          onRename={() => {}}
+          renameField={null}
+        />
+      );
+      const face = () =>
+        renderer!.root.find((node) => node.props["data-zerops-primitive"] === "mate-face");
+      const finish = () =>
+        act(() => face().props.onAnimationEnd({ animationName: "mate-moment-peek" }));
+      try {
+        act(() => {
+          renderer = create(draw(FEN));
+        });
+        expect(face().props["data-mate-face-moment"]).toBe(reduced ? undefined : "peek");
+        finish();
+        act(() => renderer!.update(draw(FEN)));
+        expect(face().props["data-mate-face-moment"]).toBeUndefined();
+        const other = EnvironmentId.make("env-other");
+        act(() => renderer!.update(draw(other)));
+        expect(face().props["data-mate-face-moment"]).toBe(reduced ? undefined : "peek");
+        finish();
+        act(() => renderer!.update(draw(other)));
+        expect(face().props["data-mate-face-moment"]).toBeUndefined();
+      } finally {
+        act(() => renderer?.unmount());
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("the header's parked Claude face becomes idle when the projected reset expires", () => {
+    const startedAt = "2020-01-01T10:00:00.000Z";
+    state.shells = [
+      shell("main", {
+        latestTurn: { ...running, startedAt, completedAt: null },
+        session: {
+          threadId: ThreadId.make("main"),
+          status: "running",
+          providerName: "claudeAgent",
+          runtimeMode: "full-access",
+          activeTurnId: running.turnId,
+          lastError: "You've hit your weekly limit",
+          updatedAt: startedAt,
+          usageLimitResetAt: "2020-01-02T10:00:00.000Z",
+        },
+      }),
+    ];
+    const html = matePill(line({ current: "main" }));
+    expect(html).toContain('data-mate-face-state="idle"');
+    expect(html).not.toContain('data-mate-face-state="needs"');
+  });
+
   it("draws nothing where no Mate lives", () => {
     state.mate = false;
     state.shells = [shell("main")];

@@ -14,6 +14,7 @@ import type {
   OrchestrationClientOrigin,
   OrchestrationCommand,
   OrchestrationEvent,
+  OrchestrationReadModel,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -21,6 +22,7 @@ import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
+import type { V1UpdateAdmission } from "../updateAdmission.ts";
 import type { OrchestrationDispatchError } from "../Errors.ts";
 import type { OrchestrationEventStoreError } from "../../persistence/Errors.ts";
 import type { OrchestrationAggregateReplayStats } from "../../persistence/Services/OrchestrationEventStore.ts";
@@ -35,6 +37,8 @@ export interface OrchestrationThreadReplayRange {
  * OrchestrationEngineShape - Service API for orchestration command and event flow.
  */
 export interface OrchestrationEngineShape {
+  readonly updateAdmission?: V1UpdateAdmission;
+  readonly updateReadModel?: Effect.Effect<OrchestrationReadModel>;
   /**
    * Replay persisted orchestration events from an exclusive sequence cursor.
    *
@@ -72,7 +76,10 @@ export interface OrchestrationEngineShape {
    */
   readonly dispatch: (
     command: OrchestrationCommand,
-    options?: { readonly origin?: OrchestrationClientOrigin },
+    options?: {
+      readonly origin?: OrchestrationClientOrigin;
+      readonly updateContinuation?: boolean;
+    },
   ) => Effect.Effect<{ sequence: number }, OrchestrationDispatchError, never>;
 
   /**

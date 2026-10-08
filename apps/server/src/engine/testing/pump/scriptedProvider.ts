@@ -71,6 +71,8 @@ export interface ScriptedProviderOptions {
   failStart?: string | undefined;
   /** The agent never confirms a Stop: the interrupt returns and the turn runs on. */
   ignoreInterrupt?: boolean | undefined;
+  /** The session start never returns; letting go of it is recorded as `let-go <thread>`. */
+  startHangs?: boolean | undefined;
   /** The interrupt call never returns. */
   interruptHangs?: boolean | undefined;
   /** A send takes this long before the driver opens its turn and returns. */
@@ -92,6 +94,8 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
     const calls: Array<string> = [];
     /** Each session start's input, as the engine asked it. */
     const starts: Array<unknown> = [];
+    /** Each send's input, as the engine asked it. */
+    const sends: Array<unknown> = [];
     let events = 0;
     let requests = 0;
     let items = 0;
@@ -167,6 +171,11 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             options.failStart = undefined;
             return yield* Effect.fail(new ScriptedError("ProviderAdapterProcessError", words));
           }
+          if (options.startHangs === true) {
+            return yield* Effect.never.pipe(
+              Effect.onInterrupt(() => Effect.sync(() => calls.push(`let-go ${threadId}`))),
+            );
+          }
           const session: Session = {
             thread: threadId,
             alive: true,
@@ -183,6 +192,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       sendTurn: (input) =>
         Effect.gen(function* () {
           calls.push(`send ${input.threadId}: ${input.input ?? ""}`);
+          sends.push(input);
           if (options.holdNextSend === true) {
             options.holdNextSend = false;
             return yield* Effect.never;
@@ -294,8 +304,29 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         ),
       streamEvents: Stream.fromPubSub(pubsub),
       compactThread: () => Effect.die("not scripted"),
-      getCapabilities: () => Effect.die("not scripted"),
-      getInstanceInfo: () => Effect.die("not scripted"),
+      // As the adapters declare them: Claude applies effort to a live session, the rest per turn.
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session",
+          ...(driver === "claudeAgent" ? { inSessionModelOptions: ["effort"] } : {}),
+        }) as never,
+      // An instance named `<driver>` or `<driver>:<name>` runs that driver; `<driver>:<name>~<key>`
+      // resumes by `key` (default: the driver's).
+      getInstanceInfo: (instanceId) => {
+        const [named, key] = String(instanceId).split("~");
+        const kind = named!.split(":")[0]!;
+        return Object.hasOwn(NAMES, kind)
+          ? (Effect.succeed({
+              instanceId,
+              driverKind: kind,
+              displayName: undefined,
+              enabled: true,
+              continuationIdentity: { driverKind: kind, continuationKey: key ?? kind },
+            }) as never)
+          : (Effect.fail(
+              new ScriptedError("ProviderUnsupportedError", "no such instance"),
+            ) as never);
+      },
       assertConversationRollbackSupported: () => Effect.die("not scripted"),
       rollbackConversation: () => Effect.die("not scripted"),
       uploadFeedback: () => Effect.die("not scripted"),
@@ -376,6 +407,28 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               ...payload,
               status: "completed",
               data: { toolName: "Write", input: { file_path: path, content } },
+            },
+          });
+          return itemId;
+        }),
+      /** The agent changes files in one patch (Codex's shape of an edit): each by its path. */
+      change: (thread: string, paths: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const payload = { itemType: "file_change", title: "Edit files" };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress" },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: { item: { changes: paths.map((path) => ({ path, kind: "update" })) } },
             },
           });
           return itemId;
@@ -585,7 +638,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }),
     };
 
-    return { service, agent, calls, starts, sessions, options };
+    return { service, agent, calls, starts, sends, sessions, options };
   });
 
 export type ScriptedProvider = Effect.Success<ReturnType<typeof makeScriptedProvider>>;

@@ -20,7 +20,6 @@ vi.mock("../assets/assetUrls", async () => {
   };
 });
 import { ProjectFavicon } from "./ProjectFavicon";
-import { AssetImage } from "~/assets/AssetImage";
 beforeEach(() => {
   state.url = undefined;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -43,8 +42,8 @@ it.each([undefined, "blob:favicon"])(
       environmentId: "mate",
       resource: { _tag: "project-favicon", cwd: "/workspace", path: ".zerops/favicon.png" },
     });
-    expect(renderer.root.findAllByType(AssetImage)).toHaveLength(url ? 1 : 0);
-    if (url) expect(renderer.root.findByType(AssetImage).props.src).toBe(url);
+    expect(renderer.root.findAllByType("img")).toHaveLength(url ? 1 : 0);
+    if (url) expect(renderer.root.findByType("img").props.src).toBe(url);
     expect(
       mateImageSource({
         environmentId: EnvironmentId.make("mate"),
@@ -54,3 +53,23 @@ it.each([undefined, "blob:favicon"])(
     act(() => renderer.unmount());
   },
 );
+
+it("a favicon that cannot be displayed returns to its folder without conversation failure controls", () => {
+  state.url = "blob:missing-favicon";
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(
+      <ProjectFavicon environmentId={EnvironmentId.make("mate")} cwd="/workspace" />,
+    );
+  });
+  act(() => renderer.root.findByType("img").props.onError({}));
+  expect(renderer.root.findAllByType("img")).toHaveLength(0);
+  expect(renderer.root.findAllByType("button")).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Image unavailable");
+  state.url = "blob:replacement-favicon";
+  act(() =>
+    renderer.update(<ProjectFavicon environmentId={EnvironmentId.make("mate")} cwd="/workspace" />),
+  );
+  expect(renderer.root.findByType("img").props.src).toBe(state.url);
+  act(() => renderer.unmount());
+});

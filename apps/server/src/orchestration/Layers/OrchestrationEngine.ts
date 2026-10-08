@@ -1,3 +1,5 @@
+import { makeV1UpdateAdmission } from "../updateAdmission.ts";
+
 import type {
   OrchestrationClientOrigin,
   OrchestrationEvent,
@@ -97,6 +99,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
 
+  const updateAdmission = yield* makeV1UpdateAdmission;
   const commandQueue = yield* Queue.unbounded<CommandEnvelope>();
   const eventPubSub = yield* PubSub.unbounded<OrchestrationEvent>();
 
@@ -406,7 +409,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
       aggregateId: threadId,
     });
 
-  const dispatch: OrchestrationEngineShape["dispatch"] = (command, options) =>
+  const accept: OrchestrationEngineShape["dispatch"] = (command, options) =>
     Effect.gen(function* () {
       const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
       yield* Queue.offer(commandQueue, {
@@ -418,7 +421,27 @@ const makeOrchestrationEngine = Effect.gen(function* () {
       return yield* Deferred.await(result);
     });
 
+  const dispatch: OrchestrationEngineShape["dispatch"] = (command, options) => {
+    const receipt = accept(command, options);
+    if (options?.updateContinuation === true) return receipt;
+    return updateAdmission.run(command.type, receipt).pipe(
+      Effect.flatMap((result) =>
+        result === undefined
+          ? Effect.fail(
+              new OrchestrationCommandInvariantError({
+                commandType: command.type,
+                detail:
+                  "Update ready; waiting for your work to finish. Try again after the update.",
+              }),
+            )
+          : Effect.succeed(result),
+      ),
+    );
+  };
+
   return {
+    updateAdmission,
+    updateReadModel: Effect.sync(() => commandReadModel),
     readEvents,
     readThreadEvents,
     getThreadReplayStats,

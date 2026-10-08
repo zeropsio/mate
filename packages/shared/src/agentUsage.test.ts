@@ -1,18 +1,17 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { UsageComponents, UsageQuantity, UsageReportQuery, UsageUtcDay } from "@t3tools/contracts";
 import {
-  usageDigest,
-  usageEntryDigest,
-  usageRefusalDisposition,
-  UsageLinkDown,
-  USAGE_GENESIS_DIGEST,
-} from "./agentUsage.ts";
+  UsageComponents,
+  UsageFact,
+  UsageQuantity,
+  UsageReportQuery,
+  UsageUtcDay,
+} from "@t3tools/contracts";
+import { usageDigest, usageFactDigest, usageOriginId, usageFactId } from "./agentUsage.ts";
 import { readLinkUp } from "./mateLink.ts";
 
 const decodeComponents = Schema.decodeUnknownSync(UsageComponents);
 const decodeDay = Schema.decodeUnknownSync(UsageUtcDay);
-const decodeDown = Schema.decodeUnknownSync(UsageLinkDown);
 describe("durable usage wire", () => {
   it("preserves large exact integers and refuses damaged components", () => {
     const quantity = Schema.decodeUnknownSync(UsageQuantity);
@@ -31,48 +30,75 @@ describe("durable usage wire", () => {
     );
     assert.throws(() => decodeDay("2026-02-30"));
   });
-  it("chains content, tolerates future frames and admits a separate usage hello", () => {
-    const entry = { sequence: "1", previousDigest: USAGE_GENESIS_DIGEST, facts: [], coverage: [] };
-    assert.strictEqual(usageEntryDigest(entry), usageEntryDigest({ ...entry, facts: [] }));
-    assert.notStrictEqual(usageEntryDigest(entry), usageEntryDigest({ ...entry, sequence: "2" }));
+  it("admits immutable completion batches and rejects the retired scanner protocol", () => {
     assert.strictEqual(usageDigest({ a: 1, b: 2 }), usageDigest({ b: 2, a: 1 }));
     assert.strictEqual(readLinkUp(JSON.stringify({ type: "usage-future" })).kind, "unknown");
     assert.strictEqual(
       readLinkUp(
+        JSON.stringify({ type: "usage-facts", protocol: 2, batchId: "B", origins: [], facts: [] }),
+      ).kind,
+      "message",
+    );
+    assert.strictEqual(
+      readLinkUp(
         JSON.stringify({
-          type: "usage-hello",
-          protocol: 1,
-          ledgerId: "L",
-          highWater: "0",
-          highDigest: USAGE_GENESIS_DIGEST,
-          replayFloor: "1",
+          type: "usage-facts",
+          protocol: 2,
+          batchId: "B",
           origins: [],
-        }),
-      ).kind,
-      "message",
-    );
-    assert.strictEqual(
-      readLinkUp(
-        JSON.stringify({
-          type: "usage-snapshot-abandon",
-          ledgerId: "L",
-          channel: "C",
-          snapshotId: "interrupted",
-        }),
-      ).kind,
-      "message",
-    );
-    assert.strictEqual(
-      readLinkUp(
-        JSON.stringify({
-          type: "usage-batch",
-          ledgerId: "L",
-          channel: "C",
-          entries: [{ ...entry, digest: "broken" }],
+          facts: [{}],
         }),
       ).kind,
       "invalid",
     );
+    for (const type of ["usage-hello", "usage-batch", "usage-snapshot", "usage-snapshot-abandon"])
+      assert.notStrictEqual(readLinkUp(JSON.stringify({ type })).kind, "message");
+  });
+  it("keys responses by their native thread and turn within one registered Mate provider", () => {
+    const binding = { orgId: "ORG", projectId: "P", mateId: "M" };
+    const observation = { ...binding, label: "renamed" };
+    assert.strictEqual(usageOriginId(binding, "claude"), usageOriginId(observation, "claude"));
+    assert.notStrictEqual(usageOriginId(binding, "claude"), usageOriginId(binding, "codex"));
+    assert.notStrictEqual(
+      usageOriginId(binding, "claude"),
+      usageOriginId({ ...binding, mateId: "M2" }, "claude"),
+    );
+    assert.notStrictEqual(usageFactId("parent", "response"), usageFactId("child", "response"));
+  });
+  it("keeps model ordering out of native turn identity and rejects repeated model lines", () => {
+    const binding = { orgId: "ORG", projectId: "P", mateId: "M" };
+    const components = {
+      uncachedInput: "30",
+      cachedInput: "0",
+      cacheCreation: "0",
+      output: "0",
+      reasoning: null,
+      inclusiveTotal: "30",
+    };
+    const turn = {
+      originId: usageOriginId(binding, "claude"),
+      factId: usageFactId("session", "turn"),
+      nativeId: "turn",
+      provider: "claude",
+      models: [
+        { model: null, components, nativeCost: null },
+        { model: "known", components, nativeCost: null },
+      ],
+      nativeCost: null,
+      time: { kind: "instant", at: "2026-10-08T00:00:00.000Z", provenance: "server-completion" },
+      evidence: "live-provider-turn",
+      meterVersion: "native-turn-v1",
+      sessionId: "session",
+      parentId: null,
+    };
+    const decode = Schema.decodeUnknownSync(UsageFact);
+    const fact = decode(turn);
+    assert.strictEqual(
+      usageFactDigest(fact),
+      usageFactDigest({ ...fact, models: fact.models.toReversed() }),
+    );
+    assert.throws(() => decode({ ...turn, models: [turn.models[0], turn.models[0]] }));
+    assert.deepStrictEqual(decode({ ...turn, models: [] }).models, []);
   });
   it("refuses ambiguous UTC trend edges and invalid zones", () => {
     const query = {
@@ -92,22 +118,5 @@ describe("durable usage wire", () => {
     decode(query);
     assert.throws(() => decode({ ...query, timezone: "No/SuchZone" }));
     assert.throws(() => decode({ ...query, since: "2026-10-01T01:00:00.000Z" }));
-  });
-  it("a refusal from a newer socket fences the lane; only a protocol mismatch is unsupported", () => {
-    for (const [code, disposition] of [
-      ["channel_replaced", "fenced"],
-      ["hello_required", "fenced"],
-      ["unsupported_protocol", "unsupported"],
-      ["ledger_rollback_conflict", "refused"],
-      ["fact_identity_conflict", "refused"],
-    ] as const)
-      assert.strictEqual(usageRefusalDisposition(code), disposition, code);
-    const error = {
-      type: "usage-error",
-      ledgerId: "L",
-      code: "channel_replaced",
-      disposition: "fenced",
-    } as const;
-    assert.deepStrictEqual(decodeDown(error), error);
   });
 });

@@ -3,8 +3,10 @@
  * asked — never as a side effect of a send, a Stop or an answer.
  *
  * A session ProviderService already holds live on the conversation's thread is adopted, never
- * restarted (`startSession` would kill it); otherwise one starts, resuming from the thread's
- * binding when there is one. The handler records its own settlement before it opens the
+ * restarted (`startSession` would kill it); otherwise one starts with the conversation's runtime
+ * mode (the workspace's until a person set one), resuming from the thread's binding when there is
+ * one — a binding another instance of the driver left too, which ProviderService resumes only
+ * when their resume state is compatible. The session says which model options it takes per turn. The handler records its own settlement before it opens the
  * session's gate, since the actor refuses a session's boundaries until its open has committed;
  * the worker's settlement after it is the same receipt.
  *
@@ -16,13 +18,18 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   SessionId,
+  ThreadId,
   type ConversationId,
   type EffectOutcome,
   type ProviderOptionSelection,
+  type RuntimeMode,
+  type SessionCapabilities,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
+import type { BridgeDriver } from "../bridge/spi3.ts";
 import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
@@ -45,6 +52,8 @@ interface Payload {
   /** A rotation's open: a fresh thread (or a resumed one), told `seed` as it starts. */
   readonly fresh?: boolean;
   readonly seed?: string | null;
+  /** The runtime mode a person set; absent: the workspace's. */
+  readonly runtimeMode?: RuntimeMode;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -55,6 +64,40 @@ export const makeSessionOpen = Effect.gen(function* () {
   const conversations = yield* Conversations;
   const workspace = yield* AgentWorkspace;
   const sql = yield* SqlClient.SqlClient;
+  const directory = yield* Effect.serviceOption(ProviderSessionDirectory);
+
+  /** The model options a session of this driver takes on its next send, as V1 decides it. */
+  const inSessionOptions = (driver: BridgeDriver, instanceId: string) =>
+    DRIVER_CAPABILITIES[driver].modelOptions === "per-turn"
+      ? Effect.succeed<NonNullable<SessionCapabilities["inSessionOptions"]>>("all")
+      : provider.getCapabilities(instanceId as never).pipe(
+          Effect.map((capabilities): NonNullable<SessionCapabilities["inSessionOptions"]> => [
+            ...(capabilities.inSessionModelOptions ?? []),
+          ]),
+          // Unknown: every change waits for a new session, never applied to the wrong one.
+          Effect.orElseSucceed(() => []),
+        );
+
+  /**
+   * The resume state another instance of the driver left on the thread: ProviderService resumes
+   * a binding of the same instance itself, and refuses an incompatible one.
+   */
+  const handedOver = (thread: string, instanceId: string) =>
+    Option.match(directory, {
+      onNone: () => Effect.succeed(undefined),
+      onSome: (sessions) =>
+        sessions.getBinding(ThreadId.make(thread)).pipe(
+          Effect.map((binding) =>
+            Option.isSome(binding) &&
+            binding.value.providerInstanceId !== undefined &&
+            binding.value.providerInstanceId !== instanceId &&
+            binding.value.resumeCursor != null
+              ? binding.value.resumeCursor
+              : undefined,
+          ),
+          Effect.orElseSucceed(() => undefined),
+        ),
+    });
 
   /** `<thread>.<n>`: the conversation's n-th open, the same id for the same effect after a crash. */
   const sessionIdOf = (thread: string, conversation: ConversationId, effectId: string) =>
@@ -85,6 +128,7 @@ export const makeSessionOpen = Effect.gen(function* () {
             String(candidate.threadId) === host.thread && candidate.status !== "closed",
         );
         let opened = live;
+        const runtimeMode = payload.runtimeMode ?? setup.runtimeMode;
         if (live !== undefined) {
           yield* host.record({ kind: "start", session, from: "resume" });
           yield* host.record({ kind: "started", resume: live.resumeCursor });
@@ -101,13 +145,15 @@ export const makeSessionOpen = Effect.gen(function* () {
                   ? "fresh"
                   : "resume",
           });
+          const resumeCursor = yield* handedOver(host.thread, payload.instanceId);
           const started = yield* Effect.exit(
             bounded(
               provider.startSession(host.thread, {
                 threadId: host.thread,
                 providerInstanceId: payload.instanceId as never,
                 cwd: setup.cwd,
-                runtimeMode: setup.runtimeMode,
+                runtimeMode,
+                ...(resumeCursor === undefined ? {} : { resumeCursor }),
                 ...(payload.model === null
                   ? {}
                   : {
@@ -145,9 +191,16 @@ export const makeSessionOpen = Effect.gen(function* () {
           model: opened?.model ?? payload.model,
           // The thread's binding holds the latest cursor; a later open of this thread resumes it.
           nativeRef: host.thread,
-          capabilities: { steer: DRIVER_CAPABILITIES[driver].steer === "native" },
+          capabilities: {
+            steer: DRIVER_CAPABILITIES[driver].steer === "native",
+            inSessionOptions: yield* inSessionOptions(driver, payload.instanceId),
+          },
           requestedModel: payload.model,
           instanceId: payload.instanceId,
+          // None asked is none: an option set later is a change.
+          options: payload.options ?? [],
+          // An adopted session runs the mode it was started with.
+          runtimeMode: live?.runtimeMode ?? runtimeMode,
         };
         const outcome: EffectOutcome = { kind: "ok", value };
         // Committed before the gate opens: the session's boundaries never meet an actor that has

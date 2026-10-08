@@ -45,6 +45,7 @@ import * as Schema from "effect/Schema";
 import { UsageLinkUp, UsageLinkDown } from "./agentUsage.ts";
 import { MateChanges } from "./hqChanges.ts";
 import { MateAccessMember } from "./mateAccess.ts";
+import { HqAutoUpdatePolicy } from "./mateAutoUpdatePolicy.ts";
 
 export const MATE_LINK_TEXT_MAX = 280;
 /** A frame's bound in UTF-8 bytes (`linkFrameBytes`), which the sender checks before it sends. */
@@ -276,7 +277,8 @@ export const MateOverviewSections = Schema.Struct({
 export type MateOverviewSections = typeof MateOverviewSections.Type;
 
 export const MateLinkUp = Schema.Union([
-  ...UsageLinkUp.members,
+  Schema.Struct({ type: Schema.Literal("auto-update-policy"), requestId: Schema.String }),
+  UsageLinkUp,
   Schema.Struct({ type: Schema.Literal("pong") }),
   Schema.Struct({
     type: Schema.Literal("overview"),
@@ -294,11 +296,17 @@ export const MateLinkUp = Schema.Union([
 export type MateLinkUp = typeof MateLinkUp.Type;
 
 export const MateLinkDown = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("auto-update-policy"),
+    requestId: Schema.String,
+    policy: HqAutoUpdatePolicy,
+  }),
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
   Schema.Struct({
     type: Schema.Literal("state"),
     mate: MateState,
+    autoUpdate: Schema.optionalKey(HqAutoUpdatePolicy),
     usage: Schema.optionalKey(
       Schema.Struct({
         capture: Schema.Int,

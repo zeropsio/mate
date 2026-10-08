@@ -27,6 +27,13 @@ import { HQ_SAID_READ_ONLY } from "~/components/ChatView.logic";
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import {
+  ConversationOpeningProvider,
+  ConversationOpeningStage,
+} from "~/components/chat/ConversationOpeningStage";
+import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import { TooltipProvider } from "~/components/ui/tooltip";
+import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -42,7 +49,16 @@ const THREAD_MS = Number(params.get("thread") ?? 600);
 const AUTH_MS = Math.max(THREAD_MS, Number(params.get("auth") ?? 900));
 /** The conversation's draft, `\n` for its lines (`?draft=`). */
 const DRAFT = params.get("draft") ?? "";
+const SOURCE = params.get("source");
 const nothing = () => undefined;
+
+const HARNESS_MATE = {
+  name: "Fen",
+  tint: "olive",
+  shape: "flower",
+  connected: true,
+  project: "Harness",
+} as const;
 
 type Phase = "opening" | "conversation" | "answered";
 
@@ -76,7 +92,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
 }
 
 function Harness() {
-  const [phase, setPhase] = useState<Phase>("opening");
+  const [phase, setPhase] = useState<Phase>(THREAD_MS === 0 ? "conversation" : "opening");
   useEffect(() => {
     const thread = setTimeout(() => setPhase("conversation"), THREAD_MS);
     const auth = setTimeout(() => setPhase("answered"), AUTH_MS);
@@ -86,21 +102,97 @@ function Harness() {
     };
   }, []);
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground" data-phase={phase}>
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <p className="m-auto text-sm text-muted-foreground">
-          {phase === "opening" ? "Opening Fen's conversation…" : "Fen's conversation"}
-        </p>
-        {phase === "opening" ? (
-          <ConversationFooterStandIn key="opening" draft={DRAFT} />
-        ) : (
-          <ConversationFooter
-            key="conversation"
-            writer={phase === "answered" ? { kind: ANSWER } : { kind: "unknown" }}
-          />
-        )}
-      </div>
-    </div>
+    <TooltipProvider>
+      <ConversationOpeningProvider>
+        <div
+          className="flex h-svh flex-col bg-background text-foreground"
+          data-phase={phase}
+          data-chat-workspace-drop-target=""
+        >
+          <header className="flex h-14 items-center px-6" data-chat-header="">
+            <ConversationStripView
+              mate={{
+                name: "Fen",
+                tint: "olive",
+                shape: "flower",
+                face: "idle",
+                open: true,
+                threadId: null,
+                tooltip: null,
+              }}
+              chats={null}
+              crew={null}
+              renameField={null}
+              renderCrewmateMenu={() => null}
+              onOpen={nothing}
+              onCloseChat={nothing}
+              onRename={null}
+            />
+          </header>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col" data-conversation-content="">
+              {params.has("empty") ? (
+                <MateEmptyStateView
+                  faceSlot={null}
+                  mate={HARNESS_MATE}
+                  phase={null}
+                  signIn={null}
+                  signInRequired={false}
+                  unknown={null}
+                />
+              ) : (
+                <p className="m-auto text-sm text-muted-foreground">Fen's conversation</p>
+              )}
+            </div>
+            <ConversationOpeningStage
+              ready={phase !== "opening"}
+              readPending={!params.has("held")}
+              name="Fen"
+              mate={HARNESS_MATE}
+            >
+              {phase === "opening" && SOURCE !== null ? (
+                <MateEmptyStateView
+                  mate={HARNESS_MATE}
+                  phase={null}
+                  coming={{
+                    kind: SOURCE === "restart" ? "reaching" : "coming",
+                    restarting: SOURCE === "restart",
+                    headline: SOURCE === "restart" ? "Fen is restarting" : "Fen is standing up",
+                    below: (
+                      <ol className="grid gap-3">
+                        {[
+                          "Workspace",
+                          "Repository",
+                          "Dependencies",
+                          "Services",
+                          "Agent",
+                          "Conversation",
+                        ].map((step) => (
+                          <li key={step}>Preparing {step.toLowerCase()}</li>
+                        ))}
+                      </ol>
+                    ),
+                  }}
+                  signIn={null}
+                  signInRequired={false}
+                  unknown={null}
+                />
+              ) : undefined}
+            </ConversationOpeningStage>
+            <div data-conversation-footer="">
+              {phase === "opening" ? (
+                <ConversationFooterStandIn key="opening" draft={DRAFT} />
+              ) : (
+                <ConversationFooter
+                  key="conversation"
+                  writer={phase === "answered" ? { kind: ANSWER } : { kind: "unknown" }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </ConversationOpeningProvider>
+    </TooltipProvider>
   );
 }
 

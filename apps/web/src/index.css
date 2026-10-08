@@ -7,6 +7,15 @@
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
+/* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
+@custom-variant any-hover {
+  @media (any-hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
 /* On mobile, morph the expanded hero composer into the compact docked
    composer while it moves; the rest of the app remains visually stationary. */
 html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
@@ -391,7 +400,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes bubble-in {
     from {
-      opacity: 0;
       transform: translateY(6px) scale(0.97);
     }
   }
@@ -409,7 +417,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes rise-in {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }
@@ -2440,22 +2447,6 @@ code {
   background: transparent !important;
 }
 
-/* Paragraphs and code blocks arrive in chunks while a response streams. Fade
-   each new block in so the chunk does not pop. @starting-style only applies
-   when an element is first inserted, and the rule is gated on data-streaming,
-   so opening a finished thread never replays the fade. Opacity only, one
-   shot, no layout change. */
-@media (prefers-reduced-motion: no-preference) {
-  .chat-markdown[data-streaming] > *,
-  .chat-markdown[data-streaming] .chat-markdown-shiki {
-    transition: opacity 600ms ease-out;
-
-    @starting-style {
-      opacity: 0;
-    }
-  }
-}
-
 /* Tables: row separators only, a step below the body (13/20 at an answer's
    15 px), headers in the muted ink and the case they were written in. Cells
    wrap at word boundaries (the root's break-word keeps each column's
@@ -3637,7 +3628,7 @@ code {
   pointer-events: none;
 }
 
-[data-overflow-y-end] + .zerops-new-project-slot::before {
+[data-overflow-y-end] ~ .zerops-new-project-slot::before {
   opacity: 1;
 }
 
@@ -4927,10 +4918,9 @@ button.run-bar:focus-visible {
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into
-   its place over 320 ms, once; reduced motion fades only (T8). */
+   its place over 320 ms, once; reduced motion arrives immediately. */
 @keyframes run-rise {
   from {
-    opacity: 0;
     translate: 0 6px;
   }
 }
@@ -4944,7 +4934,7 @@ button.run-bar:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .run-rise {
-    animation-name: run-fade;
+    animation: none;
   }
 }
 
@@ -7757,28 +7747,126 @@ button.rv-relrow:hover .rv-relrow-go {
   }
 }
 
-/* Readiness opens the waiting face and reveals the placed rows in the same render.
-   The fade is presentation only: neither layer waits on an animation or a clock. */
-[data-conversation-opening] {
-  transition: opacity 140ms ease-out;
+/* Opening is one story; named beats keep the complete sequence within 600 ms. */
+:root {
+  --duration-conversation-wake: 180ms; /* A short blink-open, fully on the stage. */
+  --duration-conversation-text-exit: 60ms; /* Clear the words before the face travels. */
+  --duration-conversation-travel: 200ms; /* Land the same face in the measured header slot. */
+  --duration-conversation-rise: 80ms; /* Placed content arrives quickly after the face lands. */
+  --duration-conversation-handoff: calc(
+    var(--duration-conversation-text-exit) + var(--duration-conversation-travel) +
+      var(--duration-conversation-rise)
+  );
 }
 
-/* The open eyes are the readiness verdict. Their shared pose morph must not
-   keep the sleeping strokes painted while this stage hands over. */
-[data-conversation-opening] :is([data-mate-face-eye], [data-mate-face-shut]) {
+[data-opening-face] {
+  /* The decorative portal lets the header button own pointer events after landing. */
+  pointer-events: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  transform-origin: top left;
+}
+
+/* Stage-owned eyes are solid drawings throughout; only their height opens. */
+[data-opening-actor]:not([data-opening-actor="complete"])
+  :is([data-mate-face-eye], [data-mate-face-shut]) {
   transition: none;
 }
 
-[data-conversation-opening="ready"] {
+[data-opening-actor="wake"] [data-mate-face-eye] {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: conversation-eye-open var(--duration-conversation-wake) var(--ease-out-strong) both;
+}
+
+[data-conversation-opening="hand-off"] {
+  animation: conversation-handoff var(--duration-conversation-handoff) linear;
+}
+
+[data-conversation-opening="hand-off"]
+  :is([data-arrival-headline], [data-arrival-sentence], [data-arrival-slot]) {
+  animation: conversation-text-exit var(--duration-conversation-text-exit) var(--ease-out-strong)
+    both;
+}
+
+[data-opening-actor="hand-off"] {
+  transform-origin: top left;
+  animation: conversation-face-travel var(--duration-conversation-travel) var(--ease-out-strong)
+    var(--duration-conversation-text-exit) both;
+}
+
+/* The real footer stays laid out and measured throughout. Hidden content accepts the input
+   that ends the sequence; it is never replaced by a guessed footer or a second conversation. */
+:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
+    [data-conversation-opening="waiting"],
+    [data-conversation-opening="wake"]
+  )
+  :is([data-conversation-footer], [data-conversation-content]) {
   opacity: 0;
+  transition: none;
+}
+
+:is([data-chat-workspace-drop-target], [data-zerops-surface="mate-coming-page"]):has(
+    [data-conversation-opening="hand-off"]
+  )
+  :is([data-conversation-footer], [data-conversation-content]) {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    calc(var(--duration-conversation-text-exit) + var(--duration-conversation-travel)) backwards;
+}
+
+[data-conversation-opening="complete"] {
   visibility: hidden;
-  transition:
-    opacity 140ms ease-out,
-    visibility 0s 140ms;
+}
+
+@keyframes conversation-eye-open {
+  0%,
+  20% {
+    transform: scaleY(0.04);
+  }
+  65%,
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes conversation-text-exit {
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes conversation-face-travel {
+  to {
+    transform: translate(var(--opening-x), var(--opening-y)) scale(var(--opening-scale));
+  }
+}
+
+@keyframes conversation-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Animation completion advances presentation only, never source readiness. */
+@keyframes conversation-handoff {
+  from {
+    --conversation-handoff: 0;
+  }
+  to {
+    --conversation-handoff: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-conversation-opening] {
+  [data-conversation-opening],
+  [data-opening-actor],
+  [data-opening-actor] [data-mate-face-eye],
+  [data-conversation-footer] {
+    animation: none !important;
     transition: none;
   }
 }
@@ -7880,6 +7968,7 @@ button.rv-relrow:hover .rv-relrow-go {
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -9784,18 +9873,14 @@ button.rv-relrow:hover .rv-relrow-go {
   min-width: 0;
   color: var(--muted-foreground);
   font-size: var(--text-sm);
-  text-align: left;
+  text-align: center;
 }
 
-.arrival-failure-details summary,
-.arrival-failure-details a {
-  cursor: pointer;
-  color: var(--zerops-status-attention-text);
-}
-
-.arrival-failure-details pre {
+.arrival-failure-details pre,
+.arrival-failure-details p {
   max-height: 12rem;
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  text-align: left;
 }

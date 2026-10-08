@@ -15,7 +15,7 @@
  * that path goes with the old overview shape.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { usageLimitProvider } from "./providerLimit.logic";
+import type { MateLimit } from "@t3tools/client-runtime/data";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, MateAttention, ThreadId } from "@t3tools/contracts";
@@ -38,6 +38,7 @@ import {
 } from "./agentActivity";
 
 export interface MatesActivityInput {
+  readonly limits?: ReadonlyMap<string, MateLimit>;
   /** The Mates to read, by project. */
   readonly projectIds: ReadonlyArray<string>;
   readonly attention: Readonly<Record<string, MateAttentionRead>>;
@@ -101,7 +102,7 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
     if (shells === undefined) shellsByEnvironment.set(thread.environmentId, [thread]);
     else shells.push(thread);
   }
-  const sockets = deriveZeropsAgentActivity(input.threads, input.lastVisitedAtById);
+  const sockets = deriveZeropsAgentActivity(input.threads, input.lastVisitedAtById, input.limits);
   const activity = new Map<string, ZeropsAgentActivity>();
   for (const projectId of input.projectIds) {
     const read = input.attention[projectId];
@@ -121,6 +122,7 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
             overview,
             shells,
             lastVisitedAtById: input.lastVisitedAtById,
+            limits: input.limits,
           });
     if (entry !== undefined) activity.set(projectId, entry);
   }
@@ -136,6 +138,7 @@ const UNDER_WAY: ReadonlySet<ThreadStatusKind> = new Set(["connecting", "working
  * a result of it not seen — at rest unless that word is of now.
  */
 export function attentionActivity(input: {
+  readonly limits?: ReadonlyMap<string, MateLimit> | undefined;
   readonly attention: MateAttention;
   readonly live: boolean;
   readonly unseen: number | null;
@@ -159,6 +162,8 @@ export function attentionActivity(input: {
   const read = threadAgentActivity(
     words,
     input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
+    undefined,
+    input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId))),
   );
   const unread = input.unseen === null ? read.unread : input.unseen > 0;
   const question = attention.questions.find(
@@ -166,21 +171,21 @@ export function attentionActivity(input: {
       !(
         question.kind === "failed" &&
         question.threadId === read.threadId &&
-        read.kind === "idle" &&
-        read.usageLimited === false &&
-        usageLimitProvider(words.session?.lastError) !== null
+        read.limit?.kind === "expired"
       ),
   );
   const kind: ThreadStatusKind =
-    question !== undefined
-      ? question.kind
-      : attention.working > 0
-        ? UNDER_WAY.has(read.kind)
-          ? read.kind
-          : "working"
-        : unread
-          ? "done"
-          : "idle";
+    read.limit?.kind === "limited" || read.limit?.kind === "expired"
+      ? read.kind
+      : question !== undefined
+        ? question.kind
+        : attention.working > 0
+          ? UNDER_WAY.has(read.kind)
+            ? read.kind
+            : "working"
+          : unread
+            ? "done"
+            : "idle";
   const { liveStep, waitsOnHelpers, question: asked, errorLine, ...rest } = read;
   const activity: ZeropsAgentActivity = {
     ...rest,
@@ -232,6 +237,7 @@ function wordlessChat(
  * stands, else HQ's overview of it — live while HQ holds its link — else that reading, at rest.
  */
 function legacyActivity(input: {
+  readonly limits?: ReadonlyMap<string, MateLimit>;
   readonly environmentId: EnvironmentId;
   readonly overview: MateLiveView | undefined;
   readonly socket: ZeropsAgentActivity | undefined;
@@ -243,7 +249,7 @@ function legacyActivity(input: {
   if (overview?.identity !== undefined && overview.main !== undefined) {
     const live = input.hqCurrent && overview.presence.overview === "live";
     if (live || socket === undefined)
-      return overviewAgentActivity(overview, live, input.lastVisitedAtById);
+      return overviewAgentActivity(overview, live, input.lastVisitedAtById, input.limits);
   }
   if (socket === undefined) return undefined;
   return input.standing.has(input.environmentId) ? socket : restingActivity(socket);

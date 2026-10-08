@@ -13,6 +13,7 @@ import {
   TerminalCwdNotFoundError,
   TerminalCwdStatError,
   TerminalError,
+  TerminalUpdateInProgressError,
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
@@ -32,6 +33,7 @@ import {
   type TerminalSummary,
   type TerminalWriteInput,
 } from "@t3tools/contracts";
+import { mateUpdateBootPending } from "../mateUpdateBoot.ts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
@@ -67,6 +69,7 @@ export {
   TerminalCwdNotFoundError,
   TerminalCwdStatError,
   TerminalError,
+  TerminalUpdateInProgressError,
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
@@ -134,6 +137,17 @@ export class TerminalManager extends Context.Service<
      * Reuses an existing session for the same thread/terminal id and restores
      * persisted history on first open.
      */
+    readonly updateDrain?:
+      | {
+          readonly begin: Effect.Effect<void>;
+          readonly cancel: Effect.Effect<void>;
+          readonly facts: Effect.Effect<{
+            readonly idle: boolean;
+            readonly blockers: ReadonlyArray<string>;
+          }>;
+          readonly quiesce: Effect.Effect<void>;
+        }
+      | undefined;
     readonly open: (
       input: TerminalOpenInput,
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
@@ -219,6 +233,7 @@ interface TerminalSubprocessInspectResult {
 interface TerminalSubprocessInspector {
   (
     terminalPid: number,
+    includeShellChildren?: boolean,
   ): Effect.Effect<TerminalSubprocessInspectResult, TerminalSubprocessCheckError>;
 }
 
@@ -678,6 +693,7 @@ function deriveSubprocessInspectResult(
   snapshot: TerminalProcessTableSnapshot,
   terminalPid: number,
   platform: NodeJS.Platform,
+  includeShellChildren = false,
 ): TerminalSubprocessInspectResult {
   const commandName = (pid: number) =>
     normalizeChildCommandName(snapshot.commandById.get(pid) ?? "", platform);
@@ -686,6 +702,7 @@ function deriveSubprocessInspectResult(
   // children of its own. That copy is not a command the user started.
   const childPid = (snapshot.childrenByParent.get(terminalPid) ?? []).find(
     (pid) =>
+      includeShellChildren ||
       shellName === null ||
       commandName(pid) !== shellName ||
       (snapshot.childrenByParent.get(pid)?.length ?? 0) > 0,
@@ -1369,8 +1386,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       : Effect.map(
           fetchProcessTableSnapshot,
           (snapshot): TerminalSubprocessInspector =>
-            (terminalPid) =>
-              Effect.succeed(deriveSubprocessInspectResult(snapshot, terminalPid, platform)),
+            (terminalPid, includeShellChildren) =>
+              Effect.succeed(
+                deriveSubprocessInspectResult(
+                  snapshot,
+                  terminalPid,
+                  platform,
+                  includeShellChildren,
+                ),
+              ),
         );
   const subprocessPollIntervalMs =
     options.subprocessPollIntervalMs ?? DEFAULT_SUBPROCESS_POLL_INTERVAL_MS;
@@ -2841,7 +2865,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       }),
     );
 
-  const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
+  const closeIdleWithPolicy = (
+    input: Parameters<TerminalManager["Service"]["closeIdle"]>[0],
+    includeShellChildren: boolean,
+  ) =>
     withThreadLock(
       input.threadId,
       Effect.gen(function* () {
@@ -2866,7 +2893,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         yield* Effect.forEach(
           running,
           (session) =>
-            inspector(session.pid).pipe(
+            inspector(session.pid, includeShellChildren).pipe(
               Effect.flatMap((result) =>
                 result.hasRunningSubprocess ||
                 activityMark(session) !== marks.get(session.terminalId)
@@ -2887,13 +2914,57 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       ),
     );
 
+  const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
+    closeIdleWithPolicy(input, false);
+
+  let updateFenced = mateUpdateBootPending();
+  let admissions = 0;
+  const guardUpdate = <A, E>(
+    input: { readonly threadId: string; readonly terminalId?: string },
+    action: Effect.Effect<A, E>,
+  ): Effect.Effect<A, E | TerminalUpdateInProgressError> =>
+    Effect.suspend<A, E | TerminalUpdateInProgressError, never>(() => {
+      if (updateFenced) return Effect.fail(new TerminalUpdateInProgressError({}));
+      admissions += 1;
+      return action.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            admissions -= 1;
+          }),
+        ),
+      );
+    });
+  const updateDrain = {
+    begin: Effect.sync(() => {
+      updateFenced = true;
+    }),
+    cancel: Effect.sync(() => {
+      updateFenced = false;
+    }),
+    facts: Effect.gen(function* () {
+      const state = yield* SynchronizedRef.get(managerStateRef);
+      const blockers = [...state.sessions.values()]
+        .filter((session) => session.process !== null || session.status === "starting")
+        .map((session) => `terminal:${session.threadId}/${session.terminalId}`);
+      if (admissions > 0) blockers.push("terminal admission in flight");
+      return { idle: blockers.length === 0, blockers };
+    }),
+    quiesce: Effect.gen(function* () {
+      const state = yield* SynchronizedRef.get(managerStateRef);
+      for (const threadId of new Set(
+        [...state.sessions.values()].map((session) => session.threadId),
+      ))
+        yield* closeIdleWithPolicy({ threadId }, true);
+    }),
+  };
   return TerminalManager.of({
-    open,
-    attachStream,
+    updateDrain,
+    open: (input) => guardUpdate(input, open(input)),
+    attachStream: (input, listener) => guardUpdate(input, attachStream(input, listener)),
     write,
     resize,
     clear,
-    restart,
+    restart: (input) => guardUpdate(input, restart(input)),
     close,
     closeIdle,
     subscribe,

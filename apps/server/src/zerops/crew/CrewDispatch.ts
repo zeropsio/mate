@@ -110,11 +110,12 @@ export const admitCrewTurn = (
  * Dispatches a crew turn, its attachments claimed into its thread first as a
  * thread message's are: the turn carries stored attachments of its own, which
  * outlive the sender's upload; a turn not sent leaves no copy behind.
+ * These turns continue already accepted crew work, which the update fence must drain.
  */
 export const dispatchCrewTurn = (core: CrewCore, command: OrchestrationCommand) =>
   Effect.gen(function* () {
     if (command.type !== "thread.turn.start" || command.message.attachments.length === 0) {
-      yield* asRefusal(core.orchestration.dispatch(command));
+      yield* asRefusal(core.orchestration.dispatch(command, { updateContinuation: true }));
       return;
     }
     const attachments = yield* core.attachments.claim(
@@ -122,9 +123,9 @@ export const dispatchCrewTurn = (core: CrewCore, command: OrchestrationCommand) 
       command.message.attachments,
     );
     yield* asRefusal(
-      core.orchestration.dispatch({
-        ...command,
-        message: { ...command.message, attachments },
-      }),
+      core.orchestration.dispatch(
+        { ...command, message: { ...command.message, attachments } },
+        { updateContinuation: true },
+      ),
     ).pipe(Effect.tapError(() => core.attachments.release(attachments)));
   });

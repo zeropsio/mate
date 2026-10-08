@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * ProviderService - Service interface for provider sessions, turns, and checkpoints.
  *
@@ -39,6 +40,21 @@ import type { ProviderInstanceRoutingInfo } from "./ProviderAdapterRegistry.ts";
  * ProviderServiceShape - Service API for provider session and turn orchestration.
  */
 export interface ProviderServiceShape {
+  /** A receipt boundary for all canonical events and their binding writes. */
+  readonly eventBarrier?:
+    | {
+        readonly events: Stream.Stream<{
+          readonly sequence: number;
+          readonly event: ProviderRuntimeEvent;
+        }>;
+        readonly changes: Stream.Stream<void>;
+        readonly subscribeChanges?: SubscribeUpdateChanges;
+        readonly position: Effect.Effect<{
+          readonly published: number;
+          readonly processing: number;
+        }>;
+      }
+    | undefined;
   /**
    * Start a provider session.
    */

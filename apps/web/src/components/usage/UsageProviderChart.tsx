@@ -34,9 +34,9 @@ interface UsageProviderChartProps {
 export interface DayColumn {
   readonly bands: readonly {
     readonly provider: UsageProviderKind;
-    readonly value: number;
+    readonly value: number | null;
   }[];
-  readonly total: number;
+  readonly total: number | null;
 }
 
 interface Point {
@@ -48,10 +48,10 @@ function valueFor(
   totals: DailyTotals | HourlyTotals | undefined,
   provider: UsageProviderKind,
   metric: UsageChartMetric,
-): number {
+): number | null {
   const entry = totals?.byProvider.get(provider);
-  if (entry === undefined) return 0;
-  return metric === "tokens" ? entry.totalTokens : entry.costUsd;
+  if (entry === undefined) return null;
+  return metric === "tokens" ? entry.totalTokens : entry.costKnown === false ? null : entry.costUsd;
 }
 
 export function buildPeriodColumns(
@@ -65,7 +65,15 @@ export function buildPeriodColumns(
       provider,
       value: valueFor(entry, provider, metric),
     }));
-    return { bands, total: bands.reduce((sum, band) => sum + band.value, 0) };
+    return {
+      bands,
+      total:
+        entry === undefined
+          ? null
+          : bands.some((band) => band.value !== null)
+            ? bands.reduce((sum, band) => sum + (band.value ?? 0), 0)
+            : null,
+    };
   });
 }
 
@@ -209,7 +217,7 @@ export function UsageProviderChart({
     // layered series each measure from zero, so a combined peak would leave
     // the plot permanently half empty.
     const peak = columns.reduce(
-      (max, column) => column.bands.reduce((inner, band) => Math.max(inner, band.value), max),
+      (max, column) => column.bands.reduce((inner, band) => Math.max(inner, band.value ?? 0), max),
       0,
     );
     const { max, ticks: tickValues } = niceScale(peak, TICK_COUNT);
@@ -221,18 +229,29 @@ export function UsageProviderChart({
 
     const built = providers.map((provider) => {
       const providerIndex = PROVIDER_ORDER.indexOf(provider);
-      const line = curvePath(
-        smoothCurve(
-          columns.map((column, periodIndex) => ({
-            x: periodIndex * step,
-            y: toY(column.bands[providerIndex]?.value ?? 0),
-          })),
-        ),
-      );
+      const runs: Point[][] = [];
+      let run: Point[] = [];
+      for (const [periodIndex, column] of columns.entries()) {
+        const value = column.bands[providerIndex]?.value;
+        if (value == null) {
+          if (run.length > 0) runs.push(run);
+          run = [];
+        } else run.push({ x: periodIndex * step, y: toY(value) });
+      }
+      if (run.length > 0) runs.push(run);
+      const lines = runs
+        .map((points) => ({ points, line: curvePath(smoothCurve(points)) }))
+        .filter(({ line }) => line !== "");
+      const line = lines.map(({ line }) => line).join(" ");
       return {
         provider,
         total: columns.reduce((sum, column) => sum + (column.bands[providerIndex]?.value ?? 0), 0),
-        area: line === "" ? "" : `${line} L${VIEW_WIDTH},${VIEW_HEIGHT} L0,${VIEW_HEIGHT} Z`,
+        area: lines
+          .map(
+            ({ line, points }) =>
+              `${line} L${points.at(-1)!.x},${VIEW_HEIGHT} L${points[0]!.x},${VIEW_HEIGHT} Z`,
+          )
+          .join(" "),
         line,
       };
     });
@@ -409,6 +428,10 @@ export function UsageProviderChart({
               <div className="mb-1 text-muted-foreground">{formatTooltipPeriod(hoveredPeriod)}</div>
               {providers.map((provider) => {
                 const { label, mark: Mark } = PROVIDER_PRESENTATION[provider];
+                const value = hoveredColumn?.bands.find(
+                  (band) => band.provider === provider,
+                )?.value;
+                const recorded = byPeriod.get(hoveredPeriod)?.byProvider.has(provider) === true;
                 return (
                   <div key={provider} className="flex items-center justify-between gap-3">
                     <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -416,17 +439,21 @@ export function UsageProviderChart({
                       {label}
                     </span>
                     <span className="text-foreground tabular-nums">
-                      {format(
-                        hoveredColumn?.bands.find((band) => band.provider === provider)?.value ?? 0,
-                      )}
+                      {!recorded ? "No data" : value == null ? "Unpriced" : format(value)}
                     </span>
                   </div>
                 );
               })}
               <div className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1">
-                <span className="text-muted-foreground">Total</span>
+                <span className="text-muted-foreground">
+                  {metric === "cost" ? "Priced cost" : "Total"}
+                </span>
                 <span className="text-foreground tabular-nums">
-                  {format(hoveredColumn?.total ?? 0)}
+                  {byPeriod.has(hoveredPeriod) !== true
+                    ? "No data"
+                    : hoveredColumn?.total == null
+                      ? "Unpriced"
+                      : format(hoveredColumn.total)}
                 </span>
               </div>
             </div>

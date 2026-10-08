@@ -55,15 +55,18 @@ export function makeMateUpdateExecutor<E>(options: {
               ? {
                   kind: "accepted",
                   result: {
-                    alreadyCurrent: value.action === "none",
-                    version: value.action === "none" ? value.serverVersion : null,
+                    alreadyCurrent: value.action === "none" && value.started !== true,
+                    version:
+                      value.action === "none" && value.started !== true
+                        ? value.serverVersion
+                        : null,
                   },
                 }
               : { kind: "refused", reason: value.error },
           outcome:
             value.error !== undefined
               ? { kind: "failed", evidence: value.error }
-              : value.action === "none"
+              : value.action === "none" && value.started !== true
                 ? { kind: "succeeded", evidence: "Already current." }
                 : { kind: "pending" },
         } satisfies OperationReceipt;

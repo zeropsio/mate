@@ -560,8 +560,46 @@
     }
   },
   {
-    "type": "item.completed",
     "eventId": "evt-11",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "turn.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "82557991-85ca-4037-b968-867ca5206498",
+      "nativeTurnId": "0e290360-c5ae-4866-8a40-f6a52b0e4301",
+      "models": [
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "components": {
+            "uncachedInput": "914",
+            "cachedInput": "0",
+            "cacheCreation": "0",
+            "output": "15",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "989000",
+            "scale": 9,
+            "currency": "USD",
+            "basis": "list"
+          }
+        }
+      ],
+      "nativeCost": {
+        "amount": "989000",
+        "scale": 9,
+        "currency": "USD",
+        "basis": "provider-reported-estimate"
+      },
+      "parentId": null
+    }
+  },
+  {
+    "type": "item.completed",
+    "eventId": "evt-12",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -671,7 +709,7 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-12",
+    "eventId": "evt-13",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -771,7 +809,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-13",
+    "eventId": "evt-14",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

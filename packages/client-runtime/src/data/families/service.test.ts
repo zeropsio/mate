@@ -237,3 +237,60 @@ describe("a service row's variables", () => {
     expect(JSON.stringify(row)).not.toContain("hunter2");
   });
 });
+
+it("stores only service evidence used by projections, including nested evidence and deploy labels", () => {
+  const expected = {
+    id: "app",
+    projectId: "p1",
+    clientId: "org",
+    name: "app",
+    status: "ACTIVE",
+    ports: [{ port: 8080, scheme: "http", httpSupport: true }],
+    serviceStackTypeInfo: { serviceStackTypeName: "nodejs", serviceStackTypeCategory: "USER" },
+    activeAppVersion: {
+      id: "v1",
+      activationDate: "2026-10-01T12:00:00Z",
+      githubIntegration: { commit: "abc", branchName: "main" },
+      publicGitSource: { repositoryUrl: "https://example.test/app" },
+    },
+    currentAutoscaling: {
+      verticalAutoscaling: { minResource: { memoryGBytes: 1 }, cpuMode: "SHARED" },
+      horizontalAutoscaling: { minContainerCount: 1, maxContainerCount: 3 },
+    },
+    userData: [
+      { key: "appVersionId", content: "v1" },
+      { key: "appVersionName", content: "release" },
+    ],
+  };
+  const row = decode({
+    ...expected,
+    _version: 7,
+    buildConfig: "unneeded",
+    customAutoscaling: { unused: true },
+    ports: [{ ...expected.ports[0], internalMetadata: "unneeded" }],
+    serviceStackTypeInfo: { ...expected.serviceStackTypeInfo, versions: ["unneeded"] },
+    activeAppVersion: {
+      ...expected.activeAppVersion,
+      buildLog: "unneeded",
+      githubIntegration: {
+        ...expected.activeAppVersion.githubIntegration,
+        webhookSecret: "unneeded",
+      },
+      publicGitSource: { ...expected.activeAppVersion.publicGitSource, credentials: "unneeded" },
+    },
+    currentAutoscaling: {
+      ...expected.currentAutoscaling,
+      verticalAutoscaling: {
+        ...expected.currentAutoscaling.verticalAutoscaling,
+        minResource: { memoryGBytes: 1, price: "unneeded" },
+        metadata: "unneeded",
+      },
+      horizontalAutoscaling: {
+        ...expected.currentAutoscaling.horizontalAutoscaling,
+        metadata: "unneeded",
+      },
+    },
+    userData: [...expected.userData, { key: "SECRET", content: "unneeded" }],
+  });
+  expect(row).toEqual({ id: "app", version: 7, value: expected });
+});

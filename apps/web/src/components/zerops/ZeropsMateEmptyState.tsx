@@ -1,11 +1,9 @@
-import { CircleAlertIcon, CircleHelpIcon } from "lucide-react";
 /**
  * An empty conversation with a Mate, and the Mate's own view before the conversation exists
  * (`ZeropsMateComingPage`): the approved "Arrival" board's stage (`mateArrival.ts`). The Mate's
- * face a third of the way down — its shape in its colour, asleep until it answers — one headline
- * under it, one sentence under that, and one slot under the sentence. Every state from the press
- * to the first answer changes those words and that slot, never their places: the face and the
- * headline stand where "What should Fen do on Acme Docs?" will stand.
+ * complete composition centres in the visible conversation area: its face, one headline, one
+ * sentence under that, and one slot under the sentence. Every state from the press to the first
+ * answer shares that column and rhythm.
  *
  * - Coming up, the Mate's own steps in the slot, with their times.
  * - No agent signed in yet — the person who added it, a colleague, anyone — "Sign Fen in to
@@ -40,6 +38,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   Fragment,
   useEffect,
+  useCallback,
   useLayoutEffect,
   useId,
   useMemo,
@@ -47,6 +46,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type ReactElement,
   type RefObject,
 } from "react";
 
@@ -79,21 +79,26 @@ import { restartLine } from "~/zerops/restartLine";
 
 import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
-import { MateFace } from "./primitives";
+import { MateFace, type MateFaceProps } from "./primitives";
 import { ZeropsAgentSignIn } from "./ZeropsAgentSignIn";
 
 export function ZeropsMateEmptyState({
   environmentId,
   mate,
   threadRef,
+  bottomInset = 0,
 }: {
   readonly environmentId: EnvironmentId;
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
+  readonly bottomInset?: number;
 }) {
   const state = useMateEmptyState({ environmentId, mate, threadRef });
   return (
     <MateEmptyStateView
+      // An empty conversation has already handed its one Mate face to the header.
+      faceSlot={null}
+      bottomInset={bottomInset}
       addedBy={state.addedBy}
       agentReady={state.agentReady}
       mate={mate}
@@ -263,6 +268,7 @@ export interface MateEmptyComing {
   readonly headline?: string | undefined;
   /** Its container is restarting: its face plays the restart while it lasts. */
   readonly restarting?: boolean | undefined;
+  readonly restartLines?: ReadonlyArray<string> | undefined;
   readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** The sentence under the headline: how long is left, or why it stopped. */
@@ -327,7 +333,11 @@ export function MateEmptyStateView({
   agentReady = false,
   runtimes,
   focusOnArrival = false,
+  bottomInset = 0,
+  faceSlot,
+  notice,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   /** Null while the directory has not named the Mate: its places held, empty. */
   readonly mate: DrawnMate | null;
   readonly phase: MateStandUpPhase | null;
@@ -350,6 +360,9 @@ export function MateEmptyStateView({
    * it, and reads with the sentence under it.
    */
   readonly focusOnArrival?: boolean;
+  /** The conversation's measured footer; the stage occupies the room above it. */
+  readonly bottomInset?: number;
+  readonly notice?: ReactNode;
 }) {
   const mate = named ?? UNNAMED;
   const headline = useRef<HTMLHeadingElement>(null);
@@ -395,8 +408,8 @@ export function MateEmptyStateView({
             <div className="flex flex-col items-center gap-3" role="status">
               <p>The message to {mate.name} didn't go through.</p>
               <Button
-                variant="outline"
-                size="sm"
+                variant="pill"
+                size="compact"
                 disabled={standUpFailure.retrying}
                 onClick={standUpFailure.retry}
               >
@@ -411,12 +424,16 @@ export function MateEmptyStateView({
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <ArrivalComposition
+      faceSlot={faceSlot}
+      notice={notice}
+      bottomInset={bottomInset}
       clauses={clauses}
       headline={headline}
       kind={kind}
       mate={named}
       pressed={pressed}
       restarting={coming?.restarting === true}
+      restartLines={coming?.restartLines}
       sentence={sentence}
       severity={coming?.severity}
       slot={slot}
@@ -428,17 +445,19 @@ export function MateEmptyStateView({
   );
 }
 
+export type MateFaceSlot = ReactNode | ((face: ReactElement<MateFaceProps>) => ReactNode);
+
 /**
  * Every opening state's one composition: the face centred on top, the headline, the line under it
- * and the slot under that, each place handing over in place (`ArrivalSwap`) — so a state changing
- * keeps the face where it stands, its words cross-fade, and nothing is drawn anew.
+ * and the slot under that. The complete block centres in the room above the measured footer;
+ * each place hands over in place (`ArrivalSwap`) while its words cross-fade.
  */
 function ArrivalComposition({
   kind,
   mate,
   state,
   restarting,
-  severity,
+  restartLines,
   clauses,
   sentence,
   slot,
@@ -446,12 +465,17 @@ function ArrivalComposition({
   status,
   headline,
   tracks = true,
+  bottomInset = 0,
+  notice,
+  faceSlot,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   readonly kind: ArrivalKind;
   /** Null while the directory has not named the Mate: its face's place held, empty. */
   readonly mate: DrawnMate | null;
   readonly state: MateMarkState;
   readonly restarting: boolean;
+  readonly restartLines?: ReadonlyArray<string> | undefined;
   readonly severity: MateEmptyComing["severity"];
   readonly clauses: ReadonlyArray<string>;
   readonly sentence: string;
@@ -461,6 +485,8 @@ function ArrivalComposition({
   readonly status: boolean;
   readonly headline?: RefObject<HTMLHeadingElement | null>;
   readonly tracks?: boolean;
+  readonly bottomInset?: number;
+  readonly notice?: ReactNode;
 }) {
   const sentenceId = useId();
   // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
@@ -471,48 +497,67 @@ function ArrivalComposition({
   const [restart, setRestart] = useState({ active: restarting, cycle: 0 });
   if (restart.active !== restarting) setRestart({ active: restarting, cycle: 0 });
   const spokenSentence = restarting
-    ? restartLine(mate?.name ?? "The Mate", restart.cycle)
+    ? (restartLines?.[restart.cycle % restartLines.length] ??
+      restartLine(mate?.name ?? "The Mate", restart.cycle))
     : sentence;
   const stoodUp = useChangeCue<string>(
     slot.id === "stand-up-failed" ? slot.id : kind,
     () => undefined,
     standUpDoneCue,
   );
+  const onRestartCycle = useCallback(
+    () => setRestart((current) => ({ ...current, cycle: current.cycle + 1 })),
+    [],
+  );
+  const face = useMemo(
+    () =>
+      mate === null ? null : (
+        <MateFace
+          className={MATE_EMPTY_FACE_CLASS}
+          greets="detail"
+          onRestartCycle={onRestartCycle}
+          cues={stoodUp === undefined ? undefined : [stoodUp]}
+          paces={pacing}
+          restarting={restarting}
+          shape={mate.shape}
+          size="lg"
+          state={state}
+          style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
+          tint={mate.tint}
+          tracks={tracks}
+        />
+      ),
+    [mate, onRestartCycle, stoodUp, pacing, restarting, state, pace, tracks],
+  );
   return (
     <div
-      className="flex h-full w-full min-w-0 flex-col items-center px-5 sm:px-6"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col items-center overflow-y-auto px-5 py-6 sm:px-6"
       data-arrival={kind}
+      data-mate-stage-area=""
       data-zerops-surface="mate-empty-state"
+      style={bottomInset === 0 ? undefined : { height: `calc(100% - ${bottomInset}px)` }}
     >
-      {/* The face's place, a third of the way down whatever is said under it:
-          every Mate's opening, in every state, puts its face where the last did. */}
-      <div aria-hidden="true" className="shrink-0 basis-1/3" />
       <div
-        className="flex w-full flex-col items-center"
+        className="my-auto flex w-full max-w-2xl shrink-0 flex-col items-center"
         data-mate-empty-lead
         role={status ? "status" : undefined}
       >
         {/* Until the directory names the Mate, its face's place is held, empty: no guessed face. */}
         {mate === null ? (
-          <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
+          faceSlot !== undefined && typeof faceSlot !== "function" ? (
+            faceSlot
+          ) : (
+            <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
+          )
         ) : (
           <div ref={setFaceElement}>
-            <MateFace
-              className={MATE_EMPTY_FACE_CLASS}
-              greets="detail"
-              onRestartCycle={() =>
-                setRestart((current) => ({ ...current, cycle: current.cycle + 1 }))
-              }
-              cues={stoodUp === undefined ? undefined : [stoodUp]}
-              paces={pacing}
-              restarting={restarting}
-              shape={mate.shape}
-              size="lg"
-              state={state}
-              style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
-              tint={mate.tint}
-              tracks={tracks}
-            />
+            {typeof faceSlot === "function"
+              ? face === null
+                ? null
+                : faceSlot(face)
+              : faceSlot === undefined
+                ? face
+                : faceSlot}
           </div>
         )}
         <ArrivalSwap
@@ -531,11 +576,10 @@ function ArrivalComposition({
           >
             {/* One run of words, set on the room's last lines where it holds more than it says. */}
             <span ref={setHeadlineWords}>
-              <SeverityMark severity={severity} />
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
-                  <span className="inline-block">{clause}</span>
+                  <span className="inline-block max-w-full">{clause}</span>
                 </Fragment>
               ))}
             </span>
@@ -555,8 +599,9 @@ function ArrivalComposition({
             </p>
           </ArrivalSwap>
         )}
+        {notice}
         <ArrivalSwap
-          className="mt-7 w-full max-w-126"
+          className={cn("w-full max-w-126 text-center", slot.node !== null && "mt-7")}
           data-arrival-slot={slot.id}
           id={slot.id}
           kind="slot"
@@ -659,17 +704,23 @@ export function MateConnectionState({
   headline,
   secondary,
   actions,
+  notice,
   severity = "info",
+  faceSlot,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   readonly severity?: "info" | "attention" | "danger" | undefined;
   readonly mate: DrawnMate | null;
   readonly face: MateMarkState;
   readonly headline: string;
   readonly secondary: string;
   readonly actions: ReactNode;
+  readonly notice?: ReactNode;
 }) {
   return (
     <ArrivalComposition
+      notice={notice}
+      faceSlot={faceSlot}
       clauses={[headline]}
       kind="reaching"
       mate={mate}
@@ -681,19 +732,6 @@ export function MateConnectionState({
       state={face}
       status
       tracks={false}
-    />
-  );
-}
-
-/** What a wait that needs the person, or a refusal, wears before its headline. */
-function SeverityMark({ severity }: { readonly severity: MateEmptyComing["severity"] }) {
-  if (severity === undefined || severity === "info") return null;
-  return severity === "danger" ? (
-    <CircleAlertIcon aria-hidden="true" className="me-2 inline size-5 align-[-0.15em] text-error" />
-  ) : (
-    <CircleHelpIcon
-      aria-hidden="true"
-      className="me-2 inline size-5 align-[-0.15em] text-status-attention"
     />
   );
 }

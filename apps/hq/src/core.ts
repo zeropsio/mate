@@ -56,6 +56,7 @@ import {
   streamTicketsLayer,
 } from "./stream.ts";
 import { structureLayer } from "./structure.ts";
+import { autoUpdatePolicyLayer } from "./autoUpdate.ts";
 
 export interface CoreOptions {
   readonly databaseUrl: Redacted.Redacted;
@@ -114,6 +115,7 @@ const services = (options: CoreOptions) => {
     ),
   );
   return Layer.mergeAll(
+    autoUpdatePolicyLayer,
     sessionsLayer,
     observationLayer,
     personGitCredentialsLayer,

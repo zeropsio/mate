@@ -222,3 +222,35 @@ describe("owner acceptance precedes update completion", () => {
       }),
   );
 });
+
+describe("automatic update acceptance", () => {
+  it.each([
+    { name: "socket unavailable", observed: null, phase: "updating" },
+    { name: "same boot", observed: server, phase: "updating" },
+    { name: "boot identity unavailable", observed: { serverVersion: "1" }, phase: "updating" },
+    { name: "new version", observed: { serverVersion: "2", bootId: "new" }, phase: "updated" },
+    {
+      name: "rollback to the old version",
+      observed: { serverVersion: "1", bootId: "new" },
+      phase: "failed",
+    },
+  ])("a started acknowledgment waits for owner evidence: $name", async ({ observed, phase }) => {
+    const { host, read } = setup({
+      wire: {
+        update: () => Effect.succeed({ ...updated, action: "none", started: true }),
+        check: () => Effect.succeed(available),
+      },
+    });
+    await host.update(env, server, "2", null);
+    expect(read().state).toEqual({ phase: "updating", to: "2" });
+    host.observe(env, observed);
+    expect(read().state.phase).toBe(phase);
+    if (phase === "updated") expect(read().state).toEqual({ phase: "updated", to: "2" });
+    if (phase === "failed")
+      expect(read().state).toEqual({
+        phase: "failed",
+        message: "The update did not take: this Mate is still on 1.",
+      });
+    host.close();
+  });
+});

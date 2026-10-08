@@ -13,7 +13,7 @@ import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganization
 import { MateVoiceContext } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
 import type { RecoveryNotice } from "../zerops/mateRecovery.logic";
-import { CircleAlertIcon, CircleHelpIcon } from "lucide-react";
+import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 
@@ -107,23 +107,24 @@ function RouteGateWords({
   tone,
 }: {
   readonly tone?: RecoveryNotice["tone"] | undefined;
-  readonly phrase: RouteGatePhrase;
+  readonly phrase: RouteGatePhrase | RecoveryNotice;
   readonly projectId: string | null;
 }) {
   return (
-    <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-      <p className="text-sm text-muted-foreground" role="status">
-        {tone === "warning" ? (
-          <CircleHelpIcon aria-hidden="true" className="mr-2 inline size-4 text-status-attention" />
-        ) : tone === "error" ? (
-          <CircleAlertIcon aria-hidden="true" className="mr-2 inline size-4 text-error" />
-        ) : null}
-        {phrase.text}
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <RouteGateActions phrase={phrase} projectId={projectId} />
-      </div>
-    </div>
+    <MateConnectionState
+      mate={null}
+      face="sleep"
+      headline={
+        "headline" in phrase ? phrase.headline : (phrase.text ?? "The conversation is unavailable.")
+      }
+      secondary={"secondary" in phrase ? phrase.secondary : ""}
+      severity={tone === "error" ? "danger" : tone === "warning" ? "attention" : "info"}
+      actions={
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <RouteGateActions phrase={phrase} projectId={projectId} />
+        </div>
+      }
+    />
   );
 }
 

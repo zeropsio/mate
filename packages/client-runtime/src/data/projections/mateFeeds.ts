@@ -103,7 +103,6 @@ export const mateLifecycle = mateFeed("mateLifecycle");
 export const agentLogin = mateFeed("mateAgentAuth");
 export const mateCrew = mateFeed("mateCrew");
 export const crewHomeFiles = mateFeed("mateCrewFiles");
-export const usageWindow = mateFeed("mateUsage");
 export const terminalSession = mateFeed("mateTerminal");
 
 /** Editors consume a parsed home; missing evidence never becomes an empty crew. */
@@ -115,13 +114,4 @@ export function crewHome(files: Known<MateFeedValues["mateCrewFiles"]>): {
   // The id only names the server directory and has no editor meaning.
   const parsed = parseCrewHome("crew", files.value.files);
   return { definition: parsed.definition ?? null, issues: parsed.issues };
-}
-/** A retained report is useful during an outage, but never presented as current. */
-export function providerUsageReport(read: Known<MateFeedValues["mateUsage"]>, connected: boolean) {
-  return {
-    isPending: read.state === "reading" || read.state === "unread",
-    error: read.state === "failed" ? "This environment could not report usage." : null,
-    summary: read.state === "known" ? read.value : null,
-    isStale: read.state === "known" && (!connected || read.freshness.kind !== "settled"),
-  };
 }

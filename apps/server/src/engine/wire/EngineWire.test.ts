@@ -1,5 +1,13 @@
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
@@ -7,6 +15,7 @@ import {
   MATE_ENGINE_PROTOCOLS,
   RequestId,
   runId,
+  type ChatAttachment,
   type ChatImageAttachment,
   type EngineConversationFrame,
   type EngineCursor,
@@ -14,9 +23,14 @@ import {
   type EngineSubscribeInput,
 } from "@t3tools/contracts";
 
+import { createPendingAttachmentId, resolveAttachmentPath } from "../../attachmentStore.ts";
+import * as ServerConfigModule from "../../config.ts";
+import { ServerConfig } from "../../config.ts";
+import { serverMessagePictures } from "../../zerops/engineAdapters.ts";
+import { MessagePictures } from "../ports.ts";
+import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
 import {
-  APP_TOO_OLD,
   NOT_ON_ENGINE,
   makeEngineWire,
   unservedWire,
@@ -24,7 +38,7 @@ import {
   type WireCaller,
 } from "./EngineWire.ts";
 
-const ana: WireCaller = { subject: "ana", environmentId: "env-1", epoch: 4 };
+const ana: WireCaller = { subject: "zerops-user:ana", environmentId: "env-1", epoch: 4 };
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
 const preview = {
   type: "image",
@@ -391,6 +405,100 @@ describe("a client reading more of an engine conversation", () => {
     ),
   );
 
+  it.effect("reads a run's items from its start page by page, the oldest first", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Go" });
+        for (const text of ["a", "b", "c"])
+          yield* w.agent((agent, thread) => agent.say(thread, text));
+        const read = (afterSeq: number) =>
+          wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            limit: 2,
+            afterSeq,
+          });
+        const first = yield* read(0);
+        if (first._tag !== "Page") throw new Error(first._tag);
+        assert.deepStrictEqual(
+          first.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["Go", "a"],
+        );
+        assert.isTrue(first.more);
+        const later = yield* read(first.items.at(-1)!.seq);
+        if (later._tag !== "Page") throw new Error(later._tag);
+        assert.deepStrictEqual(
+          later.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["b", "c"],
+        );
+        assert.isFalse(later.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("reads only what a run's closed card draws its result from, wherever it stands", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Deploy" });
+        yield* w.agent((agent, thread) => agent.say(thread, "On it"));
+        yield* w.agent((agent, thread) => agent.change(thread, ["src/main.ts"]));
+        yield* w.agent((agent, thread) =>
+          agent.zerops(thread, "zerops_deploy", { targetService: "api" }, "api", '{"ok":true}'),
+        );
+        yield* w.agent((agent, thread) => agent.say(thread, "Deployed"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const page = yield* wire.readRun({
+          protocol,
+          conversationId: mate,
+          runId: runId(mate, 1),
+          afterSeq: 0,
+          only: "outcome",
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        assert.deepStrictEqual(
+          page.items.map((item) => (item.kind === "call" ? item.tool.name : item.kind)),
+          ["zerops_deploy"],
+        );
+        assert.isFalse(page.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "counts a run's generic calls by their tool, and the files its edits changed once",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* w.tell({ _tag: "Send", text: "Fix it" });
+          yield* w.agent((agent, thread) => agent.change(thread, ["src/a.ts", "src/b.ts"]));
+          yield* w.agent((agent, thread) => agent.change(thread, ["src/a.ts"]));
+          yield* w.agent((agent, thread) => agent.write(thread, "notes.md", "x"));
+          for (const tool of ["zerops_workflow", "zerops_workflow", "zerops_knowledge"])
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", "{}"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const [snapshot] = yield* Effect.scoped(watch(w, wire));
+          if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+          const { summary } = snapshot.runs.at(-1)!;
+          assert.deepStrictEqual(summary.tools, {
+            zerops_workflow: 2,
+            zerops_knowledge: 1,
+          });
+          // Two files named, and the write that names none counted once.
+          assert.strictEqual(summary.edited, 3);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("gets a long message cut to the wire's budget and reads it whole on demand", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -506,6 +614,28 @@ describe("a client subscribed to a Mate's conversation rows", () => {
 });
 
 describe("a client's calls to an engine conversation", () => {
+  // Catches a send right after a flipped Mate's restart taking run 1, so its earlier record is
+  // never brought in: the send waits until the conversation is adopted.
+  it.effect("a send waits while the Mate holds sends, and is applied once it lets them go", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const held = yield* Deferred.make<void>();
+        const wire = yield* wireOf(w, { sendsWait: Deferred.await(held) });
+        const sent = yield* Effect.forkScoped(send(wire, "Hello"));
+        yield* w.settle;
+        const before = yield* w.within(
+          Effect.flatMap(SqlClient.SqlClient, (sql) => sql`SELECT run_id FROM engine_run`),
+        );
+        assert.deepStrictEqual(before, []);
+        yield* Deferred.succeed(held, undefined);
+        const result = yield* Fiber.join(sent);
+        assert.strictEqual(result._tag, "Accepted");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a send is confirmed when the engine accepts it, as the person who sent it", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -524,7 +654,7 @@ describe("a client's calls to an engine conversation", () => {
         );
         assert.deepStrictEqual(
           principals.map((row) => JSON.parse(row.principal_json)),
-          [{ kind: "person", subject: "ana" }],
+          [{ kind: "person", subject: "zerops-user:ana" }],
         );
         yield* w.shutdown;
       }),
@@ -582,6 +712,120 @@ describe("a client's calls to an engine conversation", () => {
             snapshot?.type === "snapshot" && snapshot.header.model,
             "claude-opus-4-1",
           );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a model switch carries its options, and the header names the conversation's runtime mode and latest interaction mode",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const call = { protocol, conversationId: mate } as const;
+          const effort = [{ id: "effort", value: "max" }];
+          const switched = yield* wire.switchModel(
+            { ...call, commandId: CommandId.make("switch-1"), model: "m1", options: effort },
+            ana,
+          );
+          const mode = yield* wire.setRuntimeMode(
+            {
+              ...call,
+              commandId: CommandId.make("mode-1"),
+              runtimeMode: "approval-required",
+            },
+            ana,
+          );
+          yield* wire.send(
+            {
+              ...call,
+              commandId: CommandId.make("send-plan"),
+              text: "Plan the migration",
+              interactionMode: "plan",
+            },
+            ana,
+          );
+          assert.deepStrictEqual([switched._tag, mode._tag], ["Accepted", "Accepted"]);
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.deepStrictEqual(snapshot.header.agent?.options, effort);
+          assert.strictEqual(snapshot.header.runtimeMode, "approval-required");
+          assert.strictEqual(snapshot.header.interactionMode, "plan");
+          assert.deepInclude(w.provider.sends.at(-1), { interactionMode: "plan" });
+          assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "an agent picked before the conversation starts becomes its agent, on the driver its instance names",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const result = yield* wire.assignAgent(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("agent-1"),
+              instanceId: "codex:work",
+              model: "gpt-5.4",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          assert.deepInclude(snapshot?.type === "snapshot" ? snapshot.header.agent : null, {
+            instanceId: "codex:work",
+            driver: "codex",
+            model: "gpt-5.4",
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "after the conversation started, an agent on another driver is refused in V1's words; one whose sessions resume the old one's is taken",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* send(wire, "Deploy the api");
+          const pick = (instanceId: string) =>
+            wire.assignAgent(
+              {
+                protocol,
+                conversationId: mate,
+                commandId: CommandId.make(`agent-${instanceId}`),
+                instanceId,
+                model: "m1",
+              },
+              ana,
+            );
+          assert.deepStrictEqual(yield* pick("codex"), {
+            _tag: "Rejected",
+            rejection: {
+              reason: "agent-locked",
+              detail:
+                "This conversation is bound to driver 'claudeAgent' and cannot switch to 'codex'.",
+            },
+          });
+          const elsewhere = yield* pick("claudeAgent:other~another-home");
+          assert.strictEqual(
+            elsewhere._tag === "Rejected" && elsewhere.rejection.reason,
+            "agent-locked",
+          );
+          assert.strictEqual((yield* pick("claudeAgent:second"))._tag, "Accepted");
+          const unknown = yield* pick("nobody");
+          assert.strictEqual(unknown._tag === "Rejected" && unknown.rejection.reason, "unknown");
           yield* w.shutdown;
         }),
       ),
@@ -724,26 +968,178 @@ describe("a client's calls to an engine conversation", () => {
     ),
   );
 
-  it.effect("a client speaking a protocol this Mate does not serve is routed to update", () =>
+  it.effect(
+    "a client speaking a protocol this Mate does not serve is routed to reload or update",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const frames = yield* watch(w, wire, { protocol: 0 });
+          assert.deepStrictEqual(frames, [
+            {
+              type: "unserved",
+              reason: "protocol",
+              protocols: [...MATE_ENGINE_PROTOCOLS],
+              message:
+                "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+            },
+          ]);
+          const sent = yield* wire.send(
+            { protocol: 0, conversationId: mate, commandId: CommandId.make("old"), text: "Hi" },
+            ana,
+          );
+          assert.strictEqual(sent._tag, "Unserved");
+          assert.deepStrictEqual(yield* w.runs, [], "nothing reached the engine");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
+/** The server's claim of a call's pictures, on a fresh attachments directory. */
+const serverPictures = Effect.gen(function* () {
+  const pictures = yield* MessagePictures;
+  const config = yield* ServerConfig;
+  return { pictures, attachmentsDir: config.attachmentsDir };
+}).pipe(
+  Effect.provide(
+    serverMessagePictures.pipe(
+      Layer.provideMerge(
+        ServerConfigModule.layerTest(process.cwd(), { prefix: "engine-pictures-" }),
+      ),
+      Layer.provide(NodeServices.layer),
+    ),
+  ),
+);
+
+/** A picture the client uploaded and has not sent yet. */
+const pendingPicture = (attachmentsDir: string, sizeBytes?: number): ChatImageAttachment => {
+  const bytes = Buffer.from(PIXEL, "base64");
+  const attachment = {
+    type: "image",
+    id: createPendingAttachmentId(".png"),
+    name: "preview.png",
+    mimeType: "image/png",
+    sizeBytes: sizeBytes ?? bytes.length,
+  } as ChatImageAttachment;
+  const path = resolveAttachmentPath({ attachmentsDir, attachment })!;
+  NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+  NodeFS.writeFileSync(path, bytes);
+  return attachment;
+};
+
+const stored = (attachmentsDir: string, attachment: ChatAttachment) =>
+  NodeFS.existsSync(resolveAttachmentPath({ attachmentsDir, attachment })!);
+
+describe("the pictures a person sends an engine Mate", () => {
+  // Catches the engine recording a reference to the pending upload the client deletes once the
+  // send is answered: the driver's send then finds no picture.
+  it.effect("reach the driver's send after the client let its pending upload go", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const w = yield* world;
-        const wire = yield* wireOf(w);
-        const frames = yield* watch(w, wire, { protocol: 0 });
-        assert.deepStrictEqual(frames, [
+        const { pictures, attachmentsDir } = yield* serverPictures;
+        const wire = yield* wireOf(w, { pictures });
+        const upload = pendingPicture(attachmentsDir);
+        const result = yield* wire.send(
           {
-            type: "unserved",
-            reason: "protocol",
-            protocols: [...MATE_ENGINE_PROTOCOLS],
-            message: APP_TOO_OLD,
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make("send-picture"),
+            text: "Look",
+            attachments: [upload],
           },
-        ]);
-        const sent = yield* wire.send(
-          { protocol: 0, conversationId: mate, commandId: CommandId.make("old"), text: "Hi" },
           ana,
         );
-        assert.strictEqual(sent._tag, "Unserved");
-        assert.deepStrictEqual(yield* w.runs, [], "nothing reached the engine");
+        assert.strictEqual(result._tag, "Accepted");
+        NodeFS.rmSync(resolveAttachmentPath({ attachmentsDir, attachment: upload })!);
+        yield* w.settle;
+        const [sent] = yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) =>
+              sql<{ readonly payload_json: string }>`
+                SELECT payload_json FROM engine_effect WHERE kind = 'provider.send'
+              `,
+          ),
+        );
+        const [picture] = (
+          JSON.parse(sent!.payload_json) as { attachments: ReadonlyArray<ChatAttachment> }
+        ).attachments;
+        assert.notStrictEqual(picture?.id, upload.id);
+        assert.isTrue(stored(attachmentsDir, picture!));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("refuse a send whose picture is over V1's limit, in its words, recording nothing", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const { pictures, attachmentsDir } = yield* serverPictures;
+        const wire = yield* wireOf(w, { pictures });
+        const result = yield* wire.send(
+          {
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make("send-huge"),
+            text: "Look",
+            attachments: [pendingPicture(attachmentsDir, 64 * 1024 * 1024)],
+          },
+          ana,
+        );
+        assert.strictEqual(result._tag, "Rejected");
+        if (result._tag !== "Rejected") return;
+        assert.strictEqual(result.rejection.reason, "attachment-refused");
+        assert.isTrue((result.rejection.detail ?? "").length > 0);
+        const runs = yield* w.within(
+          Effect.flatMap(SqlClient.SqlClient, (sql) => sql`SELECT run_id FROM engine_run`),
+        );
+        assert.deepStrictEqual(runs, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("on an answer are claimed the same way, each to its question", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const { pictures, attachmentsDir } = yield* serverPictures;
+        const wire = yield* wireOf(w, { pictures });
+        yield* send(wire, "Look at the preview");
+        yield* w.settle;
+        yield* w.agent((agent, thread) => agent.ask(thread, "question"));
+        const [request] = yield* w.requests;
+        const upload = pendingPicture(attachmentsDir);
+        const result = yield* wire.answer(
+          {
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make("answer-picture"),
+            requestId: RequestId.make(request!.request_id),
+            answer: {
+              kind: "input",
+              answers: { target: "This one" },
+              attachmentsByQuestionId: { target: [upload] },
+            },
+            summary: "Answered",
+          },
+          ana,
+        );
+        assert.strictEqual(result._tag, "Accepted");
+        NodeFS.rmSync(resolveAttachmentPath({ attachmentsDir, attachment: upload })!);
+        yield* w.settle;
+        const [snapshot] = yield* watch(w, wire);
+        if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+        const answered = snapshot.requests[0]?.answer as
+          | { readonly attachmentsByQuestionId?: Record<string, ReadonlyArray<ChatAttachment>> }
+          | undefined;
+        const [picture] = answered?.attachmentsByQuestionId?.target ?? [];
+        assert.notStrictEqual(picture?.id, upload.id);
+        assert.isTrue(stored(attachmentsDir, picture!));
         yield* w.shutdown;
       }),
     ),

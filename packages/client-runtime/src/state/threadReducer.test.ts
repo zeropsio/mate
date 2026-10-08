@@ -1041,6 +1041,67 @@ describe("applyThreadDetailEvent", () => {
         expect(appendAll(rows).activities.map((activity) => activity.id)).toEqual(kept);
       });
 
+      it.each(["update-first", "completion-first"])(
+        "a retained screenshot appears once when its echo arrives %s",
+        (order) => {
+          const rows: ReadonlyArray<Row> =
+            order === "update-first"
+              ? [
+                  ["u-echo", "tool.updated"],
+                  ["c-done", "tool.completed"],
+                ]
+              : [
+                  ["c-done", "tool.completed"],
+                  ["u-echo", "tool.updated"],
+                ];
+          const thread = rows.reduce<OrchestrationThread>((current, row, index) => {
+            const activity = rowOf(row);
+            const result = applyThreadDetailEvent(current, {
+              ...baseEventFields,
+              sequence: 100 + index,
+              occurredAt: AT,
+              aggregateKind: "thread",
+              aggregateId: ThreadId.make("thread-1"),
+              type: "thread.activity-appended",
+              payload: {
+                threadId: ThreadId.make("thread-1"),
+                activity: {
+                  ...activity,
+                  payload: {
+                    ...payloadOf(row[1] === "tool.completed" ? "completed" : "inProgress"),
+                    data: {
+                      toolName: "mcp__zerops__zerops_browser",
+                      zerops: {
+                        images: [
+                          {
+                            mimeType: "image/png",
+                            asset: {
+                              id: row[0],
+                              ownerId: row[0],
+                              threadId: "thread-1",
+                              name: "tool-image",
+                              provenance: "capture",
+                              original: {
+                                status: "ready",
+                                digest: "a".repeat(64),
+                                mimeType: "image/png",
+                                sizeBytes: 200,
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              },
+            });
+            return result.kind === "updated" ? result.thread : current;
+          }, baseThread);
+          expect(thread.activities.map((activity) => activity.id)).toEqual(["c-done"]);
+        },
+      );
+
       it("an echo landing after its completion changes nothing", () => {
         const done = appendAll([START, ["c-done", "tool.completed"]]);
         const result = applyThreadDetailEvent(done, {

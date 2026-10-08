@@ -112,6 +112,11 @@ export interface EngineStoreShape {
   >(
     domain: Domain<S, C, E, D>,
   ) => OwnerStore<S, C, E, D>;
+  /** When the conversation first committed an event of this type, if it ever did. */
+  readonly firstAt: (
+    conversation: ConversationId,
+    type: KnownEngineEvent["_tag"],
+  ) => Effect.Effect<Option.Option<number>, EngineStoreError>;
 }
 
 export class EngineStore extends Context.Service<EngineStore, EngineStoreShape>()(
@@ -468,6 +473,14 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         Effect.mapError(storeError("itemDetail")),
       ),
     owner: (domain) => ownerStore(domain),
+    firstAt: (conversation, type) =>
+      sql<{ readonly at: number }>`
+        SELECT at FROM engine_event WHERE conversation_id = ${conversation} AND type = ${type}
+        ORDER BY seq LIMIT 1
+      `.pipe(
+        Effect.map((rows) => Option.fromNullishOr(rows[0]?.at)),
+        Effect.mapError(storeError("firstAt")),
+      ),
   });
 });
 

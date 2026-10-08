@@ -1,3 +1,4 @@
+import { type MateLimit } from "@t3tools/client-runtime/data";
 import { readUsageLimitNotice, usageLimitProvider } from "../../zerops/providerLimit.logic";
 import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -535,6 +536,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       turnKey: string;
+      /** The turn it draws (an engine card's id: what it holds of a long run, `engineCardPaging`). */
+      turnId?: TurnId | null;
       live: boolean;
       items: ReadonlyArray<RecordItem>;
       /** What its hands are on right now, the newest bubble; null once the run is over. */
@@ -2052,6 +2055,7 @@ function recordReads(input: {
 const IDLE_SEAM_MS = 60 * 60 * 1000;
 
 export function deriveMessagesTimelineRows(input: {
+  readonly limit?: MateLimit;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
@@ -2078,6 +2082,12 @@ export function deriveMessagesTimelineRows(input: {
    * (`batchesByTiming`); not known, nothing does.
    */
   provider?: string | null;
+  /**
+   * Turns whose work the account does not hold yet — an engine run read
+   * only for what its closed card draws (`engineCardPaging`): each is a card
+   * all the same, its work behind "Show work".
+   */
+  unheldWork?: ReadonlySet<string>;
   /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
@@ -2193,6 +2203,7 @@ export function deriveMessagesTimelineRows(input: {
       limitError?.kind === "work"
         ? (limitError.entry.detail ?? limitError.entry.label)
         : turn.answer?.message.text,
+      input.provider,
     );
     const answerAt =
       limitError?.createdAt ?? turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;
@@ -2595,16 +2606,15 @@ export function deriveMessagesTimelineRows(input: {
         () => recordReads(recordInput),
         () => stretchRecord({ ...recordInput, pauseRow: null }),
       );
-      // A pause is the last of its stretch's rows, and drawn afresh each time.
-      const pauseRow = stretch === last ? pause : null;
-      const built = pauseRow === null ? record : { ...record, rows: [...record.rows, pauseRow] };
+      const built = record;
       // What woke the run is said once, over it (`wokeBy`), never again as its line.
       items.push(
         ...built.items.filter((item) => item.kind !== "task" || !wokeIds.has(item.entry.id)),
       );
       extras.push(...built.rows);
     });
-    const hasRecord = items.some((item) => item.kind !== "person");
+    const unheld = turn.span.turnIds.some((turnId) => input.unheldWork?.has(turnId) ?? false);
+    const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
     // drawn as it will settle: a result that woke the Mate and was answered in
     // one breath flashed a card for a frame, and the answer jumped up as it
@@ -2631,6 +2641,7 @@ export function deriveMessagesTimelineRows(input: {
               () => turnActivity(turn),
             ),
             later: turnsAfter(structure, turn.key),
+            ...(unheld ? { unheld } : {}),
           });
     // What the result draws under the line: an outcome of what its calls came
     // to alone is said on the line (`outcomeDraws`).
@@ -2674,13 +2685,20 @@ export function deriveMessagesTimelineRows(input: {
     const status: RunStatus = {
       // A run that waits on what it started is not over: its clock runs on.
       live: turn.live || waiting,
-      face: waiting ? "working" : stretchFace({ stretch: last, turn, pausedHere }),
+      face: waiting
+        ? "working"
+        : pausedHere
+          ? input.limit?.kind === "limited"
+            ? "paused"
+            : "idle"
+          : stretchFace({ stretch: last, turn, pausedHere: false }),
       startedAt: first.startedAt,
       endedAt: waiting ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...waitedOn(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
+        unheld ||
         items.some(
           (item) =>
             item.kind !== "thought" &&
@@ -2700,9 +2718,9 @@ export function deriveMessagesTimelineRows(input: {
     // where the Mate's face stands — the live edge while it works, the run's
     // end once it is over. A run with no chat keeps it as a line of its own.
     const chatted = hasRecord || working;
-    if (carded) {
+    if (carded && (!pausedHere || chatted || extras.length > 0)) {
       const cardStart = rows.length;
-      if (!chatted) {
+      if (!chatted && !pausedHere) {
         rows.push({
           kind: "work-line",
           id: `work-line:${first.key}`,
@@ -2711,12 +2729,13 @@ export function deriveMessagesTimelineRows(input: {
           turnId: first.turnId,
           ...status,
         });
-      } else {
+      } else if (chatted) {
         rows.push({
           kind: "record",
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
+          turnId: turn.turnId,
           live: turn.live || waiting,
           items,
           now: waiting
@@ -2808,6 +2827,8 @@ export function deriveMessagesTimelineRows(input: {
             cardKey: first.key,
             cardClosed: !carded || rows.at(-1)?.kind !== "card-end",
           };
+    // A provider pause owns its stage, outside the work card it follows.
+    if (pause !== null) rows.push(pause);
     // The answer follows the card, settled or still streaming.
     if (answer !== null) {
       rows.push({

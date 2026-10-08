@@ -1,3 +1,4 @@
+import { environmentActivitiesAtom } from "../mateActivityAtoms";
 /**
  * The crew of one environment, as every crew surface of an open Mate reads it: the feed's
  * status and snapshot (`crewFeedRead`) and the view joined to this
@@ -46,8 +47,11 @@ export interface CrewRead {
 }
 
 /** A crew thread's live state: the one resolver, its phrase producer and its face. */
-export function readCrewThread(shell: ThreadStatusInput): CrewThreadRead {
-  const status = resolveThreadStatus(shell);
+export function readCrewThread(
+  shell: ThreadStatusInput,
+  limit: "limited" | "expired" | "none" = "none",
+): CrewThreadRead {
+  const status = resolveThreadStatus(shell, limit);
   return {
     status,
     word: statusLabel(status.kind),
@@ -60,6 +64,7 @@ export function useCrew(environmentId: EnvironmentId | null): CrewRead {
     environmentId === null ? NO_CREW_ATOM : zeropsFeeds.crew({ environmentId, input: {} }),
   );
   const shells = useThreadShells();
+  const activities = useAtomValue(environmentActivitiesAtom(environmentId));
   const { status, snapshot, current } = useMemo(() => crewFeedRead(read), [read]);
   const view = useMemo(
     () =>
@@ -68,9 +73,9 @@ export function useCrew(environmentId: EnvironmentId | null): CrewRead {
         : deriveCrewView(
             snapshot,
             shells.filter((shell) => shell.environmentId === environmentId),
-            readCrewThread,
+            (shell) => readCrewThread(shell, activities.get(shell.id)?.limit?.kind),
           ),
-    [environmentId, shells, snapshot],
+    [environmentId, shells, snapshot, activities],
   );
   return { status, snapshot, view, current };
 }

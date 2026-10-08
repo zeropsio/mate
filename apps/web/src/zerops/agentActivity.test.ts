@@ -717,7 +717,7 @@ describe("what a Mate's row says without words", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-05T10:05:00Z"));
     const paused = shell({
-      latestTurn: COMPLETED,
+      latestTurn: { ...COMPLETED, state: "error" },
       usagePause: {
         resetsAt: "2026-09-05T14:20:00.000Z",
         window: "5-hour",
@@ -1020,6 +1020,7 @@ describe("a provider refusal in the menu", () => {
         runtimeMode: "full-access",
         activeTurnId: null,
         lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        usageLimitResetAt: "2026-10-07T02:00:00.000Z",
         updatedAt: "2026-10-06T22:24:44.519Z",
       },
       usagePause: null,
@@ -1049,7 +1050,13 @@ describe("a provider refusal in the menu", () => {
     const parked = {
       ...thread,
       latestMessagePreview: null,
-      session: { ...thread.session!, usageLimitResetAt: "2026-10-07T02:00:00Z" },
+      latestTurn: { ...thread.latestTurn!, state: "running" as const, completedAt: null },
+      session: {
+        ...thread.session!,
+        status: "running" as const,
+        activeTurnId: thread.latestTurn!.turnId,
+        usageLimitResetAt: "2026-10-07T02:00:00Z",
+      },
     };
     expect(
       threadAgentActivity(parked, undefined, Date.parse("2026-10-07T01:59:59Z")).usageLimited,
@@ -1057,6 +1064,8 @@ describe("a provider refusal in the menu", () => {
     const expired = threadAgentActivity(parked, undefined, Date.parse("2026-10-08T10:00:00Z"));
     expect(expired.usageLimited).toBe(false);
     expect(expired.errorLine).toBeUndefined();
+    expect(expired.kind).toBe("idle");
+    expect(expired.face).not.toBe("working");
   });
   it("a new turn keeps the past refusal out of the menu", () => {
     const thread = refused();

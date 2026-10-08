@@ -1075,8 +1075,63 @@
     }
   },
   {
-    "type": "thread.token-usage.updated",
     "eventId": "evt-18",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "turn.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "2c8c77b4-29b9-46ef-bce1-ac5a2013e04f",
+      "nativeTurnId": "426921be-7876-455e-8580-ecbe0f900987",
+      "models": [
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "components": {
+            "uncachedInput": "934",
+            "cachedInput": "0",
+            "cacheCreation": "0",
+            "output": "11",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "989000",
+            "scale": 9,
+            "currency": "USD",
+            "basis": "list"
+          }
+        },
+        {
+          "model": "claude-opus-5[1m]",
+          "components": {
+            "uncachedInput": "4",
+            "cachedInput": "35772",
+            "cacheCreation": "7429",
+            "output": "133",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "95521000",
+            "scale": 9,
+            "currency": "USD",
+            "basis": "list"
+          }
+        }
+      ],
+      "nativeCost": {
+        "amount": "96510000",
+        "scale": 9,
+        "currency": "USD",
+        "basis": "provider-reported-estimate"
+      },
+      "parentId": null
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-19",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -1206,7 +1261,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-19",
+    "eventId": "evt-20",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

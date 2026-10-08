@@ -1,6 +1,5 @@
 import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { usageLimitProvider } from "./providerLimit.logic";
 
 export type MateStatus = {
   readonly kind: "limit" | "sign-in" | "answer" | "broken";
@@ -15,18 +14,12 @@ export function mateStatus(
   needsSignIn = false,
 ): MateStatus | null {
   if (activity?.remembered === true) return null;
-  if (activity?.pausedUntil !== undefined && Date.parse(activity.pausedUntil) <= Date.now())
-    return null;
-  if (
-    activity?.usageLimited === true ||
-    activity?.pausedUntil !== undefined ||
-    usageLimitProvider(activity?.errorLine) !== null
-  ) {
+  if (activity?.limit?.kind === "limited") {
     return {
       kind: "limit",
       severity: "attention",
-      until: activity?.pausedUntil,
-      provider: activity?.limitProvider ?? usageLimitProvider(activity?.errorLine) ?? undefined,
+      until: activity.limit.resetsAt ?? undefined,
+      provider: activity.limit.provider,
     };
   }
   if (
