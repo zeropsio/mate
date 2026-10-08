@@ -174,7 +174,7 @@ const journeys: ReadonlyArray<Journey> = [
       return [refused, backend.login, backend.session.lastReason, w.controls("backend")];
     },
     expected: [
-      "wrong-state",
+      "login-needs-fresh",
       "claudeWork",
       "login",
       ["AssignAgent", "AssignAgent", "Seam", "RotateSession"],

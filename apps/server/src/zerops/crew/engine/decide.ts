@@ -2178,7 +2178,9 @@ const saveHome = (b: Builder, home: CrewDefinition, choice: "nextTurn" | "now" |
     home,
   );
   if (preview.freshOnly.length > 0 && choice !== "fresh") {
-    throw wrongState(
+    // V1's reason, which the section reads to offer *fresh*.
+    throw new Rejected(
+      "login-needs-fresh",
       `${preview.freshOnly.map((handle) => `@${handle}`).join(", ")} runs on a different login, ` +
         "kind or service now: save it as fresh",
     );
