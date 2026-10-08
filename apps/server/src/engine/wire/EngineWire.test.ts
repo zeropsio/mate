@@ -424,7 +424,13 @@ describe("a client reading an engine call", () => {
           yield* send(wire, "Deploy the api");
           yield* w.settle;
           yield* w.agent((agent, thread) =>
-            agent.zerops(thread, "zerops_deploy", { targetService: "api" }, deployed),
+            agent.zerops(
+              thread,
+              "zerops_deploy",
+              { targetService: "api" },
+              '{"targetService":"api"}',
+              deployed,
+            ),
           );
           yield* w.agent((agent, thread) => agent.finish(thread));
           const [snapshot] = yield* Effect.scoped(watch(w, wire));

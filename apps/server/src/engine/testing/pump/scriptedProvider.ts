@@ -10,7 +10,6 @@
  */
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -28,8 +27,6 @@ import {
 } from "../../../provider/Services/ProviderService.ts";
 import { ProviderRuntimeEventBusLive } from "../../../spi/ProviderRuntimeEventBus.ts";
 import type { BridgeDriver } from "../../bridge/spi3.ts";
-
-const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const NOW = "2026-10-07T00:00:00.000Z";
 
@@ -376,8 +373,17 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           });
           return itemId;
         }),
-      /** The agent calls a Zerops tool, which returns `text` (Claude's shape of the call). */
-      zerops: (thread: string, tool: string, input: Record<string, unknown>, text: string) =>
+      /**
+       * The agent calls a Zerops tool, which returns `text` (Claude's shape of the call); `line`
+       * is the input line Claude's adapter gives it.
+       */
+      zerops: (
+        thread: string,
+        tool: string,
+        input: Record<string, unknown>,
+        line: string,
+        text: string,
+      ) =>
         Effect.gen(function* () {
           const session = live(thread);
           const itemId = `c${++items}`;
@@ -385,7 +391,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           const payload = {
             itemType: "mcp_tool_call",
             title: "MCP tool call",
-            detail: `${toolName}: ${encodeJson(input)}`,
+            detail: `${toolName}: ${line}`,
           };
           yield* emit("item.started", thread, {
             turnId: session.open,
