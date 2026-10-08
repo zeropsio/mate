@@ -396,9 +396,9 @@ describe("an account's HQ", () => {
         );
       account.show("org-a");
       account.showHq({ orgId: "org-a", ownerId: "old-project", wire: old.wire });
-      yield* turns;
+      yield* until(store, () => old.opens() === 1, "old HQ registration");
       yield* deliver(old, "old-core", 8, false);
-      yield* turns;
+      yield* until(store, () => current().editable, "old HQ policy");
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: false },
         editable: true,
@@ -407,17 +407,18 @@ describe("an account's HQ", () => {
       expect(current().editable).toBe(false);
       // A queued answer from the owner just removed must not restore an editable old value.
       yield* deliver(old, "old-core", 9, false);
-      yield* turns;
+      yield* old.closed;
+      yield* until(store, () => fresh.opens() === 1, "replacement HQ registration");
       expect([old.opens(), fresh.opens()]).toEqual([1, 1]);
       yield* deliver(fresh, "new-core", 0, true);
-      yield* turns;
+      yield* until(store, () => current().editable, "replacement HQ policy");
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: true },
         editable: true,
         words: "On",
       });
       yield* deliver(old, "old-core", 10, false);
-      yield* turns;
+      yield* old.closed;
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: true },
         editable: true,

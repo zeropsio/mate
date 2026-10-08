@@ -177,7 +177,7 @@ const claudeAuthResolved = (snapshot: ZeropsAgentAuthSnapshot): boolean => {
   );
 };
 
-/** The completed verification after this check was requested. */
+/** The whole check completes after the verified snapshot and any reconciliation. */
 const checkedAgain = (
   feed: ZeropsAgentAuth.ZeropsAgentAuth["Service"],
   subscription: { readonly changes: Stream.Stream<ZeropsAgentAuthSnapshot> },
@@ -187,7 +187,7 @@ const checkedAgain = (
   Effect.gen(function* () {
     const before = agentState(yield* feed.latest, agentId)?.verification?.generation ?? -1;
     trigger();
-    yield* changeWhere(subscription, (snapshot) => {
+    const snapshot = yield* changeWhere(subscription, (snapshot) => {
       const verified = agentState(snapshot, agentId)?.verification;
       return (
         verified !== undefined &&
@@ -195,6 +195,9 @@ const checkedAgain = (
         (verified.generation ?? -1) > before
       );
     });
+    const generation = agentState(snapshot, agentId)?.verification?.generation;
+    assert.isDefined(generation);
+    yield* feed.awaitCheck(agentId, generation!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
   });
 
 it.layer(NodeServices.layer, { excludeTestServices: true })(

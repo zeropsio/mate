@@ -427,6 +427,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let publishedEnvironments: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
   let publishedContainers: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
   const queue: Array<() => void> = [];
+  const settlements = new Set<() => void>();
   let scheduled = false;
 
   const context = () => ({ now: clock.now(), random: clock.random });
@@ -1247,7 +1248,14 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     settled: () =>
       new Promise<void>((resolve) => {
         if (disposed) resolve();
-        else enqueue(resolve);
+        else {
+          const done = () => {
+            settlements.delete(done);
+            resolve();
+          };
+          settlements.add(done);
+          enqueue(done);
+        }
       }),
     setTargets: (targets) =>
       enqueue(() => {
@@ -1483,6 +1491,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      queue.length = 0;
+      for (const done of settlements) done();
       cancelMintTimer?.();
       cancelProbeWake?.();
       for (const entry of entries.values()) endOps(entry);

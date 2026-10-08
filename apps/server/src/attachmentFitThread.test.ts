@@ -66,8 +66,9 @@ describe("makePictureFitter", () => {
         return finish[started - 1]!.promise;
       });
       const first = yield* Effect.forkChild(fit(photo()));
-      const second = yield* Effect.forkChild(fit(photo()));
       yield* Deferred.await(admitted[0]!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+      // Execute the contender until it suspends while the first worker is still blocked.
+      const second = yield* Effect.forkChild(fit(photo()), { startImmediately: true });
       expect(started).toBe(1);
 
       finish[0]!.resolve(fitted);

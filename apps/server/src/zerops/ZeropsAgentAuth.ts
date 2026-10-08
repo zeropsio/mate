@@ -60,6 +60,7 @@ import type {
   ZeropsAgentAuthState,
   ZeropsAgentId,
 } from "@t3tools/contracts";
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -241,6 +242,8 @@ export class ZeropsAgentAuth extends Context.Service<
      * when the feed is off (`isZeropsEnvironment: false`).
      */
     readonly recheckNow: (agentId: ZeropsAgentId) => Effect.Effect<void>;
+    /** Completes once this verification generation's model-picker reconciliation has finished. */
+    readonly awaitCheck: (agentId: ZeropsAgentId, generation: number) => Effect.Effect<void>;
     /**
      * Called by sign-out BEFORE it clears the platform flag (`ZeropsSignOut.ts`):
      * bumps this agent's epoch and resets `markedOAuth` directly, so a
@@ -416,6 +419,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         changes: Stream.fromPubSub(changes),
         subscribe: subscribeBeforeSnapshot(changes, latest, subscribeMutex),
         recheckNow: () => Effect.void,
+        awaitCheck: () => Effect.void,
         invalidatePendingMark: () => Effect.void,
       } satisfies ZeropsAgentAuth["Service"];
     }
@@ -525,6 +529,18 @@ export const make = (options: ZeropsAgentAuthOptions) =>
      * itself. `markedOAuth` keeps a re-check of an already-marked agent from
      * writing it again. A failed write ends with a receipt.
      */
+    const checks = {
+      "claude-code": completionReceipt(),
+      codex: completionReceipt(),
+    };
+    const completedChecks: Record<ZeropsAgentId, number> = { "claude-code": -1, codex: -1 };
+    const awaitCheck = (agentId: ZeropsAgentId, generation: number): Effect.Effect<void> =>
+      Effect.suspend(() => {
+        const next = checks[agentId].next();
+        return completedChecks[agentId] >= generation
+          ? Effect.void
+          : next.pipe(Effect.andThen(() => awaitCheck(agentId, generation)));
+      });
     const checkProviderAuth = (agentId: ZeropsAgentId) =>
       Effect.gen(function* () {
         // Captured BEFORE the probe runs: `refreshProviderAuth` is the one
@@ -584,6 +600,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         if (reconcileProviderAuth !== undefined && status !== before.providerAuth[agentId]) {
           yield* reconcileProviderAuth(agentId, status);
         }
+        completedChecks[agentId] = generation;
+        yield* checks[agentId].complete;
       });
 
     // One coalescing queue per agent (plan correction D2): a burst of
@@ -788,6 +806,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       // no longer an answer: until the check says otherwise the agent is
       // being checked, never "signed out" (the row would offer Sign in again
       // over a login that just succeeded).
+      awaitCheck,
       recheckNow: (agentId: ZeropsAgentId) =>
         Ref.update(state, (current) => ({
           ...current,

@@ -1560,10 +1560,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
-          const { fakeTerminal, feed, key, scratch, waitingCredential } = yield* startReal(
-            row,
-            home,
-          );
+          const { fakeTerminal, feed, key, scratch } = yield* startReal(row, home);
           yield* fs.writeFileString(`${scratch}/${row.file}`, "new");
 
           yield* fakeTerminal.exit("thread-1", ZeropsAgentLoginModule.loginTerminalId(key), {

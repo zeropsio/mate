@@ -158,6 +158,18 @@ function rig(
 const read = (store: AccountStore) => readsOfState(store.state());
 
 describe("makeMateAdapter", () => {
+  it("settles queued observations when disposed before their reduction", async () => {
+    const { adapter, store } = rig();
+    adapter.setTargets([target("p1")]);
+    const receipts = [adapter.settled(), adapter.settled()];
+    adapter.dispose();
+    const completed: number[] = [];
+    receipts.forEach((receipt, index) => void receipt.then(() => completed.push(index)));
+    await expect.poll(() => completed, { timeout: 1000 }).toEqual([0, 1]);
+    expect(mateLinks.derive(read(store), null).containers.size).toBe(0);
+    await adapter.settled();
+  });
+
   it("probes no Mate nobody waits on: its container reads the platform alone", async () => {
     const { adapter, store, probes, exchanges } = rig();
     adapter.setTargets([
