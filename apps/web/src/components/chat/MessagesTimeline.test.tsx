@@ -1887,6 +1887,7 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain("data-mate-stage-area");
     expect(markup).toContain("This Mate hit the coding agent&#x27;s limit.");
     expect(markup).toContain("Continue automatically");
+    expect(markup).toContain("Keep going");
     expect(markup).not.toContain("is opening the conversation");
   });
 

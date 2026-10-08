@@ -681,6 +681,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  const [pauseViewportHeight, setPauseViewportHeight] = useState<number | undefined>();
   const [listReady, setListReady] = useState(false);
   const onListLoad = useCallback(() => setListReady(true), []);
   // The list stands where it stays: a reading position put back, or the end
@@ -1108,7 +1109,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
 
     const measure = () => {
-      const viewportWidth = timelineViewportElement.getBoundingClientRect().width;
+      const { width: viewportWidth, height } = timelineViewportElement.getBoundingClientRect();
+      setPauseViewportHeight(height);
       const nextHasPersistentGutter = resolveTimelineMinimapHasPersistentGutter(viewportWidth);
       setMinimapHasPersistentGutter((current) =>
         current === nextHasPersistentGutter ? current : nextHasPersistentGutter,
@@ -1224,6 +1226,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       standUpAsk,
       livePauseId,
       usagePause,
+      pauseStage: {
+        mate: mate ?? null,
+        height:
+          pauseViewportHeight === undefined
+            ? undefined
+            : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
+      },
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
@@ -1254,6 +1263,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       standUpAsk,
       livePauseId,
       usagePause,
+      mate,
+      pauseViewportHeight,
+      contentInsetEndAdjustment,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel,
@@ -1562,7 +1574,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   TIMELINE_LIST_HEADER
                 )
               }
-              ListFooterComponent={TIMELINE_LIST_FOOTER}
+              ListFooterComponent={activePause === undefined ? TIMELINE_LIST_FOOTER : null}
             />
             <TimelineMinimap
               items={minimapItems}
@@ -1589,27 +1601,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   return (
     <>
-      <div
-        className={cn("h-full min-h-0", activePause !== undefined && "invisible")}
-        inert={activePause !== undefined}
-        aria-hidden={activePause !== undefined ? true : undefined}
-      >
-        {content}
-      </div>
-      {activePause?.kind !== "pause" || kept?.shown === false ? null : (
-        <div
-          className="absolute inset-0 z-10 bg-background"
-          style={
-            contentInsetEndAdjustment === 0
-              ? undefined
-              : { height: `calc(100% - ${contentInsetEndAdjustment}px)` }
-          }
-        >
-          <TimelineRowCtx value={sharedState}>
-            <PauseTimelineRow mate={mate ?? null} row={activePause} />
-          </TimelineRowCtx>
-        </div>
-      )}
+      {content}
       {kept?.shown === false || activePause !== undefined ? null : (
         <ConversationOpeningStage ready={standing} name={openingName} mate={mate ?? null} />
       )}
@@ -2102,9 +2094,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "error" ? (
         <ErrorLine label={row.entry.label} detail={row.entry.detail} />
       ) : null}
-      {row.kind === "pause" && !(row.id === ctx.livePauseId && ctx.usagePause !== null) ? (
-        <PauseTimelineRow row={row} />
-      ) : null}
+      {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
@@ -2433,13 +2423,7 @@ function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-
 }
 
 /** Wake at the provider deadline; a historical refusal does not keep a clock running. */
-function PauseTimelineRow({
-  row,
-  mate = null,
-}: {
-  row: Extract<TimelineRow, { kind: "pause" }>;
-  mate?: Parameters<typeof PauseBlock>[0]["mate"];
-}) {
+function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
   const ctx = use(TimelineRowCtx);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const resetsAt = (row.id === ctx.livePauseId ? ctx.usagePause?.resetsAt : null) ?? row.resetsAt;
@@ -2457,16 +2441,24 @@ function PauseTimelineRow({
     };
   }, [waiting, resetsAt, nowMs]);
   return (
-    <PauseBlock
-      mate={mate}
-      nowMs={nowMs}
-      onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
-      onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
-      row={row}
-      serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
-      speaker={ctx.speaker}
-      timestampFormat={ctx.timestampFormat}
-    />
+    <div
+      style={
+        row.id === ctx.livePauseId && ctx.usagePause !== null
+          ? { height: ctx.pauseStage?.height }
+          : undefined
+      }
+    >
+      <PauseBlock
+        mate={ctx.pauseStage?.mate ?? null}
+        nowMs={nowMs}
+        onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
+        onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
+        row={row}
+        serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
+        speaker={ctx.speaker}
+        timestampFormat={ctx.timestampFormat}
+      />
+    </div>
   );
 }
 

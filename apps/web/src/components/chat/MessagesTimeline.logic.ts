@@ -2595,9 +2595,7 @@ export function deriveMessagesTimelineRows(input: {
         () => recordReads(recordInput),
         () => stretchRecord({ ...recordInput, pauseRow: null }),
       );
-      // A pause is the last of its stretch's rows, and drawn afresh each time.
-      const pauseRow = stretch === last ? pause : null;
-      const built = pauseRow === null ? record : { ...record, rows: [...record.rows, pauseRow] };
+      const built = record;
       // What woke the run is said once, over it (`wokeBy`), never again as its line.
       items.push(
         ...built.items.filter((item) => item.kind !== "task" || !wokeIds.has(item.entry.id)),
@@ -2808,6 +2806,8 @@ export function deriveMessagesTimelineRows(input: {
             cardKey: first.key,
             cardClosed: !carded || rows.at(-1)?.kind !== "card-end",
           };
+    // A provider pause owns its stage, outside the work card it follows.
+    if (pause !== null) rows.push(pause);
     // The answer follows the card, settled or still streaming.
     if (answer !== null) {
       rows.push({

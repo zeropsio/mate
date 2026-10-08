@@ -117,6 +117,24 @@ const ACME: NewProjectBirth = {
 
 let tree: ReactTestRenderer | undefined;
 
+function openDetails() {
+  const disclosure = tree!.root
+    .findAllByType("button")
+    .find((node) => node.props["data-slot"] === "collapsible-trigger")!;
+  expect(disclosure.props["aria-expanded"]).toBe(false);
+  const target = document.createElement("button");
+  act(() =>
+    disclosure.props.onClick({
+      currentTarget: target,
+      target,
+      nativeEvent: new MouseEvent("click"),
+      preventDefault() {},
+      stopPropagation() {},
+      defaultPrevented: false,
+    }),
+  );
+}
+
 function hold(birth: NewProjectBirth | undefined) {
   act(() => {
     held.set(birth === undefined ? {} : { [birth.birthId]: birth });
@@ -215,6 +233,8 @@ describe("a New project's first Mate, before its project exists", () => {
     hold(stopped);
     openView();
     expect(kind()).toBe("failed");
+    expect(said()).not.toContain("No room in this account.");
+    openDetails();
     expect(said()).toContain("No room in this account.");
     act(() => {
       button("Try again")?.props.onClick();
@@ -320,7 +340,10 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     hold({ ...IDA, failed: { reason: "No room in this account.", uncertain: false } });
     openView("add-1");
     expect(kind()).toBe("failed");
-    expect(substeps()[0]).toBe("copy › Created · No room in this account.:failed");
+    expect(substeps()[0]).toBe("copy › Created:failed");
+    expect(said()).not.toContain("No room in this account.");
+    openDetails();
+    expect(said()).toContain("No room in this account.");
     expect(said()).not.toContain(KEEP_TAB_OPEN_LINE);
     expect(button("Try again")).toBeDefined();
   });

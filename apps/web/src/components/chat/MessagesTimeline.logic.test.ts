@@ -3240,7 +3240,7 @@ describe("a run's card", () => {
         ],
         settled: "t1",
       } satisfies Scene,
-      whole: [],
+      whole: ["record", "card-end"],
     },
     {
       case: "live, nothing running alongside",
