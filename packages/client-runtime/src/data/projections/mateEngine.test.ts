@@ -1144,3 +1144,109 @@ describe("a crewmate's engine conversation", () => {
     expect(thread(held({}))?.crew).toBeUndefined();
   });
 });
+
+describe("the crew on an engine conversation's record", () => {
+  const activitiesOf = (items: ReadonlyArray<Item>) =>
+    thread(held({ runs: [engineRun("thread-ada", 1)], items }))?.activities ?? [];
+  const card = {
+    kind: "task",
+    taskId: "task-12",
+    number: 12,
+    title: "Add pagination to /api/items",
+    why: "Cursor based, 50 per page.",
+    doneWhen: "npm test passes",
+    links: [{ kind: "crewmate", handle: "backend" }],
+  } as const;
+
+  it("draws a crew card as its run's opening card, typed, never as the agent's answer", () => {
+    const drawn = thread(
+      held({
+        runs: [engineRun("thread-ada", 1)],
+        items: [
+          noteItem(run1, 1, "#12 Add pagination to /api/items · from you\n\nCursor based.", {
+            by: { kind: "engine" },
+            answer: false,
+            card,
+          } as never),
+          noteItem(run1, 2, "Paginated."),
+        ],
+      }),
+    );
+    expect(drawn?.messages).toMatchObject([
+      { role: "user", turnId: run1, crewCard: card },
+      { role: "assistant", text: "Paginated." },
+    ]);
+    expect(drawn?.messages[1]).not.toHaveProperty("crewCard");
+  });
+
+  it.each([
+    {
+      name: "landed",
+      seam: { seam: "landed", taskId: "task-12", number: 12, commit: "a1b2c3d" },
+      reason: undefined,
+      words: "Task #12 landed as a1b2c3d",
+    },
+    {
+      name: "closed",
+      seam: { seam: "closed", taskId: "task-12", number: 12 },
+      reason: undefined,
+      words: "Task #12 closed — nothing to land",
+    },
+    {
+      name: "saved, in the crew's words",
+      seam: { seam: "saved", apply: "now" },
+      reason: "Its job changed — from now on",
+      words: "Its job changed — from now on",
+    },
+    {
+      name: "saved, the crew giving no words",
+      seam: { seam: "saved", apply: "nextTurn" },
+      reason: undefined,
+      words: "Its setup changed — from its next message",
+    },
+  ] as const)("draws a $name seam as the crew seam V1 draws", ({ seam, reason, words }) => {
+    expect(
+      activitiesOf([
+        markerItem(run1, 2, {
+          kind: "crew.seam",
+          seam,
+          ...(reason === undefined ? {} : { reason }),
+        } as never),
+      ]),
+    ).toMatchObject([{ kind: "crew.seam", summary: words, payload: seam }]);
+  });
+
+  it("draws nothing for a seam of a newer build", () => {
+    expect(
+      activitiesOf([
+        markerItem(run1, 2, {
+          kind: "crew.seam",
+          seam: { seam: "unknown", type: "moved" },
+        } as never),
+      ]),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["cleared", "You cleared its conversation — it keeps its job and its work"],
+    ["context", "It started afresh: its conversation grew too long — it carries on from memory"],
+    ["job", "Its job changed — it started afresh"],
+    ["login", "It runs on a different login now"],
+    ["budget", "Its budget changed — it carries on"],
+    ["task", "It started afresh for unrelated work"],
+    ["unknown", "It started afresh"],
+  ] as const)(
+    "draws a session that rotated for %s as the line saying why, in the same conversation",
+    (reason, words) => {
+      expect(
+        activitiesOf([markerItem(run1, 2, { kind: "session-rotated", reason })]),
+      ).toMatchObject([
+        {
+          kind: "crew.seam",
+          summary: words,
+          payload: { seam: "stint", previousThreadId: null },
+        },
+      ]);
+    },
+  );
+});

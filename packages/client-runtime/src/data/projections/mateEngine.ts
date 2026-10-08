@@ -11,11 +11,14 @@
  * @module data/projections/mateEngine
  */
 import {
+  CREW_SEAM_ACTIVITY_KIND,
   MessageId,
   STEP_ITEM_KINDS,
   TurnId,
   type ChatAttachment,
   type ConversationRow,
+  type CrewCard,
+  type CrewSeam,
   type Item,
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
@@ -46,6 +49,7 @@ import {
   type EngineFact,
 } from "../families/mateEngine.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
+import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
 import { sameValue } from "./equal.ts";
 
 const iso = (ms: number | null | undefined) =>
@@ -111,7 +115,15 @@ const personMessageId = (item: Extract<Item, { kind: "person" }>) => item.sendId
  */
 type CardOf = (runId: string | null) => string | null;
 
-function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
+/**
+ * A message as the engine's record draws it: a crew card carries its typed card, so the timeline
+ * draws the card from it and never reads the words the agent got.
+ */
+export interface EngineMessage extends OrchestrationMessage {
+  readonly crewCard?: CrewCard;
+}
+
+function messageOf(item: Item, cardOf: CardOf): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
     createdAt: iso(item.at),
@@ -131,6 +143,16 @@ function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
         streaming: false,
       };
     case "note":
+      // The crew's card opens its run as V1's card message did, typed.
+      if (item.card !== undefined)
+        return {
+          ...base,
+          id: MessageId.make(item.id),
+          role: "user",
+          text: item.text,
+          streaming: false,
+          crewCard: item.card,
+        };
       return {
         ...base,
         id: MessageId.make(item.id),
@@ -393,6 +415,30 @@ function markerActivity(
       return marker.reason === undefined
         ? null
         : activity(item.id, "runtime.note", marker.reason, {}, card, item.at, item.seq);
+    case "crew.seam": {
+      const seam = marker.seam;
+      if (seam === undefined || seam.seam === "unknown") return null;
+      return activity(
+        item.id,
+        CREW_SEAM_ACTIVITY_KIND,
+        marker.reason ?? crewSeamWords(seam),
+        seam as CrewSeam as Record<string, unknown>,
+        card,
+        item.at,
+        item.seq,
+      );
+    }
+    case "session-rotated":
+      // One conversation per crewmate: a new session is a line in it, never a link elsewhere.
+      return activity(
+        item.id,
+        CREW_SEAM_ACTIVITY_KIND,
+        crewSessionWord(marker.reason),
+        { seam: "stint", previousThreadId: null },
+        card,
+        item.at,
+        item.seq,
+      );
     case "history-cut":
       // Drawn by the timeline as a line at the conversation's top, never a step of its run.
       return activity(
@@ -643,7 +689,7 @@ export function engineThreadOf(
   const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
     (left, right) => left.seq - right.seq,
   );
-  const messages: OrchestrationMessage[] = [];
+  const messages: EngineMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   for (const item of items) {
     const message = messageOf(item, cardOf);
