@@ -20,7 +20,56 @@ const note = (n: number, text: string): Item => ({
   answer: false,
 });
 
+const call = (n: number, fields: Record<string, unknown>): Item =>
+  ({
+    id: itemId(run, n),
+    conversationId: conversation,
+    runId: run,
+    seq: n,
+    rev: n,
+    at: 1,
+    by: { kind: "mate" },
+    kind: "call",
+    step: "mcp",
+    tool: { name: "zerops_deploy", server: "zerops" },
+    words: null,
+    state: "done",
+    endedAt: 2,
+    ...fields,
+  }) as Item;
+
 describe("the wire's encoder holds records to their budget", () => {
+  it("cuts a call's long result out of its record, names the part, and keeps the rest", () => {
+    const resultText = JSON.stringify({ buildLogs: "x".repeat(ENGINE_WIRE_BUDGETS.itemTextBytes) });
+    const fitted = fitItem(
+      call(1, { result: { toolName: "zerops_deploy", resultText }, input: "deploy api" }),
+    );
+    if (fitted.kind !== "call") throw new Error(fitted.kind);
+    expect(fitted.result).toEqual({ toolName: "zerops_deploy" });
+    expect(fitted.cut).toEqual({ part: "result", total: resultText.length });
+    expect(fitted.input).toBe("deploy api");
+  });
+
+  it("leaves a call's result within the budget whole, naming no cut", () => {
+    const whole = call(1, { result: { toolName: "zerops_deploy", resultText: '{"ok":true}' } });
+    expect(fitItem(whole)).toEqual(whole);
+  });
+
+  it("keeps what a call's row shows within the item's budget, its long input left out first", () => {
+    const shows = {
+      toolName: "mcp__zerops__zerops_import",
+      input: { content: "y".repeat(ENGINE_WIRE_BUDGETS.itemBytes) },
+      files: [{ path: "/var/www/zerops.yaml" }],
+    };
+    const fitted = fitItem(call(1, { shows }));
+    if (fitted.kind !== "call") throw new Error(fitted.kind);
+    expect(fitted.shows).toEqual({
+      toolName: "mcp__zerops__zerops_import",
+      files: [{ path: "/var/www/zerops.yaml" }],
+    });
+    expect(bytesOf(fitted)).toBeLessThanOrEqual(ENGINE_WIRE_BUDGETS.itemBytes);
+  });
+
   it("cuts a long message to the inline budget and names the part and its whole length", () => {
     const text = "é".repeat(ENGINE_WIRE_BUDGETS.itemTextBytes);
     const fitted = fitItem(note(1, text));

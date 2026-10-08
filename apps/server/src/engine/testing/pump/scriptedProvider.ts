@@ -380,6 +380,46 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           });
           return itemId;
         }),
+      /**
+       * The agent calls a Zerops tool, which returns `text` (Claude's shape of the call); `line`
+       * is the input line Claude's adapter gives it.
+       */
+      zerops: (
+        thread: string,
+        tool: string,
+        input: Record<string, unknown>,
+        line: string,
+        text: string,
+      ) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const toolName = `mcp__zerops__${tool}`;
+          const payload = {
+            itemType: "mcp_tool_call",
+            title: "MCP tool call",
+            detail: `${toolName}: ${line}`,
+          };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress", data: { toolName, input } },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: {
+                toolName,
+                input,
+                result: { type: "tool_result", content: [{ type: "text", text }] },
+              },
+            },
+          });
+          return itemId;
+        }),
       finish: (thread: string) => endTurn(live(thread), { state: "completed" }),
       /** The agent's process dies mid-turn, each driver as its adapter reports it. */
       crash: (thread: string) =>

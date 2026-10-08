@@ -2,6 +2,7 @@ import type { Cause } from "effect";
 import type {
   EngineConversationFrame,
   EngineCursor,
+  EngineDetail,
   EnginePage,
   Item,
   ItemId,
@@ -99,7 +100,16 @@ const page = (patch: Partial<Extract<EnginePage, { _tag: "Page" }>> = {}): Engin
     ...patch,
   }) as EnginePage;
 
-function rig(pager: Pager = () => Effect.fail({ outcome: "transient", message: "no pages" })) {
+type Detailer = (request: {
+  readonly itemId: string;
+  readonly part: string;
+}) => Effect.Effect<EngineDetail, StreamFault>;
+
+function rig(
+  pager: Pager = () => Effect.fail({ outcome: "transient", message: "no pages" }),
+  detailer: Detailer = () => Effect.fail({ outcome: "transient", message: "no details" }),
+) {
+  const details: Array<string> = [];
   const pages: Array<{ readonly runId: string | null; readonly before: number | null }> = [];
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
@@ -146,6 +156,10 @@ function rig(pager: Pager = () => Effect.fail({ outcome: "transient", message: "
         pages.push({ runId, before: beforeSeq });
         return pager({ runId, before: beforeSeq });
       },
+      readDetail: (_key, itemId, part) => {
+        details.push(`${itemId} ${part}`);
+        return detailer({ itemId, part });
+      },
       watch: (_environmentId, receive) =>
         Effect.sync(() => {
           access = receive;
@@ -164,6 +178,7 @@ function rig(pager: Pager = () => Effect.fail({ outcome: "transient", message: "
     live,
     conversations,
     pages,
+    details,
     opens,
     send,
     read,
@@ -754,6 +769,77 @@ describe("what an engine conversation says live and never records", () => {
       });
       yield* r.send({ type: "progress", itemId: `${run1}/i/3` as ItemId, value: null });
       expect(gauge()).toMatchObject({ value: { progress: {} } });
+      r.close();
+    }),
+  );
+});
+
+describe("an engine call whose result the wire cut", () => {
+  const deployed = '{"status":"DEPLOYED","buildLogs":"…"}';
+  const cutCall = (rev = 9) =>
+    callItem(run1, 2, {
+      rev,
+      step: "mcp",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      result: { toolName: "zerops_deploy" },
+      cut: { part: "result", total: deployed.length },
+    });
+  const whole: Detailer = () =>
+    Effect.succeed({
+      _tag: "Detail",
+      text: deployed,
+      from: 0,
+      to: deployed.length,
+      total: deployed.length,
+    });
+
+  it.live("holds the result whole, read before the call is drawn", () =>
+    Effect.gen(function* () {
+      const r = rig(undefined, whole);
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ items: [personItem(run1, 1, "Deploy the api"), cutCall()] }),
+        synchronized(12),
+      );
+      expect(r.details).toEqual([`${run1}/i/2 result`]);
+      const call = r.item(`${run1}/i/2`);
+      expect(call).toMatchObject({
+        kind: "known",
+        value: { result: { toolName: "zerops_deploy", resultText: deployed } },
+      });
+      expect(call.kind === "known" && "cut" in call.value).toBe(false);
+      r.close();
+    }),
+  );
+
+  it.live("reads a result cut in a commit's changes before the change is held", () =>
+    Effect.gen(function* () {
+      const r = rig(undefined, whole);
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12), changes(12, 13, { items: [cutCall(13)] }));
+      expect(r.item(`${run1}/i/2`)).toMatchObject({
+        kind: "known",
+        value: { result: { resultText: deployed } },
+      });
+      r.close();
+    }),
+  );
+
+  it.live("says the result was too long to show when its whole cannot be read", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ items: [personItem(run1, 1, "Deploy the api"), cutCall()] }),
+        synchronized(12),
+      );
+      expect(r.item(`${run1}/i/2`)).toMatchObject({
+        kind: "known",
+        value: { result: { toolName: "zerops_deploy", truncated: true } },
+      });
       r.close();
     }),
   );

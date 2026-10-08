@@ -1,4 +1,10 @@
-import type { ConversationRow, Item, Request, RunRecord } from "@t3tools/contracts";
+import {
+  importedCallFields,
+  type ConversationRow,
+  type Item,
+  type Request,
+  type RunRecord,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -434,10 +440,9 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
   ] as const)("$name", ({ state, kinds, status }) => {
     const activities = activitiesOf([callItem(run1, 2, { state })]);
     expect(activities.map((activity) => activity.kind)).toEqual(kinds);
-    expect(activities.at(-1)?.payload).toMatchObject({
-      status,
-      title: "Ran command",
-      toolCallId: `${run1}/i/2`,
+    expect(activities.at(-1)).toMatchObject({
+      summary: "Ran command",
+      payload: { status, toolCallId: `${run1}/i/2` },
     });
     expect(activities.map((activity) => activity.turnId)).toEqual([run1, run1]);
   });
@@ -459,12 +464,20 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       tool: { name: "spawn_agent" },
       itemType: "collab_agent_tool_call",
     },
-    { name: "agent tool", step: "tool", tool: { name: "Read" }, itemType: "dynamic_tool_call" },
+    { name: "agent tool", step: "tool", tool: { name: "Skill" }, itemType: "dynamic_tool_call" },
+    { name: "file read", step: "read", tool: { name: "Read" }, itemType: "dynamic_tool_call" },
+    { name: "code search", step: "search", tool: { name: "Grep" }, itemType: "dynamic_tool_call" },
     {
       name: "MCP tool",
-      step: "tool",
+      step: "mcp",
       tool: { name: "zerops_deploy", server: "zerops" },
       itemType: "mcp_tool_call",
+    },
+    {
+      name: "MCP tool an ACP agent ran as its own",
+      step: "tool",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      itemType: "dynamic_tool_call",
     },
   ])("a $name call is the step V1 draws for the same call", ({ step, tool, itemType }) => {
     expect(payloadOf([callItem(run1, 2, { step, tool })], "tool.completed")).toMatchObject({
@@ -473,11 +486,143 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     });
   });
 
+  it("a call's line and facts are what V1's row of the same call reads", () => {
+    const shows = {
+      toolName: "Bash",
+      command: "npm run build",
+      input: { description: "Build the api" },
+      rawOutput: { content: "built in 41 s" },
+    };
+    const activities = activitiesOf([
+      callItem(run1, 2, { input: "Bash: npm run build", shows, parts: ["detail"] }),
+    ]);
+    for (const activity of activities)
+      expect(activity.payload).toMatchObject({ detail: "Bash: npm run build", data: shows });
+  });
+
+  it("a Zerops call's result is the result its card decodes, its pictures by reference", () => {
+    const result = {
+      toolName: "zerops_browser",
+      resultText: '{"status":"ok"}',
+      images: [
+        {
+          mimeType: "image/png",
+          asset: {
+            id: "a1",
+            threadId: "mate/s/1",
+            ownerId: "call-1",
+            name: "tool-image",
+            provenance: "capture",
+            original: {
+              status: "ready",
+              digest: "a".repeat(64),
+              mimeType: "image/png",
+              sizeBytes: 68,
+            },
+          } as never,
+        },
+      ],
+    };
+    expect(
+      payloadOf(
+        [
+          callItem(run1, 2, {
+            step: "mcp",
+            tool: { name: "zerops_browser", server: "zerops" },
+            shows: { toolName: "mcp__zerops__zerops_browser" },
+            result,
+          }),
+        ],
+        "tool.completed",
+      ),
+    ).toMatchObject({ data: { toolName: "mcp__zerops__zerops_browser", zerops: result } });
+  });
+
+  // A V1 call the history import brought over: its item data is V1's projected payload.
+  it.each([
+    {
+      name: "command",
+      tool: { name: "Bash" },
+      payload: {
+        itemType: "command_execution",
+        detail: "Bash: npm run build",
+        data: { toolName: "Bash", command: "npm run build", rawOutput: { content: "built" } },
+      },
+    },
+    {
+      name: "file read",
+      tool: { name: "Read" },
+      payload: {
+        itemType: "dynamic_tool_call",
+        detail: 'Read: {"file_path":"/var/www/api/package.json"}',
+        data: { toolName: "Read", input: { file_path: "/var/www/api/package.json" } },
+      },
+    },
+    {
+      name: "edit",
+      tool: { name: "File change" },
+      payload: {
+        itemType: "file_change",
+        data: { files: [{ path: "/var/www/api/src/main.ts" }], wrote: true },
+      },
+    },
+    {
+      name: "web search",
+      tool: { name: "WebSearch" },
+      payload: {
+        itemType: "web_search",
+        detail: "zerops nodejs",
+        data: { toolName: "WebSearch", input: { query: "zerops nodejs" } },
+      },
+    },
+    {
+      name: "look",
+      tool: { name: "view_image" },
+      payload: { itemType: "image_view", data: { imagePath: "mate-asset:1f0e" } },
+    },
+    {
+      name: "helper launch",
+      tool: { name: "Agent" },
+      payload: {
+        itemType: "collab_agent_tool_call",
+        detail: "Review the api",
+        data: { toolName: "Agent", input: { description: "Review the api", name: "reviewer" } },
+      },
+    },
+    {
+      name: "Zerops deploy",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      payload: {
+        itemType: "mcp_tool_call",
+        detail: 'mcp__zerops__zerops_deploy: {"targetService":"api"}',
+        data: {
+          toolName: "mcp__zerops__zerops_deploy",
+          input: { targetService: "api" },
+          zerops: { toolName: "zerops_deploy", resultText: '{"status":"DEPLOYED"}' },
+        },
+      },
+    },
+  ])("an imported V1 $name call is drawn as V1 drew it", ({ tool, payload }) => {
+    const data = { source: "v1", kind: "tool.completed", summary: "Tool", payload };
+    const drawn = payloadOf(
+      [callItem(run1, 2, { tool, ...importedCallFields(data) })],
+      "tool.completed",
+    );
+    expect(drawn).toMatchObject({
+      itemType: payload.itemType,
+      data: payload.data,
+      ...("detail" in payload ? { detail: payload.detail } : {}),
+    });
+    expect(Object.keys(drawn?.data as object).sort()).toEqual(Object.keys(payload.data).sort());
+  });
+
   it("a call keeps how its agent presents it", () => {
     const presentation = { title: "Deploy", server: "zerops" } as never;
     expect(
-      payloadOf([callItem(run1, 2, { words: null, presentation })], "tool.completed"),
-    ).toMatchObject({ title: "Deploy", presentation });
+      activitiesOf([callItem(run1, 2, { words: null, presentation })]).find(
+        (activity) => activity.kind === "tool.completed",
+      ),
+    ).toMatchObject({ summary: "Deploy", payload: { presentation } });
   });
 
   it("a helper's own call is the helper's, not its run's", () => {

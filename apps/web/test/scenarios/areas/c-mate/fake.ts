@@ -1242,15 +1242,17 @@ export class ChatDriver {
     turnId = "run-one",
     extra: Record<string, unknown> = {},
   ) {
+    // `summary` is the activity's own (V1's title for the call), never its payload's.
+    const { summary, ...payload } = extra;
     this.activity(
       kind,
-      String(data.toolName ?? "Tool"),
+      String(summary ?? data.toolName ?? "Tool"),
       {
         toolCallId: callId,
         itemType: "command_execution",
         status: kind === "tool.completed" ? "completed" : "inProgress",
         data,
-        ...extra,
+        ...payload,
       },
       turnId,
     );

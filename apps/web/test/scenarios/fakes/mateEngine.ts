@@ -81,6 +81,7 @@ export class MateEngineFake {
   runPageItems: number = ENGINE_WIRE_BUDGETS.runPageItems;
   /** Text streaming now, by item and stream: a subscriber that opens hears it whole. */
   private readonly streamed = new Map<string, string>();
+  private readonly details = new Map<string, string>();
   /** Told when the person answers a request: the fixture's agent replies. */
   readonly onAnswer: Array<(request: Request) => void> = [];
   /** A refusal the next answer gets instead of being applied (the engine's rule word). */
@@ -281,6 +282,11 @@ export class MateEngineFake {
   }
 
   /** An item's record is whole: its streamed text goes. */
+  /** An item's whole part, served on demand: a call's output (`detail`) or its own record. */
+  detail(itemId: string, part: string, text: string): void {
+    this.details.set(`${itemId}\u0000${part}`, text);
+  }
+
   settle(itemId: string): void {
     for (const key of this.streamed.keys())
       if (key.startsWith(`${itemId}\u0000`)) this.streamed.delete(key);
@@ -416,6 +422,18 @@ export class MateEngineFake {
     change.items.add(id);
   }
 
+  /**
+   * An item as the server's encoder sends it: a call's result over the inline budget leaves the
+   * record, the cut part named with its whole length.
+   */
+  private sent(item: Item): Item {
+    if (item.kind !== "call" || item.result?.resultText === undefined) return item;
+    const total = new TextEncoder().encode(item.result.resultText).length;
+    if (total <= ENGINE_WIRE_BUDGETS.itemTextBytes) return item;
+    const { resultText: _cut, ...result } = item.result;
+    return { ...item, result, cut: { part: "result", total } };
+  }
+
   /** Applies `step` as one commit: its changes go to every subscriber, then the rows. */
   private commit<A>(step: (change: Changed) => A): A {
     const from = this.seq;
@@ -433,7 +451,7 @@ export class MateEngineFake {
       to: this.seq,
       ...(change.header ? { header: this.header } : {}),
       runs: [...change.runs].map((id) => this.runs.get(id)!),
-      items: [...change.items].map((id) => this.items.get(id)!),
+      items: [...change.items].map((id) => this.sent(this.items.get(id)!)),
       requests: [...change.requests].map((id) => this.requests.get(id)!),
     });
     for (const [socket, ids] of this.subscribers)
@@ -475,15 +493,17 @@ export class MateEngineFake {
     const oldestOrdinal = runs[0]?.ordinal ?? null;
     return {
       runs,
-      items: [...this.items.values()].filter(
-        (item) =>
-          item.runId !== null &&
-          ids.has(item.runId) &&
-          (item.kind === "person" ||
-            item.kind === "request" ||
-            answers.has(item.id) ||
-            live.has(item.runId)),
-      ),
+      items: [...this.items.values()]
+        .filter(
+          (item) =>
+            item.runId !== null &&
+            ids.has(item.runId) &&
+            (item.kind === "person" ||
+              item.kind === "request" ||
+              answers.has(item.id) ||
+              live.has(item.runId)),
+        )
+        .map((item) => this.sent(item)),
       requests: [...this.requests.values()].filter(
         (request) => request.state === "open" || ids.has(request.runId),
       ),
@@ -579,7 +599,9 @@ export class MateEngineFake {
               from: after.seq,
               to: this.seq,
               runs: [...this.runs.values()].filter((run) => run.rev > after.seq),
-              items: [...this.items.values()].filter((item) => item.rev > after.seq),
+              items: [...this.items.values()]
+                .filter((item) => item.rev > after.seq)
+                .map((item) => this.sent(item)),
               requests: [...this.requests.values()].filter((r) => r.rev > after.seq),
             }),
           );
@@ -690,7 +712,7 @@ export class MateEngineFake {
           encodePage({
             _tag: "Page",
             runs: [],
-            items: page.toReversed(),
+            items: page.toReversed().map((item) => this.sent(item)),
             requests: [],
             window: { oldestOrdinal: null, earlier: false },
             more: items.length > page.length,
@@ -698,9 +720,25 @@ export class MateEngineFake {
         );
         return true;
       }
-      case WS_METHODS.engineReadDetail:
-        this.mate.reply(socket, id, encodeDetail({ _tag: "Missing" }));
+      case WS_METHODS.engineReadDetail: {
+        const item = this.items.get(String(payload.itemId));
+        const part = String(payload.part);
+        const whole =
+          part === "result" && item?.kind === "call"
+            ? item.result?.resultText
+            : this.details.get(`${String(payload.itemId)}\u0000${part}`);
+        if (whole === undefined) {
+          this.mate.reply(socket, id, encodeDetail({ _tag: "Missing" }));
+          return true;
+        }
+        const total = new TextEncoder().encode(whole).length;
+        this.mate.reply(
+          socket,
+          id,
+          encodeDetail({ _tag: "Detail", text: whole, from: 0, to: total, total }),
+        );
         return true;
+      }
       case ORCHESTRATION_WS_METHODS.subscribeThread:
         this.mate.unknownMethods.add(`${tag} (V1 history of an engine conversation)`);
         this.mate.chunk(socket, id, [
