@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { MateEngineHost } from "./MateEngineHostProvider";
 import { MateImages } from "./MateImagesProvider";
 
 /** What this layer reads of the data provider's binding, which renders it. */
@@ -79,7 +80,9 @@ export function ZeropsAccountData({
         children
       ) : (
         <MateImages store={binding.accountData.store} registry={binding.registry}>
-          {children}
+          <MateEngineHost store={binding.accountData.store} registry={binding.registry}>
+            {children}
+          </MateEngineHost>
         </MateImages>
       )}
     </AccountDataContext>
