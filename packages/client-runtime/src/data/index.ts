@@ -495,3 +495,17 @@ export {
 export { inventoryGroups, type InventoryGroupsKey } from "./projections/inventoryGroups.ts";
 
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
+export * from "./families/mateEngine.ts";
+export * from "./adapters/mateEngine.ts";
+export * from "./engineLive.ts";
+export * from "./engineHost.ts";
+export * from "./operations/mateEngine.ts";
+export * from "./operations/executors/mateEngine.ts";
+export {
+  ENGINE_UPDATE_WORDS,
+  engineRows,
+  engineThread,
+  engineThreadOf,
+  overlayEngineRow,
+  overlayEngineShell,
+} from "./projections/mateEngine.ts";

@@ -410,29 +410,36 @@ export function overlayEngineRow(
   };
 }
 
-/** A Mate's shell with its engine conversations' rows laid over their thread shells. */
-export const engineShell: Projection<string, EnvironmentShellState | null> = {
-  name: "engineShell",
+/** A Mate's engine conversation rows, as its rows subscription holds them. */
+export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
+  name: "engineRows",
   keyOf: (environmentId) => environmentId,
   equals: sameValue,
   derive: (read, environmentId) => {
-    const shell = read.fact("mateShell", environmentId);
-    if (shell.kind !== "known") return null;
-    const rows = new Map<string, ConversationRow>();
+    const rows: ConversationRow[] = [];
     for (const id of read.index("engineRowsOf", engineRowsKey(environmentId))) {
       const row = read.fact("mateEngineRow", id);
-      if (row.kind === "known") rows.set(row.value.conversationId, row.value);
+      if (row.kind === "known") rows.push(row.value);
     }
-    if (rows.size === 0) return shell.value.state;
-    return {
-      ...shell.value.state,
-      snapshot: Option.map(shell.value.state.snapshot, (snapshot): OrchestrationShellSnapshot => ({
-        ...snapshot,
-        threads: snapshot.threads.map((thread) => {
-          const row = rows.get(thread.id);
-          return row === undefined ? thread : overlayEngineRow(thread, row);
-        }),
-      })),
-    };
+    return rows;
   },
 };
+
+/** A Mate's shell with its engine conversations' rows laid over their thread shells. */
+export function overlayEngineShell(
+  shell: EnvironmentShellState,
+  rows: ReadonlyArray<ConversationRow>,
+): EnvironmentShellState {
+  if (rows.length === 0) return shell;
+  const byConversation = new Map(rows.map((row) => [row.conversationId as string, row]));
+  return {
+    ...shell,
+    snapshot: Option.map(shell.snapshot, (snapshot): OrchestrationShellSnapshot => ({
+      ...snapshot,
+      threads: snapshot.threads.map((thread) => {
+        const row = byConversation.get(thread.id);
+        return row === undefined ? thread : overlayEngineRow(thread, row);
+      }),
+    })),
+  };
+}

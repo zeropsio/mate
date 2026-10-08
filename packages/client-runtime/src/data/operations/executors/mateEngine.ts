@@ -336,10 +336,11 @@ export function makeMateEngineOperations(options: {
   const execute = (
     intent: OperationIntent & EngineOperationTarget,
     command: (commandId: string) => EngineCommand,
+    commandId?: string,
   ) =>
     Effect.suspend(() => {
       if (closed) return Effect.fail(closedFailure());
-      const requestId = options.makeId();
+      const requestId = commandId ?? options.makeId();
       store.dispatch({ kind: "operation-recorded", requestId, intent });
       return attempt(requestId, intent, command(requestId), true).pipe(
         Effect.map((accepted) => ({ requestId, ...accepted })),
@@ -351,6 +352,8 @@ export function makeMateEngineOperations(options: {
       target: EngineOperationTarget & {
         readonly text: string;
         readonly attachments?: ReadonlyArray<ChatImageAttachment>;
+        /** The send's own id where its caller already gave it one (the message's id). */
+        readonly commandId?: string;
       },
     ) =>
       execute(
@@ -368,6 +371,7 @@ export function makeMateEngineOperations(options: {
           text: target.text,
           attachments: target.attachments ?? [],
         }),
+        target.commandId,
       ),
     stop: (target: EngineOperationTarget & { readonly runId?: string }) =>
       execute(

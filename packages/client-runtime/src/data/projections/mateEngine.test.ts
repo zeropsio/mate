@@ -20,7 +20,7 @@ import {
   noteItem,
   personItem,
 } from "../__fixtures__/mateEngine.ts";
-import { engineShell, engineThread, overlayEngineRow } from "./mateEngine.ts";
+import { engineRows, engineThread, overlayEngineRow, overlayEngineShell } from "./mateEngine.ts";
 
 const ENV = "env-ada";
 const key: EngineConversationKey = { environmentId: ENV, conversationId: "thread-ada" };
@@ -304,35 +304,21 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
   });
 
-  it("leaves a Mate's shell as it is until its rows arrive", () => {
+  it("leaves a Mate's shell as it is until its rows arrive, then lays them over it", () => {
     const shellState = {
       snapshot: Option.some({
         snapshotSequence: 1,
         projects: [],
         threads: [shellThread],
-        updatedAt: "x",
+        updatedAt: "2026-10-01T00:00:00.000Z",
       }),
       status: "live",
       error: Option.none(),
-    };
-    const shellRow: Row = {
-      family: "mateShell",
-      id: ENV,
-      value: { state: shellState } as never,
-      revision: { kind: "mate-link", sequence: 1 },
-    };
-    const state = apply(emptyAccount, [
-      {
-        kind: "rows",
-        scope: `mate:${ENV}:conversation-shell:${ENV}` as never,
-        generation: 0,
-        method: "read",
-        via: "mate-direct",
-        rows: [shellRow],
-      },
-    ]);
-    expect(engineShell.derive(readsOfState(state), ENV)).toBe(shellState);
-    const withRows = apply(state, [
+    } as unknown as Parameters<typeof overlayEngineShell>[0];
+    expect(overlayEngineShell(shellState, engineRows.derive(readsOfState(emptyAccount), ENV))).toBe(
+      shellState,
+    );
+    const withRows = apply(emptyAccount, [
       {
         kind: "delivery",
         via: "mate-direct",
@@ -354,7 +340,7 @@ describe("an engine conversation's row in the menu", () => {
         removals: [],
       },
     ]);
-    const overlaid = engineShell.derive(readsOfState(withRows), ENV);
-    expect(Option.getOrNull(overlaid!.snapshot)?.threads[0]?.hasPendingApprovals).toBe(true);
+    const overlaid = overlayEngineShell(shellState, engineRows.derive(readsOfState(withRows), ENV));
+    expect(Option.getOrNull(overlaid.snapshot)?.threads[0]?.hasPendingApprovals).toBe(true);
   });
 });

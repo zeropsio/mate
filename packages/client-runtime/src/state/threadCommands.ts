@@ -65,6 +65,13 @@ import {
   updateThreadMetadata,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import {
+  engineInterruptTurn,
+  engineRespondToApproval,
+  engineRespondToUserInput,
+  engineStartTurn,
+  viaEngine,
+} from "../data/engineCommands.ts";
 
 export type {
   ArchiveThreadInput,
@@ -208,25 +215,49 @@ export function createThreadEnvironmentAtoms<R, E>(
     }),
     startTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:start-turn",
-      execute: (input: StartThreadTurnInput) => startThreadTurn(input),
+      execute: (input: StartThreadTurnInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineStartTurn(environmentId, input),
+          startThreadTurn(input),
+        ),
       scheduler,
       concurrency,
     }),
     interruptTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:interrupt-turn",
-      execute: (input: InterruptThreadTurnInput) => interruptThreadTurn(input),
+      execute: (input: InterruptThreadTurnInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineInterruptTurn(environmentId, input),
+          interruptThreadTurn(input),
+        ),
       scheduler,
       concurrency,
     }),
     respondToApproval: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-approval",
-      execute: (input: RespondToThreadApprovalInput) => respondToThreadApproval(input),
+      execute: (input: RespondToThreadApprovalInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineRespondToApproval(environmentId, input),
+          respondToThreadApproval(input),
+        ),
       scheduler,
       concurrency,
     }),
     respondToUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-user-input",
-      execute: (input: RespondToThreadUserInputInput) => respondToThreadUserInput(input),
+      execute: (input: RespondToThreadUserInputInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineRespondToUserInput(environmentId, input),
+          respondToThreadUserInput(input),
+        ),
       scheduler,
       concurrency,
     }),
