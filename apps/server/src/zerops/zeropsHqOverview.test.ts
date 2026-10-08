@@ -592,6 +592,29 @@ it("HQ learns which provider paused the Mate, with the provider's reset", () => 
   });
 });
 
+it("HQ carries restart interruption beside typed provider refusal", () => {
+  const interruption = {
+    turnId: "turn-1",
+    restart: { cause: "restarted", at: "2026-10-08T14:20:00Z" },
+    continuation: "manual",
+  };
+  const overview = overviewOf([
+    shell("main", {
+      ...RUNNING,
+      updatedAt: "2026-10-08T14:20:00Z",
+      session: {
+        ...RUNNING.session,
+        interruption,
+        lastError: "Claude usage limit reached",
+        updatedAt: "2026-10-08T14:20:00Z",
+      },
+    }),
+  ]);
+  expect(overview.main?.session?.interruption).toEqual(interruption);
+  expect(overview.main?.session?.lastError).toBeNull();
+  expect(overview.main?.refusal).toMatchObject({ provider: "Claude", resetsAt: null });
+});
+
 it("HQ keeps a provider deadline after the scheduling pause clears", () => {
   const overview = overviewOf([
     shell("main", {
