@@ -1,4 +1,10 @@
-import type { ResourceTelemetryProcess, ResourceTelemetrySourceStatus } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import { collectionPresentation, type EnvironmentQueryView } from "../../state/query";
+import type {
+  ResourceTelemetryProcess,
+  ResourceTelemetrySourceStatus,
+  ResourceTelemetrySnapshot,
+} from "@t3tools/contracts";
 
 function processIdentityKey(process: ResourceTelemetryProcess): string {
   return `${process.identity.pid}:${process.identity.startTimeMs}`;
@@ -57,4 +63,23 @@ export function resourceHistoryCpuScaleMax(
   buckets: ReadonlyArray<{ readonly avgCpuPercent: number }>,
 ): number {
   return Math.max(1, ...buckets.map((bucket) => bucket.avgCpuPercent));
+}
+
+/** Starting retains the prior sample, but cannot prove a current empty collection. */
+export function resourceTelemetryProcessPresentation(
+  read: Pick<EnvironmentQueryView<ResourceTelemetrySnapshot>, "data" | "error" | "isPending">,
+) {
+  const native = read.data?.health.native;
+  return collectionPresentation(
+    {
+      ...read,
+      isPending:
+        read.isPending ||
+        native?.status === "starting" ||
+        (native !== undefined && Option.isNone(native.lastSampleAt)),
+    },
+    (data) => data.processes,
+    { loading: "Loading live processes...", unavailable: "Live processes unavailable." },
+    native ? Option.getOrNull(native.lastError) : null,
+  );
 }

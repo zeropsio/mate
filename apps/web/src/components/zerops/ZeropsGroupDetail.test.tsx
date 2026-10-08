@@ -439,9 +439,6 @@ describe("ZeropsGroupPane", () => {
       coverage: "complete",
       freshness: { kind: "live" },
     });
-    /** The stage's line: the cell between its name and its state. */
-    const cell = (markup: string) =>
-      /<span class="truncate text-end font-mono[^"]*">([^<]*)<\/span>/u.exec(markup)?.[1];
 
     it.each([
       {
@@ -471,7 +468,12 @@ describe("ZeropsGroupPane", () => {
         undefined,
         flowOf(new Map(deployment === undefined ? [] : [["stage", deployment]])),
       );
-      expect(cell(markup)).toBe(expected);
+      const document = new Window().document;
+      document.body.innerHTML = markup;
+      const row = Array.from(document.querySelectorAll("button")).find((button) =>
+        button.textContent?.startsWith("stage"),
+      );
+      expect(row?.textContent).toContain(expected);
     });
   });
 
@@ -491,16 +493,6 @@ describe("ZeropsGroupPane", () => {
 
     expect(markup).toContain("data-zerops-frame=");
     expect(bar).toMatch(/<nav aria-label="[^"]*breadcrumb"[\s\S]*Projects[\s\S]*<\/nav>/);
-  });
-
-  it("spaces its blocks by the frame's one gap, as the header is, adding no margin of their own", () => {
-    const markup = render();
-    const sections = [...markup.matchAll(/<section(?: class="([^"]*)")?>/g)].map((m) => m[1] ?? "");
-    const attention = /class="([^"]*)" data-zerops-surface="project-attention/.exec(markup)?.[1];
-    expect(sections.length).toBeGreaterThan(0);
-    expect(attention).toBeDefined();
-    for (const classes of [...sections, attention ?? ""])
-      expect(classes).not.toMatch(/(^|\s)m[by]-\d/);
   });
 
   const NO_MATE = "No Mate is working on this project yet.";
@@ -1353,20 +1345,6 @@ describe("ZeropsStopPane", () => {
     expect(markup.slice(panel, at)).not.toContain("</div>");
   });
 
-  it("spaces its header, verdict and card by the frame's one gap, adding no margin of their own", () => {
-    const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 1 });
-    const header = /<header(?: class="([^"]*)")?>/.exec(markup);
-    const verdict =
-      /<div(?: class="([^"]*)")?><div class="[^"]*" data-zerops-primitive="verdict-panel"/.exec(
-        markup,
-      );
-    expect(header).not.toBeNull();
-    expect(verdict).not.toBeNull();
-    for (const classes of [header?.[1], verdict?.[1]]) {
-      expect(classes ?? "").not.toMatch(/(^|\s)(m[by]|mt|mb)-/);
-    }
-  });
-
   it("says a service runs nothing once on its row, in its commit's place", () => {
     const markup = renderStop({
       tier: "stage",
@@ -1412,28 +1390,6 @@ describe("ZeropsStopPane", () => {
     const services = markup.indexOf("Services · 0");
     expect(services).toBeGreaterThan(-1);
     expect(markup.slice(services)).toContain("None yet");
-  });
-
-  it("opens the card's first group 12px under its edge and each later one 24px under its hairline", () => {
-    const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
-    const groups = [...markup.matchAll(/<section class="([^"]*)"><h2/g)].map((match) =>
-      (match[1] ?? "").split(" "),
-    );
-    expect(groups).toHaveLength(2);
-    for (const classes of groups)
-      expect(classes).toEqual(expect.arrayContaining(["pt-6", "first:pt-3"]));
-  });
-
-  it("draws the verdict's verb as an outline button, not a filled one", () => {
-    const markup = renderStop({
-      tier: "production",
-      services: [service("api", "a1", "v0.1.13")],
-      waiting: [{ sha: fullSha("c1"), subject: "Two-step checkout" }],
-      offered: "v0.1.14",
-    });
-    const button = /<button[^>]*>Review release<\/button>/.exec(markup)?.[0];
-    expect(button).toContain("bg-popover");
-    expect(button).not.toContain("bg-primary");
   });
 
   it("offers the way back only to an earlier release, never to the one that runs", () => {

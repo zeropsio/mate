@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- disposable Core loopback socket receipts.
-import { HqStreamMessage, HqStreamRequest } from "@t3tools/shared/hqStream";
+import { HqStreamMessage, HqStreamRequest, type HqScope } from "@t3tools/shared/hqStream";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -18,6 +18,7 @@ export const openScenarioNavigation = (
   ticket: string,
   ready: (message: HqStreamMessage) => boolean = (message) =>
     message.type === "scope-ready" && message.scope.kind === "navigation",
+  scope: HqScope = { kind: "navigation" },
 ) =>
   Effect.gen(function* () {
     const socket = yield* Effect.acquireRelease(
@@ -35,7 +36,7 @@ export const openScenarioNavigation = (
             socket.send(
               encodeRequest({
                 type: "subscribe",
-                scopes: [{ scope: { kind: "navigation" } }],
+                scopes: [{ scope }],
               }),
             ),
           );

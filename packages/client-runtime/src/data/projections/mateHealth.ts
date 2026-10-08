@@ -1,4 +1,4 @@
-import type { MateHealth } from "@t3tools/contracts";
+import { sustainedPressureLevel, type MateHealth } from "@t3tools/contracts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
@@ -41,8 +41,6 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
   equals: sameValue,
 };
 
-const gigabytes = (bytes: number) => `${Number((bytes / 1024 ** 3).toFixed(2))} GB`;
-
 /** Presentation names measured pressure and constraints, never an inferred allocation failure. */
 export function mateHealthCopy(
   name: string,
@@ -56,42 +54,24 @@ export function mateHealthCopy(
   if (health === null || health.evidence.status !== "strained") return null;
   const evidence = health.evidence;
   const memory = evidence.memory;
-  // Re-evaluate retained reports: old resource flags and severity included usage
-  // above high and static full swap. Disk exhaustion and I/O can occur together.
+  // Raw sampler flags also describe routine autoscaling signals. Notices require
+  // sustained work stalls or a new OOM kill, including when reading older reports.
   const memoryStrained =
-    memory !== null &&
-    (memory.growth.high > 0 ||
-      (memory.growth.max ?? 0) > 0 ||
-      memory.growth.oom > 0 ||
-      memory.growth.oomKill > 0 ||
-      (memory.swapGrowth ?? 0) > 0 ||
-      (memory.pressure?.some.avg10 ?? 0) > 0);
+    memory !== null && (memory.growth.oomKill > 0 || sustainedPressureLevel(memory.pressure) >= 1);
   const resources: Array<"memory" | "disk" | "io" | "cpu"> = [];
   if (memoryStrained) resources.push("memory");
   if (evidence.disk?.free === 0) resources.push("disk");
-  if ((evidence.io?.some.avg10 ?? 0) > 0) resources.push("io");
-  if (evidence.cpu?.window?.saturated === true) resources.push("cpu");
-  const swapFull =
-    memoryStrained &&
-    memory !== null &&
-    memory.swapMax !== null &&
-    memory.swapMax > 0 &&
-    memory.swapCurrent !== null &&
-    memory.swapCurrent >= memory.swapMax;
+  if (sustainedPressureLevel(evidence.io) >= 1) resources.push("io");
+  if (evidence.cpu?.window?.saturated === true && sustainedPressureLevel(evidence.cpu) >= 1)
+    resources.push("cpu");
   const severity =
-    evidence.disk?.free === 0 ||
-    (memoryStrained &&
-      memory !== null &&
-      (memory.growth.oom > 0 || memory.growth.oomKill > 0 || swapFull))
-      ? "critical"
-      : "warning";
+    evidence.disk?.free === 0 || (memory?.growth.oomKill ?? 0) > 0 ? "critical" : "warning";
   if (resources.length === 0) return null;
-  const cap = evidence.memory?.max ?? null;
   const prefix = live ? name : `${name} · last-known health`;
   const resource = resources[0];
   const title =
     resource === "memory"
-      ? `${prefix} is under memory pressure${cap !== null ? ` — the container is capped at ${gigabytes(cap)}` : ""}`
+      ? `${prefix} is short of memory — work may be slow`
       : resource === "disk"
         ? `${prefix} has no free space on its state disk`
         : resource === "io"
@@ -99,32 +79,9 @@ export function mateHealthCopy(
           : `${prefix} is under CPU pressure`;
   const actions = resources.flatMap((resource) =>
     resource === "memory"
-      ? (() => {
-          const memory = evidence.memory!;
-          return [
-            ...(memory.high !== null
-              ? [`Memory reclaim threshold: ${gigabytes(memory.high)}.`]
-              : []),
-            ...(memory.growth.high > 0
-              ? [
-                  "The kernel reports memory reclaim within the container hierarchy since the preceding sample.",
-                ]
-              : []),
-            ...((memory.growth.max ?? 0) > 0
-              ? [
-                  "The kernel reports hard memory limit hits within the container hierarchy since the preceding sample.",
-                ]
-              : []),
-            ...((memory.pressure?.some.avg10 ?? 0) > 0
-              ? ["The kernel reports recent memory stalls."]
-              : []),
-            ...((memory.swapGrowth ?? 0) > 0 ? ["Container swap use is growing."] : []),
-            ...(memory.growth.oom > 0
-              ? ["The kernel reported an out-of-memory allocation since the preceding sample."]
-              : []),
-            "Close idle terminal agents or the IDE in the container, or raise RAM in Zerops.",
-          ];
-        })()
+      ? [
+          "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
+        ]
       : resource === "disk"
         ? ["Free space on the Mate's state disk."]
         : resource === "io"
@@ -149,8 +106,5 @@ export function mateHealthCopy(
   );
   if (!live)
     actions.push(`Last measured ${health.sampledAt}. The Mate's current resources are unknown.`);
-  if (evidence.memory?.growth.oomKill)
-    actions.push("The kernel killed a process for lack of memory since the preceding sample.");
-  if (swapFull) actions.push("Container swap is full.");
   return { severity, title, description: actions.join(" ") };
 }

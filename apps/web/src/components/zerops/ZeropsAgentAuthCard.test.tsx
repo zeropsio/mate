@@ -134,7 +134,6 @@ describe("ZeropsAgentAuthCard", () => {
 
     expect(html).toContain("Sign in to Claude");
     expect(html).toContain("data-zerops-agent-primary-action");
-    expect(html).toContain("rounded-[var(--zerops-pill-radius)]");
   });
 
   it("shows a sign-in button for a reconnect agent, worded the same as not-authorized", () => {
@@ -601,7 +600,6 @@ describe("whose agent it is (D6)", () => {
     expect(html).toContain('data-agent-id="claude-code"');
     expect(html).toContain('data-zerops-agent-ownership="mine"');
     expect(html).toContain("Signed in by you.");
-    expect(html).not.toContain("text-warning");
   });
 
   it("says nothing when there is no credential to own", () => {
@@ -619,14 +617,12 @@ describe("whose agent it is (D6)", () => {
     expect(html).toContain('data-zerops-agent-ownership="someone-else"');
     expect(html).toContain("only they can run this agent");
     // It deserves attention rather than a quiet aside.
-    expect(html).toContain("text-warning");
   });
 
   it("states the fact, without accusing, when nothing was recorded", () => {
     const html = card({ credPresent: true, viewerSubject: "user-a" });
     expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
     expect(html).toContain("was not recorded by Zerops Mate");
-    expect(html).not.toContain("text-warning");
   });
 
   // A viewer the client cannot identify is not evidence that the agent

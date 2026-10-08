@@ -1,3 +1,6 @@
+"use client";
+
+import { baseRefPresentation } from "./DiffPanel.logic";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import { useAtomValue } from "@effect/atom-react";
 import type { FileDiffContentsLoader } from "@pierre/diffs";
@@ -85,7 +88,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
 import { reviewEnvironment } from "../state/review";
 import { vcsEnvironment } from "../state/vcs";
-import { buildBaseRefChoices, filterBaseRefChoices } from "../lib/baseRefChoices";
+import { filterBaseRefChoices } from "../lib/baseRefChoices";
 import { createGitDiffFileContentsLoader } from "../lib/diffFileContents";
 
 type DiffThemeType = "light" | "dark";
@@ -417,10 +420,17 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         })
       : null,
   );
-  const baseRefChoices = buildBaseRefChoices(
-    localBranchRefs.data?.refs.filter((ref) => ref.name !== selectedGitSource?.headRef) ?? [],
-    remoteBranchRefs.data?.refs ?? [],
+  const refreshGitDiff = () => {
+    refreshBranchDiffPreview();
+    localBranchRefs.refresh();
+    remoteBranchRefs.refresh();
+  };
+  const refPresentation = baseRefPresentation(
+    localBranchRefs,
+    remoteBranchRefs,
+    selectedGitSource?.headRef,
   );
+  const baseRefChoices = refPresentation.choices;
   const matchingBaseRefChoices = filterBaseRefChoices(baseRefChoices, baseRefQuery);
   const valueForBaseRefChoice = (choice: (typeof baseRefChoices)[number]) =>
     selectedBaseRef && selectedBaseRef === choice.remote?.name
@@ -692,7 +702,22 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                     <span className="text-right">Remote</span>
                   </div>
                 </div>
-                <ComboboxEmpty>No matching refs.</ComboboxEmpty>
+                {refPresentation.message ? (
+                  <p role="status">
+                    {refPresentation.message}
+                    {refPresentation.retained && baseRefChoices.length > 0
+                      ? " Showing last-known refs."
+                      : null}
+                    {refPresentation.canRetry ? (
+                      <Button size="xs" variant="outline" onClick={refreshGitDiff}>
+                        Refresh diff
+                      </Button>
+                    ) : null}
+                  </p>
+                ) : null}
+                {refPresentation.emptyMessage ? (
+                  <ComboboxEmpty>{refPresentation.emptyMessage}</ComboboxEmpty>
+                ) : null}
                 <ComboboxList className="max-h-64 min-w-0 overflow-x-hidden">
                   <ComboboxItem
                     className="w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)]"
@@ -779,7 +804,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                   size="icon-sm"
                   variant="ghost"
                   aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
-                  onClick={refreshBranchDiffPreview}
+                  onClick={refreshGitDiff}
                 />
               }
             >

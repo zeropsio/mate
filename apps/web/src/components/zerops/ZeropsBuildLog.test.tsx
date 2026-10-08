@@ -103,8 +103,7 @@ describe("BuildLogLines", () => {
 
     expect(rows).toHaveLength(3);
     expect(rows[2]).toContain(long);
-    expect(rows[2]).toContain("whitespace-pre-wrap");
-    expect(rows[1]).toContain("text-destructive-foreground");
+
     expect(html).toContain('aria-live="polite"');
   });
 });

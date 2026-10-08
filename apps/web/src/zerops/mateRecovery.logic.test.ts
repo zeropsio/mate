@@ -1,21 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { expiredAgentNotice, recoveryNotice } from "./mateRecovery.logic";
-
-it.each(["unknown", "authenticated", "unauthenticated"] as const)(
-  "only a proved failed provider login asks for sign-in (%s)",
-  (providerAuth) => {
-    const words = expiredAgentNotice(
-      { credPresent: true, state: "authorized", providerAuth },
-      "Wren",
-      "Codex",
-    );
-    expect(words).toBe(
-      providerAuth === "unauthenticated"
-        ? "Wren's Codex login no longer works. Sign in again to continue."
-        : null,
-    );
-  },
-);
+import { recoveryNotice } from "./mateRecovery.logic";
 
 describe("Mate recovery evidence", () => {
   it.each([

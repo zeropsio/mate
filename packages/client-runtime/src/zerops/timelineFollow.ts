@@ -104,10 +104,8 @@ const TIMELINE_JUMP_PX = 40;
 
 /**
  * Whether the list jumped up since the last read by something other than its
- * content changing — find in page, a fragment link, focus moving into an
- * earlier control, an autoscroll — none of which the person's scroll session
- * sees. The list re-anchoring as rows change or the view shrinks moves it a
- * few pixels, or as far as the content changed: never a jump.
+ * content changing. The end-motion owner attributes observed browser clamps
+ * before this verdict; concurrent growth alone cannot disprove navigation.
  */
 export function jumpedAway(input: {
   readonly previous: TimelineScrollReading | null;

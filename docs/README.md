@@ -1,6 +1,6 @@
-# T3 Code docs
+# Zerops Mate docs
 
-## Using T3 Code
+## Using Zerops Mate
 
 - [Install and first run](./user/install.md)
 - [Permission modes](./user/permission-modes.md)
@@ -13,16 +13,17 @@
 - [Keeping app and server in sync](./user/updating.md)
 - [Source control integrations](./user/source-control.md)
 - [Background service (Linux)](./user/background-service.md)
-- Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md) · [OpenCode](./user/providers-opencode.md)
-
-Mobile app: [apps/mobile/README.md](../apps/mobile/README.md)
+- Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md)
 
 ---
 
-## Working on T3 Code
+## Working on Zerops Mate
 
 Everything below is for maintainers. Setup lives in the [root README](../README.md);
 policy in [CONTRIBUTING.md](../CONTRIBUTING.md); agent rules in [AGENTS.md](../AGENTS.md).
+
+This fork does not publish desktop or mobile clients. For mobile source development, see
+[apps/mobile/README.md](../apps/mobile/README.md).
 
 - [Architecture overview](./internals/overview.md)
 - [Workspace layout](./internals/workspace-layout.md)

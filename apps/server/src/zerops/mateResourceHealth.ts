@@ -4,7 +4,11 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeFS from "node:fs";
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
-import type { MateResourceHealth, ResourcePressure } from "@t3tools/contracts";
+import {
+  sustainedPressureLevel,
+  type MateResourceHealth,
+  type ResourcePressure,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
@@ -16,7 +20,9 @@ const growing = (value: number, previous: number | undefined) =>
 // PSI avg10 is the percentage of recent time tasks stalled on this resource. Any
 // positive value is measured stall time, not an allocation/usage threshold.
 // https://docs.kernel.org/accounting/psi.html
-const stalled = (psi: ResourcePressure | null) => psi !== null && psi.some.avg10 > 0;
+const stalled = (psi: ResourcePressure | null) =>
+  psi !== null &&
+  (psi.some.avg10 > 0 || (psi.full?.avg10 ?? 0) > 0 || sustainedPressureLevel(psi) >= 1);
 
 /** Read the visible hierarchy: ancestor limits include sibling/container work, not only Mate's unit. */
 export async function readResourceHealth(
@@ -92,7 +98,10 @@ export async function readResourceHealth(
     known
       .map((memory) => memory.pressure)
       .filter((value) => value !== null)
-      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
+      .toSorted(
+        (a, b) =>
+          sustainedPressureLevel(b) - sustainedPressureLevel(a) || b.some.avg10 - a.some.avg10,
+      )[0] ?? null;
   const memory =
     container === undefined
       ? null
@@ -143,7 +152,10 @@ export async function readResourceHealth(
   const io =
     ioReadings
       .filter((value) => value !== undefined)
-      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
+      .toSorted(
+        (a, b) =>
+          sustainedPressureLevel(b) - sustainedPressureLevel(a) || b.some.avg10 - a.some.avg10,
+      )[0] ?? null;
   const cpu = cpuRead.cpu;
   for (const file of cpuRead.unavailable) unavailable.add(file);
   if (cgroups.length === 0) unavailable.add("cgroup-v2");

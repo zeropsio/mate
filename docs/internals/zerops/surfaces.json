@@ -698,9 +698,8 @@
     },
     {
       "id": "zerops-lifecycle-strip",
-      "title": "Zerops lifecycle strip",
+      "title": "Mate arrival",
       "components": [
-        "apps/web/src/components/zerops/ZeropsLifecycleStrip.tsx",
         "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
         "packages/client-runtime/src/zerops/strip.ts"
       ],
@@ -735,7 +734,6 @@
         "none": "No docs/user page documents the Zerops lifecycle strip yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsLifecycleStrip.test.tsx",
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
         "packages/client-runtime/src/zerops/strip.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
@@ -1956,10 +1954,70 @@
       "docs": "docs/user/zerops-account.md",
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
-        "apps/web/src/routes/-chatIndexTitlebar.test.ts",
         "apps/mobile/src/features/connection/pairing.test.ts"
       ],
       "untested": "Native pairing source is retained but is not reachable from the dormant native entry. Released web has no manual connection flow.",
+      "captures": []
+    },
+    {
+      "id": "agent-admission",
+      "title": "Agent sign-in admission",
+      "components": [
+        "packages/client-runtime/src/data/projections/agentAdmission.ts",
+        "packages/client-runtime/src/data/index.ts",
+        "apps/web/src/routes/__root.tsx",
+        "apps/web/src/zerops/AgentAdmissionComposition.tsx",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
+        "apps/web/src/components/chat/ThreadErrorBanner.tsx",
+        "apps/web/src/components/chat/ProviderStatusBanner.tsx",
+        "apps/web/src/components/zerops/MateStatusMarker.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+        "apps/web/src/zerops/mateStatus.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation input"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Mate summary"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Mobile later: native admission remains on its current path."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Sign in",
+          "reverse": "Sign out"
+        },
+        {
+          "action": "Sign out",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Open admission summary",
+          "reverse": "none: Focuses the explanation in the conversation."
+        }
+      ],
+      "docs": {
+        "none": "Admission behavior is protected by consumed-record tests."
+      },
+      "tests": [
+        "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+        "apps/web/src/components/chat/ThreadErrorBanner.test.tsx",
+        "packages/client-runtime/src/data/projections/agentAdmission.test.ts"
+      ],
       "captures": []
     }
   ]

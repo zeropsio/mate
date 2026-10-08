@@ -244,15 +244,11 @@ export class MateEngineFake {
     });
   }
 
-  /** The agent starts a run of its own, joining the last: its engine id. */
-  startRun(): string {
+  /** The agent starts a run; its caller names the continuation, or null for a separate turn. */
+  startRun(joins: string | null): string {
     return this.commit((change) => {
       this.openSession(change);
-      return this.openRun(
-        change,
-        { kind: "wake", cause: "self", wakeId: null },
-        [...this.runs.values()].at(-1)?.id ?? null,
-      );
+      return this.openRun(change, { kind: "wake", cause: "self", wakeId: null }, joins);
     });
   }
 

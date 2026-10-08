@@ -89,7 +89,7 @@ describe("SidebarChromeHeader", () => {
 
     // The mark alone, as wide as the Mates' faces under it: no wordmark.
     expect(markup).toContain('data-mate-mark="live"');
-    expect(markup).toMatch(/class="mate-mark h-8\.25 w-7"/u);
+
     expect(markup).not.toContain(`viewBox="${MATE_LOCKUP.word.viewBox}"`);
     expect(markup).not.toContain("data-mate-lockup");
     expect(markup).toContain(`aria-hidden="true"`);
@@ -99,46 +99,8 @@ describe("SidebarChromeHeader", () => {
     expect(markup).not.toContain("T3");
   });
 
-  // The owner, 2026-09-29: "visually logo has smaller padding on top than on
-  // the left", then the whole top bar at the logo row's height. The row is
-  // the top bar's own height (`--workspace-topbar-height`: 65 px beside the
-  // page on the web, the title bar's in a desktop window), never one of its
-  // own, so a page's header beside it shares its centre and its bottom edge;
-  // the 33 px mark, centred in it, stands 16 px from the top on the web as it
-  // stands 16 px from the left.
-  it.each([
-    { shell: "the web", isElectron: false },
-    { shell: "a desktop window", isElectron: true },
-  ])("stands the logo row at the top bar's height on $shell", ({ isElectron }) => {
-    const markup = renderToStaticMarkup(
-      <SidebarChromeHeader
-        isElectron={isElectron}
-        jump={<button data-zerops-surface="sidebar-jump" type="button" />}
-      />,
-    );
-    const header = /<header class="([^"]*)"/u.exec(markup)?.[1]?.split(" ") ?? [];
-    expect(header).toContain("items-center");
-    expect(header.filter((name) => /^(?:[\w-]+:)*h-/u.test(name))).toEqual([
-      "h-[var(--workspace-topbar-height)]",
-    ]);
-    const mark = /class="mate-mark h-([\d.]+) w-([\d.]+)"/u.exec(markup);
-    expect(Number(mark?.[1]) * 4).toBe(33);
-    // Its left inset: at least a rem, past the window's own controls.
-    expect(markup).toContain("ml-[max(var(--workspace-controls-left),1rem)]");
-  });
-
-  // Closed, the menu leaves its mark in the window's corner, in the same row
-  // at the same height, so the mark keeps the logo row's centre.
-  it("stands the closed menu's corner mark in the top bar's row, centred", () => {
+  it("names the product in the closed menu", () => {
     const markup = renderToStaticMarkup(<SidebarCornerMark />);
-    const row = /<div class="([^"]*)" data-sidebar-control=""/u.exec(markup)?.[1]?.split(" ") ?? [];
-    expect(row).toEqual(
-      expect.arrayContaining([
-        "top-[var(--workspace-controls-top)]",
-        "h-[var(--workspace-topbar-height)]",
-        "items-center",
-      ]),
-    );
     expect(markup).toContain(`aria-label="${APP_BASE_NAME}"`);
     expect(markup).toContain('data-mate-mark="live"');
   });

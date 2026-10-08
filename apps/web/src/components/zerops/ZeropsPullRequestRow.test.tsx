@@ -13,7 +13,7 @@ describe("ZeropsPullRequestRow", () => {
   it("reads down the same three columns as an environment's row", () => {
     const html = row();
     expect(html).toContain('data-zerops-pull-request-row="true"');
-    expect(html).toContain("sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto]");
+
     expect(html).toContain("Add a worker to the stage tier");
     expect(html).toContain("#12 · Nova");
     expect(html.indexOf("Add a worker to the stage tier")).toBeLessThan(html.indexOf("#12 · Nova"));

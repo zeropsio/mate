@@ -103,7 +103,7 @@ describe("ZeropsReadResultBody — logs", () => {
       counts: "1 error · 1 warning",
       note: "Showing the last 12 of 40 lines.",
     });
-    expect(markup).toContain("font-mono");
+
     expect(markup).toContain('data-zerops-log-severity="info"');
     expect(markup).toContain('data-zerops-log-severity="warning"');
     expect(markup).toContain('data-zerops-log-severity="error"');

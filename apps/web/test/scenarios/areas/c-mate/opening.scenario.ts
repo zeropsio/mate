@@ -25,59 +25,111 @@ describe("C: the conversation opening follows readiness", () => {
           yield* s.given.project("Ada", { mate: true });
           const chat = mateChat(s);
           const wire = chat.fixture("Sage");
+          const conversationSelector = "[data-chat-column-maximized-away]";
+          const openingFinished = (name: string) =>
+            Effect.promise(() =>
+              s.page.waitForFunction(
+                (name, conversationSelector) => {
+                  const column = document.querySelector(conversationSelector);
+                  const body = column?.querySelector(
+                    "[data-conversation-content]:not([data-kept-timeline] *)",
+                  );
+                  return (
+                    location.pathname === `/env-${name}/thread-${name}` &&
+                    Boolean(
+                      column?.querySelector(
+                        '[data-conversation-avatar] [data-opening-actor="complete"]',
+                      ),
+                    ) &&
+                    body !== null &&
+                    body !== undefined &&
+                    getComputedStyle(body).opacity === "1"
+                  );
+                },
+                {},
+                name,
+                conversationSelector,
+              ),
+            );
           wire.holdReplay = true;
           const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
           yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
           yield* s.given.signedIn;
           yield* chat.when.openReadOnly("Sage");
           yield* Effect.promise(() => read.requested());
-          yield* Effect.promise(() =>
-            s.page.waitForSelector('[data-conversation-opening="waiting"]'),
+          const stage = yield* Effect.promise(() =>
+            s.page.waitForSelector(
+              '[data-chat-workspace-drop-target] [data-conversation-opening="waiting"]',
+            ),
           );
           yield* Effect.promise(() =>
-            s.page.evaluate(() => {
-              const samples: Array<{
-                phase: string | undefined;
-                bodyOpacity: string | undefined;
-                faces: number;
-                transform: string | undefined;
-              }> = [];
-              Reflect.set(window, "emptyOpeningSamples", samples);
-              const sample = () => {
-                const column = document.querySelector("[data-chat-workspace-drop-target]");
-                const phase = column?.querySelector<HTMLElement>("[data-conversation-opening]")
-                  ?.dataset.conversationOpening;
-                const body = column?.querySelector("[data-conversation-content]");
-                const actor = column?.querySelector("[data-opening-actor]");
-                const visible = (face: Element) => {
-                  for (let node: Element | null = face; node !== null; node = node.parentElement) {
-                    const style = getComputedStyle(node);
-                    if (
-                      style.opacity === "0" ||
-                      style.visibility === "hidden" ||
-                      node.hasAttribute("inert")
-                    )
-                      return false;
-                  }
-                  return face.getBoundingClientRect().width > 0;
+            s.page.evaluate(
+              (stage, conversationSelector) => {
+                const samples: Array<{
+                  phase: string | undefined;
+                  bodyOpacity: string | undefined;
+                  faces: number;
+                  transform: string | undefined;
+                }> = [];
+                Reflect.set(window, "emptyOpeningSamples", samples);
+                const column = stage?.closest("[data-chat-workspace-drop-target]");
+                // The complete face lands in the header, outside the timeline column.
+                const conversation = stage?.closest(conversationSelector);
+                const sample = () => {
+                  const phase = stage?.getAttribute("data-conversation-opening") ?? undefined;
+                  const body = column?.querySelector(
+                    "[data-conversation-content]:not([data-kept-timeline] *)",
+                  );
+                  const actor = conversation?.querySelector("[data-opening-actor]");
+                  const visible = (face: Element) => {
+                    for (
+                      let node: Element | null = face;
+                      node !== null;
+                      node = node.parentElement
+                    ) {
+                      const style = getComputedStyle(node);
+                      if (
+                        style.opacity === "0" ||
+                        style.visibility === "hidden" ||
+                        node.hasAttribute("inert")
+                      )
+                        return false;
+                    }
+                    return face.getBoundingClientRect().width > 0;
+                  };
+                  samples.push({
+                    phase,
+                    bodyOpacity: body ? getComputedStyle(body).opacity : undefined,
+                    faces: [
+                      ...(conversation?.querySelectorAll("[data-mate-face-state]") ?? []),
+                    ].filter(visible).length,
+                    transform: actor ? getComputedStyle(actor).transform : undefined,
+                  });
+                  if (phase !== "complete") requestAnimationFrame(sample);
                 };
-                samples.push({
-                  phase,
-                  bodyOpacity: body ? getComputedStyle(body).opacity : undefined,
-                  faces: [...(column?.querySelectorAll("[data-mate-face-state]") ?? [])].filter(
-                    visible,
-                  ).length,
-                  transform: actor ? getComputedStyle(actor).transform : undefined,
-                });
                 requestAnimationFrame(sample);
-              };
-              requestAnimationFrame(sample);
-            }),
+              },
+              stage,
+              conversationSelector,
+            ),
+          );
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              () =>
+                (Reflect.get(window, "emptyOpeningSamples") as Array<{ phase?: string }>).length >
+                0,
+            ),
           );
           read.release();
+          yield* Effect.promise(() => wire.replaySubscribed());
           wire.ready();
+          // DOM completion can precede the sampler's next frame; consume its own receipt.
           yield* Effect.promise(() =>
-            s.page.waitForSelector('[data-conversation-opening="complete"]'),
+            s.page.waitForFunction(
+              () =>
+                (Reflect.get(window, "emptyOpeningSamples") as Array<{ phase?: string }>).at(-1)
+                  ?.phase === "complete",
+            ),
           );
           const samples = yield* Effect.promise(() =>
             s.page.evaluate(
@@ -90,6 +142,8 @@ describe("C: the conversation opening follows readiness", () => {
                 }>,
             ),
           );
+          expect(samples[0]?.phase).toBe("waiting");
+          expect(samples.at(-1)?.phase).toBe("complete");
           expect(
             samples
               .filter(
@@ -110,37 +164,25 @@ describe("C: the conversation opening follows readiness", () => {
           ).toBe(true);
           yield* chat.when.openReadOnly("Ada");
           yield* chat.then.ready("Ada");
+          yield* openingFinished("Ada");
           yield* Effect.promise(() =>
-            s.page.waitForFunction(() => {
-              const body = document.querySelector(
-                "[data-chat-workspace-drop-target] [data-conversation-content]",
-              );
-              return body !== null && getComputedStyle(body).opacity === "1";
-            }),
-          );
-          yield* Effect.promise(() =>
-            s.page.evaluate(() => {
+            s.page.evaluate((conversationSelector) => {
               const phases: string[] = [];
               Reflect.set(window, "warmOpeningPhases", phases);
               const sample = () => {
-                const phase = document.querySelector<HTMLElement>("[data-conversation-opening]")
+                const phase = document
+                  .querySelector(conversationSelector)
+                  ?.querySelector<HTMLElement>("[data-conversation-opening]")
                   ?.dataset.conversationOpening;
                 if (phase) phases.push(phase);
                 requestAnimationFrame(sample);
               };
               requestAnimationFrame(sample);
-            }),
+            }, conversationSelector),
           );
           yield* chat.when.openReadOnly("Sage");
           yield* chat.then.ready("Sage");
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(() => {
-              const body = document.querySelector(
-                "[data-chat-workspace-drop-target] [data-conversation-content]",
-              );
-              return body !== null && getComputedStyle(body).opacity === "1";
-            }),
-          );
+          yield* openingFinished("Sage");
           const phases = yield* Effect.promise(() =>
             s.page.evaluate(() => Reflect.get(window, "warmOpeningPhases") as string[]),
           );

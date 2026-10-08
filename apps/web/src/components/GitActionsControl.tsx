@@ -1,3 +1,6 @@
+"use client";
+
+import { changedFilesPresentation } from "./GitActionsControl.logic";
 import { useAtomValue } from "@effect/atom-react";
 import { type ScopedThreadRef } from "@t3tools/contracts";
 import {
@@ -1123,7 +1126,8 @@ export default function GitActionsControl({
   const hasPrimaryRemote = gitStatus?.hasPrimaryRemote ?? false;
   const gitStatusForActions = gitStatus;
 
-  const allFiles = gitStatusForActions?.workingTree.files ?? [];
+  const filesPresentation = changedFilesPresentation(gitStatusQuery);
+  const allFiles = filesPresentation.files;
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
   const allSelected = excludedFiles.size === 0;
   const noneSelected = selectedFiles.length === 0;
@@ -1953,8 +1957,18 @@ export default function GitActionsControl({
                     </Button>
                   )}
                 </div>
-                {!gitStatusForActions || allFiles.length === 0 ? (
-                  <p className="font-medium">none</p>
+                {filesPresentation.message ? (
+                  <p role="status">
+                    {filesPresentation.message}
+                    {filesPresentation.retained && allFiles.length > 0
+                      ? " Showing last-known files."
+                      : null}
+                  </p>
+                ) : null}
+                {allFiles.length === 0 ? (
+                  filesPresentation.emptyMessage ? (
+                    <p className="font-medium">{filesPresentation.emptyMessage}</p>
+                  ) : null
                 ) : (
                   <div className="space-y-2">
                     <div className="h-44 rounded-lg bg-card ring-1 ring-black/5 dark:bg-white/[0.025] dark:ring-white/5">

@@ -1,3 +1,6 @@
+import { useZeropsAgentAuth } from "./useZeropsFeeds";
+import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import { zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 /**
  * The sign-in wherever it is started outside the Mate's own view — the chat header's band, the
  * model picker's per-agent panels, the Crew tab's lock: the one sign-in module
@@ -23,24 +26,38 @@ export function useZeropsAgentSignInDialog(
   environmentId: EnvironmentId | null,
   threadRef: ScopedThreadRef | null,
 ): {
-  readonly openFor: (agentId: ZeropsAgentId) => void;
+  readonly openFor: (agentId: ZeropsAgentId, loginId?: string) => void;
   readonly dialog: ReactNode;
 } {
   const directory = useZeropsMateDirectory();
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
   const [openAgentId, setOpenAgentId] = useState<ZeropsAgentId | null>(null);
 
-  const openFor = useCallback((agentId: ZeropsAgentId) => {
+  const [openLoginId, setOpenLoginId] = useState<string | undefined>();
+  const snapshot = zeropsAgentAuthView(useZeropsAgentAuth(environmentId)).snapshot;
+  const login = snapshot?.logins?.find((row) => row.id === openLoginId && !row.default);
+  const openFor = useCallback((agentId: ZeropsAgentId, loginId?: string) => {
     setOpenAgentId(agentId);
+    setOpenLoginId(loginId);
   }, []);
   const close = useCallback(() => {
     setOpenAgentId(null);
   }, []);
 
   const dialog =
-    openAgentId === null ? null : (
+    openAgentId === null || (openLoginId !== undefined && login === undefined) ? null : (
       <ZeropsAgentSignInDialog
         agentId={openAgentId}
+        login={
+          login === undefined
+            ? null
+            : {
+                id: login.id,
+                agentId: login.agent,
+                title: zeropsLoginTitle(login),
+                login: login.login,
+              }
+        }
         environmentId={environmentId}
         mateName={whoLivesHere?.kind === "mate" ? whoLivesHere.mate.name : null}
         onClose={close}

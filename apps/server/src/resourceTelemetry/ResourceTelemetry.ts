@@ -1,3 +1,4 @@
+import { ResourceTelemetryHistoryReadFailed } from "@t3tools/contracts";
 import type {
   DesktopHostTelemetrySnapshot,
   HostPowerSnapshot,
@@ -16,7 +17,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -65,7 +65,10 @@ export class ResourceTelemetry extends Context.Service<
     >;
     readonly readHistory: (
       input: ResourceTelemetryHistoryInput,
-    ) => Effect.Effect<ResourceTelemetryHistoryWithLegacyBuckets>;
+    ) => Effect.Effect<
+      ResourceTelemetryHistoryWithLegacyBuckets,
+      ResourceTelemetryHistoryReadFailed
+    >;
     readonly refresh: Effect.Effect<ResourceTelemetrySnapshot, ResourceTelemetryRefreshFailed>;
     readonly validateProcessIdentity: (
       identity: ResourceTelemetryProcessIdentity,
@@ -416,14 +419,13 @@ export const make = Effect.fn("resourceTelemetry.resourceTelemetry.make")(functi
     Effect.gen(function* () {
       const readAt = yield* DateTime.now;
       const normalizedInput = normalizeResourceTelemetryHistoryInput(input);
-      const historyResult = yield* Effect.result(
-        nativeClient.readHistory(normalizedInput.windowMs),
-      );
-      if (Result.isFailure(historyResult)) {
-        yield* Effect.logWarning("Failed to read native resource telemetry history", {
-          cause: historyResult.failure.message,
-        });
-      }
+      const snapshots = yield* nativeClient
+        .readHistory(normalizedInput.windowMs)
+        .pipe(
+          Effect.mapError(
+            (cause) => new ResourceTelemetryHistoryReadFailed({ message: cause.message }),
+          ),
+        );
       const [nativeHealth, desktopHealth] = yield* Effect.all([
         nativeClient.health,
         desktopReceiver.health,
@@ -437,7 +439,7 @@ export const make = Effect.fn("resourceTelemetry.resourceTelemetry.make")(functi
         serverPid: process.pid,
         sidecarPid: Option.map(nativeHealth.hello, (hello) => hello.sidecarPid),
         desktopSnapshot: current.desktopSnapshot,
-        snapshots: Result.isSuccess(historyResult) ? historyResult.success : [],
+        snapshots,
         health: buildHealth({
           native: nativeHealth,
           desktop: desktopHealth,

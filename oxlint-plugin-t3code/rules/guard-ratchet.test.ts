@@ -11,7 +11,7 @@ const check = (assertion: string) => {
       "-e",
       `
     import { strict as assert } from "node:assert";
-    import { checkGuardExceptions, ratchetAdditions, RATCHET_RULES, loadRatchetBaseline } from ${JSON.stringify(script)};
+    import { checkGuardExceptions, ratchetAdditions, RATCHET_RULES, loadRatchetBaseline, ADMISSION_POLICY_BOOTSTRAP } from ${JSON.stringify(script)};
     import * as Effect from "effect/Effect";
     import * as fs from "node:fs";
     import { execFileSync } from "node:child_process";
@@ -32,6 +32,59 @@ const check = (assertion: string) => {
 };
 
 describe("identity multiset ratchet", () => {
+  it.each([
+    "no-infinite-motion",
+    "no-legacy-vocabulary",
+    "require-static-classes",
+    "no-unknown-classes",
+    "no-restyle",
+    "no-arbitrary-values",
+    "no-theme-escape-hatches",
+  ])("%s exceptions may only shrink and its empty ledger remains required", (rule) =>
+    check(`
+    const rule = ${JSON.stringify(rule)};
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "design-ratchet-"));
+    const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    try {
+      git("init", "-b", "main");
+      git("config", "user.name", "Guard fixture"); git("config", "user.email", "fixture@example.invalid");
+      const ledgers = path.join(directory, "oxlint-plugin-t3code", "exceptions"); fs.mkdirSync(ledgers, { recursive: true });
+      for (const name of new Set([...RATCHET_RULES, rule])) fs.writeFileSync(path.join(ledgers, name + ".json"), "[]");
+      const ledger = path.join(ledgers, rule + ".json");
+      const other = { ...entry, fingerprint: "request" };
+      fs.writeFileSync(ledger, JSON.stringify([entry, other]));
+      git("add", "."); git("commit", "-m", "design baseline");
+      const baseline = loadRatchetBaseline(directory, "HEAD");
+      for (const [label, entries, expectedAdditions] of [
+        ["unchanged", [entry, other], 0],
+        ["removal", [entry], 0],
+        ["new identity", [entry, other, { ...entry, fingerprint: "added" }], 1],
+        ["same-count swap", [entry, { ...other, fingerprint: "replacement" }], 1],
+        ["duplicate growth", [entry, entry], 1],
+        ["empty", [], 0],
+      ]) {
+        fs.writeFileSync(ledger, JSON.stringify(entries));
+        const result = await Effect.runPromise(checkGuardExceptions({
+          cwd: directory, directory: ledgers, baseline,
+          runLint: () => Effect.succeed({ exitCode: entries.length ? 1 : 0, stderr: "", stdout: JSON.stringify({ diagnostics: entries.map(item => ({
+            filename: item.path, code: "t3code(" + rule + ")",
+            message: "T3CODE_GUARD_FINDING:" + JSON.stringify({ ruleName: rule, kind: item.kind, fingerprint: item.fingerprint, ledgered: true, summary: "fixture" })
+          })) }) })
+        }));
+        assert.equal(result.exitCode, expectedAdditions ? 1 : 0, rule + ": " + label);
+        assert.equal(result.problemCount, expectedAdditions, rule + ": " + label);
+        assert.equal(result.reports.filter(report => report.includes("new exception identity/occurrence")).length, expectedAdditions, rule + ": " + label);
+      }
+      fs.unlinkSync(ledger);
+      const error = await Effect.runPromise(checkGuardExceptions({
+        cwd: directory, directory: ledgers, baseline,
+        runLint: () => Effect.succeed({ exitCode: 0, stderr: "", stdout: '{"diagnostics":[]}' })
+      }).pipe(Effect.flip));
+      assert.equal(error.ruleName, rule);
+      assert.equal(error.detail, "required ledger file is missing");
+    } finally { fs.rmSync(directory, { recursive: true }); }
+  `),
+  );
   it("rejects swapping an identity at the same total count", () =>
     check(
       `assert.equal(ratchetAdditions([{ ...entry, path: "apps/web/src/two.ts" }], [entry]).length, 1);`,
@@ -78,7 +131,28 @@ describe("identity multiset ratchet", () => {
       assert.ok(result.reports.join("\\n").includes("new exception identity/occurrence"));
     } finally { fs.rmSync(directory, { recursive: true }); }
   `));
-  it("keeps all four empty files in the default scan and rejects removing one", () =>
+  it("both replaced admission policies must leave the frozen baseline", () =>
+    check(`
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "guard-admission-"));
+    const rule = "no-legacy-notice-policy";
+    try {
+      for (const name of RATCHET_RULES) fs.writeFileSync(path.join(directory, name + ".json"), "[]");
+      for (const entries of [ADMISSION_POLICY_BOOTSTRAP, ADMISSION_POLICY_BOOTSTRAP.slice(0, 1), []]) {
+        fs.writeFileSync(path.join(directory, rule + ".json"), JSON.stringify(entries));
+        const result = await Effect.runPromise(checkGuardExceptions({
+          cwd: directory, directory,
+          baseline: new Map(RATCHET_RULES.map(name => [name, name === rule ? ADMISSION_POLICY_BOOTSTRAP : []])),
+          runLint: () => Effect.succeed({ exitCode: 0, stderr: "", stdout: JSON.stringify({ diagnostics: entries.map(entry => ({
+            filename: entry.path, code: "t3code(" + rule + ")",
+            message: "T3CODE_GUARD_FINDING:" + JSON.stringify({ ruleName: rule, kind: entry.kind, fingerprint: entry.fingerprint, ledgered: true, summary: "fixture" })
+          })) }) })
+        }));
+        assert.equal(result.exitCode, entries.length === 0 ? 0 : 1);
+        assert.equal(result.reports.some(report => report.includes("strictly decrease")), entries.length !== 0);
+      }
+    } finally { fs.rmSync(directory, { recursive: true }); }
+  `));
+  it("keeps all empty files in the default scan and rejects removing one", () =>
     check(`
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "guard-empty-"));
     try {
@@ -90,7 +164,7 @@ describe("identity multiset ratchet", () => {
       };
       const result = await Effect.runPromise(checkGuardExceptions({ cwd: directory, directory, baseline, runLint }));
       assert.equal(result.exitCode, 0);
-      assert.equal(result.reports.length, 4);
+      assert.equal(result.reports.length, RATCHET_RULES.length);
       fs.unlinkSync(path.join(directory, RATCHET_RULES[0] + ".json"));
       const error = await Effect.runPromise(checkGuardExceptions({ cwd: directory, directory, baseline, runLint }).pipe(Effect.flip));
       assert.equal(error.detail, "required ledger file is missing");

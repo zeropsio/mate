@@ -2394,12 +2394,19 @@ export class OrchestrationGetSnapshotError extends Schema.TaggedError<Orchestrat
   },
 ) {}
 
+export const AgentAdmissionRefusal = Schema.Struct({
+  loginId: Schema.String,
+  reason: Schema.Literals(["missing-sign-in", "expired-login", "not-permitted"]),
+});
+export type AgentAdmissionRefusal = typeof AgentAdmissionRefusal.Type;
+
 export class OrchestrationDispatchCommandError extends Schema.TaggedError<OrchestrationDispatchCommandError>()(
   "OrchestrationDispatchCommandError",
   {
     message: TrimmedNonEmptyString,
     cause: Schema.optional(Schema.Defect()),
     bootstrapThreadDisposition: Schema.optional(Schema.Literal("deleted")),
+    agentAdmission: Schema.optional(AgentAdmissionRefusal),
   },
 ) {}
 

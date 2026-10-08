@@ -1,3 +1,6 @@
+import type { VcsListRefsResult } from "@t3tools/contracts";
+import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
+import { buildBaseRefChoices } from "../lib/baseRefChoices";
 import type { TurnId } from "@t3tools/contracts";
 
 import type { DiffPanelSelection } from "../diffPanelStore";
@@ -55,4 +58,29 @@ export function diffScope(input: {
     case "turn":
       return input.shown.turnId === input.latestTurnId ? "latest" : "turn";
   }
+}
+
+export function baseRefPresentation(
+  local: EnvironmentQueryView<VcsListRefsResult>,
+  remote: EnvironmentQueryView<VcsListRefsResult>,
+  headRef?: string | null,
+) {
+  const labels = { loading: "Loading refs...", unavailable: "Refs unavailable." };
+  const localView = collectionPresentation(
+    local,
+    (data) => data.refs.filter((ref) => ref.name !== headRef),
+    labels,
+  );
+  const remoteView = collectionPresentation(remote, (data) => data.refs, labels);
+  const messages = [
+    ...new Set([localView.message, remoteView.message].filter((message) => message !== null)),
+  ];
+  return {
+    choices: buildBaseRefChoices(localView.items, remoteView.items),
+    canRetry: localView.state === "failed" || remoteView.state === "failed",
+    retained: localView.retained || remoteView.retained,
+    message: messages.length > 0 ? messages.join(" ") : null,
+    emptyMessage:
+      localView.state === "ready" && remoteView.state === "ready" ? "No matching refs." : null,
+  };
 }

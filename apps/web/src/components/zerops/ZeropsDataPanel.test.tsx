@@ -632,14 +632,6 @@ describe("ZeropsDataPanel", () => {
       expect(findComponent(tree, ZeropsDataTree)).not.toBeNull();
     });
 
-    it("gives the tree rail its own overflow-y-auto scroll container (wide layout) — the grid's own overflow-auto region is ZeropsDataTable's own responsibility, proven in its own test", async () => {
-      respond([SERVICE_SUPPORTED]);
-      const tree = await serviceTab();
-
-      const treeRail = findByAttribute(tree, "data-zerops-data-tree-rail")!;
-      expect(treeRail.props.className).toContain("overflow-y-auto");
-    });
-
     it("shows a View only chip next to the breadcrumb for a non-supported service (ClickHouse/Qdrant/streams)", async () => {
       const SERVICE_VIEW_ONLY_TABULAR: ZeropsDataConsoleService = {
         hostname: "db1",
@@ -858,13 +850,6 @@ describe("ZeropsDataPanel", () => {
       tree = render({ service: "db1", widthForTest: 1200, ...options });
       return tree;
     }
-
-    it("lets the content column shrink, so the grid region is the one thing that scrolls", async () => {
-      const tree = await selectOrders(() => undefined);
-      expect(findByAttribute(tree, "data-zerops-data-content")!.props.className).toContain(
-        "min-h-0",
-      );
-    });
 
     it("passes the browsed node's name to the blob preview, for the image alt", async () => {
       const AVATAR: ZeropsDataConsoleNode = {

@@ -1,6 +1,15 @@
+import { zeropsCommands } from "../state/zeropsCommands";
+import {
+  agentAdmission,
+  admissionExplainsRefusal,
+  type AgentRefusalSource,
+} from "@t3tools/client-runtime/data";
+import { useAgentAdmissionPlacement } from "../zerops/AgentAdmissionComposition";
+import { AgentAdmissionExplanation } from "./chat/AgentAdmissionExplanation";
+import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
-import { expiredAgentNotice } from "../zerops/mateRecovery.logic";
 import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
@@ -192,10 +201,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
-import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
-import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
-import { useHqSigners } from "../zerops/useHqSigners";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
@@ -230,17 +236,6 @@ import {
   agentNeedsSignIn,
 } from "@t3tools/client-runtime/zerops";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
-import {
-  AGENT_OWNERSHIP_RECOVERY_LABEL,
-  agentOwnershipComposerNotice,
-  resolveAgentOwnership,
-} from "@t3tools/client-runtime/zerops/agentOwnership";
-import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
-import {
-  conversationFooter,
-  hqConversationWriter,
-  resolveConversationWriter,
-} from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
   nextTimelineFollow,
   type TimelineScrollDirection,
@@ -374,7 +369,6 @@ import {
   zeropsAgentAuthView,
   zeropsAgentSignInRequired,
 } from "@t3tools/client-runtime/zerops/agentLogin";
-import { resolveAgentAuthorizer } from "~/zerops/agentSigner";
 import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
@@ -480,8 +474,6 @@ import {
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
-  resolveZeropsConversationReadOnly,
-  zeropsReadOnlyFooter,
   composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
@@ -490,8 +482,6 @@ import {
   type QueuedSendFailure,
   newestPersonTurn,
   threadErrorEntryUnchanged,
-  resolveZeropsOwnedAgentSendBlockReason,
-  resolveZeropsProviderAvailability,
   peekRememberedThreadTimeline,
   rememberReadyThreadTimeline,
   resolveThreadSwitchTimeline,
@@ -714,6 +704,7 @@ interface TerminalLaunchContext {
 type PersistentTerminalLaunchContext = Pick<TerminalLaunchContext, "cwd" | "worktreePath">;
 
 const isAgentTurnNotes = Schema.is(AgentTurnNotes);
+const isThreadArchiveBlockedError = Schema.is(ThreadArchiveBlockedError);
 
 function useLocalDispatchState(input: {
   activeThread: Thread | undefined;
@@ -1377,11 +1368,14 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
 // Errors surface through two maps (draft-keyed and thread-keyed) whose entries
 // can race around promotion, so each write carries its time to let the latest
 // one win when they collide.
+const isDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
+
 type LocalThreadErrorEntry = {
   readonly message: string | null;
   readonly at: number;
   /** When the person's newest turn was made as it was written (`localThreadErrorStanding`). */
   readonly after?: string | null | undefined;
+  readonly refusalSource?: AgentRefusalSource | undefined;
 };
 
 function chatActionErrorMessage(error: unknown): string {
@@ -1808,7 +1802,7 @@ export default function ChatView(props: ChatViewProps) {
       if (
         currentEntry !== undefined &&
         (currentEntry.at > pendingDraftEntry.at ||
-          currentEntry.message === pendingDraftEntry.message)
+          threadErrorEntryUnchanged(currentEntry, pendingDraftEntry))
       ) {
         return existing;
       }
@@ -1863,7 +1857,6 @@ export default function ChatView(props: ChatViewProps) {
   // Keep command refusals in the banner; they have no durable timeline entry.
   const threadErrorInTimeline =
     localServerError == null &&
-    !agentNeedsSignIn(threadError ?? "", activeServerThread?.session?.providerName) &&
     activeServerThread?.activities.some(
       (activity) =>
         activity.kind === "runtime.error" &&
@@ -2556,9 +2549,7 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [providerStatuses, settings],
   );
-  // Fetched here (rather than beside its other Zerops-agent consumers below)
-  // because the composer's own selection gate needs it: a candidate whose
-  // agent this viewer cannot run must never become the selection (D6).
+  // The composer and picker read the same scoped authentication facts.
   const zeropsAgentAuthRead = useZeropsAgentAuth(activeThreadEnvironmentId);
   // The sign-in surfaces below act on a snapshot once one is known, kept
   // while stale; until then the agents' region says it is checking.
@@ -2566,6 +2557,7 @@ export default function ChatView(props: ChatViewProps) {
     () => zeropsAgentAuthView(zeropsAgentAuthRead),
     [zeropsAgentAuthRead],
   );
+  const checkAgentAuth = useAtomCommand(zeropsCommands.agentAuthCheck, "zerops agent auth check");
   const zeropsViewerSubject = useZeropsSessionOptional()?.user?.id;
   // The environment, not the thread: a draft has one before it has the other,
   // and the header names the project either way. It draws topology contents,
@@ -2579,9 +2571,8 @@ export default function ChatView(props: ChatViewProps) {
       resolveZeropsProviderAvailability({
         entries: providerInstanceEntries,
         agentAuth: zeropsAgentAuthRead,
-        viewerSubject: zeropsViewerSubject,
       }),
-    [providerInstanceEntries, zeropsAgentAuthRead, zeropsViewerSubject],
+    [providerInstanceEntries, zeropsAgentAuthRead],
   );
   const zeropsIsAgentRunnable = useCallback(
     (instanceId: ProviderInstanceId) =>
@@ -3251,22 +3242,42 @@ export default function ChatView(props: ChatViewProps) {
     resumeCompactionPermanentlyDismissed,
     setResumeCompactionPermanentlyDismissed,
   ]);
-  const providerStatusBannerKey = getProviderStatusBannerKey(activeProviderStatus);
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
   >(null);
+  const admission = agentAdmission({
+    environmentId,
+    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    viewerSubject: zeropsViewerSubject,
+    read: zeropsAgentAuthRead,
+    providers: providerStatuses,
+    mateName: (() => {
+      const mate = zeropsMateAt(zeropsMates, environmentId);
+      return mate.kind === "mate" ? mate.mate.name : "This Mate";
+    })(),
+  });
+  const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
   useEffect(() => {
     if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  // A Zerops login's status says nothing the sign-in feed has moved past (`spentLoginStatusStale`).
-  const visibleProviderStatus =
-    shouldShowProviderStatusBanner(activeProviderStatus, dismissedProviderStatusBannerKey) &&
-    !spentLoginStatusStale(activeProviderStatus, zeropsAgentAuth.snapshot, providerStatuses)
-      ? activeProviderStatus
-      : null;
-  const hasTimelineTopBanner = Boolean(visibleThreadError) || visibleProviderStatus !== null;
+  const admissionRefusal = admissionExplainsRefusal(
+    admission.attention,
+    localServerError !== null
+      ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
+      : localDraftError !== null
+        ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
+        : undefined,
+  );
+  const shownThreadError = admissionRefusal ? null : visibleThreadError;
+  const visibleProviderStatus = shouldShowProviderStatusBanner(
+    admission.providerStatus,
+    dismissedProviderStatusBannerKey,
+  )
+    ? admission.providerStatus
+    : null;
+  const hasTimelineTopBanner = Boolean(shownThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -3360,13 +3371,14 @@ export default function ChatView(props: ChatViewProps) {
   const hasReachedSplitLimit =
     (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
   const setThreadError = useCallback(
-    (targetThreadId: ThreadId | null, error: string | null) => {
+    (targetThreadId: ThreadId | null, error: string | null, refusalSource?: AgentRefusalSource) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
       const nextEntry: LocalThreadErrorEntry = {
         message: nextError,
         at: Date.now(),
         after: activeServerNewestTurnRef.current,
+        refusalSource,
       };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
@@ -3388,7 +3400,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       const localDraftErrorKey = draftId ?? targetThreadId;
       setLocalDraftErrorsByDraftId((existing) => {
-        if ((existing[localDraftErrorKey]?.message ?? null) === nextError) {
+        if (threadErrorEntryUnchanged(existing[localDraftErrorKey], nextEntry)) {
           return existing;
         }
         return {
@@ -4038,81 +4050,45 @@ export default function ChatView(props: ChatViewProps) {
   const crew = useCrew(activeThreadEnvironmentId);
   // What this viewer may change on the crew: the answer the server's door reaches (D6).
   const crewDoor = useCrewAccess(activeThreadEnvironmentId, crew.snapshot);
-  // The band's sign-in request lands here: the first agent that needs a
-  // sign-in gets the dialog, without a detour through the panel.
   const openAgentAuthDialog = useCallback(() => {
-    const agents = zeropsChrome.agentAuthCard?.agents ?? [];
-    const agent = agents.find((entry) => agentAuthAction(entry) === "sign-in") ?? agents[0];
-    if (agent !== undefined) zeropsSignInDialog.openFor(agent.agentId);
-  }, [zeropsChrome.agentAuthCard, zeropsSignInDialog]);
-  // The login this composer would actually spend — the selected provider
-  // instance, resolved as the server's admission resolves it: a login beyond
-  // the defaults by its own row, any other instance by one of the two agents
-  // Mate signs people in to. A driver Mate never signs anybody in to has no
-  // signer to speak of.
-  const zeropsSpentLogin = resolveSpentLogin(
-    activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
-    zeropsAgentAuth.snapshot,
-    providerStatuses,
-  );
-  const zeropsOwnedAgent = zeropsSpentLogin?.agent;
-  const zeropsAgentOwnership = resolveAgentOwnership({
-    credPresent: zeropsOwnedAgent?.credPresent ?? false,
-    authorizedBy:
-      zeropsSpentLogin === undefined
-        ? undefined
-        : resolveAgentAuthorizer(zeropsSpentLogin.agent, zeropsViewerSubject),
-    viewerSubject: zeropsViewerSubject,
-  });
-  // Someone else's agent: the conversation is read, not run — the composer
-  // gives way to `ZeropsReadOnlyConversationFooter`.
-  const zeropsReadOnly = useMemo(
-    () =>
-      resolveZeropsConversationReadOnly({
-        agent: zeropsOwnedAgent,
-        ownership: zeropsAgentOwnership,
-      }),
-    [zeropsAgentOwnership, zeropsOwnedAgent],
-  );
-  // Who writes here: the Mate's own sign-in once read; before it, HQ's word of who signed the
-  // spent agent in paints at once; while neither has said, the composer's room is held — never a
-  // composer it may take back (`conversationFooter`).
-  const zeropsWriter = resolveConversationWriter({
-    feed: zeropsAgentAuthRead,
-    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
-    providers: providerStatuses,
-    viewerSubject: zeropsViewerSubject,
-    ownership: zeropsAgentOwnership,
-  });
-  const zeropsHqSigners = useHqSigners(activeThreadEnvironmentId ?? null);
-  const zeropsHqWriter = hqConversationWriter({
-    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
-    providers: providerStatuses,
-    signers: zeropsHqSigners,
-    viewerSubject: zeropsViewerSubject,
-  });
-  const zeropsFooter = conversationFooter(zeropsWriter, zeropsHqWriter);
-  // Someone else's strip; painted from HQ's word it offers no sign-in and names no owner until
-  // the Mate's own sign-in is read.
-  const zeropsReadOnlyStrip = zeropsReadOnlyFooter({
-    footer: zeropsFooter,
-    readOnly: zeropsReadOnly,
-  });
-  const zeropsShownReadOnly = zeropsReadOnlyStrip?.readOnly ?? null;
-  // The draft the held room lays out, so the composer that takes its place is its height.
+    const item = admission.attention;
+    if (item?.action === "manage-api-key" || item?.action === "settings") {
+      openProviderSetup(item.instanceId as ProviderInstanceId);
+    } else if (item?.agentId !== undefined) {
+      if (item.action === "check-again" || item.action === "register-again") {
+        if (activeThreadRef !== null)
+          void checkAgentAuth({
+            environmentId: activeThreadRef.environmentId,
+            input: {
+              agentId: item.agentId,
+              ...(item.loginKey === item.agentId ? {} : { loginId: item.loginKey }),
+            },
+          });
+      } else
+        zeropsSignInDialog.openFor(
+          item.agentId,
+          item.loginKey === item.agentId ? undefined : item.loginKey,
+        );
+    } else if (activeProviderStatus !== null) openProviderSetup(activeProviderStatus.instanceId);
+  }, [
+    admission.attention,
+    activeProviderStatus,
+    activeThreadRef,
+    checkAgentAuth,
+    openProviderSetup,
+    zeropsSignInDialog,
+  ]);
+  // A cold authentication read holds the input; the server decides permission on every command.
+  const zeropsFooter =
+    zeropsAgentAuthRead?.state === "unread" || zeropsAgentAuthRead?.state === "reading"
+      ? "held"
+      : "composer";
+  const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
   );
-  const zeropsWriterKind = zeropsWriter.kind;
-  // On a started thread the selection stays locked to the agent the session
-  // began with even when it is not runnable (the picker offers sign-in
-  // there); Send is disabled with that agent's own reason instead — see
-  // `resolveZeropsOwnedAgentSendBlockReason` (ChatView.logic.ts).
-  const zeropsSendBlockReason = resolveZeropsOwnedAgentSendBlockReason({
-    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
-    providers: providerStatuses,
-    availabilityByInstanceId: zeropsAgentAvailabilityByInstanceId,
-  });
+  // A started conversation keeps its login; its admission item explains why Send waits.
+  const zeropsSendBlockReason = admission.attention?.text;
   // A new Mate's stand-up holds the composer while its person waits on it; its server sends it.
   const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
@@ -5520,54 +5496,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
-  const agentOwnershipBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (zeropsOwnedAgent === undefined) return null;
-    // Said only on a known answer: "nobody can run it" is not what loading looks like.
-    if (zeropsWriterKind === "unknown") return null;
-    // Someone else's agent says so in the footer that replaces the composer.
-    if (zeropsReadOnly !== null) return null;
-    const expired = expiredAgentNotice(
-      zeropsOwnedAgent,
-      chromeMate?.kind === "mate" ? chromeMate.mate.name : "This Mate",
-      zeropsOwnedAgent.agentId === "codex" ? "Codex" : "Claude Code",
-    );
-    if (expired !== null)
-      return {
-        id: `agent-login:${zeropsOwnedAgent.agentId}`,
-        variant: "warning",
-        icon: null,
-        layout: "centered",
-        title: expired,
-        actions: (
-          <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
-            Sign in
-          </Button>
-        ),
-      };
-    // A working token belongs to the project and needs no ownership notice.
-    if (zeropsOwnedAgent.flagToken) return null;
-    const notice = agentOwnershipComposerNotice(zeropsAgentOwnership);
-    if (notice === undefined) return null;
-    return {
-      id: `agent-ownership:${zeropsOwnedAgent.agentId}:${zeropsAgentOwnership}`,
-      variant: "warning",
-      icon: null,
-      layout: "centered",
-      title: notice,
-      actions: (
-        <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
-          {AGENT_OWNERSHIP_RECOVERY_LABEL}
-        </Button>
-      ),
-    } satisfies ComposerBannerStackItem;
-  }, [
-    openAgentAuthDialog,
-    zeropsAgentOwnership,
-    zeropsWriterKind,
-    zeropsOwnedAgent,
-    zeropsReadOnly,
-    chromeMate,
-  ]);
 
   /**
    * The composer's top: this Mate's change waiting for the person's review,
@@ -5817,15 +5745,9 @@ export default function ChatView(props: ChatViewProps) {
     // Someone else's conversation is read, not run: every other banner offers
     // a step on this Mate (add production, release, stop, compact, restore),
     // so only the viewer's own connection is said.
-    if (zeropsShownReadOnly !== null) return systemComposerBannerItems;
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
-    const urgentSystemItems = [
-      // Whose agent this is comes first: it is the one banner that says the
-      // turn they are about to type will not run at all.
-      ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
-      ...systemComposerBannerItems.filter(isUrgentSystemItem),
-    ];
+    const urgentSystemItems = [...systemComposerBannerItems.filter(isUrgentSystemItem)];
     // What belongs to the conversation — another of its chats at work, its compaction, its waking
     // or parking, its branch — waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
@@ -5913,7 +5835,6 @@ export default function ChatView(props: ChatViewProps) {
     ];
   }, [
     activeBranchMismatchKey,
-    agentOwnershipBannerItem,
     alsoWorkingBannerItem,
     crewBannerItems,
     feedbackBannerItems,
@@ -5928,7 +5849,6 @@ export default function ChatView(props: ChatViewProps) {
     usageLimitsBanner,
     threadDetailLoading,
     wokeThreadBannerItem,
-    zeropsShownReadOnly,
   ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
@@ -6241,7 +6161,7 @@ export default function ChatView(props: ChatViewProps) {
       if (command === "thread.stop") {
         // An unavailable command should not shadow contextual shortcuts such as Escape to close a dialog.
         // A read-only conversation has no stop, by button or by key.
-        if (!canInterruptRunningThread || zeropsReadOnly !== null) return;
+        if (!canInterruptRunningThread) return;
         event.preventDefault();
         event.stopPropagation();
         if (event.repeat) return;
@@ -6268,7 +6188,6 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadPinned,
     activeThreadSettled,
     canInterruptRunningThread,
-    zeropsReadOnly,
     activeThreadKey,
     terminalUiState.terminalOpen,
     terminalUiState.activeTerminalId,
@@ -7484,6 +7403,7 @@ export default function ChatView(props: ChatViewProps) {
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
+          isDispatchCommandError(error) ? error.agentAdmission : undefined,
         );
       }
     }
@@ -7599,7 +7519,7 @@ export default function ChatView(props: ChatViewProps) {
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
-      const blocked = Schema.is(ThreadArchiveBlockedError)(error);
+      const blocked = isThreadArchiveBlockedError(error);
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -8624,15 +8544,6 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
           />
         </WorkspacePageHeader>
-        <ZeropsLifecycleStrip
-          agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
-          onOpenAgentAuth={openAgentAuthDialog}
-          pendingUserInput={activePendingUserInput !== null}
-          running={zeropsThreadModel.running}
-          session={zeropsThreadModel.session}
-          threadRef={zeropsChrome.threadRef}
-          zeropsPanelOpen={activeRightPanelKind === "zerops"}
-        />
         {zeropsSignInDialog.dialog}
 
         <ThreadErrorBanner
@@ -8641,20 +8552,12 @@ export default function ChatView(props: ChatViewProps) {
             return at.kind === "mate" ? at.mate.name : undefined;
           })()}
           driver={activeServerThread?.session?.providerName ?? null}
-          error={visibleThreadError}
+          error={shownThreadError}
           usageLimitShown={conversationEntries.some(
             (entry) =>
               isUsageLimitError(entry) &&
               timelineEntryTurnId(entry) === activeThread.latestTurn?.turnId,
           )}
-          // Sign-in opens this Mate's coding-agent dialog.
-          onAuthorize={
-            activeThreadRef === null
-              ? undefined
-              : () => {
-                  useRightPanelStore.getState().open(activeThreadRef, "zerops");
-                }
-          }
           onDismiss={() => {
             setThreadError(activeThread.id, null);
             dismissThreadErrorBannerForSession(threadErrorBannerKey);
@@ -8762,10 +8665,7 @@ export default function ChatView(props: ChatViewProps) {
                   limit,
                   onUsageAutoResumeChange,
                   onUsageContinue:
-                    isWorking ||
-                    isSendBusy ||
-                    queueBlockedByPendingRequest ||
-                    zeropsShownReadOnly !== null
+                    isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null
                       : () => {
                           if (activeThreadKey === null) return;
@@ -8917,22 +8817,11 @@ export default function ChatView(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          {zeropsShownReadOnly !== null ? (
-                            <ZeropsReadOnlyConversationFooter
-                              readOnly={zeropsShownReadOnly}
-                              pendingApprovals={
-                                zeropsReadOnlyStrip?.answered === true ? pendingApprovals : []
-                              }
-                              pendingUserInputs={
-                                zeropsReadOnlyStrip?.answered === true ? pendingUserInputs : []
-                              }
-                              onSignIn={
-                                zeropsReadOnlyStrip?.answered === true
-                                  ? openAgentAuthDialog
-                                  : undefined
-                              }
-                            />
-                          ) : zeropsFooter === "held" ? (
+                          <AgentAdmissionExplanation
+                            attention={admissionPlacement.composer}
+                            onAction={openAgentAuthDialog}
+                          />
+                          {zeropsFooter === "held" ? (
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : (
                             <ChatComposer

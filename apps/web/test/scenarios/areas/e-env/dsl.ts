@@ -180,18 +180,12 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   });
   const rollBack = (tag: string) =>
     Effect.promise(async () => {
-      const point = await page.evaluate((tag) => {
-        const name = [
-          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-name"]'),
-        ].find((el) => el.innerText === tag);
-        const button = [
-          ...(name?.closest("[data-zerops-environment-row]")?.querySelectorAll("button") ?? []),
-        ].find((el) => el.innerText === "Roll back to this");
-        if (!button) throw new Error(`No Roll back offered for ${tag}`);
-        const rect = button.getBoundingClientRect();
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-      }, tag);
-      await page.mouse.click(point.x, point.y);
+      await page
+        .locator(
+          `::-p-xpath(//*[@data-zerops-surface="environment-name" and normalize-space(.)="${tag}"]/ancestor::*[@data-zerops-environment-row][1]//button[normalize-space(.)="Roll back to this"])`,
+        )
+        .setTimeout(10_000)
+        .click();
     });
   const editVersion = (value: string) =>
     Effect.promise(() => page.locator('::-p-aria(Version[role="textbox"])').fill(value));

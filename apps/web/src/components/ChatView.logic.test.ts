@@ -1,3 +1,4 @@
+import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 // @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -15,7 +16,6 @@ import {
   TurnId,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import * as NodeFS from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Atom } from "effect/reactivity";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -53,11 +53,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
-  resolveZeropsConversationReadOnly,
-  zeropsReadOnlyFooter,
   composerOpenFocus,
-  resolveZeropsOwnedAgentSendBlockReason,
-  resolveZeropsProviderAvailability,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
   readOncePerFile,
@@ -1001,7 +997,6 @@ describe("resolveZeropsProviderAvailability", () => {
       resolveZeropsProviderAvailability({
         entries: [],
         agentAuth: undefined,
-        viewerSubject: "user-a",
       }),
     ).toBeUndefined();
   });
@@ -1011,7 +1006,6 @@ describe("resolveZeropsProviderAvailability", () => {
       resolveZeropsProviderAvailability({
         entries: [],
         agentAuth: knownAgentAuth({ available: false, agents: [] }),
-        viewerSubject: "user-a",
       }),
     ).toBeUndefined();
   });
@@ -1035,7 +1029,6 @@ describe("resolveZeropsProviderAvailability", () => {
     const map = resolveZeropsProviderAvailability({
       entries: [claude],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
-      viewerSubject: "user-a",
     });
 
     expect(map?.get(claude.instanceId)).toEqual({
@@ -1046,68 +1039,11 @@ describe("resolveZeropsProviderAvailability", () => {
 
   // MA-12 per login: a login beyond the defaults is gated on its own state and
   // its own signer, as the server's admission gates it — never its agent's.
-  describe("a login beyond the defaults", () => {
-    const work = claudeEntry("claudeAgent-work");
-    const claude = claudeEntry("claudeAgent");
-    const feed = (signedInBy: string | undefined): ZeropsAgentAuthSnapshot => ({
-      ...claudeAgentAuth({
-        credPresent: true,
-        flagOAuth: true,
-        providerAuth: "authenticated",
-        state: "authorized",
-        authorizedBy: { subject: "user-jan" },
-      }),
-      logins: [
-        {
-          id: "claudeAgent-work",
-          agent: "claude-code",
-          label: "work",
-          kind: "subscription",
-          default: false,
-          state: "authorized",
-          token: false,
-          ...(signedInBy === undefined ? {} : { signedInBy }),
-        },
-      ],
-    });
-    const availability = (input: {
-      readonly signedInBy: string | undefined;
-      readonly viewer: string;
-    }) =>
-      resolveZeropsProviderAvailability({
-        entries: [claude, work],
-        agentAuth: knownAgentAuth(feed(input.signedInBy)),
-        viewerSubject: input.viewer,
-      });
-
-    it("is runnable for its own signer while its agent's own login is not", () => {
-      const map = availability({ signedInBy: "user-eva", viewer: "user-eva" });
-      expect(map?.get(work.instanceId)).toEqual({ kind: "ready" });
-      expect(map?.get(claude.instanceId)).toEqual({
-        kind: "someone-else",
-        signerId: "user-jan",
-      });
-    });
-
-    it("is someone else's for the signer of its agent's own login", () => {
-      expect(
-        availability({ signedInBy: "user-eva", viewer: "user-jan" })?.get(work.instanceId),
-      ).toEqual({ kind: "someone-else", signerId: "user-eva" });
-    });
-
-    it("is nobody's while nothing records who signed it in", () => {
-      expect(
-        availability({ signedInBy: undefined, viewer: "user-eva" })?.get(work.instanceId),
-      ).toEqual({ kind: "unrecorded" });
-    });
-  });
-
   it("maps a second instance of the driver to the same agent's availability", () => {
     const work = claudeEntry("claudeAgent_work");
     const map = resolveZeropsProviderAvailability({
       entries: [work],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
-      viewerSubject: "user-a",
     });
 
     expect(map?.get(work.instanceId)).toEqual({
@@ -1126,7 +1062,6 @@ describe("resolveZeropsProviderAvailability", () => {
       const map = resolveZeropsProviderAvailability({
         entries: [claude],
         agentAuth: read,
-        viewerSubject: "user-a",
       });
 
       expect(map?.get(claude.instanceId)).toEqual({ kind: "unknown", read });
@@ -1146,7 +1081,6 @@ describe("resolveZeropsProviderAvailability", () => {
       resolveZeropsProviderAvailability({
         entries: [claudeEntry()],
         agentAuth: { state: "failed", failure, atMs: 2_000, attempt: 1, retryAtMs: null },
-        viewerSubject: "user-a",
       }),
     ).toBeUndefined();
   });
@@ -1170,7 +1104,6 @@ describe("resolveZeropsProviderAvailability", () => {
     const map = resolveZeropsProviderAvailability({
       entries: [ollama],
       agentAuth: knownAgentAuth(claudeAgentAuth()),
-      viewerSubject: "user-a",
     });
 
     expect(map?.has(ollama.instanceId)).toBe(false);
@@ -1204,94 +1137,6 @@ describe("isZeropsInstanceRunnable", () => {
     ]);
 
     expect(isZeropsInstanceRunnable(unknown, instanceId)).toBe(true);
-  });
-});
-
-describe("resolveZeropsOwnedAgentSendBlockReason", () => {
-  const claudeInstance = ProviderInstanceId.make("claudeAgent");
-  const codexInstance = ProviderInstanceId.make("codex");
-  const providers = [
-    { instanceId: "claudeAgent", driver: "claudeAgent" },
-    { instanceId: "claudeAgent_work", driver: "claudeAgent" },
-    { instanceId: "codex", driver: "codex" },
-  ];
-  const sendBlock = (instanceId: ProviderInstanceId, availability: ZeropsAgentAvailability) =>
-    resolveZeropsOwnedAgentSendBlockReason({
-      instanceId,
-      providers,
-      availabilityByInstanceId: new Map([[instanceId, availability]]),
-    });
-
-  it("is undefined when there is nothing owned to check", () => {
-    expect(
-      resolveZeropsOwnedAgentSendBlockReason({
-        instanceId: undefined,
-        providers,
-        availabilityByInstanceId: undefined,
-      }),
-    ).toBeUndefined();
-    expect(
-      resolveZeropsOwnedAgentSendBlockReason({
-        instanceId: codexInstance,
-        providers,
-        availabilityByInstanceId: undefined,
-      }),
-    ).toBeUndefined();
-    expect(
-      resolveZeropsOwnedAgentSendBlockReason({
-        instanceId: codexInstance,
-        providers,
-        availabilityByInstanceId: new Map(),
-      }),
-    ).toBeUndefined();
-  });
-
-  it("is undefined when the owned agent is ready", () => {
-    expect(sendBlock(codexInstance, { kind: "ready" })).toBeUndefined();
-  });
-
-  // Regression: `registering` is runnable too — the server lets it through
-  // for the signer — and must never read as a Send block here.
-  it("is undefined when the owned agent is registering", () => {
-    expect(sendBlock(codexInstance, { kind: "registering" })).toBeUndefined();
-  });
-
-  it("names the reason for a not-runnable owned agent, reusing the picker panel's copy", () => {
-    expect(sendBlock(claudeInstance, { kind: "someone-else", signerId: "eva-user-id" })).toBe(
-      "Signed in by another project member — only they can run it.",
-    );
-    expect(sendBlock(codexInstance, { kind: "needs-sign-in", signInKind: "not-authorized" })).toBe(
-      "Not signed in.",
-    );
-    expect(sendBlock(codexInstance, { kind: "signing-in" })).toBe("Signing in…");
-    expect(sendBlock(codexInstance, { kind: "unrecorded" })).toBe(
-      "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
-    );
-  });
-
-  it("names the reason for a second instance of the agent's driver", () => {
-    expect(
-      sendBlock(ProviderInstanceId.make("claudeAgent_work"), {
-        kind: "someone-else",
-        signerId: "eva-user-id",
-      }),
-    ).toBe("Signed in by another project member — only they can run it.");
-  });
-
-  it("holds Send while the owned agent's sign-in is still being read, saying so", () => {
-    const claude = claudeEntry();
-
-    expect(
-      resolveZeropsOwnedAgentSendBlockReason({
-        instanceId: claude.instanceId,
-        providers,
-        availabilityByInstanceId: resolveZeropsProviderAvailability({
-          entries: [claude],
-          agentAuth: { state: "reading", sinceMs: 1_000, attempt: 1 },
-          viewerSubject: "user-a",
-        }),
-      }),
-    ).toBe("Checking whether Claude Code is signed in…");
   });
 });
 
@@ -1920,17 +1765,6 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
   });
 });
 
-describe("the version-skew banner (spec-mate.md §2.9 MU-1)", () => {
-  it("never renders a server-versions-differ banner: versionSkew.ts is gone and dismissal", () => {
-    const source = NodeFS.readFileSync(new URL("./ChatView.tsx", import.meta.url), "utf8");
-    expect(source).not.toContain("Server versions differ");
-    expect(source).not.toContain("versionSkew");
-    expect(source).not.toContain("useZcpRestart");
-    expect(NodeFS.existsSync(new URL("../versionSkew.ts", import.meta.url))).toBe(false);
-    expect(NodeFS.existsSync(new URL("../zerops/useZcpRestart.ts", import.meta.url))).toBe(false);
-  });
-});
-
 describe("checkout Git memory", () => {
   it("answers from the last status seen for the same checkout", () => {
     rememberCheckoutIsRepo(environmentId, "/repo/plain-folder", false);
@@ -2140,27 +1974,6 @@ describe("shouldRefocusComposerOnWindowFocus", () => {
   });
 });
 
-describe("resolveZeropsConversationReadOnly", () => {
-  const personal = { flagToken: false };
-  const token = { flagToken: true };
-  const readOnly = {
-    notice: "Signed in by another project member — only they can run this agent.",
-    waitingLabel: "Waiting for the agent's owner",
-  };
-
-  it.each([
-    ["someone else's personal login", personal, "someone-else", readOnly],
-    ["the viewer's own login", personal, "mine", null],
-    ["an unrecorded login", personal, "unrecorded", null],
-    ["no credential", personal, "none", null],
-    ["a project token whose signer is someone else", token, "someone-else", null],
-    ["a project token", token, "mine", null],
-    ["no Zerops agent at all", undefined, "someone-else", null],
-  ] as const)("%s", (_label, agent, ownership, expected) => {
-    expect(resolveZeropsConversationReadOnly({ agent, ownership })).toEqual(expected);
-  });
-});
-
 describe("composerOpenFocus", () => {
   it.each([
     ["the composer shown as the conversation opens takes the focus", true, false, true, true],
@@ -2169,27 +1982,6 @@ describe("composerOpenFocus", () => {
     ["shown after its room was held, with the person's focus elsewhere", true, true, true, false],
   ] as const)("%s", (_label, composerShown, late, focusElsewhere, expected) => {
     expect(composerOpenFocus({ composerShown, late, focusElsewhere })).toBe(expected);
-  });
-});
-
-describe("zeropsReadOnlyFooter", () => {
-  const known = {
-    notice: "Signed in by another project member — only they can run this agent.",
-    waitingLabel: "Waiting for the agent's owner",
-  };
-
-  it.each([
-    ["a read answer: its strip, answered", "read-only", known, { readOnly: known, answered: true }],
-    [
-      "HQ's word alone: the strip, not answered yet",
-      "read-only",
-      null,
-      { readOnly: known, answered: false },
-    ],
-    ["the composer: no strip", "composer", null, null],
-    ["the room held: no strip", "held", known, null],
-  ] as const)("%s", (_label, footer, readOnly, expected) => {
-    expect(zeropsReadOnlyFooter({ footer, readOnly })).toEqual(expected);
   });
 });
 
@@ -2483,6 +2275,22 @@ describe("the view's own thread error", () => {
   });
 
   it.each([
+    {
+      name: "A refusal from another login replaces identical words from the previous command",
+      existing: {
+        message: "Refused.",
+        at: 1,
+        after: T1,
+        refusalSource: { loginId: "claudeAgent-work", reason: "missing-sign-in" },
+      },
+      next: {
+        message: "Refused.",
+        at: 2,
+        after: T1,
+        refusalSource: { loginId: "claudeAgent-home", reason: "missing-sign-in" },
+      },
+      kept: false,
+    },
     {
       name: "the same words again, after a turn of the person's: written anew",
       existing: { message: "Refused.", at: 1, after: T1 },

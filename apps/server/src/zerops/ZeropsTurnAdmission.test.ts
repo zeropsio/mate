@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
   ApprovalRequestId,
+  OrchestrationDispatchCommandError,
   CommandId,
   MessageId,
   type OrchestrationCommand,
@@ -17,6 +18,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
@@ -954,3 +956,22 @@ describe("ZeropsTurnAdmission.admitRun", () => {
     );
   }
 });
+
+it.effect(
+  "Decision: refusals correlate by login identity (id), never by label or message text.",
+  () =>
+    Effect.gen(function* () {
+      const gate = yield* admission({
+        logins: { "claudeAgent-work": "not-authorized" },
+        drivers: { "claudeAgent-work": "claudeAgent" },
+      });
+      const error = yield* gate
+        .admit({ command: turnStart("claudeAgent-work"), principal: session(JAN) })
+        .pipe(Effect.flip);
+      assert.ok(Schema.is(OrchestrationDispatchCommandError)(error));
+      assert.deepEqual(error.agentAdmission, {
+        loginId: "claudeAgent-work",
+        reason: "missing-sign-in",
+      });
+    }),
+);

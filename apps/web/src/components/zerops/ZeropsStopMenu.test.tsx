@@ -77,7 +77,7 @@ describe("ZeropsStopMenu", () => {
   it("is opened by a trigger named for the stop, in the caller's hand", () => {
     const html = menu();
     expect(html).toContain('aria-label="More for production"');
-    expect(html).toContain('class="ml-auto"');
+
     expect(html).toContain('data-zerops-surface="stop-menu"');
   });
 

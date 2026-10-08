@@ -1,9 +1,15 @@
+import {
+  classifyTimelineScroll,
+  jumpedAway,
+  nextTimelineFollow,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   createEndFollow,
   GLIDE_FROM_PX,
   GLIDING_ATTRIBUTE,
+  ownListScrolls,
   scrollOwn,
   takeOwnScroll,
 } from "./timelineEndFollow";
@@ -94,6 +100,89 @@ describe("createEndFollow", () => {
     scroll.element.scrollHeight += by;
     follow.follow();
   };
+
+  it("a browser layout correction during row measurement does not release end-follow", () => {
+    const scroll = list({ top: 2944, height: 3779, client: 835 });
+    const follow = createEndFollow({
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    follow.follow();
+    const previous = { scrollTop: 2944, contentHeight: 3779 };
+    // Growth starts a glide; another measurement shrinks the native range
+    // before it grows again. The browser delivers their scroll event together.
+    grow(scroll, follow, 100);
+    const beforeClamp = scroll.element.scrollTop;
+    scroll.element.scrollHeight = 3611;
+    scroll.element.scrollTop = beforeClamp;
+    follow.follow();
+    scroll.element.scrollHeight = 4009;
+    const current = { scrollTop: scroll.element.scrollTop, contentHeight: 4009 };
+    const own = takeOwnScroll(scroll.element as unknown as HTMLElement);
+    scroll.state.follows = nextTimelineFollow(true, {
+      type: "position",
+      atEnd: false,
+      ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+      jumped: !own && jumpedAway({ previous, current }),
+    });
+    expect(scroll.state.follows).toBe(true);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(3174);
+  });
+
+  it("a fractional browser clamp during row measurement keeps the conversation at its end", () => {
+    for (const fractionalGap of [0.5, 0.75, 1]) {
+      const scroll = list({ top: 2944, height: 3779, client: 835 });
+      const follow = createEndFollow({
+        viewport: () => scroll.element as unknown as HTMLElement,
+        follows: () => scroll.state.follows,
+      });
+      follow.follow();
+      const previous = { scrollTop: 2944, contentHeight: 3779 };
+      grow(scroll, follow, 100);
+      // Scroll dimensions round to integers; the native clamp need not.
+      scroll.element.scrollHeight = 3611;
+      scroll.element.scrollTop = 2776 - fractionalGap;
+      follow.observe();
+      scroll.element.scrollHeight = 4009;
+      const current = { scrollTop: scroll.element.scrollTop, contentHeight: 4009 };
+      const own = takeOwnScroll(scroll.element as unknown as HTMLElement);
+      scroll.state.follows = nextTimelineFollow(true, {
+        type: "position",
+        atEnd: false,
+        ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+        jumped: !own && jumpedAway({ previous, current }),
+      });
+      expect(scroll.state.follows).toBe(true);
+      play(scroll);
+      expect(scroll.element.scrollTop).toBe(3174);
+    }
+  });
+
+  it("focus navigation into growing history stays where the reader landed", () => {
+    const scroll = list({ top: 4500, height: 6000, client: 835 });
+    const follow = createEndFollow({
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    follow.follow();
+    const previous = { scrollTop: 4500, contentHeight: 6000 };
+    scroll.element.scrollHeight = 6200;
+    // Focus/find moves without a wheel or key scroll session.
+    scroll.element.scrollTop = 1000;
+    follow.follow();
+    const current = { scrollTop: scroll.element.scrollTop, contentHeight: 6200 };
+    const own = takeOwnScroll(scroll.element as unknown as HTMLElement);
+    scroll.state.follows = nextTimelineFollow(true, {
+      type: "position",
+      atEnd: false,
+      ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+      jumped: !own && jumpedAway({ previous, current }),
+    });
+    expect(scroll.state.follows).toBe(false);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(1000);
+  });
 
   it.each([
     { what: "a row easing taller by a few pixels", grew: 6, glides: false },
@@ -289,5 +378,31 @@ describe("takeOwnScroll", () => {
     element.scrollTop = 600;
     element.scrollTop = 900;
     expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(false);
+  });
+});
+
+describe("ownListScrolls", () => {
+  it("tells each scroll the list makes itself as the page's own, once, and the person's after it as theirs", () => {
+    const element = {
+      scrollTop: 0,
+      scrollTo(options: ScrollToOptions) {
+        this.scrollTop = options.top ?? this.scrollTop;
+      },
+      scrollBy(options: ScrollToOptions) {
+        this.scrollTop += options.top ?? 0;
+      },
+    };
+    const list = element as unknown as HTMLElement;
+    const undo = ownListScrolls(list);
+    list.scrollTo({ top: 1764 });
+    expect(takeOwnScroll(list)).toBe(true);
+    expect(takeOwnScroll(list)).toBe(false);
+    list.scrollBy({ top: 74 });
+    expect(takeOwnScroll(list)).toBe(true);
+    element.scrollTop = 400;
+    expect(takeOwnScroll(list)).toBe(false);
+    undo();
+    list.scrollTo({ top: 10 });
+    expect(takeOwnScroll(list)).toBe(false);
   });
 });

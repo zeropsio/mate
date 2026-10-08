@@ -12,7 +12,7 @@ import {
 } from "./ZeropsAccountData";
 
 const UNREAD = Atom.make<AutoUpdatePolicySettings>({
-  enabled: null,
+  policy: { kind: "unknown" },
   editable: false,
   pending: false,
   words: "Waiting for HQ…",

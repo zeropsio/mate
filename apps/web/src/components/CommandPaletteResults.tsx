@@ -18,6 +18,7 @@ import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 
 interface CommandPaletteResultsProps {
   emptyStateMessage?: string;
+  statusMessage?: string | null;
   groups: ReadonlyArray<CommandPaletteGroup>;
   highlightedItemValue?: string | null;
   isActionsOnly: boolean;
@@ -28,6 +29,7 @@ interface CommandPaletteResultsProps {
 export function CommandPaletteResults(props: CommandPaletteResultsProps) {
   if (props.groups.length === 0) {
     const message =
+      props.statusMessage ??
       props.emptyStateMessage ??
       (props.isActionsOnly
         ? "No matching actions."
@@ -42,28 +44,35 @@ export function CommandPaletteResults(props: CommandPaletteResultsProps) {
   }
 
   return (
-    <CommandList>
-      {props.groups.map((group) => (
-        <CommandGroup items={group.items} key={group.value}>
-          <CommandGroupLabel>{group.label}</CommandGroupLabel>
-          <CommandCollection>
-            {(item) =>
-              item.disabled ? (
-                <DisabledCommandPaletteResultRow item={item} key={item.value} />
-              ) : (
-                <CommandPaletteResultRow
-                  item={item}
-                  key={item.value}
-                  keybindings={props.keybindings}
-                  isActive={props.highlightedItemValue === item.value}
-                  onExecuteItem={props.onExecuteItem}
-                />
-              )
-            }
-          </CommandCollection>
-        </CommandGroup>
-      ))}
-    </CommandList>
+    <>
+      {props.statusMessage ? (
+        <p role="status" className="px-3 py-2 text-sm text-muted-foreground">
+          {props.statusMessage}
+        </p>
+      ) : null}
+      <CommandList>
+        {props.groups.map((group) => (
+          <CommandGroup items={group.items} key={group.value}>
+            <CommandGroupLabel>{group.label}</CommandGroupLabel>
+            <CommandCollection>
+              {(item) =>
+                item.disabled ? (
+                  <DisabledCommandPaletteResultRow item={item} key={item.value} />
+                ) : (
+                  <CommandPaletteResultRow
+                    item={item}
+                    key={item.value}
+                    keybindings={props.keybindings}
+                    isActive={props.highlightedItemValue === item.value}
+                    onExecuteItem={props.onExecuteItem}
+                  />
+                )
+              }
+            </CommandCollection>
+          </CommandGroup>
+        ))}
+      </CommandList>
+    </>
   );
 }
 

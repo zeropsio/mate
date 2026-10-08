@@ -4,58 +4,77 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import { vi } from "vite-plus/test";
 
 import { FINDING_MESSAGE_MARKER, loadExceptionLedger, type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
+
+const ordinaryRuns = vi.hoisted(() => ({ count: 0 }));
+vi.mock("effect/process", async (importOriginal) => {
+  const original = await importOriginal<typeof import("effect/process")>();
+  return {
+    ...original,
+    ChildProcess: {
+      ...original.ChildProcess,
+      make: (...args: Parameters<typeof original.ChildProcess.make>) => {
+        if (process.env.T3CODE_THEME_ESCAPE_HATCHES_LEDGER_DIRECTORY === undefined) {
+          ordinaryRuns.count++;
+        }
+        return original.ChildProcess.make(...args);
+      },
+    },
+  };
+});
 
 const RULE_NAME = "no-theme-escape-hatches";
 const LEDGER_DIRECTORY_ENV = "T3CODE_THEME_ESCAPE_HATCHES_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
+const batch = createOxlintRuleBatch(`t3code/${RULE_NAME}`);
 const harnesses = {
-  zeropsWeb: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  zeropsWeb: batch.createHarness({
     filename: "apps/web/src/components/zerops/Probe.tsx",
   }),
-  zeropsMobile: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  zeropsMobile: batch.createHarness({
     filename: "apps/mobile/src/components/zerops/Probe.tsx",
   }),
-  web: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  web: batch.createHarness({
     filename: "apps/web/src/components/Probe.tsx",
   }),
-  mobile: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  mobile: batch.createHarness({
     filename: "apps/mobile/src/features/Probe.tsx",
   }),
-  sidebarLogic: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  sidebarLogic: batch.createHarness({
     filename: "apps/web/src/components/Sidebar.logic.ts",
   }),
-  threadStatusIndicators: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  threadStatusIndicators: batch.createHarness({
     filename: "apps/web/src/components/ThreadStatusIndicators.tsx",
   }),
-  agentActivity: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  agentActivity: batch.createHarness({
     filename: "apps/mobile/src/widgets/AgentActivity.tsx",
   }),
-  threadListV2: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  threadListV2: batch.createHarness({
     filename: "apps/mobile/src/features/threads/threadListV2.ts",
   }),
-  mobileThreadItems: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  mobileThreadItems: batch.createHarness({
     filename: "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
   }),
-  webTest: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  webTest: batch.createHarness({
     filename: "apps/web/src/components/zerops/Probe.test.tsx",
   }),
-  webStory: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  webStory: batch.createHarness({
     filename: "apps/web/src/components/zerops/Probe.stories.tsx",
   }),
-  webThemeSource: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  webThemeSource: batch.createHarness({
     filename: "apps/web/src/themePalette.ts",
   }),
-  mobileThemeSource: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  mobileThemeSource: batch.createHarness({
     filename: "apps/mobile/src/lib/mobileTheme.ts",
   }),
-  reviewedInterop: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  reviewedInterop: batch.createHarness({
     filename: "apps/mobile/src/features/home/HomeHeader.tsx",
   }),
-  gitOverlayInterop: createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+  gitOverlayInterop: batch.createHarness({
     filename: "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
   }),
 } as const;
@@ -776,6 +795,9 @@ describe("t3code/no-theme-escape-hatches", () => {
       "count" in testCase ? testCase.count : undefined,
     );
   }
+  it("runs ordinary fixtures in one oxlint process", () => {
+    assert.equal(ordinaryRuns.count, 1);
+  });
 });
 
 it.layer(NodeServices.layer)("temporary exception ledger", (it) => {

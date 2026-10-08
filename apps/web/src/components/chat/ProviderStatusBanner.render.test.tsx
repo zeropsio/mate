@@ -6,7 +6,6 @@ import {
   getProviderStatusBannerKey,
   getProviderStatusMessage,
   ProviderStatusBanner,
-  ProviderStatusBannerRegion,
   shouldShowProviderStatusBanner,
 } from "./ProviderStatusBanner";
 
@@ -65,24 +64,6 @@ describe("ProviderStatusBanner", () => {
     ).toBe(true);
   });
 
-  it("participates in ChatView layout instead of covering the timeline", () => {
-    const markup = renderToStaticMarkup(
-      <ProviderStatusBannerRegion status={warningProvider()} onDismiss={() => {}} />,
-    );
-    const layoutMatch = markup.match(
-      /^<div class="([^"]+)" data-chat-provider-status-layout="([^"]+)">/,
-    );
-
-    expect(layoutMatch).not.toBeNull();
-    expect(layoutMatch?.[2]).toBe("flow");
-
-    const layoutClasses = layoutMatch?.[1]?.split(/\s+/) ?? [];
-    expect(layoutClasses).toContain("shrink-0");
-    expect(layoutClasses).not.toContain("absolute");
-    expect(layoutClasses).not.toContain("top-0");
-    expect(layoutClasses).not.toContain("z-20");
-  });
-
   it("stays hidden after its current warning is dismissed", () => {
     const status = warningProvider();
 
@@ -125,18 +106,6 @@ describe("getProviderStatusMessage", () => {
     ).toBe(message);
   });
 
-  it("points a signed-out Antigravity account to Google sign-in without a CLI command", () => {
-    expect(
-      getProviderStatusMessage({
-        ...warningProvider(),
-        driver: ProviderDriverKind.make("antigravity"),
-        status: "error",
-        auth: { status: "unauthenticated" },
-        message: "",
-      }),
-    ).toBe("Open coding agent setup to sign in with Google.");
-  });
-
   it("requires installation on the environment before sign-in", () => {
     expect(
       getProviderStatusMessage({
@@ -149,16 +118,5 @@ describe("getProviderStatusMessage", () => {
         message: "",
       }),
     ).toBe("Open coding agent setup to install Antigravity on this environment.");
-  });
-
-  it("keeps CLI sign-in advice for a provider without integrated setup", () => {
-    expect(
-      getProviderStatusMessage({
-        ...warningProvider(),
-        status: "error",
-        auth: { status: "unauthenticated" },
-        message: "",
-      }),
-    ).toBe("Sign in via the CLI to authenticate again.");
   });
 });

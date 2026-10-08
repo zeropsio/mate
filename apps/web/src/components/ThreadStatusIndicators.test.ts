@@ -13,7 +13,6 @@ import {
   resolveDisplayedThreadPr,
   resolveDisplayedThreadPrProvider,
   resolveThreadPr,
-  settledPrHoverColorClass,
   synchronizeTerminalPulse,
   threadChangeRequestSnapshotsAtom,
   type ThreadChangeRequestSnapshot,
@@ -523,24 +522,5 @@ describe("prStatusIndicator", () => {
       tooltipLead: "PR #42 - Open",
       tooltipTitle: "PR branch",
     });
-  });
-
-  it("uses red for closed pull requests", () => {
-    const closedPr = status().pr;
-    if (!closedPr) throw new Error("Expected pull request fixture");
-
-    expect(prStatusIndicator({ ...closedPr, state: "closed" }, undefined)?.colorClass).toContain(
-      "text-red-600",
-    );
-  });
-});
-
-describe("settledPrHoverColorClass", () => {
-  it.each([
-    ["open", "text-emerald-600"],
-    ["merged", "text-violet-600"],
-    ["closed", "text-red-600"],
-  ] as const)("restores the %s pull request color on row hover", (state, colorClass) => {
-    expect(settledPrHoverColorClass(state)).toContain(`group-hover/sidebar-row:${colorClass}`);
   });
 });

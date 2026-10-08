@@ -214,6 +214,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-crew-editors",
   "zerops-crew-chat",
   "manual-link",
+  "agent-admission",
 ] as const;
 
 const VALID_SURFACE_FIXTURE = {
@@ -434,6 +435,52 @@ it.layer(NodeServices.layer)("surface manifest filesystem", (it) => {
           );
         }
       }
+    }),
+  );
+
+  it.effect("claims admission owners and renderers across every released client root", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* repoRoot;
+      const manifest = decodeSurfaceManifest(surfaceManifestJson);
+      const claimed = new Set(manifest.surfaces.flatMap((surface) => surface.components));
+      const symbols =
+        /\b(?:function (?:agentAdmission|AgentAdmissionExplanation|AgentAdmissionComposition)|useAgentAdmissionPlacement\(|agentAdmission\(|mateAdmissionSummary[:,])|<(?:AgentAdmissionExplanation|AgentAdmissionComposition)\b/u;
+      const scan = (
+        directory: string,
+      ): Effect.Effect<
+        string[],
+        import("effect/PlatformError").PlatformError,
+        FileSystem.FileSystem
+      > =>
+        Effect.gen(function* () {
+          const entries = yield* fs.readDirectory(directory);
+          const found: string[] = [];
+          for (const name of entries) {
+            const file = path.join(directory, name);
+            if ((yield* fs.stat(file)).type === "Directory") found.push(...(yield* scan(file)));
+            else if (/\.tsx?$/u.test(name) && !/\.(?:test|spec)\./u.test(name)) {
+              const source = yield* fs.readFileString(file);
+              if (symbols.test(source)) found.push(path.relative(root, file));
+            }
+          }
+          return found;
+        });
+      const discovered: string[] = [];
+      for (const sourceRoot of [
+        "apps/web/src",
+        "apps/desktop/src",
+        "packages/client-runtime/src",
+        "packages/shared/src",
+      ])
+        discovered.push(...(yield* scan(path.join(root, sourceRoot))));
+      assert.isAbove(discovered.length, 0);
+      assert.deepStrictEqual(
+        discovered.filter((file) => !claimed.has(file)),
+        [],
+        "Every admission owner, composition and renderer must be claimed.",
+      );
     }),
   );
 

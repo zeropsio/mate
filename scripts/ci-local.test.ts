@@ -28,6 +28,16 @@ jobs:
         run: echo \${{ github.sha }}
 `;
 
+it("CI and local Check always enforce test sentence retention", () => {
+  const workflow = NodeFS.readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  expect(checkSteps(workflow).map((step) => step.run)).toContain(
+    "node scripts/check-test-sentences.ts",
+  );
+});
+
 describe("checkSteps", () => {
   it("keeps the job's own run steps in order, each with the job's env under its own", () => {
     expect(checkSteps(WORKFLOW)).toEqual([

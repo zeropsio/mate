@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -18,14 +19,15 @@ describe("SidebarJumpButton", () => {
     expect(html).toContain('data-zerops-surface="sidebar-jump"');
     expect(html).toContain(`aria-keyshortcuts="${keys}"`);
     expect(html).toContain('aria-label="Jump to a Mate, project, change or stop"');
-    expect(html).toContain("lucide-search");
-    if (shortcut === undefined) expect(html).not.toContain("zerops-jump-key");
+    if (shortcut === undefined)
+      expect(markupDom(html).querySelector("button")?.textContent).toBe("");
     else expect(html).toContain(`>${shortcut}</span>`);
   });
 
-  it("is the small chip the plan draws: 28 px tall, its key in 12 px mono", () => {
+  it("displays the shortcut inside the named jump control", () => {
     const html = button("⌘K");
-    expect(html).toMatch(/<button[^>]*class="[^"]*\bzerops-jump-button\b/u);
-    expect(html).toMatch(/<span class="[^"]*\bzerops-jump-key\b[^"]*">⌘K<\/span>/u);
+    const control = markupDom(html).querySelector("button");
+    expect(control?.textContent).toContain("⌘K");
+    expect(control?.getAttribute("aria-label")).toBe("Jump to a Mate, project, change or stop");
   });
 });

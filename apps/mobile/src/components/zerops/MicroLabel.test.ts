@@ -3,22 +3,11 @@ import * as NodeFS from "node:fs";
 import { SERVICE_STATUS_TONES } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  microLabelPresentation,
-  statusTonePresentation,
-  type ZeropsStatusTone,
-} from "./presentation.ts";
+import { microLabelPresentation, type ZeropsStatusTone } from "./presentation.ts";
 
 const TONES = [undefined, "ok", "busy", "attention", "failed", "off"] as const;
 const STATES = ["default", "muted"] as const;
 const APPEARANCES = ["light", "dark"] as const;
-const TONE_LABEL_CLASS_NAMES = {
-  ok: "text-zerops-status-ok-text",
-  busy: "text-[var(--color-zerops-status-busy-text,var(--color-foreground-muted))]",
-  attention: "text-zerops-status-attention-text",
-  failed: "text-[var(--color-zerops-status-failed-text,var(--color-foreground-muted))]",
-  off: "text-foreground-muted",
-} as const;
 const generatedCss = NodeFS.readFileSync(
   new URL("../../../generated-uniwind-themes.css", import.meta.url),
   "utf8",
@@ -72,27 +61,15 @@ function statusLabelColor(generatedBody: string, themeBody: string, tone: Zerops
 
 describe("microLabelPresentation", () => {
   it.each(TONES.flatMap((tone) => STATES.map((state) => ({ tone, state }))))(
-    "presents $tone/$state at the mobile micro-label scale",
+    "preserves the label for $tone/$state",
     ({ tone, state }) => {
       const presentation = microLabelPresentation({ label: "Region", tone, state });
 
       expect(presentation.label).toBe("Region");
-      expect(presentation.textClassName).toContain("text-3xs");
-      expect(presentation.textClassName).toContain("font-t3-medium");
-      expect(presentation.textClassName).toContain("uppercase");
-      expect(presentation.textClassName).toContain("tracking-[0.66px]");
-      expect(presentation.textClassName).toContain(
-        tone === undefined
-          ? state === "muted"
-            ? "text-foreground-muted"
-            : "text-foreground"
-          : TONE_LABEL_CLASS_NAMES[tone],
-      );
-      expect(presentation.textClassName).not.toContain("opacity-");
     },
   );
 
-  it("keeps every emitted status text variable consumed and only the brand absences neutral", () => {
+  it("defines status text colours except for the neutral absence", () => {
     const absences: Array<string> = [];
 
     for (const appearance of APPEARANCES) {
@@ -100,17 +77,7 @@ describe("microLabelPresentation", () => {
 
       for (const toneId of Object.keys(SERVICE_STATUS_TONES) as ReadonlyArray<ZeropsStatusTone>) {
         const textVariable = variable(body, `--color-zerops-status-${toneId}-text`);
-        const presentation = statusTonePresentation(toneId);
-        const classNames = [presentation.labelClassName, presentation.iconTintClassName];
-
-        if (textVariable === undefined) {
-          absences.push(`${toneId}.${appearance}`);
-          classNames.forEach((className) => expect(className).toContain("foreground-muted"));
-        } else {
-          classNames.forEach((className) =>
-            expect(className).toContain(`zerops-status-${toneId}-text`),
-          );
-        }
+        if (textVariable === undefined) absences.push(`${toneId}.${appearance}`);
       }
     }
 

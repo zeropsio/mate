@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView, type CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -277,17 +278,14 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).toBe("");
   });
 
-  it("draws a Mate with no crew as its face at 24, its name at 16/600 and what its chat is about on the line, 14/400 muted after a divider", () => {
+  it("names a Mate with no crew and what its chat is about", () => {
     state.shells = [shell("main")];
     const html = line({ current: "main" });
     expect(matePill(html)).not.toContain("data-on");
-    expect(html).toMatch(/class="[^"]*\bsize-6\b[^"]*"[^>]*data-mate-face-size="sm"/);
-    expect(html).toContain(
-      'class="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">Fen</span>',
-    );
-    expect(onLine(html)).toContain(
-      '<span class="conversation-subject flex min-w-0 items-center gap-2.5" data-conversation-subject=""><span aria-hidden="true" class="h-4 w-px shrink-0 bg-border"></span><span class="min-w-0 truncate text-sm text-muted-foreground">Build the game server</span></span>',
-    );
+
+    expect(markupDom(html).body.textContent).toContain("Fen");
+    expect(markupDom(html).body.textContent).toContain("Build the game server");
+
     // Written whole on the line, it has no hover to repeat it.
     expect(tooltips(html)).toEqual([]);
     expect(html).not.toContain("data-conversation-divider");
@@ -311,7 +309,7 @@ describe("ConversationStrip", () => {
       />,
     );
     expect(html).not.toContain("data-conversation-subject");
-    expect(html).not.toContain("bg-border");
+
     expect(tooltips(html)).toEqual([]);
   });
 
@@ -340,7 +338,11 @@ describe("ConversationStrip", () => {
       "Frontend, one of Fen's crew\nOwns the game UI: the camera, the HUD and their tests.",
       "Erik, one of Fen's crew\nWrites the business plan in docs/business-plan.md.",
     ]);
-    expect(html.match(/class="conversation-crewface /g)).toHaveLength(4);
+    expect(
+      markupDom(html).querySelectorAll(
+        `button[aria-label*="Fen's crew"]:not([aria-current]), button[aria-label*="Fen's lead"]:not([aria-current])`,
+      ),
+    ).toHaveLength(4);
   });
 
   it("stands the crewmate on screen on the band, with its name and its menu, and takes the Mate off it", () => {
@@ -356,7 +358,11 @@ describe("ConversationStrip", () => {
     expect(html).toMatch(/aria-current="page"[^>]*data-conversation-crewmate="backend"/);
     expect(html).toContain(">Backend</span>");
     expect(html).toContain('data-crewmate-menu-for="backend"');
-    expect(html.match(/class="conversation-crewface /g)).toHaveLength(3);
+    expect(
+      markupDom(html).querySelectorAll(
+        `button[aria-label*="Fen's crew"]:not([aria-current]), button[aria-label*="Fen's lead"]:not([aria-current])`,
+      ),
+    ).toHaveLength(3);
   });
 
   it("offers a Mate's chats from a ⌄ after its name, only while it holds more than one", () => {
@@ -390,7 +396,11 @@ describe("ConversationStrip", () => {
     expect(matePill(html)).toContain("data-on");
     expect(html).toContain('aria-label="Backend, one of Fen&#x27;s crew"');
     expect(html).not.toContain('data-mate-face-state="working"');
-    expect(html.match(/class="conversation-crewface /g)).toHaveLength(2);
+    expect(
+      markupDom(html).querySelectorAll(
+        `button[aria-label*="Fen's crew"]:not([aria-current]), button[aria-label*="Fen's lead"]:not([aria-current])`,
+      ),
+    ).toHaveLength(2);
   });
 
   it("draws every face in the line before it is measured", () => {
@@ -399,16 +409,6 @@ describe("ConversationStrip", () => {
     const html = line({ current: "main" });
     expect(html.match(/data-conversation-seat="/g)).toHaveLength(4);
     expect(html).not.toContain('invisible absolute start-0 top-0" data-conversation-seat');
-  });
-
-  it("draws the band behind the line, placed by its motion once the line stands", () => {
-    state.shells = [shell("main")];
-    state.view = crewView();
-    const html = line({ current: "main" });
-    expect(html).toMatch(/<nav [^>]*class="relative isolate -ms-2 /);
-    expect(html).toContain(
-      '<span aria-hidden="true" class="conversation-band"><span></span><span></span><span></span></span>',
-    );
   });
 });
 

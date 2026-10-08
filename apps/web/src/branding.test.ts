@@ -1,3 +1,4 @@
+import { markupDom } from "../test/markupDom";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import indexHtml from "../index.html?raw";
 import {
@@ -72,12 +73,10 @@ describe("branding", () => {
   });
 
   it("brands the pre-React boot shell as Zerops Mate", () => {
-    expect(indexHtml).toContain("<title>Zerops Mate (Alpha)</title>");
-    expect(indexHtml).toContain('aria-label="Zerops Mate splash screen"');
-    expect(indexHtml).toContain(
-      // The mark's own box (`MATE_MARK.viewBox`), the one the live mark draws in.
-      '<svg id="boot-shell-logo" viewBox="0 0 44 52" role="img" aria-label="Zerops Mate">',
-    );
+    const document = markupDom(indexHtml);
+    expect(document.title).toBe("Zerops Mate (Alpha)");
+    expect(document.querySelector('[aria-label="Zerops Mate splash screen"]')).not.toBeNull();
+    expect(document.querySelector('[role="img"][aria-label="Zerops Mate"]')).not.toBeNull();
   });
 });
 

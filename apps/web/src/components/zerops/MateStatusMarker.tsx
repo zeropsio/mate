@@ -9,10 +9,12 @@ import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 /** The same short status beside the menu preview and the conversation name. */
 export function MateStatusMarker({
   status,
+  onOpen,
   timestampFormat,
   mateName = "The Mate",
 }: {
   readonly mateName?: string | undefined;
+  readonly onOpen?: (() => void) | undefined;
   readonly status: MateStatus;
   readonly timestampFormat: TimestampFormat;
 }) {
@@ -28,7 +30,7 @@ export function MateStatusMarker({
     status.kind === "limit"
       ? "Limit"
       : status.kind === "sign-in"
-        ? "Sign in"
+        ? (status.admission?.summary ?? "Sign in")
         : status.kind === "answer"
           ? "Needs an answer"
           : "Needs attention";
@@ -51,9 +53,22 @@ export function MateStatusMarker({
               "inline-flex min-w-0 items-center gap-1.5 text-xs font-medium",
               status.severity === "danger" ? "text-error" : "text-status-attention-text",
             )}
+            onClick={onOpen}
+            tabIndex={onOpen === undefined ? undefined : 0}
+            onKeyDown={
+              onOpen === undefined
+                ? undefined
+                : (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onOpen();
+                    }
+                  }
+            }
+            data-agent-admission-summary={status.admission?.key}
             data-mate-status={status.kind}
             aria-label={cause}
-            role="status"
+            role={onOpen === undefined ? "status" : "button"}
           />
         }
       >

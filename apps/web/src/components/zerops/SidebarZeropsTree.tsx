@@ -1,3 +1,5 @@
+import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
+import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { MateStatusMarker } from "./MateStatusMarker";
 /**
@@ -275,6 +277,8 @@ import {
   useHeadingLine,
 } from "./SidebarHeadingLine";
 import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
+
+const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
 const menuPlacementKnownAtom = Atom.make((get) => get(hqPlacementsAtom) !== null);
 const menuPersonFactsAtom = Atom.make((get) =>
@@ -2700,8 +2704,20 @@ function MateRowView<T extends RosterCandidate>({
     outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  const status =
-    deleting || view.coming !== undefined ? null : mateStatus(activity, signIn !== undefined);
+  const admissionOrgId = useAccountOrgId();
+  const admission = useProjection(
+    mateAdmissionSummary,
+    admissionOrgId === null
+      ? null
+      : {
+          orgId: admissionOrgId,
+          projectId: candidate.project.id,
+          viewerSubject: viewer,
+          mateName: name,
+        },
+    NO_ADMISSION,
+  );
+  const status = deleting || view.coming !== undefined ? null : mateStatus(activity, admission);
   const dot =
     (status?.severity === "attention" &&
     (status.kind === "limit" ||

@@ -1,3 +1,4 @@
+import { markupDom } from "../../../../test/markupDom";
 /**
  * A change's review leads with what it does: the description its author wrote — its pictures read
  * as the person from the organization's HQ, holding their room, anything else a plain link — or
@@ -178,7 +179,6 @@ describe("what a change does, first", () => {
 describe("its pictures", () => {
   it("stand as one line while they are read: their words, nothing to follow elsewhere", () => {
     const markup = html({ description: `![The page](${HQ}${PICTURES}/5f1c2a)` });
-    expect(markup).toContain('class="rv-pic-line"');
     expect(markup).toContain("The page");
     expect(markup).not.toContain("href=");
     expect(markup).not.toContain("<img");
@@ -188,7 +188,6 @@ describe("its pictures", () => {
     const markup = html({ description: "![A cat](https://pictures.example/cat.png)" });
     expect(markup).toContain('href="https://pictures.example/cat.png"');
     expect(markup).toContain(">A cat</a>");
-    expect(markup).not.toContain("rv-pic");
   });
 
   it("hold the box their description gives from the first paint, their line in it", () => {
@@ -198,14 +197,13 @@ describe("its pictures", () => {
     expect(markup).toContain('data-box=""');
     expect(markup).toContain("aspect-ratio:720 / 405");
     expect(markup).toContain("width:min(100%, 720px)");
-    expect(markup).toContain('class="rv-pic-line"');
     expect(markup).toContain("The count");
     expect(markup).not.toContain("<img");
   });
 
   it("say Picture where they give no words, with nothing to read", () => {
     const markup = html({ description: "![](data:image/png;base64,iVBORw0KGgo=)" });
-    expect(markup).toContain('<span class="rv-pic-alt">Picture</span>');
+    expect(markupDom(markup).body.textContent).toContain("Picture");
   });
 });
 

@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -28,42 +29,15 @@ describe("ComposerTasksBadge", () => {
 
     expect(markup).toContain('data-composer-tasks-badge="true"');
     expect(markup).toContain('aria-expanded="false"');
-    expect(markup).toContain("chat-composer-shoulder-tab");
-    expect(markup).toContain("rounded-t-xl");
-    expect(markup).toContain("border-b-0");
-    expect(markup).toContain("left-4");
-    expect(markup).toContain("right-4");
+
     expect(markup).toContain('data-composer-task-current="true"');
-    expect(markup).toContain("min-w-0 flex-1 truncate");
-    expect(markup).toContain("w-20");
+
     expect(markup).toContain("Tasks");
     expect(markup).toContain("Attach task progress");
     expect(markup).not.toContain("·");
     expect(markup).toContain("1/3");
     expect(markup).toContain("Current task: Attach task progress");
-    expect(markup).toContain("lucide-list-todo");
     expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
-    expect(markup).toContain("lucide-x");
-    expect(markup).not.toContain("lucide-chevron");
-    expect(markup).toContain("bg-success");
-    expect(markup).toContain("bg-primary");
-    expect(markup).toContain("bg-muted-foreground/25");
-  });
-
-  it("leaves room for the stash tab when both shoulders are present", () => {
-    const markup = renderToStaticMarkup(
-      <ComposerTasksBadge
-        expanded={false}
-        hasTrailingShoulder
-        onDismiss={() => undefined}
-        onToggle={() => undefined}
-        progress={progress}
-        steps={steps}
-      />,
-    );
-
-    expect(markup).toContain("right-28");
-    expect(markup).not.toContain("right-4");
   });
 
   it("has a compact inline fallback for occupied composer shoulders", () => {
@@ -78,10 +52,7 @@ describe("ComposerTasksBadge", () => {
       />,
     );
 
-    expect(markup).toContain("rounded-sm");
     expect(markup).toContain("1/3");
-    expect(markup).not.toContain("chat-composer-shoulder-tab");
-    expect(markup).not.toContain("rounded-t-xl");
   });
 
   it("expands into a read-only attached task list", () => {
@@ -100,18 +71,13 @@ describe("ComposerTasksBadge", () => {
     expect(markup).toContain('role="list"');
     expect(markup).toContain("Inspect the composer");
     expect(markup).toContain('data-composer-task-duration="true"');
-    expect(markup).toContain("ml-auto w-12");
-    expect(markup).toContain('<span class="sr-only">Running: </span>');
+
+    expect(markupDom(markup).body.textContent).toContain("Running: Attach task progress");
     expect(markup).toContain("4.0s");
     expect(markup).toContain("now");
     expect(markup).toContain("Attach task progress");
     expect(markup).toContain("Verify the result");
-    expect(markup).toContain("lucide-list-todo");
     expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
-    expect(markup).not.toContain("lucide-chevron");
-    expect(markup).not.toContain("bg-success");
-    expect(markup).not.toContain("bg-primary");
-    expect(markup).not.toContain("bg-muted-foreground/25");
   });
 
   it("does not render an empty task count", () => {

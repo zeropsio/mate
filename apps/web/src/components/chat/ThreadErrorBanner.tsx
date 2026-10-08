@@ -1,4 +1,4 @@
-import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
+import { admissionRefusalWords } from "@t3tools/client-runtime/data";
 import { mateFailureWords } from "../../zerops/noticeWords";
 import { usageLimitProvider } from "../../zerops/providerLimit.logic";
 import { memo } from "react";
@@ -39,7 +39,6 @@ export function isThreadErrorBannerDismissedForSession(bannerKey: string | null)
 export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,
-  onAuthorize,
   driver,
   mateName,
   usageLimitShown = false,
@@ -51,38 +50,17 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   /** The conversation's agent driver (its session's `providerName`): only its own sign-in failure is one. */
   driver?: string | null | undefined;
   onDismiss?: () => void;
-  /**
-   * Opens the tray that signs the agent in, where the caller has one.
-   *
-   * A driver that is not signed in says so the way a terminal would — *run
-   * `claude auth login` on this environment's machine* — and that machine is a
-   * container the person reaches through this app and has no shell on. The app
-   * can do it; the banner offers that instead of repeating the command.
-   */
-  onAuthorize?: (() => void) | undefined;
 }) {
   if (!error) return null;
   const limit = usageLimitProvider(error);
   if (limit !== null && usageLimitShown) return null;
   const words = mateFailureWords(error, driver, mateName);
-  const needsSignIn = agentNeedsSignIn(error, driver);
-  if (needsSignIn) {
+  const refusal = admissionRefusalWords(error, driver, mateName);
+  if (refusal !== null) {
     return (
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
         <Alert variant="warning" role="status" layout="centered">
-          <AlertDescription>{words}</AlertDescription>
-          {onAuthorize === undefined ? null : (
-            <AlertAction>
-              <Button
-                data-zerops-primary-action="Authorize"
-                onClick={onAuthorize}
-                size="compact"
-                variant="pill"
-              >
-                Sign in
-              </Button>
-            </AlertAction>
-          )}
+          <AlertDescription>{refusal}</AlertDescription>
         </Alert>
       </div>
     );

@@ -208,3 +208,38 @@ it("a tighter Mate service cap cannot hide CPU exhausted by container siblings",
     cpu: { window: { scope: r.dir, capacityCpus: 2 } },
   });
 });
+
+it("A briefly saturated parent cannot hide sustained child CPU stalls", async () => {
+  const r = await rig();
+  const leaf = NodePath.join(r.dir, "service");
+  await NodeFSP.mkdir(leaf);
+  for (const file of ["cpu.stat", "cpu.pressure"])
+    await NodeFSP.copyFile(NodePath.join(r.dir, file), NodePath.join(leaf, file));
+  await NodeFSP.writeFile(NodePath.join(leaf, "cpu.max"), "50000 100000");
+  await NodeFSP.writeFile(NodePath.join(leaf, "cpuset.cpus.effective"), "0-1");
+  let now = 0;
+  const sample = makeCpuSampler([leaf, r.dir], { nowUsec: () => now, procRoot: r.proc });
+  await sample();
+  for (const [scope, usage, pressure] of [
+    [
+      leaf,
+      900000,
+      "some avg10=5 avg60=40 avg300=40 total=400000\nfull avg10=0 avg60=10 avg300=10 total=200000\n",
+    ],
+    [
+      r.dir,
+      3800000,
+      "some avg10=90 avg60=0 avg300=0 total=400000\nfull avg10=0 avg60=0 avg300=0 total=200000\n",
+    ],
+  ] as const) {
+    await NodeFSP.writeFile(
+      NodePath.join(scope, "cpu.stat"),
+      `usage_usec ${usage}\nnr_throttled 0\n`,
+    );
+    await NodeFSP.writeFile(NodePath.join(scope, "cpu.pressure"), pressure);
+  }
+  now = 2_000_000;
+  const result = await sample();
+  expect(result.cpu?.full?.avg60).toBe(10);
+  expect(result.cpu?.window).toMatchObject({ scope: leaf, saturated: true });
+});

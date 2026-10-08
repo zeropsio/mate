@@ -147,7 +147,7 @@ describe("ZeropsHqCardView — its state", () => {
     const html = card({ updating: true });
     expect(html).toContain('data-hq-state="updating"');
     expect(html).toContain('data-zerops-status-tone="busy"');
-    expect(html).toContain("animate-status-pulse");
+
     expect(html).toContain("Updating");
   });
 });

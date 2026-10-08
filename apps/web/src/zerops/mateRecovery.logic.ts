@@ -1,8 +1,4 @@
 import type { MateRecovery } from "@t3tools/client-runtime/data";
-import {
-  classifyZeropsAgentAuth,
-  type ZeropsAgentAuthFields,
-} from "@t3tools/shared/zeropsAgentAuth";
 import type { ReachabilityAction } from "@t3tools/client-runtime/zerops/environments";
 
 export interface RecoveryNotice {
@@ -12,16 +8,6 @@ export interface RecoveryNotice {
   readonly details?: string;
   readonly actions: ReadonlyArray<ReachabilityAction>;
   readonly tone: "default" | "warning" | "error";
-}
-
-export function expiredAgentNotice(
-  agent: ZeropsAgentAuthFields,
-  mateName: string,
-  agentName: string,
-): string | null {
-  return classifyZeropsAgentAuth(agent).kind === "needs-reauth"
-    ? `${mateName}'s ${agentName} login no longer works. Sign in again to continue.`
-    : null;
 }
 
 /** Only owner evidence distinguishes access, deletion, deliberate stop and startup failure. */

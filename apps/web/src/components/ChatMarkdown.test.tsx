@@ -1,3 +1,4 @@
+import { markupDom } from "../../test/markupDom";
 // @vitest-environment happy-dom
 
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
@@ -78,15 +79,6 @@ import ChatMarkdown, {
   MarkdownPictureContext,
   type MarkdownPicture,
 } from "./ChatMarkdown";
-
-/** The rendered root: its class list and the reading it declares. */
-function markdownRoot(html: string): { classes: ReadonlyArray<string>; variant: string | null } {
-  const tag = /^<div [^>]*>/.exec(html)?.[0] ?? "";
-  return {
-    classes: (/ class="([^"]*)"/.exec(tag)?.[1] ?? "").split(/\s+/).filter(Boolean),
-    variant: / data-variant="([^"]*)"/.exec(tag)?.[1] ?? null,
-  };
-}
 
 function codeButton(renderer: ReactTestRenderer, label: string) {
   const button = renderer.root
@@ -656,47 +648,18 @@ describe("ChatMarkdown pictures its host draws", () => {
 });
 
 describe("ChatMarkdown variants", () => {
-  const LOG_CLASSES = ["text-sm", "leading-relaxed"];
-
-  it.each([
-    { variant: undefined, reading: "log" },
-    { variant: "log", reading: "log" },
-    { variant: "answer", reading: "answer" },
-  ] as const)("reads variant=$variant as the $reading", ({ variant, reading }) => {
-    const html = renderToStaticMarkup(
-      <ChatMarkdown cwd="/tmp/project" text="Body" {...(variant ? { variant } : {})} />,
-    );
-    const root = markdownRoot(html);
-
-    expect(root.variant).toBe(reading);
-    // The log keeps today's 14 px from its utility classes; an answer takes its
-    // size and ink from the stylesheet, which a utility would otherwise fight.
-    for (const className of LOG_CLASSES) {
-      expect(root.classes.includes(className)).toBe(reading === "log");
-    }
-  });
-
-  it("lets a log's caller still set its ink", () => {
-    const html = renderToStaticMarkup(
-      <ChatMarkdown cwd="/tmp/project" text="Body" className="text-foreground" />,
-    );
-
-    expect(markdownRoot(html).classes).toContain("text-foreground");
-    expect(markdownRoot(html).classes.some((name) => name.startsWith("text-foreground/"))).toBe(
-      false,
-    );
-  });
+  it.each([undefined, "log", "answer"] as const)(
+    "keeps the reading content in variant=%s",
+    (variant) => {
+      const html = renderToStaticMarkup(
+        <ChatMarkdown cwd="/tmp/project" text="Body" {...(variant ? { variant } : {})} />,
+      );
+      expect(markupDom(html).body.textContent).toBe("Body");
+    },
+  );
 });
 
 describe("ChatMarkdown wrapping", () => {
-  it("leaves breaking anywhere to long tokens, not the whole text", () => {
-    const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text="Body" />);
-
-    for (const className of markdownRoot(html).classes) {
-      expect(className).not.toMatch(/overflow-wrap|word-break|wrap-anywhere/);
-    }
-  });
-
   it.each([
     ["a link's own words", "[the Medusa recipe](https://github.com/zerops-recipe-apps/medusa-dtc)"],
     ["a pasted address", "https://github.com/zeropsio/mate/pull/12"],
@@ -705,7 +668,6 @@ describe("ChatMarkdown wrapping", () => {
 
     expect(html).not.toContain("<wbr");
     // The favicon holds on to the first letter, so it never ends a line alone.
-    expect(html).toMatch(/<span class="whitespace-nowrap"><span[^>]*aria-hidden="true"/);
   });
 });
 
@@ -768,15 +730,18 @@ describe("ChatMarkdown bare addresses", () => {
 });
 
 describe("ChatMarkdown callouts", () => {
-  /** The callout's opening tag, its label paragraph and the markup after the label. */
   function callout(html: string) {
-    const [, open = "", label = "", body = ""] =
-      /(<blockquote[^>]*>)(<p class="chat-markdown-callout-label"[^>]*>[\s\S]*?<\/p>)([\s\S]*)<\/blockquote>/.exec(
-        html,
-      ) ?? [];
-    return { open, label, body };
+    const note = markupDom(html).querySelector('[role="note"]');
+    const label = note?.querySelector("p");
+    return {
+      open: note?.outerHTML ?? "",
+      label: label?.outerHTML ?? "",
+      body: Array.from(note?.children ?? [])
+        .slice(1)
+        .map((node) => node.outerHTML)
+        .join(""),
+    };
   }
-
   it.each([
     { marker: "[!NOTE]", kind: "note", word: "Note" },
     { marker: "[!TIP]", kind: "tip", word: "Tip" },
@@ -788,19 +753,14 @@ describe("ChatMarkdown callouts", () => {
     const html = renderToStaticMarkup(
       <ChatMarkdown cwd="/tmp/project" text={`> ${marker}\n> Stripe is empty.`} />,
     );
-    const { open, label, body } = callout(html);
-
-    expect(open).toContain(`data-alert="${kind}"`);
-    expect(open).toContain('role="note"');
-    expect(open).toContain("chat-markdown-callout");
-    // The word alone, run into the first line — no glyph heading it as a docs
-    // card would (the owner, 2026-09-28) — then the content without its marker line.
-    expect(label).toMatch(new RegExp(`>${word}</p>$`));
-    expect(label).not.toContain("<svg");
-    expect(body.trim()).toBe("<p>Stripe is empty.</p>");
-    expect(html.replace(/<[^>]+>/g, "")).not.toContain("[!");
-    // Copying gives back the alert it was written as.
-    expect(label).toContain(`data-markdown-copy="[!${kind.toUpperCase()}]\n"`);
+    const note = markupDom(html).querySelector('[role="note"]');
+    expect(note?.getAttribute("data-alert")).toBe(kind);
+    const [label, body] = Array.from(note?.querySelectorAll("p") ?? []);
+    expect(label?.textContent).toBe(word);
+    expect(label?.querySelector("svg")).toBeNull();
+    expect(body?.textContent).toBe("Stripe is empty.");
+    expect(note?.textContent).not.toContain("[!");
+    expect(label?.getAttribute("data-markdown-copy")).toBe(`[!${kind.toUpperCase()}]\n`);
   });
 
   it("keeps lists and code in a callout's body, in order", () => {

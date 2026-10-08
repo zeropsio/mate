@@ -216,7 +216,12 @@ if (import.meta.main) {
   steps.push({
     name: "guard ledgers",
     command: "node",
-    args: ["scripts/check-guard-exceptions.ts"],
+    args: ["scripts/check-guard-exceptions.ts", "--base", comparison],
+  });
+  steps.push({
+    name: "test sentence retention",
+    command: "node",
+    args: ["scripts/check-test-sentences.ts", "--base", comparison],
   });
   if (existing.length)
     steps.push({

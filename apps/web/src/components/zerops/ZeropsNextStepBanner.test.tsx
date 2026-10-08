@@ -9,8 +9,6 @@ import { visitElements } from "../../test/reactElementTree";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import type { ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
-import hookSource from "../../zerops/useZeropsMateNextStep.ts?raw";
-import stripSource from "./ZeropsNextStepBanner.tsx?raw";
 import {
   ZeropsNextStepStrip,
   useZeropsNextStepStrip,
@@ -306,17 +304,6 @@ describe("ZeropsNextStepStrip", () => {
     });
 
     expect(onDismiss).toHaveBeenCalledWith(SHOWN_TWO.target, pressed);
-  });
-
-  // Nothing merges from the composer any more (R1): the strip and the hook
-  // behind it read the project's flow and open the review, whose own button
-  // merges after the change can be read.
-  it.each([
-    { file: "ZeropsNextStepBanner.tsx", source: stripSource, reads: "openReview(target" },
-    { file: "useZeropsMateNextStep.ts", source: hookSource, reads: "mateNextStep({" },
-  ])("$file has no path that merges", ({ source, reads }) => {
-    expect(source).toContain(reads);
-    expect(source).not.toMatch(/flowVerbKey|\.merge\b|merge:/);
   });
 });
 

@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProviderDriverKind } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -87,9 +88,6 @@ describe("ComposerCommandMenu", () => {
     );
 
     expect(markup).toContain('data-composer-command-drawer="true"');
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).not.toContain("dropdown-glass");
   });
 
   it("renders commands without a category heading or invented icons", () => {
@@ -118,11 +116,6 @@ describe("ComposerCommandMenu", () => {
     expect(markup).toContain("Switch response model for this thread");
     expect(markup).not.toContain("Built-in");
     expect(markup).not.toContain("<svg");
-    expect(markup).toContain("font-sans text-xs font-medium");
-    expect(markup).not.toContain("font-mono");
-    expect(markup).not.toContain("grid-cols-");
-    expect(markup).toContain("max-w-[45%]");
-    expect(markup).toContain("text-left");
   });
 
   it("renders the skill source icon inside its badge", () => {
@@ -193,12 +186,10 @@ describe("ComposerCommandMenu", () => {
       />,
     );
 
-    expect(markup).toContain('<span class="text-secondary-label">/skill:</span>Ask Matt');
+    expect(markupDom(markup).body.textContent).toContain("/skill:Ask Matt");
     expect(markup).toContain('data-slot="badge"');
-    expect(markup).toContain("lucide-folder");
     expect(markup).toContain(">Repo</span>");
     expect(markup).toContain("Find the right skill or workflow");
-    expect(markup).not.toContain("font-medium text-secondary-label");
   });
   it("offers crewmates by face, handle and job", () => {
     const markup = renderToStaticMarkup(

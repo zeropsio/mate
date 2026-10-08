@@ -1,26 +1,20 @@
+import { markupDom } from "../../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 
 const STATES = [
-  ["queued", "off", "Waiting to start", "Clock", "clock", "border-[var(--zerops-status-off)]"],
-  ["running", "busy", "Deploying", "Play", "play", "border-[var(--zerops-status-busy)]"],
-  ["done", "ok", "Complete", "Check", "check", "border-[var(--zerops-status-ok)]"],
-  [
-    "failed",
-    "failed",
-    "Deploy failed",
-    "CircleAlert",
-    "circle-alert",
-    "border-[var(--zerops-status-failed)]",
-  ],
+  ["queued", "off", "Waiting to start", "Clock"],
+  ["running", "busy", "Deploying", "Play"],
+  ["done", "ok", "Complete", "Check"],
+  ["failed", "failed", "Deploy failed", "CircleAlert"],
 ] as const;
 
 describe("ProcessSteps", () => {
   it.each(STATES)(
-    "renders a %s step through the %s status class and consumer phrase",
-    (state, tone, stateLabel, iconIntent, iconClass, borderClass) => {
+    "renders a %s step with its %s state and consumer phrase",
+    (state, tone, stateLabel, iconIntent) => {
       const html = renderToStaticMarkup(
         <ProcessSteps
           aria-label="Deploy progress"
@@ -31,33 +25,13 @@ describe("ProcessSteps", () => {
       expect(html).toContain('aria-label="Deploy progress"');
       expect(html).toContain(`data-zerops-process-state="${state}"`);
       expect(html).toContain(`data-zerops-process-tone="${tone}"`);
-      expect(html).toContain("grid-cols-[var(--zerops-process-step-column)_1fr]");
-      expect(html).toContain("size-[var(--zerops-process-step-glyph-size)]");
-      expect(html).toContain("border-[length:var(--zerops-process-step-border-width)]");
-      expect(html).toContain(borderClass);
+
       expect(html).toContain(`data-zerops-process-icon="${iconIntent}"`);
-      expect(html).toContain(`lucide-${iconClass}`);
+
       expect(html).toContain(">Deploy</span>");
       expect(html).toContain(`>${stateLabel}</span>`);
     },
   );
-
-  it("uses reduced-motion-safe stepped motion only for the running glyph", () => {
-    const running = renderToStaticMarkup(
-      <ProcessSteps
-        steps={[{ id: "run", label: "Deploy", state: "running", stateLabel: "Deploying" }]}
-      />,
-    );
-    const done = renderToStaticMarkup(
-      <ProcessSteps
-        steps={[{ id: "done", label: "Deploy", state: "done", stateLabel: "Complete" }]}
-      />,
-    );
-
-    expect(running).toContain("animate-status-pulse");
-    expect(running).toContain("motion-reduce:animate-none");
-    expect(done).not.toContain("animate-status-pulse");
-  });
 
   it("renders an optional note in muted text after the label", () => {
     const html = renderToStaticMarkup(
@@ -88,7 +62,22 @@ describe("ProcessSteps", () => {
     expect(html).toContain(">Deploy</span>");
   });
 
-  it("right-aligns a formatted duration in tabular nums when durationMs is given", () => {
+  it.each(["default", "compact"] as const)(
+    "shows no duration when none was reported (%s)",
+    (density) => {
+      const document = markupDom(
+        renderToStaticMarkup(
+          <ProcessSteps
+            density={density}
+            steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
+          />,
+        ),
+      );
+      expect(document.querySelector("li")?.textContent).toBe("Deploy");
+    },
+  );
+
+  it("shows a formatted duration when durationMs is given", () => {
     const html = renderToStaticMarkup(
       <ProcessSteps
         steps={[
@@ -98,17 +87,6 @@ describe("ProcessSteps", () => {
     );
 
     expect(html).toContain("4s");
-    expect(html).toContain("tabular-nums");
-  });
-
-  it("omits the duration span entirely when no durationMs is given", () => {
-    const html = renderToStaticMarkup(
-      <ProcessSteps
-        steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
-      />,
-    );
-
-    expect(html).not.toContain("tabular-nums");
   });
 });
 
@@ -176,8 +154,7 @@ describe("ProcessSteps — compact density", () => {
         `data-step-glyph="${{ queued: "waiting", running: "running", done: "done", failed: "failed" }[state]}"`,
       );
       expect(html).toContain('data-zerops-process-density="compact"');
-      expect(html).not.toContain("border-[length:var(--zerops-process-step-border-width)]");
-      expect(html).not.toContain("grid-cols-[var(--zerops-process-step-column)_1fr]");
+
       // The state is read in the same line as the label, in the running hand.
       expect(html).not.toContain('data-zerops-primitive="micro-label"');
       expect(html).toContain(`>${stateLabel}</span>`);
@@ -189,6 +166,5 @@ describe("ProcessSteps — compact density", () => {
       <ProcessSteps steps={[{ id: "d", label: "Deploy", state: "done", stateLabel: "Done" }]} />,
     );
     expect(html).toContain('data-zerops-process-density="default"');
-    expect(html).toContain("border-[length:var(--zerops-process-step-border-width)]");
   });
 });

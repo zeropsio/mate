@@ -151,7 +151,7 @@ describe("mateDecision — what a Mate waits on, as a surface answers it", () =>
       }),
     ).toEqual({
       kind: "failure",
-      message: "Kai needs a Claude sign-in to continue.",
+      message: "Kai's turn could not continue because Claude was signed out.",
     });
   });
 

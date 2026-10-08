@@ -15,6 +15,39 @@ const setup = Effect.gen(function* () {
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // A reported version difference alone must never offer a chat-level restart.
+    it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.project("Bea", { mate: true });
+        chat.fixture("Bea").history();
+        for (const [name, version] of [
+          ["Ada", "0.14.11"],
+          ["Bea", "999.0.0"],
+        ] as const) {
+          const mate = chat.fixture(name).mate;
+          Object.assign(mate.descriptor, { serverVersion: version });
+          Object.assign(mate.config.environment, { serverVersion: version });
+        }
+        yield* s.given.signedIn;
+        for (const name of ["Ada", "Bea"]) {
+          yield* chat.when.open(name);
+          const shown = yield* Effect.promise(() =>
+            s.page.evaluate(() => ({
+              words: document.body.textContent,
+              actions: [...document.querySelectorAll("button")]
+                .filter((button) => button.getBoundingClientRect().height > 0)
+                .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim()),
+            })),
+          );
+          expect(shown.words).not.toContain("Server versions differ");
+          expect(shown.actions).not.toContain("Restart Mate");
+          expect(shown.actions).not.toContain("Restart server");
+        }
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
     it.effect("first open crosses the door and OAuth", () =>
       Effect.gen(function* () {
@@ -192,6 +225,56 @@ describe("C: opening a Mate and chat", () => {
           expect(Math.max(...after)).toBeLessThan(400);
           expect(after.at(-1)).toBeLessThanOrEqual(2);
           yield* chat.then.once("Keep me at the end, whatever day the Mate says it is");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches the conversation opening mid-way (an engine Mate's did on CI, "list at 1764 of
+    // 3905"): the list re-applied its own scroll after the view was placed at the end, and the
+    // move was read as the person leaving it.
+    it.effect(
+      "a long conversation opens at its end, and the list's own scrolls never leave it",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          for (const round of [1, 2, 3])
+            chat
+              .fixture()
+              .exchange(
+                `How did deploy ${round} go?`,
+                "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                  30,
+                ),
+              );
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          const fromEnd = () =>
+            Effect.promise(() =>
+              s.page.evaluate(async () => {
+                const readings: number[] = [];
+                for (let frame = 0; frame < 60; frame += 1) {
+                  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                  const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
+                  if (scroll !== null)
+                    readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
+                }
+                return readings;
+              }),
+            );
+          expect((yield* fromEnd()).at(-1)).toBeLessThanOrEqual(2);
+          // The list puts its scroll back where it once aimed, as LegendList's initial scroll does
+          // while its rows measure: the page's own move, never the person's.
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+              scroll.scrollTo({ top: Math.round(scroll.scrollHeight * 0.45) });
+            }),
+          );
+          expect((yield* fromEnd()).at(-1)).toBeLessThanOrEqual(2);
+          yield* chat.then.text("The existing conversation is still here");
           yield* s.then.noExternalNetwork;
         }),
     );
@@ -422,43 +505,6 @@ describe("C: opening a Mate and chat", () => {
         yield* s.then.menu.row("Bea").appears();
         expect(chat.fixture().sentTurnCount()).toBe(sent);
         yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a composer sending on an unrecorded personal login despite the missing permission to run that agent.
-    it.effect("an unrecorded personal login blocks Send with an explanation", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        chat.fixture().ownership = "unrecorded";
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.when.attemptSend("This must not reach the agent");
-        yield* chat.then.blockedPromptRemains("This must not reach the agent");
-        yield* chat.then.sendDisabled;
-        yield* chat.then.text("This agent's sign-in was not recorded");
-        yield* chat.then.noText("This must not reach the agent");
-        expect(chat.fixture().sentTurnCount()).toBe(0);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches another member's personal Mate exposing a composer or approval controls while its history is still readable.
-    it.effect("someone else's personal Mate is readable but cannot be sent to or approved", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        chat.fixture().approval();
-        chat.fixture().ownership = "colleague";
-        yield* s.given.signedIn;
-        yield* chat.when.openReadOnly();
-        yield* chat.then.text("only they can run this agent");
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.then.text("vp run build");
-        yield* chat.then.text("Waiting for the agent's owner");
-        yield* chat.then.noComposer;
-        yield* chat.then.noButton("Approve");
-        yield* chat.then.noButton("Decline");
-        expect(chat.fixture().responseCount()).toBe(0);
         yield* s.then.noExternalNetwork;
       }),
     );

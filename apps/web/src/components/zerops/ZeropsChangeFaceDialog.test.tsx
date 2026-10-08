@@ -169,7 +169,7 @@ describe("ZeropsChangeFaceForm", () => {
     const refused = mount(form({ error: "Zerops rejected the request (forbidden)." }));
     const line = host(refused, (node) => node.type === "p" && node.props.role === "alert");
     expect(line.children).toEqual(["Zerops rejected the request (forbidden)."]);
-    expect(line.props.className).toContain("min-h-4");
+
     expect(button(refused, "submit").props.disabled).toBe(false);
   });
 });

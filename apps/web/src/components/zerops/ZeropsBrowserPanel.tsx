@@ -3,7 +3,7 @@
  * (S8b) — `../../../../../zcp/docs/spec-mate.md` §5 "Browser surface".
  *
  * NOT a protected root (design-system.md R2): unlike `ZeropsServiceMap` /
- * `ZeropsLifecycleStrip` / `ZeropsOperationCard` / `ZeropsQuickActions`, this
+ * `ZeropsOperationCard` / `ZeropsQuickActions`, this
  * panel issues a mutating RPC directly (`zeropsBrowserInput`) — the user's
  * own click/type IS the action, there is no agent-mutates-only boundary to
  * keep here.

@@ -92,6 +92,11 @@ offers **Try again** and gives you the composer back so you can type instead. It
 attempt automatically. A retry stays in progress until the Mate reports that the stand-up finished
 or stopped; accepting the retry alone does not mean setup is ready.
 
+An agent that needs sign-in explains it once beside the conversation input. That explanation stays
+until authorization succeeds, including after closing the dialog or reopening the conversation.
+If another member started the unfinished login, open **Settings** to manage it. **Manage API key**
+opens that login's existing key controls, so repairing it keeps the conversation on the same login.
+
 If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
 to sign in again after the server can write its record. The login cannot start personal turns until
 its signer is recorded.

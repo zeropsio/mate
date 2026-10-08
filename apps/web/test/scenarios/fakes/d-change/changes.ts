@@ -3,17 +3,13 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import { MateLinkUp } from "@t3tools/shared/mateLink";
-import { overviewOf, digest } from "../../../../../hq/test/harness/overviews.ts";
 import { HqChange } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
-import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
 import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 
 const decodeChange = Schema.decodeUnknownSync(HqChange);
-const encodeLink = Schema.encodeSync(MateLinkUp);
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 export const TITLE = "Add the order summary";
@@ -27,33 +23,10 @@ export function anotherOrganization(s: Scenario) {
 
 /** zcp's actual git/HTTP boundary: real commits, change records, descriptions and merge receipts. */
 export const changeFixture = Effect.fn(function* (s: Scenario) {
-  yield* s.given.project("Ada", { mate: true, app: "Shop" });
+  const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
   const appId = s.appIds.get("Shop")!;
-  const credential = yield* enrollMate(s.drivers.core.call, s.drivers.core.fake, "Ada");
+  if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
   const headers = { authorization: `Mate ${credential}` };
-  const ticketResponse = yield* s.drivers.core.call("POST", "/api/mate/link-ticket", { headers });
-  expect(ticketResponse.status).toBe(200);
-  const link = yield* s.drivers.core.socket(
-    `/api/mate/link?ticket=${(ticketResponse.body as { ticket: string }).ticket}`,
-  );
-  s.drivers.links.set("Ada", link);
-  yield* link.next("state");
-  const mate = s.drivers.mates.get("Ada")!;
-  yield* link.send(
-    encodeLink({
-      type: "overview",
-      full: true,
-      overview: overviewOf({
-        identity: {
-          environmentId: mate.descriptor.environmentId,
-          serverVersion: "0.14.11",
-          update: null,
-          runsWithoutSignIn: true,
-        },
-        threads: { list: [{ ...digest(mate.thread.id), title: mate.thread.title }], omitted: 0 },
-      }),
-    }),
-  );
   const created = yield* s.drivers.core.call("POST", "/api/mate/repos", {
     headers,
     body: { name: "appdev" },
