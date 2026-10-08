@@ -125,6 +125,7 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.deliver",
   "crew.lane.reset",
   "crew.lane.keep",
+  "crew.lane.remove",
   "crew.claim.read",
 ]);
 const QUIET_WAIT = 15_000;

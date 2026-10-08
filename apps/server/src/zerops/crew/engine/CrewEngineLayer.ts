@@ -47,7 +47,9 @@ import {
 } from "@t3tools/contracts";
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 import {
+  CREW_HOME_FILE,
   parseCrewHome,
+  renderCrewHome,
   validateCrewTopology,
   type CrewDefinition,
   type CrewMemberSpec,
@@ -748,6 +750,17 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         }
       });
 
+    const removeFromHome = (handle: string) =>
+      Effect.gen(function* () {
+        const parsed = yield* home.load;
+        if (parsed.definition === undefined) return;
+        const rendered = renderCrewHome({
+          ...parsed.definition,
+          members: parsed.definition.members.filter((spec) => spec.handle !== handle),
+        }).find((file) => file.path === CREW_HOME_FILE);
+        if (rendered !== undefined) yield* home.write([rendered]);
+      }).pipe(Effect.ignore);
+
     const command: CrewEngineService["command"] = (press, principal) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
@@ -784,6 +797,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           ),
         );
         if (press._tag === "apply") yield* activate;
+        // Taken out of crew.yaml too, so the next Apply does not bring it back (V1's).
+        if (press._tag === "removeCrewmate") yield* removeFromHome(press.handle);
         return { _tag: "done" } satisfies CrewCommandResult;
       });
 
