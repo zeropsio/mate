@@ -588,7 +588,11 @@ describe("C: conversation images", () => {
             const image = document.querySelector<HTMLImageElement>(
               ".run-slot [data-person-pictures] img[data-image-src]",
             );
-            return image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1;
+            if (image?.naturalWidth !== 160) return false;
+            for (let node: Element | null = image; node; node = node.parentElement) {
+              if (Number(getComputedStyle(node).opacity) !== 1) return false;
+            }
+            return true;
           }),
         );
         const held = yield* Effect.promise(() =>

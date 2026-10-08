@@ -400,7 +400,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes bubble-in {
     from {
-      opacity: 0;
       transform: translateY(6px) scale(0.97);
     }
   }
@@ -418,7 +417,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes rise-in {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }
