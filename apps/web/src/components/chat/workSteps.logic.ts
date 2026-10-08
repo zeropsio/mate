@@ -459,9 +459,11 @@ export function backgroundJobOf(
           )
           ? "lost"
           : "running"
-        : failed
-          ? "failed"
-          : "done",
+        : task.taskLost === true
+          ? "lost"
+          : failed
+            ? "failed"
+            : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
     report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,

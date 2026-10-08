@@ -1307,6 +1307,42 @@ describe("the fold's rules", () => {
     ]);
   });
 
+  // Milo, 2026-10-08: the session a restart resumed reported the background task the restart
+  // killed, and the question-only run after it read "Started a helper · <its id>".
+  it.each([
+    { name: "its end", report: { type: "task.completed", status: "stopped" } },
+    { name: "an update that it ended", report: { type: "task.updated", status: "cancelled" } },
+  ])(
+    "claudeAgent [scripted]: a resumed session's report of work it never started opens no work: $name",
+    ({ report }) => {
+      const w = wire("claudeAgent");
+      const translator = makeTranslator({ driver: "claudeAgent", threadId: THREAD });
+      const signals = [
+        ...w.open(S1, "resume"),
+        ...w.begin(H1, "X1"),
+        w.task(report.type, { taskId: "killed-1", status: report.status }),
+        w.completed("X1"),
+      ].flatMap((input) => translator.step(input));
+      assert.isFalse(signalLines(signals).some((line) => line.startsWith("s1.w")));
+      assert.deepStrictEqual(translator.dropped(), [{ reason: "unknown-work", type: report.type }]);
+    },
+  );
+
+  // Codex's child that fails before any start, Antigravity's subagent whose first word is a
+  // failure: in a session that ran from its start, the end is the work's only report.
+  it("a fresh session's work first reported as failed still opens, failed", () => {
+    const w = wire("claudeAgent");
+    const translator = makeTranslator({ driver: "claudeAgent", threadId: THREAD });
+    const signals = [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.task("task.completed", { taskId: "child-1", status: "failed", taskType: "local_agent" }),
+      w.completed("X1"),
+    ].flatMap((input) => translator.step(input));
+    assert.isTrue(signalLines(signals).some((line) => line.startsWith("s1.w1 helper failed")));
+    assert.deepStrictEqual(translator.dropped(), []);
+  });
+
   it("claudeAgent [scripted]: a call Claude cancelled before it answered closes stopped, never done", () => {
     const w = wire("claudeAgent");
     const lines = runScript("claudeAgent", [

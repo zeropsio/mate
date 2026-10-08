@@ -76,8 +76,12 @@ export interface ConversationView {
   /** A usage limit holds the queue until then (`unknown`: until a probe or the person). */
   readonly pausedUntil: number | "unknown" | null;
   readonly openRequests: ReadonlyArray<ViewRequest>;
-  /** The person's latest message, as they wrote it. */
-  readonly lastPerson: { readonly text: string; readonly at: number } | null;
+  /** The person's latest message, as they wrote it, with what it carried (a picture's label is in its text). */
+  readonly lastPerson: {
+    readonly text: string;
+    readonly at: number;
+    readonly attachments?: ReadonlyArray<{ readonly type: string; readonly mimeType?: string }>;
+  } | null;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -193,7 +197,11 @@ export const readConversationView = (conversationId: ConversationId) =>
         ? Effect.succeed(null)
         : Effect.map(decodeBody(row.body_json), (body) =>
             "text" in body && typeof body.text === "string"
-              ? { text: body.text, at: row.at }
+              ? {
+                  text: body.text,
+                  at: row.at,
+                  ...(body.kind === "person" ? { attachments: body.attachments } : {}),
+                }
               : null,
           );
     const call = activeRun === null ? undefined : yield* items({ kind: "call", open: true });

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalFetch:error -- keep the native fetch boundary checked under every consumer's diagnostics.
 /** Host-independent browser transport construction. Hosts supply targets and cookie policy. */
 import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/http";

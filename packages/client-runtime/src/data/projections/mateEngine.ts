@@ -137,7 +137,14 @@ export interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
 }
 
-function messageOf(item: Item, cardOf: CardOf): EngineMessage | null {
+/** Whether a run ended without ever starting: its message never reached the agent. */
+type NeverStarted = (runId: string | null) => boolean;
+
+function messageOf(
+  item: Item,
+  cardOf: CardOf,
+  neverStarted: NeverStarted = () => false,
+): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
     createdAt: iso(item.at),
@@ -147,6 +154,8 @@ function messageOf(item: Item, cardOf: CardOf): EngineMessage | null {
     case "person":
       return {
         ...base,
+        // A message whose run ended before it began names no run, as a V1 message no run took.
+        ...(neverStarted(item.runId) ? { turnId: null } : {}),
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,
@@ -207,12 +216,15 @@ const WORK_TASK_TYPES: Readonly<Record<string, string>> = {
   monitor: "monitor",
 };
 
-/** Background work's end as V1's task lifecycle says it; `lost` never reports, so it stopped. */
+/**
+ * Background work's end as V1's task lifecycle says it. `lost` is the engine's own word that its
+ * session went before it reported — what V1 judges from the live set (`jobLost`), said outright.
+ */
 const WORK_END_STATUS: Readonly<Record<string, string>> = {
   completed: "completed",
   failed: "failed",
   stopped: "stopped",
-  lost: "stopped",
+  lost: "lost",
 };
 
 function activity(
@@ -743,8 +755,13 @@ export function engineThreadOf(
   );
   const messages: EngineMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
+  const runById = new Map(runs.map((run) => [run.id as string, run]));
+  const neverStarted: NeverStarted = (runId) => {
+    const run = runId === null ? undefined : runById.get(runId);
+    return run !== undefined && run.state === "ended" && run.startedAt === null;
+  };
   for (const item of items) {
-    const message = messageOf(item, cardOf);
+    const message = messageOf(item, cardOf, neverStarted);
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":

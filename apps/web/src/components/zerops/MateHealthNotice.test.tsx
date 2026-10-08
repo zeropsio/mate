@@ -65,7 +65,7 @@ describe("Mate's visible resource warning", () => {
     expect(text).toContain("Rhea is slowed by I/O stalls");
     expect(text).not.toContain("short on disk");
   });
-  it("Routine reclaim, swap growth and brief stalls leave no notice", () => {
+  it("Owner-reported reclaim, swap growth and brief stalls remain visible", () => {
     const value = {
       ...health,
       evidence: {
@@ -79,7 +79,7 @@ describe("Mate's visible resource warning", () => {
     };
     expect(
       renderToStaticMarkup(<MateHealthMessage name="Toby" read={{ health: value, live: true }} />),
-    ).toBe("");
+    ).toContain("Toby is short of memory — work may be slow");
   });
   it("clears after source recovery and says nothing before a sample", () => {
     for (const value of [

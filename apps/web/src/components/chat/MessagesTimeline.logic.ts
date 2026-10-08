@@ -46,6 +46,7 @@ import {
   isUserMessageEntry,
   messageReceipt,
   crewCardOf,
+  turnsThatCame,
   readSlashCommand,
   stretchFace,
   standingIncidents,
@@ -2128,6 +2129,7 @@ export function deriveMessagesTimelineRows(input: {
         }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
+  const came = turnsThatCame(entries, input.latestTurn ?? null);
   // Which tasks are the commands they track: a command's words, and no row of their own.
   const tracked = {
     ...trackCommands(
@@ -2310,7 +2312,7 @@ export function deriveMessagesTimelineRows(input: {
       id: entry.id,
       createdAt: entry.createdAt,
       message: entry.message,
-      receipt: messageReceipt(entry.message, structure, index),
+      receipt: messageReceipt(entry.message, structure, index, came),
       aside,
       imageOnly: isImageOnlyPlaceholder(entry.message.text),
       showAssistantMeta: false,

@@ -154,13 +154,13 @@ describe("health at the screen boundary", () => {
   it("shows no CPU notice for an old average or a recovered current window", () => {
     const old = cpuHealth(true);
     const { window: _, ...averages } = old.evidence.cpu!;
-    expect(
-      mateHealthCopy(
-        "Hardy",
-        project(direct({ ...old, evidence: { ...old.evidence, cpu: averages } })),
-      ),
-    ).toBeNull();
-    expect(mateHealthCopy("Hardy", project(direct(cpuHealth(false))))).toBeNull();
+    for (const cpu of [averages, cpuHealth(false).evidence.cpu]) {
+      const value: MateHealth = {
+        ...old,
+        evidence: { ...old.evidence, status: "ok", resources: [], cpu },
+      };
+      expect(mateHealthCopy("Hardy", project(direct(value)))).toBeNull();
+    }
   });
   it("says attribution is unknown when runnable work exhausts CPU but the consumer has exited", () => {
     const value = cpuHealth(true);
@@ -214,132 +214,117 @@ describe("health at the screen boundary", () => {
   });
   it.each([
     {
-      sentence: "Routine reclaim, swap growth and brief stalls leave the composer quiet",
-      pressure: { some: { avg10: 5, total: 3 }, full: null },
-      growth: { high: 1, max: 1, oom: 0, oomKill: 0 },
-      swapGrowth: 1024,
-      swapCurrent: 1024,
-      swapMax: 2048,
-      severity: null,
-    },
-    {
       sentence: "Sustained full memory stalls show one calm warning",
       pressure: {
         some: { avg10: 0, total: 3 },
         full: { avg10: 0, avg60: 10, avg300: 10, total: 2 },
       },
-      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
-      swapGrowth: 0,
-      swapCurrent: 0,
-      swapMax: 0,
-      severity: "warning",
+      oomKill: 0,
+      severity: "warning" as const,
     },
     {
       sentence: "Sustained partial memory stalls show one calm warning",
       pressure: { some: { avg10: 0, avg60: 40, avg300: 40, total: 3 }, full: null },
-      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
-      swapGrowth: 0,
-      swapCurrent: 0,
-      swapMax: 0,
-      severity: "warning",
-    },
-    {
-      sentence:
-        "A minute of stalls without sustained five-minute evidence leaves the composer quiet",
-      pressure: {
-        some: { avg10: 50, avg60: 40, avg300: 39, total: 3 },
-        full: { avg10: 20, avg60: 10, avg300: 9, total: 2 },
-      },
-      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
-      swapGrowth: 0,
-      swapCurrent: 0,
-      swapMax: 0,
-      severity: null,
+      oomKill: 0,
+      severity: "warning" as const,
     },
     {
       sentence: "An OOM kill since the preceding sample shows a critical notice",
       pressure: null,
-      growth: { high: 0, max: 0, oom: 0, oomKill: 1 },
-      swapGrowth: 0,
-      swapCurrent: 0,
-      swapMax: 0,
-      severity: "critical",
+      oomKill: 1,
+      severity: "critical" as const,
     },
-    {
-      sentence: "Full swap and failed allocations without kills leave the composer quiet",
-      pressure: null,
-      growth: { high: 0, max: 0, oom: 1, oomKill: 0 },
-      swapGrowth: 0,
-      swapCurrent: 2048,
-      swapMax: 2048,
-      severity: null,
-    },
-  ])("$sentence", ({ pressure, growth, swapGrowth, swapCurrent, swapMax, severity }) => {
+  ])("$sentence", ({ pressure, oomKill, severity }) => {
     const value: MateHealth = {
       ...health,
       evidence: {
         ...evidence,
+        severity,
         memory: {
-          current: 0,
-          high: null,
-          max: null,
-          events: growth,
-          growth,
-          swapGrowth,
-          swapCurrent,
-          swapMax,
+          ...evidence.memory!,
+          growth: { high: 0, max: 0, oom: 0, oomKill },
+          swapCurrent: 0,
+          swapMax: 0,
           pressure,
         },
       },
     };
-    const copy = mateHealthCopy("Toby", project(direct(value)));
-    if (severity === null) expect(copy).toBeNull();
-    else {
-      expect(copy).toEqual({
-        severity,
-        title: "Toby is short of memory — work may be slow",
-        description:
-          "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
-      });
-    }
+    expect(mateHealthCopy("Toby", project(direct(value)))).toEqual({
+      severity,
+      title: "Toby is short of memory — work may be slow",
+      description:
+        "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
+    });
   });
-  it.each(["io", "cpu"] as const)("A brief %s stall leaves the composer quiet", (resource) => {
+  it.each([true, false])(
+    "Decision: one derivation per state; consumers never recompute it. (live=%s)",
+    (live) => {
+      // The owner authorizes removing the client's stricter policy, including retained reports.
+      const value: MateHealth = {
+        ...health,
+        evidence: { ...evidence, resources: ["io", "memory", "cpu"], severity: "critical" },
+      };
+      const baseline = mateHealthCopy("Toby", project(relay(value, live)));
+      expect(baseline?.severity).toBe("critical");
+      expect(baseline?.title).toContain("is slowed by I/O stalls");
+      expect(baseline?.description).toContain("Close idle terminal agents");
+      const changed: MateHealth = {
+        ...value,
+        evidence: { ...value.evidence, memory: null, io: null, disk: { free: 0, total: 5000 } },
+      };
+      expect(mateHealthCopy("Toby", project(relay(changed, live)))).toEqual(baseline);
+      expect(baseline?.description).not.toContain("Free space");
+    },
+  );
+  it.each(["warning", "critical"] as const)(
+    "The notice retains the owner's %s severity even when raw counters disagree",
+    (severity) => {
+      const value: MateHealth = {
+        ...health,
+        evidence: {
+          ...evidence,
+          severity,
+          disk: { free: severity === "warning" ? 0 : 1000, total: 5000 },
+        },
+      };
+      expect(mateHealthCopy("Toby", project(direct(value)))?.severity).toBe(severity);
+    },
+  );
+  it("Retained CPU reports keep the owner's notice without an attribution window", () => {
     const value = cpuHealth(true);
-    const pressure = { some: { avg10: 50, total: 300 }, full: null };
-    expect(
-      mateHealthCopy(
-        "Toby",
-        project(
-          direct({
-            ...value,
-            evidence: {
-              ...value.evidence,
-              cpu: resource === "cpu" ? { ...value.evidence.cpu!, ...pressure } : null,
-              io: resource === "io" ? pressure : null,
-            },
-          }),
-        ),
-      ),
-    ).toBeNull();
+    const { window: _, ...cpu } = value.evidence.cpu!;
+    const copy = mateHealthCopy(
+      "Hardy",
+      project(relay({ ...value, evidence: { ...value.evidence, cpu } })),
+    );
+    expect(copy?.title).toBe("Hardy · last-known health is under CPU pressure");
+    expect(copy?.description).toContain("current resources are unknown");
+    expect(copy?.description).not.toContain("Measured");
   });
-});
-it.each([1000, 0])("normalizes legacy severity and concurrent I/O with disk free=%s", (free) => {
-  const copy = mateHealthCopy("Rhea", {
-    live: true,
-    health: {
-      ...health,
+  it("A fixed CPU verdict keeps its notice when raw saturation and PSI change", () => {
+    const value = cpuHealth(true);
+    const baseline = mateHealthCopy("Hardy", project(direct(value)));
+    const changed: MateHealth = {
+      ...value,
       evidence: {
-        ...evidence,
-        disk: { free, total: 5000 },
-        memory: null,
-        io: {
-          some: { avg10: 0, total: 300 },
-          full: { avg10: 0, avg60: 10, avg300: 10, total: 240 },
+        ...value.evidence,
+        cpu: {
+          ...value.evidence.cpu!,
+          some: { avg10: 0, total: 500000 },
+          full: null,
+          window: { ...value.evidence.cpu!.window!, saturated: false },
         },
       },
-    },
+    };
+    expect(baseline?.title).toBe("Hardy is under CPU pressure");
+    expect(mateHealthCopy("Hardy", project(direct(changed)))).toEqual(baseline);
   });
-  expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
-  expect(copy?.description).toContain("I/O stalls");
-  if (free === 0) expect(copy?.title).toContain("no free space");
+  it.each(["ok", "unknown"] as const)(
+    "An owner-reported %s state stays quiet despite raw pressure",
+    (status) => {
+      expect(
+        mateHealthCopy("Toby", project(direct({ ...health, evidence: { ...evidence, status } }))),
+      ).toBeNull();
+    },
+  );
 });

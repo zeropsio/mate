@@ -1400,7 +1400,8 @@ function extractWorkLogToolLifecycleStatus(
   // that child status is unavailable; do not retain the earlier running marker.
   if (status === "idle" && payload?.taskType === "subagent_batch") return "stopped";
   if (status === "pending" || status === "running" || status === "waiting") return "inProgress";
-  if (status === "cancelled" || status === "interrupted") return "stopped";
+  // "lost": an engine Mate's word for work its session took with it, unreported.
+  if (status === "cancelled" || status === "interrupted" || status === "lost") return "stopped";
   if (
     status === "inProgress" ||
     status === "completed" ||

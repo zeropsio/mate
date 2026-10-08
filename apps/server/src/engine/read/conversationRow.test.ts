@@ -72,6 +72,44 @@ describe("the menu row", () => {
     expect(row.at).toBe(900);
   });
 
+  // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
+  it.each([
+    {
+      name: "a picture and words",
+      person: {
+        text: "[Picture 1]\nEngine check 9: what number is in the picture?",
+        attachments: [{ type: "image", mimeType: "image/png" }],
+      },
+      said: "Engine check 9: what number is in the picture?",
+    },
+    {
+      name: "a picture alone",
+      person: { text: "[Picture 1]", attachments: [{ type: "image", mimeType: "image/png" }] },
+      said: "1 image",
+    },
+    {
+      name: "words in markdown",
+      person: { text: "Deploy **the api**", attachments: [] },
+      said: "Deploy the api",
+    },
+    {
+      name: "a rule before the words",
+      person: { text: "---\nDeploy the api", attachments: [] },
+      said: "Deploy the api",
+    },
+    {
+      name: "a code fence before the words",
+      person: { text: "```sh\nnpm run build\n```", attachments: [] },
+      said: "npm run build",
+    },
+  ])(
+    "reads the person's message as V1's row quotes it, never a picture's label: $name",
+    ({ person, said }) => {
+      const lastPerson = { ...person, at: 800 };
+      expect(conversationRowOf(view({ lastPerson }), revision).subject).toBe(said);
+    },
+  );
+
   it.each<[string, Partial<ConversationView>, unknown]>([
     ["nothing ever ran: idle", {}, { kind: "idle" }],
     [

@@ -278,9 +278,11 @@ export function foldBackgroundTasks(
       draft.state =
         status === "failed" || activity.tone === "error"
           ? "failed"
-          : status !== undefined && STOPPED_STATUSES.has(status)
-            ? "stopped"
-            : "done";
+          : status === "lost"
+            ? "lost"
+            : status !== undefined && STOPPED_STATUSES.has(status)
+              ? "stopped"
+              : "done";
       draft.endedAt = activity.createdAt;
     }
   }
