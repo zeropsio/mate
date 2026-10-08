@@ -13,6 +13,7 @@
  *
  * @module crew/engine/CrewEngineLayer
  */
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -91,7 +92,7 @@ import { CrewStoreError, type CrewMemoryRow } from "../CrewStore.ts";
 import { closedSeamWords, landedSeamWords, sweptSeamWords } from "../crewCards.ts";
 import type { CrewInput, HostRead } from "./command.ts";
 import { CrewDeliveryContext, type CrewDeliveryContextShape } from "./CrewDeliveryContext.ts";
-import { observeCrew } from "./CrewObserver.ts";
+import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
@@ -353,6 +354,30 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         .pipe(
           Effect.asVoid,
           Effect.catchCause((cause) => Effect.logWarning("crew: an input was not recorded", cause)),
+        );
+
+    /** The observer's tell: an input the crew did not take in fails, so its reader stops there. */
+    const tellObserved = (input: CrewInput, id: string) =>
+      door
+        .tell({
+          commandId: CommandId.make(id),
+          conversationId: CREW_OWNER_ID,
+          principal: { kind: "engine" },
+          command: input,
+        })
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.fail(new CrewInputUnrecorded({ detail: Cause.pretty(cause) })),
+          ),
+          Effect.flatMap((result) =>
+            result._tag === "Rejected"
+              ? Effect.fail(
+                  new CrewInputUnrecorded({
+                    detail: result.rejection.detail ?? result.rejection.reason,
+                  }),
+                )
+              : Effect.void,
+          ),
         );
 
     /* ------------------------------------------------------- agents and logins */
@@ -1125,7 +1150,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       changes: engine.changes,
       eventsAfter: engine.eventsAfter,
       crewState: state,
-      tell,
+      tell: tellObserved,
       conversations: Effect.map(engine.conversations, (list) =>
         list.views.map((view) => view.conversationId),
       ),

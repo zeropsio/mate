@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
   ConversationId,
@@ -11,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { CrewInput } from "./command.ts";
-import { observeCrew } from "./CrewObserver.ts";
+import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
 import { initialCrewState, type CrewState, type MemberRecord } from "./state.ts";
 
 const MATE = ConversationId.make("mate");
@@ -44,8 +45,13 @@ const crewWith = (cursors: Readonly<Record<string, number>>): CrewState => ({
 });
 
 /** A world of records and a crew whose cursor moves as each batch is told. */
-const scene = (records: Record<string, Array<EngineEvent>>) =>
+const scene = (
+  records: Record<string, Array<EngineEvent>>,
+  /** How many of the first `Observed` tells the crew does not take in. */
+  unrecorded = 0,
+) =>
   Effect.gen(function* () {
+    let failures = unrecorded;
     const changes = yield* PubSub.unbounded<ConversationId>();
     let state = crewWith({});
     const told: Array<{ readonly input: CrewInput; readonly commandId: string }> = [];
@@ -57,15 +63,17 @@ const scene = (records: Record<string, Array<EngineEvent>>) =>
         ),
       crewState: Effect.sync(() => state),
       tell: (input, commandId) =>
-        Effect.sync(() => {
-          told.push({ input, commandId });
-          if (input._tag === "Observed") {
-            state = crewWith({
-              ...state.cursors,
-              [input.conversationId]: input.events.at(-1)!.seq,
-            });
-          }
-        }),
+        input._tag === "Observed" && failures-- > 0
+          ? Effect.fail(new CrewInputUnrecorded({ detail: "the step did not commit" }))
+          : Effect.sync(() => {
+              told.push({ input, commandId });
+              if (input._tag === "Observed") {
+                state = crewWith({
+                  ...state.cursors,
+                  [input.conversationId]: input.events.at(-1)!.seq,
+                });
+              }
+            }),
       conversations: Effect.succeed([MATE]),
       gauges: Stream.empty,
       signIns: Stream.empty,
@@ -76,6 +84,7 @@ const scene = (records: Record<string, Array<EngineEvent>>) =>
     yield* settle;
     return {
       told,
+      settle,
       changed: (conversationId: ConversationId) =>
         PubSub.publish(changes, conversationId).pipe(Effect.andThen(settle)),
     };
@@ -105,6 +114,29 @@ describe("the crew's observer", () => {
         );
       }),
     ),
+  );
+
+  it.effect(
+    "a batch the crew could not take in is read again from its cursor, nothing skipped, with no new change",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const backend: Array<EngineEvent> = [
+            { _tag: "RunQueued", ...header(BACKEND, 1) } as unknown as EngineEvent,
+            { _tag: "RunAdmitted", ...header(BACKEND, 2) } as unknown as EngineEvent,
+          ];
+          const world = yield* scene({ [BACKEND]: backend }, 1);
+          assert.deepStrictEqual(world.told, []);
+          yield* TestClock.adjust("2 seconds");
+          yield* world.settle;
+          assert.deepStrictEqual(
+            world.told.flatMap(({ input }) =>
+              input._tag === "Observed" ? [input.events.map((event) => event.seq)] : [],
+            ),
+            [[1, 2]],
+          );
+        }),
+      ),
   );
 
   it.effect("tells a deploy the Mate's chat shows before the batch that holds it", () =>

@@ -17,6 +17,7 @@
  * @module crew/engine/CrewObserver
  */
 import * as Clock from "effect/Clock";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
@@ -26,6 +27,15 @@ import type { ConversationId, EngineEvent, KnownEngineEvent } from "@t3tools/con
 import type { EventsUnreadable } from "../../../engine/MateEngine.ts";
 import type { CrewInput } from "./command.ts";
 import { membersInOrder, type CrewState } from "./state.ts";
+
+/** An input the crew did not take in: its step refused it or never committed. */
+export class CrewInputUnrecorded extends Data.TaggedError("CrewInputUnrecorded")<{
+  readonly detail: string;
+}> {}
+
+/** How long a catch-up that failed waits before it reads again: doubling, at most 30 s. */
+export const catchUpRetryMs = (failures: number): number =>
+  Math.min(30_000, 500 * 2 ** Math.max(0, failures - 1));
 
 /** Events read per page of a conversation's record. */
 export const OBSERVE_PAGE = 200;
@@ -44,8 +54,11 @@ export interface CrewObserverInputs {
     limit?: number,
   ) => Effect.Effect<ReadonlyArray<EngineEvent>, EventsUnreadable>;
   readonly crewState: Effect.Effect<CrewState>;
-  /** Tells the crew one input under `commandId`: a repeat is answered by its receipt. */
-  readonly tell: (input: CrewInput, commandId: string) => Effect.Effect<void>;
+  /**
+   * Tells the crew one input under `commandId`: a repeat is answered by its receipt. It fails when
+   * the crew did not take the input in, so its reader never moves past it.
+   */
+  readonly tell: (input: CrewInput, commandId: string) => Effect.Effect<void, CrewInputUnrecorded>;
   /** The conversations the engine holds besides the crew's: the Mate's own. */
   readonly conversations: Effect.Effect<ReadonlyArray<ConversationId>>;
   readonly gauges: Stream.Stream<CrewGaugeReading>;
@@ -104,33 +117,38 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
             Effect.asVoid,
           );
 
+    const scope = yield* Effect.scope;
+    /** Catch-ups that failed in a row, by conversation: the next waits the longer. */
+    const failures = new Map<string, number>();
+
     const catchUp = (conversationId: ConversationId) =>
       Effect.gen(function* () {
         const state = yield* inputs.crewState;
         const crewmate = membersInOrder(state).some(
           (member) => member.conversationId === conversationId,
         );
+        // From the crew's own cursor each time: what it never took in is read again.
         let cursor = state.cursors[conversationId] ?? 0;
         for (;;) {
           const page = yield* inputs.eventsAfter(conversationId, cursor, OBSERVE_PAGE);
           const events = page as ReadonlyArray<KnownEngineEvent>;
-          if (events.length === 0) return;
+          if (events.length === 0) break;
           if (!crewmate) {
             for (const event of events) {
               const deploy = deployOf(event);
               if (deploy === undefined) continue;
               if (!deploy.ended && !deploying.has(deploy.itemId)) {
-                deploying.add(deploy.itemId);
                 yield* inputs.tell(
                   { _tag: "Deploy", host: deploy.host, phase: "started" },
                   `deploy:${deploy.itemId}:started`,
                 );
+                deploying.add(deploy.itemId);
               } else if (deploy.ended) {
-                deploying.delete(deploy.itemId);
                 yield* inputs.tell(
                   { _tag: "Deploy", host: deploy.host, phase: "ended" },
                   `deploy:${deploy.itemId}:ended`,
                 );
+                deploying.delete(deploy.itemId);
               }
             }
           }
@@ -140,11 +158,22 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
             `observe:${conversationId}:${toSeq}`,
           );
           cursor = toSeq;
-          if (events.length < OBSERVE_PAGE) return;
+          if (events.length < OBSERVE_PAGE) break;
         }
+        failures.delete(conversationId);
       }).pipe(
+        // A read or a step that failed stops this catch-up where the crew's cursor stands; the
+        // conversation is read again after a wait, whether or not its record moves meanwhile.
         Effect.catchCause((cause) =>
-          Effect.logWarning("crew: a conversation's record could not be read", cause),
+          Effect.gen(function* () {
+            const failed = (failures.get(conversationId) ?? 0) + 1;
+            failures.set(conversationId, failed);
+            yield* Effect.logWarning("crew: a conversation's record was not taken in", cause);
+            yield* Effect.sleep(catchUpRetryMs(failed)).pipe(
+              Effect.andThen(enqueue(conversationId)),
+              Effect.forkIn(scope),
+            );
+          }),
         ),
       );
 
@@ -164,10 +193,13 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
     yield* inputs.gauges.pipe(
       Stream.runForEach((reading) =>
         Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          inputs.tell(
-            { _tag: "Gauge", login: reading.login, usagePercent: reading.usagePercent },
-            `gauge:${reading.login}:${(gauges += 1)}:${now}`,
-          ),
+          inputs
+            .tell(
+              { _tag: "Gauge", login: reading.login, usagePercent: reading.usagePercent },
+              `gauge:${reading.login}:${(gauges += 1)}:${now}`,
+            )
+            // A missed gauge is replaced by the next one.
+            .pipe(Effect.ignore),
         ),
       ),
       Effect.forkScoped,
@@ -177,7 +209,13 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
       Stream.filter((logins) => logins.length > 0),
       Stream.runForEach((logins) =>
         Effect.flatMap(Clock.currentTimeMillis, (now) =>
-          inputs.tell({ _tag: "LoginsChanged", logins }, `logins:${(signIns += 1)}:${now}`),
+          inputs
+            .tell({ _tag: "LoginsChanged", logins }, `logins:${(signIns += 1)}:${now}`)
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("crew: a sign-in change was not taken in", cause),
+              ),
+            ),
         ),
       ),
       Effect.forkScoped,

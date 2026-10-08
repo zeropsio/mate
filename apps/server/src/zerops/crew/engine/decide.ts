@@ -2635,6 +2635,12 @@ const observed = (
   events: ReadonlyArray<KnownEngineEvent>,
 ): void => {
   const cursor = b.state.cursors[conversationId] ?? 0;
+  // A record is read in order: a batch past the cursor follows one the crew never took in, and
+  // taking it would skip that one's events. Its reader reads again from the cursor.
+  const first = events[0];
+  if (first !== undefined && first.seq > cursor + 1) {
+    throw wrongState(`The crew read ${conversationId}'s record past what it took in.`);
+  }
   const fresh = events.filter((event) => event.seq > cursor);
   if (fresh.length === 0) return;
   for (const event of fresh) {

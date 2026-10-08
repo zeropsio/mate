@@ -120,6 +120,37 @@ const journeys: ReadonlyArray<Journey> = [
     expected: [["task", "nudge"], 4, 2],
   },
   {
+    sentence:
+      "a batch that starts past the crew's cursor is refused, so no event of a record is skipped",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      const conversation = w.state.members.reviewer!.conversationId;
+      const upTo = w.state.cursors[conversation]!;
+      const decision = w.tell(
+        {
+          _tag: "Observed",
+          conversationId: conversation,
+          events: [
+            {
+              _tag: "RunAdmitted",
+              v: 1,
+              conversationId: conversation,
+              seq: upTo + 2,
+              at: 0,
+              commandId: "after-a-lost-batch",
+              runId: `${conversation}/r/9`,
+            },
+          ] as never,
+        },
+        { kind: "engine" },
+      );
+      return [decision._tag, w.state.cursors[conversation] === upTo];
+    },
+    expected: ["Reject", true],
+  },
+  {
     sentence: "in a run, a turn that ends without a report gets one nudge",
     journey: (w) => {
       w.apply(home(reader("reviewer")));
