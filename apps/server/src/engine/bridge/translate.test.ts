@@ -1307,6 +1307,27 @@ describe("the fold's rules", () => {
     ]);
   });
 
+  // Milo, 2026-10-08: the session a restart resumed reported the background task the restart
+  // killed, and the question-only run after it read "Started a helper · <its id>".
+  it.each([
+    { name: "its end", report: { type: "task.completed", status: "stopped" } },
+    { name: "an update that it ended", report: { type: "task.updated", status: "cancelled" } },
+  ])(
+    "claudeAgent [scripted]: a report of work this session never started opens no work: $name",
+    ({ report }) => {
+      const w = wire("claudeAgent");
+      const translator = makeTranslator({ driver: "claudeAgent", threadId: THREAD });
+      const signals = [
+        ...w.open(),
+        ...w.begin(H1, "X1"),
+        w.task(report.type, { taskId: "killed-1", status: report.status }),
+        w.completed("X1"),
+      ].flatMap((input) => translator.step(input));
+      assert.deepStrictEqual(signalLines(signals), [...OPENS_H1, "h1 ended completed — agent"]);
+      assert.deepStrictEqual(translator.dropped(), [{ reason: "unknown-work", type: report.type }]);
+    },
+  );
+
   it("claudeAgent [scripted]: a call Claude cancelled before it answered closes stopped, never done", () => {
     const w = wire("claudeAgent");
     const lines = runScript("claudeAgent", [
