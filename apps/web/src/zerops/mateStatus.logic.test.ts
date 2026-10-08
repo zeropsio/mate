@@ -93,3 +93,15 @@ it("typed restart evidence requests Continue without treating the Mate as broken
   });
   expect(mateStatus(activity({ kind: "idle", interruption: null }))).toBeNull();
 });
+
+it("an answerable question remains the recovery action after a restart", () => {
+  const interruption = {
+    turnId: TurnId.make("turn"),
+    restart: { cause: "replaced" as const, at: "2026-10-08T08:24:39.700Z" },
+    continuation: "manual" as const,
+  };
+  expect(mateStatus(activity({ kind: "input", interruption }))).toMatchObject({
+    kind: "answer",
+    severity: "attention",
+  });
+});

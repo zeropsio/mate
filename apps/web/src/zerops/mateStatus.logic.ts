@@ -20,9 +20,6 @@ export function mateStatus(
   admission?: AgentAdmissionAttention | null,
 ): MateStatus | null {
   if (activity?.remembered === true) return null;
-  if (activity?.interruption?.continuation === "manual") {
-    return { kind: "interrupted", severity: "attention", interruption: activity.interruption };
-  }
   if (activity?.limit?.kind === "limited") {
     return {
       kind: "limit",
@@ -45,6 +42,9 @@ export function mateStatus(
     activity?.kind === "planReady"
   ) {
     return { kind: "answer", severity: "attention" };
+  }
+  if (activity?.interruption?.continuation === "manual") {
+    return { kind: "interrupted", severity: "attention", interruption: activity.interruption };
   }
   if (activity?.kind === "failed") return { kind: "broken", severity: "danger" };
   return null;

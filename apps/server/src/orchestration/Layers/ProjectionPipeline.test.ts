@@ -5141,6 +5141,25 @@ it.layer(
           readonly kind: string;
         }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
         assert.deepStrictEqual(history, [{ turnId, kind: "runtime.interrupted" }]);
+
+        yield* append({
+          ...fields,
+          eventId: EventId.make("permission-rebind"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: {
+              ...session,
+              runtimeMode: "approval-required",
+              status: "ready",
+              activeTurnId: null,
+            },
+          },
+        });
+        const rebound = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.deepStrictEqual(rebound?.session?.interruption, interruption);
         yield* append({
           ...fields,
           eventId: EventId.make("accepted"),
@@ -5166,6 +5185,21 @@ it.layer(
           readonly continuation: string;
         }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
         assert.strictEqual(continued?.continuation, "requested");
+
+        // The activity projector can be rebuilt while the session cursor is already ahead.
+        yield* sql`DELETE FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        yield* sql`UPDATE projection_state SET last_applied_sequence = 0 WHERE projector = 'projection.thread-activities'`;
+        yield* pipeline.bootstrap;
+        const [replayed] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(replayed?.continuation, "requested");
+        yield* sql`DELETE FROM projection_state`;
+        yield* pipeline.bootstrap;
+        const [rebuilt] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(rebuilt?.continuation, "requested");
         // Rewind removes the original affected turn as well as its recovery item.
         yield* append({
           ...fields,

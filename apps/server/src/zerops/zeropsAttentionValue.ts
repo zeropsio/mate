@@ -86,8 +86,7 @@ export function mateAttentionOf(
       questions.push({
         threadId: thread.id,
         kind,
-        ...(thread.session?.status === "interrupted" &&
-        thread.session.interruption?.continuation === "manual"
+        ...(thread.session?.interruption?.continuation === "manual"
           ? { interruption: thread.session.interruption }
           : {}),
         turnId: thread.latestTurn?.turnId ?? null,

@@ -298,6 +298,12 @@ it("a restart interruption waits on its affected turn and accepted work clears t
     session: { ...session, status: "interrupted", interruption },
   });
   const attention = attentionOf([stopped]);
+  expect(
+    attentionOf([shell("eddy", { ...stopped, session: { ...stopped.session, status: "ready" } })])
+      .questions,
+  ).toEqual(attention.questions);
+  const needsAnswer = attentionOf([shell("eddy", { ...stopped, hasPendingUserInput: true })]);
+  expect(needsAnswer.questions[0]).toMatchObject({ kind: "input", interruption });
   expect(attention.waiting).toBe(1);
   expect(attention.questions).toEqual([
     { threadId: stopped.id, turnId: "cut-turn", kind: "failed", interruption },

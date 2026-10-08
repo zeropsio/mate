@@ -416,8 +416,7 @@ export function threadAgentActivity(
   const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
   return {
     threadId: thread.id,
-    interruption:
-      thread.session?.status === "interrupted" ? (thread.session.interruption ?? null) : null,
+    interruption: thread.session?.interruption ?? null,
     kind: resolved.kind,
     status: threadStatusPill(resolved),
     face: mateMarkStateForThread(resolved.kind, usageLimited),

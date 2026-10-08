@@ -1330,19 +1330,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
 
         case "thread.turn-start-requested": {
-          const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
-          const pending = Option.isSome(session) ? session.value.interruption : null;
-          if (pending == null) return;
+          // Fold this projector's event-ordered history, not another projector's current head.
           const rows = yield* projectionThreadActivityRepository.listByThreadId(event.payload);
           for (const row of rows) {
             const item = mateInterruptionOf(row);
-            if (
-              row.kind !== "runtime.interrupted" ||
-              item === null ||
-              item.turnId !== pending.turnId ||
-              item.messageId !== pending.messageId
-            )
-              continue;
+            if (item?.continuation !== "manual") continue;
             yield* projectionThreadActivityRepository.upsert({
               ...row,
               payload: { interruption: { ...item, continuation: "requested" } },
@@ -1459,6 +1451,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       if (event.type !== "thread.session-set") {
         return;
       }
+      const current = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
       yield* projectionThreadSessionRepository.upsert({
         threadId: event.payload.threadId,
         status: event.payload.session.status,
@@ -1467,7 +1460,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         runtimeMode: event.payload.session.runtimeMode,
         activeTurnId: event.payload.session.activeTurnId,
         lastError: event.payload.session.lastError,
-        interruption: event.payload.session.interruption,
+        // Provider rebinds omit restart evidence; only explicit evidence or acceptance replaces it.
+        interruption:
+          event.payload.session.interruption === undefined
+            ? Option.isSome(current)
+              ? current.value.interruption
+              : null
+            : event.payload.session.interruption,
         usageLimitResetAt: event.payload.session.usageLimitResetAt,
         updatedAt: event.payload.session.updatedAt,
       });

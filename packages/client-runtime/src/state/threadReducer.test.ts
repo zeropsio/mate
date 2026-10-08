@@ -1791,7 +1791,31 @@ it.each([
       kind: "runtime.interrupted",
       payload: { interruption },
     });
-    const accepted = applyThreadDetailEvent(result.thread, {
+    const rebound = applyThreadDetailEvent(result.thread, {
+      ...baseEventFields,
+      sequence: 2,
+      aggregateKind: "thread",
+      aggregateId: baseThread.id,
+      occurredAt: at,
+      type: "thread.session-set",
+      payload: {
+        threadId: baseThread.id,
+        session: {
+          threadId: baseThread.id,
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: at,
+        },
+      },
+    });
+    expect(rebound.kind).toBe("updated");
+    if (rebound.kind !== "updated") return;
+    expect(rebound.thread.session?.interruption).toEqual(interruption);
+    expect(rebound.thread.activities).toEqual(result.thread.activities);
+    const accepted = applyThreadDetailEvent(rebound.thread, {
       ...baseEventFields,
       sequence: 2,
       aggregateKind: "thread",

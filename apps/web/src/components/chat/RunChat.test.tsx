@@ -2684,6 +2684,24 @@ describe("a turn interrupted by a Mate restart", () => {
       expect(html).not.toContain("2026-09-27T");
       expect(html).not.toContain("Needs attention");
       expect(drawWith(null)).not.toContain(">Continue</button>");
+
+      const awaitingAnswer = renderToStaticMarkup(
+        <TimelineRowCtx
+          value={{
+            ...SHARED,
+            resolvedTheme,
+            interruption,
+            queueBlockedByAnswer: true,
+            onRestartContinue: null,
+          }}
+        >
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={row} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+      expect(awaitingAnswer).toContain("Answer the pending question to continue.");
+      expect(awaitingAnswer).not.toContain(">Continue</button>");
       const resumed = draw({
         ...row,
         status: status({

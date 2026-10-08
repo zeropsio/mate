@@ -575,6 +575,30 @@ it("direct and HQ attention keep the same restart item even when conversation wo
     const read = matesActivityOf(input).get("vera");
     expect(read?.interruption).toEqual(interruption);
     expect(mateStatus(read)).toMatchObject({ kind: "interrupted", severity: "attention" });
+
+    const question = matesActivityOf({
+      ...input,
+      attention: {
+        vera: {
+          attention: {
+            ...value,
+            questions: [
+              {
+                threadId: ThreadId.make("t1"),
+                turnId: interruption.turnId,
+                kind: "input",
+                interruption,
+              },
+            ],
+          },
+          live: true,
+          unseen: 0,
+        },
+      },
+      threads: [{ ...WORKING, hasPendingUserInput: true, pendingQuestion: "Which database?" }],
+    }).get("vera");
+    expect(mateStatus(question)).toMatchObject({ kind: "answer", severity: "attention" });
+    expect(mateRowView(question, "needs", "Vera").reply).toMatchObject({ text: "Which database?" });
     const continued = matesActivityOf({
       ...input,
       attention: {

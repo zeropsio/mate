@@ -145,10 +145,7 @@ export function resolveThreadStatus(
   if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
     return status("working");
   }
-  if (
-    thread.session?.status === "interrupted" &&
-    thread.session.interruption?.continuation === "manual"
-  ) {
+  if (thread.session?.interruption?.continuation === "manual") {
     return { kind: "failed", toneId: "attention" };
   }
   if (thread.session?.status === "starting") return status("connecting");

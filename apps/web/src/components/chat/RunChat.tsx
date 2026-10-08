@@ -3243,6 +3243,11 @@ function NowLine({
           <RunTicker status={status} />
           {end}
         </span>
+      ) : restartPending && ctx.queueBlockedByAnswer ? (
+        <span className="flex items-center gap-2">
+          <span>Answer the pending question to continue.</span>
+          {end}
+        </span>
       ) : restartPending ? (
         <span className="flex items-center gap-2">
           <Button

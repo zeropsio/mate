@@ -342,22 +342,15 @@ export function applyThreadDetailEvent(
         kind: "updated",
         thread: {
           ...thread,
-          activities:
-            thread.session?.interruption == null
-              ? thread.activities
-              : thread.activities.map((activity) => {
-                  const item = mateInterruptionOf(activity);
-                  const pending = thread.session?.interruption;
-                  return item === null ||
-                    pending == null ||
-                    item.turnId !== pending.turnId ||
-                    item.messageId !== pending.messageId
-                    ? activity
-                    : {
-                        ...activity,
-                        payload: { interruption: { ...item, continuation: "requested" } },
-                      };
-                }),
+          activities: thread.activities.map((activity) => {
+            const item = mateInterruptionOf(activity);
+            return item?.continuation !== "manual"
+              ? activity
+              : {
+                  ...activity,
+                  payload: { interruption: { ...item, continuation: "requested" } },
+                };
+          }),
           session:
             thread.session?.interruption == null
               ? thread.session
@@ -543,7 +536,13 @@ export function applyThreadDetailEvent(
         kind: "updated",
         thread: {
           ...thread,
-          session: event.payload.session,
+          session: {
+            ...event.payload.session,
+            interruption:
+              event.payload.session.interruption === undefined
+                ? (thread.session?.interruption ?? null)
+                : event.payload.session.interruption,
+          },
           activities:
             event.payload.session.interruption == null
               ? thread.activities
