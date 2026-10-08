@@ -7,16 +7,19 @@
  */
 import * as Schema from "effect/Schema";
 
+import { ImageOccurrence } from "./assetReference.ts";
+
 /** The longest input line a call's record keeps, in UTF-16 code units (V1's activity detail). */
 export const CALL_INPUT_MAX = 180;
 
 /**
- * A picture a Zerops result carried, as a reference to the Mate's asset store (rule 8: pictures
- * travel as references, never bytes): the asset as the store described it, and its size.
+ * A picture a Zerops result carried, as a reference to the Mate's content-addressed asset store
+ * (rule 8: pictures travel as references, never bytes): its occurrence, as V1's capture stores it
+ * (`assets/ConversationMedia.ts`), and its size.
  */
 export const CallResultPicture = Schema.Struct({
   mimeType: Schema.String,
-  asset: Schema.Unknown,
+  asset: ImageOccurrence,
   width: Schema.optionalKey(Schema.Number),
   height: Schema.optionalKey(Schema.Number),
 });
@@ -58,3 +61,63 @@ export const callFields = {
   /** The parts of it that can be read whole on demand. */
   parts: Schema.optionalKey(Schema.Array(Schema.String)),
 } as const;
+
+// ── steps ───────────────────────────────────────────────────────────────────────────────────
+
+/** A call's step by the kind of item its driver made it: one step per kind, read back exactly. */
+const KIND_STEPS: Readonly<Record<string, string>> = {
+  command_execution: "command",
+  file_change: "edit",
+  web_search: "web",
+  image_view: "look",
+  collab_agent_tool_call: "helper",
+  mcp_tool_call: "mcp",
+  dynamic_tool_call: "tool",
+};
+
+/** The kind of item each step reads back as on a client: the inverse of `callStep`. */
+export const STEP_ITEM_KINDS: Readonly<Record<string, string>> = {
+  command: "command_execution",
+  edit: "file_change",
+  web: "web_search",
+  look: "image_view",
+  helper: "collab_agent_tool_call",
+  mcp: "mcp_tool_call",
+  tool: "dynamic_tool_call",
+  read: "dynamic_tool_call",
+  search: "dynamic_tool_call",
+};
+
+/** The tools a generic call reads a file or searches code with, as every driver names them. */
+const NAMED_STEPS: Readonly<Record<string, string>> = {
+  read: "read",
+  "read file": "read",
+  grep: "search",
+  glob: "search",
+  search: "search",
+  codesearch: "search",
+  list: "search",
+  ls: "search",
+};
+
+/**
+ * The step a call takes: its item's kind, and for a generic call what it did where its tool says
+ * so — a file read, a code search — as V1's effort counts it (Claude's `Read: {…}` line, an
+ * OpenCode or ACP tool's name or kind, a call titled "Read File").
+ */
+export function callStep(
+  kind: string,
+  facts: { readonly line?: string; readonly shows?: Readonly<Record<string, unknown>> },
+  title: string | undefined,
+): string {
+  const step = KIND_STEPS[kind] ?? "tool";
+  if (kind !== "dynamic_tool_call") return step;
+  const named = /^([A-Za-z][\w-]*):\s*[{[]/.exec(facts.line ?? "")?.[1];
+  const toolName = facts.shows?.toolName;
+  const own =
+    named ??
+    (typeof toolName === "string" && !toolName.startsWith("mcp__") ? toolName : undefined) ??
+    (typeof facts.shows?.kind === "string" ? facts.shows.kind : undefined) ??
+    title;
+  return (own === undefined ? undefined : NAMED_STEPS[own.trim().toLowerCase()]) ?? step;
+}

@@ -10,7 +10,12 @@
  */
 import * as NodePath from "node:path";
 
-import type { CallResultPicture, SpiToolCallImage, ThreadId } from "@t3tools/contracts";
+import type {
+  CallResultPicture,
+  ImageOccurrence,
+  SpiToolCallImage,
+  ThreadId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import { contentAssetsAt } from "../../assets/ContentAssets.ts";
@@ -41,15 +46,6 @@ export interface CallPictures {
   ) => Effect.Effect<LookedPicture | null>;
 }
 
-/** The asset store's description of a stored picture. */
-interface Stored {
-  readonly id: string;
-  readonly name?: string;
-  readonly original:
-    | { readonly status: "ready"; readonly width?: number; readonly height?: number }
-    | { readonly status: "failed"; readonly code: string };
-}
-
 /**
  * The pictures of the Mate whose state lives in `stateDir`; a looked-at path resolves in the
  * directory `cwdOf` names for the thread's session.
@@ -77,7 +73,7 @@ export const makeCallPictures = (
               name: "tool-image",
               mimeType: image.mimeType,
             }),
-          ) as Promise<Stored>;
+          ) as Promise<ImageOccurrence>;
         }).pipe(
           Effect.map((asset): CallResultPicture | null =>
             asset.original.status === "ready"
@@ -109,7 +105,7 @@ export const makeCallPictures = (
               name: NodePath.basename(path),
             }),
           );
-        })) as Stored;
+        })) as ImageOccurrence;
         const original = asset.original;
         return {
           imagePath: `mate-asset:${asset.id}${original.status === "failed" ? `:${original.code}` : ""}`,

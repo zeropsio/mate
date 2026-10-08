@@ -13,16 +13,17 @@
  *
  * @module engine/pump/toCore
  */
-import type {
-  CallResult,
-  ItemActor,
-  ItemBody,
-  RequestAsk,
-  RequestState,
-  RunId,
-  SpiToolCallImage,
-  ThreadTokenUsageSnapshot,
-  TurnHandle,
+import {
+  callStep,
+  type CallResult,
+  type ItemActor,
+  type ItemBody,
+  type RequestAsk,
+  type RequestState,
+  type RunId,
+  type SpiToolCallImage,
+  type ThreadTokenUsageSnapshot,
+  type TurnHandle,
 } from "@t3tools/contracts";
 
 import type {
@@ -37,7 +38,6 @@ import type {
   WorkStatus,
 } from "../bridge/spi3.ts";
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
-import { callStep } from "../bridge/callFacts.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */

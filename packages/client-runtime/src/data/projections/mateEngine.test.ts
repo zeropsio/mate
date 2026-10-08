@@ -353,7 +353,24 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     const result = {
       toolName: "zerops_browser",
       resultText: '{"status":"ok"}',
-      images: [{ mimeType: "image/png", asset: { id: "a1", original: { status: "ready" } } }],
+      images: [
+        {
+          mimeType: "image/png",
+          asset: {
+            id: "a1",
+            threadId: "mate/s/1",
+            ownerId: "call-1",
+            name: "tool-image",
+            provenance: "capture",
+            original: {
+              status: "ready",
+              digest: "a".repeat(64),
+              mimeType: "image/png",
+              sizeBytes: 68,
+            },
+          } as never,
+        },
+      ],
     };
     expect(
       payloadOf(

@@ -158,7 +158,19 @@ describe("forward-compatible members", () => {
         images: [
           {
             mimeType: "image/png",
-            asset: { id: "a1", original: { status: "ready" } },
+            asset: {
+              id: "a1",
+              threadId: "mate/s/1",
+              ownerId: "call-1",
+              name: "tool-image",
+              provenance: "capture",
+              original: {
+                status: "ready",
+                digest: "a".repeat(64),
+                mimeType: "image/png",
+                sizeBytes: 68,
+              },
+            },
             width: 2,
             height: 1,
           },

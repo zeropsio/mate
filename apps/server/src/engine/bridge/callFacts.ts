@@ -9,7 +9,6 @@ import {
   CALL_INPUT_MAX,
   type OrchestrationThreadActivity,
   type SpiEvent,
-  type ToolLifecycleItemType,
 } from "@t3tools/contracts";
 
 import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
@@ -85,49 +84,4 @@ export function callFacts(event: ToolEvent, previous: CallFacts = {}): CallFacts
     ...(Object.keys(shows).length === 0 ? {} : { shows }),
     ...(result === undefined ? {} : { result }),
   };
-}
-
-/** A call's step by the kind of item its driver made it: one step per kind, read back exactly. */
-const KIND_STEPS: Readonly<Record<ToolLifecycleItemType, string>> = {
-  command_execution: "command",
-  file_change: "edit",
-  web_search: "web",
-  image_view: "look",
-  collab_agent_tool_call: "helper",
-  mcp_tool_call: "mcp",
-  dynamic_tool_call: "tool",
-};
-
-/** The tools a generic call reads a file or searches code with, as every driver names them. */
-const NAMED_STEPS: Readonly<Record<string, string>> = {
-  read: "read",
-  "read file": "read",
-  grep: "search",
-  glob: "search",
-  search: "search",
-  codesearch: "search",
-  list: "search",
-  ls: "search",
-};
-
-/**
- * The step a call takes: its item's kind, and for a generic call what it did where its tool says
- * so — a file read, a code search — as V1's effort counts it (Claude's `Read: {…}` line, an
- * OpenCode or ACP tool's name or kind, a call titled "Read File").
- */
-export function callStep(
-  kind: ToolLifecycleItemType,
-  facts: CallFacts,
-  title: string | undefined,
-): string {
-  const step = KIND_STEPS[kind];
-  if (kind !== "dynamic_tool_call") return step;
-  const named = /^([A-Za-z][\w-]*):\s*[{[]/.exec(facts.line ?? "")?.[1];
-  const toolName = facts.shows?.toolName;
-  const own =
-    named ??
-    (typeof toolName === "string" && !toolName.startsWith("mcp__") ? toolName : undefined) ??
-    (typeof facts.shows?.kind === "string" ? facts.shows.kind : undefined) ??
-    title;
-  return (own === undefined ? undefined : NAMED_STEPS[own.trim().toLowerCase()]) ?? step;
 }

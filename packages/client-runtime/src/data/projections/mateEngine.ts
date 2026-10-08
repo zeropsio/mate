@@ -12,6 +12,7 @@
  */
 import {
   MessageId,
+  STEP_ITEM_KINDS,
   TurnId,
   type ChatAttachment,
   type ConversationRow,
@@ -149,19 +150,6 @@ function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
   }
 }
 
-/** A call's step as V1's runtimes name the item that made it: the inverse of the bridge's. */
-const STEP_ITEM_TYPES: Readonly<Record<string, string>> = {
-  command: "command_execution",
-  edit: "file_change",
-  web: "web_search",
-  look: "image_view",
-  helper: "collab_agent_tool_call",
-  mcp: "mcp_tool_call",
-  tool: "dynamic_tool_call",
-  read: "dynamic_tool_call",
-  search: "dynamic_tool_call",
-};
-
 /** A call's state as V1's lifecycle says it. */
 const CALL_STATUS: Readonly<Record<string, string>> = {
   running: "inProgress",
@@ -242,7 +230,7 @@ function callActivities(
   const title = item.words ?? item.presentation?.title ?? item.tool.name;
   const payload = {
     itemType:
-      STEP_ITEM_TYPES[item.step] ??
+      STEP_ITEM_KINDS[item.step] ??
       (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
     toolCallId: item.id,
     ...(item.input === undefined ? {} : { detail: item.input }),

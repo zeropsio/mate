@@ -4,6 +4,7 @@
  * V1's own ingestion and projection of the same events.
  */
 import {
+  STEP_ITEM_KINDS,
   type ItemBody,
   type OrchestrationThreadActivity,
   type ProviderRuntimeEvent,
@@ -73,19 +74,6 @@ function v1Calls(recording: Recording): ReadonlyArray<V1Call> {
   }
   return [...calls.values()];
 }
-
-/** The kind of item each step reads back as on a client (the run card's inverse). */
-const STEP_KINDS: Readonly<Record<string, string>> = {
-  command: "command_execution",
-  edit: "file_change",
-  web: "web_search",
-  look: "image_view",
-  helper: "collab_agent_tool_call",
-  mcp: "mcp_tool_call",
-  tool: "dynamic_tool_call",
-  read: "dynamic_tool_call",
-  search: "dynamic_tool_call",
-};
 
 /** One call as a line: its step and tool, its input, what can be read of it, its result. */
 const callLine = ({ body, pictures }: Closed): string =>
@@ -168,7 +156,7 @@ describe("a call reads on the engine as V1's row of the same call", () => {
         assert.strictEqual(engine.length, v1.length);
         engine.forEach(({ body }, n) => {
           const call = v1[n]!;
-          assert.strictEqual(STEP_KINDS[body.step], call.itemType, `${body.tool.name}'s kind`);
+          assert.strictEqual(STEP_ITEM_KINDS[body.step], call.itemType, `${body.tool.name}'s kind`);
           assert.strictEqual(body.input, call.detail, `${body.tool.name}'s line`);
           assert.deepStrictEqual(body.shows, call.shows, `${body.tool.name}'s facts`);
           const { images: _images, ...result } = call.result ?? {};

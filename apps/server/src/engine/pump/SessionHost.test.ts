@@ -67,7 +67,19 @@ describe("SessionHost", () => {
               return {
                 images: images.map((image) => ({
                   mimeType: image.mimeType,
-                  asset: { id: "asset-1", original: { status: "ready" } },
+                  asset: {
+                    id: "asset-1",
+                    threadId: "mate/s/1",
+                    ownerId: "call-1",
+                    name: "tool-image",
+                    provenance: "capture",
+                    original: {
+                      status: "ready",
+                      digest: "a".repeat(64),
+                      mimeType: "image/png",
+                      sizeBytes: 68,
+                    },
+                  } as never,
                   width: 1,
                   height: 1,
                 })),
@@ -134,7 +146,19 @@ describe("SessionHost", () => {
               images: [
                 {
                   mimeType: "image/png",
-                  asset: { id: "asset-1", original: { status: "ready" } },
+                  asset: {
+                    id: "asset-1",
+                    threadId: "mate/s/1",
+                    ownerId: "call-1",
+                    name: "tool-image",
+                    provenance: "capture",
+                    original: {
+                      status: "ready",
+                      digest: "a".repeat(64),
+                      mimeType: "image/png",
+                      sizeBytes: 68,
+                    },
+                  } as never,
                   width: 1,
                   height: 1,
                 },
