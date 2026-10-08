@@ -796,6 +796,46 @@ describe("a Mate's changes in HQ", () => {
       }),
     );
 
+    it.effect("VERSION takes precedence over package.json when suggesting a release version", () =>
+      Effect.gen(function* () {
+        const { call, fake, gitHost, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+        yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+        const ownerSocket = yield* socket(
+          `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
+        );
+        const detail = { kind: "app-detail", appId } as const;
+        yield* scopeReset(ownerSocket, detail);
+        const git = yield* gitHost.git;
+        const repo = { appId, id: "appdev" };
+        const head = yield* git.commitFiles(repo, "refs/heads/main", {
+          files: { VERSION: "2.0.0", "package.json": '{"version":"1.0.0"}' },
+          expectedHead:
+            (yield* git.branches(repo)).items.find((entry) => entry.ref === "refs/heads/main")
+              ?.sha ?? null,
+          message: "App declares competing versions",
+          author: { name: "Ada", email: "ada@mate.test" },
+        });
+        yield* nextScopeValue<ReadonlyArray<{ name: string; mainHead: string | null }>>(
+          ownerSocket,
+          detail,
+          "repos",
+          (repos) =>
+            "sha" in head &&
+            repos.some((entry) => entry.name === "appdev" && entry.mainHead === head.sha),
+        );
+        const answer = yield* call("GET", `/api/apps/${appId}/repos`, { session: owner });
+        const listed = (answer.body as { repos: Array<{ name: string; releaseVersion?: unknown }> })
+          .repos;
+        assert.deepStrictEqual(
+          [answer.status, listed.find((entry) => entry.name === "appdev")?.releaseVersion],
+          [200, { tag: "v2.0.0", path: "VERSION" }],
+        );
+      }),
+    );
+
     it.effect(
       "lists an application's repositories, its recipe's too, to whoever reads its changes",
       () =>
