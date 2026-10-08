@@ -41,6 +41,41 @@ const local = Effect.gen(function* () {
   return isLocalUpdateRequest(Option.getOrUndefined(request.remoteAddress), request.headers);
 });
 const refused = HttpServerResponse.empty({ status: 403 });
+/** The drain and its loopback readiness report read the same actual owners. */
+export const readMateUpdateIdleFacts = Effect.gen(function* () {
+  const engine = yield* MateEngine;
+  const terminals = yield* TerminalManager;
+  const legacy = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
+  const engineDrain = engine.live ? engine.updateDrain : legacy;
+  const safety = Option.getOrUndefined(yield* Effect.serviceOption(ProviderUpdateSafety));
+  const rpc = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
+  const clones = Option.getOrUndefined(yield* Effect.serviceOption(ProjectCloneTracker));
+  const crew = Option.getOrUndefined(yield* Effect.serviceOption(CrewEngine));
+  const logins = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsAgentLogin));
+  const unknown = (owner: string) =>
+    Effect.succeed({ idle: false, blockers: [`${owner} state unknown`] });
+  const owners = yield* Effect.all([
+    engineDrain?.facts ?? unknown("engine"),
+    terminals.updateDrain?.facts ?? unknown("terminal"),
+    safety?.facts ?? unknown("provider"),
+    rpc?.facts ?? unknown("client admission"),
+    clones?.updateFacts ?? unknown("clone"),
+    crew?.updateFacts ?? unknown("crew"),
+  ]);
+  const loginBlockers =
+    logins === undefined
+      ? ["agent login state unknown"]
+      : Object.values(yield* logins.latest).flatMap((login) =>
+          login !== undefined && !["succeeded", "failed", "cancelled"].includes(login.phase)
+            ? ["agent login in progress"]
+            : [],
+        );
+  return joinUpdateIdleFacts(...owners, {
+    idle: loginBlockers.length === 0,
+    blockers: loginBlockers,
+  });
+});
+
 const drainRoute = HttpRouter.add(
   "POST",
   "/api/mate/update/drain",
@@ -127,41 +162,7 @@ const drainRoute = HttpRouter.add(
           terminals.subscribe(() => offer),
           (unsubscribe) => Effect.sync(unsubscribe),
         );
-        const facts = Effect.gen(function* () {
-          const [engineFacts, terminalFacts, providerFacts] = yield* Effect.all([
-            engineDrain.facts,
-            terminalDrain.facts,
-            safety.facts,
-          ]);
-          const rpcFacts = yield* (
-            rpcAdmission?.facts ??
-              Effect.succeed({ idle: false, blockers: ["client admission state unknown"] })
-          );
-          const cloneFacts = yield* (
-            clones?.updateFacts ??
-              Effect.succeed({ idle: false, blockers: ["clone state unknown"] })
-          );
-          const crewFacts = yield* (
-            crew?.updateFacts ?? Effect.succeed({ idle: false, blockers: ["crew state unknown"] })
-          );
-          const blockers = [
-            ...engineFacts.blockers,
-            ...terminalFacts.blockers,
-            ...rpcFacts.blockers,
-            ...providerFacts.blockers,
-            ...crewFacts.blockers,
-            ...cloneFacts.blockers,
-          ];
-          if (logins === undefined) blockers.push("agent login state unknown");
-          else
-            for (const login of Object.values(yield* logins.latest))
-              if (
-                login !== undefined &&
-                !["succeeded", "failed", "cancelled"].includes(login.phase)
-              )
-                blockers.push("agent login in progress");
-          return { idle: blockers.length === 0, blockers };
-        });
+        const facts = readMateUpdateIdleFacts;
         return yield* drainMateUpdate({
           allowed: input.value.automatic
             ? (policy?.verify ?? Effect.succeedNone).pipe(
@@ -197,16 +198,14 @@ const readinessRoute = HttpRouter.add(
     const readiness = yield* Effect.serviceOption(ServerCommandReadiness);
     if (Option.isSome(readiness)) yield* readiness.value.await;
     const environment = yield* ServerEnvironment;
-    const engine = yield* MateEngine;
     const { serverVersion: version, bootId } = yield* environment.getDescriptor;
-    const legacyDrain = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
-    const drain = engine.live ? engine.updateDrain : legacyDrain;
-    const facts = yield* drain?.facts ?? Effect.succeed({ idle: false });
+    const facts = yield* readMateUpdateIdleFacts;
     return HttpServerResponse.jsonUnsafe({
       protocol: 1,
       version,
       bootId,
       ready: Option.isSome(readiness) && facts.idle,
+      blockers: facts.blockers,
     });
   }),
 );
