@@ -1,4 +1,5 @@
 import {
+  ConversationRow,
   CrewSnapshot,
   OrchestrationThreadShell,
   ZeropsAgentAuthSnapshot,
@@ -16,6 +17,23 @@ const decodeCrew = Schema.decodeUnknownSync(CrewSnapshot);
 const decodeAuth = Schema.decodeUnknownSync(ZeropsAgentAuthSnapshot);
 /** Every overview here must be one the link can send: decoded by the contract. */
 const decodeOverview = Schema.decodeUnknownSync(MateOverview);
+const decodeRow = Schema.decodeUnknownSync(ConversationRow);
+
+/** An engine conversation's row, at rest unless `extra` says otherwise. */
+const row = (id: string, extra: object = {}) =>
+  decodeRow({
+    conversationId: id,
+    agent: null,
+    revision: { environmentId: "env-1", epoch: 1, seq: 1 },
+    state: { kind: "idle" },
+    activeRunId: null,
+    latestRun: null,
+    subject: `Task ${id}`,
+    snippet: null,
+    at: 1_791_000_000_000,
+    askedAt: null,
+    ...extra,
+  });
 
 const shell = (id: string, extra: object = {}) =>
   decodeShell({
@@ -448,6 +466,68 @@ describe("mateOverviewOf", () => {
     expect(none.threads.list.map((entry) => entry.id)).toEqual(["waits"]);
     expect(none.threads.omitted).toBe(5);
     expect(none.main).not.toBeNull();
+  });
+});
+
+describe("mateOverviewOf — an engine Mate's own rows", () => {
+  const engineOverview = (rows: ReadonlyArray<ConversationRow>, maxBytes?: number) =>
+    decodeOverview(
+      mateOverviewOf(
+        {
+          identity: { ...IDENTITY, engine: { protocol: 1 } },
+          threads: [shell("main")],
+          auth: NO_LOGINS,
+          crew: CREW_OFF_SNAPSHOT,
+          conversations: rows,
+        },
+        maxBytes,
+      ),
+    );
+
+  it("a V1 Mate's overview carries no rows and no engine", () => {
+    const overview = overviewOf([shell("main")]);
+    expect("conversations" in overview).toBe(false);
+    expect("engine" in overview.identity).toBe(false);
+  });
+
+  it("carries every row that is not idle, then the newest, up to forty", () => {
+    const rows = [
+      row("old", { at: 1 }),
+      row("works", { at: 2, state: { kind: "working", since: 2, waitsOnHelpers: false } }),
+      ...Array.from({ length: 45 }, (_, n) => row(`r${String(n)}`, { at: 100 + n })),
+    ];
+    const overview = engineOverview(rows);
+    expect(overview.identity.engine).toEqual({ protocol: 1 });
+    const ids = overview.conversations?.map((each) => each.conversationId) ?? [];
+    expect(ids).toHaveLength(40);
+    expect(ids.slice(0, 3)).toEqual(["works", "r44", "r43"]);
+    expect(ids).not.toContain("old");
+  });
+
+  it("masks and cuts a row's error line and the words it waits on", () => {
+    const secret = "sk-ant-api03-" + "x".repeat(40);
+    const overview = engineOverview([
+      row("fails", { state: { kind: "failed", errorLine: `${secret} ${"e".repeat(400)}` } }),
+      row("asks", { state: { kind: "waiting", on: "question", words: "w".repeat(400) } }),
+    ]);
+    const [fails, asks] = overview.conversations ?? [];
+    const errorLine = fails?.state.kind === "failed" ? fails.state.errorLine : "";
+    expect(errorLine).toHaveLength(280);
+    expect(errorLine).not.toContain(secret);
+    expect(asks?.state.kind === "waiting" ? asks.state.words : "").toHaveLength(280);
+  });
+
+  // The link's frame bound passed in smaller, to reach it.
+  it("fits 64 KiB by dropping the oldest resting rows after the resting threads, never the main's", () => {
+    const rows = [
+      row("main", { at: 0 }),
+      row("works", { at: 1, state: { kind: "working", since: 1, waitsOnHelpers: false } }),
+      ...Array.from({ length: 4 }, (_, n) => row(`r${String(n)}`, { at: 10 + n })),
+    ];
+    const ids = (maxBytes: number) =>
+      engineOverview(rows, maxBytes).conversations?.map((each) => each.conversationId);
+    expect(ids(Number.MAX_SAFE_INTEGER)).toEqual(["works", "r3", "r2", "r1", "r0", "main"]);
+    expect(ids(1)).toEqual(["works", "main"]);
   });
 });
 
