@@ -2,10 +2,17 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 import { expect, it } from "vite-plus/test";
+import { selectScenarioAreas } from "./gate-changed.ts";
 import { checkSteps } from "./ci-local.ts";
-import { chatGateStages, selectsChatGate } from "./chat-gate.ts";
+import {
+  chatGateStages,
+  chatGateTestFiles,
+  selectLaneChatStages,
+  selectsChatGate,
+} from "./chat-gate.ts";
 
 it.each([
   "apps/server/src/provider/Layers/ClaudeAdapter.ts",
@@ -51,7 +58,7 @@ it("the gate runs the chat journeys against both wires a Mate can speak", () => 
     [
       "B: client wire journeys on the engine (C)",
       "scenarios-engine",
-      "test/scenarios/areas/c-mate",
+      "test/scenarios/areas/c-mate/chat.scenario.ts",
     ],
   ]);
 });
@@ -159,3 +166,151 @@ it.each([
     }
   },
 );
+
+it.each([
+  { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", ids: ["A"] },
+  { path: "apps/server/src/spi/replay/goldens.test.ts", ids: ["A"] },
+  { path: "apps/server/src/engine/outbox/crash.ts", ids: ["E"] },
+  { path: "packages/contracts/src/engine.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "packages/contracts/src/engineCall.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "packages/contracts/src/engineWire.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "apps/server/src/engine/wire/EngineWire.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "apps/server/src/wsServer.ts", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/chat/runCard.logic.ts", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/chat/MessagesTimeline.tsx", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", ids: ["C", "C-engine", "types"] },
+  {
+    path: "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
+    ids: ["C", "C-engine", "types"],
+  },
+  { path: "apps/web/package.json", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/tsconfig.json", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", ids: [] },
+  { path: "apps/server/src/engine/pump/toCore.test.ts", ids: [] },
+  // The engine crew's own code runs its journeys on the engine too.
+  { path: "apps/server/src/zerops/crew/engine/decide.ts", ids: ["C", "C-engine", "F", "types"] },
+  { path: "packages/client-runtime/src/data/projections/mateHealth.test.ts", ids: [] },
+  { path: "docs/user/chat.md", ids: [] },
+  { path: "apps/mobile/src/chat.tsx", ids: [] },
+  {
+    path: "packages/client-runtime/src/zerops/timelineFollow.ts",
+    ids: ["A", "C", "C-engine", "E", "F", "types"],
+  },
+])("a lane selects the affected contract layers for $path", ({ path, ids }) => {
+  expect(
+    selectLaneChatStages([path], selectScenarioAreas([path])).map((stage) => stage.id),
+  ).toEqual(ids);
+});
+
+it("each wire stage owns only the journeys its project runs", () => {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  expect(
+    chatGateTestFiles(
+      root,
+      chatGateStages.filter((stage) => stage.id === "C-engine"),
+    ),
+  ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
+  expect(
+    chatGateTestFiles(
+      root,
+      chatGateStages.filter((stage) => stage.id === "C"),
+    ),
+  ).toContain("apps/web/test/scenarios/areas/c-mate/opening.scenario.ts");
+  expect(chatGateTestFiles(root, [])).toEqual([]);
+});
+
+it.each([
+  { args: ["--list", "--stages", "A"], labels: ["A: provider goldens"] },
+  { args: ["--stages", "E", "--list"], labels: ["E: engine proof"] },
+  {
+    args: ["--list", "--stages", "C,C-engine"],
+    labels: ["B: client wire journeys (C)", "B: client wire journeys on the engine (C)"],
+  },
+  {
+    args: ["--list"],
+    labels: [
+      "A: provider goldens",
+      "B: client wire journeys (C)",
+      "B: client wire journeys on the engine (C)",
+      "E: engine proof",
+      "F: crew journeys on the engine",
+      "Typecheck: wire consumers",
+    ],
+  },
+])(
+  "the chat CLI carries the selected stages through its command list ($args)",
+  ({ args, labels }) => {
+    const result = NodeChildProcess.spawnSync(process.execPath, ["scripts/chat-gate.ts", ...args], {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect([
+      ...new Set(
+        result.stdout
+          .trim()
+          .split("\n")
+          .map((line) => line.split(": (")[0]),
+      ),
+    ]).toEqual(labels);
+  },
+);
+
+it("the pinned test runner excludes a contract-owned file while running general units", () => {
+  const root = NodeURL.fileURLToPath(new URL("../", import.meta.url));
+  const fixture = NodeFS.mkdtempSync(NodePath.join(root, "node_modules/.cache/gate-exclude-"));
+  try {
+    NodeFS.writeFileSync(
+      NodePath.join(fixture, "vitest.config.ts"),
+      'export default { test: { include: ["*.test.ts"] } };',
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(fixture, "contract.test.ts"),
+      'import { it, expect } from "vite-plus/test"; it("contract owner", () => expect(1).toBe(2));',
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(fixture, "unit.test.ts"),
+      'import { it, expect } from "vite-plus/test"; it("general unit", () => expect(1).toBe(1));',
+    );
+    const result = NodeChildProcess.spawnSync(
+      NodePath.join(root, "node_modules/.bin/vp"),
+      ["test", "run", "--config", "vitest.config.ts", "--exclude", "contract.test.ts"],
+      { cwd: fixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("1 passed");
+    expect(result.stdout).not.toContain("contract.test.ts");
+  } finally {
+    NodeFS.rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+it.each(["A", "E"])("a %s-only gate runs without installing a scenario browser", (stage) => {
+  const root = NodeURL.fileURLToPath(new URL("../", import.meta.url));
+  const fixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gate-browser-"));
+  try {
+    NodeFS.mkdirSync(NodePath.join(fixture, "scripts"));
+    NodeFS.mkdirSync(NodePath.join(fixture, "apps/server"), { recursive: true });
+    NodeFS.mkdirSync(NodePath.join(fixture, "node_modules/.bin"), { recursive: true });
+    NodeFS.copyFileSync(
+      NodePath.join(root, "scripts/chat-gate.ts"),
+      NodePath.join(fixture, "scripts/chat-gate.ts"),
+    );
+    // This fixture owns only command routing; no browser installer exists in it.
+    NodeFS.writeFileSync(NodePath.join(fixture, "node_modules/.bin/vp"), "#!/bin/sh\nexit 0\n", {
+      mode: 0o755,
+    });
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/chat-gate.ts", "--stages", stage],
+      { cwd: fixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      stage === "A" ? "ok A: provider goldens" : "ok E: engine proof",
+    );
+  } finally {
+    NodeFS.rmSync(fixture, { recursive: true, force: true });
+  }
+});

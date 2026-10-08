@@ -34,7 +34,7 @@ import { create } from "zustand";
 import { ComingBelow, type ArrivalProgress } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
-import { mateComing } from "~/zerops/mateComing";
+import { mateArrival } from "@t3tools/client-runtime/data";
 import {
   beginPress,
   forgetPress,
@@ -388,7 +388,7 @@ function HarnessMatePage({
     };
   }, [made, nowMs, press]);
   const coming =
-    mateComing({
+    mateArrival({
       press:
         press === undefined
           ? undefined
@@ -401,7 +401,7 @@ function HarnessMatePage({
       setUpFailed: pressFailure(press),
       nowMs,
       created: true,
-    }) ?? newProjectComing(made);
+    }).coming ?? newProjectComing(made);
   const retry = press?.state.kind === "failed" ? press.state.retry : null;
   const mate = mateOf(made);
   return (

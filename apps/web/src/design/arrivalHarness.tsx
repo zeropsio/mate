@@ -63,7 +63,7 @@ import {
   type ArrivalStepInput,
 } from "~/zerops/mateArrival";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
-import type { MateComing } from "~/zerops/mateComing";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpAskLine, type MateStandUpPhase } from "~/zerops/mateStandUp";
 import "../index.css";

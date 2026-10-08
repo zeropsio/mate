@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
 import { MateVoiceContext } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
-import type { RecoveryNotice } from "../zerops/mateRecovery.logic";
+import type { RecoveryNotice } from "@t3tools/client-runtime/data";
 import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";

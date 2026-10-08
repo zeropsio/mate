@@ -3,7 +3,7 @@ import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeni
 import { useThreadDetail } from "~/state/entities";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
-import { recoveryNotice } from "../zerops/mateRecovery.logic";
+import { recoveryNotice, mateProjectUnavailable } from "@t3tools/client-runtime/data";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import {
   scopedProjectKey,
@@ -200,8 +200,7 @@ function SignedInRootRouteView() {
   );
   const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
-  const projectUnavailable =
-    recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
+  const projectUnavailable = mateProjectUnavailable(recovery.standing);
   const gatePhrase =
     recoveryPhrase ?? routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speakingMate = routeEnvironment === null ? draftMate : routeMate;

@@ -22,7 +22,7 @@ import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 
 import { overviewAgentActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { mateComing, type MateComing } from "~/zerops/mateComing";
+import { mateArrival, type MateComing } from "@t3tools/client-runtime/data";
 
 export const COMING_PHASES = [
   "pending",
@@ -254,10 +254,10 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
             : undefined,
     coming: (candidate) => {
       const held = births.find((entry) => entry.projectId === candidate.project.id);
-      return mateComing({
+      return mateArrival({
         press: held === undefined ? undefined : { startedAt: held.startedAt, container: true },
         candidate,
-      });
+      }).coming;
     },
   };
 }

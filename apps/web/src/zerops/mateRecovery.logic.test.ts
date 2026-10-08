@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { recoveryNotice } from "./mateRecovery.logic";
+import { recoveryNotice } from "@t3tools/client-runtime/data";
 
 describe("Mate recovery evidence", () => {
   it.each([

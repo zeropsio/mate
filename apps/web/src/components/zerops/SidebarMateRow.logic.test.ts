@@ -2,7 +2,7 @@ import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
-import type { MateComing } from "~/zerops/mateComing";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
 import {
@@ -1657,4 +1657,41 @@ describe("mateRowPropsEqual — when a memoised row may skip its redraw", () => 
     const { number: _number, ...rest } = base;
     expect(mateRowPropsEqual(base, rest)).toBe(false);
   });
+});
+
+import { mateComing } from "@t3tools/client-runtime/data";
+import { EnvironmentId } from "@t3tools/contracts";
+import {
+  initialEnvironment,
+  selectReachability,
+} from "@t3tools/client-runtime/zerops/environments";
+
+it("a connected machine keeps the row menu available while its listing still provisions", () => {
+  const environmentId = EnvironmentId.make("row-env");
+  const machine = {
+    ...initialEnvironment({ record: environmentId }),
+    container: { level: "ready" } as const,
+    presence: { kind: "present", origin: "https://mate.test" } as const,
+    credential: {
+      kind: "held",
+      environmentId,
+      installed: true,
+      staleBlock: false,
+      rereading: null,
+    } as const,
+    link: { phase: "connected", since: { wall: 100, mono: 100 } } as const,
+  };
+  const input = {
+    press: undefined,
+    candidate: { group: "provisioning", service: { status: "CREATING" } } as const,
+    link: {
+      key: "p:s",
+      environmentId,
+      reachability: selectReachability(machine, environmentId),
+      answered: true,
+      failuresSinceConnect: 0,
+      errorsSinceConnect: 0,
+    },
+  };
+  expect(mateRowOffersMenu({ deleting: false, coming: mateComing(input) })).toBe(true);
 });

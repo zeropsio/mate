@@ -7,6 +7,12 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  initialContainer,
+  transitionContainer,
+  containerVerdict,
+  initialEnvironment,
+  transitionEnvironment,
+  selectReachability,
   MATE_VOICE_QUIET_MS,
   type MateLink as MachineLink,
 } from "@t3tools/client-runtime/zerops/environments";
@@ -917,6 +923,84 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(buttons()).toEqual(["Remove"]);
   });
 
+  it("a ready link keeps its opening board while retained setup failure and conversation reads remain", () => {
+    app.creations = [QUINN_MADE];
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.setupFailure = {
+      id: "old-setup",
+      projectId: PROJECT,
+      serviceStackIds: ["zcp"],
+      actionName: "stack.create",
+      status: "FAILED",
+      created: "2026-10-07T10:00:00Z",
+      failReason: "Original setup diagnostic",
+    };
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    act(() => tree?.update(comingView(PROJECT)));
+    expect(kind()).toBe("coming");
+    expect(buttons()).not.toContain("Try again");
+    expect(said()).not.toContain("Original setup diagnostic");
+    expect(said()).not.toContain("couldn't be set up");
+    expect(app.restartSetup).not.toHaveBeenCalled();
+  });
+
+  it.each(
+    (["listing", "creation", "press"] as const).flatMap((source) =>
+      (["CREATING", "READY_TO_DEPLOY"] as const).map((status) => ({ source, status })),
+    ),
+  )(
+    "an overdue container ends the arrival board despite retained provisioning ($source / $status)",
+    ({ source, status }) => {
+      app.listing = listingOf([{ ...coming, service: { ...coming.service!, status } }]);
+      if (source === "creation") app.creations = [QUINN_MADE];
+      if (source === "press")
+        beginPress({
+          projectId: PROJECT,
+          organizationId: "org-beviro",
+          startedAt: Date.now(),
+          placement: null,
+          container: true,
+        });
+      const now = { wall: Date.now(), mono: 0 };
+      let container = transitionContainer(
+        initialContainer(),
+        {
+          type: "PLATFORM",
+          status: { project: "ACTIVE", service: status },
+        },
+        { now },
+      ).state;
+      openView();
+      expect(kind()).toBe("coming");
+      const deadline = container.timer!;
+      container = transitionContainer(container, { type: "TICK" }, { now: deadline }).state;
+      const verdict = containerVerdict(container);
+      expect(verdict).toEqual({ level: "provisioning", overdue: true });
+      const environment = transitionEnvironment(
+        initialEnvironment({ record: null }),
+        { type: "CONTAINER", container: verdict },
+        { now: deadline, random: () => 0.5 },
+      ).state;
+      app.link = {
+        key: KEY,
+        environmentId: undefined,
+        reachability: selectReachability(environment, null),
+        failuresSinceConnect: environment.failuresSinceConnect,
+      };
+      act(() => tree?.update(comingView(PROJECT)));
+      expect(kind()).toBe("reaching");
+      expect(said()).toContain("Quinn is taking longer to start.");
+      expect(buttons()).toContain("Try now");
+      expect(said()).not.toContain("Coming up. A few minutes.");
+    },
+  );
+
   it("holds the board through its link's first three failures only, never taking turns with its words", () => {
     app.listing = listingOf([coming]);
     openView();
@@ -1791,4 +1875,14 @@ describe("failed setup recovery fixture", () => {
     await act(async () => root.unmount());
     host.remove();
   });
+});
+
+it("a ready machine does not renew arrival while the listing still provisions its container", () => {
+  app.listing = listingOf([
+    { ...QUINN, group: "provisioning", service: { ...QUINN.service!, status: "CREATING" } },
+  ]);
+  app.link = { key: KEY, environmentId: undefined, reachability: { kind: "ready", notice: null } };
+  openView();
+  expect(said()).not.toContain("Quinn is coming up");
+  expect(said()).not.toContain("Coming up. A few minutes.");
 });

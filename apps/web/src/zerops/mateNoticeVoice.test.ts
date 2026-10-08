@@ -289,3 +289,29 @@ it("a recovered Mate does not repeat its old failed process as a connection bann
     }),
   ).toMatchObject({ surface: "none" });
 });
+
+it.each(["denied", "deleted"] as const)(
+  "%s project evidence keeps an old running recovery process asleep",
+  (kind) => {
+    const voice = mateNoticeVoice({
+      mateName: "Vera",
+      conversationShown: true,
+      nowMs: 0,
+      reachability: { kind: "ready", notice: null },
+      recovery: {
+        standing: { kind },
+        status: undefined,
+        process: {
+          id: "restart",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          created: "2026-10-08",
+          actionName: "stack.restart",
+          status: "RUNNING",
+        },
+      },
+    });
+    expect(voice).toMatchObject({ surface: "banner", face: "sleep", actions: ["go-to-projects"] });
+    expect(voice).not.toHaveProperty("restarting");
+  },
+);

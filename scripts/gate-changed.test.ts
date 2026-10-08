@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
 import { expect, it } from "vite-plus/test";
 import {
   scenarioFiles,
@@ -99,13 +100,17 @@ it("includes committed, staged, dirty, untracked and removed paths without follo
   }
 });
 
+// CI compatibility: the broad selector still schedules both-wire C coverage for these paths.
 it.each([
   "apps/server/src/provider/Layers/ClaudeAdapter.ts",
   "apps/server/src/spi/toolCall.ts",
   "apps/server/src/orchestration/decider.ts",
   "apps/server/src/server.ts",
 ])("server chat boundary change %s selects all C journeys", (path) => {
-  expect(selectScenarioAreas([path])).toContain("c-mate");
+  expect(selectsChatGate([path])).toBe(true);
+  expect(chatGateTestFiles(NodePath.resolve(import.meta.dirname, ".."), chatGateStages)).toContain(
+    "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
+  );
 });
 
 it.each([{ args: [] }, { args: ["--list"] }])(
@@ -178,7 +183,11 @@ it.each([
   "scenario selection names existing files from the web root ($areas, $chatGate)",
   ({ areas, chatGate, includes }) => {
     const root = NodePath.resolve(import.meta.dirname, "..");
-    const files = scenarioFiles(root, areas, chatGate);
+    const files = scenarioFiles(
+      root,
+      areas,
+      chatGate ? chatGateTestFiles(root, chatGateStages) : [],
+    );
     expect(files).toEqual(expect.arrayContaining(includes));
     for (const file of files)
       expect(NodeFS.statSync(NodePath.join(root, "apps/web", file)).isFile()).toBe(true);
@@ -196,7 +205,7 @@ it.each([
   ).toThrow(`Missing selected file: ${file}`);
 });
 it("a missing selected area fails before checks start", () => {
-  expect(() => scenarioFiles(NodePath.resolve(import.meta.dirname, ".."), ["C"], false)).toThrow(
+  expect(() => scenarioFiles(NodePath.resolve(import.meta.dirname, ".."), ["C"], [])).toThrow(
     "Missing selected scenario path: test/scenarios/areas/C",
   );
 });
@@ -241,3 +250,135 @@ it.each([{ args: [] }, { args: ["--list"] }])(
     }
   },
 );
+
+// Exercise the printed commands, rather than a second implementation of the selectors.
+it.each([
+  { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A", area: "" },
+  { path: "apps/server/src/engine/domain/decide.ts", stages: "E", area: "" },
+  { path: "packages/contracts/src/engine.ts", stages: "C,C-engine,E,types", area: "c-mate" },
+  { path: "packages/contracts/src/engineCall.ts", stages: "C,C-engine,E,types", area: "c-mate" },
+  {
+    path: "apps/server/src/engine/wire/EngineWire.ts",
+    stages: "C,C-engine,E,types",
+    area: "c-mate",
+  },
+  {
+    path: "apps/web/src/components/chat/RunChat.tsx",
+    stages: "C,C-engine,types",
+    area: "c-mate,h-budget,foundation",
+  },
+  {
+    path: "packages/client-runtime/src/zerops/data/runtime.ts",
+    stages: "A,C,C-engine,E,types",
+    area: "a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget,foundation,harness,lifecycle-mutations",
+  },
+  { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", stages: "", area: "d-change" },
+  { path: "apps/server/src/engine/pump/toCore.test.ts", stages: "", area: "" },
+  {
+    path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx",
+    stages: "C,C-engine,types",
+    area: "a-signin,c-mate,h-budget,foundation",
+  },
+  {
+    path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    stages: "C,C-engine,types",
+    area: "a-signin,c-mate,h-budget,foundation",
+  },
+  {
+    path: "apps/web/package.json",
+    stages: "C,C-engine,types",
+    area: "a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget,foundation,harness,lifecycle-mutations",
+  },
+  {
+    path: "apps/web/tsconfig.json",
+    stages: "C,C-engine,types",
+    area: "a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget,foundation,harness,lifecycle-mutations",
+  },
+])("a lane validates only affected obligations for $path", ({ path, stages, area }) => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-list-"));
+  const source = NodePath.resolve(import.meta.dirname, "..");
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  try {
+    NodeFS.mkdirSync(NodePath.join(root, "scripts"));
+    for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+      NodeFS.copyFileSync(
+        NodePath.join(source, "scripts", name),
+        NodePath.join(root, "scripts", name),
+      );
+    for (const parent of ["apps", "packages", "infra"])
+      NodeFS.mkdirSync(NodePath.join(root, parent));
+    for (const directory of ["scripts", "apps/server", "apps/web"]) {
+      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+      NodeFS.copyFileSync(
+        NodePath.join(source, directory, "package.json"),
+        NodePath.join(root, directory, "package.json"),
+      );
+    }
+    NodeFS.copyFileSync(
+      NodePath.join(source, "apps/web/tsconfig.json"),
+      NodePath.join(root, "apps/web/tsconfig.json"),
+    );
+    NodeFS.cpSync(
+      NodePath.join(source, "apps/web/test/scenarios"),
+      NodePath.join(root, "apps/web/test/scenarios"),
+      { recursive: true },
+    );
+    for (const file of chatGateTestFiles(source, chatGateStages).filter((file) =>
+      file.startsWith("apps/server/"),
+    )) {
+      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, file)), { recursive: true });
+      NodeFS.copyFileSync(NodePath.join(source, file), NodePath.join(root, file));
+    }
+    git("init", "-q");
+    git("config", "user.name", "Gate fixture");
+    git("config", "user.email", "gate@example.test");
+    git("add", ".");
+    git("commit", "-qm", "fixture");
+    NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, path)), { recursive: true });
+    NodeFS.appendFileSync(
+      NodePath.join(root, path),
+      path.endsWith(".json") ? "\n" : "\n// changed\n",
+    );
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    if (stages) expect(result.stdout).toContain(`scripts/chat-gate.ts --stages ${stages}`);
+    else expect(result.stdout).not.toContain("scripts/chat-gate.ts");
+    if (area) expect(result.stdout).toContain(`scenarios ${area}:`);
+    else expect(result.stdout).not.toContain("scenarios ");
+    const server = result.stdout.split("\n").find((line) => line.startsWith("related t3:"));
+    if (path === "apps/web/tsconfig.json") {
+      expect(result.stdout).not.toContain("related ");
+    } else {
+      expect(server).toBeDefined();
+      expect(server?.includes("--exclude src/spi/replay/goldens.test.ts")).toBe(
+        stages.includes("A"),
+      );
+      expect(server?.includes("--exclude src/engine/outbox/crash.test.ts")).toBe(
+        stages.includes("E"),
+      );
+      if (area)
+        expect(result.stdout).toContain("--exclude test/scenarios/fakes/browserHealth.test.ts");
+    }
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("the engine wire's single journey leaves other C journeys with their scenario owner", () => {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const owned = chatGateTestFiles(
+    root,
+    chatGateStages.filter((stage) => stage.id === "C-engine"),
+  );
+  const files = scenarioFiles(root, ["c-mate"], owned);
+  expect(files).not.toContain("test/scenarios/areas/c-mate/chat.scenario.ts");
+  expect(files).toContain("test/scenarios/areas/c-mate/opening.scenario.ts");
+  expect(files).toContain("test/scenarios/fakes/c-mate/chat.test.ts");
+});

@@ -25,7 +25,7 @@ import {
   mateFaceFor,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
-import type { MateComing } from "~/zerops/mateComing";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { nowLineWords } from "../chat/runCard.logic";
 
