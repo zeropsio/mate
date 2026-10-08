@@ -137,11 +137,6 @@ describe("C: provider refusal and its real deadline", () => {
             yield* chat.then.noText("Thinking");
             yield* Effect.promise(() => settled());
             yield* Effect.promise(() =>
-              s.page.waitForSelector('pierce/[data-conversation-opening="ready"]', {
-                timeout: 8000,
-              }),
-            );
-            yield* Effect.promise(() =>
               s.page.waitForSelector("pierce/[data-conversation-opening]", {
                 hidden: true,
                 timeout: 8000,
