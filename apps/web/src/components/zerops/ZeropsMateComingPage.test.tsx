@@ -25,6 +25,25 @@ import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
+function openDetails(rendered: ReactTestRenderer) {
+  const button = rendered.root
+    .findAllByType("button")
+    .find((node) => node.props["data-slot"] === "collapsible-trigger")!;
+  expect(button.props["aria-expanded"]).toBe(false);
+  const target = document.createElement("button");
+  act(() =>
+    button.props.onClick({
+      currentTarget: target,
+      target,
+      nativeEvent: new MouseEvent("click"),
+      preventDefault() {},
+      stopPropagation() {},
+      defaultPrevented: false,
+    }),
+  );
+  return rendered.root;
+}
+
 const ENV_QUINN = EnvironmentId.make("env-quinn");
 
 /**
@@ -375,6 +394,7 @@ const said = () =>
 const buttons = () =>
   tree?.root
     .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
     .filter((node) => node.props.disabled !== true && node.props.inert !== true)
     .map((node) => node.children.join("")) ?? [];
 
@@ -486,6 +506,7 @@ describe("a Mate's own view while its link is made", () => {
     act(() =>
       tree?.root
         .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
         .find((node) => node.children.join("") === "Try now")
         ?.props.onClick(),
     );
@@ -507,6 +528,7 @@ describe("a Mate's own view while its link is made", () => {
     act(() =>
       tree?.root
         .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
         .find((node) => node.children.join("") === "Try again")
         ?.props.onClick(),
     );
@@ -965,7 +987,10 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   it("hands over once, its header turning into the conversation's with its words", async () => {
     // The header's actions as the conversation draws them, standing in until it takes the route.
     const headerActions = () =>
-      tree?.root.findAllByType("button").filter((node) => node.props.inert === true) ?? [];
+      tree?.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
+        .filter((node) => node.props.inert === true) ?? [];
     app.listing = listingOf([coming]);
     openView();
     expect(headerActions()).toHaveLength(0);
@@ -1015,14 +1040,20 @@ describe("ComingBelow — a Mate half made", () => {
     const rendered = render(() => {
       finished += 1;
     });
-    const button = rendered.root.findByType("button");
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Finish setup"]);
     act(() => button.props.onClick());
     expect(finished).toBe(1);
   });
 
   it("offers nothing to anyone else", () => {
-    expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
+    expect(
+      render(undefined)
+        .root.findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
+    ).toHaveLength(0);
   });
 
   it.each([
@@ -1045,7 +1076,9 @@ describe("ComingBelow — a Mate half made", () => {
         }),
       );
     });
-    const buttons = rendered!.root.findAllByType("button");
+    const buttons = rendered!.root
+      .findAllByType("button")
+      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
     expect(buttons).toHaveLength(permitted ? 1 : 0);
     if (permitted) {
       expect(buttons[0]!.children).toEqual(["Finish setup"]);
@@ -1151,10 +1184,12 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
       finished += 1;
     });
     expect(text(rendered)).toEqual(["Not registered."]);
-    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
       "Its grant timed out.",
     );
-    const button = rendered.root.findByType("button");
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Finish setup"]);
     act(() => button.props.onClick());
     expect(finished).toBe(1);
@@ -1163,10 +1198,14 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
   it("still says why to someone who cannot finish it", () => {
     const rendered = render(undefined);
     expect(text(rendered)).toEqual(["Not registered."]);
-    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
       "Its grant timed out.",
     );
-    expect(rendered.root.findAllByType("button")).toHaveLength(0);
+    expect(
+      rendered.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
+    ).toHaveLength(0);
   });
 });
 
@@ -1210,7 +1249,9 @@ describe("ComingBelow — a setup that can't be read", () => {
       again += 1;
     });
     expect(text(rendered)).toEqual(["Its container turned the read of its setup away."]);
-    const button = rendered.root.findByType("button");
+    const button = rendered.root
+      .findAllByType("button")
+      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
     expect(button.children).toEqual(["Try again"]);
     act(() => button.props.onClick());
     expect(again).toBe(1);
@@ -1258,12 +1299,13 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
 
   it("reads it whole over Try again, with no hover", () => {
     const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
-    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
-      REASON,
-    );
-    expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
-      ["Try again"],
-    ]);
+    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(REASON);
+    expect(
+      rendered.root
+        .findAllByType("button")
+        .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
+        .map((button) => button.children),
+    ).toEqual([["Try again"]]);
   });
 
   it("leaves it to the sentence where Zerops may have made it", () => {
@@ -1292,7 +1334,9 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
         }),
       );
     });
-    const buttons = rendered!.root.findAllByType("button");
+    const buttons = rendered!.root
+      .findAllByType("button")
+      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
     expect(buttons.map((button) => button.children)).toEqual([["Go to projects"], ["Dismiss"]]);
     act(() => buttons[1]!.props.onClick());
     expect(dismissed).toBe(1);
@@ -1418,7 +1462,10 @@ describe("an added Mate's own view, after its hand-over", () => {
     });
     openView();
     act(() => forgetPress(PROJECT));
-    expect(said()).toContain("Not registered: Its grant timed out.");
+    expect(said()).toContain("Not registered.");
+    expect(openDetails(tree!).findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
     app.registration = { attempt: 2, state: "done" };
     act(() => tree?.update(comingView(PROJECT)));
     expect(said()).not.toContain("Not registered");
@@ -1454,6 +1501,7 @@ it("keeps the failed stand-up's recovery visible before a conversation exists", 
   openView();
   const again = tree?.root
     .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
     .find((node) => node.children.join("") === "Try again");
   expect(again).toBeDefined();
   act(() => again?.props.onClick());
@@ -1516,6 +1564,7 @@ it.each([
   openView();
   const retry = tree!.root
     .findAllByType("button")
+    .filter((node) => node.props["data-slot"] !== "collapsible-trigger")
     .find((node) => node.children.join("") === "Try again");
   expect(retry).toBeDefined();
   await act(async () => {
@@ -1525,8 +1574,7 @@ it.each([
   const section = tree!.root.findByType("section");
   expect(section.children).toContain(text);
   expect(section.children).not.toContain("500: Internal Server Error");
-  const details = tree!.root.findByType("details");
-  expect(details.props.open).not.toBe(true);
+  const details = openDetails(tree!);
   const diagnostics = details.findByType("pre").children.join("");
   expect(diagnostics).toContain(error.message);
   expect(diagnostics).toContain("Original setup diagnostic");
@@ -1569,9 +1617,7 @@ it("keeps a Finish setup refusal out of stage copy without a setup process", () 
   const section = tree!.root.findByType("section");
   expect(section.children).toContain("Zerops couldn't finish setting up the Mate.");
   expect(section.children).not.toContain(app.actionTrouble);
-  expect(tree!.root.findByType("details").findByType("pre").children.join("")).toBe(
-    app.actionTrouble,
-  );
+  expect(openDetails(tree!).findByType("pre").children.join("")).toBe(app.actionTrouble);
 });
 
 it("keeps a Remove refusal available in Details without a setup process or action slot", () => {
@@ -1591,8 +1637,7 @@ it("keeps a Remove refusal available in Details without a setup process or actio
       }),
     );
   });
-  const details = rendered!.root.findByType("details");
-  expect(details.props.open).not.toBe(true);
+  const details = openDetails(rendered!);
   expect(details.findByType("pre").children.join("")).toBe("500: Internal Server Error");
   act(() => rendered!.unmount());
 });
@@ -1622,7 +1667,7 @@ it("keeps an original creation refusal collapsed even before a setup process exi
   });
   const note = rendered!.root.findAll((node) => node.props["data-press-note"] !== undefined);
   expect(note.map((node) => node.children.join(""))).not.toContain("500: Internal Server Error");
-  expect(rendered!.root.findByType("details").findByType("pre").children.join("")).toContain(
+  expect(openDetails(rendered!).findByType("pre").children.join("")).toContain(
     "500: Internal Server Error",
   );
   act(() => rendered!.unmount());

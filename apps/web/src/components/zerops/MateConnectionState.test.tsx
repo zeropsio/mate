@@ -276,9 +276,11 @@ it("a failed restart keeps raw diagnostics collapsed below its named state and a
     expect(host.querySelector("[data-arrival-sentence]")?.textContent).toBe(
       "Zerops returned an error while restarting. Eddy was last working on the build.",
     );
-    expect(host.querySelector("details")?.open).toBe(false);
-    expect(host.querySelector("summary")?.textContent).toBe("Details");
-    expect(host.querySelector("details")?.textContent).toContain("500: Internal Server Error");
+    const disclosure = host.querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')!;
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(host.textContent).not.toContain("500: Internal Server Error");
+    await act(async () => disclosure.click());
+    expect(host.textContent).toContain("500: Internal Server Error");
     expect(host.textContent).toContain("Go to projects");
     expect(host.textContent).toContain("Open in Zerops");
   } finally {

@@ -1275,7 +1275,9 @@ export function ComingBelow({
         <MateStateDetails>
           <pre>{copy.details}</pre>
           {setupFailureDetails?.status === "loading" ? <p>Reading the setup log…</p> : null}
-          {setupFailureDetails?.status === "error" ? <p>The setup log couldn't be read. Open the process in Zerops.</p> : null}
+          {setupFailureDetails?.status === "error" ? (
+            <p>The setup log couldn't be read. Open the process in Zerops.</p>
+          ) : null}
         </MateStateDetails>
       )}
       <div className="arrival-acts-block">

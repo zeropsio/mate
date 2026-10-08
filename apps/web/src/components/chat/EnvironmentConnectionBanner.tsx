@@ -11,6 +11,7 @@ import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useState, type ReactElement } from "react";
 
+import { MateStateDetails } from "../zerops/MateStateDetails";
 import { Button } from "../ui/button";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
@@ -98,10 +99,9 @@ export function mateVoiceBannerItem(input: {
               <>
                 {voice.secondary}
                 {voice.details ? (
-                  <details>
-                    <summary className="cursor-pointer">Details</summary>
+                  <MateStateDetails>
                     <p className="whitespace-pre-wrap break-words">{voice.details}</p>
-                  </details>
+                  </MateStateDetails>
                 ) : null}
               </>
             ),

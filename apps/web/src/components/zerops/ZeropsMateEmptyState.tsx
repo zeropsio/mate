@@ -549,9 +549,7 @@ function ArrivalComposition({
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
-                  <span className="inline-block max-w-full">
-                    {clause}
-                  </span>
+                  <span className="inline-block max-w-full">{clause}</span>
                 </Fragment>
               ))}
             </span>
