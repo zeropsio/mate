@@ -7,9 +7,9 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { CREW_ENGINE_TEST_TIMEOUT } from "./testing/crewEngineFixture.ts";
 import { git, write } from "./testing/crewGitFixture.ts";
 import {
+  CREW_ENGINE_TEST_TIMEOUT,
   applied,
   crewJourney,
   eventually,

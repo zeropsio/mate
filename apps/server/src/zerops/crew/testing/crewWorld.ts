@@ -60,6 +60,7 @@ import {
 import { CrewStore } from "../CrewStore.ts";
 import { installCrewThreadPolicy } from "../CrewThreadPolicy.ts";
 import {
+  CREW_ENGINE_TEST_TIMEOUT,
   eventually,
   runningPersonThread,
   spiEvent,
@@ -70,7 +71,7 @@ import {
 } from "./crewEngineFixture.ts";
 import { AS_CREW, KAREL } from "./crewEngineSteps.ts";
 
-export { AS_CREW, eventually, KAREL };
+export { AS_CREW, CREW_ENGINE_TEST_TIMEOUT, eventually, KAREL };
 
 // ─── The port ──────────────────────────────────────────────────────────────────────────────────
 
