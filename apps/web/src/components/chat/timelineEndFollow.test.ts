@@ -1,3 +1,8 @@
+import {
+  classifyTimelineScroll,
+  jumpedAway,
+  nextTimelineFollow,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -95,6 +100,60 @@ describe("createEndFollow", () => {
     scroll.element.scrollHeight += by;
     follow.follow();
   };
+
+  it("a browser layout correction during row measurement does not release end-follow", () => {
+    const scroll = list({ top: 2944, height: 3779, client: 835 });
+    const follow = createEndFollow({
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    follow.follow();
+    const previous = { scrollTop: 2944, contentHeight: 3779 };
+    // Growth starts a glide; another measurement shrinks the native range
+    // before it grows again. The browser delivers their scroll event together.
+    grow(scroll, follow, 100);
+    const beforeClamp = scroll.element.scrollTop;
+    scroll.element.scrollHeight = 3611;
+    scroll.element.scrollTop = beforeClamp;
+    follow.follow();
+    scroll.element.scrollHeight = 4009;
+    const current = { scrollTop: scroll.element.scrollTop, contentHeight: 4009 };
+    const own = takeOwnScroll(scroll.element as unknown as HTMLElement);
+    scroll.state.follows = nextTimelineFollow(true, {
+      type: "position",
+      atEnd: false,
+      ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+      jumped: !own && jumpedAway({ previous, current }),
+    });
+    expect(scroll.state.follows).toBe(true);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(3174);
+  });
+
+  it("focus navigation into growing history stays where the reader landed", () => {
+    const scroll = list({ top: 4500, height: 6000, client: 835 });
+    const follow = createEndFollow({
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    follow.follow();
+    const previous = { scrollTop: 4500, contentHeight: 6000 };
+    scroll.element.scrollHeight = 6200;
+    // Focus/find moves without a wheel or key scroll session.
+    scroll.element.scrollTop = 1000;
+    follow.follow();
+    const current = { scrollTop: scroll.element.scrollTop, contentHeight: 6200 };
+    const own = takeOwnScroll(scroll.element as unknown as HTMLElement);
+    scroll.state.follows = nextTimelineFollow(true, {
+      type: "position",
+      atEnd: false,
+      ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+      jumped: !own && jumpedAway({ previous, current }),
+    });
+    expect(scroll.state.follows).toBe(false);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(1000);
+  });
 
   it.each([
     { what: "a row easing taller by a few pixels", grew: 6, glides: false },

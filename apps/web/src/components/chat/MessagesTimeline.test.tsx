@@ -19,6 +19,12 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
+import { takeOwnScroll } from "./timelineEndFollow";
+import {
+  classifyTimelineScroll,
+  jumpedAway,
+  nextTimelineFollow,
+} from "@t3tools/client-runtime/zerops/timelineFollow";
 
 vi.mock("@legendapp/list/react", async () => {
   const legendListTestId = "legend-list";
@@ -707,6 +713,72 @@ describe("MessagesTimeline", () => {
 
   it("a shrinking row keeps a followed conversation at its end", () => shrinkRow(true, 1200));
   it("a shrinking row does not move a conversation being read", () => shrinkRow(false, 1180));
+
+  it("a measured clamp followed by growth keeps the conversation at its end", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = { scrollTop: 1200, scrollHeight: 2000, clientHeight: 800 };
+    const listRef = {
+      current: {
+        getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => viewport,
+      } as unknown as LegendListRef,
+    };
+    const timeline = (follows: boolean) => (
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={listRef}
+        liveFollowEnabled={follows}
+        routeThreadKey="environment-local:measured-clamp"
+        timelineEntries={[buildUserTimelineEntry("Keep following after measurement.")]}
+      />
+    );
+    let renderer: ReactTestRenderer | undefined;
+    const measure = (previous: number, size: number) =>
+      renderer!.root.findByType(LegendList).props.onItemSizeChanged({
+        index: 0,
+        itemKey: "message-1",
+        itemData: undefined,
+        previous,
+        size,
+      });
+    try {
+      await act(() => {
+        renderer = create(timeline(true));
+      });
+      await act(async () => {
+        measure(280, 300);
+      });
+      takeOwnScroll(viewport as unknown as HTMLElement);
+      const previous = { scrollTop: 1200, contentHeight: 2000 };
+      // A row shrinks the native range; another grows it before the scroll receipt.
+      viewport.scrollHeight = 1800;
+      viewport.scrollTop = 1000;
+      measure(300, 100);
+      viewport.scrollHeight = 2200;
+      const current = { scrollTop: viewport.scrollTop, contentHeight: viewport.scrollHeight };
+      const own = takeOwnScroll(viewport as unknown as HTMLElement);
+      const follows = nextTimelineFollow(true, {
+        type: "position",
+        atEnd: false,
+        ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+        jumped: !own && jumpedAway({ previous, current }),
+      });
+      await act(() => renderer!.update(timeline(follows)));
+      await act(async () => {
+        for (let turn = 0; frames.length > 0 && turn < 200; turn += 1)
+          for (const frame of frames.splice(0)) frame(turn * (1000 / 60));
+      });
+      expect(viewport.scrollTop).toBe(1400);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
 
   // The review, 2026-10-04: one step taller than the list and the composer —
   // a long answer landing on a phone — turned the list's own reading of its

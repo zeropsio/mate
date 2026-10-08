@@ -64,6 +64,8 @@ export function ownListScrolls(element: HTMLElement): () => void {
 export interface EndFollow {
   /** Something may have moved the end: the list stands at it, or glides there. */
   readonly follow: () => void;
+  /** A measurement may have clamped the native viewport before the next layout. */
+  readonly observe: () => void;
   readonly stop: () => void;
 }
 
@@ -79,6 +81,8 @@ export function createEndFollow({
   let last = 0;
   // Where the glide stands: the browser rounds what it is given.
   let at = 0;
+  // The viewport whose position `at` describes, including after a glide stops.
+  let observedViewport: HTMLElement | null = null;
   // The list it glides, and said so on: a kept list swapped in since is not it.
   let gliding: HTMLElement | null = null;
   const endOf = (element: HTMLElement) => Math.max(0, element.scrollHeight - element.clientHeight);
@@ -105,19 +109,35 @@ export function createEndFollow({
     if (at !== end) frame = requestAnimationFrame(step);
     else stopGlide();
   };
+  const observe = (element: HTMLElement) => {
+    const end = endOf(element);
+    // A measured range below our last position clamps the browser at its
+    // new end. Attribute that observed correction before later measurements
+    // grow the range and before its coalesced scroll event arrives.
+    if (element === observedViewport && at > end && Math.abs(end - element.scrollTop) < 0.5) {
+      ownTops.set(element, element.scrollTop);
+    }
+    observedViewport = element;
+    at = element.scrollTop;
+  };
   return {
+    observe: () => {
+      const element = viewport();
+      if (element !== null && follows()) observe(element);
+    },
     follow: () => {
       const element = viewport();
-      if (element === null || !follows() || frame !== 0) return;
+      if (element === null || !follows()) return;
       const end = endOf(element);
       const gap = end - element.scrollTop;
-      if (Math.abs(gap) < 0.5) return;
+      observe(element);
+      if (frame !== 0 || Math.abs(gap) < 0.5) return;
       // Out of sight, nobody watches it glide: it stands there at once.
       if (gap < GLIDE_FROM_PX || reducedMotion() || outOfSight()) {
         scrollOwn(element, end);
+        at = element.scrollTop;
         return;
       }
-      at = element.scrollTop;
       gliding = element;
       // Said on it while it glides: a run's fold waits for it (`foldWork`).
       said(element, true);

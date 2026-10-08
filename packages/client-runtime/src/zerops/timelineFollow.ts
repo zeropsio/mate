@@ -103,21 +103,20 @@ export function classifyTimelineScroll(input: {
 const TIMELINE_JUMP_PX = 40;
 
 /**
- * An unobserved jump away is provable only while content height is unchanged.
- * Measurements can shrink and grow between readings: the browser clamps at
- * an intermediate end even when the final content is taller. Direct person
- * input is classified separately, so it still releases follow during layout.
+ * Whether the list jumped up since the last read by something other than its
+ * content changing. The end-motion owner attributes observed browser clamps
+ * before this verdict; concurrent growth alone cannot disprove navigation.
  */
 export function jumpedAway(input: {
   readonly previous: TimelineScrollReading | null;
   readonly current: TimelineScrollReading;
 }): boolean {
   const { previous, current } = input;
-  return (
-    previous !== null &&
-    previous.contentHeight === current.contentHeight &&
-    current.scrollTop - previous.scrollTop <= -TIMELINE_JUMP_PX
-  );
+  if (previous === null) return false;
+  const moved = current.scrollTop - previous.scrollTop;
+  if (moved > -TIMELINE_JUMP_PX) return false;
+  const grew = current.contentHeight - previous.contentHeight;
+  return !(grew < 0 && Math.abs(grew) >= Math.abs(moved) - 1);
 }
 
 /**

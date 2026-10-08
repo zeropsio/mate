@@ -764,10 +764,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return () => observer.disconnect();
   }, [followEnd, timelineViewportElement]);
   // Every measurement can move the end, including an estimated row becoming
-  // shorter. Follow after the list applies its layout, in this turn and the
-  // next frame if React deferred it.
+  // shorter. Read its native clamp in the measurement callback before another
+  // layout can hide it, then follow after the list applies its layout.
   const onItemSizeChanged = useCallback(() => {
     if (!followingEndRef.current) return;
+    endFollowRef.current?.observe();
     queueMicrotask(followEnd);
     if (endRepinFrameRef.current !== null) return;
     endRepinFrameRef.current = requestAnimationFrame(() => {
