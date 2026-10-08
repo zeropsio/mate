@@ -32,6 +32,22 @@ import {
   type ConversationKey,
 } from "../projections/mateConversation.ts";
 import { streamOf, type Row } from "../reducer.ts";
+/**
+ * A V1 conversation read that starts only once the Mate's door says its conversation is V1's: an
+ * engine Mate's parked V1 history is never read. The cached paint comes from the account's facts.
+ */
+const v1Only = <A, E, R>(stream: Stream.Stream<A, E, R>) =>
+  Stream.unwrap(
+    Effect.map(EnvironmentSupervisor, (supervisor) =>
+      SubscriptionRef.changes(supervisor.prepared).pipe(
+        Stream.filter(Option.isSome),
+        Stream.map((prepared) => engineRouteOf(prepared.value).kind === "v1"),
+        Stream.changes,
+        Stream.switchMap((v1) => (v1 ? stream : Stream.empty)),
+      ),
+    ),
+  );
+
 export const mateConversationStoreAtom = Atom.make<AccountStore | null>(null).pipe(Atom.keepAlive);
 export const publishConversation = (
   store: AccountStore,
@@ -217,9 +233,11 @@ export function createAccountConversationAtoms<R, E>(
           };
           yield* followStreamInEnvironment(
             key.environmentId as EnvironmentId,
-            Stream.unwrap(
-              openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
-                Effect.map(SubscriptionRef.changes),
+            v1Only(
+              Stream.unwrap(
+                openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
+                  Effect.map(SubscriptionRef.changes),
+                ),
               ),
             ),
           ).pipe(
@@ -284,6 +302,8 @@ export function createAccountConversationAtoms<R, E>(
       .pipe(Atom.keepAlive, Atom.withLabel(`mate-conversation-route:${environmentId}`)),
   );
   const routeOf = (get: Atom.AtomContext, environmentId: string): EngineRoute =>
+    // Before the door answers, V1 as always. The web keeps no conversation across a reload, so this
+    // paints only the opening state, never V1 content an engine Mate would take back.
     Option.getOrElse(AsyncResult.value(get(routes(environmentId))), () => ({
       kind: "unknown" as const,
     }));
@@ -330,8 +350,6 @@ export function createAccountConversationAtoms<R, E>(
       const route = routeOf(get, key.environmentId);
       type State = import("../../state/threadState.ts").EnvironmentThreadState;
       switch (route.kind) {
-        case "unknown":
-          return AsyncResult.initial<State, E>(true);
         case "update":
           return AsyncResult.success<State>({
             ...EMPTY_ENVIRONMENT_THREAD_STATE,
@@ -350,7 +368,9 @@ export function createAccountConversationAtoms<R, E>(
                 ),
               );
         }
+        case "unknown":
         case "v1": {
+          // V1 until the door says otherwise: its cached paint and its access words at once.
           const store = get(holders(encoded));
           return store === null
             ? AsyncResult.initial<State, E>(true)

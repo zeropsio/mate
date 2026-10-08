@@ -43,27 +43,36 @@ function threadStateChanges(
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
 ) {
+  const v1 = Stream.unwrap(
+    makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+  );
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      Effect.map(EnvironmentSupervisor, (supervisor) =>
-        SubscriptionRef.changes(supervisor.prepared).pipe(
-          Stream.filter(Option.isSome),
-          Stream.map((prepared) => engineRouteOf(prepared.value).kind === "v1"),
-          Stream.changes,
-          // This reader speaks V1 only: a Mate whose conversation runs on the engine is read by an
-          // updated app, never through its parked V1 history.
-          Stream.switchMap((v1) =>
-            v1
-              ? Stream.unwrap(
-                  makeEnvironmentThreadState(threadId, resumeCache).pipe(
-                    Effect.map(SubscriptionRef.changes),
-                  ),
-                )
-              : Stream.succeed(NATIVE_ENGINE_THREAD_STATE),
+      Effect.gen(function* () {
+        const supervisor = yield* EnvironmentSupervisor;
+        const cache = yield* EnvironmentCacheStore;
+        // This reader speaks V1 only. V1 runs at once, its cached paint offline too, until the
+        // Mate's door — or the configuration it last cached — says its conversation is the
+        // engine's: then an updated app reads it, never this reader.
+        const cached = yield* cache
+          .loadServerConfig(environmentId)
+          .pipe(Effect.orElseSucceed(() => Option.none()));
+        const engineBefore = Option.match(cached, {
+          onNone: () => false,
+          onSome: (config) => config.environment.capabilities.mateEngine !== undefined,
+        });
+        return Stream.concat(
+          Stream.make(engineBefore),
+          SubscriptionRef.changes(supervisor.prepared).pipe(
+            Stream.filter(Option.isSome),
+            Stream.map((prepared) => engineRouteOf(prepared.value).kind !== "v1"),
           ),
-        ),
-      ),
+        ).pipe(
+          Stream.changes,
+          Stream.switchMap((engine) => (engine ? Stream.succeed(NATIVE_ENGINE_THREAD_STATE) : v1)),
+        );
+      }),
     ),
   );
 }
