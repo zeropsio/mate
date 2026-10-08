@@ -26,6 +26,7 @@ import type {
   CrewToolCall,
   DeliverCommand,
 } from "./command.ts";
+import { deliveryCommandId } from "./command.ts";
 import { decideCrew } from "./decide.ts";
 import { stampCrewEvents } from "./events.ts";
 import { evolveCrew } from "./evolve.ts";
@@ -289,7 +290,7 @@ export class CrewWorld {
     this.observe(conversation, [
       {
         _tag: "RunQueued",
-        ...this.header(conversation, entry.effectId),
+        ...this.header(conversation, deliveryCommandId(entry.effectId)),
         runId,
         ordinal,
         trigger: { kind: "wake", cause: "crew", wakeId: null },
@@ -339,7 +340,7 @@ export class CrewWorld {
     this.observe(conversation, [
       {
         _tag: "RunQueued",
-        ...this.header(conversation, entry.effectId),
+        ...this.header(conversation, deliveryCommandId(entry.effectId)),
         runId,
         ordinal,
         trigger: { kind: "wake", cause: "crew", wakeId: null },

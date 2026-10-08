@@ -326,7 +326,17 @@ export interface CrewState {
   readonly effects: Readonly<Record<string, PendingEffect>>;
   readonly deliveries: Readonly<Record<string, DeliveryRecord>>;
   /** Armed wakes, by id. */
-  readonly wakes: Readonly<Record<string, { readonly kind: string; readonly dueAt: number }>>;
+  readonly wakes: Readonly<
+    Record<
+      string,
+      {
+        readonly kind: string;
+        readonly dueAt: number;
+        /** The arming's own seq: a fire the scheduler read from an older arming is stale. */
+        readonly armedSeq?: number;
+      }
+    >
+  >;
   /** Effects asked so far: the next one's ordinal. */
   readonly effectSeq: number;
   /** A landing held, and the words it was held in: said once. */

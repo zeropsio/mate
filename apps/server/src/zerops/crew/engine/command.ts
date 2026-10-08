@@ -16,10 +16,10 @@
  *
  * @module crew/engine/command
  */
+import { CommandId } from "@t3tools/contracts";
 import type {
   BootId,
   ChatAttachment,
-  CommandId,
   ConversationId,
   CrewCard,
   CrewCommand,
@@ -358,3 +358,17 @@ export interface CrewRejection {
 export type CrewDecision =
   | { readonly _tag: "Accept"; readonly step: CrewStep }
   | { readonly _tag: "Reject"; readonly rejection: CrewRejection };
+
+/* ------------------------------------------------------------ deliveries */
+
+const DELIVERY_PREFIX = "crew-deliver:";
+
+/** One delivery's command id: the same for every attempt of one effect, so its receipt dedupes. */
+export const deliveryCommandId = (effect: EffectId): CommandId =>
+  CommandId.make(`${DELIVERY_PREFIX}${effect}`);
+
+/** The delivery a conversation's command came from, by its command id; none for another's. */
+export const deliveryOfCommand = (commandId: string): EffectId | undefined =>
+  commandId.startsWith(DELIVERY_PREFIX)
+    ? (commandId.slice(DELIVERY_PREFIX.length) as EffectId)
+    : undefined;

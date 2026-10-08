@@ -48,7 +48,10 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
     case "WakeArmed":
       return {
         ...state,
-        wakes: { ...state.wakes, [event.wakeId]: { kind: event.kind, dueAt: event.dueAt } },
+        wakes: {
+          ...state.wakes,
+          [event.wakeId]: { kind: event.kind, dueAt: event.dueAt, armedSeq: event.seq },
+        },
       };
     case "WakeFired":
     case "WakeCancelled":

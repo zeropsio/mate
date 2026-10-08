@@ -16,13 +16,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import {
-  CommandId,
-  type CommandResult,
-  type ConversationId,
-  type EffectId,
-  type Principal,
-} from "@t3tools/contracts";
+import type { CommandResult, ConversationId, Principal } from "@t3tools/contracts";
 
 import type { StepFailure } from "../../../../engine/ConversationActor.ts";
 import { Conversations } from "../../../../engine/Conversations.ts";
@@ -60,9 +54,9 @@ export interface DeliverPayload {
 
 export type DeliverValue = Omit<Extract<CommandResult, { readonly _tag: "Accepted" }>, "_tag">;
 
-/** One delivery's command id: the same for every attempt of one effect. */
-export const deliveryCommandId = (effect: EffectId): CommandId =>
-  CommandId.make(`crew-deliver:${effect}`);
+import { deliveryCommandId } from "../command.ts";
+
+export { deliveryCommandId, deliveryOfCommand } from "../command.ts";
 
 export const makeDeliver = Effect.gen(function* () {
   const delivery = yield* CrewDelivery;

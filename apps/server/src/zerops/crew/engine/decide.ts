@@ -86,6 +86,7 @@ import {
   type CrewInput,
   type CrewToolCall,
   type DeliverCommand,
+  deliveryOfCommand,
   type LaneStatsValue,
   type TaskSeen,
   type ToolReply,
@@ -2425,13 +2426,11 @@ const mateEvent = (b: Builder, conversationId: string, event: KnownEngineEvent):
 const crewmateEvent = (b: Builder, member: MemberRecord, event: KnownEngineEvent): void => {
   switch (event._tag) {
     case "RunQueued": {
-      const delivery = b.state.deliveries[event.commandId];
-      if (delivery !== undefined && delivery.runId === null) {
-        b.emit({
-          _tag: "DeliveryLinked",
-          effectId: event.commandId as string as EffectId,
-          runId: event.runId,
-        });
+      // A delivery's command id names its effect (`crew.deliver`'s receipt key).
+      const effectId = deliveryOfCommand(event.commandId);
+      const delivery = effectId === undefined ? undefined : b.state.deliveries[effectId];
+      if (effectId !== undefined && delivery !== undefined && delivery.runId === null) {
+        b.emit({ _tag: "DeliveryLinked", effectId, runId: event.runId });
       }
       return;
     }
