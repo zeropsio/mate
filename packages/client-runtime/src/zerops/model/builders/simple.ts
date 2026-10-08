@@ -86,26 +86,45 @@ export function buildSimpleFields(
     kind === "manage" && outcome?.process?.actionName === "stack.restart"
       ? outcome.process
       : undefined;
-  const observedRestart =
-    returnedRestart === undefined ? undefined : context?.processes?.(returnedRestart.id);
-  // A history baseline behind a terminal tool result cannot put that process back in progress.
-  const restart =
-    observedRestart === undefined ||
-    (returnedRestart !== undefined &&
-      ["FAILED", "FINISHED", "CANCELED"].includes(returnedRestart.status) &&
-      !["FAILED", "FINISHED", "CANCELED"].includes(observedRestart.status))
-      ? returnedRestart
-      : observedRestart;
+  const reading = returnedRestart === undefined ? undefined : context?.restarts?.(returnedRestart);
+  const restart = reading?.process ?? returnedRestart;
+  // Mobile later: without the account restart reading, native retains its tool-result path.
   const phase =
-    restart === undefined
+    reading?.phase ??
+    (restart === undefined
       ? callPhase
       : restart.status === "FAILED" || restart.status === "CANCELED"
         ? "failed"
         : restart.status === "FINISHED"
           ? "done"
-          : "running";
+          : "running");
+  const refusal =
+    reading?.progress?.stage === "refused" || reading?.progress?.stage === "unsent"
+      ? reading.progress.reason
+      : undefined;
+  const progress = reading?.progress;
+  const accepted =
+    progress?.stage === "accepted" ||
+    progress?.stage === "reflected" ||
+    (progress?.stage === "unresolved" && progress.operationId !== null);
+  const nextAction = progress?.stage === "unresolved" ? progress.nextAction : undefined;
+  const unconfirmed =
+    reading?.requestId === undefined
+      ? `Zerops last reported ${named ?? subject} restarting. Its outcome is unconfirmed.`
+      : accepted
+        ? "Zerops accepted the restart. Its outcome is unconfirmed."
+        : "Zerops hasn't confirmed the restart request.";
   const restartWords =
-    restart === undefined ? undefined : restartCardReadout(restart, named ?? subject, NaN);
+    restart === undefined
+      ? undefined
+      : phase === "uncertain"
+        ? {
+            status: "Restart unconfirmed",
+            text: `${unconfirmed}${nextAction === undefined ? "" : ` ${nextAction}`}`,
+          }
+        : refusal !== undefined
+          ? { status: "Restart refused", text: refusal }
+          : restartCardReadout(restart, named ?? subject, NaN);
   // An env call's failure never carries an entry it was given: values can be secrets.
   const failure =
     errorInfo === undefined
@@ -124,13 +143,17 @@ export function buildSimpleFields(
 
   return {
     subject,
-    ...(kind === "manage" && outcome?.process !== undefined
-      ? { processIds: [outcome.process.id] }
-      : {}),
+    ...(restart !== undefined ? { processIds: [restart.id] } : {}),
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    ...(restart === undefined ? {} : { phaseOverride: phase, restartProcess: restart }),
+    ...(restart === undefined
+      ? {}
+      : {
+          phaseOverride: phase,
+          restartProcess: restart,
+          ...(reading === undefined ? {} : { restartReading: reading }),
+        }),
     statusWord:
       restartWords?.status ??
       gatedStatusWord(kind, phase, decoded.document !== undefined, call.resultText !== undefined),
@@ -143,7 +166,13 @@ export function buildSimpleFields(
       buildStep(
         kind,
         subject,
-        phase === "failed" ? "FAILED" : phase === "done" ? "ACTIVE" : "in_progress",
+        phase === "failed"
+          ? "FAILED"
+          : phase === "done"
+            ? "ACTIVE"
+            : phase === "uncertain"
+              ? "waiting"
+              : "in_progress",
       ),
     ],
     links: [],

@@ -45,7 +45,7 @@ describe("the web Mate's link notice", () => {
     expect(say({ kind: "reconnecting" })).toMatchObject({
       text: "Rosa is reconnecting. The conversation will open when the connection returns.",
       face: "sleep",
-      actions: [],
+      actions: ["open-in-zerops"],
     });
   });
   it("an unread conversation has a visible opening state immediately", () => {
@@ -63,7 +63,9 @@ describe("the web Mate's link notice", () => {
     { kind: "connecting", waitingOn: "access" },
     { kind: "reconnecting" },
   ] satisfies Array<Reachability | null>)("an active attempt offers no retry: %j", (state) => {
-    expect(say(state)).toMatchObject({ actions: [] });
+    expect(say(state)).toMatchObject({
+      actions: state?.kind === "reconnecting" ? ["open-in-zerops"] : [],
+    });
   });
   it.each([
     { kind: "not-answering", overdue: false },
@@ -71,14 +73,19 @@ describe("the web Mate's link notice", () => {
     { kind: "refused-credential" },
     { kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false },
   ] satisfies Reachability[])("failure evidence offers recovery: %j", (state) => {
-    expect(say(state)).toMatchObject({ actions: [expect.stringMatching(/^try-/)] });
+    expect(say(state)).toMatchObject({
+      actions:
+        state.kind === "not-answering" || state.kind === "retrying"
+          ? [expect.stringMatching(/^try-/), "open-in-zerops"]
+          : [expect.stringMatching(/^try-/)],
+    });
   });
   it("keeps the real retry deadline and its action", () => {
     expect(
       say({ kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false }),
     ).toMatchObject({
       text: "Rosa is reconnecting. Rosa isn't answering. Trying again in 5 s.",
-      actions: ["try-now"],
+      actions: ["try-now", "open-in-zerops"],
     });
   });
   it("a provisioning container has no estimated finish time", () => {
@@ -152,7 +159,7 @@ describe("an unreachable Mate's last-known state", () => {
         surface: conversationShown ? "banner" : "stage",
         headline: "Skákala isn't answering.",
         secondary: "Last known 14:20: Skákala hit the Claude limit.",
-        actions: ["try-now"],
+        actions: ["try-now", "open-in-zerops"],
       });
     },
   );

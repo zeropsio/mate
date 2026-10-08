@@ -1,3 +1,4 @@
+import { readRestart, NO_RESTARTS } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type {
   PipelineReadout,
@@ -726,7 +727,15 @@ it.each(["FAILED", "FINISHED", "RUNNING"])(
     ] as unknown as ReadonlyArray<OrchestrationThreadActivity>;
     const model = deriveZeropsThreadModel({
       activities,
-      processes: (id) => (id === process.id ? process : undefined),
+      restarts: (source) =>
+        readRestart(
+          {
+            ...NO_RESTARTS,
+            processes: { [process.id]: process },
+            running: status === "RUNNING" ? [process.id] : [],
+          },
+          source,
+        ),
     });
     const entry = model.entries[0];
     expect(entry?.kind).toBe("operation");

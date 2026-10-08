@@ -165,3 +165,33 @@ it.each(["500: Internal Server Error", "unclassified platform failure"])(
       expect(failed?.secondary).toBe("Zerops returned an error while restarting.");
   },
 );
+
+it.each([
+  [
+    "ENOSPC: no space left on device",
+    "Its disk is full. Free space before saving or running more work.",
+  ],
+  ["CommandExec: init command failed (exit 23)", "Its startup command failed."],
+])(
+  "the final start of a failed-container restart retains its actionable cause (%s)",
+  (failReason, cause) => {
+    expect(
+      recoveryNotice(
+        {
+          standing: { kind: "unknown" },
+          status: "ACTION_FAILED",
+          process: {
+            id: "start",
+            actionName: "stack.start",
+            status: "FAILED",
+            created: "2026-10-08",
+            projectId: "p",
+            serviceStackIds: ["s"],
+            failReason,
+          },
+        },
+        "Wren",
+      )?.text,
+    ).toBe(`Wren couldn't start. ${cause}`);
+  },
+);

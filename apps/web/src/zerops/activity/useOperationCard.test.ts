@@ -76,8 +76,6 @@ import {
   pipelineServiceFor,
   useOperationCard,
   restartCardReadout,
-  requestRestartRetry,
-  restartRetryWords,
 } from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
@@ -1019,8 +1017,14 @@ it("a restart card retains its failed process after a ready service reload witho
     duration: "15m",
   });
   expect(
-    observationTargetFor(operation({ kind: "manage", phase: "done", processIds: ["private"] }))
-      ?.exact,
+    observationTargetFor(
+      operation({
+        kind: "manage",
+        phase: "failed",
+        processIds: ["private"],
+        restartProcess: process,
+      }),
+    )?.exact,
   ).toEqual({ processIds: ["private"] });
 });
 it("a long restart card counts its own process without manufacturing failure", () => {
@@ -1042,50 +1046,4 @@ it("a long restart card counts its own process without manufacturing failure", (
     status: "Restarting",
     duration: "15m",
   });
-});
-
-it("a restart retry with a lost response keeps its receipt across remounts and reconciles without another write", async () => {
-  let selected: string | null = null;
-  const progress = { stage: "uncertain", next: "ask-owner-again" } as const;
-  const calls: string[] = [];
-  const operations = {
-    readProgress: () => progress,
-    askAgain: async (id: string) => {
-      calls.push(`ask:${id}`);
-    },
-    submit: async (_intent: unknown, id?: string) => {
-      calls.push(`send:${id}`);
-      return { requestId: id!, progress, evidence: null };
-    },
-  };
-  const intent = {
-    kind: "mate-restart",
-    orgId: "org",
-    projectId: "p",
-    serviceId: "other-service",
-    way: "restart",
-  } as const;
-  await requestRestartRetry(
-    operations,
-    intent,
-    () => selected,
-    (id) => {
-      selected = id;
-    },
-  );
-  const original = selected;
-  expect(restartRetryWords(selected, progress)).toEqual({
-    restartRetryLabel: "Check restart",
-    restartRetryDisabled: false,
-  });
-  await requestRestartRetry(
-    operations,
-    intent,
-    () => selected,
-    (id) => {
-      selected = id;
-    },
-  );
-  expect(selected).toBe(original);
-  expect(calls).toEqual([`send:${original}`, `ask:${original}`]);
 });

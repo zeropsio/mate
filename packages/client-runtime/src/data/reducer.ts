@@ -766,8 +766,18 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
     const next = reduceOperation(current, input);
     if (next === current || next === undefined) return { state, changed, directives: [] };
     changed.add(`operation:${requestId}`);
+    let indexes = state.indexes;
+    if (
+      current === undefined &&
+      next.intent.kind === "mate-restart" &&
+      next.intent.sourceProcessId !== undefined
+    ) {
+      const key = `restartOperations:${next.intent.orgId}/${next.intent.projectId}`;
+      indexes = new Map(indexes).set(key, new Set([...(indexes.get(key) ?? []), requestId]));
+      changed.add(`index:${key}`);
+    }
     return {
-      state: { ...state, operations: new Map(state.operations).set(requestId, next) },
+      state: { ...state, indexes, operations: new Map(state.operations).set(requestId, next) },
       changed,
       directives: [],
     };

@@ -138,10 +138,10 @@ export function useWarmTimeline(
     (session?.status === "running" ? session.activeTurnId : null) ??
     (latestTurn?.state === "running" ? latestTurn.turnId : null);
   const lifecycle = useZeropsLifecycle(environmentId, threadId);
-  const { builds, projectId, processes } = useDeployBuilds(lifecycle);
+  const { builds, projectId, restarts } = useDeployBuilds(lifecycle);
   const zerops = useMemo(
-    () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, builds, processes }),
-    [activities, lifecycle, runningTurnId, builds, processes],
+    () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, builds, restarts }),
+    [activities, lifecycle, runningTurnId, builds, restarts],
   );
   useRunningBuildDemand(projectId, zerops.running);
   const zeropsActivityIds = zerops.zeropsActivityIds;

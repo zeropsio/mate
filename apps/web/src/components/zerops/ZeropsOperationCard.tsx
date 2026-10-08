@@ -717,7 +717,10 @@ export function ZeropsOperationCard(props: {
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
   const restartReadout =
-    restartProcess === undefined
+    restartProcess === undefined ||
+    operation.restartReading?.phase === "uncertain" ||
+    operation.restartReading?.progress?.stage === "refused" ||
+    operation.restartReading?.progress?.stage === "unsent"
       ? undefined
       : restartCardReadout(restartProcess, operation.subject, now);
   const tone = operationTone(operation);

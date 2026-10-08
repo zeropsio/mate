@@ -1,4 +1,3 @@
-import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 /**
  * What the thread's Zerops project says of the builds its deploys named — the read
  * `deriveZeropsThreadModel` takes as `builds`, so a deploy whose build zcp stopped following
@@ -17,6 +16,11 @@ import { useMemo } from "react";
 import { Atom } from "effect/reactivity";
 import {
   projectProcesses,
+  projectRestarts,
+  readRestart,
+  NO_RESTARTS,
+  type RestartReading,
+  type RestartProcess,
   historyScope,
   NOT_READ_PROCESSES,
   type Projection,
@@ -86,6 +90,7 @@ export const projectBuildProcesses: Projection<ProjectKey, DeployBuildsInput["sn
   },
   equals: sameValue,
 };
+const UNREAD_RESTARTS = Atom.make(NO_RESTARTS);
 const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
   processes: NOT_READ_PROCESSES.processes,
   processHistory: NOT_READ_PROCESSES.history,
@@ -95,7 +100,7 @@ const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
 export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): {
   readonly builds: (appVersionId: string) => DeployBuildRead;
   readonly projectId: string | null;
-  readonly processes: (processId: string) => ActivityProcess | undefined;
+  readonly restarts: (process: RestartProcess) => RestartReading;
 } {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
@@ -106,6 +111,15 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     projectBuildProcesses,
     orgId === null || projectId === null ? null : { orgId, projectId },
     UNREAD_BUILDS,
+  );
+  const restartEvidence = useProjection(
+    projectRestarts,
+    orgId === null || projectId === null ? null : { orgId, projectId },
+    UNREAD_RESTARTS,
+  );
+  const restarts = useMemo(
+    () => (source: RestartProcess) => readRestart(restartEvidence, source),
+    [restartEvidence],
   );
   const signedIn = session !== null && session.status === "signed-in";
   const project =
@@ -124,14 +138,7 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     () => deployBuildLookup({ signedIn, thread, project, snapshot }),
     [signedIn, thread, project, snapshot],
   );
-  const processes = useMemo(
-    () => (id: string) =>
-      signedIn && project === "readable"
-        ? snapshot.processes?.find((process) => process.id === id)
-        : undefined,
-    [signedIn, project, snapshot],
-  );
-  return { builds, projectId, processes };
+  return { builds, projectId, restarts };
 }
 
 /**
@@ -145,6 +152,6 @@ export function useRunningBuildDemand(
   const follows =
     (running?.kind === "deploy" &&
       (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0)) ||
-    (running?.kind === "manage" && (running.processIds?.length ?? 0) > 0);
+    (running?.kind === "manage" && running.restartProcess !== undefined);
   useProjectActivityDemand(follows ? projectId : null);
 }

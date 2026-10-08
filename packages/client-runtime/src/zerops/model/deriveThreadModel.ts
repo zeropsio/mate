@@ -1,4 +1,4 @@
-import type { ActivityProcess } from "../activity/dto.ts";
+import type { RestartReading, RestartProcess } from "../../data/projections/restart.ts";
 /**
  * `deriveZeropsThreadModel` — the one function. Pure, memoisable on
  * `(activities, lifecycle, runningTurnId, builds)`; what the platform says of a
@@ -38,7 +38,7 @@ export interface ZeropsThreadModelInput {
    * uncertain.
    */
   readonly builds?: ((appVersionId: string) => DeployBuildRead) | undefined;
-  readonly processes?: ((processId: string) => ActivityProcess | undefined) | undefined;
+  readonly restarts?: ((process: RestartProcess) => RestartReading) | undefined;
 }
 
 const UNOBSERVABLE = (): DeployBuildRead => "unobservable";
@@ -64,7 +64,7 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
   const { operations, genericCalls } = reduceZeropsOperations(calls, {
     projectId: envelope?.project.id,
     builds: input.builds ?? UNOBSERVABLE,
-    ...(input.processes === undefined ? {} : { processes: input.processes }),
+    ...(input.restarts === undefined ? {} : { restarts: input.restarts }),
   });
 
   const entries: ZeropsTimelineEntry[] = [

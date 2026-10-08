@@ -1,7 +1,5 @@
-import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/reactivity";
+import { RegistryContext } from "@effect/atom-react";
 import { randomUUID } from "~/lib/utils";
-import { currentAccountEpoch } from "../accountLifetime";
 /**
  * Maps source observations onto the operation card's presentational `ObservedRegion` prop.
  *
@@ -41,12 +39,14 @@ import type {
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import {
-  operationProgress,
+  projectRestarts,
+  readRestart,
+  type RestartReading,
   type OperationProgress,
   restartWay,
 } from "@t3tools/client-runtime/data";
 import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
-import { useAccountDataOptional, useProjection } from "../ZeropsAccountData";
+import { useAccountDataOptional } from "../ZeropsAccountData";
 import { toastManager } from "~/components/ui/toast";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import { browserPageUrl } from "../../components/zerops/operation/subject";
@@ -105,7 +105,10 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   const processIds = operation.processIds ?? [];
   const named = appVersionIds.length > 0 || processIds.length > 0;
   const running = operation.phase === "running";
-  if (!running && (!["deploy", "manage"].includes(operation.kind) || !named)) {
+  if (
+    !running &&
+    ((operation.kind !== "deploy" && operation.restartProcess === undefined) || !named)
+  ) {
     return null;
   }
   return {
@@ -404,12 +407,6 @@ export function useOperationCard(
   const account = useAccountDataOptional();
   const registry = useContext(RegistryContext);
   const orgId = account?.orgId ?? null;
-  const retrySlot =
-    operation.restartProcess === undefined
-      ? NO_RETRY_REQUEST
-      : restartRetryRequests(JSON.stringify([currentAccountEpoch(), orgId, operation.key]));
-  const retryRequestId = useAtomValue(retrySlot);
-  const retryProgress = useProjection(operationProgress, retryRequestId, UNKNOWN_RETRY);
   const target = observationTargetFor(operation);
   const running = operation.phase === "running";
   // A settled one whose pipeline still runs moves on the clock too: its steps count on.
@@ -424,8 +421,7 @@ export function useOperationCard(
   const unsettled =
     !running &&
     state.kind !== "off" &&
-    (state.observation.pipeline !== undefined ||
-      state.observation.process?.actionName === "stack.restart") &&
+    state.observation.pipeline !== undefined &&
     state.observation.outcome === undefined;
   useEffect(() => setSettledRunning(unsettled), [unsettled]);
   const topology = useZeropsTopology(environmentId);
@@ -439,37 +435,48 @@ export function useOperationCard(
   const subjectHost = browserSubjectHostFor(operation, topology);
   const seen = state.kind === "off" ? undefined : state.observation;
   const service = batchServiceFor(operation, seen, topology);
-  const restartProcess =
-    operation.kind === "manage" && seen?.process?.actionName === "stack.restart"
-      ? seen.process
-      : undefined;
-  const restartService = topology?.services.find(
-    (service) =>
-      service.hostname === operation.target?.hostname &&
-      restartProcess?.serviceStackIds.includes(service.serviceId),
-  );
+  const reading = operation.restartReading;
+  const restartService =
+    reading === undefined
+      ? undefined
+      : topology?.services.find((service) => service.hostname === operation.target?.hostname);
   const fields = {
-    ...(operation.phase !== "failed" ||
-    restartProcess?.status !== "FAILED" ||
+    ...(reading === undefined ||
     restartService === undefined ||
     operations === null ||
-    orgId === null
+    orgId === null ||
+    topology === undefined ||
+    reading.phase === "done" ||
+    reading.phase === "running"
       ? {}
       : {
-          ...restartRetryWords(retryRequestId, retryProgress),
+          ...restartRetryWords(
+            reading.requestId ?? null,
+            reading.progress ?? { stage: "unknown" },
+            reading.phase,
+          ),
           onRestartRetry: async () => {
+            const current = readRestart(
+              registry.get(
+                account!.data.project(projectRestarts, {
+                  orgId,
+                  projectId: topology.project.id,
+                }),
+              ),
+              { ...reading.process, id: reading.sourceProcessId },
+            );
             try {
               await requestRestartRetry(
                 operations,
                 {
                   kind: "mate-restart",
                   orgId,
-                  projectId: restartProcess.projectId,
+                  projectId: topology.project.id,
                   serviceId: restartService.serviceId,
                   way: restartWay(restartService.status),
+                  sourceProcessId: reading.sourceProcessId,
                 },
-                () => registry.get(retrySlot),
-                (id) => registry.set(retrySlot, id),
+                current,
               );
             } catch {
               toastManager.add({
@@ -529,33 +536,30 @@ export function useOperationCard(
   return { observed: { ...observed, log }, ...fields };
 }
 
-/** Keeps the selected receipt across card remounts, within the account lifetime. */
-const restartRetryRequests = Atom.family((_key: string) => Atom.make<string | null>(null));
-const NO_RETRY_REQUEST = Atom.make<string | null>(null);
-const UNKNOWN_RETRY = Atom.make<OperationProgress>({ stage: "unknown" });
-
-/** An uncertain write is asked about by its original id; only a proved end admits another write. */
+/** An uncertain account operation is reconciled by its original identity, never repeated. */
 export async function requestRestartRetry(
-  operations: Pick<AccountOperations, "readProgress" | "askAgain" | "submit">,
+  operations: Pick<AccountOperations, "askAgain" | "submit">,
   intent: Extract<Parameters<AccountOperations["submit"]>[0], { kind: "mate-restart" }>,
-  selected: () => string | null,
-  remember: (requestId: string) => void,
+  reading: RestartReading,
 ): Promise<void> {
-  const previous = selected();
-  if (previous !== null) {
-    const progress = operations.readProgress(previous);
-    if (progress.stage === "done" && progress.outcome === "succeeded") return;
-    if (!["done", "refused"].includes(progress.stage)) {
-      await operations.askAgain(previous);
+  if (reading.requestId !== undefined) {
+    const progress = reading.progress;
+    if (progress?.stage === "done" && progress.outcome === "succeeded") return;
+    if (progress === undefined || !["done", "refused"].includes(progress.stage)) {
+      await operations.askAgain(reading.requestId);
       return;
     }
-  }
-  const requestId = randomUUID();
-  remember(requestId);
-  await operations.submit(intent, requestId);
+  } else if (reading.phase !== "failed") return;
+  await operations.submit(intent, randomUUID());
 }
 
-export function restartRetryWords(requestId: string | null, progress: OperationProgress) {
+export function restartRetryWords(
+  requestId: string | null,
+  progress: OperationProgress,
+  phase: RestartReading["phase"] = "failed",
+) {
+  if (requestId === null && phase !== "failed")
+    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
   if (
     requestId === null ||
     progress.stage === "refused" ||

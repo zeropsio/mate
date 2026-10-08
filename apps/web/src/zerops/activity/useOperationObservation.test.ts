@@ -226,6 +226,6 @@ it("a reopened restart reads its terminal history by process identity while its 
   expect(result.settledRead).toBe("read");
   expect(result.state).toMatchObject({
     kind: "observing",
-    observation: { process: failed, outcome: "failed" },
+    observation: { outcome: "failed" },
   });
 });

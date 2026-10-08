@@ -190,6 +190,7 @@ export function restartCardReadout(
   process: Pick<ActivityProcess, "status"> & Partial<ActivityProcess>,
   name: string,
   now: number,
+  verb: "restart" | "start" = "restart",
 ) {
   const duration = formatDuration(
     (process.finished === undefined ? now : Date.parse(process.finished)) -
@@ -206,7 +207,7 @@ export function restartCardReadout(
         : "platform error";
   return {
     text: failed
-      ? `Zerops couldn't restart ${name}${elapsed === undefined || process.finished === undefined ? "" : ` after ${elapsed}`} — ${cause}.`
+      ? `Zerops couldn't ${verb} ${name}${elapsed === undefined || process.finished === undefined ? "" : ` after ${elapsed}`} — ${cause}.`
       : process.status === "FINISHED"
         ? `${name} restarted.`
         : `${name} is restarting${elapsed === undefined ? "" : ` — ${elapsed} elapsed`}.`,

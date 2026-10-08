@@ -1,3 +1,4 @@
+import { readRestart, NO_RESTARTS } from "../../../data/projections/restart.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCall } from "../types.ts";
@@ -379,7 +380,62 @@ it("a history baseline behind a failed restart result cannot put it back in prog
     buildSimpleFields("manage", simpleCall("zerops_manage", "completed", { process }), {
       projectId: "p",
       builds: () => "unobservable",
-      processes: () => ({ ...process, projectId: "p", serviceStackIds: ["s"], status: "RUNNING" }),
+      restarts: (source) =>
+        readRestart(
+          {
+            ...NO_RESTARTS,
+            processes: { [process.id]: { ...process, status: "RUNNING" } },
+            running: [process.id],
+          },
+          source,
+        ),
     }),
   ).toMatchObject({ phaseOverride: "failed", statusWord: "Failed", steps: [{ state: "failed" }] });
+});
+
+it("a timed-out restart missing from owner history is unconfirmed, never actively restarting", () => {
+  const fields = buildSimpleFields(
+    "manage",
+    simpleCall("zerops_manage", "completed", {
+      process: { ...proc("RUNNING"), actionName: "stack.restart" },
+      timedOut: true,
+    }),
+    {
+      projectId: "p",
+      builds: () => "unobservable",
+      restarts: (source) => readRestart(NO_RESTARTS, source),
+    },
+  );
+  expect(fields.phaseOverride).toBe("uncertain");
+  expect(fields.statusWord).toBe("Restart unconfirmed");
+  expect(fields.closing).toBe(
+    "Zerops last reported apidev restarting. Its outcome is unconfirmed.",
+  );
+});
+
+it("an accepted restart whose observation ended keeps its acceptance and names the owner's next action", () => {
+  const source = { ...proc("RUNNING"), actionName: "stack.restart" };
+  const fields = buildSimpleFields(
+    "manage",
+    simpleCall("zerops_manage", "completed", { process: source }),
+    {
+      projectId: "p",
+      builds: () => "unobservable",
+      restarts: () => ({
+        sourceProcessId: source.id,
+        process: source,
+        phase: "uncertain",
+        requestId: "retry",
+        progress: {
+          stage: "unresolved",
+          operationId: "retry",
+          nextActor: "you",
+          nextAction: "Check the process in Zerops.",
+        },
+      }),
+    },
+  );
+  expect(fields.closing).toBe(
+    "Zerops accepted the restart. Its outcome is unconfirmed. Check the process in Zerops.",
+  );
 });

@@ -2648,14 +2648,14 @@ export default function ChatView(props: ChatViewProps) {
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
         builds: zeropsBuilds.builds,
-        processes: zeropsBuilds.processes,
+        restarts: zeropsBuilds.restarts,
       }),
     [
       threadActivities,
       activeZeropsLifecycle,
       activeRunningTurnId,
       zeropsBuilds.builds,
-      zeropsBuilds.processes,
+      zeropsBuilds.restarts,
     ],
   );
   useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
