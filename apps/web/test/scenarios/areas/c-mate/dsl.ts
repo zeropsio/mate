@@ -1,3 +1,4 @@
+// @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
 import type { KeyInput } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
@@ -73,7 +74,29 @@ export function mateChat(
           name,
         ),
       );
-      yield* Effect.promise(() => page.waitForSelector(composer, { visible: true, timeout: 8000 }));
+      yield* Effect.promise(async () => {
+        try {
+          await page.waitForSelector(composer, { visible: true, timeout: 8000 });
+        } catch (cause) {
+          throw new Error(
+            `Composer missing for ${name}: ${await page.evaluate(() =>
+              JSON.stringify({
+                route: location.pathname,
+                visibility: document.visibilityState,
+                focused: document.hasFocus(),
+                active: {
+                  tag: document.activeElement?.tagName,
+                  label: document.activeElement?.getAttribute("aria-label"),
+                },
+                text: document.body.innerText,
+              }),
+            )}\nMate requests: ${JSON.stringify(
+              s.drivers.mates.get(name)?.requests.map(({ tag }) => tag),
+            )}\nBrowser errors: ${s.web.errors.join("\n")}`,
+            { cause },
+          );
+        }
+      });
     });
   const timed = (
     kind: "first" | "parked" | "reload",

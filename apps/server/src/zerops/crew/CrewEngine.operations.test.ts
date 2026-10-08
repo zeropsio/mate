@@ -18,6 +18,7 @@ import {
   applied,
   command,
   commandWhenFree,
+  copyOperationsFinished,
   dispatchedOf,
   firstTurn,
   latest,
@@ -995,6 +996,7 @@ const readyTask = (world: CrewWorld) =>
     yield* reportDone(thread);
     yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
     yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+    yield* copyOperationsFinished("backend");
     return thread;
   });
 

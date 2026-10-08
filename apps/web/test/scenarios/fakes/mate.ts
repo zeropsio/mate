@@ -1,5 +1,6 @@
 import {
   AuthStandardClientScopes,
+  AuthSessionState,
   AuthAccessTokenResult,
   AuthPairingCredentialResult,
   AuthWebSocketTicketResult,
@@ -85,6 +86,7 @@ const encodeProviders = Schema.encodeSync(ServerProviderUpdatedPayload);
 const encodeSourceControl = Schema.encodeSync(SourceControlDiscoveryResult);
 const encodeReadFile = Schema.encodeSync(ProjectReadFileResult);
 const encodeServerConfig = Schema.encodeSync(ServerConfig);
+const encodeSessionState = Schema.encodeSync(AuthSessionState);
 const decodeOrchestrationEvent = Schema.decodeUnknownSync(OrchestrationEvent);
 const encodeOrchestrationThreadStreamItem = Schema.encodeSync(OrchestrationThreadStreamItem);
 const encodeOrchestrationShellStreamItem = Schema.encodeSync(OrchestrationShellStreamItem);
@@ -312,6 +314,17 @@ export class MateFake {
 
   handle: HttpHandler = (request) => {
     const path = request.url.pathname.replace(/^\/mate/u, "");
+    if (path === "/api/auth/session") {
+      if (request.method === "OPTIONS") return { status: 204 };
+      return {
+        body: encodeSessionState({
+          authenticated: true,
+          auth: this.config.auth,
+          scopes: AuthStandardClientScopes,
+          sessionMethod: "bearer-access-token",
+        }),
+      };
+    }
     if (path === "/.well-known/t3/environment")
       return { body: encodeExecutionEnvironmentDescriptor(this.descriptor) };
     if (path === "/api/auth/zerops-throwaway") return { body: pairingBody };

@@ -5,6 +5,44 @@ import * as NodePath from "node:path";
 import { expect, it, vi } from "vite-plus/test";
 import { openBrowser, clickText } from "../harness/browser.ts";
 import { completedHttp } from "../harness/completedHttp.ts";
+import { MateFake } from "./mate.ts";
+import { AuthSessionState, AuthStandardClientScopes } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+
+const decodeSessionState = Schema.decodeUnknownSync(AuthSessionState);
+
+it("a Mate answers the browser's authenticated session read, including its preflight", async () => {
+  const { serve } = await import("../harness/http.ts");
+  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-session-"));
+  await NodeFSP.writeFile(dist + "/index.html", "<!doctype html><title>Session read</title>");
+  const mate = new MateFake("Ada", "Ada");
+  const methods: string[] = [];
+  const api = await serve((request) => {
+    methods.push(request.method);
+    return mate.handle(request);
+  });
+  const web = await openBrowser(dist, { "https://mate.example.test": api.origin });
+  try {
+    await web.page.goto(web.origin);
+    const result = await web.page.evaluate(async () => {
+      const response = await fetch("https://mate.example.test/mate/api/auth/session", {
+        headers: { Authorization: "Bearer scenario-session" },
+      });
+      return { status: response.status, body: (await response.json()) as unknown };
+    });
+    expect(methods).toEqual(["OPTIONS", "GET"]);
+    expect(result.status).toBe(200);
+    expect(decodeSessionState(result.body)).toMatchObject({
+      authenticated: true,
+      sessionMethod: "bearer-access-token",
+      scopes: AuthStandardClientScopes,
+    });
+  } finally {
+    await web.close();
+    await api.close();
+    await NodeFSP.rm(dist, { recursive: true, force: true });
+  }
+});
 
 it("manual client timers cross Retry-After/backoff deadlines and coalesce timers across sleep/wake", async () => {
   const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-clock-"));

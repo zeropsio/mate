@@ -77,6 +77,16 @@ export const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     engine.snapshot.pipe(Stream.filter(check), Stream.runHead, Effect.map(Option.getOrThrow)),
   );
 
+/** A ready task can still be finishing its lane read; editing waits for its owner's receipt. */
+export const copyOperationsFinished = (handle: string) =>
+  snapshotWhere(
+    (snapshot) =>
+      snapshot.operations !== undefined &&
+      snapshot.operations.every(
+        (operation) => operation.handle !== handle || operation.status !== "running",
+      ),
+  );
+
 /** Applies the crew home and waits until every copy is ready. */
 export const applied = (world: CrewWorld) =>
   Effect.gen(function* () {
