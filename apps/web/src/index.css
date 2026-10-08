@@ -7763,6 +7763,12 @@ button.rv-relrow:hover .rv-relrow-go {
   transition: opacity 140ms ease-out;
 }
 
+/* The open eyes are the readiness verdict. Their shared pose morph must not
+   keep the sleeping strokes painted while this stage hands over. */
+[data-conversation-opening] :is([data-mate-face-eye], [data-mate-face-shut]) {
+  transition: none;
+}
+
 [data-conversation-opening="ready"] {
   opacity: 0;
   visibility: hidden;

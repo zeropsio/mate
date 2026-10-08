@@ -445,6 +445,7 @@ function ArrivalComposition({
   pressed,
   status,
   headline,
+  tracks = true,
 }: {
   readonly kind: ArrivalKind;
   /** Null while the directory has not named the Mate: its face's place held, empty. */
@@ -459,6 +460,7 @@ function ArrivalComposition({
   /** It speaks a wait or a refusal: the composition is the page's status. */
   readonly status: boolean;
   readonly headline?: RefObject<HTMLHeadingElement | null>;
+  readonly tracks?: boolean;
 }) {
   const sentenceId = useId();
   // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
@@ -509,7 +511,7 @@ function ArrivalComposition({
               state={state}
               style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
               tint={mate.tint}
-              tracks
+              tracks={tracks}
             />
           </div>
         )}
@@ -678,6 +680,7 @@ export function MateConnectionState({
       slot={{ id: "reaching", node: actions }}
       state={face}
       status
+      tracks={false}
     />
   );
 }
