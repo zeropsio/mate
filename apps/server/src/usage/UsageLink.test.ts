@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- tests own disposable transcript/home directories.
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -20,7 +21,7 @@ import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageLink, type UsageLinkOptions, type UsageRuntimeEvent } from "./UsageLink.ts";
-import { watchDirectory, type WatchDirectory } from "./usageCapture.ts";
+import type { WatchDirectory } from "./usageCapture.ts";
 import { protoBytes, protoNumber, protoText } from "./testing/protobuf.ts";
 
 const response = (id: string, amount: number) =>
@@ -164,6 +165,47 @@ const mate = (
     };
   });
 
+/**
+ * Watches as Linux inotify reports them: a watch sees its directory's own entries, and a recursive
+ * one everything beneath it. Changes are reported when the test says, synchronously.
+ */
+const inotify = () => {
+  const watches: Array<{
+    readonly directory: string;
+    readonly recursive: boolean;
+    readonly changed: (name: string | null) => void;
+    closed: boolean;
+  }> = [];
+  const watch: WatchDirectory = (directory, { recursive, changed }) => {
+    // As fs.watch does, a directory that is not there cannot be watched.
+    if (!NodeFS.existsSync(directory))
+      throw Object.assign(new Error(`ENOENT: ${directory}`), { code: "ENOENT" });
+    const entry = { directory, recursive, changed, closed: false };
+    watches.push(entry);
+    return () => {
+      entry.closed = true;
+    };
+  };
+  return {
+    watch,
+    watching: (directory: string) =>
+      watches.some((entry) => !entry.closed && entry.directory === directory),
+    /** `path` was created or written. */
+    touch: (path: string) => {
+      // Only the watches already there see this change; one it brings about sees the next.
+      const count = watches.length;
+      for (let index = 0; index < count; index++) {
+        const entry = watches[index]!;
+        if (entry.closed) continue;
+        const name = NodePath.relative(entry.directory, path);
+        if (name === "" || name.startsWith("..")) continue;
+        if (!entry.recursive && name.includes(NodePath.sep)) continue;
+        entry.changed(name);
+      }
+    },
+  };
+};
+
 /** A watch that attaches and never reports; each attach is kept so a test can fail or close it. */
 const silentWatch = () => {
   const attached: Array<{ directory: string; failed: () => void; closed: boolean }> = [];
@@ -198,20 +240,27 @@ it.live(
   () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const attached: string[] = [];
-        const watch: WatchDirectory = (directory, options) => {
-          attached.push(directory);
-          return watchDirectory(directory, options);
-        };
-        const subject = yield* mate({ watch, projects: false });
+        const events = inotify();
+        const subject = yield* mate({ watch: events.watch, projects: false });
+        const home = NodePath.dirname(subject.transcripts);
         yield* eventually(
-          Effect.sync(() => attached.length >= 2),
+          Effect.sync(() => events.watching(home)),
           Boolean,
         );
+        // Startup's own scans settle; nothing else looks at the disk until a watch reports.
+        yield* Effect.sleep("300 millis");
+        const one = response("one", 120);
+        yield* subject.write("session.jsonl", one);
+        const file = NodePath.join(subject.transcripts, "project", "session.jsonl");
+        events.touch(subject.transcripts);
+        // The directory's own watch is attached as its parent sees it appear, before any scan.
+        assert.isTrue(events.watching(subject.transcripts));
+        assert.isFalse(events.watching(home));
         yield* subject.emit("session.started");
-        yield* subject.write("session.jsonl", response("one", 120));
+        events.touch(file);
         assert.equal(yield* eventually(subject.total, (total) => total === 120n), 120n);
-        yield* subject.write("session.jsonl", response("one", 120) + response("two", 30));
+        yield* subject.write("session.jsonl", one + response("two", 30));
+        events.touch(file);
         assert.equal(yield* eventually(subject.total, (total) => total === 150n), 150n);
       }),
     ),

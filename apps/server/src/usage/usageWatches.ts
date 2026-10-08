@@ -16,6 +16,8 @@ export interface WatchRetry {
   readonly maxMs: number;
 }
 export const DEFAULT_WATCH_RETRY: WatchRetry = { baseMs: 1_000, maxMs: 60_000 };
+/** How long a newly attached recursive watch may take to see everything beneath it. */
+const SETTLE_MS = 1_000;
 
 export interface SourceWatches {
   /** Attach the directory's watch, or wait for it from its nearest existing ancestor. */
@@ -104,11 +106,17 @@ export const makeSourceWatches = Effect.fnUntraced(function* (options: {
     });
 
   const install = (directory: string, entry: Entry) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
       entries.get(directory)?.close();
       entries.set(directory, entry);
-      // Reconcile once: whatever changed before the watch attached is read by the next scan.
+      // Reconcile once: whatever changed before the watch attached is read by the next scan, and
+      // again a moment later, for what changed while a recursive watch was still starting.
       options.nudge();
+      if (entry.watched === directory)
+        yield* Effect.sleep(SETTLE_MS).pipe(
+          Effect.andThen(Effect.sync(options.nudge)),
+          Effect.forkIn(scope),
+        );
     });
 
   const ensure = (directory: string): Effect.Effect<void> =>
@@ -126,9 +134,13 @@ export const makeSourceWatches = Effect.fnUntraced(function* (options: {
         ancestor = NodePath.dirname(ancestor);
       if (current?.watched === ancestor) return;
       const next = NodePath.relative(ancestor, directory).split(NodePath.sep)[0];
-      const awaiting = yield* attach(directory, ancestor, false, (name) => name === next).pipe(
-        Effect.result,
-      );
+      // An ancestor's watch sees only its own entries (inotify is not recursive): when the next
+      // step towards the directory appears, the watch moves there at once, not at the next scan.
+      const awaiting = yield* attach(directory, ancestor, false, (name) => {
+        if (name !== next && name !== null) return false;
+        Effect.runSync(ensure(directory));
+        return true;
+      }).pipe(Effect.result);
       if (awaiting._tag === "Success") return yield* install(directory, awaiting.success);
       yield* backOff(directory);
     });
