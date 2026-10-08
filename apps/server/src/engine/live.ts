@@ -32,6 +32,7 @@ import { Conversations } from "./Conversations.ts";
 import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
+import { askImport } from "./effects/historyImport.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
@@ -205,6 +206,18 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         ),
       );
 
+    const importHistory: MateEngineService["importHistory"] = (conversationId, source) =>
+      askImport(conversationId, source).pipe(
+        Effect.provideService(SqlClient.SqlClient, sql),
+        Effect.provideService(Conversations, conversations),
+        Effect.catchCause((cause) =>
+          Effect.logWarning(
+            "Mate engine: the earlier conversation could not be brought",
+            cause,
+          ).pipe(Effect.as(0)),
+        ),
+      );
+
     const callProgress: MateEngineService["callProgress"] = (providerThread, toolName, progress) =>
       Effect.gen(function* () {
         const conversation = TurnPumpModule.conversationOfThread(providerThread);
@@ -353,6 +366,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       wake,
       runOutcome,
       assignAgent,
+      importHistory,
       callProgress,
       callData,
       runOf,

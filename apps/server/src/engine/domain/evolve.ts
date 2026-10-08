@@ -508,6 +508,25 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     }
     case "WakeCancelled":
       return { ...state, wakes: without(state.wakes, event.wakeId) };
+    case "HistoryImportStarted":
+      return {
+        ...state,
+        nextRunOrdinal: Math.max(state.nextRunOrdinal, event.runs + 1),
+        history: { state: "importing", source: event.source, runs: event.runs, cursor: 0 },
+      };
+    case "HistoryBatchImported":
+      return state.history === null
+        ? state
+        : { ...state, history: { ...state.history, cursor: event.cursor } };
+    case "HistoryImportEnded":
+      return state.history === null
+        ? state
+        : { ...state, history: { ...state.history, state: event.outcome } };
+    // The earlier record is the projections' alone: the rules never act on it.
+    case "RunImported":
+    case "ItemImported":
+    case "RequestImported":
+      return state;
     case "UsagePauseLifted":
       return { ...state, pausedUntil: null };
   }

@@ -920,8 +920,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     /**
      * A Mate flipped to the engine keeps its main conversation: the engine's Mate conversation
-     * takes the V1 main thread's id (so its links keep working) and its agent, once, when the
-     * engine holds none yet. V1's projections are only read.
+     * takes the V1 main thread's id (so its links keep working), its record (copied in before it
+     * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
+     * projections are only read.
      */
     const adoptAtFlip = Effect.gen(function* () {
       const held = yield* engineConversation();
@@ -938,13 +939,19 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         ),
       ).primary;
       if (main === undefined) return;
+      const conversationId = ConversationId.make(main.id);
+      const turns = yield* engine.importHistory(conversationId, {
+        kind: "v1",
+        threadId: main.id,
+      });
       const given = yield* engine.assignAgent(
-        ConversationId.make(main.id),
+        conversationId,
         agentOf(main.modelSelection, yield* reads.providers),
       );
       if (given)
         yield* Effect.logInfo("zerops setup: the engine took the main conversation", {
           conversationId: main.id,
+          turns,
         });
     }).pipe(
       Effect.retry({

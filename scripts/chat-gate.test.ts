@@ -64,6 +64,7 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
   expect(files).toEqual([
     "src/engine/domain/decide.model.test.ts",
     "src/engine/outbox/crash.test.ts",
+    "src/engine/history/historyImport.test.ts",
     "src/engine/engine.sim.test.ts",
     "src/engine/engine.pump.test.ts",
   ]);
