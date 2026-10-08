@@ -2702,6 +2702,21 @@ const countCost = (
   if (run !== undefined && counted > 0) {
     b.emit({ _tag: "RunUpdated", set: { spentUsd: run.spentUsd + counted } });
   }
+  // The attempt it ran for carries its cost.
+  const task = openTaskOf(b.state, handle);
+  const rows = task?.attemptRows;
+  const at = rows?.findIndex((row) => row.attempt === task!.counters.attempt) ?? -1;
+  if (task !== undefined && rows !== undefined && at !== -1 && counted > 0) {
+    b.emit({
+      _tag: "TaskUpdated",
+      taskId: task.id,
+      set: {
+        attemptRows: rows.map((row, index) =>
+          index === at ? { ...row, costUsd: row.costUsd + counted } : row,
+        ),
+      },
+    });
+  }
 };
 
 const runEnded = (
@@ -2801,8 +2816,11 @@ const runEnded = (
   turnEnded(b, task, ending);
 };
 
-/** The words a task's row gives for a turn that left it `working`. */
-const midwayWords = (state: CrewState, ending: Ending): string => {
+/** How a turn that left its task `working` ended its attempt, and the words its row gives. */
+const midwayEnding = (
+  state: CrewState,
+  ending: Ending,
+): { readonly ending: string; readonly detail: string } => {
   const run = state.run;
   return attemptEndingOf({
     state:
@@ -2830,7 +2848,7 @@ const midwayWords = (state: CrewState, ending: Ending): string => {
               stopAtUsagePercent: run.options.stopAtUsagePercent,
             },
           },
-  }).detail;
+  });
 };
 
 /** A crew turn ended (after its WIP commit, for a writer): what its task does next. */
@@ -2867,19 +2885,16 @@ const turnEnded = (b: Builder, task: TaskRecord, ending: Ending): void => {
       return;
     case "completed":
     case "stopped":
-    case "cut":
+    case "cut": {
+      const ended = ending.kind === "completed" ? NO_REPORT : midwayEnding(b.state, ending);
       b.emit({
         _tag: "TaskUpdated",
         taskId: current.id,
-        set: {
-          midway: {
-            since: b.now,
-            why: ending.kind === "completed" ? NO_REPORT.detail : midwayWords(b.state, ending),
-          },
-        },
+        set: { midway: { since: b.now, why: ended.detail, ending: ended.ending } },
       });
       unattended(b, current);
       return;
+    }
   }
 };
 

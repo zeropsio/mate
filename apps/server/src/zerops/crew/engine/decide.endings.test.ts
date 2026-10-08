@@ -24,6 +24,34 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence: "each attempt keeps its row: how and when it ended, its words, what it cost",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      const running = w.task(1).attemptRows;
+      w.advance(60_000);
+      w.end("reviewer", { kind: "completed" }, { costUsd: 0.5 });
+      const ended = w.task(1).attemptRows;
+      w.quiet();
+      w.press({ _tag: "message", handle: "reviewer", text: "Go on.", attachments: [] });
+      return [running, ended, w.task(1).attemptRows];
+    },
+    expected: [
+      [{ attempt: 1, ending: null, endingDetail: null, costUsd: 0, endedAt: null }],
+      [
+        {
+          attempt: 1,
+          ending: "no-report",
+          endingDetail: "its turn ended without a report",
+          costUsd: 0.5,
+          endedAt: Date.parse("2026-10-08T10:01:00.000Z"),
+        },
+      ],
+      [{ attempt: 1, ending: null, endingDetail: null, costUsd: 0.5, endedAt: null }],
+    ],
+  },
+  {
     sentence: "a turn's end the crew read once is not taken in again when its record is read again",
     journey: (w) => {
       w.apply(home(reader("reviewer")));
@@ -67,7 +95,11 @@ const journeys: ReadonlyArray<Journey> = [
       return [ended, w.task(1).state, w.task(1).midway, w.task(1).counters.attempt];
     },
     expected: [
-      { since: Date.parse("2026-10-08T10:01:00.000Z"), why: "its turn ended without a report" },
+      {
+        since: Date.parse("2026-10-08T10:01:00.000Z"),
+        why: "its turn ended without a report",
+        ending: "no-report",
+      },
       "working",
       null,
       1,

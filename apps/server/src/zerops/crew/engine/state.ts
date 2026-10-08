@@ -191,7 +191,14 @@ export interface TaskRecord {
   /** Admission refused to start it, in admission's words. */
   readonly cantStart: { readonly text: string; readonly at: number } | null;
   /** Standing `working` with no turn running: since when, and why its last turn ended. */
-  readonly midway: { readonly since: number; readonly why: string | null } | null;
+  readonly midway: {
+    readonly since: number;
+    readonly why: string | null;
+    /** How the attempt ended (`no-report`, `run-paused`, …); absent when it did not end. */
+    readonly ending?: string;
+  } | null;
+  /** Each attempt's row, oldest first: kept by `evolve` as the task moves. */
+  readonly attemptRows?: ReadonlyArray<AttemptRow>;
   /** Its first turn is being prepared: the copy reset, the card on its way. */
   readonly starting: {
     readonly principal: Principal;
@@ -210,6 +217,38 @@ export interface TaskRecord {
   /** The turns its attempt was sent so far, for its WIP commits' subjects. */
   readonly turns?: { readonly attempt: number; readonly count: number };
 }
+
+/** One attempt at a task: how and when it ended (open while `endedAt` is `null`), what it cost. */
+export interface AttemptRow {
+  readonly attempt: number;
+  readonly ending: string | null;
+  readonly endingDetail: string | null;
+  readonly costUsd: number;
+  readonly endedAt: number | null;
+}
+
+/**
+ * A task's attempt rows after a change: a row for the attempt it started, closed when a turn left
+ * it mid-way with an ending, open again when it goes on.
+ */
+export const attemptRowsOf = (before: TaskRecord | undefined, after: TaskRecord): TaskRecord => {
+  if (!after.started || after.counters.attempt === 0) return after;
+  let rows = [...(after.attemptRows ?? [])];
+  const attempt = after.counters.attempt;
+  if (!rows.some((row) => row.attempt === attempt)) {
+    rows.push({ attempt, ending: null, endingDetail: null, costUsd: 0, endedAt: null });
+  }
+  const at = rows.findIndex((row) => row.attempt === attempt);
+  const row = rows[at]!;
+  const midway = after.midway;
+  if (midway?.ending !== undefined && row.endedAt === null && midway !== before?.midway) {
+    rows[at] = { ...row, ending: midway.ending, endingDetail: midway.why, endedAt: midway.since };
+  } else if (midway === null && before?.midway != null && row.endedAt !== null) {
+    rows[at] = { ...row, ending: null, endingDetail: null, endedAt: null };
+  }
+  rows = rows.toSorted((a, b) => a.attempt - b.attempt);
+  return { ...after, attemptRows: rows };
+};
 
 /** The number of the turn a task's attempt is in: 1 before any was counted. */
 export const turnOf = (task: TaskRecord): number =>

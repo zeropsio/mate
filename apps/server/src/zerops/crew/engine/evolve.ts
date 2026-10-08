@@ -5,7 +5,7 @@
  * @module crew/engine/evolve
  */
 import { isKnownCrewEvent, type CrewEvent } from "./events.ts";
-import type { CrewState, MemberRecord, TaskRecord } from "./state.ts";
+import { attemptRowsOf, type CrewState, type MemberRecord, type TaskRecord } from "./state.ts";
 
 const without = <V>(record: Readonly<Record<string, V>>, key: string): Record<string, V> => {
   const { [key]: _removed, ...rest } = record;
@@ -103,19 +103,23 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
     case "TaskCreated":
       return {
         ...state,
-        tasks: { ...state.tasks, [event.task.id]: event.task },
+        tasks: { ...state.tasks, [event.task.id]: attemptRowsOf(undefined, event.task) },
         nextTaskNumber: Math.max(state.nextTaskNumber, event.task.number + 1),
       };
     case "TaskStepped":
-      return withTask(state, event.taskId, (task) => ({
-        ...task,
-        ...event.set,
-        state: event.to,
-        counters: event.counters,
-        updatedAt: event.at,
-      }));
+      return withTask(state, event.taskId, (task) =>
+        attemptRowsOf(task, {
+          ...task,
+          ...event.set,
+          state: event.to,
+          counters: event.counters,
+          updatedAt: event.at,
+        }),
+      );
     case "TaskUpdated":
-      return withTask(state, event.taskId, (task) => ({ ...task, ...event.set }));
+      return withTask(state, event.taskId, (task) =>
+        attemptRowsOf(task, { ...task, ...event.set }),
+      );
     case "RunStarted":
       return { ...state, run: event.run };
     case "RunUpdated":
