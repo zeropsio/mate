@@ -112,4 +112,19 @@ describe("an engine Mate's words as it writes them", () => {
       ),
     ).toBe("Check the logs");
   });
+
+  it("puts the note it is writing in the run's slot with its words so far", () => {
+    function Writing() {
+      const now = useEngineLiveNow({
+        kind: "writing",
+        note: { key: "note:a", message: message() },
+      });
+      return <p>{now?.note?.message.text}</p>;
+    }
+    expect(
+      drawn(<Writing />, (live) =>
+        live.open(conversation, "thread-ada/r/1/i/2", "text", "Deploying the api"),
+      ),
+    ).toBe("Deploying the api");
+  });
 });

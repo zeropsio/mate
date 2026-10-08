@@ -62,16 +62,28 @@ export function useEngineLiveMessages(
   }, [index, messages, streaming, text]);
 }
 
-/** What a run is doing now, its thought with the words streamed so far. */
+/**
+ * What a run is doing now, with the words streamed so far: the thought it is having, or the note
+ * it is writing — the live slot and its line decide what to draw from them.
+ */
 export function useEngineLiveNow<
-  Now extends { readonly kind: string; readonly messages?: ReadonlyArray<ChatMessage> },
+  Now extends {
+    readonly kind: string;
+    readonly messages?: ReadonlyArray<ChatMessage>;
+    readonly note?: { readonly key: string; readonly message: ChatMessage };
+  },
 >(now: Now | null): Now | null {
   const recorded = now?.kind === "thinking" ? (now.messages ?? NO_MESSAGES) : NO_MESSAGES;
   const messages = useEngineLiveMessages(recorded);
-  return useMemo(
-    () => (now === null || messages === recorded ? now : { ...now, messages }),
-    [messages, now, recorded],
-  );
+  const written = now?.kind === "writing" ? (now.note?.message ?? null) : null;
+  const writing = useLiveText(written);
+  return useMemo(() => {
+    if (now === null) return now;
+    if (messages !== recorded) return { ...now, messages };
+    if (written === null || now.note === undefined) return now;
+    const message = liveMessage(written, writing);
+    return message === written ? now : { ...now, note: { ...now.note, message } };
+  }, [messages, now, recorded, writing, written]);
 }
 
 const NO_MESSAGES: ReadonlyArray<ChatMessage> = [];

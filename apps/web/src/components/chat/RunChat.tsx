@@ -3132,10 +3132,9 @@ function NowLine({
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
-  const thinking = useEngineLiveNow(now);
   const latest = nowLineOf({
     status,
-    now: thinking,
+    now,
     answering,
     compacting: isCompacting,
     speaker: ctx.speaker.name,
@@ -3491,10 +3490,9 @@ function LiveSlot({
   const { isCompacting } = use(TimelineRowActivityCtx);
   // What the face and a screen reader say stands its dwell, as the slot's
   // items do: a call of 180 ms between two thoughts never flips them.
-  const thinking = useEngineLiveNow(now);
   const doing = nowLineOf({
     status,
-    now: thinking,
+    now,
     answering,
     compacting: isCompacting,
     speaker: ctx.speaker.name,
@@ -3792,15 +3790,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // stood its minimum. Only the run's last record, while it runs, has one.
   const { isCompacting } = use(TimelineRowActivityCtx);
   const slotted = row.live && row.status !== null;
+  // An engine Mate's thought or note in the slot, with its words streamed so far.
+  const now = useEngineLiveNow(row.now);
   const model = useMemo(
     () =>
       slotModelOf({
-        now: row.now,
+        now,
         answering: row.answering,
         compacting: isCompacting,
         items: row.items,
       }),
-    [row.now, row.answering, isCompacting, row.items],
+    [now, row.answering, isCompacting, row.items],
   );
   // A folded line's own calls are the record's too (`parts`).
   const recordKeys = useMemo(
@@ -4090,7 +4090,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               items={row.items}
               live={model.live}
               filler={model.filler}
-              now={row.now}
+              now={now}
               answering={row.answering}
               slot={slot}
               status={row.status}
