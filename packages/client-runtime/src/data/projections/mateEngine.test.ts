@@ -1053,3 +1053,94 @@ describe("an engine conversation's row in the menu", () => {
     },
   );
 });
+
+describe("a crewmate's engine conversation", () => {
+  const backend = "crew-main-backend-1";
+  const crewmateAgent = {
+    instanceId: "claudeAgent",
+    driver: "claudeAgent",
+    model: "claude-sonnet-4-5",
+    profile: { kind: "crewmate", id: "backend", name: "Backend" },
+  } as const;
+  const mateShell = (threads: ReadonlyArray<unknown>) =>
+    ({
+      snapshot: Option.some({
+        snapshotSequence: 1,
+        projects: [{ id: "project-ada" }],
+        threads,
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      status: "live",
+      error: Option.none(),
+    }) as unknown as Parameters<typeof overlayEngineShell>[0];
+  const threadsOf = (shell: Parameters<typeof overlayEngineShell>[0]) =>
+    Option.getOrNull(shell.snapshot)?.threads ?? [];
+
+  it("is a crew thread in the Mate's shell, on its row, though V1's shell never had it", () => {
+    const shell = overlayEngineShell(mateShell([]), [
+      engineRow(ENV, backend, {
+        agent: crewmateAgent,
+        state: { kind: "working", since: 1, waitsOnHelpers: false },
+        activeRunId: `${backend}/r/3` as never,
+      }),
+    ]);
+    expect(threadsOf(shell)).toMatchObject([
+      {
+        id: backend,
+        projectId: "project-ada",
+        title: "Backend",
+        crew: { crew: "main", crewmate: "backend", stint: 1 },
+        session: { status: "running", activeTurnId: `${backend}/r/3` },
+        archivedAt: null,
+      },
+    ]);
+  });
+
+  it("adds no thread for a conversation that is no crewmate's, nor a second for one V1 already has", () => {
+    expect(threadsOf(overlayEngineShell(mateShell([]), [engineRow(ENV, "thread-new")]))).toEqual(
+      [],
+    );
+    const imported = { id: backend, projectId: "project-ada", title: "Backend (V1)" };
+    const shell = overlayEngineShell(mateShell([imported]), [
+      engineRow(ENV, backend, { agent: crewmateAgent }),
+    ]);
+    expect(threadsOf(shell).map((each) => [each.id, each.title])).toEqual([
+      [backend, "Backend (V1)"],
+    ]);
+  });
+
+  it("is a crew thread when the conversation is drawn, named by its crewmate", () => {
+    const crewKey: EngineConversationKey = { environmentId: ENV, conversationId: backend };
+    const scopes = Object.values(engineConversationScopes(crewKey));
+    const state = apply(emptyAccount, [
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: scopes.map((scope) => ({ scope, generation: 0 })),
+        reset: true,
+        partial: true,
+        rows: [
+          {
+            family: "mateEngineConversation",
+            id: engineConversationId(crewKey),
+            value: {
+              environmentId: ENV,
+              header: engineHeader(backend, { agent: crewmateAgent }),
+              window: { oldestOrdinal: 1, earlier: false },
+            },
+            revision: revision(9),
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    const drawn = Option.getOrNull(engineThread.derive(readsOfState(state), crewKey).data);
+    expect(drawn).toMatchObject({
+      id: backend,
+      title: "Backend",
+      crew: { crew: "main", crewmate: "backend", stint: 1 },
+    });
+    // The Mate's own conversation is a person's thread.
+    expect(thread(held({}))?.crew).toBeUndefined();
+  });
+});
