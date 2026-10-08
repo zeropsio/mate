@@ -145,6 +145,24 @@ export type MateDiagnosticEvent =
       readonly verdict: RouteGate["kind"];
       readonly environmentId: string | null;
     }
+  /** Observed opening boundaries. No message text, credentials or source payloads. */
+  | {
+      readonly kind: "history-stage";
+      readonly environmentId: string;
+      readonly threadId: string;
+      readonly stage:
+        | "request"
+        | "headers"
+        | "body"
+        | "decode"
+        | "baseline"
+        | "projection"
+        | "paint";
+      readonly source?: "http" | "socket";
+      readonly durationMs?: number;
+      readonly decodedChars?: number;
+      readonly serverTiming?: string;
+    }
   /** A thread route rendered its conversation. */
   | { readonly kind: "thread-content"; readonly environmentId: string; readonly threadId: string }
   /** The first open pull request a group's flow showed. */
@@ -163,6 +181,7 @@ export interface MateDiagnosticSpan<K extends MateDiagnosticSpanKind> {
 const INERT_SPAN = { end: () => {}, drop: () => {} };
 
 export interface MateDiagnostics {
+  readonly enabled: boolean;
   /** Starts recording; until then every call is a no-op. */
   readonly enable: () => void;
   readonly record: (event: MateDiagnosticEvent) => void;
@@ -310,6 +329,9 @@ export function createMateDiagnostics(
   };
 
   return {
+    get enabled() {
+      return enabled;
+    },
     enable: () => {
       enabled = true;
     },

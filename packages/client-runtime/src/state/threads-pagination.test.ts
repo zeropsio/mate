@@ -132,6 +132,7 @@ type LoaderResponse = Option.Option<OrchestrationThreadDetailSnapshot>;
 
 const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (options?: {
   readonly paginationCapability?: boolean;
+  readonly opening?: "latest-ask" | "recent-history";
   readonly reasoningCapability?: boolean;
   readonly initialResponse?: LoaderResponse;
   /** Cached snapshot returned by the cache store (simulates a warm cache). */
@@ -213,7 +214,12 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
     clearVcsRefs: () => Effect.void,
     clear: () => Effect.void,
   });
-  const threadState = yield* makeEnvironmentThreadState(THREAD_ID).pipe(
+  const threadState = yield* makeEnvironmentThreadState(
+    THREAD_ID,
+    undefined,
+    false,
+    options?.opening,
+  ).pipe(
     Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
     Effect.provideService(Persistence.EnvironmentCacheStore, cache),
     Effect.provideService(ThreadSnapshotLoader, snapshotLoader),
@@ -332,6 +338,29 @@ describe("thread pagination state", () => {
       expect(windows[0]?.turnLimit).toBe(INITIAL_THREAD_USER_TURN_LIMIT);
       const subscribeInput = yield* Ref.get(harness.lastSubscribeInput);
       expect(subscribeInput?.turnLimit).toBe(INITIAL_THREAD_USER_TURN_LIMIT);
+    }),
+  );
+
+  it.effect("the latest ask opens before catchup and earlier asks remain readable", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        opening: "latest-ask",
+        initialResponse: Option.some(WINDOWED_SNAPSHOT),
+      });
+      const initial = yield* harness.awaitState((value) => Option.isSome(value.page));
+      expect(Option.getOrThrow(initial.data).messages).toEqual([RECENT_MESSAGE]);
+      expect((yield* Ref.get(harness.loaderWindows))[0]?.turnLimit).toBe(1);
+      expect((yield* Ref.get(harness.lastSubscribeInput))?.turnLimit).toBe(1);
+      expect(requestOlderThreadTurns(TARGET.environmentId, THREAD_ID)).toBe(true);
+      yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
+      const older = yield* harness.awaitState((value) =>
+        Option.match(value.page, { onNone: () => false, onSome: (page) => !page.hasMore }),
+      );
+      expect(Option.getOrThrow(older.data).messages).toEqual([OLDER_MESSAGE, RECENT_MESSAGE]);
+      expect((yield* Ref.get(harness.loaderWindows))[1]).toEqual({
+        turnLimit: 20,
+        beforeCursor: "cursor-1",
+      });
     }),
   );
 

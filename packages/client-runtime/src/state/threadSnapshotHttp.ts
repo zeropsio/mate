@@ -14,6 +14,7 @@ import {
   makeEnvironmentHttpApiGroupClient,
   type RemoteEnvironmentRequestError,
 } from "../rpc/http.ts";
+import { mateDiagnostics } from "../zerops/diagnostics.ts";
 import { buildEnvironmentAuthHeaders, withEnvironmentCredentials } from "./environmentHttpAuth.ts";
 
 // Long enough for a slow but alive server to finish. On a cold open a timeout
@@ -53,17 +54,55 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
     input.prepared.httpBaseUrl,
     `/api/orchestration/threads/${input.threadId}`,
   );
+  const started = performance.now();
+  const fields = {
+    kind: "history-stage" as const,
+    environmentId: input.prepared.environmentId,
+    threadId: input.threadId,
+    source: "http" as const,
+  };
+  mateDiagnostics.record({ ...fields, stage: "request" });
+  let decodeStarted = started;
+  const httpClient = yield* HttpClient.HttpClient;
+  const measuredClient = mateDiagnostics.enabled
+    ? HttpClient.transformResponse(httpClient, (responseEffect) =>
+        Effect.gen(function* () {
+          const response = yield* responseEffect;
+          const received = performance.now();
+          mateDiagnostics.record({
+            ...fields,
+            stage: "headers",
+            durationMs: received - started,
+            ...(response.headers["server-timing"] === undefined
+              ? {}
+              : { serverTiming: response.headers["server-timing"] }),
+          });
+          const text = yield* response.text;
+          // Keep the generated client's status/error/schema decoder. Its JSON reader uses
+          // this already-read text, so measuring transfer does not decode the body twice.
+          Object.defineProperty(response, "text", { value: Effect.succeed(text) });
+          mateDiagnostics.record({
+            ...fields,
+            stage: "body",
+            durationMs: performance.now() - received,
+            decodedChars: text.length,
+          });
+          decodeStarted = performance.now();
+          return response;
+        }),
+      )
+    : httpClient;
   const client = yield* makeEnvironmentHttpApiGroupClient(
     input.prepared.httpBaseUrl,
     "orchestration",
-  );
+  ).pipe(Effect.provideService(HttpClient.HttpClient, measuredClient));
   const headers = yield* buildEnvironmentAuthHeaders(
     input.prepared.httpAuthorization,
     "GET",
     requestUrl,
     input.signer,
   );
-  return yield* executeEnvironmentHttpRequest(
+  const snapshot = yield* executeEnvironmentHttpRequest(
     requestUrl,
     input.timeoutMs ?? DEFAULT_THREAD_SNAPSHOT_TIMEOUT_MS,
     withEnvironmentCredentials(
@@ -81,6 +120,12 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
       }),
     ),
   );
+  mateDiagnostics.record({
+    ...fields,
+    stage: "decode",
+    durationMs: performance.now() - decodeStarted,
+  });
+  return snapshot;
 });
 
 export type FetchEnvironmentThreadSnapshotError = RemoteEnvironmentRequestError;

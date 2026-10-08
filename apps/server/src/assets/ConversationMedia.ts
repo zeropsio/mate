@@ -28,6 +28,9 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
   workspaceRoot: string,
   legacy = false,
 ) {
+  // Both inline and reference Markdown images require this opener. Ordinary code and
+  // prose need no media read and no Markdown AST on every warm snapshot.
+  if (!text.includes("![")) return text;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
   const tree = fromMarkdown(text);

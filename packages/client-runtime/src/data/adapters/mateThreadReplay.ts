@@ -24,6 +24,7 @@ import * as ConnectionWakeups from "../../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../../platform/persistence.ts";
 import { subscribeDynamic } from "../../rpc/client.ts";
 import type { RpcSession } from "../../rpc/session.ts";
+import { mateDiagnostics } from "../../zerops/diagnostics.ts";
 import { ThreadSnapshotLoader, type ThreadSnapshotWindow } from "../../state/threadSnapshotHttp.ts";
 import { threadKey } from "../../state/entities.ts";
 import { mergeFirstPageSnapshot } from "../../state/threadSnapshotMerge.ts";
@@ -196,7 +197,11 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
   memoryOnly = false,
+  opening: "latest-ask" | "recent-history" = "recent-history",
 ) {
+  // Hosted opening reads one complete ask, including its helper work. Earlier asks use
+  // the existing cursor on demand; native readers retain their recent-history window.
+  const openingTurnLimit = opening === "latest-ask" ? 1 : INITIAL_THREAD_USER_TURN_LIMIT;
   const supervisor = yield* EnvironmentSupervisor;
   const cache = memoryOnly ? EMPTY_REPLAY_CACHE : yield* EnvironmentCacheStore;
   const snapshotLoader = yield* ThreadSnapshotLoader;
@@ -468,7 +473,9 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
   const setSnapshot = Effect.fn("EnvironmentThreadState.setSnapshot")(function* (
     snapshot: OrchestrationThreadDetailSnapshot,
     connecting: boolean,
+    source: "http" | "socket" = "socket",
   ) {
+    const started = performance.now();
     // A fresh snapshot replaces the loaded history, but the older turns the
     // client already holds stay below its page unless it proves they
     // changed (a revert while disconnected) — see mergeFirstPageSnapshot.
@@ -485,6 +492,14 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
       snapshot,
     });
     yield* setThread(merged.thread, Option.fromNullishOr(merged.page), connecting);
+    mateDiagnostics.record({
+      kind: "history-stage",
+      environmentId,
+      threadId,
+      stage: "baseline",
+      source,
+      durationMs: performance.now() - started,
+    });
   });
 
   const applyItemLocked = Effect.fn("EnvironmentThreadState.applyItemLocked")(function* (
@@ -838,7 +853,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
               .load(
                 prepared,
                 threadId,
-                capabilities.pagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                capabilities.pagination ? { turnLimit: openingTurnLimit } : undefined,
                 capabilities.reasoningMessages,
               )
               .pipe(
@@ -849,7 +864,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
                         Effect.gen(function* () {
                           const current = yield* SubscriptionRef.get(state);
                           if (Option.isSome(current.data) || current.status === "deleted") return;
-                          yield* setSnapshot(response.value, true);
+                          yield* setSnapshot(response.value, true, "http");
                           yield* remember;
                         }),
                       ),
@@ -935,11 +950,13 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
               : yield* snapshotLoader.load(
                   prepared,
                   threadId,
-                  supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
+                  supportsPagination ? { turnLimit: openingTurnLimit } : undefined,
                   supportsReasoningMessages,
                 );
           if (Option.isSome(httpSnapshot)) {
-            yield* applyItem({ kind: "snapshot", snapshot: httpSnapshot.value });
+            yield* applyLock.withPermits(1)(
+              setSnapshot(httpSnapshot.value, false, "http").pipe(Effect.andThen(remember)),
+            );
             current = yield* SubscriptionRef.get(state);
           }
         }
@@ -962,7 +979,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
           // The WS fallback snapshot (sent when afterSequence is missing or
           // the gap is too large) should be windowed the same as the HTTP
           // path; without this a resume failure re-downloads the full thread.
-          ...(supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : {}),
+          ...(supportsPagination ? { turnLimit: openingTurnLimit } : {}),
         };
       }),
       {

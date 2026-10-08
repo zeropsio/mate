@@ -1844,20 +1844,21 @@ const makeWsRpcLayer = (
                 });
               }
 
-              const project = yield* projectionSnapshotQuery
-                .getProjectShellById(snapshot.value.thread.projectId)
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new OrchestrationGetSnapshotError({
-                        message: "Failed to read image owner",
-                        cause,
-                      }),
-                  ),
-                );
-              const root =
-                snapshot.value.thread.worktreePath ??
-                (Option.isSome(project) ? project.value.workspaceRoot : undefined);
+              const workspaceRoot =
+                snapshot.value.thread.worktreePath !== null
+                  ? Option.some(snapshot.value.thread.worktreePath)
+                  : yield* projectionSnapshotQuery
+                      .getProjectWorkspaceRootById(snapshot.value.thread.projectId)
+                      .pipe(
+                        Effect.mapError(
+                          (cause) =>
+                            new OrchestrationGetSnapshotError({
+                              message: "Failed to read image owner",
+                              cause,
+                            }),
+                        ),
+                      );
+              const root = Option.getOrUndefined(workspaceRoot);
               const compact = root
                 ? yield* backfillThreadMedia(snapshot.value, root)
                 : snapshot.value;

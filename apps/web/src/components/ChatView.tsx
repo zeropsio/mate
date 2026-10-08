@@ -1,3 +1,4 @@
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { expiredAgentNotice } from "../zerops/mateRecovery.logic";
 import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
@@ -3121,6 +3122,7 @@ export default function ChatView(props: ChatViewProps) {
     projection: TimelineEntriesProjection;
   } | null>(null);
   const timelineEntries = useMemo(() => {
+    const started = mateDiagnostics.enabled ? performance.now() : 0;
     const previous = timelineProjectionRef.current;
     const projection = deriveTimelineEntriesWithState(
       timelineMessages,
@@ -3132,6 +3134,13 @@ export default function ChatView(props: ChatViewProps) {
       conversationLandedEvents,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
+    mateDiagnostics.record({
+      kind: "history-stage",
+      environmentId,
+      threadId,
+      stage: "projection",
+      durationMs: performance.now() - started,
+    });
     return projection.entries;
   }, [
     timelineProjectionRef,

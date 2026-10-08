@@ -3160,6 +3160,28 @@ pending_approval_requests AS (
         ),
       );
 
+  const getProjectWorkspaceRootRow = SqlSchema.findOneOption({
+    Request: ProjectIdLookupInput,
+    Result: Schema.Struct({ workspaceRoot: Schema.String }),
+    execute: ({ projectId }) => sql`
+      SELECT workspace_root AS "workspaceRoot"
+      FROM projection_projects
+      WHERE project_id = ${projectId} AND deleted_at IS NULL
+    `,
+  });
+  const getProjectWorkspaceRootById: ProjectionSnapshotQueryShape["getProjectWorkspaceRootById"] = (
+    projectId,
+  ) =>
+    getProjectWorkspaceRootRow({ projectId }).pipe(
+      Effect.map(Option.map((row) => row.workspaceRoot)),
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "ProjectionSnapshotQuery.getProjectWorkspaceRootById:query",
+          "ProjectionSnapshotQuery.getProjectWorkspaceRootById:decodeRow",
+        ),
+      ),
+    );
+
   const getProjectShellById: ProjectionSnapshotQueryShape["getProjectShellById"] = (projectId) =>
     getActiveProjectRowById({ projectId }).pipe(
       Effect.mapError(
@@ -3869,6 +3891,7 @@ pending_approval_requests AS (
     getCounts,
     getEventReplayStats,
     getActiveProjectByWorkspaceRoot,
+    getProjectWorkspaceRootById,
     getProjectShellById,
     getFirstActiveThreadIdByProjectId,
     getThreadCheckpointContext,

@@ -1,3 +1,4 @@
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import {
   deriveTimelineMinimapItems,
@@ -1321,6 +1322,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     onStanding?.(routeThreadKey, standing);
   }, [onStanding, routeThreadKey, standing]);
+  const paintedThread = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !standing ||
+      !showsList ||
+      kept?.shown === false ||
+      paintedThread.current === routeThreadKey
+    )
+      return;
+    // A frame after placed, visible history gives the browser a paint opportunity. Mount
+    // alone is not visibility: the list hides while restoring its reading position.
+    const frame = requestAnimationFrame(() => {
+      paintedThread.current = routeThreadKey;
+      mateDiagnostics.record({
+        kind: "history-stage",
+        environmentId: activeThreadEnvironmentId,
+        threadId: routeThreadKey.startsWith(`${activeThreadEnvironmentId}:`)
+          ? routeThreadKey.slice(activeThreadEnvironmentId.length + 1)
+          : routeThreadKey,
+        stage: "paint",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [standing, showsList, kept?.shown, routeThreadKey, activeThreadEnvironmentId]);
   const rowsRef = useRef(rows);
   const listReadyRef = useRef(listReady);
   useLayoutEffect(() => {
