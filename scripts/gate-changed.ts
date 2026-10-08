@@ -3,7 +3,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { selectsChatGate } from "./chat-gate.ts";
+import { chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
 import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 
 export const scenarioAreas = [
@@ -33,9 +33,21 @@ const areaPaths: ReadonlyArray<readonly [string, RegExp]> = [
 
 export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
   const selected = new Set<string>();
-  if (selectsChatGate(paths)) selected.add("c-mate");
   for (const path of paths) {
     if (path.endsWith(".md")) continue;
+    const boundaries = selectLaneChatStages([path], []);
+    if (boundaries.length && boundaries.every((stage) => stage.id === "A" || stage.id === "E"))
+      continue;
+    if (
+      boundaries.some((stage) => stage.id === "E") &&
+      !boundaries.some((stage) => stage.id === "A")
+    ) {
+      selected.add("c-mate");
+      continue;
+    }
+    if (!path.startsWith("apps/web/") && boundaries.some((stage) => stage.id === "C"))
+      selected.add("c-mate");
+    if (path.startsWith("apps/server/src/")) continue;
     const own = /^apps\/web\/test\/scenarios\/(?:areas|fakes)\/([^/]+)\//u.exec(path)?.[1];
     if (own && scenarioAreas.some((area) => area === own)) {
       selected.add(own);
@@ -73,7 +85,7 @@ export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
 export function scenarioFiles(
   root: string,
   areas: ReadonlyArray<string>,
-  chatGate: boolean,
+  ownedFiles: ReadonlyArray<string>,
 ): string[] {
   const web = NodePath.join(root, "apps/web");
   const collect = (directory: string, suffix: string): string[] =>
@@ -89,10 +101,9 @@ export function scenarioFiles(
     const path = `test/scenarios/areas/${area}`;
     if (!NodeFS.existsSync(NodePath.join(web, path)))
       throw new Error(`Missing selected scenario path: ${path}`);
-    if (chatGate && area === "c-mate") return [];
     const tests = collect(path, ".scenario.ts");
     if (tests.length === 0) throw new Error(`No scenario files in selected path: ${path}`);
-    return tests;
+    return tests.filter((file) => !ownedFiles.includes(`apps/web/${file}`));
   });
   if (areas.length) {
     // Root fakes serve multiple areas; area-specific fake directories are optional.
@@ -207,10 +218,15 @@ if (import.meta.main) {
     process.exit(0);
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const chatGate = selectsChatGate(paths);
   // Validate selection before any check, including --list.
   const areas = selectScenarioAreas(paths);
-  const files = scenarioFiles(root, areas, chatGate);
+  const chatStages = selectLaneChatStages(paths, areas);
+  const ownedFiles = chatGateTestFiles(root, chatStages);
+  validateSelectedFiles(root, ownedFiles);
+  const files = scenarioFiles(root, areas, ownedFiles);
+  const contractTypechecks = chatStages.flatMap((stage) =>
+    stage.commands.filter((command) => command.args.includes("tsc")),
+  );
   const packages = touchedPackages(paths, workspacePackages(root));
   const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
   steps.push({
@@ -229,19 +245,18 @@ if (import.meta.main) {
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  if (chatGate)
+  if (chatStages.length)
     steps.push({
-      name: "chat contract gate (A + B + typecheck)",
+      name: `chat contract gate (${chatStages.map((stage) => stage.id).join(" + ")})`,
       command: "node",
-      args: ["scripts/chat-gate.ts"],
+      args: ["scripts/chat-gate.ts", "--stages", chatStages.map((stage) => stage.id).join(",")],
     });
   for (const pkg of packages.filter(
     (pkg) =>
       pkg.typecheck &&
-      (!chatGate ||
-        !["apps/server", "apps/web", "packages/contracts", "packages/client-runtime"].includes(
-          pkg.directory,
-        )),
+      !contractTypechecks.some(
+        (command) => command.cwd === pkg.directory && !command.args.includes("-p"),
+      ),
   ))
     steps.push({
       name: `typecheck ${pkg.name}`,
@@ -249,7 +264,7 @@ if (import.meta.main) {
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (!chatGate && paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
@@ -262,6 +277,12 @@ if (import.meta.main) {
         "apps/web/test/scenarios/tsconfig.json",
       ],
     });
+  const exclusions = (cwd: string) =>
+    [...ownedFiles, ...files.map((file) => `apps/web/${file}`)].flatMap((file) =>
+      file.startsWith(`${cwd}/`) || cwd === "."
+        ? ["--exclude", NodePath.posix.relative(cwd, file)]
+        : [],
+    );
   // Run related tests with each consumer's real configuration, including web's wasm assets and
   // mobile's aliases. Consumers are cheap to discover; --changed selects their actual imports.
   if (
@@ -283,13 +304,21 @@ if (import.meta.main) {
         "scripts",
         "oxlint-plugin-t3code",
         "packages",
+        ...exclusions("."),
       ],
     });
     for (const pkg of relatedTestPackages(workspacePackages(root)))
       steps.push({
         name: `related ${pkg.name}`,
         command: "vp",
-        args: ["test", "run", "--changed", comparison, "--passWithNoTests"],
+        args: [
+          "test",
+          "run",
+          "--changed",
+          comparison,
+          "--passWithNoTests",
+          ...exclusions(pkg.directory),
+        ],
         cwd: pkg.directory,
       });
   }
@@ -305,7 +334,7 @@ if (import.meta.main) {
       command: "vp",
       args: ["test", "run", "scripts/surface-manifest.test.ts"],
     });
-  // C journeys already ran in the boundary gate; retain C driver tests here.
+  // Exclude only files owned by selected contract commands; retain affected drivers here.
   if (files.length)
     steps.push({
       name: `scenarios ${areas.join(",")}`,
