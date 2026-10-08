@@ -153,6 +153,64 @@ describe("an engine conversation as the thread the view draws", () => {
     expect(thread(state)?.activities[0]?.payload).toMatchObject({ requestId: request.id });
   });
 
+  it("an answered question shows what the person answered and the pictures attached to it", () => {
+    const preview = {
+      type: "image" as const,
+      id: "img-1",
+      name: "question-preview.png",
+      mimeType: "image/png",
+      sizeBytes: 2048,
+    };
+    const question = { id: "target", header: "Target", question: "Which environment?" };
+    const answered = engineRequest(
+      run1,
+      1,
+      { kind: "question", questions: [question], dismissible: false },
+      {
+        state: "answered",
+        answer: {
+          by: { kind: "person", subject: "u" },
+          at: 5,
+          summary: "Answered",
+          answers: { target: "Inspect the preview" },
+          attachmentsByQuestionId: { target: [preview] } as never,
+        },
+      },
+    );
+    const state = held({ runs: [engineRun("thread-ada", 1)], requests: [answered] });
+    const activities = thread(state)?.activities ?? [];
+    expect(activities.map((activity) => activity.kind)).toEqual([
+      "user-input.requested",
+      "user-input.resolved",
+      "user-input.answer-submitted",
+    ]);
+    expect(activities[1]?.payload).toMatchObject({ answers: { target: "Inspect the preview" } });
+    expect(activities[2]?.payload).toEqual({
+      requestId: answered.id,
+      answers: { target: "Inspect the preview" },
+      questionTextById: { target: "Which environment?" },
+      attachmentsByQuestionId: { target: [preview] },
+      detail: "question-preview.png",
+    });
+  });
+
+  it.each([
+    { dismissible: true, responseMode: "message" },
+    { dismissible: false, responseMode: undefined },
+  ])("a question its agent does not wait on can be dismissed ($dismissible)", (row) => {
+    const request = engineRequest(run1, 1, {
+      kind: "question",
+      questions: [],
+      dismissible: row.dismissible,
+    });
+    const state = held({ runs: [engineRun("thread-ada", 1)], requests: [request] });
+    expect(thread(state)?.activities[0]?.payload).toEqual(
+      row.responseMode === undefined
+        ? { requestId: request.id, questions: [] }
+        : { requestId: request.id, questions: [], responseMode: row.responseMode },
+    );
+  });
+
   it.each([
     { run: { state: "running", end: null }, turn: "running", session: "running" },
     { run: { state: "waiting", end: null }, turn: "running", session: "running" },
