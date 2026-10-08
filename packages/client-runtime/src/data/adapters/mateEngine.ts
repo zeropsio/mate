@@ -13,6 +13,7 @@ import {
   EnvironmentAuthorizationError,
   MATE_ENGINE_PROTOCOLS,
   WS_METHODS,
+  type ConversationHeader,
   type EngineConversationFrame,
   type EnvironmentId,
   type EngineCursor,
@@ -375,6 +376,8 @@ export function makeMateEngineConversations(options: {
           scope,
           generation: streamOf(store.state(), scope).generation,
         }));
+        /** The header of a split commit's first part, until the part that moves the cursor. */
+        let splitHeader: { readonly from: number; readonly header: ConversationHeader } | undefined;
         const deliver = (rows: ReadonlyArray<Row>, reset: boolean) =>
           store.dispatch({
             kind: "delivery",
@@ -410,14 +413,61 @@ export function makeMateEngineConversations(options: {
                   held?.kind === "value"
                     ? (held.value as FamilyValues["mateEngineConversation"]).window
                     : undefined;
+                // A split commit's parts share `from`; all but the last say `to = from`, and only the
+                // first carries the header. Its sequence is the commit's, so it is held until the
+                // part that moves the cursor names it.
+                const header =
+                  frame.to === frame.from
+                    ? undefined
+                    : (frame.header ??
+                      (splitHeader?.from === frame.from ? splitHeader.header : undefined));
+                splitHeader =
+                  frame.to === frame.from && frame.header !== undefined
+                    ? { from: frame.from, header: frame.header }
+                    : frame.to === frame.from
+                      ? splitHeader
+                      : undefined;
                 Atom.batch(() =>
-                  deliver(rowsOf(key, frame.epoch, { ...frame, head: frame.to }, window), false),
+                  deliver(
+                    rowsOf(
+                      key,
+                      frame.epoch,
+                      {
+                        runs: frame.runs,
+                        items: frame.items,
+                        requests: frame.requests,
+                        head: frame.to,
+                        ...(header === undefined ? {} : { header }),
+                      },
+                      window,
+                    ),
+                    false,
+                  ),
                 );
                 cursors.set(id, { ...cursor, epoch: frame.epoch, seq: frame.to });
                 return Effect.void;
               }
               case "synchronized": {
                 if (cursor === undefined) return Effect.fail(RESUBSCRIBE);
+                // A header that came alone (a restart's epoch, nothing newer) is the head's.
+                if (splitHeader !== undefined) {
+                  const pending = splitHeader.header;
+                  splitHeader = undefined;
+                  const held = store.state().facts.get(`mateEngineConversation:${id}`)?.content;
+                  const window =
+                    held?.kind === "value"
+                      ? (held.value as FamilyValues["mateEngineConversation"]).window
+                      : undefined;
+                  deliver(
+                    rowsOf(
+                      key,
+                      frame.epoch,
+                      { runs: [], items: [], requests: [], head: frame.head, header: pending },
+                      window,
+                    ),
+                    false,
+                  );
+                }
                 cursors.set(id, { ...cursor, epoch: frame.epoch, seq: frame.head });
                 Atom.batch(() => {
                   for (const scope of scopes) signal(scope, { kind: "baseline-committed" });

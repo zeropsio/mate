@@ -8,6 +8,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { ENGINE_LIVE_POLICY, makeEngineLiveText } from "../engineLive.ts";
 import {
+  engineConversationId,
   engineConversationLink,
   engineConversationScopes,
   engineFactId,
@@ -192,6 +193,27 @@ describe("an engine conversation's subscription", () => {
         null,
         { epoch: 4, origin: "origin-a", seq: 12 },
       ]);
+      r.close();
+    }),
+  );
+
+  it.live("takes a header change from the first part of a split commit", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12));
+      yield* r.send(
+        changes(12, 12, {
+          header: engineHeader("thread-ada", { model: "claude-opus-4-1" }),
+          runs: [engineRun("thread-ada", 2, { rev: 13, state: "running", end: null })],
+        }),
+        changes(12, 15, { items: [personItem(run2, 1, "And the worker", { rev: 15 })] }),
+        synchronized(15),
+      );
+      const conversation = r.read().fact("mateEngineConversation", engineConversationId(ada));
+      expect(conversation).toMatchObject({ value: { header: { model: "claude-opus-4-1" } } });
+      expect(r.item(`${run2}/i/1`).kind).toBe("known");
       r.close();
     }),
   );
