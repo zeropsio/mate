@@ -70,7 +70,7 @@ import {
 } from "../engine/CrewEngineLayer.ts";
 import { crewDomain } from "../engine/CrewOwner.ts";
 import { evolveCrew } from "../engine/evolve.ts";
-import { initialCrewState, membersInOrder, type CrewState } from "../engine/state.ts";
+import { delivering, initialCrewState, membersInOrder, type CrewState } from "../engine/state.ts";
 import { stintReasonWords } from "../crewCards.ts";
 import type { RotationReason } from "../rotationDecision.ts";
 import {
@@ -112,10 +112,10 @@ const holdMatcher = (hold: CrewHoldStep): ((script: string) => boolean) => {
       return (script) => script.includes("ignoring broken ref");
     case "send":
       return () => false;
-    case "verdict": {
-      let reads = 0;
-      return (script) => script.includes("dirty=no") && ++reads === hold.nth;
-    }
+    case "verdict":
+      // The engine's check reads its verdict in its command's own run (V1 reads the copy again
+      // after it, its `nth` read): the check's command is where its verdict stands open.
+      return (script) => script.includes("test -f ok.txt");
   }
 };
 
@@ -512,7 +512,34 @@ const enginePort = (input: {
       ),
     readFiles: Effect.flatMap(crew, (service) => service.readFiles),
     serverReady: input.start,
-    turnStarts: (chat) => waitFor(`a turn in ${chat}`, turnRunning(chat)),
+    turnStarts: (chat) =>
+      Effect.gen(function* () {
+        yield* settled;
+        const state = yield* crewState;
+        const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
+        const thread = yield* threadOf(chat);
+        const session = provider.sessions.get(thread);
+        const conversation = yield* run(
+          Effect.flatMap(Conversations, (conversations) =>
+            conversations.state(ConversationId.make(chat)),
+          ),
+        ).pipe(Effect.orDie);
+        // Nothing the crew sent is on its way: the agent opens a turn of its own (V1's world
+        // publishes a turn's start the same way).
+        if (
+          member !== undefined &&
+          member.active === null &&
+          !delivering(state, member.handle) &&
+          !Object.values(state.effects).some((effect) => effect.handle === member.handle) &&
+          conversation.activeRunId === null &&
+          conversation.queue.length === 0 &&
+          session?.alive === true &&
+          session.open === null
+        ) {
+          yield* provider.agent.selfTurn(thread);
+        }
+        yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
+      }),
     turnEnds: (chat, end = {}) =>
       Effect.gen(function* () {
         // A turn the crew stopped already ended on the engine, when its interrupt was taken: the

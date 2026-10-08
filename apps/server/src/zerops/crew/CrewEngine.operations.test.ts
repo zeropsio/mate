@@ -92,41 +92,41 @@ describe("owned crew operations", () => {
     ]),
   );
 
-  it.live(
-    "a failed check's verdict holds nothing: a fix during its final read goes out at once",
-    () =>
-      crewJourney((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          const thread = yield* firstTurn(world, () =>
-            write(NodePath.join(world.root, ".crew/backend"), "work.txt", "work\n"),
-          );
-          yield* reportDone(world, thread);
-          const hold = yield* world.hold({ step: "verdict", nth: 2 });
-          yield* world.turnEnds(thread);
-          yield* hold.reached;
-          const operation = yield* onV1Value(world, (v1) =>
-            v1.v1.run(
-              Effect.map(
-                Effect.flatMap(CrewStore, (store) => store.operations(CREW_ID)),
-                (rows) => rows.find((row) => row.kind === "check"),
-              ),
+  // The check's final read of the copy after its command is V1's own step; the engine's check
+  // returns its verdict with its command (the owner, 2026-10-08: V1's mechanism goes at cutover).
+  itV1("a failed check's verdict holds nothing: a fix during its final read goes out at once", () =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "work.txt", "work\n"),
+        );
+        yield* reportDone(world, thread);
+        const hold = yield* world.hold({ step: "verdict", nth: 2 });
+        yield* world.turnEnds(thread);
+        yield* hold.reached;
+        const operation = yield* onV1Value(world, (v1) =>
+          v1.v1.run(
+            Effect.map(
+              Effect.flatMap(CrewStore, (store) => store.operations(CREW_ID)),
+              (rows) => rows.find((row) => row.kind === "check"),
             ),
-          );
-          if (operation !== undefined) {
-            assert.strictEqual(operation.status, "running");
-            assert.strictEqual(operation.confirmedStage, "checking");
-            assert.isNull(operation.detail);
-          }
-          const taskId = (yield* world.snapshot).board.tasks[0]!.id;
-          yield* world.press({ _tag: "askFix", taskId });
-          assert.strictEqual((yield* world.tasks)[0]!.attempt, 2);
-          yield* hold.release;
-          yield* world.snapshotWhere(
-            (frame) => !frame.operations?.some((row) => row.id === operation?.id),
-          );
-        }),
-      ),
+          ),
+        );
+        if (operation !== undefined) {
+          assert.strictEqual(operation.status, "running");
+          assert.strictEqual(operation.confirmedStage, "checking");
+          assert.isNull(operation.detail);
+        }
+        const taskId = (yield* world.snapshot).board.tasks[0]!.id;
+        yield* world.press({ _tag: "askFix", taskId });
+        assert.strictEqual((yield* world.tasks)[0]!.attempt, 2);
+        yield* hold.release;
+        yield* world.snapshotWhere(
+          (frame) => !frame.operations?.some((row) => row.id === operation?.id),
+        );
+      }),
+    ),
   );
 
   // An operation's record is V1's own; the engine's effects carry their identity (part C).
@@ -1129,7 +1129,7 @@ it.live("a Land whose browser went away mid-landing still lands", () =>
       const landed = yield* world.snapshotWhere(
         (frame) =>
           frame.board.tasks[0]?.state === "landed" &&
-          frame.operations?.every((row) => row.status !== "running") === true,
+          (frame.operations ?? []).every((row) => row.status !== "running"),
       );
       assert.isNotNull(landed.board.tasks[0]!.landedCommit);
     }),
