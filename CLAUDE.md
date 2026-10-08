@@ -135,6 +135,9 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 - TDD for behaviour: RED → GREEN, table-driven tests.
 - Atomic commits, English, never a `Co-Authored-By` trailer.
 - Delete, don't disable — no commented-out code or compat shims.
+- An invariant that matters goes into a deterministic check — a lint rule, a script, a test — with an
+  exception ledger that may only shrink (the data-layer guards are the model). Fast checks catch drift
+  that reviews and prompts miss.
 - Any part can fail — HQ, a Mate's container, the Zerops platform, a provider. Code assumes it with
   reasonable defence: bounded waits, an honest state for the user, recovery when the part returns.
   No over-engineering: no machinery for failures that have not happened or cost more than they save.
