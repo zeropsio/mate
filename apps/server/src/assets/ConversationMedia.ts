@@ -249,14 +249,24 @@ export const keepInlineImage = async (
   return { mimeType: image.mimeType, asset, ...size };
 };
 
-function activityMediaNeedsCapture(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(activityMediaNeedsCapture);
+function payloadMediaNeedsCapture(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(payloadMediaNeedsCapture);
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
     isInlineImage(value) ||
     (typeof record.imagePath === "string" && !record.imagePath.startsWith("mate-asset:")) ||
-    Object.values(record).some(activityMediaNeedsCapture)
+    Object.values(record).some(payloadMediaNeedsCapture)
+  );
+}
+
+function activityMediaNeedsCapture(
+  activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
+): boolean {
+  // Native Read/image-view paths are media only after the shared tool projection names them.
+  return (
+    payloadMediaNeedsCapture(activity.payload) ||
+    payloadMediaNeedsCapture(projectActivityPayload(activity).payload)
   );
 }
 
@@ -266,7 +276,7 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
   workspaceRoot: string,
 ) {
   // A captured or image-free tool result needs no asset store and no async payload clone.
-  if (!activityMediaNeedsCapture(activity.payload)) return activity;
+  if (!activityMediaNeedsCapture(activity)) return activity;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
   const owner = { threadId: threadId, ownerId: activity.id, provenance: "capture" as const };
@@ -330,7 +340,7 @@ export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
             (!("asset" in attachment) || attachment.asset === undefined),
         ),
     ) &&
-    !snapshot.thread.activities.some((activity) => activityMediaNeedsCapture(activity.payload))
+    !snapshot.thread.activities.some(activityMediaNeedsCapture)
   )
     return snapshot;
   return {
