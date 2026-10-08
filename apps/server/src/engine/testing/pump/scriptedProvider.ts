@@ -10,6 +10,7 @@
  */
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -27,6 +28,8 @@ import {
 } from "../../../provider/Services/ProviderService.ts";
 import { ProviderRuntimeEventBusLive } from "../../../spi/ProviderRuntimeEventBus.ts";
 import type { BridgeDriver } from "../../bridge/spi3.ts";
+
+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const NOW = "2026-10-07T00:00:00.000Z";
 
@@ -369,6 +372,37 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               ...payload,
               status: "completed",
               data: { toolName: "Write", input: { file_path: path, content } },
+            },
+          });
+          return itemId;
+        }),
+      /** The agent calls a Zerops tool, which returns `text` (Claude's shape of the call). */
+      zerops: (thread: string, tool: string, input: Record<string, unknown>, text: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const toolName = `mcp__zerops__${tool}`;
+          const payload = {
+            itemType: "mcp_tool_call",
+            title: "MCP tool call",
+            detail: `${toolName}: ${encodeJson(input)}`,
+          };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress", data: { toolName, input } },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: {
+                toolName,
+                input,
+                result: { type: "tool_result", content: [{ type: "text", text }] },
+              },
             },
           });
           return itemId;

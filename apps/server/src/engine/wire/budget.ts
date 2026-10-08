@@ -43,6 +43,22 @@ const LINE = 1024;
 const short = (text: string, max = SHORT) =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 
+/** What a call's row shows may take this much of its item's budget. */
+const SHOWS_BYTES = ENGINE_WIRE_BUDGETS.itemBytes / 2;
+/** What a row can do without, first to last: the long input, a driver's own item, the output. */
+const SHOWS_SPARED = ["input", "item", "result", "rawOutput", "files", "command"] as const;
+
+/** What a call's row shows within its share of the budget, its heaviest facts left out first. */
+const fitShows = (shows: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
+  let fitted: Record<string, unknown> = { ...shows };
+  for (const key of SHOWS_SPARED) {
+    if (bytesOf(fitted) <= SHOWS_BYTES) break;
+    const { [key]: _spared, ...rest } = fitted;
+    fitted = rest;
+  }
+  return fitted;
+};
+
 /** An item within its budget: its words cut, the cut part named with its whole length. */
 export const fitItem = (item: Item): Item => {
   switch (item.kind) {
@@ -58,8 +74,8 @@ export const fitItem = (item: Item): Item => {
     }
     case "thought":
       return item.preview.length <= SHORT ? item : { ...item, preview: short(item.preview) };
-    case "call":
-      return {
+    case "call": {
+      const fitted = {
         ...item,
         step: short(item.step, 64),
         tool: {
@@ -67,7 +83,17 @@ export const fitItem = (item: Item): Item => {
           ...(item.tool.server === undefined ? {} : { server: short(item.tool.server, SHORT) }),
         },
         words: item.words === null ? null : cutUtf8(item.words, LINE),
+        ...(item.input === undefined ? {} : { input: cutUtf8(item.input, LINE) }),
+        ...(item.shows === undefined ? {} : { shows: fitShows(item.shows) }),
       };
+      const resultText = item.result?.resultText;
+      if (resultText === undefined) return fitted;
+      const total = utf8Length(resultText);
+      if (total <= ENGINE_WIRE_BUDGETS.itemTextBytes) return fitted;
+      // A result is a document its card decodes whole: never half of it, the whole on demand.
+      const { resultText: _cut, ...result } = item.result!;
+      return { ...fitted, result, cut: { part: "result", total } };
+    }
     case "work":
       return { ...item, title: item.title === null ? null : short(item.title) };
     case "context":

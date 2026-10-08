@@ -412,6 +412,57 @@ describe("a client reading more of an engine conversation", () => {
   );
 });
 
+describe("a client reading an engine call", () => {
+  it.effect(
+    "gets a deploy's line and result on its record, a long result cut and read whole on demand",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const deployed = `{"status":"DEPLOYED","buildLogs":"${"ok\\n".repeat(9_000)}"}`;
+          yield* send(wire, "Deploy the api");
+          yield* w.settle;
+          yield* w.agent((agent, thread) =>
+            agent.zerops(thread, "zerops_deploy", { targetService: "api" }, deployed),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const [snapshot] = yield* Effect.scoped(watch(w, wire));
+          if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+          const run = snapshot.runs.at(-1)!;
+          const page = yield* wire.readRun({ protocol, conversationId: mate, runId: run.id });
+          if (page._tag !== "Page") throw new Error(page._tag);
+          const call = page.items.find((item) => item.kind === "call");
+          if (call?.kind !== "call") throw new Error("no call");
+          assert.strictEqual(call.step, "mcp");
+          assert.strictEqual(call.input, 'mcp__zerops__zerops_deploy: {"targetService":"api"}');
+          assert.deepStrictEqual(call.shows, {
+            toolName: "mcp__zerops__zerops_deploy",
+            input: { targetService: "api" },
+            // V1's row shows a result's first line, cut.
+            result: { content: `${deployed.slice(0, 83)}…` },
+          });
+          assert.deepStrictEqual(call.result, { toolName: "zerops_deploy" });
+          assert.deepStrictEqual(call.cut, { part: "result", total: deployed.length });
+          const whole = yield* wire.readDetail({
+            protocol,
+            conversationId: mate,
+            itemId: call.id,
+            part: "result",
+          });
+          assert.deepStrictEqual(whole, {
+            _tag: "Detail",
+            text: deployed,
+            from: 0,
+            to: deployed.length,
+            total: deployed.length,
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("a client subscribed to a Mate's conversation rows", () => {
   it.effect("gets each conversation's row with its agent, then the row again as it changes", () =>
     Effect.scoped(
