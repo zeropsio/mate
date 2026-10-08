@@ -234,9 +234,101 @@ export const loadRatchetBaseline = (
           NodePath.join(directory, `${ruleName}.json`),
           git(["show", `${revision}:oxlint-plugin-t3code/exceptions/${ruleName}.json`]),
         );
-        return [ruleName, loadExceptionLedger(ruleName, directory).entries];
+        const entries = loadExceptionLedger(ruleName, directory).entries;
+        return [
+          ruleName,
+          ruleName === "no-failure-to-empty"
+            ? enrollmentBaseline(cwd, revision, entries, git)
+            : entries,
+        ];
       }),
     );
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true });
+  }
+};
+
+/** A frozen admission snapshot makes this enrollment reviewable once, including multi-commit pushes.
+ * Once present in the ancestor, even an empty ledger cannot reopen admission. Later lane commits
+ * compare with the first snapshot, not with an editable working copy. Reconciliation still runs.
+ */
+const ENROLLMENT_SNAPSHOT = "oxlint-plugin-t3code/failure-to-empty-enrollment.json";
+const FAILURE_RULE = "oxlint-plugin-t3code/rules/no-failure-to-empty.ts";
+const ENROLLED_ROOTS = ['"apps/web/src/"', '"packages/client-runtime/src/data/"'];
+const enrollmentBaseline = (
+  cwd: string,
+  revision: string,
+  baseline: ReadonlyArray<ExceptionEntry>,
+  git: (args: ReadonlyArray<string>) => string,
+): ReadonlyArray<ExceptionEntry> => {
+  const existsAt = (ref: string, path: string) =>
+    NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${ref}:${path}`], {
+      cwd,
+      stdio: "ignore",
+    }).status === 0;
+  if (existsAt(revision, ENROLLMENT_SNAPSHOT)) return baseline;
+  const file = NodePath.join(cwd, ENROLLMENT_SNAPSHOT);
+  if (!NodeFS.existsSync(file)) return baseline;
+  if (baseline.length !== 0)
+    throw new Error("Enrollment requires the original empty failure ledger.");
+  const introduction = git([
+    "log",
+    "--reverse",
+    "--format=%H",
+    "--diff-filter=A",
+    `${revision}..HEAD`,
+    "--",
+    ENROLLMENT_SNAPSHOT,
+  ]).split("\n")[0];
+  const before = git(["show", `${revision}:${FAILURE_RULE}`]);
+  const after = introduction
+    ? git(["show", `${introduction}:${FAILURE_RULE}`])
+    : NodeFS.readFileSync(NodePath.join(cwd, FAILURE_RULE), "utf8");
+  if (ENROLLED_ROOTS.some((root) => before.includes(root) || !after.includes(root))) {
+    throw new Error("Failure enrollment snapshot must accompany the new web and data roots.");
+  }
+  if (introduction) {
+    const parent = git(["rev-parse", `${introduction}^`]);
+    if (ENROLLED_ROOTS.some((root) => git(["show", `${parent}:${FAILURE_RULE}`]).includes(root))) {
+      throw new Error("Failure enrollment snapshot must be committed with root enrollment.");
+    }
+  }
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "failure-enrollment-"));
+  try {
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "no-failure-to-empty.json"),
+      introduction
+        ? git(["show", `${introduction}:${ENROLLMENT_SNAPSHOT}`])
+        : NodeFS.readFileSync(file, "utf8"),
+    );
+    const entries = loadExceptionLedger("no-failure-to-empty", directory).entries;
+    if (
+      entries.some(
+        (entry) =>
+          !(
+            entry.path.startsWith("packages/client-runtime/src/data/") ||
+            (entry.path.startsWith("apps/web/src/") &&
+              !entry.path.startsWith("apps/web/src/zerops/") &&
+              !entry.path.startsWith("apps/web/src/components/zerops/"))
+          ),
+      )
+    ) {
+      throw new Error("Enrollment admits only findings in newly guarded roots.");
+    }
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "no-failure-to-empty.json"),
+      introduction
+        ? git(["show", `${introduction}:oxlint-plugin-t3code/exceptions/no-failure-to-empty.json`])
+        : NodeFS.readFileSync(
+            NodePath.join(cwd, "oxlint-plugin-t3code/exceptions/no-failure-to-empty.json"),
+            "utf8",
+          ),
+    );
+    const admitted = loadExceptionLedger("no-failure-to-empty", directory).entries;
+    if (ratchetAdditions(entries, admitted).length || ratchetAdditions(admitted, entries).length) {
+      throw new Error("Enrollment snapshot must match the ledger in the enrollment commit.");
+    }
+    return entries;
   } finally {
     NodeFS.rmSync(directory, { recursive: true });
   }

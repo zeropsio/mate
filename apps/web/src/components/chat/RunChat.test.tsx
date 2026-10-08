@@ -1577,6 +1577,43 @@ describe("RunChat, as the person uses it", () => {
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
+    it("shows a new question when another run joins an automatically folded card", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      settle(renderer);
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+      const question = "Which environment?";
+      const answer = "Inspect the preview shown here";
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record(
+                [
+                  { kind: "question", key: "question:next", at: at(81), questions: [question] },
+                  {
+                    kind: "person",
+                    key: "person:answer",
+                    at: at(82),
+                    words: answer,
+                    imageOnly: false,
+                  },
+                ],
+                { live: true, status: status() },
+              )}
+            />
+          </Rows>,
+        ),
+      );
+      const visibleQuestions = renderer.root.findAll((node) => {
+        if (node.type !== "p" || !node.children.includes(question)) return false;
+        for (let parent = node.parent; parent !== null; parent = parent.parent) {
+          if (parent.props.hidden || parent.props.style?.display === "none") return false;
+        }
+        return true;
+      });
+      expect(visibleQuestions).toHaveLength(1);
+    });
+
     it("keeps a run open as it settles while the person reads its work, its line at the foot", () => {
       const renderer = mount(workOnly({ live: true, status: status() }));
       // They scrolled up in it to read.

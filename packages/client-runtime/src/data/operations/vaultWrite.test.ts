@@ -8,9 +8,10 @@ import { projectVariablesScope, type VariableRow } from "../families/projectVari
 import { serviceVariablesScope } from "../families/serviceVariables.ts";
 import type { ScopeKey } from "../model.ts";
 import type { AccountInput, Row } from "../reducer.ts";
-import type { AccountStore } from "../store.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
 import { ZeropsApiError } from "../../zerops/api.ts";
 import type { IntentOf } from "./kind.ts";
+import { vaultWrite } from "./vaultWrite.ts";
 import {
   serviceRestartExecutor,
   vaultWriteExecutor,
@@ -69,6 +70,7 @@ function vaultShows(
   shown: {
     readonly shared?: ReadonlyArray<VariableRow>;
     readonly services?: ReadonlyArray<VariableRow>;
+    readonly sharedComplete?: boolean;
   },
   first = false,
 ) {
@@ -80,7 +82,7 @@ function vaultShows(
         {
           family: "projectVariables",
           id: "p1",
-          value: { rows: shown.shared, complete: true },
+          value: { rows: shown.shared, complete: shown.sharedComplete ?? true },
           revision: { kind: "zerops", version: null },
         },
       ],
@@ -318,6 +320,331 @@ describe("vault-write", () => {
         vaultShows(store, shown);
         yield* operations.retry("r1");
         expect(progressOf(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(calls).toHaveLength(1);
+      }),
+  );
+
+  it.effect.each([
+    { name: "known-complete", succeeds: true },
+    { name: "known-incomplete", succeeds: false },
+    { name: "unknown", succeeds: false },
+    { name: "withheld", succeeds: false },
+    { name: "deleted", succeeds: false },
+  ])("Shared removal needs complete known contents — $name", ({ name, succeeds }) =>
+    Effect.gen(function* () {
+      const store = vaultAccount();
+      const { operations, calls } = operationsOf(store, () =>
+        Promise.reject(new ZeropsApiError("No answer.", "network")),
+      );
+      const write = intent(SHARED, { kind: "remove", id: "e1", key: "LOG_LEVEL" });
+      yield* operations.submit(write);
+      const scope = projectVariablesScope(ORG, "p1");
+      if (name === "known-complete" || name === "known-incomplete") {
+        vaultShows(store, { shared: [], sharedComplete: succeeds });
+      } else if (name === "unknown") {
+        store.dispatch({ kind: "forget", scopes: [scope] });
+        store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+        store.dispatch({
+          kind: "baseline-commit",
+          scope,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["p1"],
+          rows: [],
+        });
+      } else if (name === "withheld") {
+        store.dispatch({ kind: "access", family: "projectVariables", id: "p1", access: "denied" });
+      } else {
+        store.dispatch({
+          kind: "proven-deletion",
+          family: "projectVariables",
+          id: "p1",
+          evidence: "owner",
+        });
+      }
+      const read = readsOfState(store.state());
+      expect(read.fact("projectVariables", "p1").kind).toBe(
+        name.startsWith("known") ? "known" : name,
+      );
+      expect(vaultWrite.effectHandles?.(read, write) ?? []).toEqual(
+        succeeds ? ["vault:gone:e1"] : [],
+      );
+      yield* operations.retry("r1");
+      expect(progressOf(store)).toMatchObject(
+        succeeds
+          ? { stage: "done", outcome: "succeeded" }
+          : { stage: "uncertain", next: "ask-owner-again" },
+      );
+      expect(calls).toHaveLength(1);
+    }),
+  );
+
+  it.effect.each([
+    { name: "complete absence", succeeds: true },
+    { name: "partial listing", succeeds: false },
+    { name: "unknown listed row", succeeds: false },
+    { name: "withheld listed row", succeeds: false },
+    { name: "owner-deleted target", succeeds: true },
+  ])("service removal needs owner evidence — $name", ({ name, succeeds }) =>
+    Effect.gen(function* () {
+      const store = vaultAccount();
+      const { operations, calls } = operationsOf(store, () =>
+        Promise.reject(new ZeropsApiError("No answer.", "network")),
+      );
+      const write = intent(APP, { kind: "remove", id: "u1", key: "TOKEN" });
+      yield* operations.submit(write);
+      const scope = serviceVariablesScope(ORG, "p1");
+      if (name === "complete absence") {
+        vaultShows(store, { services: [] });
+      } else if (name === "withheld listed row") {
+        store.dispatch({ kind: "access", family: "serviceVariable", id: "u1", access: "denied" });
+      } else if (name === "owner-deleted target") {
+        store.dispatch({
+          kind: "proven-deletion",
+          family: "serviceVariable",
+          id: "u1",
+          evidence: "owner",
+        });
+      } else {
+        store.dispatch({ kind: "forget", scopes: [scope] });
+        if (name === "partial listing") {
+          store.dispatch({
+            kind: "delivery",
+            via: "zerops-realtime",
+            scopes: [{ scope, generation: 1 }],
+            reset: false,
+            partial: true,
+            rows: [],
+            removals: [],
+          });
+        } else {
+          store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+          store.dispatch({
+            kind: "baseline-commit",
+            scope,
+            generation: 1,
+            via: "zerops-realtime",
+            members: ["u1"],
+            rows: [],
+          });
+        }
+      }
+      expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual(
+        succeeds ? ["vault:gone:u1"] : [],
+      );
+      yield* operations.retry("r1");
+      expect(progressOf(store)).toMatchObject(
+        succeeds
+          ? { stage: "done", outcome: "succeeded" }
+          : { stage: "uncertain", next: "ask-owner-again" },
+      );
+      expect(calls).toHaveLength(1);
+    }),
+  );
+
+  it.effect.each([
+    { name: "Shared unknown", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared withheld", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared incomplete", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "Shared deleted", scope: SHARED, family: "projectVariables", id: "p1" },
+    { name: "service unknown", scope: APP, family: "serviceVariable", id: "u1" },
+  ] as const)(
+    "later absence cannot prove removal from an unreadable submission baseline — $name",
+    ({ name, scope, family, id }) =>
+      Effect.gen(function* () {
+        for (const accepted of [false, true]) {
+          const store = vaultAccount();
+          const listing =
+            scope.kind === "shared"
+              ? projectVariablesScope(ORG, "p1")
+              : serviceVariablesScope(ORG, "p1");
+          if (name.endsWith("unknown")) {
+            store.dispatch({ kind: "forget", scopes: [listing] });
+            store.dispatch({ kind: "baseline-begin", scope: listing, generation: 1 });
+            store.dispatch({
+              kind: "baseline-commit",
+              scope: listing,
+              generation: 1,
+              via: "zerops-realtime",
+              members: [id],
+              rows: [],
+            });
+          } else if (name.endsWith("withheld")) {
+            store.dispatch({ kind: "access", family, id, access: "denied" });
+          } else if (name.endsWith("incomplete")) {
+            vaultShows(store, { shared: [], sharedComplete: false });
+          } else {
+            store.dispatch({ kind: "proven-deletion", family, id, evidence: "owner" });
+          }
+          const { operations, calls } = operationsOf(store, () =>
+            accepted
+              ? Promise.resolve({ processId: "proc-env" })
+              : Promise.reject(new ZeropsApiError("No answer.", "network")),
+          );
+          const write = intent(scope, {
+            kind: "remove",
+            id: scope.kind === "shared" ? "e1" : "u1",
+            key: "TOKEN",
+          });
+          expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual([]);
+          yield* operations.submit(write);
+          vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
+          if (accepted) {
+            processRow(
+              store,
+              "proc-env",
+              "FINISHED",
+              scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+              [],
+            );
+          } else {
+            yield* operations.retry("r1");
+          }
+          expect(progressOf(store)).toEqual(
+            accepted
+              ? { stage: "accepted", operationId: "proc-env" }
+              : { stage: "uncertain", next: "ask-owner-again" },
+          );
+          expect(calls).toHaveLength(1);
+        }
+      }),
+  );
+
+  it.effect.each([
+    { name: "Shared", scope: SHARED, id: "e1" },
+    { name: "service", scope: APP, id: "u1" },
+  ] as const)(
+    "known presence in an incomplete listing proves the removal baseline — $name",
+    ({ scope, id }) =>
+      Effect.gen(function* () {
+        for (const accepted of [false, true]) {
+          const store = vaultAccount();
+          if (scope.kind === "shared") {
+            vaultShows(store, { shared: HELD_SHARED, sharedComplete: false });
+          } else {
+            const listing = serviceVariablesScope(ORG, "p1");
+            store.dispatch({ kind: "forget", scopes: [listing] });
+            const { id: rowId, ...row } = HELD_APP[0]!;
+            store.dispatch({
+              kind: "delivery",
+              scopes: [{ scope: listing, generation: 1 }],
+              via: "zerops-realtime",
+              reset: false,
+              partial: true,
+              removals: [],
+              rows: [
+                {
+                  family: "serviceVariable",
+                  id: rowId,
+                  value: { ...row, serviceId: "s1" },
+                  revision: { kind: "zerops", version: null },
+                },
+              ],
+            });
+          }
+          const { operations, calls } = operationsOf(store, () =>
+            accepted
+              ? Promise.resolve({ processId: "proc-env" })
+              : Promise.reject(new ZeropsApiError("No answer.", "network")),
+          );
+          yield* operations.submit(intent(scope, { kind: "remove", id, key: "TOKEN" }));
+          vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
+          if (accepted) {
+            processRow(
+              store,
+              "proc-env",
+              "FINISHED",
+              scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+              [],
+            );
+          } else {
+            yield* operations.retry("r1");
+          }
+          expect(progressOf(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+          expect(calls).toHaveLength(1);
+        }
+      }),
+  );
+
+  it.effect.each([
+    {
+      name: "Shared add",
+      write: ADD_SHARED,
+      shown: { shared: [variable("e9", "STRIPE_KEY", null, { sensitive: true })] },
+    },
+    {
+      name: "service add",
+      write: ADD_APP,
+      shown: { services: [variable("u9", "LOG_LEVEL", "debug")] },
+    },
+    {
+      name: "Shared update",
+      write: intent(SHARED, {
+        kind: "update",
+        id: "e1",
+        key: "LOG_LEVEL",
+        value: "warn",
+        sensitive: false,
+      }),
+      shown: { shared: [variable("e1", "LOG_LEVEL", "warn", { lastUpdate: T(12) })] },
+    },
+    {
+      name: "service update",
+      write: intent(APP, { kind: "update", id: "u1", key: "TOKEN", value: "t2", sensitive: false }),
+      shown: { services: [variable("u1", "TOKEN", "t2", { lastUpdate: T(12) })] },
+    },
+  ])(
+    "an acknowledged write finishes from matching contents after an unreadable baseline — $name",
+    ({ write, shown }) =>
+      Effect.gen(function* () {
+        const store = vaultAccount();
+        const listing =
+          write.scope.kind === "shared"
+            ? projectVariablesScope(ORG, "p1")
+            : serviceVariablesScope(ORG, "p1");
+        store.dispatch({ kind: "forget", scopes: [listing] });
+        const { operations } = operationsOf(store, async () => ({ processId: "proc-env" }));
+        yield* operations.submit(write);
+        vaultShows(store, shown);
+        processRow(
+          store,
+          "proc-env",
+          "FINISHED",
+          write.scope.kind === "shared" ? "stack.updateProjectEnvs" : "stack.updateUserData",
+          [],
+        );
+        expect(progressOf(store)).toEqual({
+          stage: "done",
+          operationId: "proc-env",
+          outcome: "succeeded",
+        });
+      }),
+  );
+
+  it.effect(
+    "owner-proven deletion settles an acknowledged removal with an unknown listing and baseline",
+    () =>
+      Effect.gen(function* () {
+        const store = vaultAccount();
+        const listing = serviceVariablesScope(ORG, "p1");
+        store.dispatch({ kind: "forget", scopes: [listing] });
+        const { operations, calls } = operationsOf(store, async () => ({ processId: "proc-env" }));
+        yield* operations.submit(intent(APP, { kind: "remove", id: "u1", key: "TOKEN" }));
+        store.dispatch({
+          kind: "proven-deletion",
+          family: "serviceVariable",
+          scope: listing,
+          id: "u1",
+          evidence: "owner",
+        });
+        expect(readsOfState(store.state()).coverage(listing)).toBe("unknown");
+        expect(progressOf(store).stage).not.toBe("done");
+        processRow(store, "proc-env", "FINISHED", "stack.updateUserData", ["s1"]);
+        expect(progressOf(store)).toEqual({
+          stage: "done",
+          operationId: "proc-env",
+          outcome: "succeeded",
+        });
         expect(calls).toHaveLength(1);
       }),
   );

@@ -8,6 +8,8 @@
  *
  * @module data/reducer
  */
+// This reducer reads restart intent fields even in clients without the restart executor.
+import type {} from "./operations/mateRestart.ts";
 import {
   FAMILIES,
   familySpec,

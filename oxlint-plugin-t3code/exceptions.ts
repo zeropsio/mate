@@ -20,6 +20,7 @@ export interface ExceptionEntry {
   readonly owner: string;
   readonly reason: string;
   readonly expires: string;
+  readonly class?: "misleading" | "justified" | "review" | undefined;
 }
 
 /** Selects AST findings or CSS declarations from a shared per-rule ledger. */
@@ -80,6 +81,7 @@ const ExceptionEntrySchema = Schema.Struct({
   owner: Schema.NonEmptyString,
   reason: Schema.NonEmptyString,
   expires: Schema.NonEmptyString.check(Schema.isPattern(EXPIRY_PATTERN)),
+  class: Schema.optional(Schema.Literals(["misleading", "justified", "review"])),
 });
 const CompletedPhasesSchema = Schema.Struct({
   completed: Schema.Array(Schema.NonEmptyString),
@@ -124,6 +126,11 @@ const invalidEntryField = (input: unknown): string => {
   if (typeof input !== "object" || input === null || Array.isArray(input)) return "entry";
 
   const candidate = input as Readonly<Record<string, unknown>>;
+  if (
+    candidate.class !== undefined &&
+    !["misleading", "justified", "review"].includes(String(candidate.class))
+  )
+    return "class";
   for (const field of ENTRY_FIELDS) {
     if (typeof candidate[field] !== "string" || candidate[field].length === 0) return field;
   }
@@ -173,9 +180,19 @@ export const loadExceptionLedger = (
   const entries: Array<ExceptionEntry> = [];
   for (const [index, value] of input.entries()) {
     try {
-      entries.push(decodeExceptionEntry(value));
+      const entry = decodeExceptionEntry(value);
+      if (ruleName === "no-failure-to-empty" && entry.class === undefined) {
+        throw new Error("failure-to-empty exceptions require a class");
+      }
+      entries.push(entry);
     } catch (cause) {
-      const field = invalidEntryField(value);
+      const field =
+        ruleName === "no-failure-to-empty" &&
+        typeof value === "object" &&
+        value !== null &&
+        !("class" in value)
+          ? "class"
+          : invalidEntryField(value);
       throw new Error(`Invalid exception ledger ${filePath} at index ${index}, field ${field}.`, {
         cause,
       });
