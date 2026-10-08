@@ -198,9 +198,7 @@ describe("CrewEngine runs", () => {
               transcriptPath: `${world.workspace}/backend.jsonl`,
             });
             yield* ended(world, thread, 0.4);
-            yield* world.snapshotWhere(
-              (current) => current.crewmates[0]!.stints[0]?.state === "active",
-            );
+            yield* world.sessionsWhere("backend", (sessions) => sessions.latest === "active");
           }),
         (world) =>
           Effect.gen(function* () {
@@ -239,9 +237,7 @@ describe("CrewEngine runs", () => {
               transcriptPath: `${world.workspace}/lead.jsonl`,
             });
             yield* world.turnEnds(thread);
-            yield* world.snapshotWhere(
-              (current) => current.crewmates[0]!.stints[0]?.state === "active",
-            );
+            yield* world.sessionsWhere("backend", (sessions) => sessions.latest === "active");
           }),
         (world) =>
           Effect.gen(function* () {
