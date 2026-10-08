@@ -38,6 +38,7 @@ import {
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
+import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import {
   CHECKED_STATES,
@@ -99,6 +100,7 @@ import { evolveCrew } from "./evolve.ts";
 import {
   DEFAULT_CREW_LOGIN,
   copyBusy,
+  copyWriting,
   crewmateConversationId,
   hostFrozen,
   isFree,
@@ -363,12 +365,10 @@ const userOf = (principal: Principal): string =>
 /** The engine acting for a person outside their session: named by their user id, never a subject. */
 const crewAs = (startedBy: string): Principal => ({
   kind: "crew",
-  startedBy: startedBy.startsWith(ZEROPS_SUBJECT)
-    ? startedBy.slice(ZEROPS_SUBJECT.length)
+  startedBy: startedBy.startsWith(ZEROPS_SUBJECT_PREFIX)
+    ? startedBy.slice(ZEROPS_SUBJECT_PREFIX.length)
     : startedBy,
 });
-
-const ZEROPS_SUBJECT = "zerops:";
 
 /**
  * Whose a crew turn is that no press of this moment started: the running run's starter, or
@@ -377,7 +377,7 @@ const ZEROPS_SUBJECT = "zerops:";
 const dispatchPrincipal = (state: CrewState, task: TaskRecord): Principal => {
   const run = runningRun(state);
   if (run !== undefined) return crewAs(run.startedBy);
-  if (task.createdBy !== null) return { kind: "person", subject: task.createdBy };
+  if (task.createdBy !== null) return crewAs(task.createdBy);
   return crewAs(state.run?.startedBy ?? "");
 };
 
@@ -1492,6 +1492,7 @@ const pressed = (
     }
     case "taskRetry": {
       const task = b.task(press.taskId);
+      requireFreeCopy(b, task.owner);
       if (task.state === "queued" && task.cantStart !== null) {
         b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { cantStart: null } });
       } else if (task.state === "parked") {
@@ -1657,7 +1658,11 @@ const message = (
   }
   const open = openTaskOf(b.state, handle);
   if (open !== undefined) {
-    if (open.state === "merging" || open.state === "landing") throw wrongState(busyWords(handle));
+    // Its copy is being written (a turn's save, a merge, a landing): the message waits for none.
+    // A check only reads the copy, so a message goes on during it.
+    if (open.state === "merging" || open.state === "landing" || copyWriting(b.state, handle)) {
+      throw wrongState(busyWords(handle));
+    }
     continueTask(b, open, as, sent, "message", attachments);
     return;
   }

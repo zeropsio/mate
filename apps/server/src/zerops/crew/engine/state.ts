@@ -453,6 +453,13 @@ export const copyBusy = (state: CrewState, handle: string): boolean =>
     (effect) => effect.handle === handle && COPY_EFFECTS.has(effect.kind),
   );
 
+/** A git effect writes the crewmate's copy now (a check only reads it). */
+export const copyWriting = (state: CrewState, handle: string): boolean =>
+  Object.values(state.effects).some(
+    (effect) =>
+      effect.handle === handle && COPY_EFFECTS.has(effect.kind) && effect.kind !== "crew.check",
+  );
+
 /** A delivery to the crewmate is on its way: a turn is about to run. */
 export const delivering = (state: CrewState, handle: string): boolean =>
   Object.values(state.deliveries).some(

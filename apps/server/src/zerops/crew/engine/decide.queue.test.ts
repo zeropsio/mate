@@ -34,7 +34,8 @@ const journeys: ReadonlyArray<Journey> = [
       w.start("backend");
       return [queued, w.task(1).state, w.task(2).state, w.lastTurnAs("backend")];
     },
-    expected: ["queued", "landed", "working", PERSON],
+    // Started by no press of this moment: as the crew, for its creator (V1's admission).
+    expected: ["queued", "landed", "working", { kind: "crew", startedBy: "user-1" }],
   },
   {
     sentence: "a queued task admission refuses stays queued with a Can't start row",
