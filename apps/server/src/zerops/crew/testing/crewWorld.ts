@@ -44,6 +44,7 @@ import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import type { MateLogin } from "../../ZeropsLogins.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
+import type { MateUpdateDrain } from "../../../update/MateUpdateDrain.ts";
 import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import {
@@ -338,6 +339,8 @@ export interface CrewWorld {
   readonly profileInstalls: Effect.Effect<number>;
   /** The crew's service as the server serves it, for its RPCs. */
   readonly service: Effect.Effect<CrewEngineService>;
+  /** The Mate engine's own update drain, on a world whose crew runs on the engine. */
+  readonly engineUpdateDrain?: Effect.Effect<MateUpdateDrain | undefined>;
   /** How many sessions the crew opened on its services (git and shell). */
   readonly serviceSessions: Effect.Effect<number>;
   /** How many times the crew read the platform's deploy state. */

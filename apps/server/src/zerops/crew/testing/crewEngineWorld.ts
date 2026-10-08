@@ -879,6 +879,7 @@ const enginePort = (input: {
     toolProfilesInstalled: Effect.map(policy, Option.isSome),
     profileInstalls: Ref.get(fx.installs),
     service: crew,
+    engineUpdateDrain: Effect.map(engine, (mate) => mate.updateDrain),
     serviceSessions: Ref.get(fx.sshCalls),
     deployReads: Ref.get(fx.processReads),
   };

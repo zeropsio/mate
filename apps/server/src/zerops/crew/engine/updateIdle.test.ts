@@ -2,10 +2,13 @@ import { assert, describe, it } from "@effect/vitest";
 import type { CrewRunState, CrewTaskState } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
+import { drainMateUpdate, joinUpdateIdleFacts } from "../../mateUpdateDrain.ts";
 import { write } from "../testing/crewGitFixture.ts";
 import { applied, CREW_WORLDS, firstTurn } from "../testing/crewWorld.ts";
+import type { UpdateIdleFacts } from "../../../update/MateUpdateDrain.ts";
 import { crewEngineUpdateFacts } from "./updateIdle.ts";
 
 type Row = readonly [
@@ -64,8 +67,22 @@ describe("the engine crew's update facts", () => {
   });
 });
 
+/**
+ * The engine's facts less the two its world's scripted provider cannot give: it keeps no receipt
+ * boundary and resumes no session natively. Those are the provider's, not the crew's or the record's.
+ */
+const ownFacts = (facts: UpdateIdleFacts): UpdateIdleFacts => {
+  const blockers = facts.blockers.filter(
+    (reason) =>
+      !reason.endsWith("provider event receipt boundary unavailable") &&
+      !reason.endsWith("native resume is unsupported"),
+  );
+  return { idle: blockers.length === 0, blockers };
+};
+
 describe("an update's drain over the engine crew", () => {
-  // The engine world whatever `CREW_WORLD` names: the facts are the engine crew's own.
+  // The engine world whatever `CREW_WORLD` names: the drain joins the engine's own facts and the
+  // engine crew's, as the server's update route does.
   it.live("an update waits for a crewmate at work and goes ahead once the crew is idle", () =>
     CREW_WORLDS.engine!(
       [
@@ -73,32 +90,48 @@ describe("an update's drain over the engine crew", () => {
           Effect.gen(function* () {
             yield* applied(world);
             const crew = yield* world.service;
-            const facts = crew.updateFacts!;
-            assert.isTrue((yield* facts).idle, "a crew with nothing to do");
+            const engine = (yield* world.engineUpdateDrain!)!;
             const thread = yield* firstTurn(world, () =>
               write(world.root, ".crew/backend/ok.txt", "ok\n"),
             );
-            const working = yield* facts;
-            assert.isFalse(working.idle);
-            assert.include(working.blockers, "crew turn or continuation");
             yield* Effect.scoped(
               Effect.gen(function* () {
-                const { changes } = yield* crew.subscribeUpdateChanges!;
-                // The drain hears the crew settle, and reads it idle then.
-                const idle = yield* changes.pipe(
-                  Stream.mapEffect(() => facts),
-                  Stream.filter((read) => read.idle),
-                  Stream.runHead,
-                  Effect.forkScoped,
+                const changed = yield* Queue.unbounded<void>();
+                for (const subscribe of [crew.subscribeUpdateChanges!, engine.subscribeChanges!])
+                  yield* (yield* subscribe).changes.pipe(
+                    Stream.runForEach(() => Queue.offer(changed, undefined)),
+                    Effect.forkScoped,
+                  );
+                const facts = Effect.map(
+                  Effect.all([Effect.map(engine.facts, ownFacts), crew.updateFacts!]),
+                  (owners) => joinUpdateIdleFacts(...owners),
                 );
+                const drain = yield* drainMateUpdate(
+                  {
+                    allowed: Effect.succeed(true),
+                    begin: engine.begin,
+                    cancel: engine.cancel,
+                    facts,
+                    quiesce: Effect.map(
+                      Effect.all([Effect.map(engine.quiesce, ownFacts), crew.updateFacts!]),
+                      (owners) => joinUpdateIdleFacts(...owners),
+                    ),
+                    changed: Queue.take(changed),
+                  },
+                  "20 seconds",
+                ).pipe(Effect.forkScoped);
+                yield* Effect.sleep("500 millis");
+                const waiting = yield* facts;
+                assert.isUndefined(
+                  drain.pollUnsafe(),
+                  "the update went ahead under a working crew",
+                );
+                assert.include(waiting.blockers, "crew turn or continuation");
                 yield* world.report(thread, { status: "done", summary: "Wrote ok.txt." });
                 yield* world.turnEnds(thread);
                 yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
-                const heard = yield* Fiber.join(idle).pipe(Effect.timeout("5 seconds"));
-                assert.deepStrictEqual(heard._tag === "Some" ? heard.value : heard, {
-                  idle: true,
-                  blockers: [],
-                });
+                const drained = yield* Fiber.join(drain);
+                assert.isTrue(drained, `the update never went ahead: ${(yield* facts).blockers}`);
               }),
             );
           }),
