@@ -596,7 +596,7 @@ export const deploysLayer = (
           return setups !== undefined && setup !== undefined && !setups.includes(setup)
             ? `${target.repo}'s ${yaml.name} at ${short(target.sha)} has no setup ${setup}`
             : undefined;
-        }).pipe(Effect.catchTag("GitError", () => Effect.succeed(undefined)));
+        }).pipe(Effect.catchTags({ GitError: () => Effect.succeed(undefined) }));
 
       /**
        * In a leader's write: the job `target` asks for in `projectId` — `skipped`, saying why, where
@@ -925,10 +925,12 @@ export const deploysLayer = (
             return refused(unopenedDeployToken(envName));
           }
           const checked = yield* Effect.gen(function* () {
-            const own = yield* zerops.ownToken(token).pipe(
-              Effect.map(Option.some),
-              Effect.catchTag("ZeropsRefused", () => Effect.succeed(Option.none())),
-            );
+            const own = yield* zerops
+              .ownToken(token)
+              .pipe(
+                Effect.map(Option.some),
+                Effect.catchTags({ ZeropsRefused: () => Effect.succeed(Option.none()) }),
+              );
             if (Option.isNone(own)) return deadDeployToken(envName);
             const { orgId } = yield* roles.view;
             return reachesOnly(own.value, orgId, projectId)
@@ -1280,9 +1282,9 @@ export const deploysLayer = (
                 versionName(label, job.sha),
               )(token)
               .pipe(
-                Effect.catchTag("ZeropsUnavailable", (error) =>
-                  Effect.succeed({ lost: error.message }),
-                ),
+                Effect.catchTags({
+                  ZeropsUnavailable: (error) => Effect.succeed({ lost: error.message }),
+                }),
               );
             // Unanswered, no version is known: HQ makes no other.
             if ("lost" in version)
@@ -1302,16 +1304,17 @@ export const deploysLayer = (
                 Effect.andThen(update(job, sql`uploaded_at = now()`)),
                 Effect.andThen(deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token)),
                 Effect.map(Option.some),
-                Effect.catchTag("ZeropsUnavailable", (error) =>
-                  Effect.as(
-                    Effect.logWarning("a deploy's submission went unanswered", {
-                      environment: job.env_name,
-                      service: job.service,
-                      error,
-                    }),
-                    Option.none(),
-                  ),
-                ),
+                Effect.catchTags({
+                  ZeropsUnavailable: (error) =>
+                    Effect.as(
+                      Effect.logWarning("a deploy's submission went unanswered", {
+                        environment: job.env_name,
+                        service: job.service,
+                        error,
+                      }),
+                      Option.none(),
+                    ),
+                }),
               );
             if (Option.isSome(started)) {
               yield* update(job, sql`state = 'building', process_id = ${started.value.processId}`);
@@ -1389,15 +1392,16 @@ export const deploysLayer = (
               )(key.token)
               .pipe(
                 Effect.map(Option.some),
-                Effect.catchTag("ZeropsUnavailable", (error) =>
-                  Effect.as(
-                    Effect.logWarning("a delta's import went unanswered", {
-                      environment: job.env_name,
-                      error,
-                    }),
-                    Option.none(),
-                  ),
-                ),
+                Effect.catchTags({
+                  ZeropsUnavailable: (error) =>
+                    Effect.as(
+                      Effect.logWarning("a delta's import went unanswered", {
+                        environment: job.env_name,
+                        error,
+                      }),
+                      Option.none(),
+                    ),
+                }),
               );
             if (Option.isSome(answered)) {
               const processes = answered.value.services.flatMap((service) => service.processes);

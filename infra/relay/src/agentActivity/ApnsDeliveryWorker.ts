@@ -65,9 +65,10 @@ export const workerLoop = Effect.gen(function* () {
   return yield* Effect.forever(
     Effect.gen(function* () {
       const leased = yield* jobs.leaseNext.pipe(
-        Effect.catchTag("ApnsDeliveryJobPersistError", (error) =>
-          Effect.logError("apns delivery job lease failed", { error }).pipe(Effect.as(null)),
-        ),
+        Effect.catchTags({
+          ApnsDeliveryJobPersistError: (error) =>
+            Effect.logError("apns delivery job lease failed", { error }).pipe(Effect.as(null)),
+        }),
       );
       if (leased === null) {
         yield* Effect.sleep(WORKER_IDLE_POLL_INTERVAL);

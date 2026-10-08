@@ -1184,9 +1184,12 @@ export const structureLayer = (options: {
                       )(options.credential.value)
                       .pipe(
                         Effect.as(false),
-                        Effect.catchTag("ZeropsRefused", (error) =>
-                          error.reason === "not_found" ? Effect.succeed(true) : Effect.fail(error),
-                        ),
+                        Effect.catchTags({
+                          ZeropsRefused: (error) =>
+                            error.reason === "not_found"
+                              ? Effect.succeed(true)
+                              : Effect.fail(error),
+                        }),
                       );
                     if (!absent) return yield* refuse("conflict", "key_still_exists");
                   }
@@ -1268,11 +1271,11 @@ export const structureLayer = (options: {
             // Kept only sealed, under HQ's key: without one HQ keeps none (`deployKeys.ts`).
             const sealed = keys.seal(projectId, token);
             if (sealed === undefined) return yield* refuse("conflict", "no_key_secret");
-            const own = yield* zerops
-              .ownToken(token)
-              .pipe(
-                Effect.catchTag("ZeropsRefused", () => refuse("invalid", "deploy_token_refused")),
-              );
+            const own = yield* zerops.ownToken(token).pipe(
+              Effect.catchTags({
+                ZeropsRefused: () => refuse("invalid", "deploy_token_refused"),
+              }),
+            );
             if (!reachesOnly(own, view.orgId, projectId)) {
               return yield* refuse("invalid", "deploy_token_scope");
             }

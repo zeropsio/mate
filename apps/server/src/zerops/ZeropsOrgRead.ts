@@ -117,9 +117,10 @@ export const make = Effect.gen(function* () {
           Effect.map((body): OwnKeyRead => ({ kind: "answered", status: 200, body })),
         );
       }),
-      Effect.catchTag("ZeropsApiUnavailableError", (error) =>
-        Effect.succeed<OwnKeyRead>({ kind: "unreachable", reason: error.reason }),
-      ),
+      Effect.catchTags({
+        ZeropsApiUnavailableError: (error) =>
+          Effect.succeed<OwnKeyRead>({ kind: "unreachable", reason: error.reason }),
+      }),
       Effect.provideService(HttpClient.HttpClient, httpClient),
     );
 

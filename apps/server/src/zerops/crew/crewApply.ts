@@ -198,13 +198,14 @@ const dropMember = (
       if (task.member === row.handle && task.state !== "landed" && task.state !== "discarded") {
         // Over the task as read: one that moved meanwhile is read again and discarded as it stands.
         yield* saveOver(core, task, { ...task, state: "discarded" }).pipe(
-          Effect.catchTag("CrewCommandError", () =>
-            Effect.flatMap(requireTask(core, task.assignment), (now) =>
-              now.state === "landed" || now.state === "discarded"
-                ? Effect.void
-                : Effect.asVoid(saveOver(core, now, { ...now, state: "discarded" })),
-            ),
-          ),
+          Effect.catchTags({
+            CrewCommandError: () =>
+              Effect.flatMap(requireTask(core, task.assignment), (now) =>
+                now.state === "landed" || now.state === "discarded"
+                  ? Effect.void
+                  : Effect.asVoid(saveOver(core, now, { ...now, state: "discarded" })),
+              ),
+          }),
         );
       }
     }

@@ -124,7 +124,7 @@ export const observationLayer = Layer.effect(
         if (token === undefined) return yield* refused("deploy_key_unavailable");
         const own = yield* api
           .ownToken(token)
-          .pipe(Effect.catchTag("ZeropsRefused", () => refused("deploy_key_unavailable")));
+          .pipe(Effect.catchTags({ ZeropsRefused: () => refused("deploy_key_unavailable") }));
         if (!reachesOnly(own, scope.view.orgId, projectId))
           return yield* refused("deploy_key_unavailable");
         return { environment, token };

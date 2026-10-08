@@ -1108,7 +1108,7 @@ export const changesLayer: Layer.Layer<
           if (rows.length === 0) return [];
           // Listing remains a database read while git opens or this Core is a standby.
           const git = yield* gitHost.git.pipe(
-            Effect.catchTag("NotLeader", () => Effect.succeed(undefined)),
+            Effect.catchTags({ NotLeader: () => Effect.succeed(undefined) }),
           );
           return yield* Effect.forEach(rows, (row) =>
             Effect.gen(function* () {

@@ -21,6 +21,7 @@ import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 import requireStaticClasses from "./rules/require-static-classes.ts";
 import noUnscopedHas from "./rules/no-unscoped-has.ts";
+import preferCatchTags from "./rules/prefer-catch-tags.ts";
 import requireSuppressionReason from "./rules/require-suppression-reason.ts";
 
 export default definePlugin({
@@ -50,5 +51,6 @@ export default definePlugin({
     "require-static-classes": requireStaticClasses,
     "no-unscoped-has": noUnscopedHas,
     "require-suppression-reason": requireSuppressionReason,
+    "prefer-catch-tags": preferCatchTags,
   },
 });

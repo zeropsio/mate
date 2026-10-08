@@ -118,7 +118,7 @@ export const nodeFileStore = Effect.gen(function* () {
         }
         yield* Effect.sleep(Math.min(50 * 2 ** attempt, 500));
       }
-    }).pipe(Effect.catchTag("PlatformError", (cause) => Effect.fail(writeError(file, cause))));
+    }).pipe(Effect.catchTags({ PlatformError: (cause) => Effect.fail(writeError(file, cause)) }));
     return { acquire, release: fs.remove(lock, { recursive: true }).pipe(Effect.ignore) };
   };
 

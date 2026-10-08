@@ -101,9 +101,10 @@ export const verifyBearerToken = Effect.fn("ZeropsAuth.verifyBearerToken")(funct
     Effect.catchCause(() => Effect.fail(unavailable("The Zerops API returned a malformed body."))),
   );
   const userInfo = yield* decodeUserInfo(body).pipe(
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(unavailable("The Zerops user read was not in the expected shape.")),
-    ),
+    Effect.catchTags({
+      SchemaError: () =>
+        Effect.fail(unavailable("The Zerops user read was not in the expected shape.")),
+    }),
   );
   if (userInfo.id === undefined || userInfo.id.length === 0) {
     return yield* unavailable("The Zerops user read carried no user id.");

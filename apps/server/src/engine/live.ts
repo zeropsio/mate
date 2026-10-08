@@ -150,15 +150,16 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
               ? Effect.fail(new WakeRefused({ message: "The engine armed no wake." }))
               : Effect.succeed({ wakeId: accepted.wakeId }),
           ),
-          Effect.catchTag("CommandRejected", (rejected) =>
-            Effect.fail(
-              new WakeRefused({
-                message:
-                  rejected.rejection.detail ??
-                  `The wake was refused (${String(rejected.rejection.reason)}).`,
-              }),
-            ),
-          ),
+          Effect.catchTags({
+            CommandRejected: (rejected) =>
+              Effect.fail(
+                new WakeRefused({
+                  message:
+                    rejected.rejection.detail ??
+                    `The wake was refused (${String(rejected.rejection.reason)}).`,
+                }),
+              ),
+          }),
           Effect.catchTags({
             EngineStoreError: () =>
               Effect.fail(new WakeRefused({ message: "The engine could not record the wake." })),

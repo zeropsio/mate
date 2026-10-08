@@ -173,6 +173,7 @@ export default defineConfig({
       "t3code/require-static-classes": "error",
       "t3code/no-theme-escape-hatches": "error",
       "t3code/namespace-node-imports": "error",
+      "t3code/prefer-catch-tags": "error",
     },
     overrides: [
       {

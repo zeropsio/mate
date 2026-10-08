@@ -45,9 +45,10 @@ export const fakeOperationWatch = (world: FakeWorld): OperationWatch => ({
           );
           return { phase: "live" as const, processes, version };
         }).pipe(
-          Effect.catchTag("ZeropsUnavailable", () =>
-            Effect.succeed({ phase: "recovering" as const, processes: [], version: null }),
-          ),
+          Effect.catchTags({
+            ZeropsUnavailable: () =>
+              Effect.succeed({ phase: "recovering" as const, processes: [], version: null }),
+          }),
         ),
       ),
     ),

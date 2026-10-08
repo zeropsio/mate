@@ -63,28 +63,31 @@ export const zeropsHttpApiLayer = HttpApiBuilder.group(
             ...(proofKeyThumbprint ? { proofKeyThumbprint } : {}),
           });
         },
-        Effect.catchTag("ZeropsInvalidTokenError", () =>
-          failEnvironmentAuthInvalid("invalid_credential"),
-        ),
+        Effect.catchTags({
+          ZeropsInvalidTokenError: () => failEnvironmentAuthInvalid("invalid_credential"),
+        }),
         // One reason for all six shape rules: which rule failed is a hint
         // towards a token that would pass, and the caller never needs it —
         // the app's answer to every one of them is to mint a fresh
         // throwaway.
-        Effect.catchTag("ZeropsThrowawayRefusedError", () =>
-          failEnvironmentOperationForbidden("zerops_throwaway_required"),
-        ),
-        Effect.catchTag("ZeropsReadOnlyError", () =>
-          failEnvironmentOperationForbidden("zerops_read_only"),
-        ),
-        Effect.catchTag("ZeropsNotAMemberError", () =>
-          failEnvironmentOperationForbidden("zerops_project_membership_required"),
-        ),
-        Effect.catchTag("ZeropsProjectNotFoundError", () =>
-          failEnvironmentNotFound("zerops_project_not_found"),
-        ),
-        Effect.catchTag("ZeropsApiUnavailableError", (error) =>
-          failEnvironmentInternal("zerops_membership_check_failed", error),
-        ),
+        Effect.catchTags({
+          ZeropsThrowawayRefusedError: () =>
+            failEnvironmentOperationForbidden("zerops_throwaway_required"),
+        }),
+        Effect.catchTags({
+          ZeropsReadOnlyError: () => failEnvironmentOperationForbidden("zerops_read_only"),
+        }),
+        Effect.catchTags({
+          ZeropsNotAMemberError: () =>
+            failEnvironmentOperationForbidden("zerops_project_membership_required"),
+        }),
+        Effect.catchTags({
+          ZeropsProjectNotFoundError: () => failEnvironmentNotFound("zerops_project_not_found"),
+        }),
+        Effect.catchTags({
+          ZeropsApiUnavailableError: (error) =>
+            failEnvironmentInternal("zerops_membership_check_failed", error),
+        }),
         Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
           failEnvironmentInternal("pairing_credential_issuance_failed", error),
         ),
