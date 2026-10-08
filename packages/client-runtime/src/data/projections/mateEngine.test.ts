@@ -26,7 +26,13 @@ import {
   unknownItem,
   workItem,
 } from "../__fixtures__/mateEngine.ts";
-import { engineRows, engineThread, overlayEngineRow, overlayEngineShell } from "./mateEngine.ts";
+import {
+  engineHeldTurns,
+  engineRows,
+  engineThread,
+  overlayEngineRow,
+  overlayEngineShell,
+} from "./mateEngine.ts";
 
 const ENV = "env-ada";
 const key: EngineConversationKey = { environmentId: ENV, conversationId: "thread-ada" };
@@ -784,4 +790,90 @@ describe("an engine conversation's row in the menu", () => {
     const overlaid = overlayEngineShell(shellState, engineRows.derive(readsOfState(withRows), ENV));
     expect(Option.getOrNull(overlaid.snapshot)?.threads[0]?.hasPendingApprovals).toBe(true);
   });
+
+  // Catches the view reading the turn from the menu row, which names a run, not the card it draws
+  // on: a live run that continues another drew folded, hiding the person's answer (journey 9).
+  it.each([
+    {
+      name: "a run that continues another is live on its root's card",
+      runs: [
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: run1 as never,
+          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ],
+      row: {
+        state: { kind: "working", since: 1, waitsOnHelpers: false },
+        activeRunId: "thread-ada/r/2",
+        latestRun: { id: "thread-ada/r/2", end: null, endedAt: null },
+      },
+      turn: { turnId: run1, state: "running" },
+      session: "running",
+      active: run1,
+    },
+    {
+      name: "a message queued behind a working run leaves the working run the turn",
+      runs: [
+        engineRun("thread-ada", 1, { state: "running", end: null, endedAt: null }),
+        engineRun("thread-ada", 2, { state: "queued", end: null, endedAt: null, startedAt: null }),
+      ],
+      row: {
+        state: { kind: "queued", since: 1 },
+        activeRunId: "thread-ada/r/2",
+        latestRun: { id: "thread-ada/r/2", end: null, endedAt: null },
+      },
+      turn: { turnId: run1, state: "running" },
+      session: "running",
+      active: run1,
+    },
+  ] as const)(
+    "gives a held conversation's thread shell the turn its records say: $name",
+    ({ runs, row, turn, session, active }) => {
+      const state = apply(held({ runs: runs as ReadonlyArray<RunRecord> }), [
+        {
+          kind: "delivery",
+          via: "mate-direct",
+          scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+          reset: true,
+          rows: [
+            {
+              family: "mateEngineRow",
+              id: engineFactId(ENV, "thread-ada"),
+              value: {
+                ...engineRow(ENV, "thread-ada", row as Partial<ConversationRow>),
+                environmentId: ENV,
+              },
+              revision: revision(100),
+            },
+          ],
+          removals: [],
+        },
+      ]);
+      const shellState = {
+        snapshot: Option.some({
+          snapshotSequence: 1,
+          projects: [],
+          threads: [shellThread],
+          updatedAt: "2026-10-01T00:00:00.000Z",
+        }),
+        status: "live",
+        error: Option.none(),
+      } as unknown as Parameters<typeof overlayEngineShell>[0];
+      const read = readsOfState(state);
+      const overlaid = Option.getOrNull(
+        overlayEngineShell(
+          shellState,
+          engineRows.derive(read, ENV),
+          engineHeldTurns.derive(read, ENV),
+        ).snapshot,
+      )?.threads[0];
+      expect(overlaid?.latestTurn).toMatchObject(turn);
+      expect(overlaid?.session?.status).toBe(session);
+      expect(overlaid?.session?.activeTurnId).toBe(active);
+    },
+  );
 });

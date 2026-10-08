@@ -13,6 +13,7 @@ import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../engineHo
 import {
   ENGINE_UPDATE_WORDS,
   engineRows,
+  engineHeldTurns,
   engineThread,
   overlayEngineShell,
 } from "../projections/mateEngine.ts";
@@ -354,7 +355,11 @@ export function createAccountConversationAtoms<R, E>(
       return AsyncResult.success(
         host === null
           ? v1
-          : overlayEngineShell(v1, get(host.store.data.project(engineRows, environmentId))),
+          : overlayEngineShell(
+              v1,
+              get(host.store.data.project(engineRows, environmentId)),
+              get(host.store.data.project(engineHeldTurns, environmentId)),
+            ),
       );
     }),
   );

@@ -538,23 +538,10 @@ const shellThreadOf = (read: ProjectionReads, key: EngineConversationKey) => {
   });
 };
 
-/** The engine conversation, held or not, as the thread the view draws. */
-export function engineThreadOf(
-  read: ProjectionReads,
-  key: EngineConversationKey,
-): OrchestrationThread | null {
-  const conversation = read.fact("mateEngineConversation", engineConversationId(key));
-  if (conversation.kind !== "known") return null;
-  const { header } = conversation.value;
-  const conversationKey = engineConversationId(key);
+/** A held conversation's runs, oldest first, with the card each draws on. */
+function cardsOf(read: ProjectionReads, conversationKey: string) {
   const runs = valuesOf(read, "mateEngineRun", "engineRunsIn", conversationKey).sort(
     (left, right) => left.ordinal - right.ordinal,
-  );
-  const items = valuesOf(read, "mateEngineItem", "engineItemsIn", conversationKey).sort(
-    (left, right) => left.seq - right.seq,
-  );
-  const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
-    (left, right) => left.seq - right.seq,
   );
   const byId = new Map(runs.map((run) => [run.id as string, run]));
   /** The run whose card a run draws on: the first of the runs it continues. */
@@ -572,6 +559,42 @@ export function engineThreadOf(
     const run = byId.get(runId);
     return run === undefined ? runId : rootOf(run).id;
   };
+  // The turn is the live run; a queued run is a message waiting its turn (behind a working run, or
+  // held by a usage-limit pause), never the work Stop ends.
+  const active = runs.findLast((run) => LIVE_RUN_STATES.has(run.state)) ?? null;
+  const latest = active ?? runs.findLast((run) => run.state === "ended") ?? null;
+  const failed = latest?.end?.kind === "failed" || latest?.end?.kind === "crashed";
+  const turn: HeldTurn = {
+    latestTurn: latest === null ? null : latestTurnOf(latest, rootOf(latest)),
+    status: active !== null ? "running" : failed ? "error" : "ready",
+    activeTurnId: active === null ? null : rootOf(active).id,
+  };
+  return { runs, rootOf, cardOf, latest, turn };
+}
+
+/** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
+export interface HeldTurn {
+  readonly latestTurn: OrchestrationLatestTurn | null;
+  readonly status: "running" | "error" | "ready";
+  readonly activeTurnId: string | null;
+}
+
+/** The engine conversation, held or not, as the thread the view draws. */
+export function engineThreadOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): OrchestrationThread | null {
+  const conversation = read.fact("mateEngineConversation", engineConversationId(key));
+  if (conversation.kind !== "known") return null;
+  const { header } = conversation.value;
+  const conversationKey = engineConversationId(key);
+  const { runs, rootOf, cardOf, latest, turn } = cardsOf(read, conversationKey);
+  const items = valuesOf(read, "mateEngineItem", "engineItemsIn", conversationKey).sort(
+    (left, right) => left.seq - right.seq,
+  );
+  const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
+    (left, right) => left.seq - right.seq,
+  );
   const messages: OrchestrationMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   for (const item of items) {
@@ -602,10 +625,6 @@ export function engineThreadOf(
     if (broke !== null) activities.push(broke);
   }
   activities.sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
-  // The turn is the live run; a queued run is a message waiting its turn (behind a working run, or
-  // held by a usage-limit pause), never the work Stop ends.
-  const active = runs.findLast((run) => LIVE_RUN_STATES.has(run.state)) ?? null;
-  const latest = active ?? runs.findLast((run) => run.state === "ended") ?? null;
   activities.push(
     ...gaugeActivities(
       read,
@@ -621,11 +640,10 @@ export function engineThreadOf(
   );
   const shell = shellThreadOf(read, key);
   const agent = header.agent;
-  const failed = latest?.end?.kind === "failed" || latest?.end?.kind === "crashed";
   const updatedAt = iso(Math.max(items.at(-1)?.at ?? 0, latest?.endedAt ?? latest?.queuedAt ?? 0));
   const session: OrchestrationSession = {
     threadId: key.conversationId as OrchestrationSession["threadId"],
-    status: active !== null ? "running" : failed ? "error" : "ready",
+    status: turn.status,
     providerName: (header.session?.driver ??
       agent?.driver ??
       null) as OrchestrationSession["providerName"],
@@ -633,9 +651,7 @@ export function engineThreadOf(
       ? {}
       : { providerInstanceId: agent.instanceId as OrchestrationSession["providerInstanceId"] }),
     runtimeMode: shell?.runtimeMode ?? "full-access",
-    activeTurnId: (active === null
-      ? null
-      : rootOf(active).id) as OrchestrationSession["activeTurnId"],
+    activeTurnId: turn.activeTurnId as OrchestrationSession["activeTurnId"],
     lastError:
       latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
         ? (latest.end.reason as OrchestrationSession["lastError"])
@@ -659,7 +675,7 @@ export function engineThreadOf(
     interactionMode: shell?.interactionMode ?? "default",
     branch: shell?.branch ?? null,
     worktreePath: shell?.worktreePath ?? null,
-    latestTurn: latest === null ? null : latestTurnOf(latest, rootOf(latest)),
+    latestTurn: turn.latestTurn,
     createdAt: shell?.createdAt ?? iso(runs[0]?.queuedAt ?? 0),
     updatedAt,
     archivedAt: header.archived ? updatedAt : null,
@@ -736,6 +752,7 @@ export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
 export function overlayEngineRow(
   thread: OrchestrationThreadShell,
   row: ConversationRow,
+  held?: HeldTurn,
 ): OrchestrationThreadShell {
   const working =
     row.state.kind === "working" || row.state.kind === "queued" || row.state.kind === "waiting";
@@ -769,7 +786,7 @@ export function overlayEngineRow(
             ...(row.agent.options === undefined ? {} : { options: row.agent.options }),
           } as OrchestrationThreadShell["modelSelection"],
         }),
-    latestTurn,
+    latestTurn: held === undefined ? latestTurn : (held.latestTurn ?? thread.latestTurn),
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {
@@ -784,8 +801,13 @@ export function overlayEngineRow(
         runtimeMode: thread.runtimeMode,
         lastError: null,
       }),
-      status: working ? "running" : row.state.kind === "failed" ? "error" : "ready",
-      activeTurnId: (row.activeRunId ?? null) as OrchestrationSession["activeTurnId"],
+      // A conversation the account holds says its turn by its own records: the live run, never a
+      // queued one, on the card it draws on. The row names only a run.
+      status:
+        held?.status ?? (working ? "running" : row.state.kind === "failed" ? "error" : "ready"),
+      activeTurnId: (held === undefined
+        ? (row.activeRunId ?? null)
+        : held.activeTurnId) as OrchestrationSession["activeTurnId"],
       updatedAt: iso(row.at),
     },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
@@ -821,10 +843,32 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
   },
 };
 
+/** The turn of each conversation of a Mate the account holds, by conversation id. */
+export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTurn>>> = {
+  name: "engineHeldTurns",
+  keyOf: (environmentId) => environmentId,
+  equals: sameValue,
+  derive: (read, environmentId) => {
+    const turns: Record<string, HeldTurn> = {};
+    for (const id of read.index("engineRowsOf", engineRowsKey(environmentId))) {
+      const row = read.fact("mateEngineRow", id);
+      if (row.kind !== "known") continue;
+      const conversationKey = engineConversationId({
+        environmentId,
+        conversationId: row.value.conversationId,
+      });
+      if (read.fact("mateEngineConversation", conversationKey).kind !== "known") continue;
+      turns[row.value.conversationId] = cardsOf(read, conversationKey).turn;
+    }
+    return turns;
+  },
+};
+
 /** A Mate's shell with its engine conversations' rows laid over their thread shells. */
 export function overlayEngineShell(
   shell: EnvironmentShellState,
   rows: ReadonlyArray<ConversationRow>,
+  held: Readonly<Record<string, HeldTurn>> = {},
 ): EnvironmentShellState {
   if (rows.length === 0) return shell;
   const byConversation = new Map(rows.map((row) => [row.conversationId as string, row]));
@@ -834,7 +878,7 @@ export function overlayEngineShell(
       ...snapshot,
       threads: snapshot.threads.map((thread) => {
         const row = byConversation.get(thread.id);
-        return row === undefined ? thread : overlayEngineRow(thread, row);
+        return row === undefined ? thread : overlayEngineRow(thread, row, held[thread.id]);
       }),
     })),
   };
