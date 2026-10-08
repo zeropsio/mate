@@ -42,7 +42,9 @@ describe("C: conversation images", () => {
             const id =
               input.resource._tag === "attachment"
                 ? String(["one", "two", "three"].indexOf(input.resource.attachmentId) + 1)
-                : "4";
+                : input.resource.path?.includes("bbbbbbbb")
+                  ? "5"
+                  : "4";
             mate.reply(
               socket,
               request.id,
@@ -57,21 +59,13 @@ describe("C: conversation images", () => {
           const handle = mate.handle;
           mate.handle = (request) => {
             if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-            requests.push(request.url.pathname);
+            requests.push(request.url.pathname + request.url.search);
             return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
           };
         });
         yield* s.given.project("Ada", { mate: true });
         const chat = mateChat(s);
         const wire = chat.fixture();
-        wire.history("Earlier work", "earlier");
-        wire.tool(
-          "earlier-command",
-          "tool.completed",
-          { toolName: "Bash", command: "printf earlier", rawOutput: { content: "Earlier output" } },
-          "earlier",
-        );
-        wire.run("earlier", "completed");
         wire.message(
           "pictures",
           "user",
@@ -95,9 +89,22 @@ describe("C: conversation images", () => {
           imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         };
         wire.run("stream", "running");
+        wire.tool(
+          "progress",
+          "tool.started",
+          { command: "printf work-update-0", kind: "execute" },
+          "stream",
+        );
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Watch these pictures while you work");
         wire.tool("work-image", "tool.completed", work, "stream", { itemType: "image_view" });
+        const secondWork = {
+          ...work,
+          imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        };
+        wire.tool("second-work-image", "tool.completed", secondWork, "stream", {
+          itemType: "image_view",
+        });
         yield* Effect.promise(() =>
           s.page
             .waitForFunction(
@@ -106,7 +113,7 @@ describe("C: conversation images", () => {
                   ...document.querySelectorAll<HTMLImageElement>("img[data-image-src]"),
                 ];
                 return (
-                  images.length === 4 &&
+                  images.length === 5 &&
                   images.every(
                     (image) =>
                       image.getBoundingClientRect().top >= 0 &&
@@ -195,6 +202,7 @@ describe("C: conversation images", () => {
               for (const { image, src, width, height } of held) {
                 if (!image.isConnected) violations.add(`${image.alt}: replaced`);
                 if (image.src !== src) violations.add(`${image.alt}: src changed`);
+                if (image.closest("[hidden]")) continue;
                 if (
                   image.getBoundingClientRect().width !== width ||
                   image.getBoundingClientRect().height !== height
@@ -202,7 +210,8 @@ describe("C: conversation images", () => {
                   violations.add(`${image.alt}: size changed`);
                 for (let node: Element | null = image; node !== null; node = node.parentElement) {
                   const style = getComputedStyle(node);
-                  if (Number(style.opacity) < 1) violations.add(`${image.alt}: faded`);
+                  if (Number(style.opacity) < 1)
+                    violations.add(`${image.alt}: faded by ${node.className} (${style.opacity})`);
                   const box = node.getBoundingClientRect();
                   const picture = image.getBoundingClientRect();
                   if (
@@ -227,27 +236,26 @@ describe("C: conversation images", () => {
             };
           }),
         );
-        const samples: unknown[] = [];
-        wire.tool(
-          "progress",
-          "tool.started",
-          { command: "printf work-update-0", kind: "execute" },
-          "stream",
-        );
         for (let update = 0; update < 24; update++) {
           wire.tool(
             "progress",
             "tool.updated",
             {
               kind: "execute",
-              command: `printf work-update-${update}`,
+              command: `printf work-update-${update}${"\necho growing".repeat(update % 4)}`,
               rawOutput: { content: `Work update ${update}` },
             },
             "stream",
           );
           yield* chat.then.text(`printf work-update-${update}`);
-          if (update === 8) yield* chat.when.activate("Show work");
-          if (update === 16) yield* chat.when.activate("Hide work");
+          if (update === 7)
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () => document.querySelectorAll(".run-scroll img[data-image-src]").length === 2,
+              ),
+            );
+          if (update === 8) yield* chat.when.activate("Hide work");
+          if (update === 16) yield* chat.when.activate("Show work");
           const images = yield* Effect.promise(() =>
             s.page.evaluate(
               (watched) =>
@@ -258,34 +266,159 @@ describe("C: conversation images", () => {
                   return {
                     sameNode: image === held.image,
                     sameSrc: image?.src === held.src,
+                    hidden: Boolean(image?.closest("[hidden]")),
                     decoded:
                       image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1,
                     sameSize:
-                      image?.getBoundingClientRect().width === held.width &&
-                      image?.getBoundingClientRect().height === held.height,
+                      Boolean(image?.closest("[hidden]")) ||
+                      (image?.getBoundingClientRect().width === held.width &&
+                        image?.getBoundingClientRect().height === held.height),
                   };
                 }),
               watched,
             ),
           );
-          samples.push(images);
-        }
-        expect(samples).toEqual(
-          Array.from({ length: 24 }, () =>
-            Array.from({ length: 4 }, () => ({
+          expect(images).toEqual(
+            Array.from({ length: 5 }, (_, index) => ({
               sameNode: true,
               sameSrc: true,
+              hidden: index >= 3 && update >= 8 && update < 16,
               decoded: true,
               sameSize: true,
             })),
-          ),
-        );
-        expect(requests.length).toBe(initialRequests);
+          );
+          expect(
+            yield* Effect.promise(() =>
+              s.page.evaluate((watched) => [...watched.violations], watched),
+            ),
+          ).toEqual([]);
+        }
+        expect(requests.slice(initialRequests)).toEqual([]);
         const film = yield* Effect.promise(() =>
           s.page.evaluate((watched) => watched.finish(), watched),
         );
         expect(film.frames).toBeGreaterThan(0);
         expect(film.violations).toEqual([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+    it.effect("a decoded assistant image lands intact while later work continues", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        const bytes = Buffer.from(
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const canvas = document.createElement("canvas");
+              canvas.width = 160;
+              canvas.height = 80;
+              canvas.getContext("2d")!.fillRect(0, 0, 160, 80);
+              return canvas.toDataURL("image/png").split(",")[1]!;
+            }),
+          ),
+          "base64",
+        );
+        let reads = 0;
+        s.drivers.onMate.push((mate) => {
+          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+          mate.rpcHandlers.unshift((request, socket) => {
+            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+            mate.reply(
+              socket,
+              request.id,
+              encode({
+                relativeUrl: `/api/assets/objects/${"c".repeat(64)}/preview`,
+                expiresAt: 0,
+                imageDimensions: { width: 160, height: 80 },
+              }),
+            );
+            return true;
+          });
+          const handle = mate.handle;
+          mate.handle = (request) => {
+            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
+            reads++;
+            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
+          };
+        });
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        const wire = chat.fixture();
+        wire.history("Watch the assistant picture", "stream");
+        wire.run("stream", "running");
+        yield* s.given.signedIn;
+        yield* chat.when.open("Ada", "Watch the assistant picture");
+        const text = "![assistant picture](/tmp/assistant.png)\n\nHere is the picture";
+        wire.message("illustration", "assistant", text, "stream", { streaming: true });
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() => {
+            const image = document.querySelector<HTMLImageElement>(".run-slot img[data-image-src]");
+            return image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1;
+          }),
+        );
+        const held = yield* Effect.promise(() =>
+          s.page.evaluateHandle(() => {
+            const image = document.querySelector<HTMLImageElement>(
+              ".run-slot img[data-image-src]",
+            )!;
+            const src = image.src;
+            const failures = new Set<string>();
+            let running = true;
+            const sample = () => {
+              if (!image.isConnected) failures.add("replaced");
+              if (image.src !== src) failures.add("src changed");
+              for (let node: Element | null = image; node; node = node.parentElement) {
+                if (Number(getComputedStyle(node).opacity) < 1)
+                  failures.add(`faded by ${node.className} (${getComputedStyle(node).opacity})`);
+              }
+              if (running) requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+            return {
+              image,
+              src,
+              finish: () => {
+                running = false;
+                return [...failures];
+              },
+            };
+          }),
+        );
+        const initialReads = reads;
+        wire.message("illustration", "assistant", text, "stream", { streaming: false });
+        wire.tool(
+          "later",
+          "tool.started",
+          { kind: "execute", command: "printf later-0" },
+          "stream",
+        );
+        for (let update = 0; update < 24; update++) {
+          wire.tool(
+            "later",
+            "tool.updated",
+            { kind: "execute", command: `printf later-${update}` },
+            "stream",
+          );
+          yield* chat.then.text(`printf later-${update}`);
+        }
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() =>
+            Boolean(document.querySelector(".run-scroll img[data-image-src]")),
+          ),
+        );
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate(
+              (held) => ({
+                sameNode: document.querySelector(".run-scroll img[data-image-src]") === held.image,
+                sameSrc: held.image.src === held.src,
+                failures: held.finish(),
+              }),
+              held,
+            ),
+          ),
+        ).toEqual({ sameNode: true, sameSrc: true, failures: [] });
+        expect(reads).toBe(initialReads);
         yield* s.then.noExternalNetwork;
       }),
     );

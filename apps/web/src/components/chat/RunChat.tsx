@@ -1240,10 +1240,17 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  */
 function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
+  const content = useMemo(() => ({ kind: "message" as const, message }), [message]);
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} what="message">
-        <NoteWords message={message} />
+        <RetainedRunContent
+          contentKey={`message:${message.id}`}
+          content={content}
+          className="min-w-0"
+        >
+          <NoteWords message={message} />
+        </RetainedRunContent>
       </OpensWhole>
     </Bubble>
   );
@@ -1349,18 +1356,21 @@ const NO_PATHS: ReadonlySet<string> = new Set();
 const ResultPicturesContext = createContext<ReadonlySet<string>>(NO_PATHS);
 
 /** The pictures a step looked at, as themselves: small, each one opening the picture viewer. */
-function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
+function StepPictures({ step }: { readonly step: WorkStep }) {
   const inResult = use(ResultPicturesContext);
-  const lineKey = use(ChatLineContext);
   const { threadRef, onImageExpand } = use(TimelineRowCtx);
-  const shown = paths.filter((path) => !inResult.has(path));
+  const shown = step.entries.flatMap((entry) =>
+    stepOf(entry, undefined, false)
+      .images.filter((path) => !inResult.has(path))
+      .map((path) => ({ key: `picture:${entry.id}:${path}`, path })),
+  );
   if (shown.length === 0 || threadRef === null) return null;
   return (
     <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
-      {shown.map((path) => (
+      {shown.map(({ key, path }) => (
         <StepPicture
-          key={path}
-          pictureKey={`${lineKey}:${path}`}
+          key={key}
+          pictureKey={key}
           onOpen={onImageExpand}
           path={path}
           threadRef={threadRef}
@@ -1370,9 +1380,34 @@ function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
   );
 }
 
-const RunPictureTargets = createContext<{
-  readonly attach: (key: string, path: string, host: HTMLElement) => () => void;
+type RunContent =
+  | { readonly kind: "picture"; readonly path: string }
+  | { readonly kind: "message"; readonly message: ChatMessage };
+const RunContentTargets = createContext<{
+  readonly attach: (key: string, content: RunContent, host: HTMLElement) => () => void;
 } | null>(null);
+
+/** The rendered content belongs to the run; its anchor can move between slot and history. */
+function RetainedRunContent({
+  contentKey,
+  content,
+  children,
+  className,
+}: {
+  readonly contentKey: string;
+  readonly content: RunContent;
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  const targets = use(RunContentTargets);
+  const attach = useCallback(
+    (host: HTMLDivElement | null) => {
+      if (host !== null && targets !== null) return targets.attach(contentKey, content, host);
+    },
+    [targets, contentKey, content],
+  );
+  return targets === null ? children : <div ref={attach} className={className} />;
+}
 
 /** A call may move between the live slot and history; its decoded picture stays owned by the run. */
 function StepPicture(props: {
@@ -1381,18 +1416,11 @@ function StepPicture(props: {
   readonly threadRef: ScopedThreadRef;
   readonly onOpen: (preview: ExpandedImagePreview) => void;
 }) {
-  const pictures = use(RunPictureTargets);
-  const attach = useCallback(
-    (host: HTMLSpanElement | null) => {
-      if (host !== null && pictures !== null)
-        return pictures.attach(props.pictureKey, props.path, host);
-    },
-    [pictures, props.path, props.pictureKey],
-  );
-  return pictures === null ? (
-    <StepPictureContent {...props} />
-  ) : (
-    <span ref={attach} className="block h-20 w-32" />
+  const content = useMemo(() => ({ kind: "picture" as const, path: props.path }), [props.path]);
+  return (
+    <RetainedRunContent contentKey={props.pictureKey} content={content} className="block h-20 w-32">
+      <StepPictureContent {...props} />
+    </RetainedRunContent>
   );
 }
 
@@ -1660,7 +1688,7 @@ function StepBubble({
           />
         </div>
       ) : null}
-      <StepPictures paths={step.images} />
+      <StepPictures step={step} />
       {disclosure.open && outputs.length > 0 ? (
         <div
           className={cn("grid gap-2 px-3 pb-2", rises(disclosure.made))}
@@ -3153,7 +3181,7 @@ function NowLine({
   readonly answering: boolean;
   /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
   readonly outcome: OutcomeModel | null;
-  /** What stands in the right column once the run is over. */
+  /** A control in the right column, beside the clock while the run is live. */
   readonly end?: ReactNode;
   /**
    * The person watched the run end here: its worked line takes the working
@@ -3229,7 +3257,14 @@ function NowLine({
           </span>
         ) : null}
       </div>
-      {status.live ? <RunTicker status={status} /> : (end ?? <span />)}
+      {status.live ? (
+        <span className="flex items-center gap-3">
+          <RunTicker status={status} />
+          {end}
+        </span>
+      ) : (
+        (end ?? <span />)
+      )}
       {/* A run that broke off ends on why, under its line, in the words the
           server gave it: never a stack. Watched as it ends, its room opens
           as the line settles — never a jump of the card. */}
@@ -3495,6 +3530,7 @@ function fillerKey(filler: SlotFiller): string {
 
 function LiveSlot({
   ref,
+  folded,
   slot,
   live,
   items,
@@ -3506,6 +3542,7 @@ function LiveSlot({
   motionRef,
 }: {
   readonly ref: Ref<HTMLDivElement>;
+  readonly folded: boolean;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3631,7 +3668,7 @@ function LiveSlot({
     const rooms = easeRooms({
       root: slotBox,
       selector: EASED_BOXES,
-      eases: () => shownRef.current && !syncingRef.current,
+      eases: () => shownRef.current && !syncingRef.current && !hasDecodedPicture(slotBox),
       rootClips: true,
       budget: motionRef.current.budget,
     });
@@ -3669,6 +3706,8 @@ function LiveSlot({
     <div
       ref={ref}
       className="run-slot"
+      hidden={folded}
+      style={folded ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
       data-work-line={status.face}
@@ -3813,6 +3852,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
   const shows = runCardShows(settled, fold);
   const folded = shows.toggle === "show";
+  const [liveFolded, setLiveFolded] = useState(false);
   // The work stands over the line while the run goes on, while it stays open
   // for a reader, and while it folds away into the line.
   const above = shows.work === "above";
@@ -3837,44 +3877,45 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   );
   // A row's old anchor releases and its new anchor attaches in the same commit.
   // Keep the portal target through that handoff; a truly hidden row drops its demand.
-  const [pictureTargets] = useState(
-    () => new Map<string, { path: string; target: HTMLElement; holders: number }>(),
+  const [contentTargets] = useState(
+    () => new Map<string, { content: RunContent; target: HTMLElement; holders: number }>(),
   );
-  const [picturePaths, setPicturePaths] = useState<
-    ReadonlyMap<string, { path: string; target: HTMLElement }>
+  const [contents, setContents] = useState<
+    ReadonlyMap<string, { content: RunContent; target: HTMLElement }>
   >(() => new Map());
-  const attachPicture = useCallback(
-    (key: string, path: string, host: HTMLElement) => {
-      let held = pictureTargets.get(key);
+  const attachContent = useCallback(
+    (key: string, content: RunContent, host: HTMLElement) => {
+      let held = contentTargets.get(key);
       if (held === undefined) {
-        held = { path, target: document.createElement("span"), holders: 0 };
-        pictureTargets.set(key, held);
+        held = { content, target: document.createElement("div"), holders: 0 };
+        contentTargets.set(key, held);
       }
+      held.content = content;
       host.appendChild(held.target);
       const first = held.holders === 0;
       held.holders += 1;
       if (first) {
         const picture = held;
-        setPicturePaths((paths) => new Map(paths).set(key, picture));
+        setContents((paths) => new Map(paths).set(key, picture));
       }
       return () => {
         held.holders -= 1;
         if (held.holders === 0)
-          setPicturePaths((paths) => {
+          setContents((paths) => {
             const next = new Map(paths);
             next.delete(key);
             return next;
           });
       };
     },
-    [pictureTargets],
+    [contentTargets],
   );
-  const pictures = useMemo(() => ({ attach: attachPicture }), [attachPicture]);
+  const targets = useMemo(() => ({ attach: attachContent }), [attachContent]);
   useEffect(() => {
-    for (const [key, picture] of pictureTargets) {
-      if (picture.holders === 0 && !picturePaths.has(key)) pictureTargets.delete(key);
+    for (const [key, picture] of contentTargets) {
+      if (picture.holders === 0 && !contents.has(key)) contentTargets.delete(key);
     }
-  }, [picturePaths, pictureTargets]);
+  }, [contents, contentTargets]);
   // A folded line's own calls are the record's too (`parts`).
   const recordKeys = useMemo(
     () =>
@@ -4102,7 +4143,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
     // scroll the person watched is the one that folds away.
-    <RunPictureTargets value={typeof document === "undefined" ? null : pictures}>
+    <RunContentTargets value={typeof document === "undefined" ? null : targets}>
       <CarriedOpenContext value={carriedOpen}>
         <ResultPicturesContext value={resultPictures}>
           <div
@@ -4124,6 +4165,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                 key="above"
                 ref={aboveRef}
                 className="run-above"
+                hidden={row.live && liveFolded}
+                style={row.live && liveFolded ? { display: "none" } : undefined}
                 data-folding={fold === "folding" ? "" : undefined}
               >
                 {scroll}
@@ -4165,6 +4208,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             ) : (
               <LiveSlot
                 key="slot"
+                folded={liveFolded}
                 ref={slotRef}
                 items={row.items}
                 live={model.live}
@@ -4177,18 +4221,50 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                 motionRef={motionRef}
               />
             )}
+            {row.live && row.status !== null ? (
+              liveFolded ? (
+                <NowLine
+                  key="live-summary"
+                  answering={row.answering}
+                  outcome={null}
+                  now={row.now}
+                  status={row.status}
+                  end={
+                    <WorkToggle
+                      open={false}
+                      onToggle={() => {
+                        hold(false);
+                        setLiveFolded(false);
+                      }}
+                    />
+                  }
+                />
+              ) : (
+                <WorkToggle
+                  open
+                  onToggle={() => {
+                    hold(true);
+                    setLiveFolded(true);
+                  }}
+                />
+              )
+            ) : null}
             <div key="below" ref={feedRef} className="run-later-feed">
               {above ? null : scroll}
             </div>
             {threadRef === null
               ? null
-              : [...picturePaths].map(([key, picture]) =>
+              : [...contents].map(([key, picture]) =>
                   createPortal(
-                    <StepPictureContent
-                      path={picture.path}
-                      threadRef={threadRef}
-                      onOpen={ctx.onImageExpand}
-                    />,
+                    picture.content.kind === "picture" ? (
+                      <StepPictureContent
+                        path={picture.content.path}
+                        threadRef={threadRef}
+                        onOpen={ctx.onImageExpand}
+                      />
+                    ) : (
+                      <NoteWords message={picture.content.message} />
+                    ),
                     picture.target,
                     key,
                   ),
@@ -4196,7 +4272,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           </div>
         </ResultPicturesContext>
       </CarriedOpenContext>
-    </RunPictureTargets>
+    </RunContentTargets>
   );
 }
 
@@ -4437,13 +4513,13 @@ function RunScroll({
   const drawingEarlierRef = useRef(false);
   // When the person last gave it an input: what tells their move from its own motion's.
   const personAtRef = useRef(Number.NEGATIVE_INFINITY);
-  const heardPerson = () => {
+  const heardPerson = useEffectEvent(() => {
     personAtRef.current = performance.now();
-  };
+  });
   // A pointer or a finger held on it is their input until it lifts: a
   // drag-select scrolling at its edge, a finger resting on the lines.
   const holdsRef = useRef({ pointer: false, touch: false });
-  const heardHold = (kind: "pointer" | "touch") => {
+  const heardHold = useEffectEvent((kind: "pointer" | "touch") => {
     heardPerson();
     const holds = holdsRef.current;
     if (holds[kind]) return;
@@ -4465,7 +4541,25 @@ function RunScroll({
     };
     const cap = setTimeout(lifted, HOLD_LONGEST_MS);
     for (const type of ends) window.addEventListener(type, lifted, true);
-  };
+  });
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    const pointer = () => heardHold("pointer");
+    const touch = () => heardHold("touch");
+    element.addEventListener("keydown", heardPerson, true);
+    element.addEventListener("wheel", heardPerson, { capture: true, passive: true });
+    element.addEventListener("touchmove", heardPerson, { capture: true, passive: true });
+    element.addEventListener("pointerdown", pointer, true);
+    element.addEventListener("touchstart", touch, { capture: true, passive: true });
+    return () => {
+      element.removeEventListener("keydown", heardPerson, true);
+      element.removeEventListener("wheel", heardPerson, true);
+      element.removeEventListener("touchmove", heardPerson, true);
+      element.removeEventListener("pointerdown", pointer, true);
+      element.removeEventListener("touchstart", touch, true);
+    };
+  }, []);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
@@ -4860,11 +4954,6 @@ function RunScroll({
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
-          onKeyDown={heardPerson}
-          onPointerDown={() => heardHold("pointer")}
-          onTouchStart={() => heardHold("touch")}
-          onTouchMove={heardPerson}
-          onWheel={heardPerson}
           role="region"
           tabIndex={0}
         >

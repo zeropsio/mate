@@ -942,8 +942,22 @@ describe("RunChat, as the person uses it", () => {
   // now line's dwell, its words' fade and its clock running past the test,
   // and their late renders logged while the worker closed (CI, 2026-10-01).
   const drawn: ReactTestRenderer[] = [];
+  const nodeEvents = new WeakMap<object, EventTarget>();
   const mounted = (...args: Parameters<typeof create>): ReactTestRenderer => {
-    const renderer = create(...args);
+    const [element, options] = args;
+    const renderer = create(element, {
+      ...options,
+      createNodeMock: (node) => {
+        const target = options?.createNodeMock?.(node) ?? null;
+        if (target !== null && typeof target === "object" && !nodeEvents.has(target)) {
+          const events = new EventTarget();
+          nodeEvents.set(target, events);
+          target.addEventListener = events.addEventListener.bind(events);
+          target.removeEventListener = events.removeEventListener.bind(events);
+        }
+        return target;
+      },
+    });
     drawn.push(renderer);
     return renderer;
   };
@@ -2079,10 +2093,11 @@ describe("RunChat, as the person uses it", () => {
          * The person moves it to `top` — a wheel, keys, a drag — and it is heard: their input
          * first, as a browser gives it, then where it stands.
          */
-        scrolled: (top: number) => {
+        scrolled: (top: number, resizeBy = 0) => {
           box.scrollTop = top;
           act(() => {
-            scroll().props.onWheel();
+            nodeEvents.get(box)!.dispatchEvent(new Event("wheel"));
+            box.scrollHeight += resizeBy;
             scroll().props.onScroll({
               currentTarget: {
                 scrollTop: box.scrollTop,
@@ -2132,6 +2147,15 @@ describe("RunChat, as the person uses it", () => {
       run.scrolled(run.box.scrollHeight - run.box.clientHeight - 2);
       run.grow(65);
       expect(run.fromFoot()).toBe(0);
+    });
+
+    it("a small wheel move during a resize holds the reader through later arrivals", () => {
+      const run = liveScroll();
+      const top = run.box.scrollTop - 3;
+      run.scrolled(top, 65);
+      run.grow(65);
+      run.grow(65);
+      expect(run.box.scrollTop).toBe(top);
     });
 
     // What it holds shrank (a line closed) and the browser clamped it onto its

@@ -2455,7 +2455,7 @@ code {
    so opening a finished thread never replays the fade. Opacity only, one
    shot, no layout change. */
 @media (prefers-reduced-motion: no-preference) {
-  .chat-markdown[data-streaming] > *,
+  .chat-markdown[data-streaming] > :not(:has(.asset-image-frame:not([data-image-pending]))),
   .chat-markdown[data-streaming] .chat-markdown-shiki {
     transition: opacity 600ms ease-out;
 
@@ -4955,6 +4955,11 @@ button.run-bar:focus-visible {
   .run-rise {
     animation-name: run-fade;
   }
+}
+
+/* Moving decoded content into a newly drawn row never replays its entrance. */
+.run-rise:has(.asset-image-frame:not([data-image-pending])) {
+  animation: none;
 }
 
 /* A run's line with nothing under it keeps the tray's geometry in a frame

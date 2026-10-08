@@ -181,7 +181,12 @@ function ManagedAssetImage({
           : Math.round(available?.height || 0) || width);
       if (width > 0)
         setSlot((held) =>
-          held?.width === width && held.height === height ? held : { width, height },
+          // Hidden or moving content has no new drawn size to demand.
+          held !== null && (box.width <= 0 || box.height <= 0)
+            ? held
+            : held?.width === width && held.height === height
+              ? held
+              : { width, height },
         );
     };
     measure();
