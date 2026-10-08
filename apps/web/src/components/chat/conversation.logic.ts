@@ -629,7 +629,7 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
     (entry) =>
       entry.kind !== "turn-plan" &&
       entry.kind !== "change-landed" &&
-      !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
+      !(entry.kind === "message" && saysNothing(entry.message)) &&
       !(
         (entry.kind === "work" || entry.kind === "generic-call") &&
         (isTaskReport(entry) ||
@@ -729,8 +729,17 @@ function countsAsLastWord(entry: TimelineEntry): boolean {
   return (
     entry.kind !== "turn-plan" &&
     !isTaskReport(entry) &&
-    !(entry.kind === "message" && entry.message.text.trim().length === 0)
+    !(entry.kind === "message" && saysNothing(entry.message))
   );
+}
+
+/**
+ * A message of nothing: no words, and none on their way. A message still being written is words
+ * all the same before its first one reaches its record (an engine Mate's, whose leaf reads them
+ * from the live text); a V1 message is born with its first words.
+ */
+export function saysNothing(message: Pick<ChatMessage, "text" | "streaming">): boolean {
+  return message.streaming !== true && message.text.trim().length === 0;
 }
 
 /**
