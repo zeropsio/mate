@@ -36,11 +36,11 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. Above
- * every version main has released or reserved (main's 8 lacks `rotation`; round 3 takes 9 and the
- * live fixes may take 10), so no snapshot of another shape loads as this one.
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
+ * above main's 9 (round 3), whose 8 lacked `rotation`, so no snapshot of another shape loads as
+ * this one.
  */
-export const STATE_VERSION = 11;
+export const STATE_VERSION = 10;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -80,6 +80,11 @@ export interface RunRecord {
   readonly personBody: PersonBody | null;
   /** The turn's interaction mode: `plan` asks the agent for a plan. */
   readonly interactionMode: ProviderInteractionMode;
+  /**
+   * Its turn sleeps on a question asked by message that the person dismissed (Codex waits for
+   * input inside the turn): the person's next message goes into this turn, not after it.
+   */
+  readonly awaitsMessage: boolean;
 }
 
 export type PersonBody = Extract<ItemBody, { readonly kind: "person" }>;

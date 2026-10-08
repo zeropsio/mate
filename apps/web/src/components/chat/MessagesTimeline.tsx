@@ -48,7 +48,12 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { createEndFollow, takeOwnScroll, type EndFollow } from "./timelineEndFollow";
+import {
+  createEndFollow,
+  ownListScrolls,
+  takeOwnScroll,
+  type EndFollow,
+} from "./timelineEndFollow";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -719,6 +724,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // position coming back, a sent message kept near the top, history being
   // read.
   const followingEnd = !restoringReadingPosition && !anchoredEndSpace && liveFollowEnabled;
+  const listPlacedRef = useRef(listPlaced);
+  useLayoutEffect(() => {
+    listPlacedRef.current = listPlaced;
+  }, [listPlaced]);
   const followingEndRef = useRef(followingEnd);
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
@@ -754,26 +763,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [followEnd, timelineViewportElement]);
-  // LegendList re-pins the end itself only for a measurement that moved a row
-  // by more than 5 px, so a row easing taller is followed here too — on the
-  // next frame, as LegendList does: the scroll range takes the growth once the
-  // list has re-rendered its new size.
-  const onItemSizeChanged = useCallback(
-    ({ previous, size }: { readonly previous: number; readonly size: number }) => {
-      if (!followingEndRef.current || size <= previous) return;
-      // In the frame the row grew, once the list has drawn its new size (its
-      // render runs in a microtask queued before this one), so nothing under
-      // the reader moves for a frame; and again on the next frame, for a
-      // render the list put off.
-      queueMicrotask(followEnd);
-      if (endRepinFrameRef.current !== null) return;
-      endRepinFrameRef.current = requestAnimationFrame(() => {
-        endRepinFrameRef.current = null;
-        followEnd();
-      });
-    },
-    [followEnd],
-  );
+  // Every measurement can move the end, including an estimated row becoming
+  // shorter. Read its native clamp in the measurement callback before another
+  // layout can hide it, then follow after the list applies its layout.
+  const onItemSizeChanged = useCallback(() => {
+    if (!followingEndRef.current) return;
+    endFollowRef.current?.observe();
+    queueMicrotask(followEnd);
+    if (endRepinFrameRef.current !== null) return;
+    endRepinFrameRef.current = requestAnimationFrame(() => {
+      endRepinFrameRef.current = null;
+      followEnd();
+    });
+  }, [followEnd]);
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above
@@ -1107,7 +1109,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const node = listRef.current?.getScrollableNode();
     const own = node !== null && node !== undefined && takeOwnScroll(node);
     readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
-  }, [listRef, readList]);
+    // A move of the page's own that left the end while it follows: back to the end.
+    if (own && followingEndRef.current && listPlacedRef.current) followEnd();
+  }, [followEnd, listRef, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {
@@ -1377,6 +1381,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
     return () => cancelAnimationFrame(frame);
   }, [standing, showsList, kept?.shown, routeThreadKey, activeThreadEnvironmentId]);
+  // The list's own scrolls are the page's moves: its initial scroll to the end re-applied after
+  // the conversation was placed was read as a jump far up, and the conversation stopped following
+  // its end mid-way.
+  useLayoutEffect(() => {
+    if (!showsList) return;
+    const node = listRef.current?.getScrollableNode();
+    return node ? ownListScrolls(node) : undefined;
+  }, [listRef, showsList]);
   const rowsRef = useRef(rows);
   useLayoutEffect(() => {
     rowsRef.current = rows;

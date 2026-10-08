@@ -38,6 +38,7 @@ import { LiveBus } from "../../LiveBus.ts";
 import { MateEngine } from "../../MateEngine.ts";
 import {
   AgentWorkspace,
+  HandedOverResume,
   MessagePictures,
   RestartEvidence,
   RunAdmission,
@@ -84,6 +85,11 @@ export interface WorldOptions {
   readonly admissionDies?: string;
   /** The workspace's first this many reads cannot tell it. */
   readonly workspaceUnavailable?: number;
+  /** What another instance of the driver left on the thread; nothing by default. */
+  readonly handedOver?: (input: {
+    readonly thread: string;
+    readonly instanceId: string;
+  }) => unknown;
 }
 
 let lives = 0;
@@ -144,6 +150,10 @@ export const makeEngineWorld = (options: WorldOptions) =>
               ? Effect.fail(new WorkspaceUnavailable({ message: "The copy cannot be read now." }))
               : Effect.succeed({ cwd: dir, runtimeMode: "full-access" }),
         }),
+      ),
+      Layer.succeed(
+        HandedOverResume,
+        HandedOverResume.of({ of: (input) => Effect.succeed(options.handedOver?.(input)) }),
       ),
       // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
       Layer.succeed(

@@ -97,6 +97,11 @@ export interface ToCore {
   readonly step: (signal: DriverSignal, now: number) => CoreStep;
   /** Background work still alive in this session: an idle close keeps the session for it. */
   readonly liveWork: () => number;
+  /**
+   * The server stops under the session: each open text item (a note, a thought, a plan) ends cut
+   * with the words it streamed, which only this fold holds. Its closes, for the record.
+   */
+  readonly cutText: (now: number) => ReadonlyArray<ProviderSignal>;
   /** What it holds now, for its bounds: open items, their streams, the turns it remembers. */
   readonly retained: () => {
     readonly items: number;
@@ -397,8 +402,29 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     return { signals, evidence, live, session, pictures };
   };
 
+  const cutText = (now: number): ReadonlyArray<ProviderSignal> => {
+    const closes: Array<ProviderSignal> = [];
+    for (const [key, item] of items) {
+      if (item.closed || item.status !== "running" || !TEXT_KINDS.has(item.body.kind)) continue;
+      item.status = "cut";
+      const { body, detail } = engineBody(item, now);
+      closes.push({
+        kind: "item-closed",
+        turn: item.turn,
+        key,
+        by: item.by,
+        body,
+        ...(detail === undefined ? {} : { detail }),
+      });
+      items.delete(key);
+      keep(closedKeys, key, "cut", KEPT_CLOSED_KEYS);
+    }
+    return closes;
+  };
+
   return {
     step,
+    cutText,
     liveWork: () => liveWork.size,
     retained: () => ({
       items: items.size,

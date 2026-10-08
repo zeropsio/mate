@@ -58,9 +58,7 @@ export const startCommand = Command.make("start", { ...sharedServerCommandFlags 
 );
 
 export const serveCommand = Command.make("serve", { ...sharedServerCommandFlags }).pipe(
-  Command.withDescription(
-    "Run the Zerops Mate server without opening a browser and print headless pairing details.",
-  ),
+  Command.withDescription("Run the Zerops Mate server without opening a browser."),
   Command.withHandler((flags) =>
     runServerCommand(flags, {
       startupPresentation: "headless",

@@ -156,6 +156,13 @@ export const RATCHET_RULES = [
   "no-retired-mechanism",
   "no-failure-to-empty",
   "no-remote-data-in-browser-storage",
+  "no-infinite-motion",
+  "no-legacy-vocabulary",
+  "require-static-classes",
+  "no-unknown-classes",
+  "no-restyle",
+  "no-arbitrary-values",
+  "no-theme-escape-hatches",
 ] as const;
 
 export const ADMISSION_POLICY_BOOTSTRAP: ReadonlyArray<ExceptionEntry> = [

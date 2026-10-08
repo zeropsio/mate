@@ -2,8 +2,9 @@
  * What the Mate engine needs from the product around it, as ports: who may
  * start a run (`RunAdmission`), what the platform says about the last
  * restart (`RestartEvidence`), where a conversation's agent works
- * (`AgentWorkspace`) and how a call's pictures are claimed (`MessagePictures`). The engine
- * imports these, never `zerops/`;
+ * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`) and what
+ * another instance of a driver left on a thread (`HandedOverResume`). The engine imports these,
+ * never `zerops/` and no provider file but `ProviderService`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
  *
@@ -126,3 +127,18 @@ export class MessagePictures extends Context.Service<
     readonly release: (claimed: ReadonlyArray<ChatAttachment>) => Effect.Effect<void>;
   }
 >()("t3/engine/ports/MessagePictures") {}
+
+/**
+ * The resume state another instance of the same driver left on a thread, read when a person's
+ * agent pick keeps the thread: `undefined` when it left none (the session starts fresh), and for
+ * the thread's own instance, whose binding `ProviderService` resumes itself.
+ */
+export class HandedOverResume extends Context.Service<
+  HandedOverResume,
+  {
+    readonly of: (input: {
+      readonly thread: string;
+      readonly instanceId: string;
+    }) => Effect.Effect<unknown>;
+  }
+>()("t3/engine/ports/HandedOverResume") {}

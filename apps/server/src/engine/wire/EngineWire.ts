@@ -885,7 +885,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                               ChatImageAttachment | ChatFileAttachment
                             >,
                           }),
-                      ...(input.interactionMode === undefined
+                      // A mode a newer client knows and this engine does not: the default.
+                      ...(input.interactionMode === undefined || input.interactionMode === "unknown"
                         ? {}
                         : { interactionMode: input.interactionMode }),
                     }),

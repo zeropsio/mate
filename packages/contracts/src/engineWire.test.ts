@@ -19,6 +19,8 @@ import {
 const conversation = ConversationId.make("mate");
 const run = runId(conversation, 1);
 const decodeFrame = Schema.decodeUnknownSync(EngineConversationFrame);
+const decodeHeader = Schema.decodeUnknownSync(ConversationHeader);
+const decodeSend = Schema.decodeUnknownSync(EngineSendInput);
 const encodeFrame = Schema.encodeUnknownSync(EngineConversationFrame);
 
 const base = (n: number) => ({
@@ -86,6 +88,29 @@ describe("an older client reads a newer engine's wire", () => {
       type: "reset",
       reason: "unknown",
     });
+  });
+
+  it("reads a runtime or interaction mode it does not know as unknown", () => {
+    const header = decodeHeader({
+      conversationId: "mate",
+      agent: null,
+      archived: false,
+      model: null,
+      session: null,
+      pausedUntil: null,
+      queued: 0,
+      runtimeMode: "sandboxed",
+      interactionMode: "review",
+    });
+    expect([header.runtimeMode, header.interactionMode]).toEqual(["unknown", "unknown"]);
+    const sent = decodeSend({
+      protocol: 1,
+      conversationId: "mate",
+      commandId: "c1",
+      text: "Look it over",
+      interactionMode: "review",
+    });
+    expect(sent.interactionMode).toBe("unknown");
   });
 
   it("reads an answer kind it does not know as unknown, so the server can refuse it", () => {

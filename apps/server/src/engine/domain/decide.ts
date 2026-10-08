@@ -48,8 +48,8 @@ import {
   ItemId,
   WORK_ENDED,
 } from "@t3tools/contracts";
+import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
-import { changedOptionIds } from "../../orchestration/modelSelectionChange.ts";
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type {
@@ -805,6 +805,12 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
   refuseOverWork(b);
+  const sleeping = sleepingTurn(b);
+  if (sleeping !== undefined) {
+    // Queued behind it, the message would never come: the turn waits for it.
+    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments);
+    return;
+  }
   const ordinal = b.state.nextRunOrdinal;
   const item = deriveItemId(deriveRunId(b.state.conversationId, ordinal), 1);
   const run = queueRun(b, {
@@ -857,6 +863,22 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     b.emit({ _tag: "UsagePauseLifted", reason: "the person wrote again" });
   }
   admitNext(b);
+};
+
+/**
+ * The turn still sleeping on a question asked by message that the person dismissed (Codex waits
+ * for input inside it), while it lives on the current session.
+ */
+const sleepingTurn = (
+  b: StepBuilder,
+): { readonly run: RunRecord; readonly sessionId: SessionId } | undefined => {
+  if (b.state.activeRunId === null) return undefined;
+  const run = b.state.runs[b.state.activeRunId];
+  const session = b.state.session;
+  if (run === undefined || !run.awaitsMessage || session === null) return undefined;
+  if (run.state !== "running" && run.state !== "waiting") return undefined;
+  if (run.sessionId !== session.id) return undefined;
+  return { run, sessionId: session.id };
 };
 
 const stop = (b: StepBuilder, target: RunId | undefined): void => {

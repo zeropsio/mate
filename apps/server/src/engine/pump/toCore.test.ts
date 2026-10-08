@@ -257,6 +257,53 @@ describe("the pump's mapping", () => {
     });
   });
 
+  it("when the server stops, an open note and thought close cut with their words; a call stays open", () => {
+    const toCore = makeToCore();
+    toCore.step(upsert("h1.i1", "running"), 0);
+    toCore.step(text("h1.i1", 0, "Deploying the "), 0);
+    toCore.step(
+      sig({
+        type: "item.upsert",
+        turn: H1,
+        item: "h1.i2",
+        body: { kind: "reasoning" },
+        status: "running",
+      }),
+      0,
+    );
+    toCore.step(
+      sig({
+        type: "item.append",
+        item: "h1.i2",
+        stream: "reasoning",
+        at: 0,
+        text: "Checking logs",
+      }),
+      0,
+    );
+    toCore.step(
+      sig({
+        type: "item.upsert",
+        turn: H1,
+        item: "h1.i3",
+        body: { kind: "tool", toolKind: "command_execution" },
+        status: "running",
+      }),
+      0,
+    );
+    const closes = toCore.cutText(0);
+    assert.deepStrictEqual(
+      closes.map((signal) => (signal.kind === "item-closed" ? [signal.key, signal.body] : [])),
+      [
+        ["h1.i1", { kind: "note", text: "Deploying the ", streaming: false, answer: false }],
+        ["h1.i2", { kind: "thought", preview: "Checking logs", length: 13, streaming: false }],
+      ],
+    );
+    // The bridge's own cut end after it is the same end: told once.
+    assert.deepStrictEqual(toCore.step(upsert("h1.i1", "cut"), 0).signals, []);
+    assert.deepStrictEqual(toCore.cutText(0), []);
+  });
+
   const call = (status: string, presentation?: unknown) =>
     sig({
       type: "item.upsert",

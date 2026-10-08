@@ -1327,6 +1327,7 @@ describe("decide: a question asked by message is answered by a message", () => {
     return { item: item.itemId, effect: effectId(item.itemId, "provider.steer", 1) };
   };
   const whileAsking: ReadonlyArray<Step> = [...proofRunning, asked()];
+  const dismissedQ: Command = { _tag: "Dismiss", requestId: requestId(r(1), 1) };
 
   it("while the turn that asked still runs, the answer goes into that turn as the person's message, with its pictures", () => {
     const scene = play([...whileAsking, answered]);
@@ -1456,7 +1457,8 @@ describe("decide: a question asked by message is answered by a message", () => {
     expect(closes(log)).toEqual(["closed answered"]);
   });
 
-  it("codex/async-question [recorded]: the answer goes into the turn that waits on it, which ends with the agent's reply", () => {
+  /** The recorded Codex turn up to its async question, and the rest of the trace after it. */
+  const recordedAsk = () => {
     const events = readGolden("codex", "async-question");
     const translator = makeTranslator({ driver: "codex", threadId: String(events[0]!.threadId) });
     const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
@@ -1493,6 +1495,11 @@ describe("decide: a question asked by message is answered by a message", () => {
       }),
       { _tag: "ProviderSignals", sessionId: s1, signals: asking } as Command,
     ];
+    return { traceTurn, core, inputs, injected, native };
+  };
+
+  it("codex/async-question [recorded]: the answer goes into the turn that waits on it, which ends with the agent's reply", () => {
+    const { traceTurn, core, inputs, injected, native } = recordedAsk();
     const asked = playAll(traceTurn);
     expect(asked.state.runs[r(1)]?.state).toBe("running");
     const answering: Command = {
@@ -1530,6 +1537,50 @@ describe("decide: a question asked by message is answered by a message", () => {
       ),
     ).toEqual(["person", "request", "person", "note Red"]);
   });
+
+  it("codex/async-question [recorded]: after the question is dismissed, the next message goes into the turn that still waits on it, which ends with the agent's reply", () => {
+    const { traceTurn, core, inputs, injected, native } = recordedAsk();
+    const dismissed: Command = { _tag: "Dismiss", requestId: requestId(r(1), 1) };
+    const scene = play([...traceTurn, dismissed, send("Red")]);
+    expect(scene.events.some((e) => e._tag === "RunQueued")).toBe(false);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(1),
+      body: { kind: "person", text: "Red", delivery: { state: "steered" } },
+    });
+    const steer = steered(scene);
+    expect(scene.effects.map((effect) => effect.kind)).toEqual(["provider.steer"]);
+    const replied = core([
+      { kind: "send", turn: steer.item as string as TurnHandle, mode: "steer" },
+      { kind: "sent", turn: steer.item as string as TurnHandle, nativeTurn: String(native) },
+      ...inputs.slice(injected),
+    ]);
+    const { log, state } = playAll([
+      ...traceTurn,
+      dismissed,
+      send("Red"),
+      settled(steer.item, "provider.steer", { kind: "ok", value: { as: "steered" } }),
+      { _tag: "ProviderSignals", sessionId: s1, signals: replied } as Command,
+    ]);
+    expect(log.some((e) => e._tag === "RunQueued" && e.runId !== r(1))).toBe(false);
+    expect(closes(log)).toEqual(["closed dismissed"]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
+  });
+
+  it.each([
+    ["the turn that asked has ended", [...whileAsking, dismissedQ, ended(1)]],
+    ["a message already went into the turn that asked", [...whileAsking, dismissedQ, send("one")]],
+    ["the question was answered, not dismissed", [...whileAsking, answered]],
+  ] as const)(
+    "a message after a dismissed question goes as the next run once %s",
+    (_name, given) => {
+      const scene = play([...given, send("next")]);
+      expect(scene.events.find((e) => e._tag === "RunQueued")).toMatchObject({ runId: r(2) });
+      expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+        runId: r(2),
+        body: { kind: "person", text: "next", delivery: { state: "queued" } },
+      });
+    },
+  );
 
   it("refuses an answer that leaves a question unanswered", () => {
     const scene = play([

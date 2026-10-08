@@ -247,6 +247,34 @@ describe("classifyTimelineScroll", () => {
 });
 
 describe("jumpedAway", () => {
+  it("find-in-page or focus navigation during row measurement releases end-follow", () => {
+    const previous = { scrollTop: 4500, contentHeight: 6000 };
+    for (const contentHeight of [6200, 5800]) {
+      const current = { scrollTop: 1000, contentHeight };
+      expect(
+        nextTimelineFollow(true, {
+          type: "position",
+          atEnd: false,
+          ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+          jumped: jumpedAway({ previous, current }),
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("manual history navigation during row measurement still releases end-follow", () => {
+    const previous = { scrollTop: 2944, contentHeight: 3779 };
+    const current = { scrollTop: 2776, contentHeight: 4009 };
+    expect(
+      nextTimelineFollow(true, {
+        type: "position",
+        atEnd: false,
+        ...classifyTimelineScroll({ previous, current, personScrolling: true }),
+        jumped: jumpedAway({ previous, current }),
+      }),
+    ).toBe(false);
+  });
+
   it.each([
     {
       name: "find in page jumps to a match far above",

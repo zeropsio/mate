@@ -353,6 +353,61 @@ describe("the running engine", () => {
     ),
   );
 
+  const thoughtOf = (w: EngineWorld, n: number) =>
+    Effect.map(w.items(r(n)), (items) => items.find((item) => item.kind === "thought")?.body);
+  const thinking = (w: EngineWorld) =>
+    Effect.gen(function* () {
+      yield* w.agent((agent, thread) => agent.think(thread, "think-1", "Checking the "));
+      yield* w.agent((agent, thread) => agent.think(thread, "think-1", "deploy logs"));
+    });
+  const WORDS = { preview: "Checking the deploy logs", length: 24, streaming: false };
+  for (const driver of DRIVERS) {
+    it.effect(`a thought a Stop cuts keeps the words it had streamed (${driver})`, () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world(driver);
+          yield* send(w);
+          yield* thinking(w);
+          yield* stop(w);
+          yield* send(w, "next");
+          assert.deepInclude(yield* thoughtOf(w, 1), WORDS);
+          yield* w.shutdown;
+        }),
+      ),
+    );
+  }
+
+  it.effect("a thought a second Stop cuts with its session keeps the words it had streamed", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { ignoreInterrupt: true } });
+        yield* send(w);
+        yield* thinking(w);
+        yield* stop(w);
+        yield* stop(w);
+        assert.deepInclude(yield* thoughtOf(w, 1), WORDS);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a thought a restart cuts keeps the words it had streamed before the server stopped",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* thinking(w);
+          yield* w.shutdown;
+          yield* w.provider.service.stopSession({ threadId: w.thread as ThreadId });
+          yield* w.boot;
+          assert.deepInclude(yield* thoughtOf(w, 1), WORDS);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("a second Stop closes the session", () =>
     scene(
       Effect.gen(function* () {

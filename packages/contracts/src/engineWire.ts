@@ -106,6 +106,10 @@ export type RunSummary = typeof RunSummary.Type;
 export const RunRecord = Schema.Struct({ ...Run.fields, summary: RunSummary });
 export type RunRecord = typeof RunRecord.Type;
 
+/** A mode a newer build may add: any this build does not know decodes as `unknown`. */
+const TolerantRuntimeMode = forwardCompatibleLiterals(RuntimeMode.literals);
+const TolerantInteractionMode = forwardCompatibleLiterals(ProviderInteractionMode.literals);
+
 /** The conversation's own facts: its agent, its session, what holds its queue. */
 export const ConversationHeader = Schema.Struct({
   conversationId: ConversationId,
@@ -125,9 +129,9 @@ export const ConversationHeader = Schema.Struct({
   /** Messages waiting their turn. */
   queued: Schema.Int,
   /** How freely the agent works, once a person set it; absent: the workspace's mode. */
-  runtimeMode: Schema.optionalKey(RuntimeMode),
+  runtimeMode: Schema.optionalKey(TolerantRuntimeMode),
   /** The interaction mode of the person's latest message; absent: default. */
-  interactionMode: Schema.optionalKey(ProviderInteractionMode),
+  interactionMode: Schema.optionalKey(TolerantInteractionMode),
 });
 export type ConversationHeader = typeof ConversationHeader.Type;
 
@@ -352,7 +356,7 @@ export const EngineSendInput = Schema.Struct({
   attachments: Schema.optionalKey(
     Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
   ),
-  interactionMode: Schema.optionalKey(ProviderInteractionMode),
+  interactionMode: Schema.optionalKey(TolerantInteractionMode),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
