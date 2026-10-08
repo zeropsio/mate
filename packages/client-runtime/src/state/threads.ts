@@ -5,7 +5,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { Atom } from "effect/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
@@ -19,7 +19,14 @@ import {
   type EnvironmentThreadState,
 } from "./threadState.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
-import { engineRouteOf } from "../data/engineHost.ts";
+import {
+  engineRouteOf,
+  mateEngineHostAtom,
+  mateEngineReaderAtom,
+  type EngineRoute,
+} from "../data/engineHost.ts";
+import { engineThreadChanges } from "../data/engineThreadChanges.ts";
+import { ENGINE_UPDATE_WORDS } from "../data/projections/mateEngine.ts";
 import * as Option from "effect/Option";
 
 /** What a V1-only reader shows for a Mate whose conversation runs on the engine. */
@@ -40,7 +47,40 @@ export {
   isThreadSessionRunning,
 } from "../data/adapters/mateThreadReplay.ts";
 
+/** A Mate whose engine speaks only a newer protocol than this build. */
+const NEWER_ENGINE_THREAD_STATE: EnvironmentThreadState = {
+  ...EMPTY_ENVIRONMENT_THREAD_STATE,
+  error: Option.some(ENGINE_UPDATE_WORDS),
+};
+
+/** An engine conversation whose account is not mounted yet: opening, nothing to draw. */
+const OPENING_ENGINE_THREAD_STATE: EnvironmentThreadState = {
+  ...EMPTY_ENVIRONMENT_THREAD_STATE,
+  status: "synchronizing",
+};
+
+/**
+ * An engine Mate's conversation, read from the account's engine records once its host is mounted;
+ * a reader that reads no engine conversation shows the update route.
+ */
+function engineThreadStateChanges(
+  registry: AtomRegistry.AtomRegistry,
+  environmentId: EnvironmentIdType,
+  threadId: ThreadIdType,
+): Stream.Stream<EnvironmentThreadState> {
+  if (registry.get(mateEngineReaderAtom) === "none")
+    return Stream.succeed(NATIVE_ENGINE_THREAD_STATE);
+  return AtomRegistry.toStream(registry, mateEngineHostAtom).pipe(
+    Stream.switchMap((host) =>
+      host === null
+        ? Stream.succeed(OPENING_ENGINE_THREAD_STATE)
+        : engineThreadChanges(host, { environmentId, conversationId: threadId }),
+    ),
+  );
+}
+
 function threadStateChanges(
+  registry: AtomRegistry.AtomRegistry,
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
@@ -54,25 +94,34 @@ function threadStateChanges(
       Effect.gen(function* () {
         const supervisor = yield* EnvironmentSupervisor;
         const cache = yield* EnvironmentCacheStore;
-        // This reader speaks V1 only. V1 runs at once, its cached paint offline too, until the
-        // Mate's door — or the configuration it last cached — says its conversation is the
-        // engine's: then an updated app reads it, never this reader.
+        // V1 runs at once, its cached paint offline too, until the Mate's door — or the
+        // configuration it last cached — says its conversation is the engine's: then it is read
+        // from the account's engine records, never its parked V1 history.
         const cached = yield* cache
           .loadServerConfig(environmentId)
           .pipe(Effect.orElseSucceed(() => Option.none()));
-        const engineBefore = Option.match(cached, {
-          onNone: () => false,
-          onSome: (config) => config.environment.capabilities.mateEngine !== undefined,
+        const routeBefore = Option.match(cached, {
+          onNone: (): EngineRoute["kind"] => "v1",
+          onSome: (config) => {
+            const served = config.environment.capabilities.mateEngine;
+            return engineRouteOf(served === undefined ? {} : { mateEngine: served.protocol }).kind;
+          },
         });
         return Stream.concat(
-          Stream.make(engineBefore),
+          Stream.make(routeBefore),
           SubscriptionRef.changes(supervisor.prepared).pipe(
             Stream.filter(Option.isSome),
-            Stream.map((prepared) => engineRouteOf(prepared.value).kind !== "v1"),
+            Stream.map((prepared) => engineRouteOf(prepared.value).kind),
           ),
         ).pipe(
           Stream.changes,
-          Stream.switchMap((engine) => (engine ? Stream.succeed(NATIVE_ENGINE_THREAD_STATE) : v1)),
+          Stream.switchMap((route) =>
+            route === "engine"
+              ? engineThreadStateChanges(registry, environmentId, threadId)
+              : route === "update"
+                ? Stream.succeed(NEWER_ENGINE_THREAD_STATE)
+                : v1,
+          ),
         );
       }),
     ),
@@ -104,7 +153,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
         (get) => {
           get.mount(resumeAtom);
           const resume = get.once(resumeAtom);
-          const live = threadStateChanges(environmentId, threadId, resume);
+          const live = threadStateChanges(get.registry, environmentId, threadId, resume);
           return resume.snapshot === undefined
             ? live
             : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
