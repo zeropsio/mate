@@ -5,7 +5,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { CommandId, IsoDateTime, type OrchestrationSession } from "@t3tools/contracts";
+import {
+  CommandId,
+  IsoDateTime,
+  type OrchestrationSession,
+  type ThreadId,
+} from "@t3tools/contracts";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
@@ -34,6 +39,27 @@ export const v1ThreadBlockers = (thread: {
   if (thread.titleRegeneration != null) blockers.push("title generation");
   return blockers;
 };
+
+/** Legacy stop failures are recorded as activity, so the receipt alone cannot prove native exit. */
+export const quiesceV1NativeSessions = (ports: {
+  readonly closed: Effect.Effect<boolean>;
+  readonly facts: Effect.Effect<UpdateIdleFacts>;
+  readonly sessions: Effect.Effect<ReadonlyArray<{ readonly threadId: ThreadId }>>;
+  readonly stop: (threadId: ThreadId) => Effect.Effect<void>;
+  readonly settle: Effect.Effect<void>;
+}): Effect.Effect<UpdateIdleFacts> =>
+  Effect.gen(function* () {
+    if (!(yield* ports.closed)) return { idle: false, blockers: ["admission is open"] };
+    const before = yield* ports.facts;
+    if (!before.idle) return before;
+    return yield* Effect.gen(function* () {
+      for (const session of yield* ports.sessions) yield* ports.stop(session.threadId);
+      yield* ports.settle;
+      if ((yield* ports.sessions).length > 0)
+        return { idle: false, blockers: ["native session did not close"] };
+      return yield* ports.facts;
+    }).pipe(Effect.uninterruptible);
+  });
 
 export const makeV1UpdateDrain = Effect.gen(function* () {
   const engine = yield* OrchestrationEngineService;
@@ -137,27 +163,27 @@ export const makeV1UpdateDrain = Effect.gen(function* () {
     ),
   );
 
-  const quiesce = Effect.gen(function* () {
-    if (admission === undefined || !(yield* admission.closed))
-      return { idle: false, blockers: ["admission is open"] };
-    const before = yield* facts;
-    if (!before.idle) return before;
-    return yield* Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      for (const session of yield* provider.listSessions()) {
-        yield* engine.dispatch({
-          type: "thread.session.stop",
-          commandId: CommandId.make(`update-close:${session.threadId}:${now}`),
-          threadId: session.threadId,
-          createdAt: IsoDateTime.make(DateTime.formatIso(yield* DateTime.now)),
-        });
-      }
-      yield* commands.drain;
-      yield* ingestion.drain;
-      yield* checkpoints.drain;
-      yield* usage.drain;
-      return yield* facts;
-    }).pipe(Effect.uninterruptible);
+  const quiesce = quiesceV1NativeSessions({
+    closed: admission?.closed ?? Effect.succeed(false),
+    facts,
+    sessions: provider.listSessions().pipe(Effect.orDie),
+    stop: (threadId) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        yield* engine
+          .dispatch({
+            type: "thread.session.stop",
+            commandId: CommandId.make(`update-close:${threadId}:${now}`),
+            threadId,
+            createdAt: IsoDateTime.make(DateTime.formatIso(yield* DateTime.now)),
+          })
+          .pipe(Effect.orDie);
+      }),
+    settle: commands.drain.pipe(
+      Effect.andThen(ingestion.drain),
+      Effect.andThen(checkpoints.drain),
+      Effect.andThen(usage.drain),
+    ),
   }).pipe(
     Effect.catchCause(() =>
       Effect.succeed<UpdateIdleFacts>({

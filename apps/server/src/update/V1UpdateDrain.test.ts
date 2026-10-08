@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import { TurnId } from "@t3tools/contracts";
-import { v1ThreadBlockers } from "./V1UpdateDrain.ts";
+import { ThreadId, TurnId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import { quiesceV1NativeSessions, v1ThreadBlockers } from "./V1UpdateDrain.ts";
 
 describe("legacy update idle proof", () => {
   it.each([
@@ -46,4 +47,31 @@ describe("legacy update idle proof", () => {
         latestTurn: { state: "completed" },
       }),
     ).toEqual([]));
+});
+
+describe("legacy native session drain", () => {
+  it.effect.each([
+    { name: "a completed native stop permits switching", exited: true, idle: true },
+    { name: "a stop failure recorded as activity postpones switching", exited: false, idle: false },
+  ])("$name", ({ exited, idle }) =>
+    Effect.gen(function* () {
+      let sessions = [{ threadId: ThreadId.make("existing-conversation") }];
+      let requested = false;
+      const result = yield* quiesceV1NativeSessions({
+        closed: Effect.succeed(true),
+        facts: Effect.succeed({ idle: true, blockers: [] }),
+        sessions: Effect.sync(() => sessions),
+        stop: () =>
+          Effect.sync(() => {
+            requested = true;
+          }),
+        settle: Effect.sync(() => {
+          if (exited) sessions = [];
+        }),
+      });
+      expect(requested).toBe(true);
+      expect(result.idle).toBe(idle);
+      if (!exited) expect(result.blockers).toContain("native session did not close");
+    }),
+  );
 });
