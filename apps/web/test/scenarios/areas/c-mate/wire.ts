@@ -16,6 +16,8 @@ export type ChatIntent =
       readonly effort?: string;
       readonly plan?: true;
     }
+  /** How freely the agent works, as the person set it. */
+  | { readonly kind: "access"; readonly runtimeMode: string }
   | {
       readonly kind: "decision";
       readonly ask: ChatAsk;

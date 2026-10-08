@@ -79,6 +79,8 @@ export class EngineChatWire implements ChatWire {
         if (payload.options !== undefined) options = payload.options;
         return [];
       }
+      if (op === "set-runtime-mode")
+        return [{ kind: "access", runtimeMode: String(payload.runtimeMode) }];
       if (op === "send") {
         const effort = effortOf(options as never);
         return [

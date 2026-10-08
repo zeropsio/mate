@@ -222,8 +222,29 @@ describe("C: opening a Mate and chat", () => {
         }),
     );
 
+    // Catches a picked access snapping back, or never reaching the Mate before the next message.
+    it.effect(
+      "the access a person picks reaches the Mate with their next message and stays picked after reload",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.when.press("GPT-5.4");
+          yield* chat.when.press("Supervised", "radio");
+          yield* chat.when.key("Escape");
+          yield* chat.when.send("Ask before you change anything");
+          yield* chat.then.once("Ask before you change anything");
+          yield* Effect.promise(() => chat.fixture().waitForTurn("Ask before you change anything"));
+          expect(chat.fixture().accessModes()).toEqual(["approval-required"]);
+          yield* chat.when.reload("Ada", "Ask before you change anything");
+          yield* chat.then.text("Supervised");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Catches plan mode, turned on in settings, not reaching the agent with the message it was picked for.
-    it.effect("with plan mode on, a message sent after /plan goes to the agent as a plan", () =>
+    it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
@@ -233,10 +254,8 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.press("Plan mode (legacy)", "switch");
         yield* chat.when.visit("/env-Ada/thread-Ada");
         yield* chat.then.ready("Ada");
-        yield* chat.when.type("/plan");
-        yield* chat.when.key("Escape");
-        yield* chat.when.key("Enter");
-        yield* chat.then.composerText("");
+        yield* chat.when.press("Default mode — click to enter plan mode");
+        yield* chat.then.control("Plan mode — click to return to normal build mode");
         yield* chat.when.send("Plan the worker's migration");
         yield* chat.then.once("Plan the worker's migration");
         const sent = yield* Effect.promise(() =>

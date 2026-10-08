@@ -1309,6 +1309,13 @@ export class ChatDriver {
       );
   }
 
+  /** The runtime modes the Mate applied, in order, on whichever wire it speaks. */
+  accessModes() {
+    return this.wire
+      .intents()
+      .flatMap((intent) => (intent.kind === "access" ? [intent.runtimeMode] : []));
+  }
+
   /** Settles with the message the Mate received reading `text`, on whichever wire it speaks. */
   async waitForTurn(text: string) {
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -1369,7 +1376,9 @@ export class ChatDriver {
   }
 
   responseCount() {
-    return this.wire.intents().filter((intent) => intent.kind !== "turn").length;
+    return this.wire
+      .intents()
+      .filter((intent) => intent.kind === "decision" || intent.kind === "answer").length;
   }
 
   /** A recorded login expires at its provider; ownership and conversation remain unchanged. */

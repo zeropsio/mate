@@ -67,6 +67,8 @@ export class V1ChatWire implements ChatWire {
           },
         ];
       }
+      if (command.type === "thread.runtime-mode.set")
+        return [{ kind: "access", runtimeMode: command.runtimeMode }];
       if (!this.applied.has(command.commandId)) return [];
       if (command.type === "thread.approval.respond")
         return [{ kind: "decision", ask: asked(command.requestId), decision: command.decision }];
