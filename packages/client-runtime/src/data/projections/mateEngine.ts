@@ -40,6 +40,7 @@ import {
   engineConversationId,
   engineConversationScopes,
   engineEarlierScope,
+  engineFactId,
   engineRowsKey,
   type EngineConversationKey,
   type EngineFact,
@@ -754,6 +755,104 @@ export function engineThreadOf(
     session,
   };
 }
+
+/** What a card's runs' calls came to, as the server counts them (`RunSummary`). */
+export interface EngineCardCounts {
+  readonly calls: Readonly<Record<string, number>>;
+  readonly tools: Readonly<Record<string, number>>;
+  /** Files edited, each once; `null` when a summary did not count them. */
+  readonly edited: number | null;
+}
+
+/**
+ * A card whose run was not held whole when it painted: its worked line counts its effort from its
+ * runs' summaries, whatever of it is held, and its scroll holds the lines from `since` through
+ * `through` (times; `null` is its start, or its end) — the rest page in as it opens and reaches
+ * them, through `runId`'s pages.
+ */
+export interface EngineCardPaging {
+  readonly runId: string;
+  readonly counts: EngineCardCounts;
+  /** Whether its runs did anything its scroll draws: its "Show work" has something to open. */
+  readonly hasWork: boolean;
+  /** Whether any of its lines are held: none until its card first opens. */
+  readonly holdsLines: boolean;
+  readonly since: string | null;
+  readonly through: string | null;
+  readonly reading: "earlier" | "later" | null;
+}
+
+const sumInto = (into: Record<string, number>, counts: Readonly<Record<string, number>>) => {
+  for (const [name, count] of Object.entries(counts)) into[name] = (into[name] ?? 0) + count;
+};
+
+/** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
+export function engineCardPagingOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): Readonly<Record<string, EngineCardPaging>> {
+  const conversationKey = engineConversationId(key);
+  const spans = [...read.index("engineSpansIn", conversationKey)].flatMap((id) => {
+    const fact = read.fact("mateEngineSpan", id);
+    return fact.kind === "known" ? [fact.value] : [];
+  });
+  if (spans.length === 0) return NO_PAGING;
+  const { runs, cardOf } = cardsOf(read, conversationKey);
+  /** When the run's item at `seq` happened: where its card's held lines end. */
+  const timeAt = (runId: string, seq: number, otherwise: number) => {
+    for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, runId))) {
+      const fact = read.fact("mateEngineItem", id);
+      if (fact.kind === "known" && fact.value.seq === seq) return iso(fact.value.at);
+    }
+    return iso(otherwise);
+  };
+  const cards: Record<string, EngineCardPaging> = {};
+  for (const span of spans) {
+    const run = runs.find((candidate) => candidate.id === span.runId);
+    const card = cardOf(span.runId);
+    if (run === undefined || card === null || cards[card] !== undefined) continue;
+    const calls: Record<string, number> = {};
+    const tools: Record<string, number> = {};
+    let edited: number | null = 0;
+    let hasWork = false;
+    for (const member of runs) {
+      if (cardOf(member.id) !== card) continue;
+      // Past the person's words and its answer, something it did.
+      const asked = member.trigger.kind === "person" || member.trigger.kind === "imported" ? 1 : 0;
+      const answered = member.summary.answerItemId === null ? 0 : 1;
+      if (member.summary.items > asked + answered) hasWork = true;
+      sumInto(calls, member.summary.calls);
+      sumInto(tools, member.summary.tools ?? {});
+      edited =
+        edited === null || member.summary.edited === undefined
+          ? null
+          : edited + member.summary.edited;
+    }
+    cards[card] = {
+      runId: span.runId,
+      counts: { calls, tools, edited },
+      hasWork,
+      holdsLines: span.from !== null || span.to !== 0,
+      since: span.from === null ? null : timeAt(span.runId, span.from, run.endedAt ?? run.queuedAt),
+      through: span.to === null ? null : timeAt(span.runId, span.to, run.queuedAt),
+      reading: span.reading,
+    };
+  }
+  return cards;
+}
+
+const NO_PAGING: Readonly<Record<string, EngineCardPaging>> = {};
+
+/** A conversation's cards not held whole: what their worked lines count, what their scrolls hold. */
+export const engineCardPaging: Projection<
+  EngineConversationKey,
+  Readonly<Record<string, EngineCardPaging>>
+> = {
+  name: "engineCardPaging",
+  keyOf: engineConversationId,
+  equals: sameValue,
+  derive: engineCardPagingOf,
+};
 
 /** What a fault on the conversation's link says to a person, if anything. */
 function faultWords(read: ProjectionReads, key: EngineConversationKey): string | null {

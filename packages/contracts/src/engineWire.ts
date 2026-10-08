@@ -89,6 +89,13 @@ export const RunSummary = Schema.Struct({
   items: Schema.Int,
   /** Calls by step (`command`, `edit`, `web`, `look`, `helper`, `tool`, …). */
   calls: Schema.Record(Schema.String, Schema.Int),
+  /**
+   * The generic and MCP calls (`tool`, `mcp`) by the tool's name: a card counts some by what they
+   * did ("the workflow checked"), some not at all (a deploy is a row of its result).
+   */
+  tools: Schema.optionalKey(Schema.Record(Schema.String, Schema.Int)),
+  /** The files its edits changed, each once, and one for each edit naming none. */
+  edited: Schema.optionalKey(Schema.Int),
   /** The agent's last whole words in the run: its answer. */
   answerItemId: Schema.NullOr(ItemId),
   lastItemSeq: Schema.NullOr(Schema.Int),
@@ -292,12 +299,18 @@ export const EngineReadEarlierInput = Schema.Struct({
 });
 export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
 
-/** A run's items, the newest page first (`beforeSeq` pages back). */
+/**
+ * A run's items, the newest page first (`beforeSeq` pages back); with `afterSeq`, the oldest page
+ * after it (`more`: later ones exist). `only: "outcome"` reads just the items a closed card draws
+ * its result from: calls with a result or a picture looked at, and background work.
+ */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,
   conversationId: ConversationId,
   runId: RunId,
   beforeSeq: Schema.optionalKey(Schema.Int),
+  afterSeq: Schema.optionalKey(Schema.Int),
+  only: Schema.optionalKey(Schema.Literal("outcome")),
   limit: Schema.optionalKey(Schema.Int),
 });
 export type EngineReadRunInput = typeof EngineReadRunInput.Type;

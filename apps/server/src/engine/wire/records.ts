@@ -116,6 +116,25 @@ const readable = <Row, A, E>(rows: ReadonlyArray<Row>, read: (row: Row) => Effec
     ),
   ).pipe(Effect.map((all) => all.flat()));
 
+/**
+ * The files a run's edits changed, each once, and one for each edit naming none: what V1's card
+ * counts as "files edited" (`activityCounts`).
+ */
+const editedOf = (
+  rows: ReadonlyArray<{ readonly item_id: string; readonly path: string | null }>,
+): number => {
+  const files = new Set<string>();
+  const named = new Set<string>();
+  const edits = new Set<string>();
+  for (const row of rows) {
+    edits.add(row.item_id);
+    if (row.path === null || row.path.trim() === "") continue;
+    files.add(row.path.trim());
+    named.add(row.item_id);
+  }
+  return files.size + (edits.size - named.size);
+};
+
 export const makeRecords = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
@@ -140,6 +159,35 @@ export const makeRecords = Effect.gen(function* () {
         SELECT run_id, json_extract(body_json, '$.step') AS step, COUNT(*) AS n FROM engine_item
         WHERE ${sql.in("run_id", ids)} AND kind = 'call' GROUP BY run_id, step
       `;
+      const tools = yield* sql<{
+        readonly run_id: string;
+        readonly tool: string | null;
+        readonly n: number;
+      }>`
+        SELECT run_id, json_extract(body_json, '$.tool.name') AS tool, COUNT(*) AS n
+        FROM engine_item
+        WHERE ${sql.in("run_id", ids)} AND kind = 'call'
+          AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
+        GROUP BY run_id, tool
+      `;
+      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys).
+      const edits = yield* sql<{
+        readonly run_id: string;
+        readonly item_id: string;
+        readonly path: string | null;
+      }>`
+        SELECT edit.run_id AS run_id, edit.item_id AS item_id, named.path AS path
+        FROM engine_item AS edit
+        LEFT JOIN (
+          SELECT item.item_id AS item_id, tree.value AS path
+          FROM engine_item AS item, json_tree(item.body_json, '$.shows') AS tree
+          WHERE ${sql.in("item.run_id", ids)} AND item.kind = 'call'
+            AND json_extract(item.body_json, '$.step') = 'edit' AND tree.type = 'text'
+            AND tree.key IN ('path', 'filePath', 'relativePath', 'filename', 'newPath', 'oldPath')
+        ) AS named ON named.item_id = edit.item_id
+        WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
+          AND json_extract(edit.body_json, '$.step') = 'edit'
+      `;
       const answers = yield* sql<{ readonly run_id: string; readonly item_id: string }>`
         SELECT run_id, item_id FROM engine_item
         WHERE ${sql.in("run_id", ids)} AND kind = 'note' AND state = 'closed'
@@ -156,6 +204,12 @@ export const makeRecords = Effect.gen(function* () {
               .filter((row) => row.run_id === id)
               .map((row) => [row.step ?? "tool", row.n] as const),
           ),
+          tools: Object.fromEntries(
+            tools
+              .filter((row) => row.run_id === id)
+              .map((row) => [row.tool ?? "tool", row.n] as const),
+          ),
+          edited: editedOf(edits.filter((row) => row.run_id === id)),
           answerItemId: answer === undefined ? null : ItemId.make(answer.item_id),
           lastItemSeq: count?.last_seq ?? null,
         };
@@ -383,19 +437,39 @@ export const makeRecords = Effect.gen(function* () {
           ),
         };
       }),
-    /** A run's items, the newest page; `more` when older ones exist before it. */
+    /**
+     * A run's items, the newest page; `more` when older ones exist before it. After `afterSeq`,
+     * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
+     * draws its result from.
+     */
     runPage: (
       conversation: ConversationId,
       runId: RunId,
-      options: { readonly beforeSeq?: number; readonly limit: number },
+      options: {
+        readonly beforeSeq?: number;
+        readonly afterSeq?: number;
+        readonly only?: "outcome";
+        readonly limit: number;
+      },
     ) =>
       Effect.gen(function* () {
+        const forward = options.afterSeq !== undefined;
         const rows = yield* sql<ItemRow>`
           SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
             ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
-          ORDER BY opened_seq DESC LIMIT ${options.limit + 1}
+            ${options.afterSeq === undefined ? sql`` : sql`AND opened_seq > ${options.afterSeq}`}
+            ${
+              options.only === "outcome"
+                ? sql`AND (kind = 'work' OR (kind = 'call' AND (
+                    json_extract(body_json, '$.result') IS NOT NULL
+                    OR json_extract(body_json, '$.step') = 'look')))`
+                : sql``
+            }
+          ORDER BY opened_seq ${forward ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}
         `;
-        const page = rows.slice(0, options.limit).toReversed();
+        const page = forward
+          ? rows.slice(0, options.limit)
+          : rows.slice(0, options.limit).toReversed();
         const requestRows = yield* sql<RequestRow>`
           SELECT * FROM engine_request WHERE conversation_id = ${conversation} AND run_id = ${runId}
           ORDER BY seq

@@ -325,6 +325,56 @@ it("opens on a window of the newest run groups, the rest a page away", async () 
   }
 });
 
+it("serves a long run from its start or its outcome alone, its summary counting its calls", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    engine.runPageItems = 2;
+    const run = engine.personRun("Bring it up");
+    const call = (step: string, tool: string, patch: Record<string, unknown> = {}) =>
+      engine.item(run, {
+        kind: "call",
+        step,
+        tool: { name: tool },
+        words: tool,
+        state: "done",
+        endedAt: null,
+        ...patch,
+      });
+    call("command", "Bash");
+    call("edit", "File change", { shows: { files: [{ path: "a.ts" }, { path: "b.ts" }] } });
+    call("edit", "File change", { shows: { files: [{ path: "a.ts" }] } });
+    call("mcp", "zerops_deploy", { result: { toolName: "zerops_deploy" } });
+    call("mcp", "zerops_knowledge");
+    engine.end(run);
+    const read = async (id: string, input: Record<string, unknown>) =>
+      decodePage(
+        (await r.call(id, WS_METHODS.engineReadRun, { ...conversation, runId: run, ...input }))
+          .value,
+      );
+    const first = await read("f", { afterSeq: 0 });
+    expect(first).toMatchObject({
+      items: [{ kind: "person" }, { kind: "call", step: "command" }],
+      more: true,
+    });
+    expect(await read("o", { afterSeq: 0, only: "outcome" })).toMatchObject({
+      items: [{ kind: "call", tool: { name: "zerops_deploy" } }],
+      more: false,
+    });
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    const [snapshot] = r.stream("c");
+    expect(snapshot?.type === "snapshot" && snapshot.runs[0]?.summary).toMatchObject({
+      items: 6,
+      calls: { command: 1, edit: 2, mcp: 2 },
+      tools: { zerops_deploy: 1, zerops_knowledge: 1 },
+      edited: 2,
+    });
+  } finally {
+    await r.close();
+  }
+});
+
 // Catches streamed text a late subscriber never hears, or one placed at the wrong offset.
 it("streams an item's text at its offsets, whole to a subscriber that opens late", async () => {
   const r = await connect();

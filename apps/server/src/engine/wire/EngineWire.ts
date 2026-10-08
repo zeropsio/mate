@@ -734,6 +734,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           Effect.gen(function* () {
             const page = yield* records.runPage(input.conversationId, input.runId, {
               ...(input.beforeSeq === undefined ? {} : { beforeSeq: input.beforeSeq }),
+              ...(input.afterSeq === undefined ? {} : { afterSeq: input.afterSeq }),
+              ...(input.only === undefined ? {} : { only: input.only }),
               limit,
             });
             return {

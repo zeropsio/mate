@@ -25,6 +25,7 @@ import {
   WS_METHODS,
   type RequestAsk,
   type RunEnd,
+  type RunSummary,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as NodeEvents from "node:events";
@@ -72,6 +73,42 @@ export type EngineOp =
   | "switch-model"
   | "set-runtime-mode"
   | "assign-agent";
+
+const FILE_KEYS = new Set(["path", "filePath", "relativePath", "filename", "newPath", "oldPath"]);
+
+function namedFiles(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) for (const entry of value) namedFiles(entry, into);
+  else if (typeof value === "object" && value !== null)
+    for (const [field, entry] of Object.entries(value)) {
+      if (FILE_KEYS.has(field) && typeof entry === "string") into.add(entry);
+      else namedFiles(entry, into);
+    }
+}
+
+/** A run's summary with one more item counted, as the server counts a call: by step and tool. */
+function countedCall(
+  summary: RunSummary,
+  body: Record<string, unknown>,
+  edited: { files: Set<string>; unnamed: number },
+): RunSummary {
+  if (body.kind !== "call") return summary;
+  const step = typeof body.step === "string" ? body.step : "tool";
+  const tool = (body.tool as { name?: string } | undefined)?.name ?? "tool";
+  if (step === "edit") {
+    const own = new Set<string>();
+    namedFiles(body.shows, own);
+    if (own.size === 0) edited.unnamed += 1;
+    for (const file of own) edited.files.add(file);
+  }
+  const tools = { ...summary.tools };
+  if (step === "tool" || step === "mcp") tools[tool] = (tools[tool] ?? 0) + 1;
+  return {
+    ...summary,
+    calls: { ...summary.calls, [step]: (summary.calls[step] ?? 0) + 1 },
+    tools,
+    edited: edited.files.size + edited.unnamed,
+  };
+}
 
 export class MateEngineFake {
   readonly mate: MateFake;
@@ -396,6 +433,17 @@ export class MateEngineFake {
     });
   }
 
+  /** The files each run's edits named, and its edits naming none, as the server counts them. */
+  private readonly editedFiles = new Map<string, { files: Set<string>; unnamed: number }>();
+  private edited(run: string) {
+    let held = this.editedFiles.get(run);
+    if (held === undefined) {
+      held = { files: new Set(), unnamed: 0 };
+      this.editedFiles.set(run, held);
+    }
+    return held;
+  }
+
   private addItem(change: Changed, run: string, body: Record<string, unknown>): string {
     const ordinal = [...this.items.values()].filter((item) => item.runId === run).length + 1;
     const id = `${run}/i/${ordinal}`;
@@ -419,7 +467,11 @@ export class MateEngineFake {
       decodeRun({
         ...held,
         rev: seq,
-        summary: { ...held.summary, items: held.summary.items + 1, lastItemSeq: seq },
+        summary: {
+          ...countedCall(held.summary, body, this.edited(run)),
+          items: held.summary.items + 1,
+          lastItemSeq: seq,
+        },
       }),
     );
     change.runs.add(run);
@@ -714,11 +766,22 @@ export class MateEngineFake {
       case WS_METHODS.engineReadRun: {
         const runId = String(payload.runId);
         const beforeSeq = payload.beforeSeq as number | undefined;
+        const afterSeq = payload.afterSeq as number | undefined;
+        // What a closed card draws its result from, as the server's `only: "outcome"` reads it.
+        const outcome = (item: Item) =>
+          item.kind === "work" ||
+          (item.kind === "call" && (item.result !== undefined || item.step === "look"));
         const items = [...this.items.values()]
           .filter(
-            (item) => item.runId === runId && (beforeSeq === undefined || item.seq < beforeSeq),
+            (item) =>
+              item.runId === runId &&
+              (beforeSeq === undefined || item.seq < beforeSeq) &&
+              (afterSeq === undefined || item.seq > afterSeq) &&
+              (payload.only !== "outcome" || outcome(item)),
           )
-          .sort((left, right) => right.seq - left.seq);
+          .sort((left, right) =>
+            afterSeq === undefined ? right.seq - left.seq : left.seq - right.seq,
+          );
         const page = items.slice(0, this.runPageItems);
         this.mate.reply(
           socket,
@@ -726,7 +789,9 @@ export class MateEngineFake {
           encodePage({
             _tag: "Page",
             runs: [],
-            items: page.toReversed().map((item) => this.sent(item)),
+            items: (afterSeq === undefined ? page.toReversed() : page).map((item) =>
+              this.sent(item),
+            ),
             requests: [],
             window: { oldestOrdinal: null, earlier: false },
             more: items.length > page.length,

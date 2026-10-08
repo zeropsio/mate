@@ -5,6 +5,7 @@ import {
   type Request,
   type RunRecord,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -32,6 +33,7 @@ import {
   unknownItem,
   workItem,
 } from "../__fixtures__/mateEngine.ts";
+import { engineCardPagingOfRecords } from "../__fixtures__/engineThread.ts";
 import {
   engineHeldTurns,
   engineRows,
@@ -913,6 +915,114 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(drawn?.activities.map((activity) => activity.turnId)).toEqual([run1, run1]);
     expect(drawn?.latestTurn).toMatchObject({ turnId: run1, state: "running" });
     expect(drawn?.session?.activeTurnId).toBe(run1);
+  });
+});
+
+describe("an engine card not held whole, as its worked line and its scroll read it", () => {
+  const AT = 1_760_000_000_000;
+  const long = (ordinal: number, patch: Partial<Parameters<typeof engineRun>[2]> = {}) =>
+    engineRun("thread-ada", ordinal, {
+      summary: {
+        items: 1_700,
+        calls: { command: 300, edit: 40, mcp: 12 },
+        tools: { zerops_deploy: 4, zerops_workflow: 8 },
+        edited: 9,
+        answerItemId: null,
+        lastItemSeq: 1_700,
+      },
+      ...patch,
+    });
+  const held = [personItem(run1, 1, "Bring it up"), callItem(run1, 2), callItem(run1, 200)];
+
+  it("is none for a card read whole: its worked line counts its calls", () => {
+    expect(engineCardPagingOfRecords(key, { runs: [long(1)], items: held })).toEqual({});
+  });
+
+  it("counts a finished card's effort from its summary and holds its lines from its start to the last read", () => {
+    expect(
+      engineCardPagingOfRecords(key, {
+        runs: [long(1)],
+        items: held,
+        spans: [{ runId: run1, from: null, to: 200, reading: null }],
+      }),
+    ).toEqual({
+      [run1]: {
+        runId: run1,
+        counts: {
+          calls: { command: 300, edit: 40, mcp: 12 },
+          tools: { zerops_deploy: 4, zerops_workflow: 8 },
+          edited: 9,
+        },
+        hasWork: true,
+        holdsLines: true,
+        since: null,
+        through: DateTime.formatIso(DateTime.makeUnsafe(AT + 200)),
+        reading: null,
+      },
+    });
+  });
+
+  it("holds none of a finished card's lines until it opens, and says whether it has work to open", () => {
+    const quiet = engineRun("thread-ada", 1, {
+      summary: { items: 2, calls: {}, answerItemId: `${run1}/i/2` as never, lastItemSeq: 2 },
+    });
+    const spans = [{ runId: run1, from: null, to: 0, reading: null }];
+    expect(
+      engineCardPagingOfRecords(key, { runs: [long(1)], items: held, spans })[run1],
+    ).toMatchObject({ holdsLines: false, hasWork: true });
+    // The person's words and its answer, nothing between: nothing to show.
+    expect(engineCardPagingOfRecords(key, { runs: [quiet], items: [], spans })[run1]).toMatchObject(
+      {
+        holdsLines: false,
+        hasWork: false,
+      },
+    );
+  });
+
+  it("holds a live card's lines from the earliest read to its end", () => {
+    const paging = engineCardPagingOfRecords(key, {
+      runs: [long(1, { state: "running", end: null, endedAt: null })],
+      items: [personItem(run1, 1, "Go"), callItem(run1, 1_501), callItem(run1, 1_700)],
+      spans: [{ runId: run1, from: 1_501, to: null, reading: "earlier" }],
+    });
+    expect(paging[run1]).toMatchObject({
+      since: DateTime.formatIso(DateTime.makeUnsafe(AT + 1_501)),
+      through: null,
+      reading: "earlier",
+    });
+  });
+
+  it("keeps counting from the summary once every page is read, so its worked line never changes", () => {
+    const paging = engineCardPagingOfRecords(key, {
+      runs: [long(1)],
+      items: held,
+      spans: [{ runId: run1, from: null, to: null, reading: null }],
+    });
+    expect(paging[run1]).toMatchObject({ since: null, through: null, counts: { edited: 9 } });
+  });
+
+  it("counts every run a card draws: a wake that joined the long run adds its own", () => {
+    const wake = engineRun("thread-ada", 2, {
+      joins: run1 as never,
+      summary: {
+        items: 3,
+        calls: { command: 2 },
+        tools: {},
+        edited: 1,
+        answerItemId: null,
+        lastItemSeq: 3,
+      },
+    });
+    const paging = engineCardPagingOfRecords(key, {
+      runs: [long(1), wake],
+      items: held,
+      spans: [{ runId: run1, from: null, to: 200, reading: null }],
+    });
+    expect(paging[run1]?.counts).toEqual({
+      calls: { command: 302, edit: 40, mcp: 12 },
+      tools: { zerops_deploy: 4, zerops_workflow: 8 },
+      edited: 10,
+    });
   });
 });
 

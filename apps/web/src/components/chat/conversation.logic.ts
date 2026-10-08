@@ -1112,7 +1112,7 @@ export type ActivityKind =
   | "helpers";
 
 /** One fixed order, so the effort's words never reorder. */
-const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
+export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
@@ -1168,7 +1168,7 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
 }
 
 /** Zerops tools with no card of their own, counted by what they did. */
-const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
+export const ZEROPS_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
   zerops_workflow: "workflow",
   zerops_knowledge: "guides",
 };
@@ -2575,6 +2575,11 @@ export function deriveOutcome(input: {
   readonly activity?: ReadonlyArray<OutcomeActivity>;
   /** The conversation's turns after it (`turnsAfter`): what they took over since. */
   readonly later?: ReadonlyArray<ConversationTurn>;
+  /**
+   * Its work is not all held (an engine run read for its closed card alone): its effort is
+   * counted elsewhere (`withPagedEffort`), so it has an outcome however little is held.
+   */
+  readonly unheld?: boolean;
 }): OutcomeModel | null {
   const { turn } = input;
   if (turn.live || turn.limitOnly) return null;
@@ -2740,7 +2745,9 @@ export function deriveOutcome(input: {
     activity: input.activity ?? [],
     later: laterClaims(input.later ?? []),
   };
-  return outcome.activity.length === 0 && !outcomeDraws(outcome) ? null : outcome;
+  return outcome.activity.length === 0 && !outcomeDraws(outcome) && input.unheld !== true
+    ? null
+    : outcome;
 }
 
 /**

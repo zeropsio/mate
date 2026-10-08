@@ -48,6 +48,8 @@ type Scene = {
   provider?: string | null;
   /** The background jobs the server holds live. */
   liveJobs?: ReadonlyArray<string>;
+  /** Turns whose work the account does not hold yet (an engine card not read whole). */
+  unheldWork?: ReadonlyArray<string>;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -75,6 +77,9 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
     provider: scene.provider === undefined ? "codex" : scene.provider,
     ...(scene.liveJobs === undefined ? {} : { liveJobs: { ids: new Set(scene.liveJobs) } }),
+    ...(scene.unheldWork === undefined
+      ? {}
+      : { unheldWork: new Set(scene.unheldWork.map((id) => turn(id))) }),
   });
 }
 
@@ -3745,5 +3750,24 @@ describe("deriveMessagesTimelineRows — a request for a vault value", () => {
       settled: "t1",
     });
     expect(list.some((row) => row.kind === "vault-request")).toBe(false);
+  });
+});
+
+describe("an engine run whose work the account does not hold yet", () => {
+  const scene = (unheldWork?: ReadonlyArray<string>): Scene => ({
+    entries: [user("u1", 0, "Bring it up"), assistant("a1", "t1", 30, "All up.")],
+    settled: "t1",
+    ...(unheldWork === undefined ? {} : { unheldWork }),
+  });
+
+  it("still draws its card: the worked line, its work behind Show work, its answer under it", () => {
+    expect(recordOf(rows(scene(["t1"])))).toMatchObject({ kind: "record", items: [] });
+    expect(statusOf(rows(scene(["t1"])))).toMatchObject({ worked: true });
+    // An outcome its worked line's effort is counted onto from the run's summary.
+    expect(recordOf(rows(scene(["t1"])))?.outcome).toMatchObject({ activity: [] });
+  });
+
+  it("draws an answer alone when its run did nothing else", () => {
+    expect(recordOf(rows(scene()))).toBeNull();
   });
 });

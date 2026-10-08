@@ -405,6 +405,100 @@ describe("a client reading more of an engine conversation", () => {
     ),
   );
 
+  it.effect("reads a run's items from its start page by page, the oldest first", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Go" });
+        for (const text of ["a", "b", "c"])
+          yield* w.agent((agent, thread) => agent.say(thread, text));
+        const read = (afterSeq: number) =>
+          wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            limit: 2,
+            afterSeq,
+          });
+        const first = yield* read(0);
+        if (first._tag !== "Page") throw new Error(first._tag);
+        assert.deepStrictEqual(
+          first.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["Go", "a"],
+        );
+        assert.isTrue(first.more);
+        const later = yield* read(first.items.at(-1)!.seq);
+        if (later._tag !== "Page") throw new Error(later._tag);
+        assert.deepStrictEqual(
+          later.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["b", "c"],
+        );
+        assert.isFalse(later.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("reads only what a run's closed card draws its result from, wherever it stands", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Deploy" });
+        yield* w.agent((agent, thread) => agent.say(thread, "On it"));
+        yield* w.agent((agent, thread) => agent.change(thread, ["src/main.ts"]));
+        yield* w.agent((agent, thread) =>
+          agent.zerops(thread, "zerops_deploy", { targetService: "api" }, "api", '{"ok":true}'),
+        );
+        yield* w.agent((agent, thread) => agent.say(thread, "Deployed"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const page = yield* wire.readRun({
+          protocol,
+          conversationId: mate,
+          runId: runId(mate, 1),
+          afterSeq: 0,
+          only: "outcome",
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        assert.deepStrictEqual(
+          page.items.map((item) => (item.kind === "call" ? item.tool.name : item.kind)),
+          ["zerops_deploy"],
+        );
+        assert.isFalse(page.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "counts a run's generic calls by their tool, and the files its edits changed once",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* w.tell({ _tag: "Send", text: "Fix it" });
+          yield* w.agent((agent, thread) => agent.change(thread, ["src/a.ts", "src/b.ts"]));
+          yield* w.agent((agent, thread) => agent.change(thread, ["src/a.ts"]));
+          yield* w.agent((agent, thread) => agent.write(thread, "notes.md", "x"));
+          for (const tool of ["zerops_workflow", "zerops_workflow", "zerops_knowledge"])
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", "{}"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const [snapshot] = yield* Effect.scoped(watch(w, wire));
+          if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+          const { summary } = snapshot.runs.at(-1)!;
+          assert.deepStrictEqual(summary.tools, {
+            zerops_workflow: 2,
+            zerops_knowledge: 1,
+          });
+          // Two files named, and the write that names none counted once.
+          assert.strictEqual(summary.edited, 3);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("gets a long message cut to the wire's budget and reads it whole on demand", () =>
     Effect.scoped(
       Effect.gen(function* () {

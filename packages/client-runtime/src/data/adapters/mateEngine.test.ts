@@ -87,6 +87,8 @@ const synchronized = (head: number, epoch = 4): EngineConversationFrame => ({
 type Pager = (request: {
   readonly runId: string | null;
   readonly before: number | null;
+  readonly after?: number;
+  readonly only?: "outcome";
 }) => Effect.Effect<EnginePage, StreamFault>;
 
 const page = (patch: Partial<Extract<EnginePage, { _tag: "Page" }>> = {}): EnginePage =>
@@ -110,7 +112,7 @@ function rig(
   detailer: Detailer = () => Effect.fail({ outcome: "transient", message: "no details" }),
 ) {
   const details: Array<string> = [];
-  const pages: Array<{ readonly runId: string | null; readonly before: number | null }> = [];
+  const pages: Array<Parameters<Pager>[0]> = [];
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const timers = new Map<number, () => void>();
@@ -152,9 +154,15 @@ function rig(
         pages.push({ runId: null, before: beforeOrdinal });
         return pager({ runId: null, before: beforeOrdinal });
       },
-      readRun: (_key, runId, beforeSeq) => {
-        pages.push({ runId, before: beforeSeq });
-        return pager({ runId, before: beforeSeq });
+      readRun: (_key, runId, at) => {
+        const request = {
+          runId,
+          before: at.before ?? null,
+          ...(at.after === undefined ? {} : { after: at.after }),
+          ...(at.only === undefined ? {} : { only: at.only }),
+        };
+        pages.push(request);
+        return pager(request);
       },
       readDetail: (_key, itemId, part) => {
         details.push(`${itemId} ${part}`);
@@ -525,12 +533,18 @@ describe("the engine protocol a client speaks with a Mate", () => {
 });
 
 describe("an engine conversation's older pages", () => {
-  const run = (ordinal: number, items: number, patch = {}) =>
+  const run = (ordinal: number, items: number, patch = {}, calls: Record<string, number> = {}) =>
     engineRun("thread-ada", ordinal, {
       rev: ordinal,
-      summary: { items, calls: {}, answerItemId: null, lastItemSeq: null },
+      summary: { items, calls, answerItemId: null, lastItemSeq: null },
       ...patch,
     });
+  const deploy = (runId: string, ordinal: number) =>
+    callItem(runId, ordinal, {
+      step: "mcp",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      result: { toolName: "zerops_deploy" },
+    } as never);
   const itemsOf = (r: ReturnType<typeof rig>) =>
     [...r.read().index("engineItemsIn", engineFactId(ENV, "thread-ada"))]
       .flatMap((id) => {
@@ -540,7 +554,7 @@ describe("an engine conversation's older pages", () => {
       .sort();
   const drawn = (r: ReturnType<typeof rig>) => engineThread.derive(r.read(), ada);
 
-  it.live("draws a run its window holds in part only once its items are read whole", () =>
+  it.live("draws a run its window holds in part only once what its closed card draws is read", () =>
     Effect.gen(function* () {
       const answered = yield* Queue.unbounded<EnginePage>();
       const r = rig(() => Queue.take(answered));
@@ -548,25 +562,17 @@ describe("an engine conversation's older pages", () => {
       yield* settle;
       yield* r.send(
         snapshot({
-          runs: [run(1, 3)],
-          items: [personItem(run1, 1, "Deploy the api"), noteItem(run1, 3, "Deployed.")],
+          runs: [run(1, 4, {}, { command: 1, mcp: 1 })],
+          items: [personItem(run1, 1, "Deploy the api"), noteItem(run1, 4, "Deployed.")],
         }),
         synchronized(12),
       );
       expect(drawn(r).data).toEqual(Option.none());
-      expect(r.pages).toEqual([{ runId: run1, before: null }]);
-      Queue.offerUnsafe(
-        answered,
-        page({
-          items: [
-            personItem(run1, 1, "Deploy the api"),
-            callItem(run1, 2) as Item,
-            noteItem(run1, 3, "Deployed."),
-          ],
-        }),
-      );
+      // Its deploy, never its command: the command is behind "Show work".
+      expect(r.pages).toEqual([{ runId: run1, before: null, after: 0, only: "outcome" }]);
+      Queue.offerUnsafe(answered, page({ items: [deploy(run1, 3)] }));
       yield* settle;
-      expect(itemsOf(r)).toEqual([`${run1}/i/1`, `${run1}/i/2`, `${run1}/i/3`]);
+      expect(itemsOf(r)).toEqual([`${run1}/i/1`, `${run1}/i/3`, `${run1}/i/4`]);
       expect(Option.getOrNull(drawn(r).data)?.activities.map((a) => a.kind)).toEqual([
         "tool.started",
         "tool.completed",
@@ -579,22 +585,31 @@ describe("an engine conversation's older pages", () => {
     Effect.gen(function* () {
       const r = rig(({ before }) =>
         Effect.succeed(
-          before === null
+          before === 5
             ? page({ items: [callItem(run1, 3), callItem(run1, 4)], more: true })
             : page({ items: [callItem(run1, 2)], more: false }),
         ),
       );
       r.conversations.hold(ada);
       yield* settle;
+      // A live run: its window carries its newest item; its card scrolls up to the rest.
       yield* r.send(
-        snapshot({ runs: [run(1, 4)], items: [personItem(run1, 1, "Deploy")] }),
+        snapshot({
+          runs: [run(1, 5, { state: "running", end: null, endedAt: null })],
+          items: [personItem(run1, 1, "Deploy"), callItem(run1, 5)],
+        }),
         synchronized(12),
       );
+      expect(r.pages).toEqual([]);
+      for (let read = 0; read < 3; read++) {
+        r.conversations.readRunPage(ada, run1, "earlier");
+        yield* settle;
+      }
       expect(r.pages).toEqual([
-        { runId: run1, before: null },
+        { runId: run1, before: 5 },
         { runId: run1, before: 3 },
       ]);
-      expect(itemsOf(r)).toHaveLength(4);
+      expect(itemsOf(r)).toHaveLength(5);
       r.close();
     }),
   );
@@ -605,9 +620,13 @@ describe("an engine conversation's older pages", () => {
       r.conversations.hold(ada);
       yield* settle;
       yield* r.send(
-        snapshot({ runs: [run(1, 3)], items: [personItem(run1, 1, "Deploy")] }),
+        snapshot({
+          runs: [run(1, 3, {}, { mcp: 1 })],
+          items: [personItem(run1, 1, "Deploy")],
+        }),
         synchronized(12),
       );
+      expect(r.pages).toHaveLength(1);
       expect(itemsOf(r)).toEqual([`${run1}/i/1`]);
       expect(Option.isSome(drawn(r).data)).toBe(true);
       r.close();
@@ -615,14 +634,14 @@ describe("an engine conversation's older pages", () => {
   );
 
   it.live(
-    "loads earlier run groups into the conversation, each run whole, saying while it loads",
+    "loads earlier run groups into the conversation, each run with what its card draws, saying while it loads",
     () =>
       Effect.gen(function* () {
         const answered = yield* Queue.unbounded<EnginePage>();
         const r = rig(({ runId }) =>
           runId === null
             ? Queue.take(answered)
-            : Effect.succeed(page({ items: [callItem("thread-ada/r/2", 2)] })),
+            : Effect.succeed(page({ items: [deploy("thread-ada/r/2", 2)] })),
         );
         r.conversations.hold(ada);
         yield* settle;
@@ -645,14 +664,14 @@ describe("an engine conversation's older pages", () => {
         Queue.offerUnsafe(
           answered,
           page({
-            runs: [run(1, 1), run(2, 2)],
+            runs: [run(1, 1), run(2, 2, {}, { mcp: 1 })],
             items: [personItem(run1, 1, "First"), personItem("thread-ada/r/2", 1, "Second")],
           }),
         );
         yield* settle;
         expect(r.pages).toEqual([
           { runId: null, before: 3 },
-          { runId: "thread-ada/r/2", before: null },
+          { runId: "thread-ada/r/2", before: null, after: 0, only: "outcome" },
         ]);
         expect(itemsOf(r)).toEqual([
           `${run1}/i/1`,
@@ -793,6 +812,184 @@ describe("an engine conversation's older pages", () => {
       expect(drawn(r).page).toEqual(Option.none());
       expect(r.conversations.readEarlier(ada)).toBe(false);
       expect(r.pages).toEqual([]);
+      r.close();
+    }),
+  );
+});
+
+describe("an engine run its card does not hold whole when it paints", () => {
+  /**
+   * A run of `total` items as the server holds it: the person's words first, the answer last, a
+   * deploy with its result every 50th item, notes and commands between; read as the wire reads it.
+   */
+  const longRun = (total: number, end: "settled" | "live" = "settled") => {
+    const items = Array.from({ length: total }, (_, index): Item => {
+      const ordinal = index + 1;
+      if (ordinal === 1) return personItem(run1, 1, "Bring the whole stack up");
+      if (ordinal === total && end === "settled") return noteItem(run1, ordinal, "All up.");
+      if (ordinal % 50 === 0)
+        return callItem(run1, ordinal, {
+          step: "mcp",
+          tool: { name: "zerops_deploy", server: "zerops" },
+          result: { toolName: "zerops_deploy" },
+        } as never);
+      return ordinal % 2 === 0
+        ? callItem(run1, ordinal)
+        : noteItem(run1, ordinal, `Step ${ordinal}`);
+    });
+    const record = engineRun("thread-ada", 1, {
+      rev: 1,
+      ...(end === "live" ? { state: "running", end: null, endedAt: null } : {}),
+      summary: {
+        items: total,
+        calls: { command: total / 2, mcp: total / 50 },
+        answerItemId: end === "settled" ? (`${run1}/i/${total}` as ItemId) : null,
+        lastItemSeq: total,
+      },
+    } as never);
+    const outcome = (item: Item) =>
+      item.kind === "work" || (item.kind === "call" && item.result !== undefined);
+    const pager: Pager = ({ before, after, only }) => {
+      const of = items.filter((item) => only !== "outcome" || outcome(item));
+      if (after !== undefined) {
+        const later = of.filter((item) => item.seq > after);
+        return Effect.succeed(
+          page({ runs: [record], items: later.slice(0, 200), more: later.length > 200 }),
+        );
+      }
+      const earlier = of.filter((item) => before === null || item.seq < before);
+      return Effect.succeed(
+        page({ runs: [record], items: earlier.slice(-200), more: earlier.length > 200 }),
+      );
+    };
+    const window = [items[0]!, ...(end === "settled" ? [items.at(-1)!] : items.slice(-40))];
+    return { items, record, pager, window };
+  };
+  const heldSeqs = (r: ReturnType<typeof rig>) =>
+    [...r.read().index("engineItemsOfRun", engineFactId(ENV, run1))]
+      .flatMap((id) => {
+        const fact = r.read().fact("mateEngineItem", id);
+        return fact.kind === "known" ? [fact.value.seq] : [];
+      })
+      .sort((a, b) => a - b);
+  const span = (r: ReturnType<typeof rig>) => {
+    const fact = r.read().fact("mateEngineSpan", engineFactId(ENV, run1));
+    return fact.kind === "known"
+      ? { from: fact.value.from, to: fact.value.to, reading: fact.value.reading }
+      : null;
+  };
+
+  it.live.each([1_700, 5_000])(
+    "draws a finished run of %i items on its first paint from what its result shows alone",
+    (total) =>
+      Effect.gen(function* () {
+        const long = longRun(total);
+        const r = rig(long.pager);
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot({ runs: [long.record], items: long.window }), synchronized(12));
+        // One read, however long the run: what its result draws from. Its lines wait for its card.
+        expect(r.pages).toEqual([{ runId: run1, before: null, after: 0, only: "outcome" }]);
+        const deploys = long.items.filter((item) => item.seq % 50 === 0 && item.seq < total);
+        expect(heldSeqs(r)).toEqual([1, ...deploys.map((item) => item.seq), total]);
+        expect(span(r)).toEqual({ from: null, to: 0, reading: null });
+        expect(Option.isSome(engineThread.derive(r.read(), ada).data)).toBe(true);
+        r.close();
+      }),
+  );
+
+  it.live("reads nothing before it paints a finished run that made no calls", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      const record = engineRun("thread-ada", 1, {
+        summary: { items: 3, calls: {}, answerItemId: null, lastItemSeq: 3 },
+      });
+      yield* r.send(
+        snapshot({ runs: [record], items: [personItem(run1, 1, "Hi"), noteItem(run1, 3, "Hi!")] }),
+        synchronized(12),
+      );
+      expect(r.pages).toEqual([]);
+      expect(span(r)).toEqual({ from: null, to: 0, reading: null });
+      r.close();
+    }),
+  );
+
+  it.live(
+    "reads a finished run's pages as its card opens and scrolls, until it holds it whole",
+    () =>
+      Effect.gen(function* () {
+        const long = longRun(1_700);
+        const answered = yield* Queue.unbounded<EnginePage>();
+        let gated = true;
+        const r = rig((request) =>
+          gated && request.only === undefined ? Queue.take(answered) : long.pager(request),
+        );
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot({ runs: [long.record], items: long.window }), synchronized(12));
+        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(true);
+        expect(span(r)?.reading).toBe("later");
+        // Asked again while it reads: one read.
+        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(false);
+        expect(r.conversations.readRunPage(ada, run1, "earlier")).toBe(false);
+        gated = false;
+        Queue.offerUnsafe(answered, yield* long.pager({ runId: run1, before: null, after: 0 }));
+        yield* settle;
+        expect(r.pages.at(-1)).toEqual({ runId: run1, before: null, after: 0 });
+        expect(span(r)).toEqual({ from: null, to: 200, reading: null });
+        for (let read = 0; read < 10 && span(r)?.to !== null; read++) {
+          r.conversations.readRunPage(ada, run1, "later");
+          yield* settle;
+        }
+        expect(span(r)).toEqual({ from: null, to: null, reading: null });
+        expect(heldSeqs(r)).toHaveLength(1_700);
+        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(false);
+        r.close();
+      }),
+  );
+
+  it.live(
+    "holds a live run from the newest its window carries, earlier pages as its scroll asks",
+    () =>
+      Effect.gen(function* () {
+        const long = longRun(1_700, "live");
+        const r = rig(long.pager);
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot({ runs: [long.record], items: long.window }), synchronized(12));
+        expect(r.pages).toEqual([]);
+        expect(span(r)).toEqual({ from: 1_661, to: null, reading: null });
+        expect(r.conversations.readRunPage(ada, run1, "earlier")).toBe(true);
+        yield* settle;
+        expect(r.pages.at(-1)).toEqual({ runId: run1, before: 1_661 });
+        expect(span(r)).toEqual({ from: 1_461, to: null, reading: null });
+        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(false);
+        r.close();
+      }),
+  );
+
+  it.live("keeps what a run holds when a page fails, and reads it again when asked", () =>
+    Effect.gen(function* () {
+      const long = longRun(1_700);
+      let failing = false;
+      const r = rig((request) =>
+        failing ? Effect.fail({ outcome: "transient", message: "offline" }) : long.pager(request),
+      );
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot({ runs: [long.record], items: long.window }), synchronized(12));
+      const held = heldSeqs(r);
+      failing = true;
+      expect(r.conversations.readRunPage(ada, run1, "later")).toBe(true);
+      yield* settle;
+      expect(span(r)).toEqual({ from: null, to: 0, reading: null });
+      expect(heldSeqs(r)).toEqual(held);
+      failing = false;
+      expect(r.conversations.readRunPage(ada, run1, "later")).toBe(true);
+      yield* settle;
+      expect(span(r)?.to).toBe(200);
       r.close();
     }),
   );
