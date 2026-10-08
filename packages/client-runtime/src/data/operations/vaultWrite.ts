@@ -43,24 +43,38 @@ interface Held {
   readonly lastUpdate: string | null;
 }
 
-/** The vault the write goes to, as observed now; `null` while it is not read. */
+/** The vault as observed now; `null` when its contents cannot prove this write. */
 function heldIn(
   read: ProjectionReads,
-  { orgId, projectId, scope }: Intent,
+  { orgId, projectId, scope, write }: Intent,
 ): ReadonlyArray<Held> | null {
+  const removing = write.kind === "remove";
   if (scope.kind === "shared") {
-    if (read.coverage(projectVariablesScope(orgId, projectId)) === "unknown") return null;
+    const coverage = read.coverage(projectVariablesScope(orgId, projectId));
+    if (coverage === "unknown" || (removing && coverage !== "complete")) return null;
     const fact = read.fact("projectVariables", projectId);
-    return fact.kind === "known" ? fact.value.rows : [];
+    if (fact.kind !== "known" || (removing && !fact.value.complete)) return null;
+    return fact.value.rows;
   }
-  const listing = serviceVariablesScope(orgId, projectId);
-  if (read.coverage(listing) === "unknown") return null;
-  return read.members(listing).ids.flatMap((id) => {
+  // Deletion of this keyed row is owner evidence; deletion of the Shared aggregate is not.
+  if (removing) {
+    const target = read.fact("serviceVariable", write.id);
+    if (target.kind === "deleted") return [];
+    if (target.kind === "withheld") return null;
+  }
+  const listing = read.members(serviceVariablesScope(orgId, projectId));
+  if (listing.coverage === "unknown") return null;
+  if (removing && (listing.coverage !== "complete" || listing.unverified.length > 0)) return null;
+  const held: Held[] = [];
+  for (const id of listing.ids) {
     const fact = read.fact("serviceVariable", id);
-    return fact.kind === "known" && fact.value.serviceId === scope.serviceId
-      ? [{ id, ...fact.value }]
-      : [];
-  });
+    if (fact.kind !== "known") {
+      if (removing && fact.kind !== "deleted") return null;
+      continue;
+    }
+    if (fact.value.serviceId === scope.serviceId) held.push({ id, ...fact.value });
+  }
+  return held;
 }
 
 /** What the vault shows of the write now, as handles: compared with what it showed at the send. */
