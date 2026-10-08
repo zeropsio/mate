@@ -26,6 +26,27 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence: "a restart in a running run carries on a task its nudge left standing",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      w.press({ _tag: "start", ...OPTIONS }, OTHER);
+      w.quiet();
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      w.end("reviewer");
+      w.run("reviewer");
+      w.end("reviewer");
+      const before = w.turns("reviewer");
+      restarted(w);
+      w.quiet();
+      return [before, w.turns("reviewer")];
+    },
+    expected: [
+      ["task", "nudge"],
+      ["task", "nudge", "continue"],
+    ],
+  },
+  {
     sentence:
       "a turn its agent stopped on its own is interrupted, not broken: its task stays in its attempt",
     journey: (w) => {

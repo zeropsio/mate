@@ -3105,6 +3105,25 @@ const recovered = (b: Builder): void => {
       );
     }
   }
+  // A running run carries on what a restart found stopped mid-way (V1's boot): its task goes on.
+  if (runningRun(b.state) === undefined) return;
+  for (const member of membersInOrder(b.state)) {
+    const open = openTaskOf(b.state, member.handle);
+    if (
+      open?.state !== "working" ||
+      open.midway === null ||
+      isWorking(b.state, member.handle) ||
+      member.carryOn !== null
+    ) {
+      continue;
+    }
+    b.emit({
+      _tag: "CrewmateUpdated",
+      handle: member.handle,
+      set: { carryOn: { why: STOPPED_MIDWAY, as: null } },
+    });
+    advanceMember(b, member.handle);
+  }
 };
 
 const wakeKey = (state: CrewState, wakeId: string, kind: string): string =>
