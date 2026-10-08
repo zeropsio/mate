@@ -503,6 +503,7 @@ export * from "./operations/mateEngine.ts";
 export * from "./operations/executors/mateEngine.ts";
 export {
   ENGINE_UPDATE_WORDS,
+  HISTORY_CUT_KIND,
   engineRows,
   engineThread,
   engineThreadOf,

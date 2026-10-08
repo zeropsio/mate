@@ -323,6 +323,9 @@ function workActivities(
 }
 
 /** A marker in a run, as V1 draws the same event: a compaction, an error, a capture's gap. */
+/** The activity kind of the line where the history import cut a conversation's earlier turns. */
+export const HISTORY_CUT_KIND = "history.cut";
+
 function markerActivity(
   item: Extract<Item, { kind: "marker" }>,
   cardOf: CardOf,
@@ -357,6 +360,45 @@ function markerActivity(
         "runtime.warning",
         "The workspace was not captured",
         marker.reason === undefined ? {} : { message: marker.reason },
+        card,
+        item.at,
+        item.seq,
+      );
+    case "warning":
+      // V1 labels a warning by its own words.
+      return marker.reason === undefined
+        ? null
+        : activity(
+            item.id,
+            "runtime.warning",
+            marker.reason,
+            { message: marker.reason },
+            card,
+            item.at,
+            item.seq,
+          );
+    case "plan":
+      // The plan's steps are the item's data, not its record: its words, as V1's update says them.
+      return activity(
+        item.id,
+        "turn.plan.updated",
+        "Plan updated",
+        marker.reason === undefined ? {} : { explanation: marker.reason },
+        card,
+        item.at,
+        item.seq,
+      );
+    case "runtime.note":
+      return marker.reason === undefined
+        ? null
+        : activity(item.id, "runtime.note", marker.reason, {}, card, item.at, item.seq);
+    case "history-cut":
+      // Drawn by the timeline as a line at the conversation's top, never a step of its run.
+      return activity(
+        item.id,
+        HISTORY_CUT_KIND,
+        marker.reason ?? "Earlier turns stayed with the previous engine.",
+        {},
         card,
         item.at,
         item.seq,

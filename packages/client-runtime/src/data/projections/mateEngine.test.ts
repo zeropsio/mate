@@ -729,8 +729,39 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
         payload: { message: "api: Snapshot refused: disk full" },
       },
     },
+    {
+      marker: { kind: "warning", reason: "The model is overloaded; retrying." },
+      expected: {
+        kind: "runtime.warning",
+        summary: "The model is overloaded; retrying.",
+        tone: "info",
+        payload: { message: "The model is overloaded; retrying." },
+      },
+    },
+    {
+      marker: { kind: "plan", reason: "Deploy the api, then check it." },
+      expected: {
+        kind: "turn.plan.updated",
+        summary: "Plan updated",
+        tone: "info",
+        payload: { explanation: "Deploy the api, then check it." },
+      },
+    },
+    {
+      marker: { kind: "runtime.note", reason: "Resumed from a checkpoint" },
+      expected: { kind: "runtime.note", summary: "Resumed from a checkpoint", tone: "info" },
+    },
   ])("a $marker.kind marker is the event V1 draws for it", ({ marker, expected }) => {
     expect(activitiesOf([markerItem(run1, 2, marker)])).toMatchObject([expected]);
+  });
+
+  // Catches an imported conversation that hides where its earlier turns stayed behind.
+  it("where the history import cut, a line at the top says what stayed behind", () => {
+    const reason =
+      "12 earlier turns stayed with the previous engine: this conversation starts here.";
+    expect(activitiesOf([markerItem(run1, 1, { kind: "history-cut", reason })])).toMatchObject([
+      { kind: "history.cut", summary: reason, tone: "info" },
+    ]);
   });
 
   it("a marker this build does not know draws nothing", () => {

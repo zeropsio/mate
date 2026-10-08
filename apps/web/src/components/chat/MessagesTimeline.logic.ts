@@ -1,4 +1,5 @@
 import { readUsageLimitNotice, usageLimitProvider } from "../../zerops/providerLimit.logic";
+import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
 import {
@@ -667,8 +668,12 @@ type MessagesTimelineRowBody =
       kind: "seam";
       id: string;
       createdAt: string;
-      /** A new day, a long quiet stretch, or where the person left off last time. */
-      seam: "day" | "gap" | "new";
+      /**
+       * A new day, a long quiet stretch, where the person left off last time, or where the
+       * history import cut the conversation's earlier turns (`words` says what stayed behind).
+       */
+      seam: "day" | "gap" | "new" | "cut";
+      words?: string;
     }
   | { kind: "proposed-plan"; id: string; createdAt: string; proposedPlan: ProposedPlan }
   | {
@@ -2080,7 +2085,15 @@ export function deriveMessagesTimelineRows(input: {
    */
   cache?: MessagesTimelineRowsCache;
 }): MessagesTimelineRow[] {
-  const entries = input.timelineEntries;
+  // Where the history import cut: a line at the conversation's top, never a step of the run it
+  // was recorded in.
+  const cut = input.timelineEntries.find(
+    (entry) => entry.kind === "work" && entry.entry.sourceActivityKind === HISTORY_CUT_KIND,
+  );
+  const entries =
+    cut === undefined
+      ? input.timelineEntries
+      : input.timelineEntries.filter((entry) => entry !== cut);
   const cache = input.cache;
   if (cache !== undefined) cache.generation += 1;
   const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
@@ -2210,7 +2223,18 @@ export function deriveMessagesTimelineRows(input: {
     else landedByTurnKey.set(stretch.turnKey, [entry]);
   }
 
-  const rows: MessagesTimelineRow[] = [];
+  const rows: MessagesTimelineRow[] =
+    cut?.kind === "work"
+      ? [
+          {
+            kind: "seam",
+            id: "seam:cut",
+            createdAt: cut.createdAt,
+            seam: "cut",
+            words: cut.entry.label,
+          },
+        ]
+      : [];
   let lastDay: string | null = null;
   let lastEnd: string | null = null;
   const newSinceMs = input.newSince ? Date.parse(input.newSince) : NaN;
