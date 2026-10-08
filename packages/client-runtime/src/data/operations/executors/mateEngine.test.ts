@@ -1,5 +1,6 @@
 import {
   EngineWireError,
+  EnvironmentAuthorizationError,
   type EngineCallResult,
   type EngineReceiptResult,
   type Item,
@@ -255,6 +256,33 @@ describe("what a person does to an engine conversation", () => {
         summary: "Answered: token",
       });
       expect(r.calls[0]).toMatchObject({ answer: { kind: "input", answers: { token: "s3cret" } } });
+    }),
+  );
+});
+
+describe("a call the Mate refuses for want of authority", () => {
+  it.effect("is refused in its words, never asked about or sent again", () =>
+    Effect.gen(function* () {
+      const refused = new EnvironmentAuthorizationError({
+        message: "Your answer was refused. Sign in and retry.",
+        requiredScope: "orchestration:operate",
+      }) as unknown as EngineCallError;
+      const r = rig({ answers: [Effect.fail(refused)] });
+      const failure = yield* Effect.flip(
+        r.operations.answer({
+          ...target,
+          requestId: "thread-ada/r/2/q/1",
+          answer: { kind: "input", answers: { target: "stage" } },
+          summary: "Answered",
+        }),
+      );
+      expect(failure).toMatchObject({
+        outcome: "refused",
+        message: "Your answer was refused. Sign in and retry.",
+      });
+      expect(r.calls).toHaveLength(1);
+      expect(r.receipts).toEqual([]);
+      expect(r.record()?.receipt).toMatchObject({ acceptance: { kind: "refused" } });
     }),
   );
 });

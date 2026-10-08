@@ -10,6 +10,7 @@
  */
 import {
   EngineWireError,
+  EnvironmentAuthorizationError,
   MATE_ENGINE_PROTOCOLS,
   WS_METHODS,
   type CommandResult,
@@ -180,6 +181,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
 const isUnavailable = Schema.is(EnvironmentRpcUnavailableError);
 const isUnregistered = Schema.is(EnvironmentNotRegisteredError);
 const isWireError = Schema.is(EngineWireError);
+const isUnauthorized = Schema.is(EnvironmentAuthorizationError);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** A refusal's words for a person, by the engine's reason. */
@@ -271,6 +273,11 @@ export function makeMateEngineOperations(options: {
             reason: result.unserved.message,
             code: result.unserved.reason === "protocol" ? "update" : "not-on-engine",
           };
+    return refuse(requestId, refusal.reason, refusal.code);
+  };
+
+  /** A refusal is the operation's answer: nothing was applied, nothing is asked again. */
+  const refuse = (requestId: string, reason: string, code: string) => {
     store.dispatch({
       kind: "operation-receipt",
       receipt: {
@@ -279,17 +286,11 @@ export function makeMateEngineOperations(options: {
         executor: "mate",
         affected: [],
         handles: [],
-        acceptance: { kind: "refused", reason: refusal.reason, code: refusal.code },
+        acceptance: { kind: "refused", reason, code },
         outcome: { kind: "pending" },
       },
     });
-    return Effect.fail(
-      new EngineOperationFailed({
-        outcome: "refused",
-        message: refusal.reason,
-        code: refusal.code,
-      }),
-    );
+    return Effect.fail(new EngineOperationFailed({ outcome: "refused", message: reason, code }));
   };
 
   const attempt = (
@@ -303,6 +304,9 @@ export function makeMateEngineOperations(options: {
       if (closed) return yield* Effect.fail(closedFailure());
       if (Exit.isSuccess(answer)) return yield* settle(requestId, intent, answer.value);
       const error = Cause.findErrorOption(answer.cause);
+      // The Mate refused the caller before the engine saw the call: a refusal, never a doubt.
+      if (Option.isSome(error) && isUnauthorized(error.value))
+        return yield* refuse(requestId, error.value.message, "authorization");
       if (
         Option.isSome(error) &&
         (isUnavailable(error.value) || isUnregistered(error.value) || isWireError(error.value))
