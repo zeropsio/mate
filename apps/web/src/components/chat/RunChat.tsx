@@ -222,6 +222,7 @@ import {
   standsAtFoot,
 } from "./runCard.logic";
 import { useRunScrollResettle } from "./useRunScrollResettle";
+import { useEngineLiveMessage, useEngineLiveMessages } from "../../zerops/useEngineLiveMessage";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -1233,7 +1234,8 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  * in its item's box — the newest words in view while they stream, its head
  * in the log and the whole of them a press away.
  */
-function NoteBubble({ message }: { readonly message: ChatMessage }) {
+function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
+  const message = useEngineLiveMessage(recorded);
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} what="message">
@@ -1281,7 +1283,8 @@ function useRunsPast(
  * in view while it streams, its head in the log and the whole of it a press
  * away (D4: nothing is cut without a way to reach it).
  */
-function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
+function ThoughtBubble({ messages: recorded }: { readonly messages: ReadonlyArray<ChatMessage> }) {
+  const messages = useEngineLiveMessages(recorded);
   const text = messages.map((message) => message.text).join("\n\n");
   if (text.trim().length === 0) return null;
   return (
