@@ -1,3 +1,4 @@
+import { makeReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import {
   CommandId,
   type CheckpointRef,
@@ -1090,39 +1091,59 @@ const make = Effect.gen(function* () {
       ),
     );
 
+  const updateBoundary = yield* makeReactorDrainBoundary;
   const worker = yield* makeDrainableWorker(processInputSafely);
 
   const start: CheckpointReactorShape["start"] = Effect.fn("start")(function* () {
+    const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
+    const runtimeEvents =
+      providerService.eventBarrier?.events ??
+      providerService.streamEvents.pipe(Stream.map((event) => ({ sequence: 0, event })));
+    yield* updateBoundary.start(
+      yield* orchestrationEngine.latestSequence,
+      (yield* providerService.eventBarrier?.position ?? Effect.succeed({ published: 0 })).published,
+    );
     yield* forkParked(
-      Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-        if (
-          event.type !== "thread.turn-start-requested" &&
-          event.type !== "thread.message-sent" &&
-          event.type !== "thread.checkpoint-revert-requested" &&
-          event.type !== "thread.deleted"
-        ) {
-          return Effect.void;
-        }
-        return worker.enqueue({ source: "domain", event });
-      }),
+      Stream.runForEach(domainEvents, (event) =>
+        updateBoundary.domain(
+          event.sequence,
+          Effect.gen(function* () {
+            if (
+              event.type !== "thread.turn-start-requested" &&
+              event.type !== "thread.message-sent" &&
+              event.type !== "thread.checkpoint-revert-requested" &&
+              event.type !== "thread.deleted"
+            ) {
+              return Effect.void;
+            }
+            return yield* worker.enqueue({ source: "domain", event });
+          }),
+        ),
+      ),
     );
 
     yield* forkParked(
-      Stream.runForEach(providerService.streamEvents, (event) => {
-        if (
-          event.type !== "turn.started" &&
-          event.type !== "turn.completed" &&
-          event.type !== "turn.aborted" &&
-          event.type !== "session.exited"
-        ) {
-          return Effect.void;
-        }
-        return worker.enqueue({ source: "runtime", event });
-      }),
+      Stream.runForEach(runtimeEvents, ({ sequence, event }) =>
+        updateBoundary.runtime(
+          sequence,
+          Effect.gen(function* () {
+            if (
+              event.type !== "turn.started" &&
+              event.type !== "turn.completed" &&
+              event.type !== "turn.aborted" &&
+              event.type !== "session.exited"
+            ) {
+              return Effect.void;
+            }
+            return yield* worker.enqueue({ source: "runtime", event });
+          }),
+        ),
+      ),
     );
   });
 
   return {
+    updateBoundary,
     start,
     drain: worker.drain.pipe(
       Effect.andThen(statusRefreshWorker.drain),

@@ -94,6 +94,7 @@ import {
   showOnDevTool,
 } from "./crewDirectory.ts";
 import { leadAnswered, leadAnswers, planAccept, planDiscard, reviewTask } from "./crewLead.ts";
+import { crewUpdateBlockers } from "./crewUpdateIdle.ts";
 import { CrewEngine, inertCrewEngine, type CrewEngineService } from "./CrewEngine.ts";
 import * as CrewHome from "./CrewHome.ts";
 import * as CrewIntegration from "./CrewIntegration.ts";
@@ -502,16 +503,16 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
 
     const directory = CrewThreadDirectory.of({ memberFor: memberFor(core) });
     const toolHost = CrewToolHost.of({
-      report: (member, input) => report(core, member, input),
-      board: () => board(core),
-      diff: (member, input) => diff(core, member, input),
-      showOnDev: (member, input) => showOnDevTool(core, member, input),
-      propose: (member, tasks) => proposeTool(core, member, tasks),
-      review: (member, input) => reviewCrewTool(core, member, input),
-      finish: () => finishCrewTool(core),
-      memory: (member, op) => memoryTool(core, member, op),
-      sessionStart: (member, event) => sessionStart(core, member, event),
-      postCompact: (member, summary) => postCompact(core, member, summary),
+      report: (member, input) => core.updateWork.run(report(core, member, input)),
+      board: () => core.updateWork.run(board(core)),
+      diff: (member, input) => core.updateWork.run(diff(core, member, input)),
+      showOnDev: (member, input) => core.updateWork.run(showOnDevTool(core, member, input)),
+      propose: (member, tasks) => core.updateWork.run(proposeTool(core, member, tasks)),
+      review: (member, input) => core.updateWork.run(reviewCrewTool(core, member, input)),
+      finish: () => core.updateWork.run(finishCrewTool(core)),
+      memory: (member, op) => core.updateWork.run(memoryTool(core, member, op)),
+      sessionStart: (member, event) => core.updateWork.run(sessionStart(core, member, event)),
+      postCompact: (member, summary) => core.updateWork.run(postCompact(core, member, summary)),
     });
 
     let installed = false;
@@ -563,7 +564,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
         ),
       ).pipe(
         Stream.runForEach((logins) =>
-          retryRefused(core, moved(logins)).pipe(
+          core.updateWork.run(retryRefused(core, moved(logins))).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
                 core.memory.lastError = failureWords(error);
@@ -580,8 +581,24 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     yield* core.reload;
     if ((yield* core.applied) !== undefined) yield* activate;
 
-    yield* boot(core);
-    yield* bus.events.pipe(Stream.runForEach(makeTurnHandler(core)), Effect.forkIn(scope));
+    yield* core.updateWork.run(boot(core));
+    let updateRuntime = (yield* bus.eventBarrier?.position ?? Effect.succeed({ published: 0 }))
+      .published;
+    const onTurn = makeTurnHandler(core);
+    const runtimeEvents =
+      bus.eventBarrier?.events ?? bus.events.pipe(Stream.map((event) => ({ sequence: 0, event })));
+    yield* runtimeEvents.pipe(
+      Stream.runForEach(({ sequence, event }) =>
+        core.updateWork.run(onTurn(event)).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              updateRuntime = sequence;
+            }).pipe(Effect.andThen(core.changed)),
+          ),
+        ),
+      ),
+      Effect.forkIn(scope),
+    );
     const inspected = yield* Deferred.make<void, CrewCommandError>();
     yield* Effect.flatMap(core.applied, (applied) =>
       Deferred.complete(
@@ -597,11 +614,11 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
               ),
             ),
       ),
-    ).pipe(Effect.forkIn(scope));
+    ).pipe(core.updateWork.fork);
     // Interrupted work carries on once the server accepts commands.
     yield* Deferred.await(inspected).pipe(
       Effect.andThen(readiness.await),
-      Effect.andThen(carryOnAtBoot(core)),
+      Effect.andThen(core.updateWork.run(carryOnAtBoot(core))),
       Effect.catch((error) =>
         Effect.gen(function* () {
           core.memory.lastError = failureWords(error);
@@ -644,7 +661,50 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       Effect.forkIn(scope),
     );
 
+    const updateFacts = Effect.gen(function* () {
+      const run = yield* core.store.latestRun(CrewHome.CREW_ID);
+      const blockers = [
+        ...crewUpdateBlockers({
+          active: yield* core.updateWork.active,
+          run: Option.getOrUndefined(run)?.state,
+          tasks: yield* core.store.assignments(CrewHome.CREW_ID),
+          operations: yield* core.store.operations(CrewHome.CREW_ID),
+        }),
+      ];
+      const position = yield* bus.eventBarrier?.position ?? Effect.succeed(undefined);
+      if (position === undefined || position.published !== updateRuntime || position.processing > 0)
+        blockers.push("crew provider callback pending or unavailable");
+      const memory = core.memory;
+      if (memory.working.size > 0 || memory.continueAtTurnEnd.size > 0 || memory.carryOn.size > 0)
+        blockers.push("crew turn or continuation");
+      if (memory.leadQuestions.size > 0 || memory.grantsWaiting.size > 0)
+        blockers.push("open crew question or request");
+      if (
+        memory.sweeping.size > 0 ||
+        memory.resumeAtBoot.size > 0 ||
+        memory.integrating.size > 0 ||
+        memory.integrateAgain.size > 0 ||
+        memory.landWhenReady.size > 0 ||
+        memory.autoLanding.size > 0 ||
+        memory.sessionRestart.size > 0 ||
+        memory.freshAtTurnEnd.size > 0
+      )
+        blockers.push("crew process or maintenance pending");
+      return { idle: blockers.length === 0, blockers };
+    }).pipe(
+      Effect.catchCause(() => Effect.succeed({ idle: false, blockers: ["crew state unreadable"] })),
+    );
     const engine: CrewEngineService = {
+      updateFacts,
+      updateChanges: Stream.mergeAll(
+        [
+          core.signals,
+          core.updateWork.changes,
+          core.store.changes.pipe(Stream.map(() => void 0)),
+          bus.eventBarrier?.changes ?? Stream.empty,
+        ],
+        { concurrency: "unbounded" },
+      ),
       snapshot: SubscriptionRef.changes(hub),
       // Opening the crew home is the editor opening: the moment to read what its Service picker offers.
       readFiles: core

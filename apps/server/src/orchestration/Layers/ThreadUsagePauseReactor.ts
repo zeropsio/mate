@@ -1,3 +1,4 @@
+import { makeReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 /**
  * ThreadUsagePauseReactorLive — one pause per usage limit, and the resume at
  * its reset (`orchestration/usagePause.ts` for the why and the decisions).
@@ -154,7 +155,9 @@ const make = Effect.gen(function* () {
     yield* setPause(shell.id, lifted ? null : { ...current, held: current.held + 1 });
   });
 
-  const onReset = Effect.fn("ThreadUsagePauseReactor.onReset")(function* (
+  const updateBoundary = yield* makeReactorDrainBoundary;
+  const deferredResets = new Map<ThreadId, string>();
+  const fireReset = Effect.fn("ThreadUsagePauseReactor.onReset")(function* (
     threadId: ThreadId,
     resetsAt: string,
   ) {
@@ -172,20 +175,36 @@ const make = Effect.gen(function* () {
     )
       return;
     const resumeId = yield* serverId("usage-resume");
-    yield* orchestrationEngine.dispatch({
-      type: "thread.turn.start",
-      commandId: CommandId.make(`server:${resumeId}`),
-      threadId,
-      message: {
-        messageId: MessageId.make(resumeId),
-        role: "user",
-        text: USAGE_LIMIT_RESUME_PROMPT,
-        attachments: [],
+    yield* orchestrationEngine.dispatch(
+      {
+        type: "thread.turn.start",
+        commandId: CommandId.make(`server:${resumeId}`),
+        threadId,
+        message: {
+          messageId: MessageId.make(resumeId),
+          role: "user",
+          text: USAGE_LIMIT_RESUME_PROMPT,
+          attachments: [],
+        },
+        runtimeMode: shell.runtimeMode,
+        interactionMode: shell.interactionMode,
+        createdAt: yield* nowIso,
       },
-      runtimeMode: shell.runtimeMode,
-      interactionMode: shell.interactionMode,
-      createdAt: yield* nowIso,
-    });
+      { updateContinuation: true },
+    );
+  });
+
+  const onReset = Effect.fnUntraced(function* (threadId: ThreadId, resetsAt: string) {
+    const admission = orchestrationEngine.updateAdmission;
+    const fired =
+      admission === undefined
+        ? yield* fireReset(threadId, resetsAt).pipe(Effect.as(true))
+        : yield* admission.run(
+            "thread.turn.start",
+            fireReset(threadId, resetsAt).pipe(Effect.as(true)),
+          );
+    if (fired === undefined) deferredResets.set(threadId, resetsAt);
+    else deferredResets.delete(threadId);
   });
 
   // Pauses outlive the server; each one's reset is armed again.
@@ -216,20 +235,43 @@ const make = Effect.gen(function* () {
   worker = yield* makeDrainableWorker(process);
 
   const start: ThreadUsagePauseReactorShape["start"] = Effect.fn("start")(function* () {
+    const runtimeEvents =
+      providerService.eventBarrier?.events ??
+      providerService.streamEvents.pipe(Stream.map((event) => ({ sequence: 0, event })));
+    yield* updateBoundary.start(
+      0,
+      (yield* providerService.eventBarrier?.position ?? Effect.succeed({ published: 0 })).published,
+    );
     yield* forkParked(
       worker
         .enqueue({ kind: "recover" })
         .pipe(
           Effect.andThen(
-            Stream.runForEach(providerService.streamEvents, (event) =>
-              concernsUsagePause(event) ? worker.enqueue({ kind: "runtime", event }) : Effect.void,
+            Stream.runForEach(runtimeEvents, ({ sequence, event }) =>
+              updateBoundary.runtime(
+                sequence,
+                concernsUsagePause(event)
+                  ? worker.enqueue({ kind: "runtime", event })
+                  : Effect.void,
+              ),
             ),
           ),
         ),
     );
   });
 
-  return { start, drain: worker.drain } satisfies ThreadUsagePauseReactorShape;
+  return {
+    updateBoundary,
+    resumeDeferred: Effect.suspend(() =>
+      Effect.forEach(
+        [...deferredResets],
+        ([threadId, resetsAt]) => worker.enqueue({ kind: "reset", threadId, resetsAt }),
+        { discard: true },
+      ),
+    ),
+    start,
+    drain: worker.drain,
+  } satisfies ThreadUsagePauseReactorShape;
 });
 
 export const ThreadUsagePauseReactorLive = Layer.effect(ThreadUsagePauseReactor, make);

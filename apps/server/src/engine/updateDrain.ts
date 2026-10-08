@@ -1,64 +1,16 @@
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ConversationId } from "@t3tools/contracts";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
+export { nativeResumeBlocker } from "../update/NativeResume.ts";
+import { nativeResumeBlocker, type ResumeBinding } from "../update/NativeResume.ts";
 import type { MateUpdateDrain, UpdateIdleFacts } from "../update/MateUpdateDrain.ts";
 import { Conversations } from "./Conversations.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { providerThreadOf, TurnPump } from "./pump/TurnPump.ts";
 import { engineStateBlockers } from "./updateIdle.ts";
-
-export interface ResumeBinding {
-  readonly provider_name: string;
-  readonly provider_instance_id: string | null;
-  readonly resume_cursor_json: string | null;
-}
-
-const claudeCursor = Schema.Struct({
-  resume: Schema.String.check(Schema.isUUID()),
-  resumeSessionAt: Schema.optionalKey(Schema.String),
-  turnCount: Schema.optionalKey(Schema.Number),
-  turnStartMessageIds: Schema.optionalKey(Schema.Array(Schema.NullOr(Schema.String))),
-});
-const codexCursor = Schema.Struct({ threadId: Schema.NonEmptyString });
-
-const cursorMatches = <A>(schema: Schema.Codec<A>, persisted: string, live: unknown | null) =>
-  Effect.gen(function* () {
-    const stored = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(persisted);
-    if (live === null) return true;
-    const current = yield* Schema.decodeUnknownEffect(schema)(live);
-    return Schema.toEquivalence(schema)(stored, current);
-  }).pipe(Effect.orElseSucceed(() => false));
-
-export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
-  readonly driver: string | undefined;
-  readonly nativeRef: string | null;
-  readonly thread?: string;
-  readonly liveCursor?: unknown;
-  readonly instanceId: string | null | undefined;
-  readonly binding: ResumeBinding | undefined;
-}) {
-  const { driver, nativeRef, instanceId, binding } = input;
-  if (driver !== "claude" && driver !== "codex") return "native resume is unsupported";
-  if (
-    binding === undefined ||
-    binding.resume_cursor_json === null ||
-    instanceId == null ||
-    binding.provider_name !== (driver === "claude" ? "claudeAgent" : driver) ||
-    binding.provider_instance_id !== instanceId
-  )
-    return "native resume binding is missing or disagrees";
-  if (nativeRef === null || (input.thread !== undefined && nativeRef !== input.thread))
-    return "native resume binding belongs to another generation";
-  const live = Object.hasOwn(input, "liveCursor") ? input.liveCursor : null;
-  const valid = yield* driver === "claude"
-    ? cursorMatches(claudeCursor, binding.resume_cursor_json, live)
-    : cursorMatches(codexCursor, binding.resume_cursor_json, live);
-  return valid ? undefined : "native resume cursor is missing or disagrees";
-});
 
 export const makeEngineUpdateDrain = Effect.gen(function* () {
   const conversations = yield* Conversations;
@@ -123,15 +75,17 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     if (!(yield* admission.closed)) return { idle: false, blockers: ["admission is open"] };
     const before = yield* facts;
     if (!before.idle) return before;
-    for (const host of yield* pump.updateHosts ?? Effect.succeed([])) {
-      if ((yield* host.current) === null) continue;
-      // The proved-idle close must finish rather than being cut by the updater's deadline.
-      yield* host.record({ kind: "stop", cause: "idle" });
-      yield* provider.stopSession({ threadId: host.thread });
-      yield* host.record({ kind: "stopped" });
-      yield* host.settled;
-    }
-    return yield* facts;
+    return yield* Effect.gen(function* () {
+      for (const host of yield* pump.updateHosts ?? Effect.succeed([])) {
+        if ((yield* host.current) === null) continue;
+        // The proved-idle close must finish rather than being cut by the updater's deadline.
+        yield* host.record({ kind: "stop", cause: "idle" });
+        yield* provider.stopSession({ threadId: host.thread });
+        yield* host.record({ kind: "stopped" });
+        yield* host.settled;
+      }
+      return yield* facts;
+    }).pipe(Effect.uninterruptible);
   }).pipe(
     Effect.catchCause(() =>
       Effect.succeed<UpdateIdleFacts>({

@@ -1,3 +1,4 @@
+import { makeReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import {
   ApprovalRequestId,
   CommandId,
@@ -3092,6 +3093,7 @@ const make = Effect.gen(function* () {
         ),
       );
 
+  const updateBoundary = yield* makeReactorDrainBoundary;
   const worker = yield* makeDrainableWorker((input: RuntimeIngestionInput) =>
     processInput(input).pipe(logIngestionFailure(input.source, input.event)),
   );
@@ -3116,28 +3118,46 @@ const make = Effect.gen(function* () {
 
   const start: ProviderRuntimeIngestionShape["start"] = () =>
     Effect.gen(function* () {
+      const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
+      const runtimeEvents =
+        providerService.eventBarrier?.events ??
+        providerService.streamEvents.pipe(Stream.map((event) => ({ sequence: 0, event })));
+      yield* updateBoundary.start(
+        yield* orchestrationEngine.latestSequence,
+        (yield* providerService.eventBarrier?.position ?? Effect.succeed({ published: 0 }))
+          .published,
+      );
       yield* forkParked(
-        Stream.runForEach(providerService.streamEvents, (event) =>
-          event.type === "turn.diff.updated"
-            ? diffWorker.enqueue(event)
-            : worker.enqueue({ source: "runtime", event }),
+        Stream.runForEach(runtimeEvents, ({ sequence, event }) =>
+          updateBoundary.runtime(
+            sequence,
+            event.type === "turn.diff.updated"
+              ? diffWorker.enqueue(event)
+              : worker.enqueue({ source: "runtime", event }),
+          ),
         ),
       );
       yield* forkParked(
-        Stream.runForEach(orchestrationEngine.streamDomainEvents, (event) => {
-          if (
-            event.type !== "thread.turn-start-requested" &&
-            event.type !== "thread.deleted" &&
-            event.type !== "thread.archived"
-          ) {
-            return Effect.void;
-          }
-          return worker.enqueue({ source: "domain", event });
-        }),
+        Stream.runForEach(domainEvents, (event) =>
+          updateBoundary.domain(
+            event.sequence,
+            Effect.gen(function* () {
+              if (
+                event.type !== "thread.turn-start-requested" &&
+                event.type !== "thread.deleted" &&
+                event.type !== "thread.archived"
+              ) {
+                return Effect.void;
+              }
+              return yield* worker.enqueue({ source: "domain", event });
+            }),
+          ),
+        ),
       );
     });
 
   return {
+    updateBoundary,
     start,
     // The diff worker feeds the lifecycle worker, so drain it first.
     drain: diffWorker.drain.pipe(Effect.andThen(worker.drain)),

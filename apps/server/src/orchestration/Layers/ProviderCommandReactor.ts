@@ -1,3 +1,4 @@
+import { makeReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import {
   type ChatAttachment,
@@ -231,6 +232,7 @@ const make = Effect.gen(function* () {
   const providerAuthService = yield* ProviderAuthService;
   const providerService = yield* ProviderService;
   const workspaceHistory = yield* Effect.serviceOption(WorkspaceHistory);
+  const updateBoundary = yield* makeReactorDrainBoundary;
   const pendingStarts = new Map<ThreadId, Set<Fiber.Fiber<void, never>>>();
   /** Session work forked for a thread, which its stop or interrupt cancels. */
   const forkPendingStart = Effect.fnUntraced(function* (
@@ -248,7 +250,7 @@ const make = Effect.gen(function* () {
           if (running.size === 0 && pendingStarts.get(threadId) === running) {
             pendingStarts.delete(threadId);
           }
-        }),
+        }).pipe(Effect.andThen(updateBoundary.domain(0, Effect.void))),
       ),
       Effect.forkScoped,
     );
@@ -396,17 +398,20 @@ const make = Effect.gen(function* () {
       resumedTurnStarts.set(commandId, { event, queued, sent });
       const { messageId, ...request } = event.payload;
       yield* orchestrationEngine
-        .dispatch({
-          type: "thread.turn.start",
-          commandId,
-          ...request,
-          message: {
-            messageId,
-            role: "user",
-            text: turnStart.value.message.text,
-            attachments: turnStart.value.message.attachments ?? [],
+        .dispatch(
+          {
+            type: "thread.turn.start",
+            commandId,
+            ...request,
+            message: {
+              messageId,
+              role: "user",
+              text: turnStart.value.message.text,
+              attachments: turnStart.value.message.attachments ?? [],
+            },
           },
-        })
+          { updateContinuation: true },
+        )
         .pipe(
           Effect.onError(() =>
             Effect.sync(() => {
@@ -2126,7 +2131,12 @@ const make = Effect.gen(function* () {
 
     // Subscribe before returning, even while event handling waits for server activation.
     const domainEvents = yield* orchestrationEngine.subscribeDomainEvents;
-    yield* forkParked(Stream.runForEach(domainEvents, processEvent));
+    yield* updateBoundary.start(yield* orchestrationEngine.latestSequence, 0);
+    yield* forkParked(
+      Stream.runForEach(domainEvents, (event) =>
+        updateBoundary.domain(event.sequence, processEvent(event)),
+      ),
+    );
 
     // Earlier events do not replay. Clear interrupted requests by their captured
     // IDs, then schedule persisted refinements after subscribing to their events.
@@ -2160,6 +2170,15 @@ const make = Effect.gen(function* () {
   });
 
   return {
+    updateBoundary,
+    updateBlockers: Effect.sync(() => [
+      ...(pendingStarts.size > 0 ? ["provider session work"] : []),
+      ...(compactingThreadIds.size > 0 ? ["compaction"] : []),
+      ...(turnsAfterCompaction.size > 0 || resumedTurnStarts.size > 0
+        ? ["accepted queued turn"]
+        : []),
+      ...(stoppingThreadIds.size > 0 ? ["session closing"] : []),
+    ]),
     start,
     drain: Effect.gen(function* () {
       yield* worker.drain;

@@ -69,7 +69,12 @@ const makeHarness = Effect.gen(function* () {
   const layer = ThreadUsagePauseReactorLive.pipe(
     Layer.provideMerge(orchestrationLayer),
     Layer.provideMerge(snapshotLayer),
-    Layer.provideMerge(Layer.mock(ProviderService)({ streamEvents: Stream.fromPubSub(events) })),
+    Layer.provideMerge(
+      Layer.mock(ProviderService)({
+        eventBarrier: undefined,
+        streamEvents: Stream.fromPubSub(events),
+      }),
+    ),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-usage-pause-" })),
     Layer.provideMerge(NodeServices.layer),
@@ -117,6 +122,7 @@ interface ReactorTestContext {
   readonly userMessages: Effect.Effect<ReadonlyArray<string>, ProjectionRepositoryError>;
   readonly engine: OrchestrationEngineService["Service"];
   readonly startReactor: Effect.Effect<void>;
+  readonly resumeDeferred: Effect.Effect<void>;
 }
 
 /**
@@ -182,12 +188,34 @@ const withReactor = <A, E>(
           ),
         ),
         engine,
+        resumeDeferred: reactor.resumeDeferred ?? Effect.void,
         startReactor,
       });
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped, Effect.provide(TestClock.layer()));
 
 describe("ThreadUsagePauseReactor", () => {
+  it.effect("a scheduled resume remains durable while updating and fires after cancellation", () =>
+    withReactor(({ publish, settle, pause, userMessages, engine, resumeDeferred }) =>
+      Effect.gen(function* () {
+        const admission = engine.updateAdmission;
+        assert.ok(admission);
+        yield* publish(blockedEvent(RESETS_AT));
+        yield* settle;
+        yield* admission.begin;
+        yield* TestClock.adjust(Duration.sum(UNTIL_RESET, Duration.millis(USAGE_RESUME_GRACE_MS)));
+        yield* settle;
+        assert.strictEqual((yield* pause)?.resetsAt, RESETS_AT);
+        assert.deepStrictEqual(yield* userMessages, []);
+        yield* admission.cancel;
+        yield* resumeDeferred;
+        yield* settle;
+        assert.strictEqual(yield* pause, null);
+        assert.deepStrictEqual(yield* userMessages, [USAGE_LIMIT_RESUME_PROMPT]);
+      }),
+    ),
+  );
+
   it.effect("pauses once for a blocked window and counts the background results it holds", () =>
     withReactor(({ publish, settle, pause }) =>
       Effect.gen(function* () {
