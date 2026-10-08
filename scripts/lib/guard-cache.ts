@@ -251,6 +251,14 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
     projects.set(root, project);
     return project;
   };
+  const selfPackageAt = (from: string, name: string): string | undefined => {
+    for (let directory = from; ; directory = NodePath.dirname(directory)) {
+      const manifest = NodePath.join(directory, "package.json");
+      if (NodeFS.existsSync(manifest))
+        return readJsonc(manifest).name === name ? manifest : undefined;
+      if (directory === NodePath.dirname(directory)) return undefined;
+    }
+  };
   const resolve = (specifier: string, file: string, directory = false): string | undefined => {
     if (NodeModule.isBuiltin(specifier)) return undefined;
     const project = projectOf(file);
@@ -278,7 +286,10 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
         const name = packageName(specifier);
         const manifest = packageImport
           ? NodePath.join(project.root, "package.json")
-          : (packageAt(project.root, name) ?? packageAt(NodePath.dirname(file), name));
+          : (selfPackageAt(project.root, name) ??
+            selfPackageAt(NodePath.dirname(file), name) ??
+            packageAt(project.root, name) ??
+            packageAt(NodePath.dirname(file), name));
         if (manifest !== undefined && NodeFS.existsSync(manifest)) {
           globalInputs.add(manifest);
           const metadata = readJsonc(manifest);

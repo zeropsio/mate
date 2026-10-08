@@ -147,6 +147,12 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
         "#fixture/*": { import: "./src/*.ts", default: "./src/wrapper.jsx" },
       },
     },
+    {
+      title: "reports restyling through a wrapper resolved by package self-imports",
+      specifier: "web/wrapper",
+      imports: {},
+      exports: { "./wrapper": "./src/wrapper.ts" },
+    },
   ])(
     "$title",
     (scenario) =>
@@ -162,7 +168,11 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
           yield* fs.writeFileString(path.join(cwd, "package.json"), '{"name":"fixture"}');
           yield* fs.writeFileString(
             path.join(cwd, "apps/web/package.json"),
-            encodeUnknownJson({ name: "web", imports: scenario.imports }),
+            encodeUnknownJson({
+              name: "web",
+              imports: scenario.imports,
+              exports: scenario.exports,
+            }),
           );
           yield* fs.writeFileString(path.join(directory, "no-restyle.json"), "[]");
           const config = path.join(cwd, ".oxlintrc.json");
