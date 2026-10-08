@@ -4,6 +4,7 @@ import { act, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
+import { useMateStandUp } from "./useMateStandUp";
 
 const ENVIRONMENT = EnvironmentId.make("environment-fen");
 const MAIN = scopeThreadRef(ENVIRONMENT, ThreadId.make("thread-main"));
@@ -89,7 +90,6 @@ async function holdsComposer(
   });
   vi.stubGlobal("HTMLIFrameElement", TestNode);
   const { createRoot } = await import("react-dom/client");
-  const { useMateStandUp } = await import("./useMateStandUp");
   const held: Array<boolean> = [];
   const readings: Array<ReturnType<typeof useMateStandUp>> = [];
   function View() {
@@ -106,6 +106,7 @@ async function holdsComposer(
 }
 
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   world.failed = false;
   world.retry.mockClear();
   world.viewer = ADA;
