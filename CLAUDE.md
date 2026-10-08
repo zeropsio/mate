@@ -70,8 +70,14 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
   typechecks of touched packages, related tests and only affected scenario areas. `--list` previews
   selection; `--base <ref>` changes the comparison. Use targeted tests while iterating.
+- What a change verifies depends on what it touches: docs, plans and comments run no tests (format
+  and links only); scripts run their own tests; logic runs typechecks of touched packages and the
+  tests that import the changed files; UI adds only the scenarios that render the changed parts; a
+  shared contract adds only that seam's contract suites. The full suites run once per `main` head in
+  CI; a red `main` is repaired by the lane whose commit (its `Card:` trailer) turned it red.
 - A lane's loop: targeted `vp test run <files>` while iterating; the gate once when the change is
-  complete, then only the failed files and the gate once more. Rebase once, right before the push;
+  complete, then only the failed files and the gate once more. Reviewers judge the diff and the
+  gate's receipt and never re-run the gate. Rebase once, right before the push;
   re-run only what the rebase changed in the lane's files. A push rejected because `main` moved is
   rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
   exceptions, `surfaces.json`, theme tokens or tooling. At most one
