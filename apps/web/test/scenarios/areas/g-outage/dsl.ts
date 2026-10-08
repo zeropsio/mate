@@ -233,7 +233,7 @@ export const opensMate = (s: Scenario) =>
 
 export const messageAppears = (s: Scenario, words: string) =>
   Effect.promise(async () => {
-    await s.drivers.mates.get("Ada")!.waitForMessage(words);
+    await s.drivers.mates.get("Ada")!.conversation.waitForMessage(words);
     await s.page.waitForFunction(
       (words) => {
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);

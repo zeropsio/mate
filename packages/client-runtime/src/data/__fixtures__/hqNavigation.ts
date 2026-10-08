@@ -202,7 +202,8 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
   ];
   const navigationScopes = generations(navigation);
   store.dispatch({
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: navigationScopes,
     reset: true,
     rows,
@@ -221,7 +222,8 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     const { presence, ...overview } = mate;
     const scopes = generations([hqMateScope(orgId, projectId)]);
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes,
       reset: true,
       rows: [

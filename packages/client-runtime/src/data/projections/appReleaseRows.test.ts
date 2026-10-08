@@ -29,7 +29,8 @@ function deliver(releases: ReadonlyArray<typeof release>) {
   return apply(
     [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: [{ scope, generation: 1 }],
         reset: true,
         removals: [],
@@ -96,7 +97,8 @@ describe("release source coverage", () => {
     const removed = apply(
       [
         {
-          kind: "hq-delivery",
+          kind: "delivery",
+          via: "hq-stream",
           scopes: [{ scope, generation: 1 }],
           reset: false,
           rows: [],

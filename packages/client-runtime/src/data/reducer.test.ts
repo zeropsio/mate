@@ -684,5 +684,69 @@ describe("reduceAccount", () => {
         expect(supersedes(current, incoming, method)).toBe(expected);
       },
     );
+
+    const conversation = (epoch: number, seq: number, environmentId = "env-a"): Revision => ({
+      kind: "mate-conversation",
+      environmentId,
+      epoch,
+      seq,
+    });
+    it.each([
+      {
+        name: "a later sequence",
+        current: conversation(4, 12),
+        incoming: conversation(4, 13),
+        push: true,
+        baseline: true,
+      },
+      {
+        name: "the same sequence again",
+        current: conversation(4, 12),
+        incoming: conversation(4, 12),
+        push: false,
+        baseline: false,
+      },
+      {
+        name: "an earlier sequence",
+        current: conversation(4, 13),
+        incoming: conversation(4, 12),
+        push: false,
+        baseline: false,
+      },
+      {
+        name: "a later epoch, whatever its sequence",
+        current: conversation(4, 13),
+        incoming: conversation(5, 2),
+        push: true,
+        baseline: true,
+      },
+      {
+        name: "an earlier epoch, whatever its sequence",
+        current: conversation(5, 2),
+        incoming: conversation(4, 13),
+        push: false,
+        baseline: false,
+      },
+      {
+        name: "another environment of the Mate",
+        current: conversation(4, 13),
+        incoming: conversation(9, 99, "env-b"),
+        push: false,
+        baseline: true,
+      },
+      {
+        name: "a Mate link reading",
+        current: { kind: "mate-link", sequence: 1 } as Revision,
+        incoming: conversation(4, 1),
+        push: false,
+        baseline: false,
+      },
+    ])(
+      "orders an engine conversation's records by epoch, then sequence: $name",
+      ({ current, incoming, push, baseline }) => {
+        expect(supersedes(current, incoming, "push")).toBe(push);
+        expect(supersedes(current, incoming, "baseline")).toBe(baseline);
+      },
+    );
   });
 });

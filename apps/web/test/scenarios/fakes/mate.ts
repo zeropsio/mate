@@ -116,6 +116,11 @@ export class MateFake {
   thread: OrchestrationThread;
   sequence = 1;
   acceptMessages = true;
+  /**
+   * The conversation as its wire holds it: what a journey waits on for a person's message. V1's own
+   * thread unless an area composes another wire onto this Mate (the engine's).
+   */
+  conversation: { waitForMessage(text: string): Promise<void> } = this;
   readonly unknownMethods = new Set<string>();
   private readonly receipts = new NodeEvents.EventEmitter();
   readonly projectId: string;

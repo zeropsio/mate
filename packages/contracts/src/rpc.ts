@@ -19,6 +19,7 @@ import {
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
   EngineAnswerInput,
+  EngineDismissInput,
   EngineCallResult,
   EngineConversationFrame,
   EngineDetail,
@@ -31,6 +32,7 @@ import {
   EngineRowsFrame,
   EngineSendInput,
   EngineSteerInput,
+  EngineSwitchModelInput,
   EngineStopInput,
   EngineSubscribeInput,
   EngineSubscribeRowsInput,
@@ -392,7 +394,9 @@ export const WS_METHODS = {
   engineSend: "engine.send",
   engineStop: "engine.stop",
   engineAnswer: "engine.answer",
+  engineDismiss: "engine.dismiss",
   engineSteer: "engine.steer",
+  engineSwitchModel: "engine.switchModel",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -1329,8 +1333,21 @@ const WsEngineAnswerRpc = Rpc.make(WS_METHODS.engineAnswer, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+/** Close a dismissible request unanswered; the engine refuses one its agent waits on. */
+const WsEngineDismissRpc = Rpc.make(WS_METHODS.engineDismiss, {
+  payload: EngineDismissInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 const WsEngineSteerRpc = Rpc.make(WS_METHODS.engineSteer, {
   payload: EngineSteerInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineSwitchModelRpc = Rpc.make(WS_METHODS.engineSwitchModel, {
+  payload: EngineSwitchModelInput,
   success: EngineCallResult,
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
@@ -1457,7 +1474,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineSendRpc,
   WsEngineStopRpc,
   WsEngineAnswerRpc,
+  WsEngineDismissRpc,
   WsEngineSteerRpc,
+  WsEngineSwitchModelRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

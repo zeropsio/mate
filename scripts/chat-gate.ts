@@ -65,6 +65,28 @@ export const chatGateStages = [
     ],
   },
   {
+    // The same journeys against a Mate whose conversation runs on the engine's wire: their
+    // sentences hold for both engines (engine.md, "Running beside the old engine").
+    name: "B: client wire journeys on the engine (C)",
+    commands: [
+      {
+        cwd: "apps/web",
+        args: [
+          "test",
+          "run",
+          "--config",
+          "test/scenarios/vitest.config.ts",
+          "--project",
+          "scenarios-engine",
+          "test/scenarios/areas/c-mate",
+          "--allowOnly=false",
+          "--reporter=default",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
+        ],
+      },
+    ],
+  },
+  {
     // The engine's proof on the harness's fixed seeds (deep seeds run before an engine release,
     // never here), and the running engine end to end on every driver.
     name: "E: engine proof",
@@ -76,6 +98,7 @@ export const chatGateStages = [
           "run",
           "src/engine/domain/decide.model.test.ts",
           "src/engine/outbox/crash.test.ts",
+          "src/engine/history/historyImport.test.ts",
           "src/engine/engine.sim.test.ts",
           "src/engine/engine.pump.test.ts",
           "--allowOnly=false",

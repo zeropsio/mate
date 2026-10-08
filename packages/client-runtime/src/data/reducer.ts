@@ -113,19 +113,27 @@ export type AccountInput =
       readonly id: string;
     }
   /**
-   * One HQ scope delivery: its records of every family it holds and its explicit removals,
-   * committed together or — from a superseded registration — not at all. A `reset` starts the
-   * scope's revision afresh; the records it leaves out stay.
+   * One delivery of a source's scopes: its records of every family they hold and its explicit
+   * removals, committed together or — from a superseded registration — not at all. A `reset`
+   * starts the scopes' revisions afresh; the records it leaves out stay. `partial`: a window, whose
+   * absences say nothing.
    */
   | {
-      readonly kind: "hq-delivery";
-      readonly scopes: ReadonlyArray<HqDeliveryScope>;
+      readonly kind: "delivery";
+      readonly via: Delivery;
+      readonly scopes: ReadonlyArray<DeliveryScope>;
       readonly reset: boolean;
+      readonly partial?: boolean;
       readonly rows: ReadonlyArray<Row>;
-      readonly removals: ReadonlyArray<HqRemovalInput>;
+      readonly removals: ReadonlyArray<RemovalInput>;
     }
+  /**
+   * Released detail returns to unknown: every fact these scopes observed, their memberships,
+   * coverage and index entries go. It never claims deletion; a later delivery brings them back.
+   */
+  | { readonly kind: "forget"; readonly scopes: ReadonlyArray<ScopeKey> }
   /** HQ's catchup of these scopes ended: what they list is the whole. */
-  | { readonly kind: "hq-ready"; readonly scopes: ReadonlyArray<HqDeliveryScope> }
+  | { readonly kind: "hq-ready"; readonly scopes: ReadonlyArray<DeliveryScope> }
   | {
       readonly kind: "rows";
       readonly scope: ScopeKey;
@@ -135,14 +143,14 @@ export type AccountInput =
       readonly rows: ReadonlyArray<Row>;
     };
 
-/** A scope an HQ delivery commits into, as the attempt registered it. */
-export interface HqDeliveryScope {
+/** A scope a delivery commits into, as the attempt registered it. */
+export interface DeliveryScope {
   readonly scope: ScopeKey;
   readonly generation: number;
 }
 
-/** A record HQ removed explicitly, and why: the one way an HQ record leaves. */
-export interface HqRemovalInput {
+/** A record its source removed explicitly, and why: the one way a delivered record leaves. */
+export interface RemovalInput {
   readonly family: Family;
   readonly id: string;
   readonly reason: "deleted" | "no-access";
@@ -181,8 +189,9 @@ export function streamOf(state: AccountState, key: StreamKey): StreamState {
  * replaces it back; another incarnation of an HQ scope is not ordered, so only a baseline replaces
  * it; a Mate's runs order by their epoch, a later run's value replacing an earlier run's by
  * whichever path and delivery it comes, live or stored, and never the other way round; between two
- * environments of a Mate, which have no order, only a live value replaces; a value of another
- * domain never replaces one. Time never decides.
+ * environments of a Mate, which have no order, only a live value replaces; an engine
+ * conversation's records order by epoch, then sequence, and another environment's only through a
+ * baseline; a value of another domain never replaces one. Time never decides.
  */
 export function supersedes(
   current: Revision,
@@ -213,6 +222,12 @@ export function supersedes(
       return current.incarnation === incoming.incarnation && incoming.revision > current.revision;
     case "mate-link":
       return current.kind === "mate-link" && incoming.sequence > current.sequence;
+    case "mate-conversation":
+      if (current.kind !== "mate-conversation") return false;
+      if (current.environmentId !== incoming.environmentId) return method === "baseline";
+      return incoming.epoch !== current.epoch
+        ? incoming.epoch > current.epoch
+        : incoming.seq > current.seq;
   }
 }
 
@@ -617,12 +632,12 @@ function touched(
 }
 
 /** Whether every scope a delivery names is still in the registration that delivered it. */
-const current = (state: AccountState, scopes: ReadonlyArray<HqDeliveryScope>) =>
+const current = (state: AccountState, scopes: ReadonlyArray<DeliveryScope>) =>
   scopes.every(({ scope, generation }) => streamOf(state, scope).generation === generation);
 
-function reduceHqDelivery(
+function reduceDelivery(
   state: AccountState,
-  input: Extract<AccountInput, { readonly kind: "hq-delivery" }>,
+  input: Extract<AccountInput, { readonly kind: "delivery" }>,
   changed: Set<ReadKey>,
 ): AccountState {
   let next = state;
@@ -633,7 +648,7 @@ function reduceHqDelivery(
     const before = next;
     next = reduceRows(
       next,
-      { scope, via: "hq-stream", method: input.reset ? "baseline" : "push", rows },
+      { scope, via: input.via, method: input.reset ? "baseline" : "push", rows },
       changed,
     );
     const membership = next.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
@@ -652,6 +667,14 @@ function reduceHqDelivery(
       next = withMembership(next, scope, { ...membership, members });
     }
   }
+  if (input.partial === true)
+    for (const { scope } of input.scopes) {
+      const membership = next.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
+      if (membership.coverage === "partial") continue;
+      changed.add(`coverage:${scope}`);
+      changed.add(`members:${scope}`);
+      next = withMembership(next, scope, { ...membership, coverage: "partial" });
+    }
   for (const removal of input.removals)
     next =
       removal.reason === "deleted"
@@ -661,7 +684,7 @@ function reduceHqDelivery(
               kind: "proven-deletion",
               family: removal.family,
               id: removal.id,
-              evidence: "HQ removed it as deleted",
+              evidence: `${input.via === "hq-stream" ? "HQ" : "Its source"} removed it as deleted`,
             },
             changed,
           )
@@ -675,7 +698,7 @@ function reduceHqDelivery(
 
 function completeScopes(
   state: AccountState,
-  scopes: ReadonlyArray<HqDeliveryScope>,
+  scopes: ReadonlyArray<DeliveryScope>,
   changed: Set<ReadKey>,
 ): AccountState {
   let next = state;
@@ -689,8 +712,41 @@ function completeScopes(
   return next;
 }
 
+function forget(
+  state: AccountState,
+  scopes: ReadonlyArray<ScopeKey>,
+  changed: Set<ReadKey>,
+): AccountState {
+  const forgotten = new Set(scopes);
+  let facts: Map<FactKey, Fact<unknown>> | null = null;
+  for (const [key, fact] of state.facts) {
+    if (!forgotten.has(fact.scope)) continue;
+    facts ??= new Map(state.facts);
+    facts.delete(key);
+    changed.add(key);
+  }
+  let memberships: Map<ScopeKey, Membership> | null = null;
+  for (const scope of scopes) {
+    if (!state.memberships.has(scope)) continue;
+    memberships ??= new Map(state.memberships);
+    memberships.delete(scope);
+    changed.add(`members:${scope}`);
+    changed.add(`coverage:${scope}`);
+  }
+  if (facts === null && memberships === null) return state;
+  return {
+    ...state,
+    facts: facts ?? state.facts,
+    memberships: memberships ?? state.memberships,
+  };
+}
+
 export function reduceAccount(state: AccountState, input: AccountInput): Reduction {
   const changed = new Set<ReadKey>();
+  if (input.kind === "forget") {
+    const next = forget(state, input.scopes, changed);
+    return { state: reindex(state, next, changed), changed, directives: [] };
+  }
   if (input.kind === "stream") {
     const { state: stream, directives } = transition(
       streamOf(state, input.key),
@@ -716,11 +772,11 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       directives: [],
     };
   }
-  if (input.kind === "hq-delivery" || input.kind === "hq-ready") {
+  if (input.kind === "delivery" || input.kind === "hq-ready") {
     if (!current(state, input.scopes)) return { state, changed, directives: [] };
     const next =
-      input.kind === "hq-delivery"
-        ? reduceHqDelivery(state, input, changed)
+      input.kind === "delivery"
+        ? reduceDelivery(state, input, changed)
         : completeScopes(state, input.scopes, changed);
     return { state: reindex(state, next, changed), changed, directives: [] };
   }

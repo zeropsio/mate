@@ -27,10 +27,15 @@ const rawItemId = (event: SpiEvent): string | undefined => {
 };
 
 /** The events of a golden as the session runtime would hand them to the bridge. */
-export const readGolden = (dir: string, name: string): ReadonlyArray<SpiEvent> => {
-  const events = JSON.parse(
-    NodeFS.readFileSync(NodePath.join(fixturesRoot, dir, `${name}.expected.json`), "utf8"),
-  ) as ReadonlyArray<SpiEvent>;
+export const readGolden = (dir: string, name: string): ReadonlyArray<SpiEvent> =>
+  asSessionRoutes(
+    JSON.parse(
+      NodeFS.readFileSync(NodePath.join(fixturesRoot, dir, `${name}.expected.json`), "utf8"),
+    ) as ReadonlyArray<SpiEvent>,
+  );
+
+/** A replay's events as the session runtime would route them (see the module's note). */
+export const asSessionRoutes = (events: ReadonlyArray<SpiEvent>): ReadonlyArray<SpiEvent> => {
   const session = events[0]?.threadId;
   const parent = events.find((event) => event.type === "turn.started")?.threadId;
   return events.map((event) => {

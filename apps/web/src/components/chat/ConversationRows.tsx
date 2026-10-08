@@ -174,11 +174,13 @@ export function Seam({
   readonly timestampFormat: TimestampFormat;
 }) {
   const label =
-    row.seam === "day"
-      ? dayLabel(row.createdAt)
-      : row.seam === "new"
-        ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
-        : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+    row.seam === "cut"
+      ? (row.words ?? "Earlier turns stayed with the previous engine.")
+      : row.seam === "day"
+        ? dayLabel(row.createdAt)
+        : row.seam === "new"
+          ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
+          : formatDayAwareTimestamp(row.createdAt, timestampFormat);
   const fresh = row.seam === "new";
   return (
     <div

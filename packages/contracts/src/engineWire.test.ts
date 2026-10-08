@@ -4,8 +4,10 @@ import * as Schema from "effect/Schema";
 import { ConversationId, itemId, runId } from "./engine.ts";
 import {
   EngineAnswer,
+  EngineAnswerInput,
   EngineCallResult,
   EngineConversationFrame,
+  EngineDismissInput,
   EngineRowsFrame,
 } from "./engineWire.ts";
 
@@ -112,5 +114,44 @@ describe("the wire's frames round-trip", () => {
       },
     } as const;
     expect(Schema.decodeUnknownSync(EngineCallResult)(unserved)).toEqual(unserved);
+  });
+});
+
+const decodeAnswerInput = Schema.decodeUnknownSync(EngineAnswerInput);
+const encodeAnswerInput = Schema.encodeSync(EngineAnswerInput);
+const decodeDismissInput = Schema.decodeUnknownSync(EngineDismissInput);
+
+describe("a question's answer and its dismissal", () => {
+  const picture = {
+    type: "image",
+    id: "img-1",
+    name: "question-preview.png",
+    mimeType: "image/png",
+    sizeBytes: 2048,
+  } as const;
+  const call = { protocol: 1, conversationId: "mate", commandId: "c1", requestId: "mate/r/1/q/1" };
+
+  it("an answer carries the pictures attached to each question, by reference", () => {
+    const input = {
+      ...call,
+      answer: {
+        kind: "input",
+        answers: { target: "Inspect the preview shown here" },
+        attachmentsByQuestionId: { target: [picture] },
+      },
+      summary: "Answered",
+    };
+    const decoded = decodeAnswerInput(input);
+    expect(decoded).toEqual(input);
+    expect(encodeAnswerInput(decoded)).toEqual(input);
+  });
+
+  it("an answer in words alone carries no pictures", () => {
+    const input = { ...call, answer: { kind: "input", answers: { target: "stage" } }, summary: "" };
+    expect(decodeAnswerInput(input).answer).toEqual(input.answer);
+  });
+
+  it("a dismissal names the request it closes, under its own command id", () => {
+    expect(decodeDismissInput(call)).toEqual(call);
   });
 });

@@ -13,7 +13,20 @@ import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
 import { THREAD_SNAPSHOT_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
-import { EMPTY_ENVIRONMENT_THREAD_STATE } from "./threadState.ts";
+import {
+  EMPTY_ENVIRONMENT_THREAD_STATE,
+  NATIVE_ENGINE_WORDS,
+  type EnvironmentThreadState,
+} from "./threadState.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import { engineRouteOf } from "../data/engineHost.ts";
+import * as Option from "effect/Option";
+
+/** What a V1-only reader shows for a Mate whose conversation runs on the engine. */
+export const NATIVE_ENGINE_THREAD_STATE: EnvironmentThreadState = {
+  ...EMPTY_ENVIRONMENT_THREAD_STATE,
+  error: Option.some(NATIVE_ENGINE_WORDS),
+};
 
 import {
   openThreadReplay,
@@ -32,10 +45,36 @@ function threadStateChanges(
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
 ) {
+  const v1 = Stream.unwrap(
+    makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+  );
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+      Effect.gen(function* () {
+        const supervisor = yield* EnvironmentSupervisor;
+        const cache = yield* EnvironmentCacheStore;
+        // This reader speaks V1 only. V1 runs at once, its cached paint offline too, until the
+        // Mate's door — or the configuration it last cached — says its conversation is the
+        // engine's: then an updated app reads it, never this reader.
+        const cached = yield* cache
+          .loadServerConfig(environmentId)
+          .pipe(Effect.orElseSucceed(() => Option.none()));
+        const engineBefore = Option.match(cached, {
+          onNone: () => false,
+          onSome: (config) => config.environment.capabilities.mateEngine !== undefined,
+        });
+        return Stream.concat(
+          Stream.make(engineBefore),
+          SubscriptionRef.changes(supervisor.prepared).pipe(
+            Stream.filter(Option.isSome),
+            Stream.map((prepared) => engineRouteOf(prepared.value).kind !== "v1"),
+          ),
+        ).pipe(
+          Stream.changes,
+          Stream.switchMap((engine) => (engine ? Stream.succeed(NATIVE_ENGINE_THREAD_STATE) : v1)),
+        );
+      }),
     ),
   );
 }

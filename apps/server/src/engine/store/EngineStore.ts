@@ -76,6 +76,11 @@ export interface EngineStoreShape {
     limit?: number,
   ) => Effect.Effect<ReadonlyArray<EngineEvent>, EngineStoreError>;
   readonly itemDetail: (item: ItemId) => Effect.Effect<Option.Option<string>, EngineStoreError>;
+  /** When the conversation first committed an event of this type, if it ever did. */
+  readonly firstAt: (
+    conversation: ConversationId,
+    type: KnownEngineEvent["_tag"],
+  ) => Effect.Effect<Option.Option<number>, EngineStoreError>;
 }
 
 export class EngineStore extends Context.Service<EngineStore, EngineStoreShape>()(
@@ -231,7 +236,15 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       case "RequestAnswered":
         return sql`
           UPDATE engine_request SET state = 'answered', rev = ${event.seq},
-            answer_json = ${JSON.stringify({ by: event.by, at: event.at, summary: event.summary })}
+            answer_json = ${JSON.stringify({
+              by: event.by,
+              at: event.at,
+              summary: event.summary,
+              ...(event.answers === undefined ? {} : { answers: event.answers }),
+              ...(event.attachmentsByQuestionId === undefined
+                ? {}
+                : { attachmentsByQuestionId: event.attachmentsByQuestionId }),
+            })}
           WHERE request_id = ${event.requestId}
         `.pipe(Effect.asVoid);
       case "RequestReopened":
@@ -292,6 +305,44 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         return sql`
           UPDATE engine_wake SET state = 'cancelled' WHERE wake_id = ${event.wakeId}
         `.pipe(Effect.asVoid);
+      case "RunImported":
+        return sql`
+          INSERT INTO engine_run (
+            run_id, conversation_id, ordinal, seq, rev, trigger_json, joins, principal_json, state,
+            maintenance, end_json, end_source, queued_at, started_at, ended_at
+          ) VALUES (
+            ${event.runId}, ${c}, ${event.ordinal}, ${event.seq}, ${event.seq},
+            ${JSON.stringify(event.trigger)}, NULL, ${JSON.stringify(event.principal)}, 'ended', 0,
+            ${JSON.stringify(event.end)}, ${event.source}, ${event.happenedAt}, ${event.startedAt},
+            ${event.endedAt}
+          )
+        `.pipe(Effect.asVoid);
+      case "ItemImported":
+        return sql`
+          INSERT INTO engine_item (
+            item_id, conversation_id, run_id, kind, state, by_json, body_json, opened_seq, rev, at,
+            closed_seq
+          ) VALUES (
+            ${event.itemId}, ${c}, ${event.runId}, ${event.body.kind}, 'closed',
+            ${JSON.stringify(event.by)}, ${JSON.stringify(event.body)}, ${event.seq}, ${event.seq},
+            ${event.happenedAt}, ${event.seq}
+          )
+        `.pipe(Effect.asVoid);
+      case "RequestImported":
+        return sql`
+          INSERT INTO engine_request (
+            request_id, conversation_id, run_id, seq, rev, at, kind, ask_json, answerable, state,
+            principal_json, answer_json
+          ) VALUES (
+            ${event.requestId}, ${c}, ${event.runId}, ${event.seq}, ${event.seq},
+            ${event.happenedAt}, ${event.ask.kind}, ${JSON.stringify(event.ask)}, 0, ${event.state},
+            ${JSON.stringify(event.principal)},
+            ${event.answer === undefined ? null : JSON.stringify(event.answer)}
+          )
+        `.pipe(Effect.asVoid);
+      case "HistoryImportStarted":
+      case "HistoryBatchImported":
+      case "HistoryImportEnded":
       case "AgentAssigned":
       case "SessionClosing":
       case "ModelSwitched":
@@ -504,6 +555,14 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       `.pipe(
         Effect.map((rows) => Option.fromNullishOr(rows[0]?.body)),
         Effect.mapError(storeError("itemDetail")),
+      ),
+    firstAt: (conversation, type) =>
+      sql<{ readonly at: number }>`
+        SELECT at FROM engine_event WHERE conversation_id = ${conversation} AND type = ${type}
+        ORDER BY seq LIMIT 1
+      `.pipe(
+        Effect.map((rows) => Option.fromNullishOr(rows[0]?.at)),
+        Effect.mapError(storeError("firstAt")),
       ),
   });
 });

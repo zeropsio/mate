@@ -12,6 +12,7 @@ import {
   ProviderApprovalDecision,
   type ApprovalRequestId,
   type ProviderUserInputAnswers,
+  type UserInputAttachments,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -58,14 +59,21 @@ export const makeProviderRespond = Effect.gen(function* () {
           );
           if (Option.isNone(answered)) return timedOut;
         } else {
-          const answer = payload.answer as { readonly answers?: unknown } | null;
-          const answers = (
-            typeof answer === "object" && answer !== null && "answers" in answer
-              ? answer.answers
-              : answer
-          ) as ProviderUserInputAnswers;
+          const answer = payload.answer as {
+            readonly answers?: unknown;
+            readonly attachmentsByQuestionId?: UserInputAttachments;
+          } | null;
+          const given = typeof answer === "object" && answer !== null && "answers" in answer;
+          const answers = (given ? answer.answers : answer) as ProviderUserInputAnswers;
+          const attachmentsByQuestionId = given ? answer.attachmentsByQuestionId : undefined;
+          // The pictures go as V1 gives them: by reference, beside the words, per question.
           const answered = yield* bounded(
-            provider.respondToUserInput({ threadId: host.thread, requestId, answers }),
+            provider.respondToUserInput({
+              threadId: host.thread,
+              requestId,
+              answers,
+              ...(attachmentsByQuestionId === undefined ? {} : { attachmentsByQuestionId }),
+            }),
           );
           if (Option.isNone(answered)) return timedOut;
         }

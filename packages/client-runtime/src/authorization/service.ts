@@ -50,7 +50,15 @@ export interface AuthorizedRemoteEnvironment {
   /** What the descriptor says of the thread snapshot; absent when it does not say. */
   readonly threadSnapshot?: ThreadSnapshotCapabilities;
   readonly contentAddressedImages?: boolean;
+  /** The engine conversation protocol the Mate serves; absent when its conversation is on V1. */
+  readonly mateEngine?: number;
 }
+
+/** The descriptor's word on the Mate engine, read at the door before any socket opens. */
+const mateEngineOf = (descriptor: ExecutionEnvironmentDescriptor) =>
+  descriptor.capabilities.mateEngine === undefined
+    ? {}
+    : { mateEngine: descriptor.capabilities.mateEngine.protocol };
 
 /** The descriptor's word on the HTTP thread snapshot, only when it names both parameters. */
 function threadSnapshotCapabilitiesOf(
@@ -177,6 +185,7 @@ export const make = Effect.gen(function* () {
           token: input.bearerToken,
         },
         contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
+        ...mateEngineOf(descriptor),
         ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
       };
     },
@@ -253,6 +262,7 @@ export const make = Effect.gen(function* () {
           );
           return {
             contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
+            ...mateEngineOf(descriptor),
             environmentId: cached.value.environmentId,
             label: cached.value.label,
             httpBaseUrl: cached.value.endpoint.httpBaseUrl,
@@ -329,6 +339,7 @@ export const make = Effect.gen(function* () {
         label: descriptor.label,
         httpBaseUrl: bootstrap.endpoint.httpBaseUrl,
         contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
+        ...mateEngineOf(descriptor),
         socketUrl,
         httpAuthorization: {
           _tag: "Dpop" as const,

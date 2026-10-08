@@ -38,3 +38,10 @@ export function threadHasOlderTurns(state: EnvironmentThreadState): boolean {
     onSome: (page) => page.hasMore,
   });
 }
+
+/**
+ * What a V1-only app (the phone's) says of a Mate whose conversation runs on the engine: the same
+ * news as the Mate's door, and the phone's way out of it, an update.
+ */
+export const NATIVE_ENGINE_WORDS =
+  "This Mate moved to its new engine. Update the app to keep talking to it.";

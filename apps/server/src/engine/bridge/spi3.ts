@@ -36,6 +36,8 @@ import type {
 } from "@t3tools/contracts";
 import type * as Brand from "effect/Brand";
 
+import type { CallFacts } from "./callFacts.ts";
+
 /** One native driver session; rotates under a conversation. */
 export type { SessionId, TurnEndSource, TurnHandle };
 
@@ -167,6 +169,8 @@ export type ItemBody =
       readonly title?: string;
       /** How the call presents itself, as its agent last said (SPI 2.7): an MCP tool's title and server. */
       readonly presentation?: ToolPresentation;
+      /** What its row shows, as V1's activity would: its line, its facts, its Zerops result. */
+      readonly facts?: CallFacts;
     }
   | { readonly kind: "error"; readonly words: string }
   | { readonly kind: "other"; readonly title?: string };
@@ -196,6 +200,8 @@ export type RequestAsk =
       readonly questions: ReadonlyArray<UserInputQuestion>;
       /** Whether a typed answer is taken; `"unknown"` when the driver did not say. */
       readonly freeText: boolean | Unknown;
+      /** Asked by message (Codex's async question): the agent does not wait on its answer. */
+      readonly dismissible?: true;
     };
 
 export type RequestCloseHow =

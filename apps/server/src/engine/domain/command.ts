@@ -1,7 +1,7 @@
 /**
  * What enters a conversation's actor, and what `decide` makes of it.
  *
- * People send `Send`, `Stop`, `Answer`, `Steer`, `SwitchModel`, `Archive`, `Unarchive`; the
+ * People send `Send`, `Stop`, `Answer`, `Dismiss`, `Steer`, `SwitchModel`, `Archive`, `Unarchive`; the
  * engine's own fibers tell `WakeFired` (scheduler), `EffectSettled` (worker), `ProviderSignals`
  * (the pump, boundaries only) and `Recovered` (boot). Every input carries a command id: a client's,
  * or one derived from its cause (`ids.ts`).
@@ -17,6 +17,7 @@ import type {
   ConversationId,
   EffectId,
   EffectOutcome,
+  HistorySource,
   ItemActor,
   ItemBody,
   KnownEngineEvent,
@@ -140,6 +141,8 @@ export type Command =
       /** What the record shows of the answer: never a vault value. */
       readonly summary: string;
     }
+  /** Close a request unanswered: only one its agent does not wait on. The agent is not told. */
+  | { readonly _tag: "Dismiss"; readonly requestId: RequestId }
   | { readonly _tag: "Steer"; readonly runId: RunId; readonly text: string }
   | { readonly _tag: "SwitchModel"; readonly model: string }
   /** The conversation is given the agent it belongs to: instance, driver, model and profile. */
@@ -171,6 +174,27 @@ export type Command =
       readonly sessionId: SessionId;
       readonly signals: ReadonlyArray<ProviderSignal>;
     }
+  /**
+   * Copy the conversation's earlier record in, once, before it runs anything of its own: its
+   * first `runs` ordinals are the imported turns'. The `history.import` effect reads it in batches.
+   */
+  | {
+      readonly _tag: "ImportHistory";
+      readonly source: HistorySource;
+      readonly runs: number;
+      /** The earlier record could not be read, for good: why. The gap is said, nothing copied. */
+      readonly unread?: string;
+    }
+  /** One batch of the earlier record, as the import read it: its plan's records `from`..`to`. */
+  | {
+      readonly _tag: "HistoryBatch";
+      readonly effectId: EffectId;
+      readonly from: number;
+      readonly to: number;
+      readonly records: ReadonlyArray<ImportedRecord>;
+      readonly details: ReadonlyArray<ItemDetailDraft>;
+      readonly data: ReadonlyArray<ItemDataDraft>;
+    }
   | {
       readonly _tag: "Recovered";
       readonly bootId: BootId;
@@ -196,6 +220,12 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 
 /** An event before the store stamps its header (version, conversation, seq, time, command). */
 export type EventDraft = DistributiveOmit<KnownEngineEvent, HeaderKey>;
+
+/** A record of the earlier conversation, as a batch carries it. */
+export type ImportedRecord = Extract<
+  EventDraft,
+  { readonly _tag: "RunImported" | "ItemImported" | "RequestImported" }
+>;
 
 /**
  * Where an effect queues; each conversation's lane is FIFO, lanes run side by side. `turn`: the

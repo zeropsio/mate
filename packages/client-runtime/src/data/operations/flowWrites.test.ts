@@ -74,7 +74,8 @@ const next = () => ({ kind: "hq", incarnation: "i", revision: (revision += 1) })
 /** HQ's app-detail scope saying one of the application's records. */
 const detail = (store: AccountStore, key: "releases" | "changes", value: unknown) =>
   store.dispatch({
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [{ scope: hqAppDetailScope(ORG, "shop"), generation: 0 }],
     reset: false,
     rows: [
@@ -90,7 +91,8 @@ const detail = (store: AccountStore, key: "releases" | "changes", value: unknown
 /** HQ's navigation saying the application's stage, with its jobs. */
 const stageJobs = (store: AccountStore, jobs: ReadonlyArray<unknown>) =>
   store.dispatch({
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [{ scope: hqAppsScope(ORG), generation: 0 }],
     reset: false,
     rows: [

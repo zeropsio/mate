@@ -8,6 +8,7 @@ import {
   EngineEvent,
   ENGINE_EVENT_VERSION,
   Item,
+  Request,
   Run,
   RunEnd,
   effectId,
@@ -131,6 +132,52 @@ describe("forward-compatible members", () => {
       state: "stopped",
       endedAt: 2,
       presentation: { title: "Deploy a service", source: { key: "mcp:zerops", name: "Zerops" } },
+    };
+    expect(encodeItem(decodeItem(raw))).toEqual(raw);
+  });
+
+  it("keeps a call's input line, what its row shows, its Zerops result and its parts through its record", () => {
+    const raw = {
+      id: itemId(run, 3),
+      conversationId: "mate",
+      runId: run,
+      seq: 8,
+      rev: 9,
+      at: 1,
+      by: { kind: "mate" },
+      kind: "call",
+      step: "mcp",
+      tool: { name: "zerops_browser", server: "zerops" },
+      words: "zerops_browser",
+      state: "done",
+      endedAt: 2,
+      input: 'mcp__zerops__zerops_browser: {"url":"https://app.example"}',
+      shows: { toolName: "mcp__zerops__zerops_browser", input: { url: "https://app.example" } },
+      result: {
+        toolName: "zerops_browser",
+        resultText: '{"status":"ok"}',
+        images: [
+          {
+            mimeType: "image/png",
+            asset: {
+              id: "a1",
+              threadId: "mate/s/1",
+              ownerId: "call-1",
+              name: "tool-image",
+              provenance: "capture",
+              original: {
+                status: "ready",
+                digest: "a".repeat(64),
+                mimeType: "image/png",
+                sizeBytes: 68,
+              },
+            },
+            width: 2,
+            height: 1,
+          },
+        ],
+      },
+      parts: ["detail", "data"],
     };
     expect(encodeItem(decodeItem(raw))).toEqual(raw);
   });
@@ -270,5 +317,68 @@ describe("a stored event from a newer build still decodes (rule 10)", () => {
       unresponsiveSince: null,
     };
     expect(Exit.isSuccess(decodeRunExit(run))).toBe(true);
+  });
+});
+
+const decodeRequest = Schema.decodeUnknownSync(Request);
+
+describe("an answered question's record", () => {
+  const request = {
+    id: "mate/r/1/q/1",
+    conversationId: "mate",
+    runId: "mate/r/1",
+    seq: 4,
+    rev: 6,
+    at: 1,
+    ask: { kind: "question", questions: [], dismissible: false },
+    state: "answered",
+    answerable: true,
+    principal: { kind: "engine" },
+  };
+  it("keeps what the person answered and the pictures attached to each question", () => {
+    const answer = {
+      by: { kind: "person", subject: "owner" },
+      at: 5,
+      summary: "Answered",
+      answers: { target: "Inspect the preview shown here" },
+      attachmentsByQuestionId: {
+        target: [
+          {
+            type: "image",
+            id: "img-1",
+            name: "question-preview.png",
+            mimeType: "image/png",
+            sizeBytes: 2048,
+          },
+        ],
+      },
+    };
+    expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
+  });
+  it("refuses a dismissal of a request its agent waits on, by its own reason", () => {
+    expect(decodeResult({ _tag: "Rejected", rejection: { reason: "not-dismissible" } })).toEqual({
+      _tag: "Rejected",
+      rejection: { reason: "not-dismissible" },
+    });
+  });
+  it("an answer a message carries names that message's run instead of a respond call", () => {
+    const event = {
+      _tag: "RequestAnswered",
+      v: ENGINE_EVENT_VERSION,
+      conversationId: "mate",
+      seq: 7,
+      at: 5,
+      commandId: "c1",
+      runId: "mate/r/1",
+      requestId: "mate/r/1/q/1",
+      by: { kind: "person", subject: "owner" },
+      summary: "Answered",
+      bySend: "mate/r/2",
+    };
+    expect(decodeEvent(event)).toEqual(event);
+  });
+  it("an approval's answer is its summary alone", () => {
+    const answer = { by: { kind: "person", subject: "owner" }, at: 5, summary: "Approved" };
+    expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
   });
 });

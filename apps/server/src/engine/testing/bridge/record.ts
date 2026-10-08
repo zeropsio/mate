@@ -108,7 +108,8 @@ export function commandLogAround(
   return log;
 }
 
-const fixtureOf = (driver: string, messages: ReadonlyArray<unknown>): Fixture => ({
+/** An authored wire as a replay seam's fixture. */
+export const authored = (driver: string, messages: ReadonlyArray<unknown>): Fixture => ({
   name: "authored",
   dir: "",
   meta: { driver, synthetic: true },
@@ -117,13 +118,13 @@ const fixtureOf = (driver: string, messages: ReadonlyArray<unknown>): Fixture =>
 
 /** Claude's adapter fed an authored SDK message stream through its createQuery seam. */
 export async function recordClaude(messages: ReadonlyArray<unknown>) {
-  const events = await replayClaude(fixtureOf("claude", messages));
+  const events = await replayClaude(authored("claude", messages));
   return { threadId: String(events[0]!.threadId), log: commandLogAround("claudeAgent", events) };
 }
 
 /** Codex's adapter fed authored app-server notifications through its runtime seam. */
 export async function recordCodex(notifications: ReadonlyArray<unknown>) {
-  const events = await replayCodex(fixtureOf("codex", notifications));
+  const events = await replayCodex(authored("codex", notifications));
   return { threadId: String(events[0]!.threadId), log: commandLogAround("codex", events) };
 }
 

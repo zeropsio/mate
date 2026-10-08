@@ -65,6 +65,16 @@ import {
   updateThreadMetadata,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
+import {
+  engineModeChange,
+  engineUpdateMetadata,
+  engineDismissUserInput,
+  engineInterruptTurn,
+  engineRespondToApproval,
+  engineRespondToUserInput,
+  engineStartTurn,
+  viaEngine,
+} from "../data/engineCommands.ts";
 
 export type {
   ArchiveThreadInput,
@@ -190,49 +200,97 @@ export function createThreadEnvironmentAtoms<R, E>(
     }),
     updateMetadata: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:update-metadata",
-      execute: (input: UpdateThreadMetadataInput) => updateThreadMetadata(input),
+      execute: (input: UpdateThreadMetadataInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineUpdateMetadata(environmentId, input),
+          updateThreadMetadata(input),
+        ),
       scheduler,
       concurrency,
     }),
     setRuntimeMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-runtime-mode",
-      execute: (input: SetThreadRuntimeModeInput) => setThreadRuntimeMode(input),
+      execute: (input: SetThreadRuntimeModeInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineModeChange("runtime"),
+          setThreadRuntimeMode(input),
+        ),
       scheduler,
       concurrency,
     }),
     setInteractionMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-interaction-mode",
-      execute: (input: SetThreadInteractionModeInput) => setThreadInteractionMode(input),
+      execute: (input: SetThreadInteractionModeInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineModeChange("interaction"),
+          setThreadInteractionMode(input),
+        ),
       scheduler,
       concurrency,
     }),
     startTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:start-turn",
-      execute: (input: StartThreadTurnInput) => startThreadTurn(input),
+      execute: (input: StartThreadTurnInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineStartTurn(environmentId, input),
+          startThreadTurn(input),
+        ),
       scheduler,
       concurrency,
     }),
     interruptTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:interrupt-turn",
-      execute: (input: InterruptThreadTurnInput) => interruptThreadTurn(input),
+      execute: (input: InterruptThreadTurnInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineInterruptTurn(environmentId, input),
+          interruptThreadTurn(input),
+        ),
       scheduler,
       concurrency,
     }),
     respondToApproval: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-approval",
-      execute: (input: RespondToThreadApprovalInput) => respondToThreadApproval(input),
+      execute: (input: RespondToThreadApprovalInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineRespondToApproval(environmentId, input),
+          respondToThreadApproval(input),
+        ),
       scheduler,
       concurrency,
     }),
     respondToUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-user-input",
-      execute: (input: RespondToThreadUserInputInput) => respondToThreadUserInput(input),
+      execute: (input: RespondToThreadUserInputInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineRespondToUserInput(environmentId, input),
+          respondToThreadUserInput(input),
+        ),
       scheduler,
       concurrency,
     }),
     dismissUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:dismiss-user-input",
-      execute: (input: DismissThreadUserInputInput) => dismissThreadUserInput(input),
+      execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineDismissUserInput(environmentId, input),
+          dismissThreadUserInput(input),
+        ),
       scheduler,
       concurrency,
     }),

@@ -51,7 +51,18 @@ export type Revision =
       readonly live: boolean;
     }
   /** The Mate adapter orders readings of one Mate in this tab by its own sequence. */
-  | { readonly kind: "mate-link"; readonly sequence: number };
+  | { readonly kind: "mate-link"; readonly sequence: number }
+  /**
+   * An engine conversation's record: the Mate's start epoch it was served in, then the
+   * conversation's gapless sequence of its last change. The sequence is durable, so a restart
+   * shows only as a higher epoch; equal is not newer, so a record delivered again changes nothing.
+   */
+  | {
+      readonly kind: "mate-conversation";
+      readonly environmentId: string;
+      readonly epoch: number;
+      readonly seq: number;
+    };
 
 export type Authority = Source;
 export type Delivery = "zerops-realtime" | "zerops-read" | "hq-stream" | "mate-direct";

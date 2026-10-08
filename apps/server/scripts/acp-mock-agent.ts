@@ -20,6 +20,9 @@ const emitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS === "1";
 // `rawInput` the arguments, `rawOutput` the MCP result — one of no kind, one
 // the agent tagged with a native kind.
 const emitMcpToolCalls = process.env.T3_ACP_EMIT_MCP_TOOL_CALLS === "1";
+// One turn of the calls a run card draws: a command with output, a file read, an edit and a
+// Zerops deploy with its result, each as the ACP spec carries it.
+const emitCallHeavyTurn = process.env.T3_ACP_EMIT_CALL_HEAVY_TURN === "1";
 const emitInterleavedAssistantToolCalls =
   process.env.T3_ACP_EMIT_INTERLEAVED_ASSISTANT_TOOL_CALLS === "1";
 const emitGenericToolPlaceholders = process.env.T3_ACP_EMIT_GENERIC_TOOL_PLACEHOLDERS === "1";
@@ -1000,6 +1003,95 @@ const program = Effect.gen(function* () {
         // Agents can repeat a terminal update after the call finished.
         yield* progress("completed", "done");
         yield* say("| 3 | z |");
+        return { stopReason: "end_turn" };
+      }
+
+      if (emitCallHeavyTurn) {
+        const deployed = '{"status":"DEPLOYED","serviceHostname":"api"}';
+        const calls = [
+          {
+            toolCallId: "heavy-command",
+            title: "Terminal",
+            kind: "execute",
+            rawInput: { command: "npm run build", description: "Build the api" },
+            done: {
+              rawOutput: { stdout: "built in 41 s\n3 files written", exitCode: 0 },
+              content: [
+                {
+                  type: "content",
+                  content: { type: "text", text: "built in 41 s\n3 files written" },
+                },
+              ],
+            },
+          },
+          {
+            toolCallId: "heavy-read",
+            title: "Read package.json",
+            kind: "read",
+            rawInput: { path: "/var/www/api/package.json" },
+            locations: [{ path: "/var/www/api/package.json" }],
+            done: {
+              content: [{ type: "content", content: { type: "text", text: '{"name":"api"}' } }],
+            },
+          },
+          {
+            toolCallId: "heavy-edit",
+            title: "Edit main.ts",
+            kind: "edit",
+            rawInput: { path: "/var/www/api/src/main.ts" },
+            locations: [{ path: "/var/www/api/src/main.ts" }],
+            done: {
+              content: [
+                {
+                  type: "diff",
+                  path: "/var/www/api/src/main.ts",
+                  oldText: "listen(3000)",
+                  newText: "listen(8080)",
+                },
+              ],
+            },
+          },
+          {
+            toolCallId: "heavy-deploy",
+            title: "mcp__zerops__zerops_deploy",
+            kind: "other",
+            rawInput: { targetService: "api" },
+            done: {
+              rawOutput: { content: [{ type: "text", text: deployed }] },
+              content: [{ type: "content", content: { type: "text", text: deployed } }],
+            },
+          },
+        ] as const;
+        for (const call of calls) {
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call",
+              toolCallId: call.toolCallId,
+              title: call.title,
+              kind: call.kind,
+              status: "pending",
+              rawInput: call.rawInput,
+              ...("locations" in call ? { locations: [...call.locations] } : {}),
+            },
+          });
+          yield* agent.client.sessionUpdate({
+            sessionId: requestedSessionId,
+            update: {
+              sessionUpdate: "tool_call_update",
+              toolCallId: call.toolCallId,
+              status: "completed",
+              ...(call.done as Record<string, unknown>),
+            },
+          });
+        }
+        yield* agent.client.sessionUpdate({
+          sessionId: requestedSessionId,
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Deployed the api." },
+          },
+        });
         return { stopReason: "end_turn" };
       }
 

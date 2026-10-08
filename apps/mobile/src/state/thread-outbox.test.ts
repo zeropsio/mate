@@ -1,3 +1,4 @@
+import { MateEngineUnsupported } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentNotRegisteredError } from "@t3tools/client-runtime/connection";
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
@@ -1286,6 +1287,17 @@ describe("thread outbox", () => {
       ),
     ).toBe(false);
   });
+
+  it.each(["settings-sync", "start-turn"] as const)(
+    "gives a message to an engine Mate back to its draft at once, never retrying it (%s)",
+    (stage) => {
+      const error = new MateEngineUnsupported({ message: "Update the app to keep talking to it." });
+      expect(shouldRetryThreadOutboxDelivery(error)).toBe(false);
+      expect(resolveThreadOutboxFailureAction({ stage, error, interrupted: false })).toBe(
+        "restore",
+      );
+    },
+  );
 
   // A pending task created offline drains the moment the phone reconnects,
   // which is exactly when the socket is most likely to drop again. Every way a

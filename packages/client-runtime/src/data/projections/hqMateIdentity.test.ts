@@ -95,7 +95,8 @@ describe("HQ's Mate identity", () => {
     expect(fixture.registry.get(fixture.identities).quill?.environmentId).toBe(ENV);
     const scope = placementsScope(ORG);
     fixture.store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation: fixture.store.state().streams.get(scope)?.generation ?? 0 }],
       reset: false,
       rows: [],

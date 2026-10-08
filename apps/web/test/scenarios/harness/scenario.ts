@@ -405,7 +405,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         showsMessage: (text: string) =>
           Effect.promise(async () => {
             if (!openedMate) throw new Error("Open a Mate before checking its timeline");
-            await openedMate.waitForMessage(text);
+            await openedMate.conversation.waitForMessage(text);
             await page.waitForFunction(
               (text) =>
                 (() => {

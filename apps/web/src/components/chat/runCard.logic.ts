@@ -214,6 +214,7 @@ export function movedByClamp({
   stoodMax,
   max,
   linesResized = false,
+  boxResized = false,
 }: {
   readonly stood: number;
   readonly top: number;
@@ -225,8 +226,13 @@ export function movedByClamp({
    * up), never further.
    */
   readonly linesResized?: boolean;
+  /**
+   * Its box re-measured since, as it eases open or shut: the same frame's speed past the clamp
+   * (a settled card a joined run makes live again: the box 11 px taller, the top 16 px up).
+   */
+  readonly boxResized?: boolean;
 }): boolean {
-  const slack = linesResized ? LINES_RESIZE_SLACK_PX : 0;
+  const slack = linesResized || boxResized ? LINES_RESIZE_SLACK_PX : 0;
   return stood - top <= Math.max(0, stoodMax - max) + MOVED_PX + slack;
 }
 

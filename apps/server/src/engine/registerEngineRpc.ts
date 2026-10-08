@@ -2,7 +2,7 @@
  * Registers the Mate engine's conversation wire (`subscribeEngineConversation`,
  * `subscribeEngineRows`, `engine.*`), spread by `ws.ts` beside `registerZeropsRpc`. Scopes stay in
  * `auth/RpcAuthorization.ts`: reading the conversation is the same read as V1's
- * `subscribeThread`, a send, stop, answer or steer the same authority as a V1 dispatch.
+ * `subscribeThread`, a send, stop, answer, dismissal or steer the same authority as a V1 dispatch.
  *
  * Every handler answers from the `MateEngine` the server was built with: its wire answers
  * `unserved` in V1 mode, and in mate mode serves the engine. The caller is the connecting session
@@ -34,7 +34,9 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineSend
   | typeof WS_METHODS.engineStop
   | typeof WS_METHODS.engineAnswer
-  | typeof WS_METHODS.engineSteer;
+  | typeof WS_METHODS.engineDismiss
+  | typeof WS_METHODS.engineSteer
+  | typeof WS_METHODS.engineSwitchModel;
 
 type EngineRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: EngineRpcTag }>;
 
@@ -118,10 +120,22 @@ export const registerEngineRpc = ({
         asCaller((who) => wire.answer(input, who)),
         traceAttributes,
       ),
+    [WS_METHODS.engineDismiss]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.engineDismiss,
+        asCaller((who) => wire.dismiss(input, who)),
+        traceAttributes,
+      ),
     [WS_METHODS.engineSteer]: (input) =>
       observeRpcEffect(
         WS_METHODS.engineSteer,
         asCaller((who) => wire.steer(input, who)),
+        traceAttributes,
+      ),
+    [WS_METHODS.engineSwitchModel]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.engineSwitchModel,
+        asCaller((who) => wire.switchModel(input, who)),
         traceAttributes,
       ),
   } satisfies EngineRpcHandlers;

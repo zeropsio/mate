@@ -80,13 +80,14 @@ const read = apply(emptyAccount, [
   ]),
   stream(linkKeys.hq(ORG), { kind: "handshake" }),
   stream(linkKeys.hq(ORG), { kind: "baseline-committed" }),
-  { kind: "hq-delivery", scopes: generations, reset: true, rows, removals: [] },
+  { kind: "delivery", via: "hq-stream", scopes: generations, reset: true, rows, removals: [] },
   { kind: "hq-ready", scopes: generations },
   ...SCOPES.map((scope) => stream(scope, { kind: "baseline-committed" })),
 ]);
 const removed = apply(read, [
   {
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: generations,
     reset: false,
     rows: [],
@@ -104,7 +105,8 @@ describe("hqProjectPeople", () => {
     )!;
     const next = apply(read, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: false,
         rows: [
@@ -195,7 +197,8 @@ describe("hqProjectPeople", () => {
         stream(scope, { kind: "attempt" }),
       ]),
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: true,
         rows: rows.slice(0, 1),
@@ -214,7 +217,8 @@ describe("hqProjectPeople", () => {
   it("draws nobody for an owner HQ withdrew from the reader", () => {
     const withdrawn = apply(read, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: false,
         rows: [],

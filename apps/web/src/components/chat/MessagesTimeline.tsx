@@ -161,6 +161,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
+import { useEngineLiveMessage } from "~/zerops/useEngineLiveMessage";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -2879,13 +2880,14 @@ function MateProseWords({
 }
 
 function MateProse({
-  message,
+  message: recorded,
   showMeta,
 }: {
   readonly message: ChatMessage;
   readonly showMeta: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
+  const message = useEngineLiveMessage(recorded);
   const messageText = message.text || (message.streaming ? "" : "(empty response)");
   const copy = resolveAssistantMessageCopyState({
     text: message.text ?? null,

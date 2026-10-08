@@ -1,0 +1,520 @@
+[
+  {
+    "eventId": "evt-0",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/started",
+      "payload": {
+        "thread": {
+          "id": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+          "environments": [
+            {
+              "environmentId": "local",
+              "cwd": "/tmp/mate-chat3",
+              "runtimeWorkspaceRoots": ["/tmp/mate-chat3"]
+            }
+          ],
+          "extra": null,
+          "sessionId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+          "forkedFromId": null,
+          "parentThreadId": null,
+          "preview": "",
+          "ephemeral": false,
+          "section": null,
+          "sectionEnteredAt": null,
+          "projectId": null,
+          "historyMode": "paginated",
+          "modelProvider": "openai",
+          "model": "gpt-6-luna",
+          "reasoningEffort": "low",
+          "createdAt": 1791412973,
+          "updatedAt": 1791412973,
+          "recencyAt": 1791412973,
+          "status": {
+            "type": "idle"
+          },
+          "path": "/home/zerops/.codex/sessions/2026/10/07/rollout-2026-10-07T22-42-53-01a11888-b06d-70d0-9a9a-1c60284d165a.jsonl",
+          "cwd": "/tmp/mate-chat3",
+          "cliVersion": "0.160.0",
+          "originator": "mate_spi_recorder",
+          "source": "vscode",
+          "canAcceptDirectInput": true,
+          "threadSource": null,
+          "agentNickname": null,
+          "agentRole": null,
+          "gitInfo": null,
+          "name": null,
+          "daybreakEnabled": null,
+          "turns": []
+        }
+      }
+    },
+    "type": "thread.started",
+    "payload": {
+      "providerThreadId": "01a11888-b06d-70d0-9a9a-1c60284d165a"
+    }
+  },
+  {
+    "type": "thread.state.changed",
+    "eventId": "evt-1",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/status/changed",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "active",
+          "activeFlags": []
+        }
+      }
+    },
+    "payload": {
+      "state": "active",
+      "detail": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "active",
+          "activeFlags": []
+        }
+      }
+    }
+  },
+  {
+    "eventId": "evt-2",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "turn/started",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turn": {
+          "id": "turn-0",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1791412974,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    },
+    "type": "turn.started",
+    "payload": {}
+  },
+  {
+    "eventId": "evt-3",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-0",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412975424
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "user_message",
+      "status": "inProgress",
+      "title": "User message",
+      "data": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-0",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412975424
+      }
+    }
+  },
+  {
+    "eventId": "evt-4",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-0",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412975424
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "user_message",
+      "status": "completed",
+      "title": "User message",
+      "data": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-0",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412975424
+      }
+    }
+  },
+  {
+    "eventId": "evt-5",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-1",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": "async",
+          "questions": [
+            {
+              "title": "Which package manager?",
+              "options": ["pnpm", "npm"]
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412980753
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress",
+      "title": "Assistant message",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-1",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": "async",
+          "questions": [
+            {
+              "title": "Which package manager?",
+              "options": ["pnpm", "npm"]
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "startedAtMs": 1791412980753
+      }
+    }
+  },
+  {
+    "eventId": "evt-6",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "itemId": "item-1",
+        "delta": "Which package"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "Which package"
+    }
+  },
+  {
+    "eventId": "evt-7",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "itemId": "item-1",
+        "delta": " manager?"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": " manager?"
+    }
+  },
+  {
+    "eventId": "evt-8",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-1",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-1"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-1",
+          "text": "Which package manager?",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": "async",
+          "questions": [
+            {
+              "title": "Which package manager?",
+              "options": ["pnpm", "npm"]
+            }
+          ]
+        },
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "completedAtMs": 1791412980770
+      }
+    },
+    "type": "user-input.requested",
+    "requestId": "req-0",
+    "payload": {
+      "responseMode": "message",
+      "questions": [
+        {
+          "id": "0",
+          "header": "Question",
+          "question": "Which package manager?",
+          "options": [
+            {
+              "label": "pnpm",
+              "description": ""
+            },
+            {
+              "label": "npm",
+              "description": ""
+            }
+          ],
+          "allowCustomAnswer": true,
+          "multiSelect": false
+        }
+      ]
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-9",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 69795,
+            "inputTokens": 69656,
+            "cachedInputTokens": 63232,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 139,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 14750,
+            "inputTokens": 14744,
+            "cachedInputTokens": 13056,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 6,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 14750,
+        "totalProcessedTokens": 69795,
+        "maxTokens": 258400,
+        "inputTokens": 14744,
+        "cachedInputTokens": 13056,
+        "outputTokens": 6,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 14750,
+        "lastInputTokens": 14744,
+        "lastCachedInputTokens": 13056,
+        "lastOutputTokens": 6,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "thread.state.changed",
+    "eventId": "evt-10",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/status/changed",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "idle"
+        }
+      }
+    },
+    "payload": {
+      "state": "idle",
+      "detail": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "status": {
+          "type": "idle"
+        }
+      }
+    }
+  },
+  {
+    "eventId": "evt-11",
+    "provider": "codex",
+    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "turn/completed",
+      "payload": {
+        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "turn": {
+          "id": "turn-0",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "item-1",
+              "text": "trace-ok",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1791412974,
+          "completedAt": 1791412980,
+          "durationMs": 6913
+        }
+      }
+    },
+    "type": "turn.completed",
+    "payload": {
+      "state": "completed"
+    }
+  }
+]

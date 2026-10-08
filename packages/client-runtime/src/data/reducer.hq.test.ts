@@ -79,7 +79,8 @@ const delivery = (input: {
   }>;
   readonly generation?: number;
 }): AccountInput => ({
-  kind: "hq-delivery",
+  kind: "delivery",
+  via: "hq-stream",
   scopes: scopes(input.generation),
   reset: input.reset ?? false,
   rows: (input.rows ?? []).map((row) => ({

@@ -13,8 +13,13 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
-import { ChatImageAttachment } from "./orchestration.ts";
+import {
+  ChatImageAttachment,
+  ProviderUserInputAnswers,
+  UserInputAttachments,
+} from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
+import { callFields } from "./engineCall.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -50,6 +55,8 @@ export const runId = (conversation: ConversationId, ordinal: number): RunId =>
   RunId.make(`${conversation}/r/${ordinal}`);
 /** `${run}/i/${ordinal}`: the run's n-th item. */
 export const itemId = (run: RunId, ordinal: number): ItemId => ItemId.make(`${run}/i/${ordinal}`);
+/** Whether an id is an engine item's (`${run}/i/${ordinal}`), never a V1 message's. */
+export const isEngineItemId = (id: string): boolean => /\/r\/\d+\/i\/\d+$/.test(id);
 /** `${run}/q/${ordinal}`: the run's n-th request. */
 export const requestId = (run: RunId, ordinal: number): RequestId =>
   RequestId.make(`${run}/q/${ordinal}`);
@@ -224,16 +231,26 @@ export const RunEndSource = forwardCompatibleLiterals([
 ]);
 export type RunEndSource = typeof RunEndSource.Type;
 
-/** Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn). */
+/**
+ * Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn), or
+ * a turn the conversation had on the engine before this one, copied in as it ended (`imported`:
+ * never sent, never woken, its requests never answerable).
+ */
 export const RunTrigger = forwardCompatibleUnion({
   key: "kind",
-  known: ["person", "wake", "unknown"],
+  known: ["person", "wake", "imported", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("person"), itemId: ItemId }),
     Schema.Struct({
       kind: Schema.Literal("wake"),
       cause: Schema.String,
       wakeId: Schema.NullOr(WakeId),
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("imported"),
+      /** The engine the turn ran on (`v1`) and its id there; null for a message never sent. */
+      from: Schema.String,
+      turn: Schema.NullOr(Schema.String),
     }),
   ],
   fallback: unknownKind,
@@ -332,6 +349,7 @@ const itemBodyFields = {
     endedAt: Schema.NullOr(Millis),
     /** How the call presents itself, as its agent said: an MCP tool's title and server. */
     presentation: Schema.optionalKey(ToolPresentation),
+    ...callFields,
   },
   request: { requestId: RequestId },
   /** Background work the agent started (a helper, a shell, a monitor), under the run it served. */
@@ -492,7 +510,17 @@ export const Request = Schema.Struct({
   state: StoredRequestState,
   /** False once the session that owned the callback is gone. */
   answerable: Schema.Boolean,
-  answer: Schema.optionalKey(Schema.Struct({ by: Principal, at: Millis, summary: Schema.String })),
+  answer: Schema.optionalKey(
+    Schema.Struct({
+      by: Principal,
+      at: Millis,
+      summary: Schema.String,
+      /** A question's answer as the person gave it, by question id. Never a vault value. */
+      answers: Schema.optionalKey(ProviderUserInputAnswers),
+      /** The pictures attached to each question's answer, by reference. */
+      attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+    }),
+  ),
   principal: Principal,
 });
 export type Request = typeof Request.Type;
@@ -715,7 +743,16 @@ export const RequestAnswered = event("RequestAnswered", {
   requestId: RequestId,
   by: Principal,
   summary: Schema.String,
-  effectId: EffectId,
+  /** The respond call that takes the answer; absent when a message carries it (`bySend`). */
+  effectId: Schema.optionalKey(EffectId),
+  /**
+   * The run whose person's message carries the answer, for a question asked by message: the
+   * request is answered once that message reaches the agent, and opens again if it never does.
+   */
+  bySend: Schema.optionalKey(RunId),
+  /** A question's answer, by question id, and the pictures attached to each: what the record shows. */
+  answers: Schema.optionalKey(ProviderUserInputAnswers),
+  attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
 });
 /** An answer the provider failed to take: the request is open again for the person. */
 export const RequestReopened = event("RequestReopened", {
@@ -784,6 +821,58 @@ export const WakeArmed = event("WakeArmed", {
 export const WakeFired = event("WakeFired", { wakeId: WakeId, dueAt: Millis });
 export const WakeCancelled = event("WakeCancelled", { wakeId: WakeId, reason: Schema.String });
 
+// ── imported history ────────────────────────────────────────────────────────────────────────
+
+/** Where a conversation's earlier record comes from: the V1 thread it continues. */
+export const HistorySource = Schema.Struct({ kind: Schema.Literal("v1"), threadId: Schema.String });
+export type HistorySource = typeof HistorySource.Type;
+
+/**
+ * A conversation starts copying its earlier record in, once: its first `runs` ordinals are the
+ * imported turns', and no run is admitted until the import ends.
+ */
+export const HistoryImportStarted = event("HistoryImportStarted", {
+  source: HistorySource,
+  runs: Schema.Int,
+});
+/** A turn of the earlier record, as it ended. `happenedAt` is when it was asked, there. */
+export const RunImported = event("RunImported", {
+  runId: RunId,
+  ordinal: Schema.Int,
+  trigger: RunTrigger,
+  principal: Principal,
+  end: RunEnd,
+  source: RunEndSource,
+  happenedAt: Millis,
+  startedAt: Schema.NullOr(Millis),
+  endedAt: Schema.NullOr(Millis),
+});
+/** An item of the earlier record, closed as it was left. `happenedAt` is when it was made. */
+export const ItemImported = event("ItemImported", {
+  runId: Schema.NullOr(RunId),
+  itemId: ItemId,
+  by: ItemActor,
+  body: ItemBody,
+  happenedAt: Millis,
+});
+/** A request of the earlier record, in its final state: never answerable here. */
+export const RequestImported = event("RequestImported", {
+  runId: RunId,
+  requestId: RequestId,
+  ask: RequestAsk,
+  state: StoredRequestState,
+  answer: Schema.optionalKey(Schema.Struct({ by: Principal, at: Millis, summary: Schema.String })),
+  principal: Principal,
+  happenedAt: Millis,
+});
+/** How far the import has come: the next record of its plan. */
+export const HistoryBatchImported = event("HistoryBatchImported", { cursor: Schema.Int });
+/** The import is over: every record copied, or the rest could not be read (`failed`). */
+export const HistoryImportEnded = event("HistoryImportEnded", {
+  outcome: Schema.Literals(["complete", "failed"]),
+  reason: Schema.optionalKey(Schema.String),
+});
+
 /** An event from a newer engine: its order and run hold, its body is not read. */
 export const UnknownEngineEvent = Schema.TaggedStruct("Unknown", {
   ...eventHeader,
@@ -824,6 +913,12 @@ const knownEvents = [
   WakeArmed,
   WakeFired,
   WakeCancelled,
+  HistoryImportStarted,
+  RunImported,
+  ItemImported,
+  RequestImported,
+  HistoryBatchImported,
+  HistoryImportEnded,
 ] as const;
 
 /** Every event this build knows: what `decide` emits and `evolve` folds. */
@@ -861,7 +956,11 @@ const rejectionReasons = [
   "stop-already-asked",
   "unknown-request",
   "not-answerable",
+  /** A request its agent waits on: only an answer or a Stop ends it. */
+  "not-dismissible",
   "steer-unsupported",
+  /** A picture the call carries could not be claimed: the detail says why, in V1's words. */
+  "attachment-refused",
   "stale-session",
   "unknown-effect",
   "wake-not-armed",

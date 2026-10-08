@@ -57,7 +57,9 @@ import * as Effect from "effect/Effect";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 import { V1ChatWire } from "./v1.ts";
-import type { ChatWire } from "./wire.ts";
+import type { ChatIntent, ChatWire } from "./wire.ts";
+import { EngineChatWire } from "./engine.ts";
+import { inject } from "vite-plus/test";
 
 const wireEncodeSearchEntries = Schema.encodeSync(ProjectSearchEntriesResult);
 
@@ -187,7 +189,13 @@ export class ChatDriver {
   constructor(mate: MateFake, wire?: ChatWire) {
     this.mate = mate;
     this.v1 = new V1ChatWire(mate);
+    this.v1.writeRun = (turnId, state) => this.run(turnId, state);
     this.wire = wire ?? this.v1;
+    mate.conversation = this.wire;
+    if (wire instanceof EngineChatWire)
+      // The Mate refuses the caller before its engine sees the call, as it refuses a V1 command.
+      wire.engine.authorization = (op) =>
+        op === "answer" ? this.responseRefusal : op === "send" ? this.turnRefusal : null;
     this.lifecycle = wireDecodeZeropsLifecycle({ threadId: mate.thread.id, recentTools: [] });
     Object.assign(mate.config, { threadSnapshotPagination: true });
     Object.assign(mate.config.environment.capabilities, {
@@ -1200,6 +1208,7 @@ export class ChatDriver {
     lastError: string | null = null,
     assistantMessageId: string | null = null,
   ) {
+    if (this.wire !== this.v1) return this.wire.run(turnId, state);
     this.v1.live = true;
     const at = this.at();
     const previous =
@@ -1233,15 +1242,17 @@ export class ChatDriver {
     turnId = "run-one",
     extra: Record<string, unknown> = {},
   ) {
+    // `summary` is the activity's own (V1's title for the call), never its payload's.
+    const { summary, ...payload } = extra;
     this.activity(
       kind,
-      String(data.toolName ?? "Tool"),
+      String(summary ?? data.toolName ?? "Tool"),
       {
         toolCallId: callId,
         itemType: "command_execution",
         status: kind === "tool.completed" ? "completed" : "inProgress",
         data,
-        ...extra,
+        ...payload,
       },
       turnId,
     );
@@ -1296,6 +1307,31 @@ export class ChatDriver {
                   : intent.decision,
             ],
       );
+  }
+
+  /** Settles with the answer the Mate applied to `requestId`, on whichever wire it speaks. */
+  async waitForAnswer(requestId: string) {
+    const applied = () =>
+      this.wire
+        .intents()
+        .findLast((intent) => intent.kind === "answer" && intent.requestId === requestId);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+      return await deadline(
+        new Promise<Extract<ChatIntent, { kind: "answer" }>>((resolve) => {
+          const check = () => {
+            const found = applied();
+            if (found?.kind === "answer") resolve(found);
+          };
+          check();
+          timer = setInterval(check, 25);
+        }),
+        `Mate applied an answer to ${requestId}`,
+        8000,
+      );
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   receivedStagingAnswer() {
@@ -1390,9 +1426,21 @@ export class ChatDriver {
   }
 }
 
+declare module "vite-plus/test" {
+  interface ProvidedContext {
+    /** Which wire the area's Mates speak: V1 unless a project says the engine's. */
+    mateWire?: "v1" | "engine";
+  }
+}
+
 const chats = new WeakMap<MateFake, ChatDriver>();
 export const installArea: ScenarioExtension = (drivers) => {
-  drivers.onMate.push((mate) => chats.set(mate, new ChatDriver(mate)));
+  drivers.onMate.push((mate) => {
+    if (inject("mateWire") !== "engine") return void chats.set(mate, new ChatDriver(mate));
+    const wire = new EngineChatWire(mate);
+    chats.set(mate, new ChatDriver(mate, wire));
+    wire.install();
+  });
 };
 export function chatFor(mate: MateFake) {
   const chat = chats.get(mate);

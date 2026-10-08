@@ -96,6 +96,14 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
   readonly httpNone?: boolean;
   readonly initialLoad?: Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>>;
   readonly stream?: Stream.Stream<OrchestrationThreadStreamItem, Error>;
+  /** The door has not answered yet: no prepared connection. */
+  readonly unprepared?: boolean;
+  /** The engine protocol the door names, where it names one. */
+  readonly mateEngine?: number;
+  /** The thread the device cached. */
+  readonly cachedThread?: OrchestrationThreadDetailSnapshot;
+  /** The engine protocol the configuration the device last cached named. */
+  readonly cachedMateEngine?: number;
 }) {
   const clock = yield* Clock.Clock;
   const wakeups = yield* Queue.unbounded<ConnectionWakeup>();
@@ -155,14 +163,17 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
     state: connectionState,
     session: sessionRef,
     prepared: yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(
-      Option.some({
-        environmentId: TARGET.environmentId,
-        label: TARGET.label,
-        httpBaseUrl: TARGET.httpBaseUrl,
-        socketUrl: TARGET.wsBaseUrl,
-        httpAuthorization: null,
-        target: TARGET,
-      }),
+      options?.unprepared
+        ? Option.none()
+        : Option.some({
+            environmentId: TARGET.environmentId,
+            label: TARGET.label,
+            httpBaseUrl: TARGET.httpBaseUrl,
+            socketUrl: TARGET.wsBaseUrl,
+            httpAuthorization: null,
+            target: TARGET,
+            ...(options?.mateEngine === undefined ? {} : { mateEngine: options.mateEngine }),
+          }),
     ),
     connect: Effect.void,
     disconnect: Effect.void,
@@ -207,11 +218,20 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
           loadThread: () =>
             Effect.sync(() => {
               diskLoads += 1;
-              return Option.none();
+              return Option.fromNullishOr(options?.cachedThread);
             }),
           saveThread: () => Effect.void,
           removeThread: () => Effect.void,
-          loadServerConfig: () => Effect.succeedNone,
+          loadServerConfig: () =>
+            Effect.succeed(
+              options?.cachedMateEngine === undefined
+                ? Option.none()
+                : Option.some({
+                    environment: {
+                      capabilities: { mateEngine: { protocol: options.cachedMateEngine } },
+                    },
+                  } as never),
+            ),
           saveServerConfig: () => Effect.void,
           loadVcsRefs: () => Effect.succeedNone,
           saveVcsRefs: () => Effect.void,
@@ -300,6 +320,39 @@ describe("createEnvironmentThreadStateAtoms", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  it.effect("paints a V1 conversation's cached thread before its door answers, offline too", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ unprepared: true, cachedThread: SNAPSHOT });
+      const unmount = h.registry.mount(h.stateAtom);
+      const painted = yield* observeState(h.registry, h.stateAtom, (state) =>
+        Option.isSome(state.data),
+      );
+      expect(Option.getOrThrow(painted.data).id).toBe(SNAPSHOT.thread.id);
+      unmount();
+    }),
+  );
+
+  it.effect.each([
+    { name: "once its door names the engine", options: { mateEngine: 1 } },
+    {
+      name: "before its door answers, when the configuration it last cached named the engine",
+      options: { unprepared: true, cachedMateEngine: 1, cachedThread: SNAPSHOT },
+    },
+  ])(
+    "shows an engine Mate's conversation as an update, never its V1 history, $name",
+    ({ options }) =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness(options);
+        const unmount = h.registry.mount(h.stateAtom);
+        const update = yield* observeState(h.registry, h.stateAtom, (state) =>
+          Option.isSome(state.error),
+        );
+        expect(Option.getOrThrow(update.error)).toMatch(/Update the app/);
+        expect(update.data).toEqual(Option.none());
+        unmount();
+      }),
+  );
 
   it.effect("exposes snapshot loader defects before the RPC subscription starts", () =>
     Effect.gen(function* () {

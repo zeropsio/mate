@@ -42,6 +42,7 @@ import {
   ChatImageAttachment,
   ProviderApprovalDecision,
   ProviderUserInputAnswers,
+  UserInputAttachments,
 } from "./orchestration.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
 
@@ -338,7 +339,12 @@ export const EngineAnswer = forwardCompatibleUnion({
   known: ["approval", "input", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
-    Schema.Struct({ kind: Schema.Literal("input"), answers: ProviderUserInputAnswers }),
+    Schema.Struct({
+      kind: Schema.Literal("input"),
+      answers: ProviderUserInputAnswers,
+      /** The pictures attached to each question's answer, by reference (V1's shape). */
+      attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+    }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
   toFallback: (_raw, type) => ({ kind: "unknown" as const, type }),
@@ -354,9 +360,20 @@ export const EngineAnswerInput = Schema.Struct({
 });
 export type EngineAnswerInput = typeof EngineAnswerInput.Type;
 
+/**
+ * Close a request unanswered: only one its agent does not wait on (`dismissible`), which ends
+ * `dismissed`. The agent is not told, as with V1's dismissal.
+ */
+export const EngineDismissInput = Schema.Struct({ ...call, requestId: RequestId });
+export type EngineDismissInput = typeof EngineDismissInput.Type;
+
 /** A message into the running turn: only while the session says it can steer. */
 export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
+
+/** The conversation's next model, on the agent it already runs (its next session opens with it). */
+export const EngineSwitchModelInput = Schema.Struct({ ...call, model: Schema.String });
+export type EngineSwitchModelInput = typeof EngineSwitchModelInput.Type;
 
 // ── results ─────────────────────────────────────────────────────────────────────────────────
 

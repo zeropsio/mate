@@ -56,6 +56,18 @@ const withTurn = (state: ConversationState, turn: string, run: RunId): Conversat
 const touch = (state: ConversationState, id: RunId | null, at: number) =>
   withRun(state, id, (run) => ({ ...run, lastActivityAt: at }));
 
+/** What a question asked by message asks, by question id: its answer's message names each. */
+const askedQuestions = (
+  questions: ReadonlyArray<unknown>,
+): ReadonlyArray<{ readonly id: string; readonly question: string }> =>
+  questions.flatMap((entry) => {
+    const { id, question } = (entry ?? {}) as {
+      readonly id?: unknown;
+      readonly question?: unknown;
+    };
+    return typeof id === "string" && typeof question === "string" ? [{ id, question }] : [];
+  });
+
 export const evolve = (previous: ConversationState, event: EngineEvent): ConversationState => {
   const state: ConversationState = { ...previous, headSeq: event.seq };
   if (event._tag === "Unknown") return state;
@@ -322,25 +334,32 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answerable: event.answerable,
             principal: event.principal,
             answers: 0,
+            kind: event.ask.kind,
+            ...(event.ask.kind === "question" && event.ask.dismissible
+              ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
+              : {}),
           },
         },
       };
     }
     case "RequestAnswered": {
       const request = state.requests[event.requestId];
+      // Keyed by what carries the answer: its respond call, or the run of the message carrying it.
+      const carrier = event.bySend ?? event.effectId;
       return {
         ...state,
         requests: without(state.requests, event.requestId),
         answering:
-          request === undefined
+          request === undefined || carrier === undefined
             ? state.answering
             : {
                 ...state.answering,
-                [event.effectId]: { ...request, answers: request.answers + 1 },
+                [carrier]: { ...request, answers: request.answers + 1 },
               },
       };
     }
-    case "RequestReopened":
+    case "RequestReopened": {
+      const answered = Object.values(state.answering).find((open) => open.id === event.requestId);
       return {
         ...state,
         requests: {
@@ -352,12 +371,16 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answerable: true,
             principal: event.principal,
             answers: event.answers,
+            ...(answered?.kind === undefined ? {} : { kind: answered.kind }),
+            ...(answered?.dismissible === true ? { dismissible: true } : {}),
+            ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
           },
         },
         answering: Object.fromEntries(
           Object.entries(state.answering).filter(([, open]) => open.id !== event.requestId),
         ),
       };
+    }
     case "RequestClosed":
       return {
         ...state,
@@ -485,6 +508,25 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     }
     case "WakeCancelled":
       return { ...state, wakes: without(state.wakes, event.wakeId) };
+    case "HistoryImportStarted":
+      return {
+        ...state,
+        nextRunOrdinal: Math.max(state.nextRunOrdinal, event.runs + 1),
+        history: { state: "importing", source: event.source, runs: event.runs, cursor: 0 },
+      };
+    case "HistoryBatchImported":
+      return state.history === null
+        ? state
+        : { ...state, history: { ...state.history, cursor: event.cursor } };
+    case "HistoryImportEnded":
+      return state.history === null
+        ? state
+        : { ...state, history: { ...state.history, state: event.outcome } };
+    // The earlier record is the projections' alone: the rules never act on it.
+    case "RunImported":
+    case "ItemImported":
+    case "RequestImported":
+      return state;
     case "UsagePauseLifted":
       return { ...state, pausedUntil: null };
   }

@@ -28,7 +28,8 @@ describe("hqMateSetup", () => {
     const value = placementFamily.hq!.decode({ projectId: "Ada", mate }, "project:Ada");
     expect(value).not.toBeNull();
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation: store.state().streams.get(scope)!.generation }],
       reset: false,
       rows: [
@@ -69,7 +70,8 @@ describe("hqMateSetup", () => {
     const scope = placementsScope("org");
     const generation = store.state().streams.get(scope)!.generation;
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation }],
       reset: true,
       rows: [],

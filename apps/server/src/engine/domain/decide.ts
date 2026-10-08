@@ -23,11 +23,13 @@ import {
   requestId as deriveRequestId,
   runId as deriveRunId,
   wakeId as deriveWakeId,
+  type ChatImageAttachment,
   type CommandResult,
   type EffectId,
   type EffectOutcome,
   type ItemBody,
   type Principal,
+  type ProviderUserInputAnswers,
   type RejectionReason,
   type RequestId,
   type RunEnd,
@@ -38,6 +40,8 @@ import {
   type SessionCloseReason,
   type SessionId,
   type TurnHandle,
+  type UserInputAttachments,
+  ItemId,
   WORK_ENDED,
 } from "@t3tools/contracts";
 
@@ -52,6 +56,7 @@ import type {
   Envelope,
   EventDraft,
   ItemDataDraft,
+  ImportedRecord,
   ItemDetailDraft,
   ProviderSignal,
 } from "./command.ts";
@@ -62,6 +67,7 @@ import {
   runOfTurn,
   type ClosedItem,
   type ConversationState,
+  type OpenRequest,
   type RunRecord,
 } from "./state.ts";
 
@@ -90,6 +96,7 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
+  "history.import": { lane: "side", class: "replay-safe" },
 } as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -198,6 +205,8 @@ const handle = (b: StepBuilder, command: Command): void => {
       return stop(b, command.runId);
     case "Answer":
       return answer(b, command);
+    case "Dismiss":
+      return dismiss(b, command.requestId);
     case "Steer":
       return steer(b, command);
     case "SwitchModel":
@@ -234,6 +243,10 @@ const handle = (b: StepBuilder, command: Command): void => {
       return signals(b, command.sessionId, command.signals);
     case "Recovered":
       return recovered(b, command.cutEffects, command.unstartedEffects ?? [], command.words);
+    case "ImportHistory":
+      return importHistory(b, command);
+    case "HistoryBatch":
+      return historyBatch(b, command);
   }
 };
 
@@ -275,6 +288,8 @@ const paused = (b: StepBuilder) =>
  */
 const admitNext = (b: StepBuilder): void => {
   if (b.state.activeRunId !== null) return;
+  // The earlier record goes in first: a run admitted now would answer without it.
+  if (b.state.history?.state === "importing") return;
   const next = paused(b) ? undefined : b.state.queue[0];
   if (next === undefined) return armIdle(b);
   cancelIdle(b);
@@ -421,8 +436,17 @@ const endRun = (
     });
   }
   for (const request of Object.values(b.state.requests)) {
-    if (request.runId !== run.id) continue;
+    // A question asked by message outlives its turn: the person answers it with a message.
+    if (request.runId !== run.id || request.dismissible === true) continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
+  }
+  const carried = answerCarried(b, run);
+  // A message a restart cut mid-flight goes again, marked, by the run continuing it (rule: a cut
+  // send is reconciled, never re-sent blindly): its answer waits for that run's evidence.
+  const resent =
+    end.kind === "cut-by-restart" && end.notContinued === undefined && run.state === "sending";
+  if (carried !== undefined && !resent) {
+    reopenCarried(b, carried, `The answer's message did not reach the agent (${end.kind}).`);
   }
   cancelWatchdog(b, run, "run ended");
   if (run.personBody?.delivery.state === "queued") {
@@ -506,6 +530,16 @@ const markStarted = (
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   updatePerson(b, run, "delivered");
   armWatchdog(b, b.run(run.id), b.now);
+  // The message carrying an answer reached the agent: that is the answer's evidence.
+  const carried = answerCarried(b, run);
+  if (carried !== undefined) {
+    b.emit({
+      _tag: "RequestClosed",
+      runId: carried.runId,
+      requestId: carried.id,
+      state: "answered",
+    });
+  }
 };
 
 // ── people ──────────────────────────────────────────────────────────────────────────────────
@@ -593,6 +627,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   const request = b.state.requests[command.requestId];
   if (request === undefined) throw new Rejected("unknown-request");
   if (!request.answerable) throw new Rejected("not-answerable");
+  if (request.dismissible === true) return answerByMessage(b, request, command);
   const run = b.run(request.runId);
   const effect = b.effect("provider.respond", request.id, request.answers + 1, run.id, {
     requestId: request.id,
@@ -607,14 +642,112 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
     by: b.envelope.principal,
     summary: command.summary,
     effectId: effect,
+    ...(request.kind === "question" ? questionAnswer(command.answer) : {}),
   });
   b.result = { ...b.result, requestId: request.id, runId: run.id };
   resumeIfAnswered(b, run.id);
 };
 
+/**
+ * A question asked by message (Codex's async question) takes its answer as V1 gives it: the
+ * person's message, each question with its answer and the names of the files attached to it, the
+ * pictures beside it. The driver has no call waiting for it. The request is answered once that
+ * message reaches the agent (`markStarted`), and opens again if it never does (`endRun`).
+ */
+const answerByMessage = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const given = questionAnswer(command.answer);
+  const answers = (given.answers ?? {}) as Readonly<Record<string, unknown>>;
+  const byQuestion = given.attachmentsByQuestionId ?? {};
+  const unanswered = () => new Rejected("empty-message", "Answer each question before sending.");
+  const questions = request.questions ?? [];
+  if (questions.length === 0) throw unanswered();
+  const replies = questions.map((question) => {
+    const said = answers[question.id];
+    const files = byQuestion[question.id] ?? [];
+    if (typeof said !== "string" || (said.trim() === "" && files.length === 0)) throw unanswered();
+    const named = files.map((file) => `Attached file: ${file.name} (${file.id})`).join("\n");
+    return [`${question.question}\n${said.trim()}`, named].filter(Boolean).join("\n");
+  });
+  const pictures = Object.values(byQuestion)
+    .flat()
+    .filter((file): file is ChatImageAttachment => file.type === "image");
+  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
+  send(b, { _tag: "Send", text: replies.join("\n\n"), attachments: pictures });
+  b.emit({
+    _tag: "RequestAnswered",
+    runId: request.runId,
+    requestId: request.id,
+    by: b.envelope.principal,
+    summary: command.summary,
+    bySend: carrier,
+    ...given,
+  });
+  b.result = { ...b.result, requestId: request.id, runId: carrier };
+};
+
+/** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
+const answerCarried = (b: StepBuilder, run: RunRecord): OpenRequest | undefined => {
+  const own = b.state.answering[run.id];
+  if (own !== undefined || run.joins === null || run.trigger.kind !== "wake") return own;
+  const continues =
+    run.trigger.wakeId === deriveWakeId(b.state.conversationId, "restart-continuation", run.joins);
+  return continues ? b.state.answering[run.joins] : undefined;
+};
+
+/** The message carrying an answer never reached the agent: the person answers again. */
+const reopenCarried = (b: StepBuilder, carried: OpenRequest, reason: string): void => {
+  b.emit({
+    _tag: "RequestReopened",
+    runId: carried.runId,
+    requestId: carried.id,
+    key: carried.key,
+    principal: carried.principal,
+    reason,
+    answers: carried.answers,
+  });
+};
+
+/**
+ * A request closed unanswered: only one its agent does not wait on, so nothing reaches the agent
+ * (as V1's dismissal). The run it held resumes.
+ */
+const dismiss = (b: StepBuilder, id: RequestId): void => {
+  const request = b.state.requests[id];
+  if (request === undefined) throw new Rejected("unknown-request");
+  if (request.dismissible !== true) throw new Rejected("not-dismissible");
+  b.emit({ _tag: "RequestClosed", runId: request.runId, requestId: id, state: "dismissed" });
+  b.result = { ...b.result, requestId: id, runId: request.runId };
+  resumeIfAnswered(b, request.runId);
+};
+
+/** What a question's record keeps of its answer: the words and pictures, by question id. */
+const questionAnswer = (
+  answer: unknown,
+): Pick<
+  Extract<EventDraft, { _tag: "RequestAnswered" }>,
+  "answers" | "attachmentsByQuestionId"
+> => {
+  if (typeof answer !== "object" || answer === null) return {};
+  const given = answer as {
+    readonly answers?: ProviderUserInputAnswers;
+    readonly attachmentsByQuestionId?: UserInputAttachments;
+  };
+  return {
+    ...(given.answers === undefined ? {} : { answers: given.answers }),
+    ...(given.attachmentsByQuestionId === undefined
+      ? {}
+      : { attachmentsByQuestionId: given.attachmentsByQuestionId }),
+  };
+};
+
 const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
-  const run = b.run(id);
-  if (run.state !== "waiting") return;
+  // A question asked by message outlives its run, which the state may no longer hold.
+  const run = b.state.runs[id];
+  if (run === undefined || run.state !== "waiting") return;
   if (Object.values(b.state.requests).some((request) => request.runId === id)) return;
   markResumed(b, run);
 };
@@ -732,6 +865,9 @@ const wakeFired = (
           : null;
       if (refusal !== null) {
         if (joined !== null) b.emit({ _tag: "RunNotContinued", runId: joined, reason: refusal });
+        const carried = joined === null ? undefined : b.state.answering[joined];
+        if (carried !== undefined)
+          reopenCarried(b, carried, `The answer's message was not sent again: ${refusal}.`);
         admitNext(b);
         return;
       }
@@ -800,6 +936,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const answered = b.state.answering[id];
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
+  if (effect.kind === "history.import") return historySettled(b, id, outcome);
   const failure =
     outcome.kind === "ok"
       ? null
@@ -1167,15 +1304,18 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
       const live = isLive(run);
+      // Asked by message: the agent does not wait on it, and a message answers it after its turn.
+      const byMessage = signal.ask.kind === "question" && signal.ask.dismissible;
       b.emit({
         _tag: "RequestOpened",
         runId: run.id,
         requestId: id,
         key: signal.key,
         ask: signal.ask,
-        answerable: live && (signal.answerable ?? true),
+        answerable: (live || byMessage) && (signal.answerable ?? true),
         principal: run.principal,
       });
+      if (byMessage) return;
       if (!live) {
         // Its turn already ended: nothing can take the answer.
         b.emit({ _tag: "RequestClosed", runId: run.id, requestId: id, state: "lapsed" });
@@ -1484,5 +1624,135 @@ const recovered = (
     dispatch(b, admitted);
     return;
   }
+  admitNext(b);
+};
+
+// ── the earlier record ──────────────────────────────────────────────────────────────────────
+
+/** The cause every import effect derives its id from: one import per conversation. */
+const historyCause = (b: StepBuilder) => `${b.state.conversationId}/history`;
+
+/** The effect that reads the plan's records from `cursor` on: one per batch, by where it starts. */
+const askHistory = (b: StepBuilder, cursor: number): void => {
+  const history = b.state.history;
+  if (history === null) return;
+  b.effect("history.import", historyCause(b), cursor + 1, null, {
+    source: history.source,
+    runs: history.runs,
+    cursor,
+  });
+};
+
+/**
+ * The earlier record is copied in once, before the conversation runs anything of its own: its
+ * turns take the first ordinals, so they read before every run of the engine's. A conversation
+ * that already ran, or already imported, takes nothing.
+ */
+const importHistory = (
+  b: StepBuilder,
+  command: Extract<Command, { readonly _tag: "ImportHistory" }>,
+): void => {
+  if (b.state.history !== null || b.state.archived) return;
+  if (b.state.nextRunOrdinal !== 1) return;
+  if (command.unread !== undefined) {
+    // Nothing could be read: the gap is said where the earlier record would have been.
+    b.emit({ _tag: "HistoryImportStarted", source: command.source, runs: 0 });
+    return endHistoryFailed(b, command.unread);
+  }
+  if (command.runs < 1) return;
+  b.emit({ _tag: "HistoryImportStarted", source: command.source, runs: command.runs });
+  askHistory(b, 0);
+};
+
+/** Whether a batch's record sits where the import reserved it: ids derive from their cause. */
+const placed = (b: StepBuilder, runs: number, record: ImportedRecord): boolean => {
+  const conversation = b.state.conversationId;
+  const ofRun = (run: RunId | null) => {
+    if (run === null) return false;
+    const ordinal = Number(run.slice(`${conversation}/r/`.length));
+    return (
+      Number.isInteger(ordinal) &&
+      ordinal >= 1 &&
+      ordinal <= runs &&
+      run === deriveRunId(conversation, ordinal)
+    );
+  };
+  switch (record._tag) {
+    case "RunImported":
+      return record.runId === deriveRunId(conversation, record.ordinal) && ofRun(record.runId);
+    case "ItemImported":
+      return record.runId === null
+        ? record.itemId.startsWith(`${historyCause(b)}/`)
+        : ofRun(record.runId) && record.itemId.startsWith(`${record.runId}/i/`);
+    case "RequestImported":
+      return ofRun(record.runId) && record.requestId.startsWith(`${record.runId}/q/`);
+  }
+};
+
+/** One batch of the earlier record: its records, then how far the import has come. */
+const historyBatch = (
+  b: StepBuilder,
+  command: Extract<Command, { readonly _tag: "HistoryBatch" }>,
+): void => {
+  const history = b.state.history;
+  if (history?.state !== "importing") {
+    throw new Rejected("invalid-signal", "No import of the earlier record is under way.");
+  }
+  if (command.from !== history.cursor || command.to <= command.from) {
+    throw new Rejected(
+      "invalid-signal",
+      `The batch reads ${command.from}..${command.to}; the import is at ${history.cursor}.`,
+    );
+  }
+  for (const record of command.records) {
+    if (!placed(b, history.runs, record)) {
+      throw new Rejected("invalid-signal", `An imported record is out of place: ${record._tag}.`);
+    }
+    b.emit(record);
+  }
+  b.details.push(...command.details);
+  b.data.push(...command.data);
+  b.emit({ _tag: "HistoryBatchImported", cursor: command.to });
+};
+
+/** What an import's read came to: the next batch, the end, or what could not be brought over. */
+const historySettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
+  const history = b.state.history;
+  if (history?.state !== "importing") return admitNext(b);
+  const started = Number(id.slice(id.lastIndexOf("/") + 1)) - 1;
+  const value = outcome.kind === "ok" ? (outcome.value as { done?: unknown } | undefined) : null;
+  if (value != null && value.done === true) {
+    b.emit({ _tag: "HistoryImportEnded", outcome: "complete" });
+    return admitNext(b);
+  }
+  if (outcome.kind === "ok" && history.cursor > started) return askHistory(b, history.cursor);
+  const reason =
+    outcome.kind === "ok"
+      ? "the import read nothing more"
+      : outcome.kind === "failed" || outcome.kind === "cut"
+        ? outcome.reason
+        : outcome.kind === "timed-out"
+          ? "the earlier record took too long to read"
+          : `an outcome this build does not know (${outcome.type})`;
+  endHistoryFailed(b, reason);
+};
+
+/** An import that could not bring everything: a marker says so, and the queue moves. */
+const endHistoryFailed = (b: StepBuilder, reason: string): void => {
+  b.emit({
+    _tag: "ItemImported",
+    runId: null,
+    itemId: ItemId.make(`${historyCause(b)}/failed`),
+    by: ENGINE_ACTOR,
+    body: {
+      kind: "marker",
+      marker: {
+        kind: "error",
+        reason: `The earlier conversation could not all be brought over: ${reason}`,
+      },
+    },
+    happenedAt: b.now,
+  });
+  b.emit({ _tag: "HistoryImportEnded", outcome: "failed", reason });
   admitNext(b);
 };

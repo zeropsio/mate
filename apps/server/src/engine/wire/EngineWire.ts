@@ -27,9 +27,12 @@ import {
   ENGINE_WIRE_BUDGETS,
   EngineWireError,
   MATE_ENGINE_PROTOCOLS,
+  type ChatAttachment,
+  type ChatImageAttachment,
   type CommandId,
   type ConversationId,
   type EngineAnswerInput,
+  type EngineDismissInput,
   type EngineCallResult,
   type EngineConversationFrame,
   type EngineDetail,
@@ -42,6 +45,7 @@ import {
   type EngineRowsFrame,
   type EngineSendInput,
   type EngineSteerInput,
+  type EngineSwitchModelInput,
   type EngineStopInput,
   type EngineSubscribeInput,
   type EngineSubscribeRowsInput,
@@ -61,6 +65,7 @@ import { conversationRowOf } from "../read/conversationRow.ts";
 import { readConversationView } from "../read/conversationView.ts";
 import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
+import type { MessagePictures } from "../ports.ts";
 
 /** Who calls, and the revision their records carry: the Mate's environment and start epoch. */
 export interface WireCaller {
@@ -100,8 +105,16 @@ export interface EngineWireShape {
     input: EngineAnswerInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly dismiss: (
+    input: EngineDismissInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
   readonly steer: (
     input: EngineSteerInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly switchModel: (
+    input: EngineSwitchModelInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
 }
@@ -112,8 +125,12 @@ export interface EngineWireShape {
 export const NOT_ON_ENGINE = "This Mate's conversation runs on the orchestration wire.";
 /** What a client hears when it speaks a protocol newer than this Mate's. */
 export const MATE_TOO_OLD = "This Mate is older than this app. Update the Mate to talk to it here.";
-/** What a client hears when it speaks a protocol older than this Mate serves. */
-export const APP_TOO_OLD = "Update Zerops Mate to keep talking to this Mate.";
+/**
+ * What a client hears when it speaks a protocol older than this Mate serves. Only an engine reader
+ * (the web and desktop, which load the hosted client) speaks the wire, and a reload fixes it.
+ */
+export const APP_TOO_OLD =
+  "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.";
 
 const unserved = (reason: EngineUnserved["reason"], message: string): EngineUnserved => ({
   type: "unserved",
@@ -144,12 +161,21 @@ export const unservedWire: EngineWireShape = {
   send: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   answer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  switchModel: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
 
 // ── served ──────────────────────────────────────────────────────────────────────────────────
 
 export interface EngineWireOptions {
+  /** How a call's pictures are claimed for its conversation; none passes them as they came. */
+  readonly pictures?: MessagePictures["Service"];
+  /**
+   * A person's send waits on it: while a flipped Mate's main conversation is not yet adopted, its
+   * earlier record goes in before anything of the person's runs.
+   */
+  readonly sendsWait?: Effect.Effect<void>;
   /** How long a subscription gathers commits and deltas before it sends them (default 50 ms). */
   readonly coalesce?: Duration.Input;
   /** Records a resume carries at most; past it the subscriber is reset. */
@@ -343,6 +369,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           }
           const settled = new Set<string>();
           const streaming = new Set<string>();
+          /** The records an import under way brought since this subscriber opened. */
+          const imported = new Set<string>();
           const pending = new Map<string, Map<string, string>>();
 
           const place = (
@@ -376,8 +404,41 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                 }
                 if (event._tag === "ItemClosed") closed.push(event.itemId);
               }
-              if (events.length > 0) {
-                const changed = yield* records.changedSince(conversation, cursor);
+              for (const event of events) {
+                if (event._tag === "RunImported") imported.add(event.runId);
+                if (event._tag === "ItemImported") imported.add(event.itemId);
+                if (event._tag === "RequestImported") imported.add(event.requestId);
+              }
+              if (events.some((event) => event._tag === "HistoryImportEnded")) {
+                // The earlier record is in: the window again, never the import record by record.
+                imported.clear();
+                const head = yield* records.head(conversation);
+                const frame = yield* snapshot(
+                  conversation,
+                  input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
+                  head,
+                  epoch,
+                  origin,
+                );
+                lastHeader = headerJson(frame.header);
+                cursor = Math.max(head, ...events.map((event) => event.seq));
+                frames.push({ type: "reset", reason: "gap" }, frame, {
+                  type: "synchronized",
+                  epoch,
+                  head: cursor,
+                });
+              } else if (events.length > 0) {
+                const all = yield* records.changedSince(conversation, cursor);
+                // What the import brought so far comes with its end, in the window.
+                const changed =
+                  imported.size === 0
+                    ? all
+                    : {
+                        ...all,
+                        runs: all.runs.filter((run) => !imported.has(run.id)),
+                        items: all.items.filter((item) => !imported.has(item.id)),
+                        requests: all.requests.filter((request) => !imported.has(request.id)),
+                      };
                 const top = yield* header(conversation);
                 const topJson = headerJson(top);
                 const to = Math.max(cursor, changed.to, ...events.map((event) => event.seq));
@@ -704,6 +765,52 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       );
     };
 
+    /**
+     * A call carrying pictures: each claimed under the conversation's id before the step that
+     * records it (the client lets its pending upload go once the call is answered), refused in
+     * V1's words when one cannot be, and let go again when the step does not take it. A call
+     * already answered returns its receipt and claims nothing again.
+     */
+    const withPictures = (
+      protocol: number,
+      conversationId: ConversationId,
+      commandId: CommandId,
+      caller: WireCaller,
+      pictures: ReadonlyArray<ChatAttachment>,
+      body: (claimed: ReadonlyArray<ChatAttachment>) => Command,
+    ): Effect.Effect<EngineCallResult, EngineWireError> => {
+      const claims = options.pictures;
+      if (claims === undefined || pictures.length === 0 || protocolRefusal(protocol) !== undefined)
+        return command(protocol, conversationId, commandId, caller, body(pictures));
+      return Effect.gen(function* () {
+        const stored = yield* records
+          .receipt(conversationId, commandId)
+          .pipe(Effect.catch(wireError(UNREADABLE)));
+        if (stored !== null)
+          return yield* decodeResult(stored).pipe(Effect.catch(wireError(UNREADABLE)));
+        const claimed = yield* claims.claim(conversationId, pictures).pipe(
+          Effect.map((held) => ({ held }) as const),
+          Effect.catchTag("PicturesRefused", (refused) =>
+            Effect.succeed({ refused: refused.message } as const),
+          ),
+        );
+        if ("refused" in claimed)
+          return {
+            _tag: "Rejected",
+            rejection: { reason: "attachment-refused", detail: claimed.refused },
+          } satisfies EngineCallResult;
+        const result = yield* command(
+          protocol,
+          conversationId,
+          commandId,
+          caller,
+          body(claimed.held),
+        ).pipe(Effect.onError(() => claims.release(claimed.held)));
+        if (result._tag !== "Accepted") yield* claims.release(claimed.held);
+        return result;
+      });
+    };
+
     return {
       subscribe,
       subscribeRows,
@@ -712,11 +819,23 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       readDetail,
       receipt,
       send: (input, caller) =>
-        command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Send",
-          text: input.text,
-          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-        }),
+        Effect.andThen(
+          options.sendsWait ?? Effect.void,
+          withPictures(
+            input.protocol,
+            input.conversationId,
+            input.commandId,
+            caller,
+            input.attachments ?? [],
+            (claimed) => ({
+              _tag: "Send",
+              text: input.text,
+              ...(input.attachments === undefined
+                ? {}
+                : { attachments: claimed as ReadonlyArray<ChatImageAttachment> }),
+            }),
+          ),
+        ),
       stop: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Stop",
@@ -733,23 +852,59 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             },
           });
         }
-        return command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Answer",
-          requestId: input.requestId,
-          answer:
-            answer.kind === "approval"
-              ? { decision: answer.decision }
-              : answer.kind === "input"
-                ? { answers: answer.answers }
-                : null,
-          summary: input.summary,
-        });
+        // Each question's pictures, claimed together and given back to their questions.
+        const byQuestion = Object.entries(
+          answer.kind === "input" ? (answer.attachmentsByQuestionId ?? {}) : {},
+        );
+        return withPictures(
+          input.protocol,
+          input.conversationId,
+          input.commandId,
+          caller,
+          byQuestion.flatMap(([, pictures]) => pictures),
+          (claimed) => {
+            let at = 0;
+            const attachmentsByQuestionId = Object.fromEntries(
+              byQuestion.map(([question, pictures]) => {
+                const mine = claimed.slice(at, at + pictures.length);
+                at += pictures.length;
+                return [question, mine];
+              }),
+            );
+            return {
+              _tag: "Answer",
+              requestId: input.requestId,
+              answer:
+                answer.kind === "approval"
+                  ? { decision: answer.decision }
+                  : answer.kind === "input"
+                    ? {
+                        answers: answer.answers,
+                        ...(answer.attachmentsByQuestionId === undefined
+                          ? {}
+                          : { attachmentsByQuestionId }),
+                      }
+                    : null,
+              summary: input.summary,
+            };
+          },
+        );
       },
+      dismiss: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "Dismiss",
+          requestId: input.requestId,
+        }),
       steer: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Steer",
           runId: input.runId,
           text: input.text,
+        }),
+      switchModel: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "SwitchModel",
+          model: input.model,
         }),
     } satisfies EngineWireShape;
   });

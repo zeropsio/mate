@@ -17,7 +17,7 @@ import { ServerConfig } from "../config.ts";
 import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
-import { contentAssetsAt } from "./ContentAssets.ts";
+import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
 import { findRetainedMedia, retainedMediaDirectory } from "./RetainedMedia.ts";
 
 /** Capture only locally authored images. External URLs remain external. */
@@ -207,6 +207,45 @@ export const captureConversationEvent = Effect.fn("captureConversationEvent")(fu
   };
 });
 
+/**
+ * A tool result's inline picture (`{mimeType: "image/…", data: base64}`) as a stored reference:
+ * its bytes kept once by their content, its occurrence keyed by the thread, the activity and the
+ * bytes, so the same picture of the same activity is one occurrence whoever keeps it.
+ */
+export const isInlineImage = (
+  value: unknown,
+): value is { readonly mimeType: string; readonly data: string } =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as Record<string, unknown>).mimeType === "string" &&
+  ((value as Record<string, unknown>).mimeType as string).startsWith("image/") &&
+  typeof (value as Record<string, unknown>).data === "string";
+
+export const keepInlineImage = async (
+  store: ContentAssets,
+  threadId: ThreadId,
+  activityId: string,
+  image: { readonly mimeType: string; readonly data: string },
+) => {
+  const asset = await store.legacy([threadId, activityId, image.data], () =>
+    store.ingestBytes(Buffer.from(image.data, "base64"), {
+      threadId,
+      ownerId: activityId,
+      provenance: "capture",
+      name: "tool-image",
+      mimeType: image.mimeType,
+    }),
+  );
+  const size =
+    asset.original.status === "ready"
+      ? {
+          ...(asset.original.width === undefined ? {} : { width: asset.original.width }),
+          ...(asset.original.height === undefined ? {} : { height: asset.original.height }),
+        }
+      : {};
+  return { mimeType: image.mimeType, asset, ...size };
+};
+
 export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
   activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
   threadId: ThreadId,
@@ -218,27 +257,8 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
   const capture = async (value: unknown): Promise<unknown> => {
     if (Array.isArray(value)) return Promise.all(value.map(capture));
     if (!value || typeof value !== "object") return value;
+    if (isInlineImage(value)) return keepInlineImage(store, threadId, activity.id, value);
     const record = value as Record<string, unknown>;
-    if (
-      typeof record.mimeType === "string" &&
-      record.mimeType.startsWith("image/") &&
-      typeof record.data === "string"
-    ) {
-      const asset = await store.legacy([threadId, activity.id, record.data], () =>
-        store.ingestBytes(Buffer.from(record.data as string, "base64"), {
-          ...owner,
-          name: "tool-image",
-          mimeType: record.mimeType as string,
-        }),
-      );
-      return {
-        mimeType: record.mimeType,
-        asset,
-        ...(asset.original.status === "ready"
-          ? { width: asset.original.width, height: asset.original.height }
-          : {}),
-      };
-    }
     const result: Record<string, unknown> = {};
     let imageDimensions: { width: number; height: number } | undefined;
     let imageName: string | undefined;

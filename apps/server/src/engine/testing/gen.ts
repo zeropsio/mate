@@ -21,8 +21,10 @@ import {
 
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
-import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
+import type { Command, Envelope, ImportedRecord, ProviderSignal } from "../domain/command.ts";
 import {
+  ItemId,
+  RunId as RunIdOf,
   effectSettledCommandId,
   recoveredCommandId,
   signalsCommandId,
@@ -113,6 +115,7 @@ export class Gen {
       ["send", 3],
       ["stop", active === undefined ? 0.2 : 1],
       ["answer", Object.keys(state.requests).length > 0 ? 2 : 0.1],
+      ["dismiss", Object.keys(state.requests).length > 0 ? 0.5 : 0.05],
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
       ["archive", 0.15],
@@ -124,6 +127,9 @@ export class Gen {
       ["settle", effects.length > 0 ? 5 : 0.1],
       ["signals", state.session !== null ? 5 : 0.2],
       ["recover", 0.15],
+      // The earlier record: asked early, before the conversation runs, and batch by batch.
+      ["import", state.history === null ? (state.nextRunOrdinal === 1 ? 1.5 : 0.05) : 0.02],
+      ["batch", state.history?.state === "importing" ? 3 : 0.02],
     ]);
     switch (kind) {
       case "send": {
@@ -159,9 +165,22 @@ export class Gen {
             ? rng.pick(open).id
             : (`${this.conversation}/r/1/q/9` as RequestId);
         return {
-          envelope: this.env({ _tag: "Answer", requestId, answer: { ok: true }, summary: "yes" }),
+          envelope: this.env({
+            _tag: "Answer",
+            requestId,
+            answer: rng.chance(0.8) ? { answers: { "0": "this one" } } : { ok: true },
+            summary: "yes",
+          }),
           now: at,
         };
+      }
+      case "dismiss": {
+        const open = Object.values(state.requests);
+        const requestId =
+          open.length > 0 && rng.chance(0.9)
+            ? rng.pick(open).id
+            : (`${this.conversation}/r/1/q/9` as RequestId);
+        return { envelope: this.env({ _tag: "Dismiss", requestId }), now: at };
       }
       case "steer": {
         const runId = active?.id ?? (`${this.conversation}/r/1` as RunId);
@@ -230,9 +249,76 @@ export class Gen {
           now: at,
         };
       }
+      case "import":
+        return {
+          envelope: this.env(
+            {
+              _tag: "ImportHistory",
+              source: { kind: "v1", threadId: this.conversation },
+              runs: rng.int(0, 3),
+            },
+            ENGINE,
+          ),
+          now: at,
+        };
+      case "batch":
+        return { envelope: this.batch(state), now: at };
       default:
         throw new Error(`unknown kind ${kind}`);
     }
+  }
+
+  /**
+   * A batch of the earlier record: mostly from where the import stands, its records placed where
+   * it reserved them; sometimes stale, or one out of place.
+   */
+  private batch(state: ConversationState): Envelope {
+    const rng = this.rng;
+    const history = state.history;
+    const runs = Math.max(1, history?.runs ?? 1);
+    const from = history !== null && rng.chance(0.9) ? history.cursor : rng.int(0, 6);
+    const to = from + rng.int(1, 3);
+    const effect = Object.values(state.effects).find((held) => held.kind === "history.import");
+    const run = (ordinal: number) => RunIdOf.make(`${this.conversation}/r/${ordinal}`);
+    const records: Array<ImportedRecord> = [];
+    for (let at = from; at < to; at++) {
+      const ordinal = rng.chance(0.03) ? runs + 1 : at < runs ? at + 1 : ((at - runs) % runs) + 1;
+      records.push(
+        at < runs
+          ? {
+              _tag: "RunImported",
+              runId: run(ordinal),
+              ordinal,
+              trigger: { kind: "imported", from: "v1", turn: `v1-${ordinal}` },
+              principal: ENGINE,
+              end: { kind: "completed" },
+              source: "agent",
+              happenedAt: 0,
+              startedAt: 0,
+              endedAt: 0,
+            }
+          : {
+              _tag: "ItemImported",
+              runId: run(ordinal),
+              itemId: ItemId.make(`${run(ordinal)}/i/${at}`),
+              by: { kind: "mate" },
+              body: { kind: "note", text: `earlier ${at}`, streaming: false, answer: false },
+              happenedAt: 0,
+            },
+      );
+    }
+    return this.env(
+      {
+        _tag: "HistoryBatch",
+        effectId: effect?.id ?? (`${this.conversation}/history/e/history.import/1` as EffectId),
+        from,
+        to,
+        records,
+        details: [],
+        data: [],
+      },
+      ENGINE,
+    );
   }
 
   private settle(state: ConversationState, _now: number): Envelope {
@@ -260,6 +346,8 @@ export class Gen {
       value = { kept: true };
     } else if (effect.kind === "run.prepare" && rng.chance(0.2)) {
       value = { gaps: [{ service: "api", reason: "Snapshot refused" }] };
+    } else if (effect.kind === "history.import") {
+      value = { done: rng.chance(0.5) };
     }
     return this.env(
       {
@@ -369,7 +457,13 @@ export class Gen {
             kind: "request-opened",
             ...(rng.chance(0.8) ? { turn: turn() } : {}),
             key: `q${n}`,
-            ask: { kind: "approval", requestKind: "command", detail: "rm -rf build" },
+            ask: rng.chance(0.3)
+              ? {
+                  kind: "question",
+                  questions: [{ id: "0", question: "Which one?" }],
+                  dismissible: rng.chance(0.5),
+                }
+              : { kind: "approval", requestKind: "command", detail: "rm -rf build" },
             answerable: rng.chance(0.85),
           });
           break;

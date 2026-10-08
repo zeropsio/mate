@@ -13,7 +13,7 @@
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
 import { readUsageLimitNotice, type UsageLimitNotice } from "../../zerops/providerLimit.logic";
-import type { TurnId } from "@t3tools/contracts";
+import { isEngineItemId, type TurnId } from "@t3tools/contracts";
 import {
   envChangeWords,
   isReadOperationKind,
@@ -629,7 +629,7 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
     (entry) =>
       entry.kind !== "turn-plan" &&
       entry.kind !== "change-landed" &&
-      !(entry.kind === "message" && entry.message.text.trim().length === 0) &&
+      !(entry.kind === "message" && saysNothing(entry.message)) &&
       !(
         (entry.kind === "work" || entry.kind === "generic-call") &&
         (isTaskReport(entry) ||
@@ -729,8 +729,18 @@ function countsAsLastWord(entry: TimelineEntry): boolean {
   return (
     entry.kind !== "turn-plan" &&
     !isTaskReport(entry) &&
-    !(entry.kind === "message" && entry.message.text.trim().length === 0)
+    !(entry.kind === "message" && saysNothing(entry.message))
   );
+}
+
+/**
+ * A message of nothing: no words, and none on their way. An engine Mate's item still being
+ * written is words all the same before its first one reaches its record (its leaf reads them from
+ * the live text); a V1 message is born with its first delta and judged by it, as it always was.
+ */
+export function saysNothing(message: Pick<ChatMessage, "id" | "text" | "streaming">): boolean {
+  if (message.streaming === true && isEngineItemId(message.id)) return false;
+  return message.text.trim().length === 0;
 }
 
 /**

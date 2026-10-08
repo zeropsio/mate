@@ -420,6 +420,19 @@ export const makeRecords = Effect.gen(function* () {
               row === undefined ? undefined : (parse(row.body_json) as { text?: unknown });
             return typeof body?.text === "string" ? body.text : undefined;
           }
+          case "result": {
+            const [row] = yield* sql<{ readonly body_json: string }>`
+              SELECT body_json FROM engine_item
+              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            `;
+            const body =
+              row === undefined
+                ? undefined
+                : (parse(row.body_json) as { result?: { resultText?: unknown } });
+            return typeof body?.result?.resultText === "string"
+              ? body.result.resultText
+              : undefined;
+          }
           case "detail": {
             const [row] = yield* sql<{ readonly body: string }>`
               SELECT d.body FROM engine_item_detail d JOIN engine_item i ON i.item_id = d.item_id

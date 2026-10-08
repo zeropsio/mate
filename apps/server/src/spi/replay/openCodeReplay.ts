@@ -19,7 +19,13 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
-import { OpenCodeSettings, ProviderDriverKind, type SpiEvent, ThreadId } from "@t3tools/contracts";
+import {
+  OpenCodeSettings,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type SpiEvent,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -96,74 +102,105 @@ const CANNED_EVENTS: ReadonlyArray<unknown> = [
   },
 ];
 
-/** Minimal from-scratch equivalent of OpenCodeAdapter.test.ts's OpenCodeRuntimeTestDouble. */
-const replayOpenCodeRuntime: OpenCodeRuntimeShape = {
-  startOpenCodeServerProcess: () =>
-    Effect.die(new Error("replayOpenCodeRuntime.startOpenCodeServerProcess is not used")),
-  connectToOpenCodeServer: ({ serverUrl }) =>
-    Effect.succeed({
-      url: serverUrl ?? "http://127.0.0.1:9999",
-      version: "1.14.19",
-      exitCode: null,
-      external: Boolean(serverUrl),
-    }),
-  runOpenCodeCommand: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
-  createOpenCodeSdkClient: ({ baseUrl }) =>
-    ({
-      session: {
-        create: async () => ({ data: { id: `${baseUrl}/session` } }),
-        get: async ({ sessionID }: { readonly sessionID: string }) => ({ data: { id: sessionID } }),
-        update: async ({ sessionID }: { readonly sessionID: string }) => ({
-          data: { id: sessionID },
-        }),
-        fork: async ({ sessionID }: { readonly sessionID: string }) => ({
-          data: { id: `${sessionID}_fork` },
-        }),
-        abort: async () => {},
-        promptAsync: async () => {},
-        messages: async () => ({ data: [] }),
-        revert: async () => {},
-      },
-      // Startup runs pending-request recovery (permission.list/question.list)
-      // once the event stream connects; an empty backlog matches this
-      // baseline's clean session with nothing to recover.
-      permission: {
-        list: async () => ({ data: [] }),
-      },
-      question: {
-        list: async () => ({ data: [] }),
-      },
-      event: {
-        subscribe: async (_body?: unknown, options?: { readonly signal?: AbortSignal }) => ({
-          stream: (async function* () {
-            for (const event of CANNED_EVENTS) {
-              yield event;
-            }
-            // A real OpenCode SSE connection stays open until the server
-            // process ends or the caller aborts the fetch. Returning here
-            // would look like an unexpected disconnect to the adapter's
-            // reconnect/session.exited handling, so wait for the same
-            // AbortSignal the adapter tears the subscription down with
-            // instead of letting the generator run out of canned events.
-            const signal = options?.signal;
-            if (signal && !signal.aborted) {
-              await new Promise<void>((resolve) => {
-                signal.addEventListener("abort", () => resolve(), { once: true });
-              });
-            }
-          })(),
-        }),
-      },
-      // biome-ignore lint: matches the shape the OpenCode SDK client provides at runtime.
-    }) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
-  loadOpenCodeInventory: () =>
-    Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeInventory is not used")),
-  loadOpenCodeSkills: () =>
-    Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeSkills is not used")),
-  loadInventoryFromCli: () =>
-    Effect.die(new Error("replayOpenCodeRuntime.loadInventoryFromCli is not used")),
-  loadSkillsFromCli: () =>
-    Effect.die(new Error("replayOpenCodeRuntime.loadSkillsFromCli is not used")),
+/**
+ * Minimal from-scratch equivalent of OpenCodeAdapter.test.ts's OpenCodeRuntimeTestDouble. Its SSE
+ * stream plays `canned`; `afterPrompt` plays once a turn's prompt was sent.
+ */
+const makeReplayRuntime = (
+  canned: ReadonlyArray<unknown>,
+  afterPrompt: ReadonlyArray<unknown> = [],
+): OpenCodeRuntimeShape => {
+  let prompted: (messageId: string) => void = () => {};
+  const prompt = new Promise<string>((resolve) => {
+    prompted = resolve;
+  });
+  return {
+    startOpenCodeServerProcess: () =>
+      Effect.die(new Error("replayOpenCodeRuntime.startOpenCodeServerProcess is not used")),
+    connectToOpenCodeServer: ({ serverUrl }) =>
+      Effect.succeed({
+        url: serverUrl ?? "http://127.0.0.1:9999",
+        version: "1.14.19",
+        exitCode: null,
+        external: Boolean(serverUrl),
+      }),
+    runOpenCodeCommand: () => Effect.succeed({ stdout: "", stderr: "", code: 0 }),
+    createOpenCodeSdkClient: ({ baseUrl }) =>
+      ({
+        session: {
+          create: async () => ({ data: { id: `${baseUrl}/session` } }),
+          get: async ({ sessionID }: { readonly sessionID: string }) => ({
+            data: { id: sessionID },
+          }),
+          update: async ({ sessionID }: { readonly sessionID: string }) => ({
+            data: { id: sessionID },
+          }),
+          fork: async ({ sessionID }: { readonly sessionID: string }) => ({
+            data: { id: `${sessionID}_fork` },
+          }),
+          abort: async () => {},
+          promptAsync: async (body?: { readonly messageID?: string }) => {
+            prompted(body?.messageID ?? "msg-prompt");
+          },
+          messages: async () => ({ data: [] }),
+          children: async () => ({ data: [] }),
+          revert: async () => {},
+        },
+        // Startup runs pending-request recovery (permission.list/question.list)
+        // once the event stream connects; an empty backlog matches this
+        // baseline's clean session with nothing to recover.
+        permission: {
+          list: async () => ({ data: [] }),
+        },
+        question: {
+          list: async () => ({ data: [] }),
+        },
+        event: {
+          subscribe: async (_body?: unknown, options?: { readonly signal?: AbortSignal }) => ({
+            stream: (async function* () {
+              for (const event of canned) {
+                yield event;
+              }
+              if (afterPrompt.length > 0) {
+                // OpenCode admits a prompt by echoing its message as the person's.
+                const messageId = await prompt;
+                yield {
+                  type: "message.updated",
+                  properties: {
+                    sessionID: SESSION_URL,
+                    info: { id: messageId, sessionID: SESSION_URL, role: "user" },
+                  },
+                };
+                for (const event of afterPrompt) {
+                  yield event;
+                }
+              }
+              // A real OpenCode SSE connection stays open until the server
+              // process ends or the caller aborts the fetch. Returning here
+              // would look like an unexpected disconnect to the adapter's
+              // reconnect/session.exited handling, so wait for the same
+              // AbortSignal the adapter tears the subscription down with
+              // instead of letting the generator run out of canned events.
+              const signal = options?.signal;
+              if (signal && !signal.aborted) {
+                await new Promise<void>((resolve) => {
+                  signal.addEventListener("abort", () => resolve(), { once: true });
+                });
+              }
+            })(),
+          }),
+        },
+        // biome-ignore lint: matches the shape the OpenCode SDK client provides at runtime.
+      }) as unknown as ReturnType<OpenCodeRuntimeShape["createOpenCodeSdkClient"]>,
+    loadOpenCodeInventory: () =>
+      Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeInventory is not used")),
+    loadOpenCodeSkills: () =>
+      Effect.die(new Error("replayOpenCodeRuntime.loadOpenCodeSkills is not used")),
+    loadInventoryFromCli: () =>
+      Effect.die(new Error("replayOpenCodeRuntime.loadInventoryFromCli is not used")),
+    loadSkillsFromCli: () =>
+      Effect.die(new Error("replayOpenCodeRuntime.loadSkillsFromCli is not used")),
+  };
 };
 
 /**
@@ -212,7 +249,68 @@ export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>>
     ServerConfig.layerTest(process.cwd(), process.cwd()),
     ServerSettingsService.layerTest(),
     providerSessionDirectoryTestLayer,
-    Layer.succeed(OpenCodeRuntime, replayOpenCodeRuntime),
+    Layer.succeed(OpenCodeRuntime, makeReplayRuntime(CANNED_EVENTS)),
+  ).pipe(Layer.provideMerge(NodeServices.layer));
+
+  return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
+}
+
+/**
+ * One turn through OpenCodeAdapter: the session opens, a message is sent, and once its prompt is
+ * out the stream plays `events` — a turn's parts, ending with the session going idle. Returns
+ * every event up to the turn's end.
+ */
+export async function recordOpenCodeTurn(
+  events: ReadonlyArray<unknown>,
+): Promise<ReadonlyArray<SpiEvent>> {
+  const openCodeConfig = decodeOpenCodeSettings({
+    binaryPath: "spi-replay-opencode",
+    serverUrl: "http://127.0.0.1:9999",
+  });
+
+  const program = Effect.gen(function* () {
+    const adapter = yield* makeOpenCodeAdapter(openCodeConfig);
+
+    const collected: Array<SpiEvent> = [];
+    const turnEnded = yield* Deferred.make<void>();
+
+    const collectorFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+      Effect.sync(() => {
+        collected.push(event);
+      }).pipe(
+        Effect.andThen(
+          event.type === "turn.completed" ? Deferred.succeed(turnEnded, undefined) : Effect.void,
+        ),
+      ),
+    ).pipe(Effect.forkChild);
+
+    yield* adapter.startSession({
+      threadId: REPLAY_THREAD_ID,
+      provider: ProviderDriverKind.make("opencode"),
+      runtimeMode: "full-access",
+    });
+    yield* adapter.sendTurn({
+      threadId: REPLAY_THREAD_ID,
+      input: "go",
+      attachments: [],
+      modelSelection: {
+        instanceId: ProviderInstanceId.make("opencode"),
+        model: "opencode/kimi-k3",
+      },
+    });
+
+    yield* Deferred.await(turnEnded).pipe(Effect.timeout("6 seconds"), Effect.ignore);
+    yield* Effect.sleep("100 millis");
+    yield* Fiber.interrupt(collectorFiber);
+
+    return collected;
+  });
+
+  const testLayer = Layer.mergeAll(
+    ServerConfig.layerTest(process.cwd(), process.cwd()),
+    ServerSettingsService.layerTest(),
+    providerSessionDirectoryTestLayer,
+    Layer.succeed(OpenCodeRuntime, makeReplayRuntime(CANNED_EVENTS.slice(0, 1), events)),
   ).pipe(Layer.provideMerge(NodeServices.layer));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));

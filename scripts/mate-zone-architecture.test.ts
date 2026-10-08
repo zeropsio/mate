@@ -1652,11 +1652,19 @@ const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  // The Mate's content-addressed picture store, and the one keep of a tool result's inline
+  // picture V1's capture, the history import and a live call share.
+  "apps/server/src/assets/ContentAssets.ts",
+  "apps/server/src/assets/ConversationMedia.ts",
   "apps/server/src/attachmentStore.ts",
   "apps/server/src/checkpointing/WorkspaceHistory.ts",
   "apps/server/src/config.ts",
+  // V1's own projection of a tool activity: an engine call (live or imported) carries what V1's
+  // row of it shows by construction, and the Zerops result it decodes.
+  "apps/server/src/orchestration/ActivityPayloadProjection.ts",
   "apps/server/src/provider/Services/ProviderService.ts",
   "apps/server/src/terminal/Manager.ts",
+  "apps/server/src/zerops/zeropsActivityResult.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 

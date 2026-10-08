@@ -80,9 +80,16 @@ export class Model {
   readonly delivery = new Map<string, string>();
   readonly effects = new Set<string>();
   readonly wakes = new Map<string, number>();
+  /** Answers a message carries, by request: the run of that message. */
+  readonly carried = new Map<string, string>();
+  /** Runs that started, and the run each one continues. */
+  readonly started = new Set<string>();
+  readonly joins = new Map<string, string>();
   pausedUntil: number | null = null;
   head = 0;
   nextOrdinal = 1;
+  /** The ordinals the earlier record reserved, while its import holds the queue. */
+  imported: { readonly runs: number; importing: boolean } | null = null;
   readonly log: Array<KnownEngineEvent> = [];
 
   readonly conversation: ConversationId;
@@ -241,6 +248,7 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
           `${event.runId} queued with the engine as its principal`,
         );
       }
+      if (event.joins !== null) model.joins.set(event.runId, event.joins);
       move(event.runId, "queued");
       model.runs.set(event.runId, {
         state: "queued",
@@ -265,6 +273,8 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
       }
       if (model.active !== null)
         fail("one active run", `${event.runId} admitted while ${model.active} is active`);
+      if (model.imported?.importing === true)
+        fail("the earlier record goes in first", `${event.runId} admitted while it is imported`);
       move(event.runId, "admitted");
       model.queue.splice(model.queue.indexOf(event.runId), 1);
       model.active = event.runId;
@@ -279,7 +289,28 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
       return;
     }
     case "RunStarted":
+      model.started.add(event.runId);
       return move(event.runId, "running");
+    case "RequestAnswered":
+      if (event.bySend !== undefined) model.carried.set(event.requestId, event.bySend);
+      return;
+    case "RequestReopened":
+      model.carried.delete(event.requestId);
+      return;
+    case "RequestClosed": {
+      const carrier = model.carried.get(event.requestId);
+      model.carried.delete(event.requestId);
+      if (carrier === undefined || event.state !== "answered") return;
+      const reached = [...model.started].some(
+        (run) => run === carrier || model.joins.get(run) === carrier,
+      );
+      if (!reached)
+        fail(
+          "an answer a message carries is answered only once that message reached the agent",
+          `${event.requestId} closed answered before ${carrier} started`,
+        );
+      return;
+    }
     case "RunWaiting":
       return move(event.runId, "waiting");
     case "RunResumed":
@@ -361,6 +392,33 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
     }
     case "WakeCancelled":
       model.wakes.delete(event.wakeId);
+      return;
+    case "HistoryImportStarted":
+      if (model.nextOrdinal !== 1 || model.imported !== null)
+        fail(
+          "the earlier record goes in first",
+          `an import started at ordinal ${model.nextOrdinal}`,
+        );
+      model.imported = { runs: event.runs, importing: true };
+      model.nextOrdinal = event.runs + 1;
+      return;
+    case "RunImported":
+      if (
+        model.imported?.importing !== true ||
+        event.ordinal < 1 ||
+        event.ordinal > model.imported.runs ||
+        event.runId !== `${model.conversation}/r/${event.ordinal}`
+      ) {
+        fail("ids derive from their cause", `imported run ${event.runId} (${event.ordinal})`);
+      }
+      return;
+    case "ItemImported":
+    case "RequestImported":
+      if (model.imported?.importing !== true && event._tag === "RequestImported")
+        fail("the earlier record goes in first", `${event.requestId} imported after the import`);
+      return;
+    case "HistoryImportEnded":
+      if (model.imported !== null) model.imported.importing = false;
       return;
     default:
       return;

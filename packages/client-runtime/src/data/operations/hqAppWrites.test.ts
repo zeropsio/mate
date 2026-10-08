@@ -126,7 +126,8 @@ describe("HQ application verbs", () => {
           "uncertain",
         );
         store.dispatch({
-          kind: "hq-delivery",
+          kind: "delivery",
+          via: "hq-stream",
           scopes: [{ scope: hqAppsScope(orgId), generation: 0 }],
           reset: false,
           rows: [],

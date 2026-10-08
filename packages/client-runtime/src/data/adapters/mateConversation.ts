@@ -7,12 +7,26 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import { EMPTY_ENVIRONMENT_THREAD_STATE } from "../../state/threadState.ts";
+import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../engineHost.ts";
+import {
+  ENGINE_UPDATE_WORDS,
+  engineRows,
+  engineHeldTurns,
+  engineThread,
+  overlayEngineShell,
+} from "../projections/mateEngine.ts";
 import type { EnvironmentCacheStore } from "../../platform/persistence.ts";
 import { followStreamInEnvironment } from "../../state/runtime.ts";
 import type { ShellSnapshotLoader } from "../../state/shellSnapshotHttp.ts";
 import type { ThreadSnapshotLoader } from "../../state/threadSnapshotHttp.ts";
 import { openShellReplay } from "./mateShellReplay.ts";
-import { openThreadReplay, type ThreadResumeCache } from "./mateThreadReplay.ts";
+import {
+  openThreadReplay,
+  registerOlderThreadTurns,
+  type ThreadResumeCache,
+} from "./mateThreadReplay.ts";
 import type { AccountStore } from "../store.ts";
 import type { MateThreadValue } from "../families/mateConversation.ts";
 import {
@@ -23,6 +37,22 @@ import {
   type ConversationKey,
 } from "../projections/mateConversation.ts";
 import { streamOf, type Row } from "../reducer.ts";
+/**
+ * A V1 conversation read that starts only once the Mate's door says its conversation is V1's: an
+ * engine Mate's parked V1 history is never read. The cached paint comes from the account's facts.
+ */
+const v1Only = <A, E, R>(stream: Stream.Stream<A, E, R>) =>
+  Stream.unwrap(
+    Effect.map(EnvironmentSupervisor, (supervisor) =>
+      SubscriptionRef.changes(supervisor.prepared).pipe(
+        Stream.filter(Option.isSome),
+        Stream.map((prepared) => engineRouteOf(prepared.value).kind === "v1"),
+        Stream.changes,
+        Stream.switchMap((v1) => (v1 ? stream : Stream.empty)),
+      ),
+    ),
+  );
+
 export const mateConversationStoreAtom = Atom.make<AccountStore | null>(null).pipe(Atom.keepAlive);
 export const publishConversation = (
   store: AccountStore,
@@ -208,9 +238,11 @@ export function createAccountConversationAtoms<R, E>(
           };
           yield* followStreamInEnvironment(
             key.environmentId as EnvironmentId,
-            Stream.unwrap(
-              openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
-                Effect.map(SubscriptionRef.changes),
+            v1Only(
+              Stream.unwrap(
+                openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
+                  Effect.map(SubscriptionRef.changes),
+                ),
               ),
             ),
           ).pipe(
@@ -241,21 +273,129 @@ export function createAccountConversationAtoms<R, E>(
       return store;
     }),
   );
+  /**
+   * Where each Mate's conversation is read, as its door said (`capabilities.mateEngine`): kept
+   * across reconnects, so a socket that drops never unmounts the conversation; a Mate that comes
+   * back on the other path moves it there.
+   */
+  const routes = Atom.family((environmentId: string) =>
+    runtime
+      .atom(
+        Stream.unwrap(
+          Effect.map(EnvironmentRegistry, (registry) =>
+            registry.followStream(
+              environmentId as EnvironmentId,
+              Stream.unwrap(
+                Effect.map(EnvironmentSupervisor, (supervisor) =>
+                  SubscriptionRef.changes(supervisor.prepared),
+                ),
+              ),
+            ),
+          ),
+        ).pipe(
+          Stream.filter(Option.isSome),
+          Stream.map((prepared) => engineRouteOf(prepared.value)),
+          Stream.changesWith(
+            (left, right) =>
+              left.kind === right.kind &&
+              (left.kind !== "engine" ||
+                right.kind !== "engine" ||
+                left.protocol === right.protocol),
+          ),
+        ),
+      )
+      .pipe(Atom.keepAlive, Atom.withLabel(`mate-conversation-route:${environmentId}`)),
+  );
+  const routeOf = (get: Atom.AtomContext, environmentId: string): EngineRoute =>
+    // Before the door answers, V1 as always. The web keeps no conversation across a reload, so this
+    // paints only the opening state, never V1 content an engine Mate would take back.
+    Option.getOrElse(AsyncResult.value(get(routes(environmentId))), () => ({
+      kind: "unknown" as const,
+    }));
+  /** An engine conversation held while its thread is read; stable across its changes. */
+  const engineHolds = Atom.family((encoded: string) =>
+    Atom.make((get) => {
+      const host = get(mateEngineHostAtom);
+      const key = JSON.parse(encoded) as Required<ConversationKey>;
+      if (host !== null) {
+        const conversation = {
+          environmentId: key.environmentId as string,
+          conversationId: key.threadId as string,
+        };
+        get.addFinalizer(host.conversations.hold(conversation));
+        // "Load earlier" asks the same registry a V1 thread's machine answers.
+        get.addFinalizer(
+          registerOlderThreadTurns(
+            key.environmentId as EnvironmentId,
+            key.threadId as ThreadId,
+            () => {
+              host.conversations.readEarlier(conversation);
+            },
+          ),
+        );
+      }
+      return host;
+    }),
+  );
+  const engineRowHolds = Atom.family((environmentId: string) =>
+    Atom.make((get) => {
+      const host = get(mateEngineHostAtom);
+      if (host !== null) get.addFinalizer(host.conversations.holdRows(environmentId));
+      return host;
+    }),
+  );
   const shell = Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) => {
       const store = get(holders(JSON.stringify({ environmentId })));
-      return store === null
-        ? AsyncResult.initial<import("./mateShellReplay.ts").EnvironmentShellState, E>(true)
-        : AsyncResult.success(get(store.data.project(mateShell, { environmentId })));
+      if (store === null)
+        return AsyncResult.initial<import("./mateShellReplay.ts").EnvironmentShellState, E>(true);
+      const v1 = get(store.data.project(mateShell, { environmentId }));
+      if (routeOf(get, environmentId).kind !== "engine") return AsyncResult.success(v1);
+      const host = get(engineRowHolds(environmentId));
+      return AsyncResult.success(
+        host === null
+          ? v1
+          : overlayEngineShell(
+              v1,
+              get(host.store.data.project(engineRows, environmentId)),
+              get(host.store.data.project(engineHeldTurns, environmentId)),
+            ),
+      );
     }),
   );
   const thread = Atom.family((encoded: string) =>
     Atom.make((get) => {
       const key = JSON.parse(encoded) as ConversationKey;
-      const store = get(holders(encoded));
-      return store === null
-        ? AsyncResult.initial<import("../../state/threadState.ts").EnvironmentThreadState, E>(true)
-        : AsyncResult.success(get(store.data.project(mateThread, key)));
+      const route = routeOf(get, key.environmentId);
+      type State = import("../../state/threadState.ts").EnvironmentThreadState;
+      switch (route.kind) {
+        case "update":
+          return AsyncResult.success<State>({
+            ...EMPTY_ENVIRONMENT_THREAD_STATE,
+            error: Option.some(ENGINE_UPDATE_WORDS),
+          });
+        case "engine": {
+          const host = get(engineHolds(encoded));
+          return host === null || key.threadId === undefined
+            ? AsyncResult.initial<State, E>(true)
+            : AsyncResult.success<State>(
+                get(
+                  host.store.data.project(engineThread, {
+                    environmentId: key.environmentId,
+                    conversationId: key.threadId,
+                  }),
+                ),
+              );
+        }
+        case "unknown":
+        case "v1": {
+          // V1 until the door says otherwise: its cached paint and its access words at once.
+          const store = get(holders(encoded));
+          return store === null
+            ? AsyncResult.initial<State, E>(true)
+            : AsyncResult.success(get(store.data.project(mateThread, key)));
+        }
+      }
     }),
   );
   return {
