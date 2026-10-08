@@ -202,7 +202,13 @@ export interface TaskRecord {
   readonly checkpointing: boolean;
   /** The crew run it was created in. */
   readonly runId: string | null;
+  /** The turns its attempt was sent so far, for its WIP commits' subjects. */
+  readonly turns?: { readonly attempt: number; readonly count: number };
 }
+
+/** The number of the turn a task's attempt is in: 1 before any was counted. */
+export const turnOf = (task: TaskRecord): number =>
+  task.turns?.attempt === task.counters.attempt ? task.turns.count : 1;
 
 export interface RunRecord {
   readonly id: string;

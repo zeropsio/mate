@@ -87,7 +87,10 @@ import {
   type CrewToolCall,
   type DeliverCommand,
   deliveryOfCommand,
+  type LaneEnvironment,
   type LaneStatsValue,
+  taskAssignment,
+  type TaskRefs,
   type TaskSeen,
   type ToolReply,
 } from "./command.ts";
@@ -114,6 +117,7 @@ import {
   runningRun,
   tasksInOrder,
   tasksOf,
+  turnOf,
   usagePercentOf,
   type ActiveRun,
   type CrewState,
@@ -530,6 +534,46 @@ const landed = (state: CrewState, id: string): boolean => state.tasks[id]?.state
 const statsSet = (stats: LaneStatsValue | undefined, member: MemberRecord) =>
   stats === undefined || member.lane === null ? {} : { lane: { ...member.lane, stats } };
 
+/** What a writer's setup, check and app run with: its crew port and the crew home's `env:`. */
+const laneEnvironmentOf = (state: CrewState, member: MemberRecord): LaneEnvironment => ({
+  crewPort: member.crewPort,
+  env: state.applied?.definition.members.find((spec) => spec.handle === member.handle)?.env ?? {},
+});
+
+const taskRefsOf = (task: TaskRecord): TaskRefs => ({
+  assignment: taskAssignment(task),
+  run: task.runId,
+  attempt: task.counters.attempt,
+});
+
+/** A crewmate's turn-end or *Land now* save, with what its copy's guards need to know. */
+const checkpoint = (
+  b: Builder,
+  member: MemberRecord,
+  task: TaskRecord,
+  purpose: "turn-end" | "land-now",
+  extra: Record<string, unknown> = {},
+): void => {
+  b.effect(
+    {
+      kind: "crew.checkpoint",
+      handle: member.handle,
+      taskId: task.id,
+      attempt: task.counters.attempt,
+      purpose,
+      assignment: taskAssignment(task),
+      turn: purpose === "land-now" ? 0 : turnOf(task),
+      checked: CHECKED_STATES.has(task.state),
+      refTasks: tasksInOrder(b.state)
+        .filter((each) => each.started)
+        .map(taskRefsOf),
+    },
+    member.handle,
+    { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
+    extra,
+  );
+};
+
 /* ------------------------------------------------------------ deliveries */
 
 const deliver = (
@@ -545,6 +589,7 @@ const deliver = (
       conversationId: member.conversationId,
       handle: member.handle,
       command,
+      principal: record.principal,
     },
     member.handle,
     { handle: member.handle, taskId: record.taskId },
@@ -1041,6 +1086,7 @@ const land = (
       attempt: task.counters.attempt,
       title: task.title,
       checkedTip: task.check?.tip ?? null,
+      assignment: taskAssignment(task),
     },
     member.handle,
     { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
@@ -1532,7 +1578,15 @@ const pressed = (
         throw wrongState(`@${member.handle} has no app to run`);
       }
       b.effect(
-        { kind: press._tag === "appRun" ? "crew.app.run" : "crew.app.stop", handle: member.handle },
+        press._tag === "appRun"
+          ? {
+              kind: "crew.app.run",
+              handle: member.handle,
+              host: member.host!,
+              command: member.runCommand,
+              ...laneEnvironmentOf(b.state, member),
+            }
+          : { kind: "crew.app.stop", handle: member.handle, host: member.host! },
         member.handle,
         { handle: member.handle },
       );
@@ -1711,6 +1765,8 @@ const discard = (b: Builder, task: TaskRecord): void => {
       handle: member.handle,
       taskId: task.id,
       attempt: task.counters.attempt,
+      assignment: taskAssignment(task),
+      run: task.runId,
     },
     member.handle,
     { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
@@ -1774,17 +1830,7 @@ const landNow = (b: Builder, task: TaskRecord, as: Principal): void => {
     return;
   }
   b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { landAs: as } });
-  b.effect(
-    {
-      kind: "crew.checkpoint",
-      handle: member.handle,
-      taskId: task.id,
-      attempt: task.counters.attempt,
-      purpose: "land-now",
-    },
-    member.handle,
-    { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-  );
+  checkpoint(b, member, b.task(task.id), "land-now");
 };
 
 const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
@@ -1909,6 +1955,7 @@ const createLane = (b: Builder, member: MemberRecord): void => {
       host: member.host,
       branch: `crew/${member.handle}`,
       setup: member.setup,
+      ...laneEnvironmentOf(b.state, member),
     },
     member.handle,
     { handle: member.handle, host: member.host },
@@ -2626,18 +2673,7 @@ const runEnded = (
   if (task === undefined || !isOpenTask(task.state)) return;
   if (member.kind === "writer") {
     b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { checkpointing: true } });
-    b.effect(
-      {
-        kind: "crew.checkpoint",
-        handle: member.handle,
-        taskId: task.id,
-        attempt: task.counters.attempt,
-        purpose: "turn-end",
-      },
-      member.handle,
-      { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-      { ending },
-    );
+    checkpoint(b, member, b.task(task.id), "turn-end", { ending });
     return;
   }
   turnEnded(b, task, ending);
@@ -2763,13 +2799,21 @@ const recover = (b: Builder, host: string): void => {
   if (pending) return;
   b.cancel("deploy-poll", host, "the redeploy ended");
   b.cancel("thaw-offer", host, "the redeploy ended");
+  const writers = membersInOrder(b.state).filter((member) => member.host === host);
+  const handles = new Set(writers.map((member) => member.handle));
   b.effect(
     {
       kind: "crew.recover",
       host,
-      handles: membersInOrder(b.state)
-        .filter((member) => member.host === host)
-        .map((member) => member.handle),
+      handles: writers.map((member) => member.handle),
+      specs: writers.map((member) => ({
+        handle: member.handle,
+        setup: member.setup,
+        ...laneEnvironmentOf(b.state, member),
+      })),
+      landings: tasksInOrder(b.state)
+        .filter((task) => task.landedCommit !== null && handles.has(task.owner))
+        .map((task) => ({ assignment: taskAssignment(task), title: task.title })),
     },
     host,
     { host },
@@ -2820,9 +2864,17 @@ const recovered = (b: Builder): void => {
       member.lane?.state === "ready" &&
       !copyBusy(b.state, member.handle)
     ) {
-      b.effect({ kind: "crew.sweep", handle: member.handle }, member.handle, {
-        handle: member.handle,
-      });
+      const open = openTaskOf(b.state, member.handle);
+      b.effect(
+        {
+          kind: "crew.sweep",
+          handle: member.handle,
+          host: member.host!,
+          checked: open !== undefined && CHECKED_STATES.has(open.state),
+        },
+        member.handle,
+        { handle: member.handle },
+      );
     }
   }
 };
@@ -3016,6 +3068,12 @@ const settled = (
         park(b, b.task(task.id), EDITED_AFTER_CHECK);
         return;
       }
+      if (saved._tag === "park" && purpose !== "land-now") {
+        if (task.checkpointing)
+          b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { checkpointing: false } });
+        park(b, b.task(task.id), saved.detail);
+        return;
+      }
       if (purpose === "land-now") {
         if (saved._tag !== "committed" && saved._tag !== "unchanged") {
           b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { landAs: null } });
@@ -3066,6 +3124,9 @@ const settled = (
               command: member.check,
               setup:
                 merged._tag === "merged" && merged.lockfileChanged === true ? member.setup : null,
+              host: member.host,
+              tip: merged.tip ?? null,
+              ...laneEnvironmentOf(b.state, member),
             },
             member.handle,
             { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
@@ -3147,6 +3208,9 @@ const settled = (
         case "lane-missing":
           park(b, task, "its copy of the code is missing");
           return;
+        case "moved":
+          park(b, task, "its copy of the code moved outside the engine");
+          return;
       }
       return;
     }
@@ -3184,15 +3248,56 @@ const settled = (
       return thaw(b, pending.host!, valueOf("crew.recover", value).lost);
     case "crew.sweep": {
       const swept = valueOf("crew.sweep", value);
-      if (member !== undefined) {
-        b.emit({
-          _tag: "CrewmateUpdated",
-          handle: member.handle,
-          set: statsSet(swept.stats, member),
+      if (member === undefined) return;
+      b.emit({
+        _tag: "CrewmateUpdated",
+        handle: member.handle,
+        set: statsSet(swept.stats, member),
+      });
+      return sweptCopy(b, b.state.members[member.handle]!, swept.copy);
+    }
+    default:
+      return;
+  }
+};
+
+/**
+ * What a restart left in a copy: saved work is said in its crewmate's chat, edits on a copy its
+ * check passed stop its task, and a copy gone is brought back.
+ */
+const sweptCopy = (
+  b: Builder,
+  member: MemberRecord,
+  copy: CrewEffectValues["crew.sweep"]["copy"],
+): void => {
+  switch (copy?._tag) {
+    case "committed":
+      if (copy.paths.length > 0) {
+        seam(b, member, {
+          seam: "swept",
+          branch: `crew/${member.handle}`,
+          commit: copy.commit,
+          paths: copy.paths,
         });
       }
       return;
+    case "held": {
+      const open = openTaskOf(b.state, member.handle);
+      if (open !== undefined && CHECKED_STATES.has(open.state)) {
+        park(b, open, EDITED_AFTER_CHECK);
+      }
+      return;
     }
+    case "missing":
+      if (member.lane !== null) {
+        b.emit({
+          _tag: "CrewmateUpdated",
+          handle: member.handle,
+          set: { lane: { ...member.lane, state: "missing" } },
+        });
+      }
+      if (member.host !== null) recover(b, member.host);
+      return;
     default:
       return;
   }

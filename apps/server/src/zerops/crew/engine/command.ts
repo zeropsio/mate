@@ -175,32 +175,49 @@ export type DeliverCommand =
   /** A `crew.seam` marker on the crewmate's record: a landing, a close, a save. */
   | { readonly _tag: "Seam"; readonly seam: RecordedCrewSeam };
 
+/** What a crewmate's copy runs its setup, check and app with: its crew port and `env:`. */
+export interface LaneEnvironment {
+  readonly crewPort: number | null;
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/** A task as its refs name it: the engine writes its kept attempts and its landing anchor. */
+export interface TaskRefs {
+  /** The task's `Crew-Assignment:` key ({@link taskAssignment}). */
+  readonly assignment: string;
+  /** The crew run it was created in; `null` outside any. */
+  readonly run: string | null;
+  readonly attempt: number;
+}
+
 export type CrewEffectPayload =
   | {
       readonly kind: "crew.deliver";
       readonly conversationId: ConversationId;
       readonly handle: string | null;
       readonly command: DeliverCommand;
+      /** Who the command acts for: the delivery's principal (a `Send`'s own, the presser, the engine). */
+      readonly principal: Principal;
     }
-  | {
+  | ({
       readonly kind: "crew.lane.create";
       readonly handle: string;
       readonly host: string;
       readonly branch: string;
       readonly setup: string | null;
-    }
+    } & LaneEnvironment)
   | {
       readonly kind: "crew.lane.reset";
       readonly handle: string;
       readonly taskId: string;
       readonly attempt: number;
     }
-  | {
+  | ({
       readonly kind: "crew.lane.keep";
       readonly handle: string;
       readonly taskId: string;
       readonly attempt: number;
-    }
+    } & Omit<TaskRefs, "attempt">)
   | {
       readonly kind: "crew.lane.remove";
       readonly handle: string;
@@ -213,6 +230,13 @@ export type CrewEffectPayload =
       readonly attempt: number;
       /** `land-now`: the WIP commit a *Land now* lands from. */
       readonly purpose: "turn-end" | "land-now";
+      readonly assignment: string;
+      /** The turn's number within the attempt, for the WIP commit's subject; 0 for *Land now*. */
+      readonly turn: number;
+      /** The task passed its check: its copy is the tree that lands, never committed on. */
+      readonly checked: boolean;
+      /** Every started task: the refs the engine wrote, never blamed on the turn. */
+      readonly refTasks: ReadonlyArray<TaskRefs>;
     }
   | {
       readonly kind: "crew.mergeIn";
@@ -220,7 +244,7 @@ export type CrewEffectPayload =
       readonly taskId: string;
       readonly attempt: number;
     }
-  | {
+  | ({
       readonly kind: "crew.check";
       readonly handle: string;
       readonly taskId: string;
@@ -228,7 +252,10 @@ export type CrewEffectPayload =
       readonly command: string;
       /** Run the setup first: the merge changed the lockfile. */
       readonly setup: string | null;
-    }
+      readonly host: string;
+      /** The tree the check is for, as the merge left it: a copy at another tip is not checked. */
+      readonly tip: string | null;
+    } & LaneEnvironment)
   | {
       readonly kind: "crew.land";
       readonly handle: string;
@@ -236,6 +263,7 @@ export type CrewEffectPayload =
       readonly attempt: number;
       readonly title: string;
       readonly checkedTip: string | null;
+      readonly assignment: string;
     }
   | {
       readonly kind: "crew.claim.read";
@@ -243,15 +271,32 @@ export type CrewEffectPayload =
       readonly handle: string;
       readonly purpose: "grant" | "after-start" | "after-release";
     }
-  | { readonly kind: "crew.app.run"; readonly handle: string }
-  | { readonly kind: "crew.app.stop"; readonly handle: string }
+  | ({
+      readonly kind: "crew.app.run";
+      readonly handle: string;
+      readonly host: string;
+      readonly command: string;
+    } & LaneEnvironment)
+  | { readonly kind: "crew.app.stop"; readonly handle: string; readonly host: string }
   | { readonly kind: "crew.deploy.poll"; readonly host: string }
   | {
       readonly kind: "crew.recover";
       readonly host: string;
       readonly handles: ReadonlyArray<string>;
+      /** Each writer's copy on the host, as its setup runs again where the copy comes back. */
+      readonly specs: ReadonlyArray<
+        { readonly handle: string; readonly setup: string | null } & LaneEnvironment
+      >;
+      /** Every landing from the host's copies, which must still be in your tree. */
+      readonly landings: ReadonlyArray<{ readonly assignment: string; readonly title: string }>;
     }
-  | { readonly kind: "crew.sweep"; readonly handle: string };
+  | {
+      readonly kind: "crew.sweep";
+      readonly handle: string;
+      readonly host: string;
+      /** Its open task passed its check: the copy's edits are never committed. */
+      readonly checked: boolean;
+    };
 
 /* ------------------------------------------------------------ settled values */
 
@@ -281,11 +326,16 @@ export interface CrewEffectValues {
   readonly "crew.lane.remove": { readonly _tag: "removed" } | { readonly _tag: "unlanded-commits" };
   readonly "crew.checkpoint":
     | { readonly _tag: "committed" | "unchanged"; readonly stats?: LaneStatsValue }
-    | { readonly _tag: "edited-after-check" | "lane-missing" | "frozen" };
+    /** `rework`: an open merge still carries conflict markers; nothing was committed. */
+    | { readonly _tag: "edited-after-check" | "lane-missing" | "frozen" | "rework" }
+    /** A guard stopped the WIP commit, or a ref moved outside the engine: the task stops. */
+    | { readonly _tag: "park"; readonly detail: string };
   readonly "crew.mergeIn":
     | {
         readonly _tag: "merged" | "current";
         readonly head: string;
+        /** The copy's tip after the merge: the tree its check is for. */
+        readonly tip?: string;
         readonly lockfileChanged?: boolean;
         readonly stats?: LaneStatsValue;
       }
@@ -294,7 +344,9 @@ export interface CrewEffectValues {
   readonly "crew.check":
     | { readonly _tag: "passed"; readonly tail: string; readonly tip: string | null }
     | { readonly _tag: "failed"; readonly tail: string }
-    | { readonly _tag: "timed-out" | "killed" | "lane-missing" | "setup-failed" };
+    | { readonly _tag: "timed-out" | "killed" | "lane-missing" | "setup-failed" }
+    /** The copy is no longer the tree the check was asked for: nothing was checked. */
+    | { readonly _tag: "moved" };
   readonly "crew.land":
     | {
         readonly _tag: "landed" | "already-landed";
@@ -327,7 +379,18 @@ export interface CrewEffectValues {
   readonly "crew.app.stop": { readonly state: "running" | "stopped" };
   readonly "crew.deploy.poll": { readonly phase: "running" | "ended" | "unreadable" };
   readonly "crew.recover": { readonly lost: ReadonlyArray<string> };
-  readonly "crew.sweep": { readonly swept: boolean; readonly stats?: LaneStatsValue };
+  readonly "crew.sweep": {
+    readonly swept: boolean;
+    readonly stats?: LaneStatsValue;
+    /** The copy as the sweep found it: its saved work, edits on a checked copy, or gone. */
+    readonly copy?:
+      | {
+          readonly _tag: "committed";
+          readonly commit: string;
+          readonly paths: ReadonlyArray<string>;
+        }
+      | { readonly _tag: "held" | "missing" | "clean" | "merging" | "parked" | "frozen" };
+  };
 }
 
 /* ------------------------------------------------------------ decisions */
@@ -358,6 +421,16 @@ export interface CrewRejection {
 export type CrewDecision =
   | { readonly _tag: "Accept"; readonly step: CrewStep }
   | { readonly _tag: "Reject"; readonly rejection: CrewRejection };
+
+/* ------------------------------------------------------------ tasks in git */
+
+/**
+ * A task's key in git: its landing's `Crew-Assignment:` trailer, its attempt refs and its WIP
+ * commits' subjects. The number alone repeats once a crew's state starts over, and a landing found
+ * by an older task's key would read as this one's, so its creation time goes with it.
+ */
+export const taskAssignment = (task: { readonly id: string; readonly createdAt: number }): string =>
+  `${task.id}-${task.createdAt.toString(36)}`;
 
 /* ------------------------------------------------------------ deliveries */
 
