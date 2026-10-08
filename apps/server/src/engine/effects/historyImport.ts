@@ -1,6 +1,6 @@
 /**
  * `history.import` (replay-safe, lane `side`): one batch of a conversation's earlier record. It
- * reads the V1 thread's plan, the bodies of the slice starting at its cursor, and tells the
+ * reads its source's plan (a V1 thread, or a crewmate's chain of them), the bodies of the slice starting at its cursor, and tells the
  * conversation the batch under an id derived from the effect, so a restart that runs it again
  * gets the stored receipt instead of a second copy. One batch is one step: at most
  * `HISTORY_BATCH_RECORDS` records and about `HISTORY_BATCH_BYTES` of them.
@@ -14,7 +14,7 @@ import { CommandId, ThreadId, type ConversationId, type HistorySource } from "@t
 import type { ContentAssets } from "../../assets/ContentAssets.ts";
 
 import { Conversations } from "../Conversations.ts";
-import { planOf, recordsOf, type Plan, type Records } from "../history/v1.ts";
+import { planOfChain, recordsOf, type Plan, type Records, type V1Bodies } from "../history/v1.ts";
 import { keepPictures } from "../history/pictures.ts";
 import { readBodies, readSkeleton } from "../history/V1History.ts";
 import type { EffectHandler, HandlerResult } from "../outbox/EffectWorker.ts";
@@ -38,8 +38,54 @@ const sizeOf = (built: Records) =>
   built.details.reduce((sum, detail) => sum + detail.body.length, 0) +
   JSON.stringify(built.data).length;
 
-/** The V1 thread's plan: its turns, the newest first kept, and every record they hold. */
-export const readPlan = (threadId: string) => Effect.map(readSkeleton(threadId), planOf);
+/**
+ * The plan of what a source brings: its V1 thread's turns, or its chain's oldest thread first,
+ * the newest kept, and every record they hold.
+ */
+export const readPlan = (source: HistorySource) =>
+  Effect.gen(function* () {
+    const chain = source.chain ?? [{ threadId: source.threadId, reason: null, words: null }];
+    const segments = [];
+    for (const [index, stint] of chain.entries()) {
+      segments.push({
+        threadId: stint.threadId,
+        boundary:
+          index === 0 || stint.reason === null
+            ? null
+            : { stint: index + 1, reason: stint.reason, words: stint.words },
+        skeleton: yield* readSkeleton(stint.threadId),
+      });
+    }
+    return planOfChain(segments);
+  });
+
+/** Where a source's plan is held while its import runs: one per source. */
+const sourceKey = (source: HistorySource): string => JSON.stringify(source);
+
+/** Keeps each call's pictures under the V1 thread it was made in, as V1's own capture does. */
+const keepSlicePictures = async (
+  store: ContentAssets | null,
+  plan: Plan,
+  entries: Plan["entries"],
+  bodies: V1Bodies,
+): Promise<V1Bodies> => {
+  const threadOf = new Map<string, string>();
+  for (const entry of entries) {
+    if (entry.kind !== "call" && entry.kind !== "work") continue;
+    const threadId = plan.runs[entry.run - 1]!.threadId;
+    for (const id of entry.ids) threadOf.set(id, threadId);
+  }
+  const activities = new Map(bodies.activities);
+  for (const threadId of new Set(threadOf.values())) {
+    const own = new Map([...bodies.activities].filter(([id]) => threadOf.get(id) === threadId));
+    const kept = await keepPictures(store, ThreadId.make(threadId), {
+      messages: new Map(),
+      activities: own,
+    });
+    for (const [id, activity] of kept.activities) activities.set(id, activity);
+  }
+  return { messages: bodies.messages, activities };
+};
 
 /**
  * Starts a conversation's import: its plan's turns reserve the first ordinals. How many it
@@ -48,7 +94,7 @@ export const readPlan = (threadId: string) => Effect.map(readSkeleton(threadId),
 export const askImport = (conversationId: ConversationId, source: HistorySource) =>
   Effect.gen(function* () {
     const conversations = yield* Conversations;
-    const plan = yield* readPlan(source.threadId);
+    const plan = yield* readPlan(source);
     yield* conversations.ask({
       commandId: CommandId.make(`history-start:${conversationId}`),
       conversationId,
@@ -74,14 +120,15 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
   const pictures = options.pictures ?? (() => null);
   const sql = yield* SqlClient.SqlClient;
   const conversations = yield* Conversations;
-  // V1 does not change under the import: a thread's plan is read once, until its import ends.
+  // V1 does not change under the import: a source's plan is read once, until its import ends.
   const plans = new Map<string, Plan>();
-  const planFor = (threadId: string) => {
-    const held = plans.get(threadId);
+  const planFor = (source: HistorySource) => {
+    const key = sourceKey(source);
+    const held = plans.get(key);
     if (held !== undefined) return Effect.succeed(held);
-    return readPlan(threadId).pipe(
+    return readPlan(source).pipe(
       Effect.provideService(SqlClient.SqlClient, sql),
-      Effect.tap((plan) => Effect.sync(() => plans.set(threadId, plan))),
+      Effect.tap((plan) => Effect.sync(() => plans.set(key, plan))),
     );
   };
   return {
@@ -89,17 +136,17 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
     run: (row) =>
       Effect.gen(function* () {
         const payload = row.payload as Payload;
-        const threadId = payload.source.threadId;
-        const plan = yield* planFor(threadId);
+        const key = sourceKey(payload.source);
+        const plan = yield* planFor(payload.source);
         if (plan.runs.length !== payload.runs) {
-          plans.delete(threadId);
+          plans.delete(key);
           return failed(
             `the V1 thread holds ${plan.runs.length} turns, the import reserved ${payload.runs}`,
           );
         }
         const from = payload.cursor;
         if (from >= plan.entries.length) {
-          plans.delete(threadId);
+          plans.delete(key);
           return ok({ done: true });
         }
         let to = Math.min(plan.entries.length, from + batchRecords);
@@ -107,7 +154,7 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
           Effect.provideService(SqlClient.SqlClient, sql),
         );
         const bodies = yield* Effect.promise(() =>
-          keepPictures(pictures(), ThreadId.make(threadId), read),
+          keepSlicePictures(pictures(), plan, plan.entries.slice(from, to), read),
         );
         let built = recordsOf(row.conversationId, plan, from, to, bodies);
         while (to - from > 1 && sizeOf(built) > batchBytes) {
@@ -121,13 +168,13 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
           command: { _tag: "HistoryBatch", effectId: row.effectId, from, to, ...built },
         });
         if (result._tag === "Rejected") {
-          plans.delete(threadId);
+          plans.delete(key);
           return failed(
             result.rejection.detail ?? `the batch was refused (${result.rejection.reason})`,
           );
         }
         const done = to >= plan.entries.length;
-        if (done) plans.delete(threadId);
+        if (done) plans.delete(key);
         return ok({ done });
       }).pipe(
         // V1 unreadable now, or the step not committed: the worker tries again, with backoff.
