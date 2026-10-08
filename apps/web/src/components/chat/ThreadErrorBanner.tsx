@@ -1,5 +1,6 @@
 import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
-import { mateFailureWords, usageLimitProvider } from "../../zerops/noticeWords";
+import { mateFailureWords } from "../../zerops/noticeWords";
+import { usageLimitProvider } from "../../zerops/providerLimit.logic";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
