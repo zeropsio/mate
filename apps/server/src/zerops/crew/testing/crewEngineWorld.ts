@@ -573,6 +573,18 @@ const enginePort = (input: {
           yield* provider.agent.selfTurn(thread);
         }
         yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
+        // The engine holds the turn as a run of the conversation.
+        yield* waitFor(
+          `${chat}'s turn as a run`,
+          Effect.map(
+            run(
+              Effect.flatMap(Conversations, (conversations) =>
+                conversations.state(ConversationId.make(chat)),
+              ),
+            ).pipe(Effect.orDie),
+            (state) => state.activeRunId !== null,
+          ),
+        );
       }),
     turnEnds: (chat, end = {}) =>
       Effect.gen(function* () {
