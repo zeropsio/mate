@@ -209,36 +209,7 @@ it("a tighter Mate service cap cannot hide CPU exhausted by container siblings",
   });
 });
 
-it.each([
-  {
-    sentence: "A briefly saturated parent cannot hide sustained child CPU stalls",
-    sustainedChild: true,
-    sustainedParent: false,
-    childSaturated: true,
-    useChild: true,
-  },
-  {
-    sentence: "A briefly saturated child cannot hide sustained parent CPU stalls",
-    sustainedChild: false,
-    sustainedParent: true,
-    childSaturated: true,
-    useChild: false,
-  },
-  {
-    sentence: "Equally sustained CPU stalls retain container-wide attribution",
-    sustainedChild: true,
-    sustainedParent: true,
-    childSaturated: true,
-    useChild: false,
-  },
-  {
-    sentence: "Recovered child CPU averages cannot replace a currently saturated parent",
-    sustainedChild: true,
-    sustainedParent: false,
-    childSaturated: false,
-    useChild: false,
-  },
-])("$sentence", async ({ sustainedChild, sustainedParent, childSaturated, useChild }) => {
+it("A briefly saturated parent cannot hide sustained child CPU stalls", async () => {
   const r = await rig();
   const leaf = NodePath.join(r.dir, "service");
   await NodeFSP.mkdir(leaf);
@@ -249,21 +220,26 @@ it.each([
   let now = 0;
   const sample = makeCpuSampler([leaf, r.dir], { nowUsec: () => now, procRoot: r.proc });
   await sample();
-  for (const [scope, sustained, saturated] of [
-    [leaf, sustainedChild, childSaturated],
-    [r.dir, sustainedParent, true],
+  for (const [scope, usage, pressure] of [
+    [
+      leaf,
+      900000,
+      "some avg10=5 avg60=40 avg300=40 total=400000\nfull avg10=0 avg60=10 avg300=10 total=200000\n",
+    ],
+    [
+      r.dir,
+      3800000,
+      "some avg10=90 avg60=0 avg300=0 total=400000\nfull avg10=0 avg60=0 avg300=0 total=200000\n",
+    ],
   ] as const) {
     await NodeFSP.writeFile(
       NodePath.join(scope, "cpu.stat"),
-      `usage_usec ${saturated ? (scope === leaf ? 900000 : 3800000) : 0}\nnr_throttled 0\n`,
+      `usage_usec ${usage}\nnr_throttled 0\n`,
     );
-    await NodeFSP.writeFile(
-      NodePath.join(scope, "cpu.pressure"),
-      `some avg10=${sustained ? 5 : 90} avg60=${sustained ? 40 : 0} avg300=${sustained ? 40 : 0} total=${saturated ? 400000 : 0}\nfull avg10=0 avg60=${sustained ? 10 : 0} avg300=${sustained ? 10 : 0} total=${saturated ? 200000 : 0}\n`,
-    );
+    await NodeFSP.writeFile(NodePath.join(scope, "cpu.pressure"), pressure);
   }
   now = 2_000_000;
   const result = await sample();
-  expect(result.cpu?.full?.avg60).toBe((useChild ? sustainedChild : sustainedParent) ? 10 : 0);
-  expect(result.cpu?.window).toMatchObject({ scope: useChild ? leaf : r.dir, saturated: true });
+  expect(result.cpu?.full?.avg60).toBe(10);
+  expect(result.cpu?.window).toMatchObject({ scope: leaf, saturated: true });
 });

@@ -216,22 +216,31 @@ describe("health at the screen boundary", () => {
     {
       sentence: "Routine reclaim, swap growth and brief stalls leave the composer quiet",
       pressure: { some: { avg10: 5, total: 3 }, full: null },
-      oomKill: 0,
+      growth: { high: 1, max: 1, oom: 0, oomKill: 0 },
+      swapGrowth: 1024,
+      swapCurrent: 1024,
+      swapMax: 2048,
       severity: null,
     },
     {
       sentence: "Sustained full memory stalls show one calm warning",
       pressure: {
-        some: { avg10: 5, total: 3 },
+        some: { avg10: 0, total: 3 },
         full: { avg10: 0, avg60: 10, avg300: 10, total: 2 },
       },
-      oomKill: 0,
+      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
+      swapGrowth: 0,
+      swapCurrent: 0,
+      swapMax: 0,
       severity: "warning",
     },
     {
       sentence: "Sustained partial memory stalls show one calm warning",
-      pressure: { some: { avg10: 5, avg60: 40, avg300: 40, total: 3 }, full: null },
-      oomKill: 0,
+      pressure: { some: { avg10: 0, avg60: 40, avg300: 40, total: 3 }, full: null },
+      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
+      swapGrowth: 0,
+      swapCurrent: 0,
+      swapMax: 0,
       severity: "warning",
     },
     {
@@ -241,30 +250,44 @@ describe("health at the screen boundary", () => {
         some: { avg10: 50, avg60: 40, avg300: 39, total: 3 },
         full: { avg10: 20, avg60: 10, avg300: 9, total: 2 },
       },
-      oomKill: 0,
+      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
+      swapGrowth: 0,
+      swapCurrent: 0,
+      swapMax: 0,
       severity: null,
     },
     {
       sentence: "An OOM kill since the preceding sample shows a critical notice",
       pressure: null,
-      oomKill: 1,
+      growth: { high: 0, max: 0, oom: 0, oomKill: 1 },
+      swapGrowth: 0,
+      swapCurrent: 0,
+      swapMax: 0,
       severity: "critical",
     },
     {
       sentence: "Full swap and failed allocations without kills leave the composer quiet",
       pressure: null,
-      oomKill: 0,
+      growth: { high: 0, max: 0, oom: 1, oomKill: 0 },
+      swapGrowth: 0,
+      swapCurrent: 2048,
+      swapMax: 2048,
       severity: null,
     },
-  ])("$sentence", ({ pressure, oomKill, severity }) => {
+  ])("$sentence", ({ pressure, growth, swapGrowth, swapCurrent, swapMax, severity }) => {
     const value: MateHealth = {
       ...health,
       evidence: {
         ...evidence,
         memory: {
-          ...evidence.memory!,
-          growth: { high: 1, max: 1, oom: 1, oomKill },
-          swapGrowth: 1024,
+          current: 0,
+          high: null,
+          max: null,
+          events: growth,
+          growth,
+          swapGrowth,
+          swapCurrent,
+          swapMax,
           pressure,
         },
       },
@@ -300,26 +323,23 @@ describe("health at the screen boundary", () => {
     ).toBeNull();
   });
 });
-it.each([1000, 0])(
-  "Sustained I/O stalls remain distinct from disk exhaustion with free=%s",
-  (free) => {
-    const copy = mateHealthCopy("Rhea", {
-      live: true,
-      health: {
-        ...health,
-        evidence: {
-          ...evidence,
-          disk: { free, total: 5000 },
-          memory: null,
-          io: {
-            some: { avg10: 0, total: 300 },
-            full: { avg10: 0, avg60: 10, avg300: 10, total: 240 },
-          },
+it.each([1000, 0])("normalizes legacy severity and concurrent I/O with disk free=%s", (free) => {
+  const copy = mateHealthCopy("Rhea", {
+    live: true,
+    health: {
+      ...health,
+      evidence: {
+        ...evidence,
+        disk: { free, total: 5000 },
+        memory: null,
+        io: {
+          some: { avg10: 0, total: 300 },
+          full: { avg10: 0, avg60: 10, avg300: 10, total: 240 },
         },
       },
-    });
-    expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
-    expect(copy?.description).toContain("I/O stalls");
-    if (free === 0) expect(copy?.title).toContain("no free space");
-  },
-);
+    },
+  });
+  expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
+  expect(copy?.description).toContain("I/O stalls");
+  if (free === 0) expect(copy?.title).toContain("no free space");
+});

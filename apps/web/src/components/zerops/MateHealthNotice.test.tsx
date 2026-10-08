@@ -29,7 +29,7 @@ const health: MateHealth = {
   },
 };
 describe("Mate's visible resource warning", () => {
-  it.each([true, false])("shows a calm memory warning and action, with live=%s", (live) => {
+  it.each([true, false])("shows named memory evidence and action, with live=%s", (live) => {
     const text = renderToStaticMarkup(
       <MateHealthMessage name="Skákala" read={{ health, live }} />,
     ).replaceAll("&#x27;", "'");
