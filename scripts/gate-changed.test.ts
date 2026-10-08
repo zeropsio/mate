@@ -274,6 +274,26 @@ it.each([
   },
   { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", stages: "", area: "d-change" },
   { path: "apps/server/src/engine/pump/toCore.test.ts", stages: "", area: "" },
+  {
+    path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx",
+    stages: "C,C-engine,types",
+    area: "a-signin,c-mate,h-budget,foundation",
+  },
+  {
+    path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+    stages: "C,C-engine,types",
+    area: "a-signin,c-mate,h-budget,foundation",
+  },
+  {
+    path: "apps/web/package.json",
+    stages: "C,C-engine,types",
+    area: "a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget,foundation,harness,lifecycle-mutations",
+  },
+  {
+    path: "apps/web/tsconfig.json",
+    stages: "C,C-engine,types",
+    area: "a-signin,b-menu,c-mate,d-change,e-env,f-create,g-outage,h-budget,foundation,harness,lifecycle-mutations",
+  },
 ])("a lane validates only affected obligations for $path", ({ path, stages, area }) => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-list-"));
   const source = NodePath.resolve(import.meta.dirname, "..");
@@ -297,6 +317,10 @@ it.each([
         NodePath.join(root, directory, "package.json"),
       );
     }
+    NodeFS.copyFileSync(
+      NodePath.join(source, "apps/web/tsconfig.json"),
+      NodePath.join(root, "apps/web/tsconfig.json"),
+    );
     NodeFS.cpSync(
       NodePath.join(source, "apps/web/test/scenarios"),
       NodePath.join(root, "apps/web/test/scenarios"),
@@ -314,7 +338,10 @@ it.each([
     git("add", ".");
     git("commit", "-qm", "fixture");
     NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, path)), { recursive: true });
-    NodeFS.appendFileSync(NodePath.join(root, path), "\n// changed\n");
+    NodeFS.appendFileSync(
+      NodePath.join(root, path),
+      path.endsWith(".json") ? "\n" : "\n// changed\n",
+    );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
       ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
@@ -326,13 +353,19 @@ it.each([
     if (area) expect(result.stdout).toContain(`scenarios ${area}:`);
     else expect(result.stdout).not.toContain("scenarios ");
     const server = result.stdout.split("\n").find((line) => line.startsWith("related t3:"));
-    expect(server).toBeDefined();
-    expect(server?.includes("--exclude src/spi/replay/goldens.test.ts")).toBe(stages.includes("A"));
-    expect(server?.includes("--exclude src/engine/outbox/crash.test.ts")).toBe(
-      stages.includes("E"),
-    );
-    if (area)
-      expect(result.stdout).toContain("--exclude test/scenarios/fakes/browserHealth.test.ts");
+    if (path === "apps/web/tsconfig.json") {
+      expect(result.stdout).not.toContain("related ");
+    } else {
+      expect(server).toBeDefined();
+      expect(server?.includes("--exclude src/spi/replay/goldens.test.ts")).toBe(
+        stages.includes("A"),
+      );
+      expect(server?.includes("--exclude src/engine/outbox/crash.test.ts")).toBe(
+        stages.includes("E"),
+      );
+      if (area)
+        expect(result.stdout).toContain("--exclude test/scenarios/fakes/browserHealth.test.ts");
+    }
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }

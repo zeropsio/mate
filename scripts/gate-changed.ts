@@ -24,7 +24,7 @@ export const scenarioAreas = [
 const areaPaths: ReadonlyArray<readonly [string, RegExp]> = [
   ["a-signin", /(?:auth|account|signIn|organization)/iu],
   ["b-menu", /(?:Sidebar|menu|overview|mateRow)/iu],
-  ["c-mate", /(?:chat|conversation|composer|thread|terminal)/iu],
+  ["c-mate", /(?:chat|conversation|composer|thread|terminal|ZeropsAgentSignIn)/iu],
   ["d-change", /(?:review|change|merge|git)/iu],
   ["e-env", /(?:deploy|operation|environment|appDetail|service)/iu],
   ["f-create", /(?:creat|provision|pool|import)/iu],
@@ -55,7 +55,7 @@ export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
     }
     if (
       /^(?:apps\/web\/test\/scenarios\/|apps\/hq\/|packages\/hq-git\/)/u.test(path) ||
-      /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|apps\/web\/vite\.config\.ts)$/u.test(
+      /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|apps\/web\/(?:package\.json|tsconfig\.json|vite\.config\.ts))$/u.test(
         path,
       )
     )
