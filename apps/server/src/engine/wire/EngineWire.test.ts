@@ -531,6 +531,34 @@ describe("a client's calls to an engine conversation", () => {
     ),
   );
 
+  it.effect("a crewmate's chat takes a person's message only through its crew", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "crewmate", id: "backend", name: "Backend" },
+          },
+        });
+        const wire = yield* wireOf(w);
+        const result = yield* send(wire, "Hello");
+        assert.deepStrictEqual(result, {
+          _tag: "Rejected",
+          rejection: {
+            reason: "unknown",
+            detail: "A crewmate's chat takes messages through its crew.",
+          },
+        });
+        assert.deepStrictEqual(yield* w.runs, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect(
     "a model switch becomes the conversation's model, asked by the person who sent it",
     () =>

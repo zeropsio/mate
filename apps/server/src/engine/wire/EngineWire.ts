@@ -171,6 +171,9 @@ export interface EngineWireOptions {
 }
 
 const UNREADABLE = "The Mate engine could not read this conversation now. Try again.";
+/** Why the wire refuses a person's message in a crewmate's chat. */
+export const CREWMATE_SENDS = "A crewmate's chat takes messages through its crew.";
+
 const UNTAKEN = "The Mate engine could not take this now. Try again.";
 
 const wireError = (message: string) => (cause: unknown) =>
@@ -724,11 +727,24 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       readDetail,
       receipt,
       send: (input, caller) =>
-        command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Send",
-          text: input.text,
-          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-        }),
+        // A crewmate's chat takes a person's message through its crew (`zerops.crew.command`),
+        // which routes it to the crewmate's task; never straight into its conversation.
+        conversations.state(input.conversationId).pipe(
+          Effect.map((state) => state.agent?.profile.kind === "crewmate"),
+          Effect.orElseSucceed(() => false),
+          Effect.flatMap((crewmate) =>
+            crewmate && protocolRefusal(input.protocol) === undefined
+              ? Effect.succeed<EngineCallResult>({
+                  _tag: "Rejected",
+                  rejection: { reason: "unknown", detail: CREWMATE_SENDS },
+                })
+              : command(input.protocol, input.conversationId, input.commandId, caller, {
+                  _tag: "Send",
+                  text: input.text,
+                  ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+                }),
+          ),
+        ),
       stop: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Stop",
