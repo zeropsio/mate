@@ -99,6 +99,7 @@ export const chatGateStages = [
           "src/engine/domain/decide.model.test.ts",
           "src/engine/outbox/crash.test.ts",
           "src/engine/history/historyImport.test.ts",
+          "src/zerops/crew/engine/importV1Crew.test.ts",
           "src/engine/engine.sim.test.ts",
           "src/engine/engine.pump.test.ts",
           "--allowOnly=false",
