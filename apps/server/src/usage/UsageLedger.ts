@@ -17,7 +17,7 @@ import {
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 export class UsageLedgerError extends Schema.TaggedError<UsageLedgerError>()("UsageLedgerError", {
   code: Schema.String,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore, readsOfState } from "../../data/store.ts";
 import { makeRepositorySourceReads } from "../../data/adapters/hqRepositorySource.ts";
 import { repositorySource } from "../../data/projections/repositorySource.ts";

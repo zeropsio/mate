@@ -296,7 +296,7 @@ describe("findStaticImportedPackages", () => {
 
   it("collapses a subpath import onto its package root", () => {
     assert.deepStrictEqual(
-      findStaticImportedPackages(`import { UrlParams } from "effect/unstable/http/UrlParams";\n`),
+      findStaticImportedPackages(`import { UrlParams } from "effect/http/UrlParams";\n`),
       ["effect"],
     );
   });

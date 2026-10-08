@@ -3,7 +3,7 @@ import * as Clock from "effect/Clock";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 
 // The token field name stays "Clerk"-flavored (readClerkToken, ...): it is a public shape shared with the
 // mobile and desktop clients (a sibling slice), so renaming it here without

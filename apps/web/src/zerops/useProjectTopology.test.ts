@@ -1,7 +1,7 @@
 import { projectKeyOf } from "@t3tools/client-runtime/zerops/data";
 import type { ProjectTopologySnapshot, AccountStore } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import {

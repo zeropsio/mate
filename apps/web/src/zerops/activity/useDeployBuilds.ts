@@ -13,7 +13,7 @@ import {
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 import { useMemo } from "react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   projectProcesses,
   historyScope,

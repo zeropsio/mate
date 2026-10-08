@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { EnvironmentId, type OrchestrationShellSnapshot } from "@t3tools/contracts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { makeArchiveReads } from "./mateArchive.ts";

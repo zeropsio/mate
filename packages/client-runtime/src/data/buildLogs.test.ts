@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { buildLogLineBytes, type BuildLogLine } from "../zerops/activity/buildLog.ts";
 import { liveZerops } from "./__fixtures__/account.ts";

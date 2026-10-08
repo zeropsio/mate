@@ -109,12 +109,11 @@ const isBeacon = (node: unknown): boolean => {
 };
 
 /** Effect's HTTP client and sockets, and React Query: libraries whose only job is to reach a remote. */
-const REMOTE_LIBRARY =
-  /^(?:effect\/unstable\/(?:http|socket)(?:\/|$)|@tanstack\/(?:react-)?query)/u;
+const REMOTE_LIBRARY = /^(?:effect\/(?:http|socket)(?:\/|$)|@tanstack\/(?:react-)?query)/u;
 /** Effect Atom's reactivity module, whose RPC and HTTP API atoms query a remote. */
-const REACTIVITY = /^effect\/unstable\/reactivity(?:\/|$)/u;
+const REACTIVITY = /^effect\/reactivity(?:\/|$)/u;
 const REMOTE_ATOM_MODULES: ReadonlySet<string> = new Set(["AtomRpc", "AtomHttpApi"]);
-const REMOTE_ATOM_PATH = /^effect\/unstable\/reactivity\/(?:AtomRpc|AtomHttpApi)$/u;
+const REMOTE_ATOM_PATH = /^effect\/reactivity\/(?:AtomRpc|AtomHttpApi)$/u;
 
 const specifierName = (name: ESTree.IdentifierName | ESTree.StringLiteral): string =>
   name.type === "Literal" ? String(name.value) : name.name;
@@ -458,8 +457,8 @@ export default defineRule({
       source: string,
       values: ReadonlyArray<ESTree.ImportDeclaration["specifiers"][number]>,
     ): boolean =>
-      source === "effect/unstable/http/HttpClientError" ||
-      (source === "effect/unstable/http" &&
+      source === "effect/http/HttpClientError" ||
+      (source === "effect/http" &&
         values.every(
           (specifier) =>
             specifier.type === "ImportSpecifier" &&
@@ -470,7 +469,7 @@ export default defineRule({
     const tracingTagImport = (node: ESTree.ImportDeclaration): boolean => {
       if (
         path !== "apps/web/src/observability/clientTracing.ts" ||
-        node.source.value !== "effect/unstable/http"
+        node.source.value !== "effect/http"
       )
         return false;
       const values = node.specifiers.filter(

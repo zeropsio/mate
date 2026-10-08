@@ -5,7 +5,7 @@ import {
   type ZeropsPlacedBirth,
   type ZeropsGroupTreeView,
 } from "@t3tools/client-runtime/zerops";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import type { ProjectOrderOptions } from "./projectOrderPreference";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";

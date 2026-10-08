@@ -1,7 +1,7 @@
 /** The gate reads setup progress from operations; recovery still belongs to HQ's project-env journal. */
 import { hqBirthProgress, type HqBirthProgress } from "@t3tools/client-runtime/data";
 import type { HqBirthStep } from "@t3tools/client-runtime/zerops/hq";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { useProjection } from "./ZeropsAccountData";
 

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { RegistryContext } from "@effect/atom-react";
 import { makeAccountStore } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

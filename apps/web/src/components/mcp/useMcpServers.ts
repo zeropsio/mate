@@ -12,7 +12,7 @@ import type { EnvironmentId, McpServerAddInput, ThreadId } from "@t3tools/contra
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import { mcpServersEnvironment } from "../../state/mcpServers";
 import { describeMcpFailure, type McpTabState } from "./McpServers.logic";

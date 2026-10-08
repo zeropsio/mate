@@ -24,8 +24,8 @@ import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import * as HttpServer from "effect/unstable/http/HttpServer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as HttpServer from "effect/http/HttpServer";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";

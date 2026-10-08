@@ -7,7 +7,7 @@
  * @module data/operations/runToEnd
  */
 import * as Effect from "effect/Effect";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsApiError } from "../../zerops/api.ts";
 import type { OperationIntent, OperationResults } from "../model.ts";

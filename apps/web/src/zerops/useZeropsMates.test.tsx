@@ -4,7 +4,7 @@ import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
@@ -22,7 +22,7 @@ const environments = vi.hoisted(() => ({
 }));
 
 vi.mock("../state/presentation", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   environments.atom = Atom.make<ReadonlyMap<string, unknown>>(new Map());
   return { environmentPresentations: { presentationsAtom: environments.atom } };
 });

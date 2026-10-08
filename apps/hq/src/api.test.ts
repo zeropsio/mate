@@ -13,9 +13,9 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import * as HttpServer from "effect/unstable/http/HttpServer";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServer from "effect/http/HttpServer";
 import * as Layer from "effect/Layer";
 
 import { GitError } from "@t3tools/hq-git";

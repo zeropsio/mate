@@ -7,7 +7,7 @@ import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
 import { create } from "zustand";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import type { ComposerImageAttachment } from "../composerDraftStore";
 import { composerUploadExpired, type ComposerFileAttachment } from "./composerFiles";

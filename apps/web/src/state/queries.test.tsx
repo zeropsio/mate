@@ -2,7 +2,7 @@
 
 import { RegistryContext } from "@effect/atom-react";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -16,7 +16,7 @@ import {
 const searches = vi.hoisted(() => ({ asked: [] as unknown[] }));
 
 vi.mock("./presentation", async () => {
-  const { Atom: Atoms } = await import("effect/unstable/reactivity");
+  const { Atom: Atoms } = await import("effect/reactivity");
   return {
     environmentPresentations: {
       presentationsAtom: Atoms.make(

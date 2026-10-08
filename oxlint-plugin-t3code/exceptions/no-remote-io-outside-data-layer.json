@@ -2,7 +2,7 @@
   {
     "path": "apps/mobile/src/features/cloud/linkEnvironment.ts",
     "kind": "ImportDeclaration",
-    "fingerprint": "effect/unstable/http",
+    "fingerprint": "effect/http",
     "owner": "data-layer rewrite: Mate transport",
     "reason": "Mobile later: native account connection uses its current HTTP transport. Mobile is explicitly outside this migration.",
     "expires": "never"
@@ -26,7 +26,7 @@
   {
     "path": "apps/mobile/src/lib/runtime.ts",
     "kind": "ImportDeclaration",
-    "fingerprint": "effect/unstable/socket/Socket",
+    "fingerprint": "effect/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Mobile later: native HTTP and socket hosts retain their current transports. Mobile is explicitly outside this migration.",
     "expires": "never"

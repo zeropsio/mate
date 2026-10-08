@@ -17,7 +17,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import { RegistryContext } from "@effect/atom-react";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, createElement as h } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

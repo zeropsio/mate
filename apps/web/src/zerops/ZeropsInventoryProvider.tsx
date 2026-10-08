@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { inventory, inventoryContents, NOT_READ_INVENTORY } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useContext, useEffect, useMemo, type ReactNode } from "react";
 import { zeropsSessionAtom } from "../state/zerops";
 import { useAccountData } from "./ZeropsAccountData";

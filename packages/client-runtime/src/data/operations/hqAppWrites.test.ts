@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { HqError } from "../../zerops/hq/client.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";

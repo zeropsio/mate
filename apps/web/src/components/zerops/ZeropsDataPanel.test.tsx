@@ -9,7 +9,7 @@ import type {
   ZeropsDataConsoleTablePage,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import { AtomRegistry, AsyncResult } from "effect/unstable/reactivity";
+import { AtomRegistry, AsyncResult } from "effect/reactivity";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {

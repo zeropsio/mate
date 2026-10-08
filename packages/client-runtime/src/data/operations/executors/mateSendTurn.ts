@@ -1,5 +1,5 @@
 /** Receipt sink for the sanctioned turn command and conversation replay transport. */
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 import type { AccountStore } from "../../store.ts";
 import { sentAsk } from "../../projections/sentAsk.ts";
 import type { SentAsk } from "../mateSendTurn.ts";

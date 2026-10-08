@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ProjectServices } from "@t3tools/client-runtime/data";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {

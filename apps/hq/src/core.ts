@@ -23,7 +23,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Option from "effect/Option";
 import type * as Redacted from "effect/Redacted";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
+import * as HttpRouter from "effect/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";

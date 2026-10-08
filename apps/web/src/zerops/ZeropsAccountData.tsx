@@ -30,7 +30,7 @@ import {
   type Projection,
   type VaultReveal,
 } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { sameValue } from "../lib/sameValue";

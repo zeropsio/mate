@@ -10,7 +10,7 @@ import {
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";

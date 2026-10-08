@@ -21,7 +21,7 @@ import { resolveSpentLogin } from "@t3tools/client-runtime/zerops/logins";
 import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/models";
 import type { CrewSnapshot, EnvironmentId, ServerConfig } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { environmentProjects } from "../../state/projects";

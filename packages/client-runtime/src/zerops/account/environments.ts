@@ -28,7 +28,7 @@
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ConnectionAdmission } from "../../connection/admission.ts";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapters/mate.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";

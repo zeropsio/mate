@@ -2,7 +2,7 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { RegistryContext } from "@effect/atom-react";
 import { accountReadsAtom } from "@t3tools/client-runtime/data";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

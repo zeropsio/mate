@@ -63,7 +63,7 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64 from "effect/encoding/Base64";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -74,10 +74,10 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as Headers from "effect/unstable/http/Headers";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import * as Headers from "effect/http/Headers";
 
 import { ServerConfig } from "../config.ts";
 
@@ -917,7 +917,7 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
         const ttlSeconds = readHeaderNumber(response.headers, "x-dataconsole-ttl-seconds");
         return {
           kind: "blob",
-          data: Encoding.encodeBase64(cappedBytes),
+          data: Base64.encode(cappedBytes),
           contentType,
           truncated: declaredTruncated || capped,
           size,

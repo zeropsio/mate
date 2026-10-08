@@ -31,7 +31,7 @@ import {
  */
 import { makeMateBrowserInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 export function createZeropsCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,

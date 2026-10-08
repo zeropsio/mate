@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 /**
  * Presses on a crew surface, and the crew home's files for its editors.
  *

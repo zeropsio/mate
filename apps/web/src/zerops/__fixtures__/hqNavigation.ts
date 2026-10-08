@@ -8,7 +8,7 @@ import {
   type AccountStore,
 } from "@t3tools/client-runtime/data";
 import { seedHqNavigation, type SeededHq } from "@t3tools/client-runtime/data/fixtures";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 /**
  * Mounts a store holding `seed` for `orgId` in `registry` — or seeds `into`, a store a test

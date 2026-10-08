@@ -7,7 +7,7 @@ import {
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { environmentThreadShells } from "../state/threads";

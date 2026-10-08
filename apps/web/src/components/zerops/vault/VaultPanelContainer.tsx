@@ -19,7 +19,7 @@ import {
   type VaultWrite,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { FileCodeIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 

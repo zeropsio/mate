@@ -1,5 +1,5 @@
 import { mateRecovery, usageOwnerOf, type MateRecovery } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useDetailDemand, useProjection } from "./ZeropsAccountData";
 
 const NONE = Atom.make<MateRecovery>({

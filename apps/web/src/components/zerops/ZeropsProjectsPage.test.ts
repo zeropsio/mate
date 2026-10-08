@@ -11,7 +11,7 @@ import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowled
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";

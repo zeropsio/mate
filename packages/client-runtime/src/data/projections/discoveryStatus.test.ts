@@ -1,4 +1,4 @@
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
 import { liveProjects, liveServices } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";

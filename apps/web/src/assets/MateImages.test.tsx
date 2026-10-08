@@ -6,13 +6,13 @@ import {
   mateImageScope,
   type MateImageKey,
 } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import { expect, it, vi } from "vite-plus/test";
 const wire = vi.hoisted(() => ({ blob: new Blob(["picture"], { type: "image/png" }) }));
 vi.mock("~/connection/runtime", async () => {
-  const { AsyncResult, Atom } = await import("effect/unstable/reactivity");
+  const { AsyncResult, Atom } = await import("effect/reactivity");
   const Effect = await import("effect/Effect");
   return {
     connectionAtomRuntime: {

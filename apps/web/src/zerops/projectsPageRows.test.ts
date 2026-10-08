@@ -1,4 +1,4 @@
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { ThreadId } from "@t3tools/contracts";
 import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -6,13 +6,13 @@ import type { ZeropsAgentActivity } from "./agentActivity";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 vi.mock("./mateActivityAtoms", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   return {
     mateActivityAtom: Atom.family(() => Atom.make<ZeropsAgentActivity | undefined>(undefined)),
   };
 });
 vi.mock("~/state/shell", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   return { environmentsWithSnapshotAtom: Atom.make(new Set()) };
 });
 import { mateActivityAtom } from "./mateActivityAtoms";

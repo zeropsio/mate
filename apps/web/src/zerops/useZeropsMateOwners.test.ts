@@ -9,7 +9,7 @@ import {
   ZeropsAccountId,
   type AccountScope,
 } from "@t3tools/client-runtime/zerops/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 

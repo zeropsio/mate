@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type { ThreadLinkedPullRequest, VcsStatusResult } from "@t3tools/contracts";
 import { resolveThreadStatus, type ThreadStatus } from "@t3tools/shared/threadStatus";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useMemo, type AnimationEvent, type MouseEventHandler, type ReactNode } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";

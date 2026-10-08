@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 /** Review bodies and commits are demanded HQ facts keyed by the displayed head and main. */
 import {
   changeReadout,

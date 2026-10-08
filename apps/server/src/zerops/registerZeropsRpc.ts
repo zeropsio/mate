@@ -19,8 +19,8 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import type * as Rpc from "effect/unstable/rpc/Rpc";
-import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import type * as Rpc from "effect/rpc/Rpc";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import type { ZeropsSetup } from "./ZeropsSetup.ts";
 import type { ZeropsCli } from "./ZeropsCli.ts";

@@ -32,7 +32,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 
 import { UsageLane, type UsageSender } from "./usageLedger.ts";
 import {

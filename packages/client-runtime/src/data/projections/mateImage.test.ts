@@ -1,5 +1,5 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
 
 import {

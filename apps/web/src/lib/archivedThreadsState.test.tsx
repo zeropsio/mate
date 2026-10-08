@@ -1,7 +1,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { makeAccountStore, type AccountStore } from "@t3tools/client-runtime/data";
 import { EnvironmentId, type OrchestrationShellSnapshot } from "@t3tools/contracts";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -15,7 +15,7 @@ const fixture = vi.hoisted(() => ({
   close: new Set<() => void>(),
 }));
 vi.mock("../state/presentation", async () => {
-  const { Atom: Atoms } = await import("effect/unstable/reactivity");
+  const { Atom: Atoms } = await import("effect/reactivity");
   return {
     environmentPresentations: {
       presentationsAtom: Atoms.make(

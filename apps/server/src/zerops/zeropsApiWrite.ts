@@ -11,7 +11,7 @@
  * @module zeropsApiWrite
  */
 import * as Effect from "effect/Effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 
 import { unavailable } from "./zeropsApiRead.ts";
 

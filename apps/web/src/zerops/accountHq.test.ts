@@ -11,7 +11,7 @@ import {
   type AccountScope,
 } from "@t3tools/client-runtime/zerops/data";
 import { hqAnchorName } from "@t3tools/client-runtime/zerops/hq";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
 import {

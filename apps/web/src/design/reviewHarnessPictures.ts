@@ -9,7 +9,7 @@ import {
   pictureLink,
   pictureScope,
 } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 
 /** The harness's HQ: an address no browser resolves. */

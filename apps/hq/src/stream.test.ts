@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 import { liveSocketsLayer, serveHqSocket, serveStructureSocket } from "./stream.ts";
 import { HqScopes } from "./hqScopes.ts";
 const decodeFrame = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));

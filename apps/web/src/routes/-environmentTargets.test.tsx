@@ -28,7 +28,7 @@ import {
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -72,7 +72,7 @@ vi.mock("../state/environments", () => ({
   useEnvironmentConnectionState: () => ({ data: null }),
 }));
 vi.mock("../state/shell", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   const Option = await import("effect/Option");
   const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
   return { environmentShell: { stateValueAtom: () => cached } };

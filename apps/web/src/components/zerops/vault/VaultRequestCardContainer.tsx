@@ -9,7 +9,7 @@ import { NOT_READ_VAULT, vaultAtom } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 

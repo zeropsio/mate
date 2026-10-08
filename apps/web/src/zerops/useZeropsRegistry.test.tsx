@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { mountHqNavigation } from "./__fixtures__/hqNavigation";

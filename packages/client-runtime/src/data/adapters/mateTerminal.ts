@@ -1,7 +1,7 @@
 /** Ordered terminal byte streams stay in bounded renderer session buffers, outside account facts. */
 import { type EnvironmentId, WS_METHODS } from "@t3tools/contracts";
 import * as Stream from "effect/Stream";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { subscribe, type EnvironmentRpcInput } from "../../rpc/client.ts";
 import { followStreamInEnvironment } from "../../state/runtime.ts";

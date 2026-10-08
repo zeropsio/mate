@@ -1,4 +1,4 @@
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { MateOverview } from "@t3tools/shared/mateLink";
 import type { MateLiveView } from "@t3tools/shared/hqMates";

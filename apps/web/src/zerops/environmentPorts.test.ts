@@ -18,7 +18,7 @@ import {
   EnvironmentInternalError,
 } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";

@@ -13,7 +13,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import type { ConversationId, WakeId } from "@t3tools/contracts";
 
 import { Conversations } from "../Conversations.ts";

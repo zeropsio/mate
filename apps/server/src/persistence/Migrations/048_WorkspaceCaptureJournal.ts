@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** Write-ahead capture receipts outlive a worker restart; patches stay in service Git. */
 export default Effect.gen(function* () {

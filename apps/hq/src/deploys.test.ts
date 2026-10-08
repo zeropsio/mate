@@ -24,7 +24,7 @@ import { HqDeployAnswer as DeployAnswerSchema } from "@t3tools/shared/hqDeploys"
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { fakeOperationWatch } from "../test/harness/operationWatch.ts";
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";

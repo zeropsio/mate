@@ -19,12 +19,12 @@ import {
   type RunToEnd,
   type Projection,
 } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

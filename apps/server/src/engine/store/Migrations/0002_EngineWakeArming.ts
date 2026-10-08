@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** A wake row names the arming it holds, so a fire and a drop touch only that arming. */
 export default Effect.gen(function* () {

@@ -2,7 +2,7 @@ import { mateImageSource } from "@t3tools/client-runtime/data";
 import type { AssetImageDimensions, AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useMemo } from "react";
 import { assetEnvironment } from "~/state/assets";
 import { usePreparedConnection } from "~/state/session";

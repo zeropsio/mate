@@ -4,7 +4,7 @@
  */
 import type { CompareRead } from "@t3tools/client-runtime/zerops";
 import type { CompareResponse } from "@t3tools/shared/hqChanges";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

@@ -12,8 +12,8 @@
  * turn the command starts is admitted as them.
  */
 import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
-import type * as Rpc from "effect/unstable/rpc/Rpc";
-import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import type * as Rpc from "effect/rpc/Rpc";
+import type * as RpcGroup from "effect/rpc/RpcGroup";
 
 import type { RegisterZeropsRpcDeps } from "../registerZeropsRpc.ts";
 import type { CrewEngineService } from "./CrewEngine.ts";

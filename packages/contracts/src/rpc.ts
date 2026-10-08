@@ -1,7 +1,7 @@
 import { MateHealth } from "./mateHealth.ts";
 import * as Schema from "effect/Schema";
-import * as Rpc from "effect/unstable/rpc/Rpc";
-import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
+import * as Rpc from "effect/rpc/Rpc";
+import * as RpcGroup from "effect/rpc/RpcGroup";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ExecutionEnvironmentUpdate } from "./environment.ts";
 import {

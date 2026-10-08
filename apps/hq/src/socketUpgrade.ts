@@ -1,8 +1,8 @@
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import * as Effect from "effect/Effect";
 import * as References from "effect/References";
-import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as Socket from "effect/unstable/socket/Socket";
+import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as Socket from "effect/socket/Socket";
 
 /** The platform upgrades lazily, when its reader is acquired, after HQ's authorization reads. */
 export const upgradeSocket = (request: HttpServerRequest.HttpServerRequest) =>

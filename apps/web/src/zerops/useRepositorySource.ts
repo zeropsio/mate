@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { HqApi, RepositoryTarget } from "@t3tools/client-runtime/zerops/hq";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";

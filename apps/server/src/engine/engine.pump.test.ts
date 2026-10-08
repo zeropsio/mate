@@ -11,7 +11,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";

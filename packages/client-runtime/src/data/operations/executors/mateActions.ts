@@ -27,7 +27,7 @@ import {
   type MateActionInput,
   type MateActionResult,
 } from "../mateActions.ts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import * as Clock from "effect/Clock";
 import { mateActionRequestId, mateActionRequestScope } from "../../families/mateActionRequest.ts";
 import { streamOf } from "../../reducer.ts";

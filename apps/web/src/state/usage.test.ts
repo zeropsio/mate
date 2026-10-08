@@ -1,7 +1,7 @@
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { EnvironmentId, UsageDay, type UsageSummary } from "@t3tools/contracts";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createUsageWindowReadAtoms } from "./usage";

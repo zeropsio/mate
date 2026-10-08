@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Redacted from "effect/Redacted";
 import * as PgClient from "@effect/sql-pg/PgClient";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import { type UsageCoverage, type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
 import {
   USAGE_GENESIS_DIGEST,

@@ -14,7 +14,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 
 import * as ServerConfig from "../config.ts";
 import { toRotatedTracePaths, TraceFileReadError } from "../diagnostics/TraceDiagnostics.ts";

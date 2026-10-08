@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import {
   createContext,
   useContext,

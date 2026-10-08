@@ -3,7 +3,7 @@ import { mateActions } from "./projections/mateActions.ts";
 /** Command bindings dispatch through the account executor and never reach a remote directly. */
 import * as Effect from "effect/Effect";
 import { WS_METHODS, type EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   createRuntimeCommand,
   type AtomCommandConcurrency,

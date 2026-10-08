@@ -1,5 +1,5 @@
 import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG } from "./__fixtures__/account.ts";

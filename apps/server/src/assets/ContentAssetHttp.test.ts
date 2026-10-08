@@ -4,7 +4,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { HttpServerResponse } from "effect/unstable/http";
+import { HttpServerResponse } from "effect/http";
 import { afterEach, expect, it } from "@effect/vitest";
 import sharp from "sharp";
 import { ContentAssets } from "./ContentAssets.ts";

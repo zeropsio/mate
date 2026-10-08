@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
 import { useProjection } from "./ZeropsAccountData";
 import { officialHq, useAccountHq } from "./accountHq";

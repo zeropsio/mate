@@ -9,7 +9,7 @@ import {
   type TurnHandle,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { decide } from "../domain/decide.ts";
 import { fold } from "../domain/evolve.ts";

@@ -7,7 +7,7 @@ import {
   type HqPictureKey,
 } from "@t3tools/client-runtime/data";
 import { parseAttachmentUrl } from "@t3tools/shared/hqChanges";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import { useAccountHq } from "./accountHq";

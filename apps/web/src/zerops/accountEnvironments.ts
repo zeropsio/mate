@@ -38,7 +38,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { sameValue } from "../lib/sameValue";

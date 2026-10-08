@@ -15,7 +15,7 @@
  */
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import * as Effect from "effect/Effect";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import type * as SqlClient from "effect/sql/SqlClient";
 
 /** Each environment HQ brought up, by its project, and whether its birth ended. */
 export const environmentBirths = (sql: SqlClient.SqlClient) =>

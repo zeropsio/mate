@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 /**
  * A change the flow does not carry, read from HQ on its own.
  *

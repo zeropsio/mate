@@ -15,7 +15,7 @@ import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import * as NodeURL from "node:url";
 
 import { collectCssSources, isGeneratedCssSource, type CssSource } from "./cssSources.ts";

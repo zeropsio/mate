@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { ZeropsApiClient } from "../../../zerops/api.ts";
 import { liveProjects } from "../../__fixtures__/account.ts";
 import { makeAccountStore, type AccountStore } from "../../store.ts";

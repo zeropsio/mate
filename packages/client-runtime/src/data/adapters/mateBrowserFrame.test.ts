@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import {
   mateBrowserFrame,
