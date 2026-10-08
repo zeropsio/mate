@@ -1,5 +1,5 @@
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { MateConnectionState } from "../zerops/ZeropsMateEmptyState";
 
 /** One overlay survives the source read and row placement. Readiness changes both layers together. */
@@ -7,7 +7,9 @@ export function ConversationOpeningStage({
   ready,
   name,
   mate,
+  notice,
 }: {
+  readonly notice?: ReactNode;
   readonly ready: boolean;
   readonly name: string | undefined;
   readonly mate: Pick<
@@ -27,6 +29,7 @@ export function ConversationOpeningStage({
       data-conversation-opening={handedOver ? "ready" : "waiting"}
     >
       <MateConnectionState
+        notice={notice}
         mate={mate}
         face={handedOver ? "idle" : "sleep"}
         headline={`${name || "The Mate"} is opening the conversation.`}

@@ -1,5 +1,6 @@
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { recoveryNotice } from "~/zerops/mateRecovery.logic";
+import { MateStateDetails } from "./MateStateDetails";
 import { MateHealthNotice } from "./MateHealthNotice";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
@@ -888,13 +889,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         />
       }
     >
-      <div className="absolute inset-x-0 top-0 z-20">
-        <MateHealthNotice projectId={projectId} name={named.name} />
-      </div>
       {opening ? (
-        <ConversationOpeningStage ready={false} name={named.name} mate={named} />
+        <ConversationOpeningStage
+          ready={false}
+          name={named.name}
+          mate={named}
+          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
+        />
       ) : view === null ? null : (
         <MateEmptyStateView
+          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
           coming={view}
           // Handed over to from the creation's view, whose headline held the focus.
           focusOnArrival={made !== undefined}
@@ -1164,12 +1168,18 @@ export function ComingBelow({
     coming?.kind === "failed" && setupFailureDetails !== undefined ? (
       <>
         {onTryAgain === undefined ? null : (
-          <Button disabled={setupFailureDetails.retrying || removing} onClick={onTryAgain}>
+          <Button
+            variant="pill"
+            size="compact"
+            disabled={setupFailureDetails.retrying || removing}
+            onClick={onTryAgain}
+          >
             Try again
           </Button>
         )}
         {onRemove === undefined ? null : (
           <Button
+            size="compact"
             disabled={removing || setupFailureDetails.retrying}
             onClick={onRemove}
             variant="outline"
@@ -1180,32 +1190,36 @@ export function ComingBelow({
       </>
     ) : coming?.kind === "failed" ? (
       coming.verb === "remove" && onRemove !== undefined ? (
-        <Button disabled={removing} onClick={onRemove}>
+        <Button variant="pill" size="compact" disabled={removing} onClick={onRemove}>
           Remove
         </Button>
       ) : coming.verb === "finish-setup" && onFinishSetup !== undefined ? (
-        <Button disabled={finishing} onClick={onFinishSetup}>
+        <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
           {FINISH_MATE_SETUP_VERB}
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
-          <Button onClick={onTryAgain}>{MATE_STAND_UP_RETRY_LABEL}</Button>
+          <Button variant="pill" size="compact" onClick={onTryAgain}>
+            {MATE_STAND_UP_RETRY_LABEL}
+          </Button>
           {ends?.onStartOver === undefined ? null : (
-            <Button onClick={ends.onStartOver} variant="outline">
+            <Button size="compact" onClick={ends.onStartOver} variant="outline">
               Start over
             </Button>
           )}
           {ends === undefined ? null : (
-            <Button onClick={ends.onDismiss} variant="ghost">
+            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
         </>
       ) : coming.verb === "go-to-projects" && projects !== undefined ? (
         <>
-          <Button render={projects}>Go to projects</Button>
+          <Button variant="pill" size="compact" render={projects}>
+            Go to projects
+          </Button>
           {ends === undefined ? null : (
-            <Button onClick={ends.onDismiss} variant="ghost">
+            <Button size="compact" onClick={ends.onDismiss} variant="ghost">
               Dismiss
             </Button>
           )}
@@ -1223,7 +1237,7 @@ export function ComingBelow({
       : note;
   const finishVerb =
     coming?.kind === "coming" && onFinishSetup !== undefined ? (
-      <Button disabled={finishing} onClick={onFinishSetup}>
+      <Button variant="pill" size="compact" disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>
     ) : null;
@@ -1233,7 +1247,9 @@ export function ComingBelow({
     pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
   const setupVerb =
     pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
-      <Button onClick={onSetupAgain}>Try again</Button>
+      <Button variant="pill" size="compact" onClick={onSetupAgain}>
+        Try again
+      </Button>
     ) : null;
   const acts = verb ?? finishVerb ?? setupVerb;
   if (acts === null && read === null) {
@@ -1250,21 +1266,13 @@ export function ComingBelow({
     >
       {steps}
       {setupFailureDetails === undefined ? null : (
-        <div className="arrival-failure-details">
-          <details>
-            <summary>Details</summary>
-            <pre>{setupFailureDetails.details}</pre>
-            {setupFailureDetails.status === "loading" ? <p>Reading the setup log…</p> : null}
-            {setupFailureDetails.status === "error" ? (
-              <p>The setup log couldn't be read. Open the process in Zerops.</p>
-            ) : null}
-          </details>
-          {setupFailureDetails.projectUrl === undefined ? null : (
-            <a href={setupFailureDetails.projectUrl} target="_blank" rel="noreferrer">
-              Open process in Zerops · {setupFailureDetails.process.id}
-            </a>
-          )}
-        </div>
+        <MateStateDetails>
+          <pre>{setupFailureDetails.details}</pre>
+          {setupFailureDetails.status === "loading" ? <p>Reading the setup log…</p> : null}
+          {setupFailureDetails.status === "error" ? (
+            <p>The setup log couldn't be read. Open the process in Zerops.</p>
+          ) : null}
+        </MateStateDetails>
       )}
       <div className="arrival-acts-block">
         {read === null ? null : (
@@ -1272,7 +1280,22 @@ export function ComingBelow({
             {read.text}
           </p>
         )}
-        {acts === null ? null : <div className="arrival-acts">{acts}</div>}
+        {acts === null && setupFailureDetails?.projectUrl === undefined ? null : (
+          <div className="arrival-acts">
+            {acts}
+            {setupFailureDetails?.projectUrl === undefined ? null : (
+              <Button
+                render={
+                  <a href={setupFailureDetails.projectUrl} target="_blank" rel="noreferrer" />
+                }
+                size="compact"
+                variant="pill"
+              >
+                Open the process in Zerops
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -49,7 +49,7 @@ import { readTaskCard, readTaskReport } from "./crewTaskData.ts";
 import type { RotationReason } from "./rotationDecision.ts";
 
 const dispatch = (core: CrewCore, command: Parameters<CrewCore["orchestration"]["dispatch"]>[0]) =>
-  asRefusal(core.orchestration.dispatch(command)).pipe(Effect.asVoid);
+  asRefusal(core.orchestration.dispatch(command, { updateContinuation: true })).pipe(Effect.asVoid);
 
 export const openStint = (
   core: CrewCore,

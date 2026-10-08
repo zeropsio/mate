@@ -31,6 +31,8 @@ import type {
   WakeId,
 } from "@t3tools/contracts";
 
+import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";
+
 import type { Command } from "./domain/command.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
@@ -101,6 +103,7 @@ export interface RunOutcome {
 }
 
 export interface MateEngineService {
+  readonly updateDrain?: MateUpdateDrain;
   /** True when this Mate's conversation runs on the engine. */
   readonly live: boolean;
   /** Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. */

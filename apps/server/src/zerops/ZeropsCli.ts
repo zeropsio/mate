@@ -85,13 +85,16 @@ export class ZeropsCli extends Context.Service<
        * capability probe is needed before sending it.
        */
       readonly refresh?: boolean;
+      readonly local?: boolean;
     }) => Effect.Effect<MateStatusResult, ZeropsCliError>;
     /**
      * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2). Its JSON is
      * returned even on a non-zero exit — a failed update is a successful
      * call to this method, never a {@link ZeropsCliFailed}.
      */
-    readonly mateUpdate: () => Effect.Effect<MateUpdateResult, ZeropsCliError>;
+    readonly mateUpdate: (options?: {
+      readonly automatic?: boolean;
+    }) => Effect.Effect<MateUpdateResult, ZeropsCliError>;
   }
 >()("t3/zerops/ZeropsCli") {}
 
@@ -121,6 +124,7 @@ export const make = (options: ZeropsCliOptions) =>
 
     const mateStatus = (options?: {
       readonly refresh?: boolean;
+      readonly local?: boolean;
     }): Effect.Effect<MateStatusResult, ZeropsCliError> =>
       processRunner
         .run({
@@ -131,6 +135,7 @@ export const make = (options: ZeropsCliOptions) =>
             "status",
             "--json",
             ...(options?.refresh ? ["--refresh"] : []),
+            ...(options?.local ? ["--local"] : []),
           ],
           cwd,
           timeout: MATE_STATUS_TIMEOUT,
@@ -170,11 +175,19 @@ export const make = (options: ZeropsCliOptions) =>
     // A failed `mate update` is a successful call to this method (spec-mate.md
     // §2.9 MU-2): the exit code is read only to help pick the diagnostic when
     // there is no parseable JSON at all, never to fail the Effect on its own.
-    const mateUpdate = (): Effect.Effect<MateUpdateResult, ZeropsCliError> =>
+    const mateUpdate = (options?: {
+      readonly automatic?: boolean;
+    }): Effect.Effect<MateUpdateResult, ZeropsCliError> =>
       processRunner
         .run({
           command,
-          args: [...baseArgs, "mate", "update", "--json"],
+          args: [
+            ...baseArgs,
+            "mate",
+            "update",
+            "--json",
+            ...(options?.automatic ? ["--automatic"] : []),
+          ],
           cwd,
           timeout: MATE_UPDATE_TIMEOUT,
           maxOutputBytes: MATE_UPDATE_MAX_OUTPUT_BYTES,

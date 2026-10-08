@@ -1,3 +1,4 @@
+import { V1UpdateDrain } from "./update/V1UpdateDrain.ts";
 import {
   CommandId,
   DEFAULT_MODEL,
@@ -26,6 +27,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as ServerConfig from "./config.ts";
+import { mateUpdateBootPending } from "./mateUpdateBoot.ts";
 import { MateEngine, type MateEngineService } from "./engine/MateEngine.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -356,7 +358,7 @@ type ScopedRoot = { readonly start: () => Effect.Effect<void, never, Scope.Scope
  * reactor, no reaper, no reconcile).
  */
 export const startConversationRoots = <E, R>(input: {
-  readonly engine: Pick<MateEngineService, "live" | "start">;
+  readonly engine: Pick<MateEngineService, "live" | "start" | "updateDrain">;
   readonly reactorScope: Scope.Scope;
   readonly v1: {
     readonly reactor: ScopedRoot;
@@ -365,7 +367,19 @@ export const startConversationRoots = <E, R>(input: {
   };
 }): Effect.Effect<void, E, R> =>
   input.engine.live
-    ? runStartupPhase("engine.start", input.engine.start().pipe(Scope.provide(input.reactorScope)))
+    ? runStartupPhase(
+        "engine.start",
+        Effect.gen(function* () {
+          if (mateUpdateBootPending()) {
+            if (input.engine.updateDrain === undefined)
+              return yield* Effect.die(
+                new Error("This Mate cannot fence an automatic update boot."),
+              );
+            yield* input.engine.updateDrain.begin;
+          }
+          yield* input.engine.start().pipe(Scope.provide(input.reactorScope));
+        }),
+      )
     : Effect.gen(function* () {
         yield* runStartupPhase(
           "reactors.start",
@@ -496,6 +510,7 @@ export const make = (options?: StartupOptions) =>
     const orchestrationReactor = yield* OrchestrationReactor.OrchestrationReactor;
     const providerSessionReaper = yield* ProviderSessionReaper.ProviderSessionReaper;
     const mateEngine = yield* MateEngine;
+    const v1Drain = yield* Effect.serviceOption(V1UpdateDrain);
     const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -543,6 +558,11 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
+      if (!mateEngine.live && mateUpdateBootPending()) {
+        if (Option.isNone(v1Drain))
+          return yield* Effect.die(new Error("This Mate cannot fence a V1 update boot."));
+        yield* v1Drain.value.begin;
+      }
       yield* startConversationRoots({
         engine: mateEngine,
         reactorScope,

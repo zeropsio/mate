@@ -17,7 +17,6 @@ import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import {
   buildTurnStartParams,
   describeMcpElicitation,
-  isRecoverableThreadResumeError,
   makeMemoryConsolidationNotificationFilter,
   openCodexThread,
   readCodexThread,
@@ -818,65 +817,6 @@ describe("codexSessionAppServerArgs", () => {
   });
 });
 
-describe("isRecoverableThreadResumeError", () => {
-  it("matches missing thread errors", () => {
-    NodeAssert.equal(
-      isRecoverableThreadResumeError(
-        new CodexErrors.CodexAppServerRequestError({
-          code: -32603,
-          errorMessage: "Thread does not exist",
-        }),
-      ),
-      true,
-    );
-  });
-
-  it("matches a missing rollout for a known thread id", () => {
-    NodeAssert.equal(
-      isRecoverableThreadResumeError(
-        new CodexErrors.CodexAppServerRequestError({
-          code: -32603,
-          errorMessage: "no rollout found for thread id 019fdf74-aaa9-7950-b252-7cc7a8650470",
-        }),
-      ),
-      true,
-    );
-  });
-
-  it("ignores non-recoverable resume errors", () => {
-    NodeAssert.equal(
-      isRecoverableThreadResumeError(
-        new CodexErrors.CodexAppServerRequestError({
-          code: -32603,
-          errorMessage: "Permission denied",
-        }),
-      ),
-      false,
-    );
-  });
-
-  it("ignores unrelated missing-resource errors that do not mention threads", () => {
-    NodeAssert.equal(
-      isRecoverableThreadResumeError(
-        new CodexErrors.CodexAppServerRequestError({
-          code: -32603,
-          errorMessage: "Config file not found",
-        }),
-      ),
-      false,
-    );
-    NodeAssert.equal(
-      isRecoverableThreadResumeError(
-        new CodexErrors.CodexAppServerRequestError({
-          code: -32603,
-          errorMessage: "Model does not exist",
-        }),
-      ),
-      false,
-    );
-  });
-});
-
 describe("openCodexThread", () => {
   it.effect("resumes metadata when historical turns contain unknown error values", () =>
     Effect.gen(function* () {
@@ -970,49 +910,105 @@ describe("openCodexThread", () => {
     }),
   );
 
-  it.effect("falls back to thread/start when resume fails recoverably", () =>
-    Effect.gen(function* () {
-      const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
-      const started = makeThreadOpenResponse("fresh-thread");
-      const client = {
-        raw: {
+  it.effect.each(["conversation/s/1", "crew-standup/s/42"])(
+    "the engine session %s never silently starts fresh when native resume fails",
+    (threadId) =>
+      Effect.gen(function* () {
+        let started = false;
+        const error = yield* openCodexThread({
+          client: {
+            request: () =>
+              Effect.sync(() => {
+                started = true;
+                return makeThreadOpenResponse("fresh-thread");
+              }),
+            raw: {
+              request: () =>
+                Effect.fail(
+                  new CodexErrors.CodexAppServerRequestError({
+                    code: -32603,
+                    errorMessage: "thread not found",
+                  }),
+                ),
+            },
+          },
+          threadId: ThreadId.make(threadId),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "original-thread",
+        }).pipe(Effect.flip);
+        NodeAssert.ok(isCodexAppServerRequestError(error));
+        NodeAssert.equal(started, false);
+      }),
+  );
+
+  it.effect(
+    "a missing native thread fails visibly without replacing the original conversation",
+    () =>
+      Effect.gen(function* () {
+        const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+        const started = makeThreadOpenResponse("fresh-thread");
+        const client = {
+          raw: {
+            request: (
+              method: "thread/resume",
+              payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+            ) => {
+              calls.push({ method, payload });
+              return Effect.fail(
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32603,
+                  errorMessage: "thread not found",
+                }),
+              );
+            },
+          },
           request: (
-            method: "thread/resume",
-            payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+            method: "thread/start",
+            payload: CodexRpc.ClientRequestParamsByMethod["thread/start"],
           ) => {
             calls.push({ method, payload });
-            return Effect.fail(
-              new CodexErrors.CodexAppServerRequestError({
-                code: -32603,
-                errorMessage: "thread not found",
-              }),
-            );
+            return Effect.succeed(started);
           },
-        },
-        request: (
-          method: "thread/start",
-          payload: CodexRpc.ClientRequestParamsByMethod["thread/start"],
-        ) => {
-          calls.push({ method, payload });
-          return Effect.succeed(started);
-        },
-      };
+        };
 
-      const opened = yield* openCodexThread({
+        const opened = yield* openCodexThread({
+          client,
+          threadId: ThreadId.make("thread-1"),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "stale-thread",
+        }).pipe(Effect.flip);
+
+        NodeAssert.ok(isCodexAppServerRequestError(opened));
+        NodeAssert.deepStrictEqual(
+          calls.map((call) => call.method),
+          ["thread/resume"],
+        );
+      }),
+  );
+
+  it.effect("resume must return the original native conversation", () =>
+    Effect.gen(function* () {
+      const client = {
+        raw: { request: () => Effect.succeed(makeThreadOpenResponse("replacement-thread")) },
+        request: () => Effect.die("A bound session cannot start a new conversation"),
+      };
+      const error = yield* openCodexThread({
         client,
         threadId: ThreadId.make("thread-1"),
         runtimeMode: "full-access",
         cwd: "/tmp/project",
-        requestedModel: "gpt-5.3-codex",
+        requestedModel: undefined,
         serviceTier: undefined,
-        resumeThreadId: "stale-thread",
-      });
-
-      NodeAssert.equal(opened.thread.id, "fresh-thread");
-      NodeAssert.deepStrictEqual(
-        calls.map((call) => call.method),
-        ["thread/resume", "thread/start"],
-      );
+        resumeThreadId: "original-thread",
+      }).pipe(Effect.flip);
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.match(error.errorMessage, /original conversation/);
     }),
   );
 

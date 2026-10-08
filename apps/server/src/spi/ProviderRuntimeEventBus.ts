@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../update/subscribeChanges.ts";
 /**
  * ProviderRuntimeEventBus - the owned SPI seam for provider runtime events.
  *
@@ -30,12 +31,19 @@ import {
   PROVIDER_RUNTIME_SPI_VERSION,
   type SpiEnrichmentFailure,
   type SpiEvent,
+  type ProviderRuntimeEvent,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { readToolCall } from "./toolCall.ts";
 
 export interface ProviderRuntimeEventBusShape {
+  readonly eventBarrier?: {
+    readonly events: Stream.Stream<{ readonly sequence: number; readonly event: SpiEvent }>;
+    readonly position: Effect.Effect<{ readonly published: number; readonly processing: number }>;
+    readonly changes: Stream.Stream<void>;
+    readonly subscribeChanges?: SubscribeUpdateChanges;
+  };
   /**
    * The SPI version this bus was built against (`providerRuntimeSpi.ts`) — a
    * hook for a future adapter-version gate, not yet read by anything.
@@ -79,44 +87,45 @@ export class ProviderRuntimeEventBus extends Context.Service<
  */
 const enrich = (
   rawEvents: Stream.Stream<SpiEvent>,
-): Effect.Effect<Pick<ProviderRuntimeEventBusShape, "events" | "enrichmentFailures">> =>
+): Effect.Effect<
+  Pick<ProviderRuntimeEventBusShape, "events" | "enrichmentFailures"> & {
+    readonly enrichEvent: (event: ProviderRuntimeEvent) => Effect.Effect<SpiEvent>;
+  }
+> =>
   Effect.gen(function* () {
     const failuresHub = yield* PubSub.unbounded<SpiEnrichmentFailure>();
     const warnedSignatures = yield* Ref.make(new Set<string>());
 
-    const events = rawEvents.pipe(
-      Stream.mapEffect((event) =>
-        Effect.gen(function* () {
-          const result = readToolCall(event);
-          if (result.kind === "toolCall") {
-            return { ...event, toolCall: result.call } satisfies SpiEvent;
-          }
-          if (result.kind === "notATool") {
-            return event;
-          }
-
-          const failure: SpiEnrichmentFailure = {
-            eventId: event.eventId,
-            provider: event.provider,
-            itemType: result.itemType,
-            reason: result.reason,
-          };
-          const signature = `${failure.provider}:${failure.itemType}:${failure.reason}`;
-          const alreadyWarned = (yield* Ref.get(warnedSignatures)).has(signature);
-          if (!alreadyWarned) {
-            yield* Ref.update(warnedSignatures, (signatures) => new Set(signatures).add(signature));
-            yield* Effect.logWarning(
-              "SPI enrichment could not read a recognized tool item's data shape",
-              failure,
-            );
-          }
-          yield* PubSub.publish(failuresHub, failure);
+    const enrichEvent = (event: ProviderRuntimeEvent) =>
+      Effect.gen(function* () {
+        const result = readToolCall(event);
+        if (result.kind === "toolCall") {
+          return { ...event, toolCall: result.call } satisfies SpiEvent;
+        }
+        if (result.kind === "notATool") {
           return event;
-        }),
-      ),
-    );
+        }
 
-    return { events, enrichmentFailures: Stream.fromPubSub(failuresHub) };
+        const failure: SpiEnrichmentFailure = {
+          eventId: event.eventId,
+          provider: event.provider,
+          itemType: result.itemType,
+          reason: result.reason,
+        };
+        const signature = `${failure.provider}:${failure.itemType}:${failure.reason}`;
+        const alreadyWarned = (yield* Ref.get(warnedSignatures)).has(signature);
+        if (!alreadyWarned) {
+          yield* Ref.update(warnedSignatures, (signatures) => new Set(signatures).add(signature));
+          yield* Effect.logWarning(
+            "SPI enrichment could not read a recognized tool item's data shape",
+            failure,
+          );
+        }
+        yield* PubSub.publish(failuresHub, failure);
+        return event;
+      });
+    const events = rawEvents.pipe(Stream.mapEffect(enrichEvent));
+    return { events, enrichmentFailures: Stream.fromPubSub(failuresHub), enrichEvent };
   });
 
 export const ProviderRuntimeEventBusLive = Layer.effect(
@@ -124,7 +133,24 @@ export const ProviderRuntimeEventBusLive = Layer.effect(
   Effect.gen(function* () {
     const provider = yield* ProviderService;
     const enriched = yield* enrich(provider.streamEvents);
+    const barrier = provider.eventBarrier;
     return {
+      ...(barrier === undefined
+        ? {}
+        : {
+            eventBarrier: {
+              position: barrier.position,
+              changes: barrier.changes,
+              ...(barrier.subscribeChanges === undefined
+                ? {}
+                : { subscribeChanges: barrier.subscribeChanges }),
+              events: barrier.events.pipe(
+                Stream.mapEffect(({ sequence, event }) =>
+                  enriched.enrichEvent(event).pipe(Effect.map((event) => ({ sequence, event }))),
+                ),
+              ),
+            },
+          }),
       version: PROVIDER_RUNTIME_SPI_VERSION,
       ...enriched,
     } satisfies ProviderRuntimeEventBusShape;

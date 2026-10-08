@@ -101,3 +101,50 @@ describe("mateUpdateQuestion", () => {
     expect(mateUpdateQuestion(mateName, "0.11.49")).toBe(expected);
   });
 });
+
+describe("automatic update line", () => {
+  it.each([
+    ["draining", "Update ready; waiting for your work to finish"],
+    ["switching", "Updating — your conversations are safe"],
+    ["verifying", "Updating — your conversations are safe"],
+    ["updated", "Updated to 0.15.0"],
+    ["postponed", "Update postponed; Mate is running 0.14.8"],
+  ] as const)("%s shows its authoritative phase", (phase, text) => {
+    expect(
+      mateUpdateLine(
+        {
+          installed: "0.14.8",
+          latest: "0.15.0",
+          available: true,
+          checkedAt: "now",
+          automatic: {
+            protocol: 1,
+            rollbackCompatible: true,
+            phase,
+            runningVersion: phase === "updated" ? "0.15.0" : "0.14.8",
+          },
+        },
+        "0.14.8",
+      ),
+    ).toEqual({ text, tone: "default" });
+  });
+  it("an incompatible release asks for confirmation", () => {
+    expect(
+      mateUpdateLine(
+        {
+          installed: "0.14.8",
+          latest: "0.15.0",
+          available: true,
+          checkedAt: "now",
+          automatic: {
+            protocol: 1,
+            rollbackCompatible: false,
+            phase: "idle",
+            runningVersion: "0.14.8",
+          },
+        },
+        "0.14.8",
+      ).text,
+    ).toBe("Update available — needs your confirmation");
+  });
+});

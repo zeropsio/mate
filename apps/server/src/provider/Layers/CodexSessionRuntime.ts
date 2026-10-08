@@ -58,14 +58,6 @@ const BENIGN_ERROR_LOG_SNIPPETS = [
   "state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back",
 ];
 const CODEX_APP_SERVER_FORCE_KILL_AFTER = "2 seconds" as const;
-const RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS = [
-  "not found",
-  "missing thread",
-  "no such thread",
-  "unknown thread",
-  "does not exist",
-  "no rollout found",
-];
 
 export const CodexResumeCursorSchema = Schema.Struct({
   threadId: Schema.String,
@@ -702,14 +694,6 @@ function isArchivedSessionResumeError(error: CodexErrors.CodexAppServerError): b
   );
 }
 
-export function isRecoverableThreadResumeError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  if (!message.includes("thread")) {
-    return false;
-  }
-  return RECOVERABLE_THREAD_RESUME_ERROR_SNIPPETS.some((snippet) => message.includes(snippet));
-}
-
 const CodexThreadResumeMetadata = Schema.Struct({
   cwd: Schema.String,
   model: Schema.String,
@@ -787,16 +771,16 @@ export const openCodexThread = (input: {
             error,
           ),
         ),
+        Effect.filterOrFail(
+          (metadata) => metadata.thread.id === resumeThreadId,
+          () =>
+            new CodexErrors.CodexAppServerRequestError({
+              code: -32603,
+              errorMessage:
+                "Native resume returned a different thread; the original conversation was preserved.",
+            }),
+        ),
       ),
-    ),
-    Effect.catchIf(isRecoverableThreadResumeError, (error) =>
-      Effect.logWarning("codex app-server thread resume fell back to fresh start", {
-        threadId: input.threadId,
-        requestedRuntimeMode: input.runtimeMode,
-        resumeThreadId,
-        recoverable: true,
-        cause: error,
-      }).pipe(Effect.andThen(input.client.request("thread/start", startParams))),
     ),
   );
 };

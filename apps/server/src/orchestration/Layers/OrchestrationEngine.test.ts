@@ -114,6 +114,32 @@ const hasMetricSnapshot = (
   );
 
 describe("OrchestrationEngine", () => {
+  it("a refused update-time command accepts no work and succeeds once admission reopens", async () => {
+    const system = await createOrchestrationSystem();
+    try {
+      const admission = system.engine.updateAdmission;
+      expect(admission).toBeDefined();
+      const command = {
+        type: "project.create" as const,
+        commandId: CommandId.make("update-project"),
+        projectId: ProjectId.make("update-project"),
+        title: "Update proof",
+        workspaceRoot: "/tmp/update-proof",
+        createdAt: now(),
+      };
+      await system.run(admission!.begin);
+      await expect(system.run(system.engine.dispatch(command))).rejects.toThrow("Update ready");
+      expect((await system.readModel()).projects).toEqual([]);
+      await system.run(admission!.cancel);
+      await system.run(system.engine.dispatch(command));
+      expect((await system.readModel()).projects.map((project) => project.id)).toEqual([
+        command.projectId,
+      ]);
+    } finally {
+      await system.dispose();
+    }
+  });
+
   it.each(["running", "stopped"] as const)(
     "sends async answers with a %s session and rejects old duplicate replies",
     async (status) => {

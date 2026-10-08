@@ -1,3 +1,4 @@
+import { subscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * ProviderServiceLive - Cross-provider orchestration layer.
  *
@@ -250,7 +251,13 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistry;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
   const fileSystem = yield* FileSystem.FileSystem;
-  const runtimeEventPubSub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+  const runtimeEventPubSub = yield* PubSub.unbounded<{
+    readonly sequence: number;
+    readonly event: ProviderRuntimeEvent;
+  }>();
+  const barrierChanges = yield* PubSub.sliding<void>(1);
+  let publishedEvents = 0;
+  let processingEvents = 0;
   const pendingCompactions = new Map<ThreadId, PendingCompaction>();
   const timedOutNativeCompactions = new Set<ThreadId>();
   const settleCompaction = (threadId: ThreadId, pending: PendingCompaction, terminal: string) =>
@@ -269,7 +276,15 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           ? canonicalEventLogger.write(canonicalEvent, canonicalEvent.threadId)
           : Effect.void,
       ),
-      Effect.flatMap((canonicalEvent) => PubSub.publish(runtimeEventPubSub, canonicalEvent)),
+      Effect.flatMap((canonicalEvent) =>
+        Effect.suspend(() => {
+          publishedEvents++;
+          return PubSub.publish(runtimeEventPubSub, {
+            sequence: publishedEvents,
+            event: canonicalEvent,
+          });
+        }),
+      ),
       Effect.asVoid,
     );
 
@@ -491,13 +506,16 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       next.set(id, adapter);
       if (previous.get(id) !== adapter) {
         yield* Stream.runForEach(adapter.streamEvents, (event) =>
-          processRuntimeEvent(
-            {
-              instanceId: id,
-              provider: adapter.provider,
-            },
-            event,
-          ),
+          Effect.suspend(() => {
+            processingEvents++;
+            return processRuntimeEvent({ instanceId: id, provider: adapter.provider }, event).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  processingEvents--;
+                }).pipe(Effect.andThen(PubSub.publish(barrierChanges, void 0))),
+              ),
+            );
+          }),
         ).pipe(Effect.forkScoped);
       }
     }
@@ -1549,11 +1567,17 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     assertConversationRollbackSupported,
     rollbackConversation,
     uploadFeedback,
+    eventBarrier: {
+      changes: Stream.fromPubSub(barrierChanges),
+      subscribeChanges: subscribeUpdateChanges(barrierChanges),
+      events: Stream.fromPubSub(runtimeEventPubSub),
+      position: Effect.sync(() => ({ published: publishedEvents, processing: processingEvents })),
+    },
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (ProviderRuntimeIngestion, CheckpointReactor, etc.) each
     // independently receive all runtime events.
     get streamEvents(): ProviderServiceMethod<"streamEvents"> {
-      return Stream.fromPubSub(runtimeEventPubSub);
+      return Stream.fromPubSub(runtimeEventPubSub).pipe(Stream.map(({ event }) => event));
     },
   } satisfies ProviderService.ProviderService["Service"];
 });

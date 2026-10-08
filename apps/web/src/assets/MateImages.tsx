@@ -11,15 +11,17 @@ import {
   type MateImageRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
+import type { imagePresentationsOf } from "./imagePresentation";
 
 export const MateImagesContext = createContext<{
   readonly store: AccountStore;
   readonly images: ReturnType<typeof makeMateImages>;
+  readonly presentations: ReturnType<typeof imagePresentationsOf>;
 } | null>(null);
 const UNKNOWN = Atom.make<MateImageRead>({ kind: "unknown" });
 
-export function useMateImage(key: MateImageKey | null) {
+export function useMateImage(key: MateImageKey | null, reference: MateImageReference | null = key) {
   const context = useContext(MateImagesContext);
   const identity = key === null ? null : JSON.stringify(key);
   const read = useAtomValue(
@@ -30,19 +32,34 @@ export function useMateImage(key: MateImageKey | null) {
     return context.images.demand(JSON.parse(identity) as MateImageKey);
   }, [context, identity]);
   const preview = useAtomValue(
-    key === null || key.rendition !== "original" || context === null
+    reference === null || context === null
       ? UNKNOWN
-      : context.store.data.project(mateImagePreview, key),
+      : context.store.data.project(mateImagePreview, reference),
   );
-  const originalUrl = useBlobUrl(read.kind === "ready" ? read.blob : null);
-  const previewUrl = useBlobUrl(preview.kind === "ready" ? preview.blob : null);
+  const held =
+    read.kind === "ready"
+      ? read
+      : preview.kind === "ready" && read.kind !== "failed"
+        ? preview
+        : null;
+  const presentation =
+    held !== null && reference !== null
+      ? context?.presentations.get(reference.environmentId, held.blob, held.digest)
+      : undefined;
+  const originalUrl = read.kind === "ready" ? presentation?.url : undefined;
+  const previewPresentation =
+    preview.kind === "ready" && reference !== null
+      ? context?.presentations.get(reference.environmentId, preview.blob, preview.digest)
+      : undefined;
+  const previewUrl = previewPresentation?.url;
   return {
     read,
     retry: () => {
       if (key !== null) context?.images.retry(key);
     },
     loadingOriginal: key?.rendition === "original" && read.kind !== "ready",
-    url: originalUrl ?? previewUrl,
+    url: presentation?.url ?? (key?.rendition === "original" ? previewUrl : undefined),
+    presentation: presentation ?? (key?.rendition === "original" ? previewPresentation : undefined),
     originalUrl,
     previewUrl,
     dimensions:
@@ -52,24 +69,6 @@ export function useMateImage(key: MateImageKey | null) {
           ? preview.dimensions
           : undefined,
   };
-}
-
-/** Blob URLs belong to the presentation; the account retains the bytes. */
-function useBlobUrl(blob: Blob | null) {
-  const [presentation, setPresentation] = useState<{
-    readonly blob: Blob;
-    readonly url: string;
-  } | null>(null);
-  useLayoutEffect(() => {
-    if (blob === null) {
-      setPresentation(null);
-      return;
-    }
-    const url = URL.createObjectURL(blob);
-    setPresentation({ blob, url });
-    return () => URL.revokeObjectURL(url);
-  }, [blob]);
-  return blob !== null && presentation?.blob === blob ? presentation.url : undefined;
 }
 
 /** A deliberate image-open intent owns original demand until leave, blur or unmount. */

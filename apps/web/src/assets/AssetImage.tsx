@@ -5,6 +5,7 @@ import { useEffect, useState, type RefObject, type ComponentPropsWithoutRef } fr
 
 import { Button } from "../components/ui/button";
 import { useNearViewport } from "../hooks/useNearViewport";
+import type { ImagePresentation } from "./imagePresentation";
 
 export function ImageUnavailable({
   reason,
@@ -35,18 +36,21 @@ function DecodedImage({
   imageRef,
   reserved = false,
   underlay,
+  presentation,
   ...props
 }: ComponentPropsWithoutRef<"img"> & {
   readonly imageRef: RefObject<HTMLImageElement | null>;
   readonly reserved?: boolean;
   readonly underlay?: string | undefined;
+  readonly presentation?: ImagePresentation | undefined;
 }) {
   const [decoded, setDecoded] = useState<string>();
   useEffect(() => {
     const element = imageRef.current;
     if (!element || !props.src || typeof element.decode !== "function") return;
     let active = true;
-    void element.decode().then(
+    if (presentation?.decoded) return;
+    void (presentation?.decode() ?? element.decode()).then(
       () => {
         if (active) setDecoded(props.src);
       },
@@ -57,8 +61,9 @@ function DecodedImage({
     return () => {
       active = false;
     };
-  }, [imageRef, props.src]);
-  const ready = props.src !== undefined && decoded === props.src;
+  }, [imageRef, props.src, presentation]);
+  const ready =
+    props.src !== undefined && (presentation?.decoded === true || decoded === props.src);
   return (
     <span
       className="asset-image-frame"
@@ -181,7 +186,12 @@ function ManagedAssetImage({
           : Math.round(available?.height || 0) || width);
       if (width > 0)
         setSlot((held) =>
-          held?.width === width && held.height === height ? held : { width, height },
+          // Hidden or moving content has no new drawn size to demand.
+          held !== null && (box.width <= 0 || box.height <= 0)
+            ? held
+            : held?.width === width && held.height === height
+              ? held
+              : { width, height },
         );
     };
     measure();
@@ -207,7 +217,10 @@ function ManagedAssetImage({
     : near && demanded !== null
       ? { ...reference, rendition: demanded }
       : null;
-  const { read, url, originalUrl, previewUrl, loadingOriginal, retry } = useMateImage(key);
+  const { read, url, originalUrl, previewUrl, presentation, loadingOriginal, retry } = useMateImage(
+    key,
+    reference,
+  );
   const [failedUrl, setFailedUrl] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const decodeFailed = url !== undefined && failedUrl === url;
@@ -265,6 +278,7 @@ function ManagedAssetImage({
         {...props}
         key={attempt}
         imageRef={ref}
+        presentation={presentation}
         reserved
         src={original ? originalUrl : url}
         underlay={original ? previewUrl : undefined}

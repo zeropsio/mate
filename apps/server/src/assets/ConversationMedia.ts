@@ -14,7 +14,10 @@ import * as NodeOS from "node:os";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 import { ServerConfig } from "../config.ts";
-import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+import {
+  projectActivityPayload,
+  projectThreadDetailSnapshot,
+} from "../orchestration/ActivityPayloadProjection.ts";
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
@@ -327,9 +330,12 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
 });
 
 export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
-  snapshot: OrchestrationThreadDetailSnapshot,
+  source: OrchestrationThreadDetailSnapshot,
   workspaceRoot: string,
 ) {
+  // Compare provider echoes before capture gives each activity its own asset occurrence.
+  // Only the rows the snapshot retains need media; their cursor and watermarks stay intact.
+  const snapshot = projectThreadDetailSnapshot(source);
   if (
     !snapshot.thread.messages.some(
       (message) =>
@@ -397,7 +403,7 @@ export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
         }),
       ),
       activities: yield* Effect.forEach(snapshot.thread.activities, (activity) =>
-        captureActivityMedia(projectActivityPayload(activity), snapshot.thread.id, workspaceRoot),
+        captureActivityMedia(activity, snapshot.thread.id, workspaceRoot),
       ),
     },
   };

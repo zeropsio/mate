@@ -28,6 +28,7 @@ import {
   RunEndSource,
 } from "@t3tools/contracts";
 
+import { makeEngineUpdateDrain } from "./updateDrain.ts";
 import * as ConversationsModule from "./Conversations.ts";
 import { Conversations } from "./Conversations.ts";
 import { bootEngine } from "./EngineBoot.ts";
@@ -344,9 +345,11 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       sendsWait: sends.await,
       pictures: yield* MessagePictures,
     });
+    const updateDrain = yield* makeEngineUpdateDrain;
 
     return MateEngine.of({
       live: true,
+      ...(updateDrain === undefined ? {} : { updateDrain }),
       wire,
       holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),
       start,

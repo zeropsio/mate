@@ -345,6 +345,7 @@ export type { MateImageRead } from "./projections/mateImage.ts";
 export {
   mateImageId,
   mateImageScope,
+  mateImageReferenceId,
   mateImageSource,
   parseMateImageSource,
   demandedImageSize,

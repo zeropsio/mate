@@ -136,6 +136,8 @@ import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts"
 import { Sessions } from "./sessions.ts";
 import { MateLinkTickets, type StreamOptions, StreamTickets, serveHqSocket } from "./stream.ts";
 import { Structure, StructureRefused } from "./structure.ts";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
+import { SetAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 
 class SessionRequired extends Schema.TaggedError<SessionRequired>()("SessionRequired", {}) {}
 class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>()(
@@ -622,6 +624,31 @@ const routes = (
   },
 ) =>
   Layer.mergeAll(
+    HttpRouter.add(
+      "GET",
+      "/api/auto-update",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          return json(yield* (yield* AutoUpdatePolicy).read(userId), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "PUT",
+      "/api/auto-update",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const { enabled } = yield* jsonBody(SetAutoUpdatePolicy, BODY_LIMIT);
+          return yield* outliving(
+            Effect.map((yield* AutoUpdatePolicy).set(userId, enabled), (policy) =>
+              json(policy, 200),
+            ),
+          );
+        }),
+      ),
+    ),
     // No state is read, so any Core answers it, standby or not.
     HttpRouter.add(
       "GET",

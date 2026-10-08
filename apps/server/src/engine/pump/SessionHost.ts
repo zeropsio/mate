@@ -88,6 +88,7 @@ export interface SessionHost {
   readonly nativeRequest: (key: RequestKey) => Effect.Effect<NativeRequest | undefined>;
   /** Background work alive in the current session. */
   readonly liveWork: Effect.Effect<number>;
+  readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
   /** Runs a driver call that outlives the handler that made it (a send that holds its turn). */
   readonly forkInSession: <A, E>(call: Effect.Effect<A, E>) => Effect.Effect<Fiber.Fiber<A, E>>;
   /** Nothing of it is live: no session, no send waiting, no Stop waiting on a turn. */
@@ -111,6 +112,7 @@ export interface SessionHostDeps {
   readonly quiet: Effect.Effect<void>;
   /** Where a call's pictures are stored before its record names them; none drops them. */
   readonly pictures?: CallPictures;
+  readonly changed?: Effect.Effect<void>;
 }
 
 type Inbox =
@@ -151,6 +153,20 @@ export const makeSessionHost = Effect.fnUntraced(function* (
   const deferredInterrupts = new Set<TurnHandle>();
   let current: SessionId | null = null;
   let recording: SessionId | null = null;
+  let sessionCalls = 0;
+  const changed = deps.changed ?? Effect.void;
+  const forkInSession = <A, E>(call: Effect.Effect<A, E>) =>
+    Effect.gen(function* () {
+      sessionCalls++;
+      return yield* call.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            sessionCalls--;
+          }).pipe(Effect.andThen(changed)),
+        ),
+        Effect.forkIn(deps.scope),
+      );
+    });
 
   /**
    * Tells a batch until the actor takes it: a batch is content-idempotent, and one lost would
@@ -326,10 +342,11 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         Effect.catchCause((cause) =>
           Effect.logWarning("engine pump: a deferred Stop could not be sent", { cause }),
         ),
-        Effect.forkIn(deps.scope),
+        forkInSession,
       );
     }
     if (unasked) yield* replaceUnasked;
+    yield* changed;
   });
 
   /** ProviderService re-created the session on its own: the engine's is gone, the new one closed. */
@@ -350,7 +367,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       Effect.catchCause((cause) =>
         Effect.logWarning("engine pump: the unasked session would not close", { cause }),
       ),
-      Effect.forkIn(deps.scope),
+      forkInSession,
     );
   });
 
@@ -432,13 +449,27 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       ),
     nativeRequest: (key) => Effect.sync(() => translator.nativeRequest(key)),
     liveWork: Effect.sync(() => toCore.liveWork()),
-    forkInSession: (call) => Effect.forkIn(call, deps.scope),
+    forkInSession,
+    updateBlockers: lock.withPermits(1)(
+      Effect.gen(function* () {
+        const blockers: string[] = [];
+        if (waiting.size > 0) blockers.push("pending provider callback");
+        if (deferredInterrupts.size > 0) blockers.push("pending interrupt");
+        if (sessionCalls > 0) blockers.push("live provider call");
+        if (toCore.liveWork() > 0) blockers.push("live background work");
+        if ([...gates.values()].some((gate) => gate.state === "held"))
+          blockers.push("session opening");
+        if ((yield* Queue.size(inbox)) > 0) blockers.push("pending provider events");
+        return blockers;
+      }),
+    ),
     idle: lock.withPermits(1)(
       Effect.sync(
         () =>
           current === null &&
           waiting.size === 0 &&
           deferredInterrupts.size === 0 &&
+          sessionCalls === 0 &&
           [...gates.values()].every((gate) => gate.state === "dropped"),
       ),
     ),

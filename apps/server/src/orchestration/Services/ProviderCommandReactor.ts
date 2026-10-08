@@ -6,6 +6,7 @@
  *
  * @module ProviderCommandReactor
  */
+import type { ReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -14,6 +15,8 @@ import type * as Scope from "effect/Scope";
  * ProviderCommandReactorShape - Service API for provider command reactors.
  */
 export interface ProviderCommandReactorShape {
+  readonly updateBoundary?: ReactorDrainBoundary;
+  readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
   /**
    * Start reacting to provider-intent orchestration domain events.
    *

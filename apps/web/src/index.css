@@ -400,7 +400,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes bubble-in {
     from {
-      opacity: 0;
       transform: translateY(6px) scale(0.97);
     }
   }
@@ -418,7 +417,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
   @keyframes rise-in {
     from {
-      opacity: 0;
       transform: translateY(8px);
     }
   }
@@ -2447,22 +2445,6 @@ code {
 
 .chat-markdown .chat-markdown-shiki .shiki {
   background: transparent !important;
-}
-
-/* Paragraphs and code blocks arrive in chunks while a response streams. Fade
-   each new block in so the chunk does not pop. @starting-style only applies
-   when an element is first inserted, and the rule is gated on data-streaming,
-   so opening a finished thread never replays the fade. Opacity only, one
-   shot, no layout change. */
-@media (prefers-reduced-motion: no-preference) {
-  .chat-markdown[data-streaming] > *,
-  .chat-markdown[data-streaming] .chat-markdown-shiki {
-    transition: opacity 600ms ease-out;
-
-    @starting-style {
-      opacity: 0;
-    }
-  }
 }
 
 /* Tables: row separators only, a step below the body (13/20 at an answer's
@@ -4936,10 +4918,9 @@ button.run-bar:focus-visible {
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into
-   its place over 320 ms, once; reduced motion fades only (T8). */
+   its place over 320 ms, once; reduced motion arrives immediately. */
 @keyframes run-rise {
   from {
-    opacity: 0;
     translate: 0 6px;
   }
 }
@@ -4953,7 +4934,7 @@ button.run-bar:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .run-rise {
-    animation-name: run-fade;
+    animation: none;
   }
 }
 
@@ -7901,6 +7882,7 @@ button.rv-relrow:hover .rv-relrow-go {
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -9808,18 +9790,8 @@ button.rv-relrow:hover .rv-relrow-go {
   text-align: center;
 }
 
-.arrival-failure-details summary {
-  width: fit-content;
-  margin-inline: auto;
-}
-
-.arrival-failure-details summary,
-.arrival-failure-details a {
-  cursor: pointer;
-  color: var(--zerops-status-attention-text);
-}
-
-.arrival-failure-details pre {
+.arrival-failure-details pre,
+.arrival-failure-details p {
   max-height: 12rem;
   overflow: auto;
   white-space: pre-wrap;

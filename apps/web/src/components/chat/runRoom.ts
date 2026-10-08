@@ -2,11 +2,10 @@
  * Boxes in a run's card whose height eases to what they hold (pass 39): the
  * history's scroll as lines join it, the live slot as its rows come and go, a
  * bubble or a card of calls as what it holds grows. What a box holds is laid
- * out at once; the box shows the height it showed before and eases from
- * there on `approach`'s curve, retargeted from wherever it stands when what
- * it holds changes again. Inside the box nothing moves: what grew is
- * uncovered at its foot, and what stands under the box rides its edge,
- * because the layout carries it.
+ * out at once; a shrinking box shows its previous height and eases from
+ * there on `approach`'s curve when shrinking, retargeted as its content box
+ * changes. Growth takes its natural height immediately: an older held height
+ * would clip pixels already laid out while streaming or decoding.
  *
  * A change is heard as the page's code makes it, before the browser lays the
  * page out (a MutationObserver), so the box takes its old height before any
@@ -167,6 +166,7 @@ const STILL: Rooms = {
 interface Box {
   readonly element: HTMLElement;
   readonly clips: boolean;
+  readonly content: Set<Element>;
   /** The height it shows while it eases; null: its own. */
   shown: number | null;
   target: number;
@@ -209,6 +209,7 @@ export function easeRooms({
     return STILL;
   }
   const boxes = new Map<Node, Box>();
+  const contentBoxes = new Map<Element, Set<Box>>();
   let frame = 0;
   let last = 0;
   const heightOf = (element: HTMLElement) => element.getBoundingClientRect().height;
@@ -284,9 +285,18 @@ export function easeRooms({
     let easing = false;
     for (const box of boxes.values()) {
       if (box.shown === null) continue;
+      if (!eases() || prefersReducedMotion()) {
+        release(box);
+        continue;
+      }
       // What it holds may have moved on since (a box inside it easing, a
       // height animated in it): it eases to that.
       box.target = natural(box);
+      // Growth takes its natural size now; holding an older height clips already laid-out content.
+      if (box.target >= box.shown) {
+        release(box);
+        continue;
+      }
       const eased = approach(box.shown, box.target, dt, ROOM_TAU_MS);
       // What is left of the frame's speed, shared with the card's other eases.
       const taken =
@@ -312,7 +322,7 @@ export function easeRooms({
       return;
     }
     const height = natural(box);
-    if (!eases() || prefersReducedMotion() || outOfSight()) {
+    if (height >= (box.shown ?? box.rested) || !eases() || prefersReducedMotion() || outOfSight()) {
       if (box.shown !== null) release(box);
       else box.rested = height;
       return;
@@ -323,29 +333,59 @@ export function easeRooms({
       return;
     }
     box.target = height;
-    // Before anything lays the page out: it shows what it showed.
+    // A shrink starts from the height it showed before the content changed.
     if (box.shown === null) show(box, from);
     if (frame === 0) frame = requestAnimationFrame(step);
   };
-  // A box at rest laid out anew for a reason no code of the page gave (its
-  // shared height, the width, a font) is where its next ease starts.
+  // Observe what each box holds, whose natural size still changes while the box holds a height.
   const sizes = new ResizeObserver((entries) => {
+    const touched = new Set<Box>();
     for (const entry of entries) {
+      for (const box of contentBoxes.get(entry.target) ?? []) touched.add(box);
       const box = boxes.get(entry.target);
       if (box !== undefined && box.shown === null) box.rested = heightOf(box.element);
     }
+    if (away()) {
+      for (const box of touched) letGo(box);
+      return;
+    }
+    for (const box of [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element)))
+      heard(box);
   });
+  const watchContent = (box: Box) => {
+    for (const content of box.content) {
+      if (content.parentElement === box.element) continue;
+      const owners = contentBoxes.get(content)!;
+      owners.delete(box);
+      if (owners.size === 0) {
+        contentBoxes.delete(content);
+        if (!boxes.has(content)) sizes.unobserve(content);
+      }
+      box.content.delete(content);
+    }
+    for (const content of box.element.children) {
+      if (box.content.has(content)) continue;
+      box.content.add(content);
+      const owners = contentBoxes.get(content) ?? new Set<Box>();
+      owners.add(box);
+      contentBoxes.set(content, owners);
+      sizes.observe(content);
+    }
+  };
   const add = (element: HTMLElement, clips: boolean) => {
     if (boxes.has(element)) return;
-    boxes.set(element, {
+    const box: Box = {
       element,
       clips,
+      content: new Set(),
       shown: null,
       target: 0,
       rested: heightOf(element),
       stale: false,
-    });
+    };
+    boxes.set(element, box);
     sizes.observe(element);
+    watchContent(box);
   };
   add(root, rootClips);
   for (const element of root.querySelectorAll<HTMLElement>(selector)) add(element, true);
@@ -370,7 +410,16 @@ export function easeRooms({
       }
     }
     for (const [element, box] of boxes) {
+      watchContent(box);
       if (box.element.isConnected) continue;
+      for (const content of box.content) {
+        const owners = contentBoxes.get(content)!;
+        owners.delete(box);
+        if (owners.size === 0) {
+          contentBoxes.delete(content);
+          sizes.unobserve(content);
+        }
+      }
       sizes.unobserve(box.element);
       boxes.delete(element);
       touched.delete(box);
@@ -430,6 +479,7 @@ export function easeRooms({
       cancelAnimationFrame(frame);
       for (const box of boxes.values()) if (box.shown !== null) show(box, null);
       boxes.clear();
+      contentBoxes.clear();
     },
   };
 }

@@ -13,7 +13,6 @@
  */
 
 import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentOwnership";
-import { LockIcon } from "lucide-react";
 
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import type { ZeropsConversationReadOnly } from "../ChatView.logic";
@@ -66,15 +65,14 @@ export function ZeropsReadOnlyConversationFooter({
           the shell hands its glass and outline to this element. */}
       <div
         data-chat-composer-main-surface="true"
-        className="relative z-10 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3"
+        className="relative z-10 flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center"
       >
-        <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
         {onSignIn === undefined ? (
           // The action's row height kept, so the strip is the height it will be once it comes.
           <span aria-hidden="true" className="h-7 w-0 shrink-0 sm:h-6" />
         ) : (
-          <Button size="xs" onClick={onSignIn}>
+          <Button size="compact" variant="pill" onClick={onSignIn}>
             {AGENT_OWNERSHIP_RECOVERY_LABEL}
           </Button>
         )}

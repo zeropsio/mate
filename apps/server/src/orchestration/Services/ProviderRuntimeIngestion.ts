@@ -6,6 +6,7 @@
  *
  * @module ProviderRuntimeIngestionService
  */
+import type { ReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -14,6 +15,8 @@ import type * as Scope from "effect/Scope";
  * ProviderRuntimeIngestionShape - Service API for runtime ingestion lifecycle.
  */
 export interface ProviderRuntimeIngestionShape {
+  readonly updateBoundary?: ReactorDrainBoundary;
+  readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
   /**
    * Start ingesting provider runtime events into orchestration commands.
    *

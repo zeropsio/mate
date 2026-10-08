@@ -88,6 +88,8 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   a compact composition: the known Mate's face, a named state line, one short secondary line and
   actions aligned with the text. Project services stay in a collapsible list.
 
+- Mate stage and notice headlines use words without icons (the face and named state already identify them); stages centre face → headline → text → steps → kit disclosure → wrapping actions, with word-only external links styled as the other actions. Compact menu status marks retain their severity ink.
+
 ## 4. Rules — machine-checked
 
 Predicates are the plan's (`../../../../zcp/plans/z3-ui-foundations-2026-08-30.md` §3, frozen at

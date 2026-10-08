@@ -2,21 +2,28 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EventId, ThreadId } from "@t3tools/contracts";
+import { EventId, ThreadId, OrchestrationThreadDetailSnapshot } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import sharp from "sharp";
 import { ServerConfig, layerTest } from "../config.ts";
-import { captureActivityMedia, captureConversationText } from "./ConversationMedia.ts";
+import {
+  backfillThreadMedia,
+  captureActivityMedia,
+  captureConversationText,
+} from "./ConversationMedia.ts";
 import * as AssetSigningKey from "./AssetSigningKey.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { resolveImageAsset } from "./ImageAsset.ts";
 import { ContentAssets, contentAssetsAt } from "./ContentAssets.ts";
-import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+import {
+  projectActivityPayload,
+  projectThreadDetailSnapshot,
+} from "../orchestration/ActivityPayloadProjection.ts";
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const layer = Layer.mergeAll(
@@ -262,5 +269,114 @@ it.effect.each(["Read", "read", "Codex", "ACP"])(
         },
       });
       expect(encodeJson(projected.payload)).not.toContain(`"imagePath":"${source}"`);
+    }).pipe(Effect.provide(layer)),
+);
+
+// Asset occurrences belong to activity identities. Project completion echoes before capture,
+// otherwise the two occurrence ids make identical provider pictures look like different facts.
+it.effect.each([false, true])(
+  "a snapshot retains each distinct screenshot result once (changed update: %s)",
+  (changedUpdate) =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig;
+      const bytes = yield* Effect.promise(() =>
+        sharp({ create: { width: 200, height: 120, channels: 4, background: "blue" } })
+          .png()
+          .toBuffer(),
+      );
+      const completion = {
+        id: EventId.make("completion"),
+        kind: "tool.completed",
+        tone: "tool" as const,
+        summary: "Screenshot",
+        createdAt: "2026-10-07T00:00:00.000Z",
+        turnId: null,
+        payload: {
+          itemType: "mcp_tool_call",
+          toolCallId: "browser-call",
+          status: "completed",
+          data: {
+            toolName: "mcp__zerops__zerops_browser",
+            input: { url: "https://example.org" },
+            result: {
+              content: [
+                { type: "text", text: "Page inspected" },
+                { type: "image", mimeType: "image/png", data: bytes.toString("base64") },
+              ],
+            },
+          },
+        },
+      };
+      const update = projectActivityPayload({
+        ...completion,
+        id: EventId.make("update"),
+        kind: "tool.updated",
+        payload: {
+          ...completion.payload,
+          status: "inProgress",
+          data: {
+            ...completion.payload.data,
+            result: {
+              content: [
+                { type: "text", text: changedUpdate ? "Different observation" : "Page inspected" },
+                completion.payload.data.result.content[1]!,
+              ],
+            },
+          },
+        },
+      });
+      const snapshot = yield* Schema.decodeUnknownEffect(OrchestrationThreadDetailSnapshot)({
+        snapshotSequence: 42,
+        page: {
+          hasMore: true,
+          beforeCursor: "older-page",
+          snapshotSequence: 42,
+          threadSequence: 40,
+        },
+        thread: {
+          id: "thread",
+          projectId: "project",
+          title: "Screenshot history",
+          modelSelection: { provider: "claudeCode", model: "claude-sonnet-4-6" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          latestTurn: null,
+          createdAt: completion.createdAt,
+          updatedAt: completion.createdAt,
+          deletedAt: null,
+          messages: [],
+          proposedPlans: [],
+          checkpoints: [],
+          session: null,
+          // The completion can sort before its echo when both have the same instant.
+          activities: [completion, update],
+        },
+      });
+      const result = projectThreadDetailSnapshot(
+        yield* backfillThreadMedia(snapshot, config.stateDir),
+      );
+      expect(result.snapshotSequence).toBe(snapshot.snapshotSequence);
+      expect(result.page).toEqual(snapshot.page);
+      expect(result.thread.activities.map((activity) => activity.id)).toEqual(
+        changedUpdate ? [completion.id, update.id] : [completion.id],
+      );
+      expect(encodeJson(result)).not.toContain(bytes.toString("base64"));
+      const occurrences = yield* Effect.promise(() =>
+        NodeFSP.readdir(NodePath.join(contentAssetsAt(config.stateDir).directory, "occurrences")),
+      );
+      expect(occurrences).toHaveLength(changedUpdate ? 2 : 1);
+      for (const file of occurrences) {
+        const store = contentAssetsAt(config.stateDir);
+        const occurrence = yield* Effect.promise(() =>
+          store.occurrence(file.replace(/\.json$/, "")),
+        );
+        if (occurrence.original.status !== "ready") throw new Error("Screenshot not retained");
+        const digest = occurrence.original.digest;
+        expect(
+          yield* Effect.promise(async () => NodeFSP.readFile((await store.object(digest)).path)),
+        ).toEqual(bytes);
+      }
     }).pipe(Effect.provide(layer)),
 );

@@ -22,16 +22,22 @@ import type {
 import {
   makeConversationActor,
   type Accepted,
-  type CommandRejected,
+  CommandRejected,
   type ConversationActor,
   type StepFailure,
 } from "./ConversationActor.ts";
 import type { Envelope } from "./domain/command.ts";
 import type { ConversationState } from "./domain/state.ts";
+import {
+  makeUpdateAdmission,
+  UPDATE_DRAIN_MESSAGE,
+  type UpdateAdmission,
+} from "./updateAdmission.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { EngineStore, type EngineStoreError } from "./store/EngineStore.ts";
 
 export interface ConversationsShape {
+  readonly updateAdmission?: UpdateAdmission;
   /** People and the wire: the accepted result, or why it was refused. */
   readonly ask: (
     envelope: Envelope,
@@ -68,6 +74,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
 ) {
   const store = yield* EngineStore;
   const signals = yield* EngineSignals;
+  const updateAdmission = yield* makeUpdateAdmission;
   const actors = yield* RcMap.make({
     lookup: (conversation: ConversationId) =>
       makeConversationActor(
@@ -100,8 +107,39 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
   });
 
   return Conversations.of({
-    ask: (envelope) => withActor(envelope.conversationId, (actor) => actor.ask(envelope)),
-    tell: (envelope) => withActor(envelope.conversationId, (actor) => actor.tell(envelope)),
+    updateAdmission,
+    ask: (envelope) =>
+      updateAdmission
+        .run(
+          envelope.command._tag,
+          withActor(envelope.conversationId, (actor) => actor.ask(envelope)),
+        )
+        .pipe(
+          Effect.flatMap((accepted) =>
+            accepted === undefined
+              ? Effect.fail(
+                  new CommandRejected({
+                    rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+                  }),
+                )
+              : Effect.succeed(accepted),
+          ),
+        ),
+    tell: (envelope) =>
+      updateAdmission
+        .run(
+          envelope.command._tag,
+          withActor(envelope.conversationId, (actor) => actor.tell(envelope)),
+        )
+        .pipe(
+          Effect.map(
+            (result): CommandResult =>
+              result ?? {
+                _tag: "Rejected",
+                rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+              },
+          ),
+        ),
     state: (conversation) => withActor(conversation, (actor) => actor.state),
     subscribe: (conversation, afterSeq) =>
       Stream.unwrap(

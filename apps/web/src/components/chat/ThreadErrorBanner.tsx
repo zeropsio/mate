@@ -4,7 +4,7 @@ import { usageLimitProvider } from "../../zerops/providerLimit.logic";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
-import { CircleAlertIcon, PauseIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function getThreadErrorBannerKey(threadKey: string, error: string | null): string | null {
@@ -69,16 +69,15 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   if (needsSignIn) {
     return (
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
-        <Alert variant="warning" role="status" controlAlignment="first-line">
-          {limit === null ? <CircleAlertIcon /> : <PauseIcon />}
+        <Alert variant="warning" role="status" layout="centered">
           <AlertDescription>{words}</AlertDescription>
           {onAuthorize === undefined ? null : (
             <AlertAction>
               <Button
                 data-zerops-primary-action="Authorize"
                 onClick={onAuthorize}
-                size="sm"
-                variant="ghost"
+                size="compact"
+                variant="pill"
               >
                 Sign in
               </Button>
@@ -93,9 +92,8 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
       <Alert
         variant={limit === null ? "error" : "warning"}
         role={limit === null ? "alert" : "status"}
-        controlAlignment="first-line"
+        layout="centered"
       >
-        {limit === null ? <CircleAlertIcon /> : <PauseIcon />}
         <AlertDescription>
           <Tooltip>
             <TooltipTrigger render={<div className="line-clamp-3" />}>{words}</TooltipTrigger>

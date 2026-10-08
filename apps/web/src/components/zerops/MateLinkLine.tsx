@@ -11,6 +11,7 @@ import { inFirstSeenOrder } from "~/zerops/mateArrival";
 import type { ArrivalService } from "~/zerops/mateArrival";
 import { mateLinkProcesses } from "~/zerops/mateLinkProcesses";
 import { Button } from "../ui/button";
+import { MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
 
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
@@ -49,17 +50,13 @@ export function MateLinkProcessesView({
 }) {
   if (services.length === 0) return null;
   return (
-    <details
-      className="w-full text-sm text-muted-foreground"
-      data-zerops-surface="mate-link-processes"
-    >
-      <summary className="cursor-pointer">Project services ({services.length})</summary>
-      <div className="mt-3 grid gap-2">
+    <MateStateDetails label={`Project services (${services.length})`}>
+      <div className="grid gap-2" data-zerops-surface="mate-link-processes">
         {services.map((service) => (
           <ArrivalServices key={service.name} services={[service]} />
         ))}
       </div>
-    </details>
+    </MateStateDetails>
   );
 }
 
@@ -114,7 +111,8 @@ export function MateLinkLineView({
   readonly onTryNow: (() => void) | undefined;
 }) {
   return (
-    <div className="flex w-full flex-col items-start gap-4">
+    <div className="flex w-full flex-col items-center gap-5.5">
+      {processes}
       <MateOpeningLine
         onContainerAction={onContainerAction}
         busy={busy}
@@ -123,7 +121,6 @@ export function MateLinkLineView({
         projects={projects}
         projectUrl={projectUrl}
       />
-      {processes}
     </div>
   );
 }
@@ -168,7 +165,10 @@ export function MateOpeningLine({
       (action === "open-in-zerops" && projectUrl === undefined),
   );
   return (
-    <div className="flex w-full flex-col items-start gap-3" data-zerops-surface="mate-opening">
+    <div
+      className="flex w-full flex-col items-center gap-3 text-center"
+      data-zerops-surface="mate-opening"
+    >
       {phrase.text === null ? null : (
         <p className="text-sm text-muted-foreground" role="status">
           {phrase.text}
@@ -178,7 +178,7 @@ export function MateOpeningLine({
       openInZerops ||
       toProjects ||
       (containerAction !== null && onContainerAction !== undefined) ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="arrival-acts">
           {containerAction === null || onContainerAction === undefined ? null : (
             <Button
               disabled={busy}
