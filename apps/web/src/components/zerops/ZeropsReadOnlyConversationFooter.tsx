@@ -1,4 +1,3 @@
-import type { AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 /**
  * What sits where the composer would, in a conversation on someone else's
  * agent (D6, `resolveZeropsConversationReadOnly`).
@@ -23,12 +22,10 @@ import { Button } from "../ui/button";
 
 export function ZeropsReadOnlyConversationFooter({
   readOnly,
-  admission,
   pendingApprovals,
   pendingUserInputs,
   onSignIn,
 }: {
-  readonly admission?: AgentAdmissionAttention | null;
   readonly readOnly: ZeropsConversationReadOnly;
   readonly pendingApprovals: ReadonlyArray<PendingApproval>;
   readonly pendingUserInputs: PendingUserInput[];
@@ -67,21 +64,16 @@ export function ZeropsReadOnlyConversationFooter({
       {/* The composer's main surface: with a banner or drawer attached above,
           the shell hands its glass and outline to this element. */}
       <div
-        id="agent-admission"
-        tabIndex={-1}
-        data-agent-admission={admission?.key}
         data-chat-composer-main-surface="true"
         className="relative z-10 flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center"
       >
-        <p className="min-w-0 flex-1 text-foreground/85 text-sm">
-          {admission?.text ?? readOnly.notice}
-        </p>
+        <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
         {onSignIn === undefined ? (
           // The action's row height kept, so the strip is the height it will be once it comes.
           <span aria-hidden="true" className="h-7 w-0 shrink-0 sm:h-6" />
         ) : (
           <Button size="compact" variant="pill" onClick={onSignIn}>
-            {admission?.actionLabel ?? AGENT_OWNERSHIP_RECOVERY_LABEL}
+            {AGENT_OWNERSHIP_RECOVERY_LABEL}
           </Button>
         )}
       </div>

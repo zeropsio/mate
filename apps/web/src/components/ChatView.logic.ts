@@ -7,11 +7,10 @@ import {
 } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
-  agentOwnershipComposerNotice,
   resolveOwnedAgentId,
+  agentOwnershipComposerNotice,
   type ZeropsAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
-import type { ConversationFooter } from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
@@ -421,24 +420,7 @@ export function resolveComposerProviderSelection(input: {
   };
 }
 
-/**
- * Per-instance zerops runnability (D6), derived once from the agent-auth
- * feed so the composer's selection gate and the model picker's panels read
- * the same answer for the same instance. `undefined` when nothing gates the
- * agents — no environment to read, or whatever `zeropsAgentAuthReads` leaves
- * ungated (a non-Zerops environment, a failed read). Every caller then falls
- * back to pre-zerops behavior. While the snapshot is still being read, every
- * agent instance is `unknown` with that read — never `needs-sign-in`.
- */
-
-/**
- * Whether the composer's zerops gate should treat `instanceId` as runnable.
- * An instance with no entry in the map — a non-Zerops environment, or a
- * driver Mate never signs anybody in to — is always runnable: there is
- * nothing here to gate it. Nor does an `unknown` sign-in move a selection:
- * only a known answer can say the viewer cannot run the agent, and Send
- * waits on it meanwhile (`resolveZeropsOwnedAgentSendBlockReason`).
- */
+/** Unknown auth holds the initial composer without changing the selected login. */
 export function isZeropsInstanceRunnable(
   availabilityByInstanceId: ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined,
   instanceId: ProviderInstanceId,
@@ -449,33 +431,6 @@ export function isZeropsInstanceRunnable(
     availability.kind === "unknown" ||
     zeropsAgentAvailabilityIsRunnable(availability)
   );
-}
-
-/**
- * Why Send is disabled for the instance this composer would spend (D6) —
- * `undefined` when that instance is not gated (no instance, not a Zerops
- * agent, or nothing mapped for it), or when its agent is runnable (`ready`,
- * or `registering`: the server lets that one through for the signer too, so
- * it must never read as blocked here). An `unknown` sign-in holds Send while
- * it is read. Reuses the picker panel's own status line — one piece of copy
- * per state, wherever it shows.
- */
-export function resolveZeropsOwnedAgentSendBlockReason(input: {
-  readonly instanceId: ProviderInstanceId | null | undefined;
-  /** The configured instances, to name the agent by the instance's driver. */
-  readonly providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>;
-  readonly availabilityByInstanceId:
-    | ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability>
-    | undefined;
-}): string | undefined {
-  if (input.instanceId == null) return undefined;
-  const agentId = resolveOwnedAgentId(input.instanceId, input.providers);
-  const availability = input.availabilityByInstanceId?.get(input.instanceId);
-  if (agentId === undefined || availability === undefined) return undefined;
-  if (availability.kind === "ready" || zeropsAgentAvailabilityIsRunnable(availability)) {
-    return undefined;
-  }
-  return resolveZeropsAgentPickerPanelView({ agentId, availability }).statusLine;
 }
 
 /** What a conversation on someone else's agent shows instead of a composer. */
@@ -527,22 +482,6 @@ export const HQ_SAID_READ_ONLY: ZeropsConversationReadOnly = {
   notice: agentOwnershipComposerNotice("someone-else")!,
   waitingLabel: "Waiting for the agent's owner",
 };
-
-/**
- * The read-only strip the footer shows (`conversationFooter`), and whether it rests on the Mate's
- * own sign-in. Only that answer is acted on: a strip painted from HQ's word says whose agent it
- * is, but offers no sign-in and names no owner over a pending request — those come with the
- * Mate's answer.
- */
-export function zeropsReadOnlyFooter(input: {
-  readonly footer: ConversationFooter;
-  readonly readOnly: ZeropsConversationReadOnly | null;
-}): { readonly readOnly: ZeropsConversationReadOnly; readonly answered: boolean } | null {
-  if (input.footer !== "read-only") return null;
-  return input.readOnly === null
-    ? { readOnly: HQ_SAID_READ_ONLY, answered: false }
-    : { readOnly: input.readOnly, answered: true };
-}
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */
 export function resolveComposerInteractionMode(input: {
@@ -1385,23 +1324,21 @@ export function threadErrorEntryUnchanged(
     | {
         readonly message: string | null;
         readonly after?: string | null | undefined;
-        readonly refusalSource?:
-          | { readonly instanceId: string; readonly driver: string }
-          | undefined;
+        readonly refusalSource?: { readonly loginId: string; readonly reason: string } | undefined;
       }
     | undefined,
   next: {
     readonly message: string | null;
     readonly after?: string | null | undefined;
-    readonly refusalSource?: { readonly instanceId: string; readonly driver: string } | undefined;
+    readonly refusalSource?: { readonly loginId: string; readonly reason: string } | undefined;
   },
 ): boolean {
   return (
     existing !== undefined &&
     (existing.message ?? null) === next.message &&
     existing.after === next.after &&
-    existing.refusalSource?.instanceId === next.refusalSource?.instanceId &&
-    existing.refusalSource?.driver === next.refusalSource?.driver
+    existing.refusalSource?.loginId === next.refusalSource?.loginId &&
+    existing.refusalSource?.reason === next.refusalSource?.reason
   );
 }
 

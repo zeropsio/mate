@@ -458,42 +458,5 @@ describe("C: opening a Mate and chat", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-
-    // Catches a composer sending on an unrecorded personal login despite the missing permission to run that agent.
-    it.effect("an unrecorded personal login blocks Send with an explanation", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        chat.fixture().ownership = "unrecorded";
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.when.attemptSend("This must not reach the agent");
-        yield* chat.then.blockedPromptRemains("This must not reach the agent");
-        yield* chat.then.sendDisabled;
-        yield* chat.then.text("This agent's sign-in was not recorded");
-        yield* chat.then.noText("This must not reach the agent");
-        expect(chat.fixture().sentTurnCount()).toBe(0);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches another member's personal Mate exposing a composer or approval controls while its history is still readable.
-    it.effect("someone else's personal Mate is readable but cannot be sent to or approved", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        chat.fixture().approval();
-        chat.fixture().ownership = "colleague";
-        yield* s.given.signedIn;
-        yield* chat.when.openReadOnly();
-        yield* chat.then.text("only they can run this agent");
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.then.text("vp run build");
-        yield* chat.then.text("Waiting for the agent's owner");
-        yield* chat.then.noComposer;
-        yield* chat.then.noButton("Approve");
-        yield* chat.then.noButton("Decline");
-        expect(chat.fixture().responseCount()).toBe(0);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });

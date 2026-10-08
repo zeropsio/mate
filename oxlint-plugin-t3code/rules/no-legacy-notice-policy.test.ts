@@ -1,3 +1,7 @@
+import plugin from "../index.ts";
+import { expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { createOxlintRuleHarness } from "../test/utils.ts";
 const chrome = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
   filename: "apps/web/src/zerops/chatChrome.ts",
@@ -58,4 +62,27 @@ crew.valid(
 crew.invalid(
   "crew cannot acquire another admission policy",
   'import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin"; export const attention = zeropsAgentSignInRequired(feed);',
+);
+
+it.effect(
+  "Decision: Guard E1/E2 covers every root the policy could move to (apps/web, packages/client-runtime, packages/shared, apps/desktop).",
+  () =>
+    Effect.gen(function* () {
+      expect(plugin.rules).toHaveProperty("no-legacy-notice-policy");
+      for (const root of [
+        "apps/web",
+        "packages/client-runtime",
+        "packages/shared",
+        "apps/desktop",
+      ]) {
+        for (const policy of ["zeropsAgentSignInRequired", "spentLoginStatusStale"]) {
+          const output = yield* createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+            filename: `${root}/src/relocated.ts`,
+          }).runAndExpectFailure(
+            `import { ${policy} as policy } from "legacy"; const alias = policy; export const notice = alias(evidence);`,
+          );
+          expect(output).toContain(policy);
+        }
+      }
+    }).pipe(Effect.provide(NodeServices.layer)),
 );

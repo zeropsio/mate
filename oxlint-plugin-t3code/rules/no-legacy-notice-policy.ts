@@ -62,9 +62,14 @@ export default defineRule({
     docs: { description: "Hosted admission is derived by the admission projection." },
   },
   create(context) {
-    const path = context.filename.replaceAll("\\", "/").split("/apps/web/src/")[1];
-    if (path === undefined || /\.(test|spec)\./u.test(path)) return {};
-    const repoPath = `apps/web/src/${path}`;
+    const filename = context.filename.replaceAll("\\", "/");
+    const match =
+      /(?:^|\/)((?:apps\/(?:web|desktop)|packages\/(?:client-runtime|shared))\/src\/(.*))$/u.exec(
+        filename,
+      );
+    if (match === null || /\.(test|spec)\./u.test(match[1]!)) return {};
+    const repoPath = match[1]!;
+    const path = repoPath.startsWith("apps/web/src/") ? match[2]! : repoPath;
     const nameOf = (node: ESTree.Node, seen = new Set<ESTree.Node>()): string | undefined => {
       if (seen.has(node)) return undefined;
       seen.add(node);

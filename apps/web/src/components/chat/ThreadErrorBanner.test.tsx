@@ -1,9 +1,5 @@
 // @vitest-environment happy-dom
-import {
-  agentAdmission,
-  admissionExplainsRefusal,
-  resolveZeropsProviderAvailability,
-} from "@t3tools/client-runtime/data";
+import { agentAdmission, admissionExplainsRefusal } from "@t3tools/client-runtime/data";
 import { ProviderInstanceId, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { AgentAdmissionExplanation } from "./AgentAdmissionExplanation";
 import { act } from "react";
@@ -46,20 +42,15 @@ const attention = agentAdmission({
   environmentId: "rig",
   instanceId: provider.instanceId,
   viewerSubject: "owner",
-  snapshot,
+  read: {
+    state: "known",
+    value: snapshot,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  },
   providers: [provider],
   mateName: "Rosa",
-  availability: resolveZeropsProviderAvailability({
-    entries: [{ instanceId: provider.instanceId, driverKind: provider.driver }],
-    viewerSubject: "owner",
-    agentAuth: {
-      state: "known",
-      value: snapshot,
-      asOf: { ordinal: 1, atMs: 0 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    },
-  }),
 }).attention;
 
 describe("the thread's error banner", () => {
@@ -94,12 +85,9 @@ describe("the thread's error banner", () => {
       error:
         "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
     },
-  ])("says the Mate is signed out where its sign-in was $case", ({ error }) => {
+  ])("says the Mate is signed out where its sign-in was $case", () => {
     expect(
-      admissionExplainsRefusal(attention, error, {
-        instanceId: provider.instanceId,
-        driver: provider.driver,
-      }),
+      admissionExplainsRefusal(attention, { loginId: "claude-code", reason: "missing-sign-in" }),
     ).toBe(true);
     const html = renderToStaticMarkup(
       <AgentAdmissionExplanation attention={attention} onAction={() => {}} />,

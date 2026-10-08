@@ -296,6 +296,15 @@ export const make = Effect.gen(function* () {
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
       message: loginRefusalMessage(login, refusal),
+      agentAdmission: {
+        loginId: login.id,
+        reason:
+          refusal.kind !== "not-signed-in"
+            ? "not-permitted"
+            : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
+              ? "expired-login"
+              : "missing-sign-in",
+      },
     });
   });
 
@@ -321,6 +330,15 @@ export const make = Effect.gen(function* () {
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
       message: turnRefusalMessage(agentId, refusal),
+      agentAdmission: {
+        loginId: agentId,
+        reason:
+          refusal.kind !== "not-signed-in"
+            ? "not-permitted"
+            : refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
+              ? "expired-login"
+              : "missing-sign-in",
+      },
     });
   });
 

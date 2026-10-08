@@ -6,14 +6,9 @@ const AdmissionRegion = createContext<"composer" | null>(null);
 export function AgentAdmissionComposition({ children }: { readonly children: ReactNode }) {
   return <AdmissionRegion.Provider value="composer">{children}</AdmissionRegion.Provider>;
 }
-export function useAgentAdmissionPlacement(
-  attention: AgentAdmissionAttention | null,
-  readOnly: boolean,
-) {
+export function useAgentAdmissionPlacement(attention: AgentAdmissionAttention | null) {
   const region = useContext(AdmissionRegion);
   return {
-    composer: region === "composer" && !readOnly ? attention : null,
-    footer: region === "composer" && readOnly ? attention : null,
-    summary: attention,
+    composer: region === "composer" ? attention : null,
   };
 }

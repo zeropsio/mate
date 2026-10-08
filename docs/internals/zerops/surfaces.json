@@ -1968,11 +1968,9 @@
         "apps/web/src/routes/__root.tsx",
         "apps/web/src/zerops/AgentAdmissionComposition.tsx",
         "apps/web/src/components/ChatView.tsx",
-        "apps/web/src/components/chat/ChatHeader.tsx",
         "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
         "apps/web/src/components/chat/ThreadErrorBanner.tsx",
         "apps/web/src/components/chat/ProviderStatusBanner.tsx",
-        "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.tsx",
         "apps/web/src/components/zerops/MateStatusMarker.tsx",
         "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
         "apps/web/src/zerops/mateStatus.logic.ts"

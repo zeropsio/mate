@@ -2,20 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   ProviderInstanceId,
   ProviderDriverKind,
-  EnvironmentId,
   type ServerProvider,
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
-import {
-  agentAdmission,
-  admissionProviderStatus,
-  resolveZeropsProviderAvailability,
-  mateAdmissionSummary,
-} from "./agentAdmission.ts";
-import { AtomRegistry } from "effect/reactivity";
-import { makeAccountStore } from "../store.ts";
-import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { agentAdmission, admissionProviderStatus } from "./agentAdmission.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
   "only a proved failed provider login asks for sign-in (%s)",
@@ -40,20 +31,15 @@ it.each(["unknown", "authenticated", "unauthenticated"] as const)(
         environmentId: "rig",
         instanceId,
         viewerSubject: "viewer",
-        snapshot,
+        read: {
+          state: "known",
+          value: snapshot,
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
         providers: [],
         mateName: "Wren",
-        availability: resolveZeropsProviderAvailability({
-          entries: [{ instanceId, driverKind: "codex" }],
-          agentAuth: {
-            state: "known",
-            value: snapshot,
-            asOf: { ordinal: 1, atMs: 0 },
-            coverage: "complete",
-            freshness: { kind: "live" },
-          },
-          viewerSubject: "viewer",
-        }),
       }).attention?.text ?? null;
     expect(words).toBe(
       providerAuth === "unauthenticated"
@@ -286,8 +272,7 @@ it.each(["unsupported", "broken"] as const)(
       environmentId: "env",
       instanceId: provider.instanceId,
       viewerSubject: "viewer",
-      snapshot: null,
-      availability: undefined,
+      read: undefined,
       providers: [provider],
       mateName: "Ada",
     });
@@ -297,47 +282,5 @@ it.each(["unsupported", "broken"] as const)(
       message: undefined,
       compatibilityAdvisory: { status },
     });
-  },
-);
-
-it.each([
-  { signedInBy: "colleague", token: false, cause: "another-signer" },
-  { signedInBy: null, token: false, cause: "unrecorded-login" },
-  { signedInBy: "viewer", token: false, cause: null },
-  { signedInBy: "colleague", token: true, cause: null },
-])(
-  "The menu summarizes admission for its viewer, not credential presence ($signedInBy, token $token)",
-  ({ signedInBy, token, cause }) => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    seedHqNavigation(store, "org", {
-      mates: {
-        project: {
-          presence: { online: true, since: "2026-10-08T00:00:00Z", overview: "live" },
-          identity: {
-            environmentId: EnvironmentId.make("env"),
-            serverVersion: "1.0.0",
-            update: null,
-          },
-          main: null,
-          threads: { list: [], omitted: 0 },
-          crew: { status: "off" },
-          logins: {
-            "claude-code": { present: true, signedInBy, token },
-            codex: { present: false, signedInBy: null, token: false },
-          },
-        },
-      },
-    });
-    const attention = registry.get(
-      store.data.project(mateAdmissionSummary, {
-        orgId: "org",
-        projectId: "project",
-        viewerSubject: "viewer",
-        mateName: "Ada",
-      }),
-    );
-    expect(attention?.cause ?? null).toBe(cause);
-    registry.dispose();
   },
 );

@@ -42,6 +42,12 @@ the shared stream supervisor. Automatic recovery is visible and bounded in rate 
 Every wait has a deadline or names its next action. A definitive refusal stops automatic recovery
 and waits for changed input, changed access or an explicit retry.
 
+Agent admission consumes the selected login's authentication facts and typed command refusal
+identity. It does not infer permission from signer records; the server still admits every command.
+Refusals join by login ID. A cold auth read holds the input without presenting stale configuration;
+a failed or unsupported read retains explicit configuration evidence. The composer owns the primary
+explanation, the menu links to it, and the conversation header adds no second sign-in chip.
+
 ## Writes and evidence
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and

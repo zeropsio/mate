@@ -8,27 +8,27 @@ const admission = agentAdmission({
   environmentId: "rig",
   instanceId: "claudeAgent",
   viewerSubject: "owner",
-  snapshot: {
-    available: true,
-    agents: [
-      {
-        agentId: "claude-code",
-        credPresent: false,
-        flagOAuth: false,
-        flagToken: false,
-        providerAuth: "unknown",
-        state: "not-authorized",
-      },
-    ],
+  read: {
+    state: "known",
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+    value: {
+      available: true,
+      agents: [
+        {
+          agentId: "claude-code",
+          credPresent: false,
+          flagOAuth: false,
+          flagToken: false,
+          providerAuth: "unknown",
+          state: "not-authorized",
+        },
+      ],
+    },
   },
   providers: [],
   mateName: "Rosa",
-  availability: new Map([
-    [
-      "claudeAgent" as import("@t3tools/contracts").ProviderInstanceId,
-      { kind: "needs-sign-in", signInKind: "not-authorized" },
-    ],
-  ]),
 }).attention;
 const activity = (patch: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => ({
   threadId: ThreadId.make("thread"),
