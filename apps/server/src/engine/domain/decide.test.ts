@@ -32,6 +32,10 @@ import {
   decide,
   resentText,
 } from "./decide.ts";
+import { makeTranslator } from "../bridge/translate.ts";
+import { makeToCore } from "../pump/toCore.ts";
+import { readGolden } from "../testing/bridge/goldens.ts";
+import { commandLogAround } from "../testing/bridge/record.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -1197,9 +1201,9 @@ describe("decide: a dismissible question is dismissed unanswered", () => {
       ask: { kind: "question", questions: [], dismissible },
     });
   const dismiss: Command = { _tag: "Dismiss", requestId: requestId(r(1), 1) };
-  it("closes it dismissed and resumes the run waiting on it, telling the agent nothing", () => {
+  it("closes it dismissed, telling the agent nothing; its run never waited on it", () => {
     const scene = play([...running, question(true), dismiss]);
-    expect(scene.events.map((e) => e._tag)).toEqual(["RequestClosed", "RunResumed", "WakeArmed"]);
+    expect(scene.events.map((e) => e._tag)).toEqual(["RequestClosed"]);
     expect(scene.events[0]).toMatchObject({ state: "dismissed" });
     expect(scene.effects).toEqual([]);
     expect(scene.state.requests).toEqual({});
@@ -1214,6 +1218,174 @@ describe("decide: a dismissible question is dismissed unanswered", () => {
     const scene = play([...given, dismiss]);
     expect(scene.decision).toMatchObject({ _tag: "Reject", rejection: { reason } });
     expect(scene.state).toEqual(before);
+  });
+});
+
+describe("decide: a question asked by message is answered by a message", () => {
+  const preview = {
+    type: "image",
+    id: "img-q",
+    name: "question-preview.png",
+    mimeType: "image/png",
+    sizeBytes: 2048,
+  } as unknown as ChatImageAttachment;
+  const asked = (turn = T(1)) =>
+    signal({
+      kind: "request-opened",
+      turn,
+      key: "codex-async:q1",
+      ask: {
+        kind: "question",
+        questions: [
+          { id: "0", question: "Which package manager?" },
+          { id: "1", question: "What should it be named?" },
+        ],
+        dismissible: true,
+      },
+    });
+  const answered: Command = {
+    _tag: "Answer",
+    requestId: requestId(r(1), 1),
+    answer: {
+      answers: { "0": "pnpm", "1": "api" },
+      attachmentsByQuestionId: { "1": [preview] },
+    },
+    summary: "Answered",
+  };
+  const afterTurn: ReadonlyArray<Step> = [...proofRunning, asked(), ended(1)];
+  const closes = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) =>
+      e._tag === "RequestClosed" || e._tag === "RequestReopened"
+        ? [e._tag === "RequestClosed" ? `closed ${e.state}` : "reopened"]
+        : [],
+    );
+
+  it("does not hold the run, and outlives the turn that asked it", () => {
+    const { state, log } = playAll(afterTurn);
+    expect(log.some((e) => e._tag === "RunWaiting")).toBe(false);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
+    expect(closes(log)).toEqual([]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
+  });
+
+  it("asked after its turn ended, still waits for the person", () => {
+    const { state, log } = playAll([...proofRunning, ended(1), asked()]);
+    expect(closes(log)).toEqual([]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
+  });
+
+  it("the answer goes as the person's message with its pictures, never through the respond call", () => {
+    const scene = play([...afterTurn, answered]);
+    expect(scene.effects.map((effect) => effect.kind)).not.toContain("provider.respond");
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(2),
+      body: {
+        kind: "person",
+        text: [
+          "Which package manager?\npnpm",
+          "What should it be named?\napi\nAttached file: question-preview.png (img-q)",
+        ].join("\n\n"),
+        attachments: [preview],
+        sendId: "c6",
+      },
+    });
+    expect(scene.events.find((e) => e._tag === "RequestAnswered")).toMatchObject({
+      requestId: requestId(r(1), 1),
+      bySend: r(2),
+      answers: { "0": "pnpm", "1": "api" },
+    });
+    expect(scene.events.find((e) => e._tag === "RequestAnswered")).not.toHaveProperty("effectId");
+  });
+
+  it("is answered once the message reaches the agent, never before", () => {
+    const sentNot = playAll([...afterTurn, answered, prepared(2)]);
+    expect(closes(sentNot.log)).toEqual([]);
+    const { log, state } = playAll([...afterTurn, answered, prepared(2), sentTurn(2)]);
+    expect(closes(log)).toEqual(["closed answered"]);
+    expect(state.requests).toEqual({});
+    expect(state.answering).toEqual({});
+  });
+
+  it.each([
+    [
+      "the agent refused the message",
+      [prepared(2), settled(r(2), "provider.send", { kind: "failed", reason: "refused" })],
+    ],
+    ["a Stop ended the message's run before it went", [stop(2)]],
+  ] as const)("opens the question again when %s", (_name, after) => {
+    const { log, state } = playAll([...afterTurn, answered, ...after]);
+    expect(closes(log)).toEqual(["reopened"]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
+  });
+
+  it("a message a restart cut mid-flight goes again marked, and its arrival answers the question", () => {
+    const cut = [
+      ...afterTurn,
+      answered,
+      prepared(2),
+      recovered([effectId(r(2), "provider.send", 1)]),
+    ];
+    const restarted = playAll(cut);
+    expect(closes(restarted.log)).toEqual([]);
+    expect(restarted.state.runs[r(2)]?.end).toMatchObject({ kind: "cut-by-restart" });
+    const { log } = playAll([
+      ...cut,
+      fired("restart-continuation", r(2)),
+      prepared(3),
+      opened(3, { session: "s2" }),
+      sentTurn(3),
+    ]);
+    expect(closes(log)).toEqual(["closed answered"]);
+  });
+
+  it("codex/async-question [recorded]: the question the trace asks is answered by the person's message", () => {
+    const events = readGolden("codex", "async-question");
+    const translator = makeTranslator({ driver: "codex", threadId: String(events[0]!.threadId) });
+    const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
+    const traced = commandLogAround("codex", events)
+      .flatMap((input) => translator.step(input))
+      .flatMap((driverSignal) => toCore.step(driverSignal, T0).signals);
+    const turn = traced.find((one) => one.kind === "turn-started");
+    const traceTurn = [
+      send("go"),
+      prepared(1),
+      opened(1),
+      settled(r(1), "provider.send", {
+        kind: "ok",
+        value: { turn: turn?.kind === "turn-started" ? turn.turn : null, providerTurnId: "x" },
+      }),
+      { _tag: "ProviderSignals", sessionId: s1, signals: traced } as Command,
+    ];
+    const asked = playAll(traceTurn);
+    expect(asked.state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
+    expect(Object.values(asked.state.requests)).toMatchObject([
+      { dismissible: true, answerable: true, questions: [{ id: "0" }] },
+    ]);
+    const answering: Command = {
+      _tag: "Answer",
+      requestId: requestId(r(1), 1),
+      answer: { answers: { "0": "pnpm" } },
+      summary: "Answered",
+    };
+    const { log } = playAll([...traceTurn, answering, prepared(2), sentTurn(2)]);
+    expect(log.find((e) => e._tag === "ItemOpened" && e.runId === r(2))).toMatchObject({
+      body: { kind: "person", text: "Which package manager?\npnpm" },
+    });
+    expect(log.some((e) => e._tag === "EffectRequested" && e.kind === "provider.respond")).toBe(
+      false,
+    );
+    expect(closes(log)).toEqual(["closed answered"]);
+  });
+
+  it("refuses an answer that leaves a question unanswered", () => {
+    const scene = play([
+      ...afterTurn,
+      { ...answered, answer: { answers: { "0": "pnpm", "1": " " } } } as Command,
+    ]);
+    expect(scene.decision).toMatchObject({
+      _tag: "Reject",
+      rejection: { reason: "empty-message" },
+    });
   });
 });
 

@@ -101,6 +101,8 @@ export interface OpenRequest {
   readonly kind?: RequestAsk["kind"];
   /** A question its agent does not wait on (asked by message): it may close unanswered. */
   readonly dismissible?: boolean;
+  /** A question asked by message: what it asks, by question id, to word the answer's message. */
+  readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
 }
 
 export interface ArmedWake {

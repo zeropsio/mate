@@ -443,10 +443,22 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             yield* emit("user-input.requested", thread, {
               turnId: session.open,
               requestId,
-              payload: {
-                questions: [],
-                ...(kind === "message-question" ? { responseMode: "message" } : {}),
-              },
+              payload:
+                kind === "message-question"
+                  ? {
+                      responseMode: "message",
+                      questions: [
+                        {
+                          id: "0",
+                          header: "Question",
+                          question: "Which package manager?",
+                          options: [],
+                          allowCustomAnswer: true,
+                          multiSelect: false,
+                        },
+                      ],
+                    }
+                  : { questions: [] },
             });
           }
           return requestId;

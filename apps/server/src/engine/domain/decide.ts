@@ -23,6 +23,7 @@ import {
   requestId as deriveRequestId,
   runId as deriveRunId,
   wakeId as deriveWakeId,
+  type ChatImageAttachment,
   type CommandResult,
   type EffectId,
   type EffectOutcome,
@@ -64,6 +65,7 @@ import {
   runOfTurn,
   type ClosedItem,
   type ConversationState,
+  type OpenRequest,
   type RunRecord,
 } from "./state.ts";
 
@@ -425,8 +427,17 @@ const endRun = (
     });
   }
   for (const request of Object.values(b.state.requests)) {
-    if (request.runId !== run.id) continue;
+    // A question asked by message outlives its turn: the person answers it with a message.
+    if (request.runId !== run.id || request.dismissible === true) continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
+  }
+  const carried = answerCarried(b, run);
+  // A message a restart cut mid-flight goes again, marked, by the run continuing it (rule: a cut
+  // send is reconciled, never re-sent blindly): its answer waits for that run's evidence.
+  const resent =
+    end.kind === "cut-by-restart" && end.notContinued === undefined && run.state === "sending";
+  if (carried !== undefined && !resent) {
+    reopenCarried(b, carried, `The answer's message did not reach the agent (${end.kind}).`);
   }
   cancelWatchdog(b, run, "run ended");
   if (run.personBody?.delivery.state === "queued") {
@@ -510,6 +521,16 @@ const markStarted = (
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   updatePerson(b, run, "delivered");
   armWatchdog(b, b.run(run.id), b.now);
+  // The message carrying an answer reached the agent: that is the answer's evidence.
+  const carried = answerCarried(b, run);
+  if (carried !== undefined) {
+    b.emit({
+      _tag: "RequestClosed",
+      runId: carried.runId,
+      requestId: carried.id,
+      state: "answered",
+    });
+  }
 };
 
 // ── people ──────────────────────────────────────────────────────────────────────────────────
@@ -597,6 +618,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   const request = b.state.requests[command.requestId];
   if (request === undefined) throw new Rejected("unknown-request");
   if (!request.answerable) throw new Rejected("not-answerable");
+  if (request.dismissible === true) return answerByMessage(b, request, command);
   const run = b.run(request.runId);
   const effect = b.effect("provider.respond", request.id, request.answers + 1, run.id, {
     requestId: request.id,
@@ -615,6 +637,69 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   });
   b.result = { ...b.result, requestId: request.id, runId: run.id };
   resumeIfAnswered(b, run.id);
+};
+
+/**
+ * A question asked by message (Codex's async question) takes its answer as V1 gives it: the
+ * person's message, each question with its answer and the names of the files attached to it, the
+ * pictures beside it. The driver has no call waiting for it. The request is answered once that
+ * message reaches the agent (`markStarted`), and opens again if it never does (`endRun`).
+ */
+const answerByMessage = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const given = questionAnswer(command.answer);
+  const answers = (given.answers ?? {}) as Readonly<Record<string, unknown>>;
+  const byQuestion = given.attachmentsByQuestionId ?? {};
+  const unanswered = () => new Rejected("empty-message", "Answer each question before sending.");
+  const questions = request.questions ?? [];
+  if (questions.length === 0) throw unanswered();
+  const replies = questions.map((question) => {
+    const said = answers[question.id];
+    const files = byQuestion[question.id] ?? [];
+    if (typeof said !== "string" || (said.trim() === "" && files.length === 0)) throw unanswered();
+    const named = files.map((file) => `Attached file: ${file.name} (${file.id})`).join("\n");
+    return [`${question.question}\n${said.trim()}`, named].filter(Boolean).join("\n");
+  });
+  const pictures = Object.values(byQuestion)
+    .flat()
+    .filter((file): file is ChatImageAttachment => file.type === "image");
+  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
+  send(b, { _tag: "Send", text: replies.join("\n\n"), attachments: pictures });
+  b.emit({
+    _tag: "RequestAnswered",
+    runId: request.runId,
+    requestId: request.id,
+    by: b.envelope.principal,
+    summary: command.summary,
+    bySend: carrier,
+    ...given,
+  });
+  b.result = { ...b.result, requestId: request.id, runId: carrier };
+};
+
+/** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
+const answerCarried = (b: StepBuilder, run: RunRecord): OpenRequest | undefined => {
+  const own = b.state.answering[run.id];
+  if (own !== undefined || run.joins === null || run.trigger.kind !== "wake") return own;
+  const continues =
+    run.trigger.wakeId === deriveWakeId(b.state.conversationId, "restart-continuation", run.joins);
+  return continues ? b.state.answering[run.joins] : undefined;
+};
+
+/** The message carrying an answer never reached the agent: the person answers again. */
+const reopenCarried = (b: StepBuilder, carried: OpenRequest, reason: string): void => {
+  b.emit({
+    _tag: "RequestReopened",
+    runId: carried.runId,
+    requestId: carried.id,
+    key: carried.key,
+    principal: carried.principal,
+    reason,
+    answers: carried.answers,
+  });
 };
 
 /**
@@ -651,8 +736,9 @@ const questionAnswer = (
 };
 
 const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
-  const run = b.run(id);
-  if (run.state !== "waiting") return;
+  // A question asked by message outlives its run, which the state may no longer hold.
+  const run = b.state.runs[id];
+  if (run === undefined || run.state !== "waiting") return;
   if (Object.values(b.state.requests).some((request) => request.runId === id)) return;
   markResumed(b, run);
 };
@@ -770,6 +856,9 @@ const wakeFired = (
           : null;
       if (refusal !== null) {
         if (joined !== null) b.emit({ _tag: "RunNotContinued", runId: joined, reason: refusal });
+        const carried = joined === null ? undefined : b.state.answering[joined];
+        if (carried !== undefined)
+          reopenCarried(b, carried, `The answer's message was not sent again: ${refusal}.`);
         admitNext(b);
         return;
       }
@@ -1205,15 +1294,18 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
       const live = isLive(run);
+      // Asked by message: the agent does not wait on it, and a message answers it after its turn.
+      const byMessage = signal.ask.kind === "question" && signal.ask.dismissible;
       b.emit({
         _tag: "RequestOpened",
         runId: run.id,
         requestId: id,
         key: signal.key,
         ask: signal.ask,
-        answerable: live && (signal.answerable ?? true),
+        answerable: (live || byMessage) && (signal.answerable ?? true),
         principal: run.principal,
       });
+      if (byMessage) return;
       if (!live) {
         // Its turn already ended: nothing can take the answer.
         b.emit({ _tag: "RequestClosed", runId: run.id, requestId: id, state: "lapsed" });

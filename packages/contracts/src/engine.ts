@@ -729,7 +729,13 @@ export const RequestAnswered = event("RequestAnswered", {
   requestId: RequestId,
   by: Principal,
   summary: Schema.String,
-  effectId: EffectId,
+  /** The respond call that takes the answer; absent when a message carries it (`bySend`). */
+  effectId: Schema.optionalKey(EffectId),
+  /**
+   * The run whose person's message carries the answer, for a question asked by message: the
+   * request is answered once that message reaches the agent, and opens again if it never does.
+   */
+  bySend: Schema.optionalKey(RunId),
   /** A question's answer, by question id, and the pictures attached to each: what the record shows. */
   answers: Schema.optionalKey(ProviderUserInputAnswers),
   attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),

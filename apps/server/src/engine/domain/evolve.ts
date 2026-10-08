@@ -56,6 +56,18 @@ const withTurn = (state: ConversationState, turn: string, run: RunId): Conversat
 const touch = (state: ConversationState, id: RunId | null, at: number) =>
   withRun(state, id, (run) => ({ ...run, lastActivityAt: at }));
 
+/** What a question asked by message asks, by question id: its answer's message names each. */
+const askedQuestions = (
+  questions: ReadonlyArray<unknown>,
+): ReadonlyArray<{ readonly id: string; readonly question: string }> =>
+  questions.flatMap((entry) => {
+    const { id, question } = (entry ?? {}) as {
+      readonly id?: unknown;
+      readonly question?: unknown;
+    };
+    return typeof id === "string" && typeof question === "string" ? [{ id, question }] : [];
+  });
+
 export const evolve = (previous: ConversationState, event: EngineEvent): ConversationState => {
   const state: ConversationState = { ...previous, headSeq: event.seq };
   if (event._tag === "Unknown") return state;
@@ -324,7 +336,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answers: 0,
             kind: event.ask.kind,
             ...(event.ask.kind === "question" && event.ask.dismissible
-              ? { dismissible: true }
+              ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
               : {}),
           },
         },
@@ -332,15 +344,17 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     }
     case "RequestAnswered": {
       const request = state.requests[event.requestId];
+      // Keyed by what carries the answer: its respond call, or the run of the message carrying it.
+      const carrier = event.bySend ?? event.effectId;
       return {
         ...state,
         requests: without(state.requests, event.requestId),
         answering:
-          request === undefined
+          request === undefined || carrier === undefined
             ? state.answering
             : {
                 ...state.answering,
-                [event.effectId]: { ...request, answers: request.answers + 1 },
+                [carrier]: { ...request, answers: request.answers + 1 },
               },
       };
     }
@@ -359,6 +373,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answers: event.answers,
             ...(answered?.kind === undefined ? {} : { kind: answered.kind }),
             ...(answered?.dismissible === true ? { dismissible: true } : {}),
+            ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
           },
         },
         answering: Object.fromEntries(

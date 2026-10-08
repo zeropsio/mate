@@ -265,6 +265,32 @@ describe("the running engine", () => {
       ),
   );
 
+  it.effect(
+    "a question Codex asks by message is answered by the person's message once its turn ended, never the respond call",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("codex");
+          yield* send(w);
+          const asked = yield* w.agent((agent, thread) => agent.ask(thread, "message-question"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          const [request] = yield* w.requests;
+          assert.strictEqual(request?.state, "open");
+          yield* w.tell({
+            _tag: "Answer",
+            requestId: RequestId.make(request!.request_id),
+            answer: { answers: { "0": "pnpm" } },
+            summary: "Answered",
+          });
+          assert.include(w.provider.calls, sendLine(w, "Which package manager?\npnpm"));
+          assert.notInclude(w.provider.calls, `answer ${asked}`);
+          assert.strictEqual((yield* w.requests)[0]?.state, "answered");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   const STOP_SOURCES: Record<BridgeDriver, string> = {
     claudeAgent: "stop-asked",
     codex: "stop-confirmed",

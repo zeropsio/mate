@@ -160,7 +160,12 @@ export class Gen {
             ? rng.pick(open).id
             : (`${this.conversation}/r/1/q/9` as RequestId);
         return {
-          envelope: this.env({ _tag: "Answer", requestId, answer: { ok: true }, summary: "yes" }),
+          envelope: this.env({
+            _tag: "Answer",
+            requestId,
+            answer: rng.chance(0.8) ? { answers: { "0": "this one" } } : { ok: true },
+            summary: "yes",
+          }),
           now: at,
         };
       }
@@ -379,7 +384,11 @@ export class Gen {
             ...(rng.chance(0.8) ? { turn: turn() } : {}),
             key: `q${n}`,
             ask: rng.chance(0.3)
-              ? { kind: "question", questions: [], dismissible: rng.chance(0.5) }
+              ? {
+                  kind: "question",
+                  questions: [{ id: "0", question: "Which one?" }],
+                  dismissible: rng.chance(0.5),
+                }
               : { kind: "approval", requestKind: "command", detail: "rm -rf build" },
             answerable: rng.chance(0.85),
           });

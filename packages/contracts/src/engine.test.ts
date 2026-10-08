@@ -315,6 +315,22 @@ describe("an answered question's record", () => {
       rejection: { reason: "not-dismissible" },
     });
   });
+  it("an answer a message carries names that message's run instead of a respond call", () => {
+    const event = {
+      _tag: "RequestAnswered",
+      v: ENGINE_EVENT_VERSION,
+      conversationId: "mate",
+      seq: 7,
+      at: 5,
+      commandId: "c1",
+      runId: "mate/r/1",
+      requestId: "mate/r/1/q/1",
+      by: { kind: "person", subject: "owner" },
+      summary: "Answered",
+      bySend: "mate/r/2",
+    };
+    expect(decodeEvent(event)).toEqual(event);
+  });
   it("an approval's answer is its summary alone", () => {
     const answer = { by: { kind: "person", subject: "owner" }, at: 5, summary: "Approved" };
     expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);

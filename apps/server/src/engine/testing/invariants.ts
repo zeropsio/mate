@@ -80,6 +80,11 @@ export class Model {
   readonly delivery = new Map<string, string>();
   readonly effects = new Set<string>();
   readonly wakes = new Map<string, number>();
+  /** Answers a message carries, by request: the run of that message. */
+  readonly carried = new Map<string, string>();
+  /** Runs that started, and the run each one continues. */
+  readonly started = new Set<string>();
+  readonly joins = new Map<string, string>();
   pausedUntil: number | null = null;
   head = 0;
   nextOrdinal = 1;
@@ -241,6 +246,7 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
           `${event.runId} queued with the engine as its principal`,
         );
       }
+      if (event.joins !== null) model.joins.set(event.runId, event.joins);
       move(event.runId, "queued");
       model.runs.set(event.runId, {
         state: "queued",
@@ -279,7 +285,28 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
       return;
     }
     case "RunStarted":
+      model.started.add(event.runId);
       return move(event.runId, "running");
+    case "RequestAnswered":
+      if (event.bySend !== undefined) model.carried.set(event.requestId, event.bySend);
+      return;
+    case "RequestReopened":
+      model.carried.delete(event.requestId);
+      return;
+    case "RequestClosed": {
+      const carrier = model.carried.get(event.requestId);
+      model.carried.delete(event.requestId);
+      if (carrier === undefined || event.state !== "answered") return;
+      const reached = [...model.started].some(
+        (run) => run === carrier || model.joins.get(run) === carrier,
+      );
+      if (!reached)
+        fail(
+          "an answer a message carries is answered only once that message reached the agent",
+          `${event.requestId} closed answered before ${carrier} started`,
+        );
+      return;
+    }
     case "RunWaiting":
       return move(event.runId, "waiting");
     case "RunResumed":
