@@ -9,6 +9,8 @@ import {
   mateActionsAtom,
   makeMateFeedWire,
   mateFeedReadsAtom,
+  makeMateEngineHost,
+  mateEngineHostAtom,
   type AccountStore,
 } from "@t3tools/client-runtime/data";
 import * as Option from "effect/Option";
@@ -38,10 +40,20 @@ export function useMateFeeds(store: AccountStore) {
           host.revalidate({ family: "mateCrewFiles", environmentId, input: {} });
       },
     });
+    // The account's engine conversations: one host per store, gone with its account.
+    const engine = makeMateEngineHost({
+      store,
+      registry,
+      makeId: randomUUID,
+      setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    });
     atomRegistry.set(mateActionsAtom, actions);
     atomRegistry.set(mateFeedReadsAtom, reads);
+    atomRegistry.set(mateEngineHostAtom, engine);
     const unsubscribe = onAccountLifetimeClose(() => {
       actions.close();
+      engine.close();
       host.close();
     });
     return () => {
@@ -49,6 +61,9 @@ export function useMateFeeds(store: AccountStore) {
       if (atomRegistry.get(mateFeedReadsAtom) === reads) atomRegistry.set(mateFeedReadsAtom, null);
       actions.close();
       if (atomRegistry.get(mateActionsAtom) === actions) atomRegistry.set(mateActionsAtom, null);
+      if (atomRegistry.get(mateEngineHostAtom) === engine)
+        atomRegistry.set(mateEngineHostAtom, null);
+      engine.close();
       host.close();
     };
   }, [atomRegistry, connection, store]);
