@@ -176,22 +176,33 @@ emits it from its own `non_execution_kind`, the other drivers do not yet. 2.9 ad
 `refused` to `account.rate-limits.updated`: explicit refusal/recovery for a parked turn independent of a
 reset time. Claude emits it; terminal usage-limit errors remain the other adapters' path. Codex
 also emits the existing typed `blocked` reset when its refused turn has an exhausted window.
-2.10 adds `response.usage.completed`: immutable consumption from a native completed response,
-identified by the provider thread and response IDs. Claude records the final stream meter at
-`message_stop`, or a nonstream snapshot with a terminal `stop_reason`; a per-block snapshot with
-no terminal marker records nothing. Codex records `rawResponse/completed`, including intercepted
-child threads. Thread counters, Task totals and result/modelUsage rollups never become facts.
-A driver that supplies no completed response meter emits no invented usage. Claude Code's child
-progress protocol forwards assistant/user blocks but drops child stream completion frames; its
-null-stop sidechain snapshots do not supply exact child consumption, so Claude sidechain coverage
-remains unavailable. `forwardSubagentText` changes the forwarded content, not this completion contract.
-Codex's `rawResponse/completed` is an internal notification. The native protocol's thread-start
-`experimentalRawEvents` opt-in is absent from the current imported thread-start contract and Mate
-session setup; resume and child delivery have no recorded proof. The mapper's conditional support
-must not be described as verified live Codex accounting.
-The recorded Claude goldens prove parent response metering. The recorded Codex multi-agent trace
-contains only thread counters and correctly produces no response facts; positive Codex child
-completion/routing tests use schema-native synthetic notifications, not a recorded completion trace.
+2.10 adds `turn.usage.completed`: immutable own-turn consumption, native thread/turn identity,
+model lines and a separately reported turn cost. Claude takes a live `get_usage` ledger baseline
+before Mate supplies input (`skipBehaviors: true` skips the provider's optional transcript scan).
+The native print runtime restores resumed/forked history before accepting this control. Final
+results supply cumulative `modelUsage`, which includes Task/sidechains and query-pipeline calls;
+Mate subtracts the baseline/previous result and keys the fact by `session_id` plus result `uuid`.
+Individual message meters and main-only `result.usage` are not added. A native
+`conversation_reset` supplies an explicit reset receipt: the native reset empties model counters
+and USD before the next result. Mate adopts that known-zero ledger, retires the old native
+session, and reads the next native session identity from its result (the conversation marker
+is a separate identity). Replayed reset receipts do not reset accounting twice. An
+unannounced ledger decrease, changed result receipt or incompatible cost basis stops accounting
+with a runtime warning. Native USD costs preserve the provider's reported estimated basis.
+Codex fresh `thread/start` opts into the installed native protocol's `experimentalRawEvents`
+through the raw request SPI; its generated public start schema omits that internal option.
+The app-server inherits the raw flag when attaching children and buffers their earlier events.
+Mate routes raw usage and native completions before child UI registration, deduplicates exact
+response IDs inside each native thread/turn, and emits one aggregate at own turn completion.
+No context/lifetime counter participates. The raw meter supplies no model, so that model is null.
+Codex 0.160.1's native `ThreadResumeParams` has no raw opt-in, and its resume listener defaults
+raw off. Resumed chat continues with an explicit usage-unavailable warning and creates no guessed
+facts. Provider child creation broadcast lag is a native delivery limitation; no end-to-end
+fresh-child capture is yet available to verify this internal path.
+The real Claude plain-text recording proves 21,460 main-model plus 909 auxiliary-model tokens
+in one result; it contains no Task run. The real Codex multi-agent capture contains only counters
+and emits no exact facts. Positive parent/child aggregation tests use constructed schema-native
+raw frames; they are not recorded subagent completion evidence.
 
 The bus
 carries its build-time version (`bus.version`,
@@ -208,7 +219,7 @@ Verified by grepping `zerops/**` and `orchestration/**` for each event's `type` 
 - `turn.started`/`turn.completed` (incl. the `state: "interrupted"` variant) — `orchestration/Layers/CheckpointReactor.ts:1021,1058,1108`, `.../ProviderRuntimeIngestion.ts:1751-1872,2302,2443`, `.../ProjectionPipeline.ts:1536,1580,1594`.
 - `runtime.error` — `zeropsTurnAuthFailure.ts:37`, `orchestration/Layers/ProviderRuntimeIngestion.ts:533,539,2384`.
 - `thread.state.changed` — `.../ProviderRuntimeIngestion.ts:850`.
-- `response.usage.completed` — the local usage outbox; each fact retains native response/thread identity, including sidechains.
+- `turn.usage.completed` — the local usage outbox; each fact retains native turn/thread identity and model lines.
 - `account.rate-limits.updated` (its `blocked`), `task.completed` (outside a turn) and `turn.completed` (`state: "completed"`) — `orchestration/usagePause.ts`, read by `orchestration/Layers/ThreadUsagePauseReactor.ts`.
 
 ## 4. Delivery guarantee

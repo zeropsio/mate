@@ -166,6 +166,72 @@ const peerPath = NodePath.join(
 );
 
 describe("CodexSessionRuntime collab integration", () => {
+  it.effect("delivers native child usage before child UI registration", () =>
+    Effect.gen(function* () {
+      const params = {
+        threadId: CHILD_A,
+        turnId: "early-child-turn",
+        responseId: "early-response",
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 40,
+          cacheWriteInputTokens: 0,
+          outputTokens: 30,
+          reasoningOutputTokens: 0,
+          totalTokens: 130,
+        },
+      };
+      // Constructed raw frames deliberately precede the real captured registration.
+      const script = {
+        rootThreadId: ROOT,
+        notifications: [
+          { method: "rawResponse/completed", params },
+          {
+            method: "turn/completed",
+            params: {
+              threadId: CHILD_A,
+              turn: { id: "early-child-turn", status: "completed", items: [], error: null },
+            },
+          },
+          capturedSpawnedThread(),
+        ],
+      };
+      // @effect-diagnostics-next-line preferSchemaOverJson:off
+      NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
+      );
+      const runtime = yield* makeCodexSessionRuntime({
+        threadId: ThreadId.make("early-child-usage"),
+        binaryPath: peerPath,
+        cwd: NodeOS.tmpdir(),
+        runtimeMode: "full-access",
+        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
+      });
+      const receipts = yield* runtime.events.pipe(
+        Stream.filter(
+          (event) =>
+            event.method === "rawResponse/completed" || event.method === "usage/turnCompleted",
+        ),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* runtime.start();
+      yield* runtime.sendTurn({ input: "start child" });
+      const events = Array.from(yield* Fiber.join(receipts));
+      assert.deepEqual(
+        events.map((event) => [event.method, event.threadId, event.turnId]),
+        [
+          ["rawResponse/completed", "early-child-usage", "early-child-turn"],
+          ["usage/turnCompleted", "early-child-usage", "early-child-turn"],
+        ],
+      );
+      assert.deepEqual(events[0]?.payload, params);
+      yield* runtime.close;
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
   it.effect("preserves each child's native response and turn identity through parent routing", () =>
     Effect.gen(function* () {
       const usage = {

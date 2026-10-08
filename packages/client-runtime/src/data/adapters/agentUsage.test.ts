@@ -56,12 +56,51 @@ const report: UsageReport = {
     basis: "automatic-api-equivalent-estimate",
     revision: "prices",
     costUsdNanos: null,
-    pricedRecords: "0",
-    unpricedRecords: "1",
+    pricedModelEntries: "0",
+    unpricedModelEntries: "2",
   },
   groups: [],
   groupsMore: false,
-  detail: [],
+  detail: [
+    {
+      originId: "origin",
+      factId: "fact",
+      nativeId: "turn",
+      provider: "claude",
+      sessionId: "thread",
+      parentId: null,
+      evidence: "live-provider-turn",
+      meterVersion: "native-turn-v1",
+      time: { kind: "instant", at: "2026-10-01T12:00:00.000Z", provenance: "provider-completion" },
+      nativeCost: { amount: "1000000", scale: 6, currency: "USD", basis: "turn" },
+      models: [
+        {
+          model: null,
+          components: {
+            uncachedInput: "30",
+            cachedInput: "0",
+            cacheCreation: "0",
+            output: "0",
+            reasoning: "0",
+            inclusiveTotal: "30",
+          },
+          nativeCost: null,
+        },
+        {
+          model: "subagent-model",
+          components: {
+            uncachedInput: "70",
+            cachedInput: "0",
+            cacheCreation: "0",
+            output: "0",
+            reasoning: "0",
+            inclusiveTotal: "70",
+          },
+          nativeCost: { amount: "500000", scale: 6, currency: "USD", basis: "model" },
+        },
+      ],
+    },
+  ],
   next: null,
 };
 for (const capability of [undefined, 1]) {
@@ -118,7 +157,15 @@ for (const capability of [undefined, 1]) {
         yield* settle;
         expect(
           agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner }),
-        ).toMatchObject({ kind: "read", stale: false, report: { totals: { tokens: "100" } } });
+        ).toMatchObject({
+          kind: "read",
+          stale: false,
+          report: {
+            totals: { tokens: "100", records: "1" },
+            pricing: { unpricedModelEntries: "2" },
+            detail: report.detail,
+          },
+        });
         link.retryDetail({ family: "agentUsage", ownerId: owner });
         yield* settle;
         expect(usageAsks()).toHaveLength(2);

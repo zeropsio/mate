@@ -20,60 +20,87 @@ const usage = {
   totalTokens: 130,
 };
 
-describe("usage at the real provider adapter seam", () => {
-  it("the recorded Claude stream records final response usage, never its early assistant snapshot", async () => {
-    const events = await replayClaude(loadFixture(claudeDir, "user-input-requested"));
-    const facts = events.filter((event) => event.type === "response.usage.completed");
-    expect(facts.length).toBeGreaterThan(0);
+describe("turn usage at the real provider adapter seam", () => {
+  it("recorded Claude final result counts the main loop and auxiliary model once", async () => {
+    // Fresh baseline is a constructed control reply; the result itself is a real recording.
+    const events = await replayClaude(loadFixture(claudeDir, "plain-text-turn"));
+    const facts = events.filter((event) => event.type === "turn.usage.completed");
+    expect(facts).toHaveLength(1);
     const first = facts[0]!;
-    expect(first.payload.nativeResponseId).toBe("msg_011CeWiapMXCeGdFrPYo51eg");
-    expect(first.payload.components.output).toBe("130");
-    expect(first.payload.components.uncachedInput).toBe("2");
+    expect(first.payload.nativeTurnId).toBe("65b01284-77e6-4fbd-aeb1-12cfa1d48259");
+    expect(
+      first.payload.models.map((line) => [
+        line.model,
+        [
+          line.components.uncachedInput,
+          line.components.cachedInput,
+          line.components.cacheCreation,
+          line.components.output,
+        ]
+          .reduce((sum, value) => sum + BigInt(value ?? 0), 0n)
+          .toString(),
+      ]),
+    ).toEqual([
+      ["claude-haiku-4-5-20251001", "909"],
+      ["claude-opus-5[1m]", "21460"],
+    ]);
     expect(first.payload.parentId).toBeNull();
   });
-
-  it("the recorded Codex parent and child lifetime meters create no response facts", async () => {
+  it("the real Codex multi-agent capture only contains counters, so no exact turn fact is invented", async () => {
     const events = await replayCodex(loadFixture(codexDir, "multi-agent-wire"));
-    expect(events.filter((event) => event.type === "response.usage.completed")).toEqual([]);
+    expect(events.filter((event) => event.type === "turn.usage.completed")).toEqual([]);
   });
-
-  it("native Codex parent and child completions preserve each response identity on retry", async () => {
-    const notifications = [
-      {
-        method: "rawResponse/completed",
-        params: { threadId: "parent", turnId: "parent-turn", responseId: "parent-response", usage },
+  it("constructed native Codex response frames aggregate separately at parent and child completion", async () => {
+    const response = (
+      threadId: string,
+      turnId: string,
+      responseId: string,
+      outputTokens: number,
+    ) => ({
+      method: "rawResponse/completed",
+      params: {
+        threadId,
+        turnId,
+        responseId,
+        ...(threadId === "child" ? { parentThreadId: "parent" } : {}),
+        usage: { ...usage, outputTokens, totalTokens: 100 + outputTokens },
       },
-      {
-        method: "rawResponse/completed",
-        params: {
-          threadId: "child",
-          turnId: "child-turn",
-          responseId: "child-response",
-          usage: { ...usage, outputTokens: 60, totalTokens: 160 },
-        },
-      },
+    });
+    const frames = [
+      response("parent", "pturn", "p1", 30),
+      response("child", "cturn", "c1", 60),
+      response("parent", "pturn", "p2", 3),
+      response("child", "cturn", "c2", 5),
     ];
-    for (const notification of notifications)
-      expect(isCodexCompletion(notification.params)).toBe(true);
+    for (const frame of frames) expect(isCodexCompletion(frame.params)).toBe(true);
+    const done = (threadId: string, id: string) => ({
+      method: "turn/completed",
+      params: { threadId, turn: { id, items: [], status: "completed", error: null } },
+    });
     const fixture: Fixture = {
-      name: "schema-native-responses",
+      name: "constructed-native-turns",
       dir: codexDir,
       meta: { driver: "codex", synthetic: true },
-      lines: [...notifications, notifications[1]!].map((message) => ({ kind: "message", message })),
+      lines: [
+        ...frames,
+        frames[1]!,
+        done("child", "cturn"),
+        done("parent", "pturn"),
+        done("child", "cturn"),
+      ].map((message) => ({ kind: "message", message })),
     };
     const facts = (await replayCodex(fixture)).filter(
-      (event) => event.type === "response.usage.completed",
+      (event) => event.type === "turn.usage.completed",
     );
     expect(
       facts.map((fact) => [
         fact.payload.nativeThreadId,
-        fact.payload.nativeResponseId,
-        fact.payload.components.output,
+        fact.payload.nativeTurnId,
+        fact.payload.models[0]?.components.output,
       ]),
     ).toEqual([
-      ["parent", "parent-response", "30"],
-      ["child", "child-response", "60"],
-      ["child", "child-response", "60"],
+      ["child", "cturn", "65"],
+      ["parent", "pturn", "33"],
     ]);
   });
 });

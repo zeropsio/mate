@@ -16,7 +16,7 @@ import {
 import { ProviderInstanceId, ProviderDriverKind } from "./providerInstance.ts";
 import { ProviderUsageLimitBlock, ProviderUsageLimitsUpdate } from "./providerUsageLimits.ts";
 import { ProviderApprovalOption } from "./orchestration.ts";
-import { UsageComponents, UsageNativeCost } from "./agentUsage.ts";
+import { UsageModelLine, UsageNativeCost } from "./agentUsage.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const UnknownRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
@@ -297,16 +297,15 @@ const ThreadTokenUsageUpdatedPayload = Schema.Struct({
 });
 export type ThreadTokenUsageUpdatedPayload = typeof ThreadTokenUsageUpdatedPayload.Type;
 
-/** One native response's completed, noncumulative consumption. */
-export const ResponseUsageCompletedPayload = Schema.Struct({
+/** One completed native turn, containing only consumption since its live baseline. */
+export const TurnUsageCompletedPayload = Schema.Struct({
   nativeThreadId: TrimmedNonEmptyStringSchema,
-  nativeResponseId: TrimmedNonEmptyStringSchema,
-  model: Schema.NullOr(TrimmedNonEmptyStringSchema),
-  components: UsageComponents,
+  nativeTurnId: TrimmedNonEmptyStringSchema,
+  models: Schema.Array(UsageModelLine),
   nativeCost: Schema.NullOr(UsageNativeCost),
   parentId: Schema.NullOr(TrimmedNonEmptyStringSchema),
 });
-export type ResponseUsageCompletedPayload = typeof ResponseUsageCompletedPayload.Type;
+export type TurnUsageCompletedPayload = typeof TurnUsageCompletedPayload.Type;
 
 const ThreadRealtimeStartedPayload = Schema.Struct({
   realtimeSessionId: Schema.optional(TrimmedNonEmptyStringSchema),
@@ -867,8 +866,8 @@ export type ProviderRuntimeThreadTokenUsageUpdatedEvent =
 
 const ProviderRuntimeResponseUsageCompletedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
-  type: Schema.Literal("response.usage.completed"),
-  payload: ResponseUsageCompletedPayload,
+  type: Schema.Literal("turn.usage.completed"),
+  payload: TurnUsageCompletedPayload,
 });
 
 const ProviderRuntimeThreadRealtimeStartedEvent = Schema.Struct({

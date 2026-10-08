@@ -1,8 +1,10 @@
 # HQ recorded agent usage
 
-Usage is consumption reported by completed responses of agents launched through Mate, including
-child agents. The provider runtime SPI owns the native evidence. Transcripts, provider totals and
-terminal activity are not a usage source. Desktop inherits the hosted client; mobile retains its
+Usage is consumption reported by completed native turns of agents launched through Mate, including
+child work. The provider runtime SPI owns the billing evidence. Claude reports one final result
+with model usage and cost for its billing turn; assistant messages and Task events add no separate
+facts. Codex reports completed native thread/turn consumption. Transcripts and terminal activity
+are not a usage source. Desktop inherits the hosted client; mobile retains its
 current provider reader until a separate migration.
 
 ## Identity and delivery
@@ -13,9 +15,10 @@ the registered Mate lifetime on the existing link's `state` frame; the scope soc
 Overview, attention, health and opened-Mate Limits remain independent.
 
 A registered origin binds one provider to an organization, execution project and Mate registration
-lifetime. A fact identifies the native thread and completed response within that origin. Process
+lifetime. A fact identifies the native thread and completed turn within that origin. Process
 restart, login, cloning and repeated delivery do not create new consumption identities. Facts are
-immutable: a changed model, native identity, components or native cost at the same key is refused.
+immutable: changed model lines, native identity, components or native cost at the same key are
+refused. Reordering unique model lines does not change a turn.
 The first server observation timestamps a completion when the provider has no timestamp; another
 observation of that same completion cannot change its first occurrence or count it again.
 
@@ -33,24 +36,34 @@ unknown. An inclusive total substitutes for an incomplete split and is never add
 
 ## Permanent accounting and recent detail
 
-One transaction commits the permanent receipt, exact fact and additive daily contribution before
+One transaction commits the permanent receipt, exact turn fact and additive daily contributions before
 acknowledgement. Identical retries acknowledge the existing receipt and add nothing. Conflicting
 content refuses the entire batch. Receipts and daily source/model/price-band/meter cells have no
 cascade to live registrations. Deleting a Mate retains its usage and last application placement;
 recreating its execution project creates another registration lifetime.
 
-Exact rows expire after 30 days. Leader activation and daily maintenance prune bounded batches;
-permanent receipts and daily contributions never expire. Whole UTC days use daily cells. Recent
-subday edges use exact responses instead of their intersected daily cells. Hourly groups require
-retained exact responses. Older exact boundaries are refused rather than interpolated. The first
-recorded date belongs to the admitted origins, survives expiry, and proves no history before it.
+A turn carries unique model lines with their disjoint components and reported model charges, plus
+its separately reported total charge. Headline daily cells count one turn and sum its model tokens;
+model daily cells count participation in each model. These are separate tables. Model participation
+counts overlap across groups and are never summed into headline turn counts. A model filter selects
+that model's participation, components and reported charge. Native headline charges are never added
+to model charges or allocated to a model without provider evidence. Automatic pricing uses model
+cells; its coverage denominator is model entries, independently of headline turn counts.
+
+Exact rows and their per-turn model contributions expire after 30 days. Permanent receipts retain
+only identity and a semantic digest. Leader activation and daily maintenance prune bounded batches;
+receipts and daily contributions never expire. Whole UTC days use daily cells. Recent
+subday edges use exact turns instead of their intersected daily cells. Hourly groups require
+retained exact turns. Older exact boundaries are refused rather than interpolated. The first
+recorded date belongs to the admitted origins and survives expiry. Consumption before that evidence
+is unknown.
 An empty result or a working connection cannot prove zero unrecorded consumption.
 
 The forward migration preserves previous scanner origins, facts, receipts and daily history with
-original provenance in separate history tables, and removes its alias, journal, snapshot and
+original provenance in separate history tables, and removes receipt contributions and its alias, journal, snapshot and
 protection machinery. Reports default to `live-responses`. An explicit `legacy-scanner` query
 reads historical daily accounting separately, marks its provenance and coverage gap, and refuses
-exact or hourly reporting. Historical scanner values are never added to live response accounting.
+exact or hourly reporting. Historical scanner values are never added to live turn accounting.
 Restoration operates on the complete database, with receipts and daily cells together, and marks
 restored coverage partial; today's live Mates cannot establish missing historical sources.
 

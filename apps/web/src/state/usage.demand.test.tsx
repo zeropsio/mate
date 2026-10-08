@@ -78,7 +78,7 @@ describe("usage observation ownership", () => {
     renderToStaticMarkup(<Harness enabled={false} />);
     expect(state.demands.every((demand) => demand.owner === null)).toBe(true);
   });
-  it("earlier history remains a separate HQ report and is never added to live responses", () => {
+  it("earlier history remains a separate HQ report and is never added to live turns", () => {
     renderToStaticMarkup(<Harness provenance="legacy-scanner" />);
     expect(
       state.demands.every((demand) => JSON.parse(demand.owner!).provenance === "legacy-scanner"),

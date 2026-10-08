@@ -14,7 +14,7 @@ describe("Usage claims require scope and source evidence", () => {
       kind: "partial",
     },
     {
-      name: "no response means no recorded data, never an estimate",
+      name: "no completed turn means no recorded data, never an estimate",
       read: {
         kind: "read",
         stale: false,

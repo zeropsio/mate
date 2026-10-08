@@ -95,11 +95,12 @@
  *   independent of any reset time. Claude emits it; the other adapters keep their
  *   terminal usage-limit errors. Codex also supplies the existing typed `blocked`
  *   reset on a refused turn when its snapshot names an exhausted window.
- * - 2.10 (2026-10-08): `response.usage.completed` records exact native response
- *   identity and reported consumption, including agent sidechains. Claude emits
- *   at message_stop (or a completed nonstream snapshot); Codex emits from
- *   rawResponse/completed. Thread/task/result totals never create usage facts.
- *   The Claude replay goldens gain these additive completion events.
+ * - 2.10 (2026-10-08): `turn.usage.completed` records own completed native turn
+ *   identity, model lines and separately reported turn cost. Claude uses cumulative
+ *   final-result ledgers minus a live native baseline, including Task/sidechains.
+ *   Codex aggregates exact upstream response meters until the native turn completes.
+ *   The Claude replay goldens change from individual-response to final-turn facts;
+ *   the fresh live baseline replies are constructed, not captured provider evidence.
  *
  * @module providerRuntimeSpi
  */

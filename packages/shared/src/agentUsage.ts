@@ -59,6 +59,9 @@ export const usageDigest = (value: unknown) =>
 export const usageFactDigest = (fact: typeof UsageFact.Type) =>
   usageDigest({
     ...fact,
+    models: [...fact.models].sort((a, b) =>
+      (a.model ?? "") < (b.model ?? "") ? -1 : (a.model ?? "") > (b.model ?? "") ? 1 : 0,
+    ),
     time: fact.time.provenance === "server-completion" ? undefined : fact.time,
   });
 
@@ -71,6 +74,6 @@ export const usageOriginId = (
     { orgId: binding.orgId, projectId: binding.projectId, mateId: binding.mateId },
     provider,
   ]);
-/** The provider thread namespaces the native response identity. */
-export const usageFactId = (nativeThreadId: string, nativeResponseId: string) =>
-  usageDigest([nativeThreadId, nativeResponseId]);
+/** The provider thread namespaces the native turn identity. */
+export const usageFactId = (nativeThreadId: string, nativeTurnId: string) =>
+  usageDigest([nativeThreadId, nativeTurnId]);

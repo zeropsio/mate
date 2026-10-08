@@ -37,7 +37,6 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
-import * as Predicate from "effect/Predicate";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/process";
@@ -64,7 +63,7 @@ import {
   readCodexThreadPolicies,
 } from "../../spi/codexThreadProfile.ts";
 import { codexMcpControl } from "../../spi/mcpControl.ts";
-import { codexResponseUsage } from "../../spi/responseUsage.ts";
+import { makeCodexTurnUsage } from "../../spi/responseUsage.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -1134,23 +1133,10 @@ function mapToRuntimeEvents(
     ];
   }
 
-  // Internal native notification: session setup does not yet opt into raw events.
-  // Mapping this shape does not establish that current new/resumed/child sessions deliver it.
-  if (event.method === "rawResponse/completed") {
-    const raw = Predicate.isObject(event.payload) ? event.payload : undefined;
-    const payload = codexResponseUsage(
-      event.payload,
-      null,
-      typeof raw?.parentThreadId === "string" ? raw.parentThreadId : null,
-    );
+  if (event.method === "session/usageUnavailable") {
+    const payload = readPayload(Schema.Struct({ message: Schema.String }), event.payload);
     return payload
-      ? [
-          {
-            ...runtimeEventBase(event, canonicalThreadId),
-            type: "response.usage.completed",
-            payload,
-          },
-        ]
+      ? [{ ...runtimeEventBase(event, canonicalThreadId), type: "runtime.warning", payload }]
       : [];
   }
 
@@ -1907,6 +1893,8 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         // this a child of `startSession`, and Effect interrupts a fiber's
         // children when it completes, so the consumer died on return and every
         // runtime event the session emitted afterwards was dropped.
+        const turnUsage = makeCodexTurnUsage();
+        let usageFailed = false;
         const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
@@ -1969,13 +1957,44 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
               }
             }
 
-            const mappedEvents = mapToRuntimeEvents(event, event.threadId).map((runtimeEvent) =>
-              usageLimitMessage && runtimeEvent.type === "turn.completed"
-                ? {
-                    ...runtimeEvent,
-                    payload: { ...runtimeEvent.payload, errorMessage: usageLimitMessage },
-                  }
-                : runtimeEvent,
+            const usageEvents: ProviderRuntimeEvent[] = [];
+            if (!usageFailed) {
+              const measured = yield* Effect.try({
+                try: () => turnUsage(event.method, event.payload),
+                catch: (cause) =>
+                  new ProviderAdapterProcessError({
+                    provider: PROVIDER,
+                    threadId: input.threadId,
+                    detail: "Exact Codex usage accounting failed.",
+                    cause,
+                  }),
+              }).pipe(
+                Effect.catch((cause) => {
+                  usageFailed = true;
+                  usageEvents.push({
+                    ...runtimeEventBase(event, event.threadId),
+                    type: "runtime.warning",
+                    payload: { message: cause.detail, detail: String(cause.cause) },
+                  });
+                  return Effect.succeed([]);
+                }),
+              );
+              for (const payload of measured)
+                usageEvents.push({
+                  ...runtimeEventBase(event, event.threadId),
+                  eventId: EventId.make(`${event.id}:usage`),
+                  type: "turn.usage.completed",
+                  payload,
+                });
+            }
+            const mappedEvents = [...usageEvents, ...mapToRuntimeEvents(event, event.threadId)].map(
+              (runtimeEvent) =>
+                usageLimitMessage && runtimeEvent.type === "turn.completed"
+                  ? {
+                      ...runtimeEvent,
+                      payload: { ...runtimeEvent.payload, errorMessage: usageLimitMessage },
+                    }
+                  : runtimeEvent,
             );
             const runtimeEvents = usageLimitError
               ? [...(usageLimitReset ? [usageLimitReset] : []), usageLimitError, ...mappedEvents]

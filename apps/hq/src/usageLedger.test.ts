@@ -33,19 +33,24 @@ const fact = (
   factId: usageFactId("native-thread", id),
   nativeId: id,
   provider: "claude",
-  model,
-  components: {
-    uncachedInput: tokens,
-    cachedInput: "0",
-    cacheCreation: "0",
-    output: "0",
-    reasoning: "0",
-    inclusiveTotal: tokens,
-  },
+  models: [
+    {
+      model,
+      components: {
+        uncachedInput: tokens,
+        cachedInput: "0",
+        cacheCreation: "0",
+        output: "0",
+        reasoning: "0",
+        inclusiveTotal: tokens,
+      },
+      nativeCost: null,
+    },
+  ],
   nativeCost: null,
   time: { kind: "instant", at, provenance: "native" },
-  evidence: "native-request",
-  meterVersion: "claude-1",
+  evidence: "live-provider-turn",
+  meterVersion: "native-turn-v1",
   sessionId: "native-thread",
   parentId: null,
 });
@@ -143,6 +148,128 @@ const database = <E>(run: Effect.Effect<void, E, SqlClient.SqlClient | Leader>) 
   });
 describe("HQ immutable usage", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "one multi-model turn counts once while native header and model charges stay separate",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, sql, leader, total } = yield* setup;
+            const charge = (amount: string) => ({
+              amount,
+              scale: 9,
+              currency: "USD",
+              basis: "provider-reported",
+            });
+            const a = fact("turn", "30");
+            const b = fact("turn", "120", "2020-01-01T12:00:00.000Z", "model-b");
+            const turn = {
+              ...a,
+              nativeCost: charge("900"),
+              models: [
+                {
+                  model: "model-a",
+                  components: a.models[0]!.components,
+                  nativeCost: charge("300"),
+                },
+                {
+                  model: "model-b",
+                  components: b.models[0]!.components,
+                  nativeCost: charge("600"),
+                },
+              ],
+            };
+            const sent = batch([turn]);
+            yield* ledger.receive(sender, sent);
+            yield* ledger.receive(sender, sent);
+            yield* ledger.receive(sender, batch([{ ...turn, models: turn.models.toReversed() }]));
+            assert.strictEqual(yield* total, "150");
+            yield* installAutomaticUsageRates(sql, leader, {
+              "model-a": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
+              "model-b": { input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 },
+            });
+            for (const groupBy of ["model", "provider", "day", "mate"] as const) {
+              const report = yield* readUsageReport(
+                sql,
+                "owner",
+                { kind: "agentUsage", query: { ...baseQuery, groupBy } },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(report.totals.tokens, "150");
+              assert.strictEqual(report.totals.records, "1");
+              assert.strictEqual(report.pricing.costUsdNanos, "150000");
+              assert.deepStrictEqual(Object.values(report.nativeCosts ?? {}), ["900"]);
+              if (groupBy === "model") {
+                assert.deepStrictEqual(
+                  report.groups.map((row) => row.totals.records),
+                  ["1", "1"],
+                );
+                assert.deepStrictEqual(
+                  report.groups.map((row) => row.totals.tokens),
+                  ["30", "120"],
+                );
+                assert.deepStrictEqual(
+                  report.groups.map((row) => Object.values(row.nativeCosts ?? {})),
+                  [["300"], ["600"]],
+                );
+                assert.strictEqual(report.pricing.pricedModelEntries, "2");
+              } else assert.strictEqual(report.groups[0]!.totals.records, "1");
+            }
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            for (const groupBy of ["hour", "model", "mate"] as const) {
+              const exact = yield* readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: {
+                    ...baseQuery,
+                    mode: "exact",
+                    since: "2020-01-01T11:00:00.000Z",
+                    until: "2020-01-01T13:00:00.000Z",
+                    groupBy,
+                  },
+                  detail: { tier: "exact" },
+                },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(exact.totals.tokens, "150");
+              assert.strictEqual(exact.totals.records, "1");
+              assert.lengthOf(exact.detail, 1);
+            }
+            const selected = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: { ...baseQuery, model: "model-b" } },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(selected.totals.tokens, "120");
+            assert.strictEqual(selected.totals.records, "1");
+            assert.deepStrictEqual(Object.values(selected.nativeCosts ?? {}), ["600"]);
+            const [boundary] = yield* sql<{
+              readonly day: string;
+            }>`SELECT to_char((now() AT TIME ZONE 'UTC')::date-30,'YYYY-MM-DD') AS day`;
+            assert.strictEqual(yield* pruneUsageDetail(sql, leader, boundary!.day), 1);
+            yield* ledger.receive(sender, batch([turn]));
+            const retained = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(retained.totals.tokens, "150");
+            assert.strictEqual(retained.totals.records, "1");
+            assert.deepStrictEqual(
+              retained.groups.map((row) => row.totals.records),
+              ["1", "1"],
+            );
+            assert.deepStrictEqual(Object.values(retained.nativeCosts ?? {}), ["900"]);
+          }),
+        ),
+    );
     for (const mode of [
       "duplicate batch",
       "lost ACK",
@@ -296,6 +423,10 @@ describe("HQ immutable usage", () => {
           assert.strictEqual(yield* total, "150");
           assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_fact`, 0);
           assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt`, 1);
+          const [retainedReceipt] = yield* sql<{
+            readonly detail: unknown;
+          }>`SELECT to_jsonb(r)-'origin_id'-'fact_id'-'digest' AS detail FROM hq_usage_receipt r`;
+          assert.deepStrictEqual(retainedReceipt!.detail, {});
         }),
       ),
     );
@@ -463,16 +594,25 @@ describe("HQ immutable usage", () => {
             yield* migrate(old);
             yield* sql`INSERT INTO hq_usage_producer(ledger_id,org_id,project_id,mate_id,channel,process_id,digest) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old',repeat('0',64))`;
             yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,ledger_id,writer_id,provider,label,coverage) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old','claude','Old Mate',${json({ state: "partial", since: "2020-01-01T00:00:00.000Z", through: "2020-01-02T00:00:00.000Z", gaps: [] })}::jsonb)`;
+            const historicalTurn = fact("old", "150");
+            const { models, ...historicalIdentity } = historicalTurn;
             const original = {
-              ...fact("old", "150"),
+              ...historicalIdentity,
               originId: "old",
+              model: models[0]!.model,
+              components: models[0]!.components,
+              pricingBand: "standard",
               aliases: ["request"],
               revision: "1",
               state: "settled",
             };
-            yield* sql`INSERT INTO hq_usage_receipt(origin_id,native_id,fact_id,revision,digest,contribution) VALUES('old','old','old',1,repeat('0',64),${json(contributionOf(original))}::jsonb)`;
+            const oldContribution = {
+              ...contributionOf(historicalTurn).models[0]!,
+              pricingBand: "standard",
+            };
+            yield* sql`INSERT INTO hq_usage_receipt(origin_id,native_id,fact_id,revision,digest,contribution) VALUES('old','old','old',1,repeat('0',64),${json(oldContribution)}::jsonb)`;
             yield* sql`INSERT INTO hq_usage_fact(origin_id,native_id,day,model,value) VALUES('old','old','2020-01-01','model-a',${json(original)}::jsonb)`;
-            yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics) VALUES('old','2020-01-01','model-a','standard','claude-1','1111',${json(contributionOf(original).statistics)}::jsonb)`;
+            yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics) VALUES('old','2020-01-01','model-a','standard','claude-1','1111',${json(oldContribution.statistics)}::jsonb)`;
             yield* migrate(treeMigrations());
             const [historical] = yield* sql<{
               readonly value: unknown;
@@ -533,7 +673,12 @@ describe("HQ immutable usage", () => {
               fact("known", "100"),
               {
                 ...fact("unknown", "200"),
-                components: { ...fact("unknown", "200").components, output: null },
+                models: [
+                  {
+                    ...fact("unknown", "200").models[0]!,
+                    components: { ...fact("unknown", "200").models[0]!.components, output: null },
+                  },
+                ],
               },
             ]),
           );
@@ -550,8 +695,8 @@ describe("HQ immutable usage", () => {
           );
           assert.strictEqual(report.totals.tokens, "300");
           assert.strictEqual(report.pricing.costUsdNanos, "100000");
-          assert.strictEqual(report.pricing.pricedRecords, "1");
-          assert.strictEqual(report.pricing.unpricedRecords, "1");
+          assert.strictEqual(report.pricing.pricedModelEntries, "1");
+          assert.strictEqual(report.pricing.unpricedModelEntries, "1");
         }),
       ),
     );
@@ -649,14 +794,16 @@ describe("HQ immutable usage", () => {
           yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
           // Fast fixture loading uses the same canonical full facts and contribution shape as ingest.
           const sample = fact("sample", "100");
+          yield* sql`INSERT INTO hq_usage_receipt(origin_id,fact_id,digest)
+          SELECT ${originId},'request-'||i,repeat('0',64) FROM generate_series(1,39000)i`;
           yield* sql`WITH fixture AS (
-          SELECT ('request-'||i)::text AS id, to_char('2020-01-01'::date + ((i-1)/1000)::int,'YYYY-MM-DD') AS day, ('model-'||(i%4))::text AS model FROM generate_series(1,39000) i)
-          INSERT INTO hq_usage_receipt(origin_id,fact_id,digest,contribution)
-          SELECT ${originId},id,repeat('0',64),${json(contributionOf(sample))}::jsonb||jsonb_build_object('day',day,'model',model) FROM fixture`;
-          yield* sql`INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,model,value)
-          SELECT origin_id,fact_id,(contribution->>'day')::timestamptz+interval '12 hours',contribution->>'day',contribution->>'model',
-          ${json(sample)}::jsonb||jsonb_build_object('factId',fact_id,'nativeId',fact_id,'model',contribution->>'model','time',jsonb_build_object('kind','instant','at',(contribution->>'day')||'T12:00:00.000Z','provenance','native')) FROM hq_usage_receipt`;
-          yield* sql`INSERT INTO hq_usage_daily SELECT origin_id,contribution->>'day',contribution->>'model',contribution->>'pricingBand',contribution->>'meterVersion',contribution->>'knownComponents',hq_usage_sum(contribution->'statistics'),hq_usage_sum(contribution->'nativeCost') FROM hq_usage_receipt GROUP BY 1,2,3,4,5,6`;
+          SELECT ('request-'||i)::text AS id,to_char('2020-01-01'::date+((i-1)/1000)::int,'YYYY-MM-DD') AS day,('model-'||(i%4))::text AS model FROM generate_series(1,39000)i)
+          INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,value,contribution)
+          SELECT ${originId},id,day::timestamptz+interval '12 hours',day,
+          ${json(sample)}::jsonb||jsonb_build_object('factId',id,'nativeId',id,'models',jsonb_build_array(${json(sample.models[0])}::jsonb||jsonb_build_object('model',model)),'time',jsonb_build_object('kind','instant','at',day||'T12:00:00.000Z','provenance','native')),
+          jsonb_build_object('headline',${json(contributionOf(sample).headline)}::jsonb||jsonb_build_object('day',day),'models',jsonb_build_array(${json(contributionOf(sample).models[0])}::jsonb||jsonb_build_object('day',day,'model',model))) FROM fixture`;
+          yield* sql`INSERT INTO hq_usage_daily SELECT origin_id,contribution->'headline'->>'day',contribution->'headline'->>'meterVersion',hq_usage_sum(contribution->'headline'->'statistics'),hq_usage_sum(contribution->'headline'->'nativeCost') FROM hq_usage_fact GROUP BY 1,2,3`;
+          yield* sql`INSERT INTO hq_usage_model_daily SELECT origin_id,line.value->>'day',line.value->>'model',line.value->>'pricingBand',line.value->>'meterVersion',line.value->>'knownComponents',hq_usage_sum(line.value->'statistics'),hq_usage_sum(line.value->'nativeCost') FROM hq_usage_fact CROSS JOIN LATERAL jsonb_array_elements(contribution->'models') line(value) GROUP BY 1,2,3,4,5,6`;
           yield* sql`ANALYZE hq_usage_fact`;
           yield* sql`ANALYZE hq_usage_daily`;
           const query = { ...baseQuery, until: "2020-02-09T00:00:00.000Z" };
@@ -684,7 +831,7 @@ describe("HQ immutable usage", () => {
           const sizes = yield* sql<{
             readonly tier: string;
             readonly bytes: string;
-          }>`SELECT name AS tier,pg_total_relation_size(name::regclass)::text AS bytes FROM unnest(ARRAY['hq_usage_fact','hq_usage_receipt','hq_usage_daily']) name`;
+          }>`SELECT name AS tier,pg_total_relation_size(name::regclass)::text AS bytes FROM unnest(ARRAY['hq_usage_fact','hq_usage_receipt','hq_usage_daily','hq_usage_model_daily']) name`;
           const latency: number[] = [];
           for (let i = 0; i < 5; i++) {
             const started = yield* Clock.currentTimeMillis;

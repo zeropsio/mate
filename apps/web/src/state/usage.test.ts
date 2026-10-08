@@ -62,4 +62,27 @@ describe("recorded consumption report selection", () => {
       records: 1,
     });
   });
+  it.each([
+    { priced: "2", unpriced: "0", pricedShare: 1, unpricedShare: 0 },
+    { priced: "1", unpriced: "1", pricedShare: 0.5, unpricedShare: 0.5 },
+    { priced: "0", unpriced: "2", pricedShare: 0, unpricedShare: 1 },
+  ])(
+    "one turn prices its $priced priced and $unpriced unpriced model entries independently",
+    ({ priced, unpriced, pricedShare, unpricedShare }) => {
+      const report = recordedReport();
+      expect(
+        usageReportTotals({
+          ...report,
+          pricing: {
+            ...report.pricing,
+            pricedModelEntries: priced,
+            unpricedModelEntries: unpriced,
+          },
+        }),
+      ).toMatchObject({
+        records: 1,
+        costQuality: { modelPricedShare: pricedShare, unpricedShare },
+      });
+    },
+  );
 });

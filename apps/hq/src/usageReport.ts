@@ -86,7 +86,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
   if (legacy && (q.mode === "exact" || scope.detail?.tier === "exact" || q.groupBy === "hour"))
     return yield* new UsageRefused({ code: "legacy_usage_is_not_exact" });
   const originTable = legacy ? "hq_usage_history_origin" : "hq_usage_origin";
-  const dailyTable = legacy ? "hq_usage_history_daily" : "hq_usage_daily";
+  const dailyTable = legacy ? "hq_usage_history_daily" : "hq_usage_model_daily";
   return yield* sql.withTransaction(
     Effect.gen(function* () {
       yield* sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`;
@@ -266,54 +266,60 @@ export const readUsageReport = Effect.fnUntraced(function* (
             basis: "automatic-api-equivalent-estimate" as const,
             revision: state.pricing,
             costUsdNanos: null,
-            pricedRecords: "0",
-            unpricedRecords: "0",
+            pricedModelEntries: "0",
+            unpricedModelEntries: "0",
           },
           groups: [],
           groupsMore: false,
           detail: [],
           next: null,
         };
-      // Whole UTC days always use rollups. Only exact subday edges replace their intersected cells.
-      let params = [json(counted), q.since, q.until, q.mode, q.model, state.pricing];
-      let cellCte = `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text, deleted boolean,provider text)),
-    cells AS (
-      SELECT d.origin_id,d.day,NULL::timestamptz AS occurrence,d.model,d.pricing_band,d.statistics,d.native_cost,s.* FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id
-      WHERE ((d.day='unallocated' AND $2::timestamptz IS NULL) OR (d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char(($3::timestamptz AT TIME ZONE 'UTC')::date + CASE WHEN $4='exact' AND ($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time THEN 1 ELSE 0 END,'YYYY-MM-DD')
-      )) AND ($5::text IS NULL OR d.model=$5)
-      AND NOT ($4='exact' AND (($2::timestamptz IS NOT NULL AND ($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD'))))
-      UNION ALL
-      SELECT f.origin_id,f.day,f.occurrence,f.model,r.contribution->>'pricingBand',r.contribution->'statistics',r.contribution->'nativeCost',s.* FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id JOIN hq_usage_receipt r USING(origin_id,fact_id)
-      WHERE $4='exact' AND f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND r.contribution IS NOT NULL AND r.contribution<>'null'::jsonb
-      AND ($5::text IS NULL OR f.model=$5) AND ((($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')))
-    ), priced AS (SELECT c.*,p.rates,
-      CASE WHEN p.rates IS NOT NULL AND (c.statistics->>'unknownComponents')::numeric=0 AND NOT EXISTS(SELECT 1 FROM jsonb_each_text(c.statistics) component WHERE component.key IN ('uncachedInput','cachedInput','cacheCreation','output') AND component.value::numeric>0 AND p.rates->>component.key IS NULL) THEN
-      (c.statistics->>'uncachedInput')::numeric*coalesce((p.rates->>'uncachedInput')::numeric,0)+(c.statistics->>'cachedInput')::numeric*coalesce((p.rates->>'cachedInput')::numeric,0)+(c.statistics->>'cacheCreation')::numeric*coalesce((p.rates->>'cacheCreation')::numeric,0)+(c.statistics->>'output')::numeric*coalesce((p.rates->>'output')::numeric,0) END AS cost
-      FROM cells c LEFT JOIN hq_usage_price p ON p.revision=$6 AND p.model=c.model AND p.pricing_band=c.pricing_band)`;
-      if (legacy) {
-        cellCte =
-          `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text,deleted boolean,provider text)),
-          cells AS (SELECT d.origin_id,d.day,NULL::timestamptz AS occurrence,d.model,d.pricing_band,d.statistics,d.native_cost,s.*
-          FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id
-          WHERE ((d.day='unallocated' AND $2::timestamptz IS NULL) OR (d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')))
-          AND ($5::text IS NULL OR d.model=$5) AND $4::text='utc-days')` +
-          cellCte.slice(cellCte.indexOf(", priced AS"));
-      }
-      if (q.groupBy === "hour") {
-        if (
-          q.since === null ||
+      // Headline turns and model participation are independent rollups, never added together.
+      const exactOnly = q.groupBy === "hour";
+      const params = exactOnly
+        ? [json(counted), q.since, q.until, q.model, state.pricing]
+        : [json(counted), q.since, q.until, q.mode, q.model, state.pricing];
+      const modelParameter = exactOnly ? "$4" : "$5";
+      const priceParameter = exactOnly ? "$5" : "$6";
+      if (
+        exactOnly &&
+        (q.since === null ||
           state.exact_since === null ||
-          Date.parse(q.since) < Date.parse(state.exact_since)
-        )
-          return yield* new UsageRefused({ code: "unsupported_exact_boundary" });
-        params = [json(counted), q.since, q.until, q.model, state.pricing];
-        cellCte =
-          `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text,deleted boolean,provider text)),
-          cells AS (SELECT f.origin_id,f.day,f.occurrence,f.model,r.contribution->>'pricingBand' AS pricing_band,r.contribution->'statistics' AS statistics,r.contribution->'nativeCost' AS native_cost,s.*
-          FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id JOIN hq_usage_receipt r USING(origin_id,fact_id)
-          WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR f.model=$4))` +
-          cellCte.slice(cellCte.indexOf(", priced AS")).replaceAll("$6", "$5");
-      }
+          Date.parse(q.since) < Date.parse(state.exact_since))
+      )
+        return yield* new UsageRefused({ code: "unsupported_exact_boundary" });
+      const wholeDays = `((d.day='unallocated' AND $2::timestamptz IS NULL) OR (d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char(($3::timestamptz AT TIME ZONE 'UTC')::date + CASE WHEN $4='exact' AND ($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time THEN 1 ELSE 0 END,'YYYY-MM-DD')))
+        AND NOT ($4='exact' AND (($2::timestamptz IS NOT NULL AND ($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND d.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD'))))`;
+      const exactWindow = `f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz`;
+      const exactEdges = exactOnly
+        ? exactWindow
+        : `${exactWindow} AND $4='exact' AND ((($2::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) OR (($3::timestamptz AT TIME ZONE 'UTC')::time<>'00:00'::time AND f.day=to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')))`;
+      const modelDays = `SELECT d.day,NULL::timestamptz AS occurrence,d.model,d.pricing_band,d.statistics,d.native_cost,s.* FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id WHERE ${wholeDays} AND (${modelParameter}::text IS NULL OR d.model=${modelParameter})`;
+      const modelExact = `SELECT f.day,f.occurrence,line.value->>'model' AS model,line.value->>'pricingBand' AS pricing_band,line.value->'statistics' AS statistics,line.value->'nativeCost' AS native_cost,s.*
+        FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id
+        CROSS JOIN LATERAL jsonb_array_elements(f.contribution->'models') line(value)
+        WHERE ${exactEdges} AND (${modelParameter}::text IS NULL OR line.value->>'model'=${modelParameter})`;
+      const headlineDays = `SELECT d.day,NULL::timestamptz AS occurrence,d.statistics,d.native_cost,s.* FROM ${legacy ? dailyTable : "hq_usage_daily"} d JOIN source s ON s."originId"=d.origin_id WHERE ${wholeDays}`;
+      const headlineExact = `SELECT f.day,f.occurrence,f.contribution->'headline'->'statistics' AS statistics,f.contribution->'headline'->'nativeCost' AS native_cost,s.*
+        FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id WHERE ${exactEdges}`;
+      const models = legacy
+        ? modelDays
+        : exactOnly
+          ? modelExact
+          : `${modelDays} UNION ALL ${modelExact}`;
+      const headlines =
+        q.model !== null
+          ? "SELECT * FROM model_cells"
+          : legacy
+            ? headlineDays
+            : exactOnly
+              ? headlineExact
+              : `${headlineDays} UNION ALL ${headlineExact}`;
+      const cellCte = `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text,"projectId" text,"mateId" text,"appId" text,"ownerUserId" text,deleted boolean,provider text)),
+        model_cells AS (${models}), headlines AS (${headlines}), priced AS (SELECT c.*,p.rates,
+        CASE WHEN p.rates IS NOT NULL AND (c.statistics->>'unknownComponents')::numeric=0 AND NOT EXISTS(SELECT 1 FROM jsonb_each_text(c.statistics) component WHERE component.key IN ('uncachedInput','cachedInput','cacheCreation','output') AND component.value::numeric>0 AND p.rates->>component.key IS NULL) THEN
+        (c.statistics->>'uncachedInput')::numeric*coalesce((p.rates->>'uncachedInput')::numeric,0)+(c.statistics->>'cachedInput')::numeric*coalesce((p.rates->>'cachedInput')::numeric,0)+(c.statistics->>'cacheCreation')::numeric*coalesce((p.rates->>'cacheCreation')::numeric,0)+(c.statistics->>'output')::numeric*coalesce((p.rates->>'output')::numeric,0) END AS cost
+        FROM model_cells c LEFT JOIN hq_usage_price p ON p.revision=${priceParameter} AND p.model=c.model AND p.pricing_band=c.pricing_band)`;
       const period =
         q.groupBy === "hour"
           ? `to_char(occurrence AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:00:00.000"Z"')`
@@ -332,6 +338,19 @@ export const readUsageReport = Effect.fnUntraced(function* (
         owner:
           "coalesce(\"ownerUserId\",CASE WHEN deleted THEN 'deleted-retired' ELSE 'unresolved' END)",
       }[q.groupBy];
+      const extras = byPeriod
+        ? `provider,${period} AS period,`
+        : q.groupBy === "provider"
+          ? "provider,"
+          : "";
+      const groupColumns = byPeriod ? "1,2,3" : q.groupBy === "provider" ? "1,2" : "1";
+      const costSum = "CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END";
+      const grouped =
+        q.groupBy === "model"
+          ? `grouped AS (SELECT coalesce(${group},'unresolved') AS key,provider,nullif(model,'') AS model,${sums("statistics")} AS totals,hq_usage_sum(native_cost) AS "nativeCosts",${costSum} AS "costUsdNanos" FROM priced GROUP BY 1,2,3)`
+          : `grouped_headlines AS (SELECT coalesce(${group},'unresolved') AS key,${extras}${sums("statistics")} AS totals,hq_usage_sum(native_cost) AS "nativeCosts" FROM headlines GROUP BY ${groupColumns}),
+          grouped_costs AS (SELECT coalesce(${group},'unresolved') AS key,${costSum} AS "costUsdNanos" FROM priced GROUP BY 1),
+          grouped AS (SELECT h.*,c."costUsdNanos" FROM grouped_headlines h LEFT JOIN grouped_costs c USING(key))`;
       const [summary] = yield* sql.unsafe<{
         readonly totals: UsageStatistics;
         readonly cost: string | null;
@@ -342,15 +361,13 @@ export const readUsageReport = Effect.fnUntraced(function* (
         readonly unallocated: boolean;
         readonly native: Readonly<Record<string, string>>;
       }>(
-        `${cellCte}, grouped AS (SELECT coalesce(${group},'unresolved') AS key,${q.groupBy === "model" ? "provider,nullif(model,'') AS model," : byPeriod ? `provider,${period} AS period,` : q.groupBy === "provider" ? "provider," : ""}${sums("statistics")} AS totals,CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END AS "costUsdNanos" FROM priced GROUP BY ${q.groupBy === "model" || byPeriod ? "1,2,3" : q.groupBy === "provider" ? "1,2" : "1"}), limited AS (SELECT * FROM grouped ORDER BY key LIMIT 201)
-      SELECT ${sums("statistics")} AS totals,CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END AS cost,
-      coalesce(sum(CASE WHEN cost IS NOT NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text AS priced,
-      coalesce(sum(CASE WHEN cost IS NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text AS unpriced,
-      (SELECT coalesce(jsonb_agg(x ORDER BY key),'[]') FROM (SELECT * FROM limited ORDER BY key LIMIT 200)x) AS groups,
-      (SELECT count(*)>200 FROM limited) AS more,
-      (SELECT hq_usage_sum(native_cost) FROM priced) AS native,
-      EXISTS(SELECT 1 FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id WHERE d.day='unallocated' AND (d.statistics->>'records')::numeric>0) AS unallocated
-      FROM priced`,
+        `${cellCte}, ${grouped}, limited AS (SELECT * FROM grouped ORDER BY key LIMIT 201)
+        SELECT (SELECT ${sums("statistics")} FROM headlines) AS totals,(SELECT ${costSum} FROM priced) AS cost,
+        (SELECT coalesce(sum(CASE WHEN cost IS NOT NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text FROM priced) AS priced,
+        (SELECT coalesce(sum(CASE WHEN cost IS NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text FROM priced) AS unpriced,
+        (SELECT coalesce(jsonb_agg(x ORDER BY key),'[]') FROM (SELECT * FROM limited ORDER BY key LIMIT 200)x) AS groups,
+        (SELECT count(*)>200 FROM limited) AS more,(SELECT hq_usage_sum(native_cost) FROM headlines) AS native,
+        EXISTS(SELECT 1 FROM headlines WHERE day='unallocated' AND (statistics->>'records')::numeric>0) AS unallocated`,
         params,
       );
       if (summary === undefined) return yield* new UsageRefused({ code: "usage_summary_missing" });
@@ -375,7 +392,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
         const rows = yield* sql.unsafe<{ readonly key: string; readonly value: unknown }>(
           tier === "daily"
             ? `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)::text AS key,jsonb_build_object('originId',d.origin_id,'day',d.day,'model',nullif(d.model,''),'pricingBand',d.pricing_band,'meterVersion',d.meter_version,'knownComponents',d.known_components,'statistics',d.statistics,'nativeCost',d.native_cost) AS value FROM ${dailyTable} d JOIN source s ON s."originId"=d.origin_id WHERE d.day<>'unallocated' AND ($2::timestamptz IS NULL OR d.day>=to_char($2::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD')) AND d.day<to_char($3::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD') AND ($4::text IS NULL OR d.model=$4) AND ($5::text IS NULL OR (d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components)>($5,$6,$7,$8,$9,$10)) ORDER BY d.day,d.origin_id,d.model,d.pricing_band,d.meter_version,d.known_components LIMIT 101`
-            : `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(f.occurrence,f.origin_id,f.fact_id)::text AS key,f.value FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR f.model=$4) AND ($5::text IS NULL OR (f.occurrence,f.origin_id,f.fact_id)>($5::timestamptz,$6,$7)) ORDER BY f.occurrence,f.origin_id,f.fact_id LIMIT 101`,
+            : `WITH source AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS s("originId" text)) SELECT jsonb_build_array(f.occurrence,f.origin_id,f.fact_id)::text AS key,f.value FROM hq_usage_fact f JOIN source s ON s."originId"=f.origin_id WHERE f.occurrence >= $2::timestamptz AND f.occurrence < $3::timestamptz AND ($4::text IS NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements(f.value->'models') line WHERE line->>'model'=$4)) AND ($5::text IS NULL OR (f.occurrence,f.origin_id,f.fact_id)>($5::timestamptz,$6,$7)) ORDER BY f.occurrence,f.origin_id,f.fact_id LIMIT 101`,
           [
             json(counted),
             q.since,
@@ -408,8 +425,8 @@ export const readUsageReport = Effect.fnUntraced(function* (
           basis: "automatic-api-equivalent-estimate",
           revision: state.pricing,
           costUsdNanos: summary.cost,
-          pricedRecords: summary.priced,
-          unpricedRecords: summary.unpriced,
+          pricedModelEntries: summary.priced,
+          unpricedModelEntries: summary.unpriced,
         },
         nativeCosts: summary.native ?? {},
         groups: summary.groups,

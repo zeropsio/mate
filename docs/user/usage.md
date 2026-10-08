@@ -2,23 +2,29 @@
 
 Usage records consumption reported by agents running through Mate.
 Commands run independently in a container terminal and zcp activity are outside Mate usage.
-Completed provider responses supply the model, reported token categories, and native cost when
-available. Missing provider evidence remains unknown; the page never invents earlier consumption.
+Completed provider turns supply usage for each model they used, reported token categories, and
+native cost when available. One turn can use several models, including models used by subagents;
+it still counts as one turn in the headline total. Model participation counts overlap and must not
+be added to obtain a turn count. Missing provider evidence remains unknown; the page never invents
+earlier consumption.
 
-Provider evidence can be incomplete. The current Claude stream does not deliver every subagent's
-completed usage, and Codex completion delivery is not yet verified for new, resumed, and child
-threads. These gaps are explicit on the report. Partial totals are the recorded subset of
-consumption and must not be read as complete usage.
+Claude's final result reports cumulative usage by model, including subagent consumption. Mate
+records the increase since the preceding native baseline as one completed turn, so parent and
+subagent totals are counted once. Usage from resumed Codex threads is unavailable; new Codex
+threads and their subagents report usage from completed native responses. This gap is explicit on
+the report. Partial totals are the recorded subset of consumption and must not be read as complete
+usage.
 
-HQ retains exact response facts for 30 days and daily history indefinitely, including deleted Mates.
+HQ retains exact turn facts for 30 days and daily history indefinitely, including deleted Mates.
 Web and desktop read these reports without connecting to every Mate. An HQ outage retains the
 permitted report labelled last-known. Automatic model pricing produces an API-equivalent estimate;
 models without usable prices say **Unpriced**. This estimate is separate from native reported costs,
-subscription payments, and Zerops resource charges.
+subscription payments, and Zerops resource charges. A reported turn cost is separate from
+per-model costs; the report never adds those costs together or allocates a turn cost to models.
 
 **Owner** uses the Mate's current HQ owner and project filters use stable HQ app IDs (`?app=<id>`).
 Old `?project=<name>` bookmarks require choosing a project. Earlier history collected by the
-previous method remains separately labelled and is never added to the completed-response totals.
+previous method remains separately labelled and is never added to the completed-turn totals.
 
 Open **Usage** from the command palette, or press `mod+u` on web and desktop when the terminal is
 not focused. Customize `usage.open` in **Settings → Keybindings**.

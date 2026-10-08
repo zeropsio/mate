@@ -338,8 +338,8 @@ describe("recorded HQ usage presentation", () => {
       pricing: {
         ...recordedReport().pricing,
         costUsdNanos: null,
-        pricedRecords: "0",
-        unpricedRecords: "1",
+        pricedModelEntries: "0",
+        unpricedModelEntries: "1",
       },
     });
     testState.providers = recordedReport({
@@ -360,21 +360,49 @@ describe("recorded HQ usage presentation", () => {
     expect(markup).toContain("Unpriced");
     expect(markup).not.toContain("$0.00");
   });
-  it("provider-reported charges remain separate from the API-equivalent estimate", () => {
+  it("provider-reported costs remain separate from the API-equivalent estimate", () => {
     testState.report = recordedReport({ nativeCosts: { '["USD","response",6]': "1250000" } });
     const markup = renderPage();
-    expect(markup).toContain("Provider-reported charges");
+    expect(markup).toContain("Provider-reported costs");
     expect(markup).toContain("USD 1.25");
     expect(markup).toContain("$7.83");
   });
+  it("a turn using two models stays one headline turn and keeps its reported cost separate", () => {
+    testState.breakdown = "model";
+    testState.report = recordedReport({ nativeCosts: { '["USD","turn",6]': "1250000" } });
+    testState.models = recordedReport({
+      groups: [
+        {
+          key: "parent",
+          provider: "claude",
+          model: "parent-model",
+          totals: statistics("600"),
+          costUsdNanos: "6000000000",
+          nativeCosts: { '["USD","model",6]': "750000" },
+        },
+        {
+          key: "child",
+          provider: "claude",
+          model: "child-model",
+          totals: statistics("400"),
+          costUsdNanos: "1830000000",
+          nativeCosts: { '["USD","model",6]': "500000" },
+        },
+      ],
+    });
+    const markup = renderPage();
+    expect(markup).toContain("1 turn");
+    expect(markup).not.toContain("2 turns");
+    expect(markup).toContain("parent-model");
+    expect(markup).toContain("child-model");
+    expect(markup).toContain("USD 1.25 · turn");
+    expect(markup).not.toContain("USD 2.5");
+    expect(markup).toContain("A turn can use several models");
+  });
   it.each([
     {
-      gap: "claude-sidechain-completions-unavailable",
-      message: "Claude subagent usage is unavailable from this provider stream.",
-    },
-    {
-      gap: "codex-response-completion-delivery-unverified",
-      message: "Codex response usage delivery has not been verified for this provider stream.",
+      gap: "codex-resumed-turns-unavailable",
+      message: "Usage from resumed Codex threads is unavailable.",
     },
   ])("$gap names the missing provider evidence", ({ gap, message }) => {
     testState.report = recordedReport({

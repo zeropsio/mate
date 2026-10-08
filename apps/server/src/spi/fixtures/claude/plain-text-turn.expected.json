@@ -539,23 +539,55 @@
   {
     "eventId": "evt-10",
     "createdAt": "1970-01-01T00:00:00.000Z",
-    "type": "response.usage.completed",
+    "type": "turn.usage.completed",
     "provider": "claudeAgent",
     "threadId": "spi-replay-claude-thread",
     "providerRefs": {},
     "payload": {
       "nativeThreadId": "c8f9608e-c260-4030-b4fb-d7a79d50bd17",
-      "nativeResponseId": "msg_011CeWiTi3a6zToRozdqbz5o",
-      "model": "claude-opus-5",
-      "components": {
-        "uncachedInput": "2",
-        "cachedInput": "11474",
-        "cacheCreation": "9980",
-        "output": "4",
-        "reasoning": "0",
-        "inclusiveTotal": null
+      "nativeTurnId": "65b01284-77e6-4fbd-aeb1-12cfa1d48259",
+      "models": [
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "components": {
+            "uncachedInput": "899",
+            "cachedInput": "0",
+            "cacheCreation": "0",
+            "output": "10",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "949",
+            "scale": 6,
+            "currency": "USD",
+            "basis": "list"
+          }
+        },
+        {
+          "model": "claude-opus-5[1m]",
+          "components": {
+            "uncachedInput": "2",
+            "cachedInput": "11474",
+            "cacheCreation": "9980",
+            "output": "4",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "105647",
+            "scale": 6,
+            "currency": "USD",
+            "basis": "list"
+          }
+        }
+      ],
+      "nativeCost": {
+        "amount": "10659600000000001",
+        "scale": 17,
+        "currency": "USD",
+        "basis": "provider-reported-estimate"
       },
-      "nativeCost": null,
       "parentId": null
     }
   },

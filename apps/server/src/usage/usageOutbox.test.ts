@@ -5,20 +5,25 @@ import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import { makeUsageOutbox, type CompletedUsage } from "./UsageOutbox.ts";
 
 const binding = { orgId: "org", projectId: "project", mateId: "mate" };
-const response = (nativeResponseId: string, amount = "30"): CompletedUsage => ({
+const turn = (nativeTurnId: string, amount = "30"): CompletedUsage => ({
   provider: "claude",
   at: "2026-10-08T10:00:00.000Z",
   nativeThreadId: "native-thread",
-  nativeResponseId,
-  model: "claude-sonnet-4-6",
-  components: {
-    uncachedInput: amount,
-    cachedInput: "0",
-    cacheCreation: "0",
-    output: "0",
-    reasoning: null,
-    inclusiveTotal: amount,
-  },
+  nativeTurnId,
+  models: [
+    {
+      model: "claude-sonnet-4-6",
+      components: {
+        uncachedInput: amount,
+        cachedInput: "0",
+        cacheCreation: "0",
+        output: "0",
+        reasoning: null,
+        inclusiveTotal: amount,
+      },
+      nativeCost: null,
+    },
+  ],
   nativeCost: null,
   parentId: null,
 });
@@ -27,11 +32,11 @@ const withOutbox = <A, E>(
 ) =>
   makeUsageOutbox.pipe(Effect.flatMap(run), Effect.provide(Sqlite.layer({ filename: ":memory:" })));
 
-describe("completed Mate usage delivery", () => {
+describe("completed Mate turn usage delivery", () => {
   it.effect("usage completed while HQ is down waits locally for acknowledgement", () =>
     withOutbox((box) =>
       Effect.gen(function* () {
-        yield* box.record(response("a"));
+        yield* box.record(turn("a"));
         assert.isUndefined(yield* box.batch);
         yield* box.bind(binding);
         const first = yield* box.batch;
@@ -50,39 +55,64 @@ describe("completed Mate usage delivery", () => {
       withOutbox((box) =>
         Effect.gen(function* () {
           yield* box.bind(binding);
-          yield* box.record(response("a"));
+          yield* box.record(turn("a"));
           const first = yield* box.batch;
-          yield* box.record({ ...response("a"), at: "2026-10-08T10:01:00.000Z" });
+          yield* box.record({ ...turn("a"), at: "2026-10-08T10:01:00.000Z" });
           const resent = yield* (yield* makeUsageOutbox).batch;
           assert.deepEqual(resent, first);
         }),
       ),
     );
   }
-  it.effect("each child response is counted once without a parent cumulative total", () =>
-    withOutbox((box) =>
-      Effect.gen(function* () {
-        yield* box.bind(binding);
-        for (const value of [
-          response("parent", "120"),
-          { ...response("child", "30"), nativeThreadId: "child-thread", parentId: "parent" },
-          response("parent", "120"),
-        ])
-          yield* box.record(value);
-        const frame = yield* box.batch;
-        assert.equal(frame?.facts.length, 2);
-        assert.equal(
-          frame!.facts.reduce((sum, fact) => sum + BigInt(fact.components.inclusiveTotal!), 0n),
-          150n,
-        );
-      }),
-    ),
+  for (const provider of ["claude", "codex"] as const) {
+    it.effect(`${provider} counts subagent consumption once under its native turn identities`, () =>
+      withOutbox((box) =>
+        Effect.gen(function* () {
+          yield* box.bind(binding);
+          const parent = { ...turn("parent", "120"), provider };
+          const child = { ...turn("child", "30"), provider };
+          const values =
+            provider === "claude"
+              ? [
+                  {
+                    ...parent,
+                    models: [...parent.models, { ...child.models[0]!, model: "claude-haiku-4-5" }],
+                  },
+                ]
+              : [parent, { ...child, nativeThreadId: "child-thread", parentId: "parent" }];
+          for (const value of [...values, ...values]) yield* box.record(value);
+          const frame = yield* box.batch;
+          assert.equal(frame?.facts.length, provider === "claude" ? 1 : 2);
+          assert.equal(
+            frame!.facts
+              .flatMap((fact) => fact.models)
+              .reduce((sum, line) => sum + BigInt(line.components.inclusiveTotal!), 0n),
+            150n,
+          );
+        }),
+      ),
+    );
+  }
+  it.effect(
+    "reordering a turn's reported model lines does not change its identity or consumption",
+    () =>
+      withOutbox((box) =>
+        Effect.gen(function* () {
+          yield* box.bind(binding);
+          const value = turn("a");
+          const models = [...value.models, { ...value.models[0]!, model: "claude-haiku-4-5" }];
+          yield* box.record({ ...value, models });
+          const first = yield* box.batch;
+          yield* box.record({ ...value, models: models.toReversed() });
+          assert.deepEqual(yield* box.batch, first);
+        }),
+      ),
   );
-  it.effect("a conflicting response fails instead of changing recorded consumption", () =>
+  it.effect("a conflicting turn fails instead of changing recorded consumption", () =>
     withOutbox((box) =>
       Effect.gen(function* () {
-        yield* box.record(response("a"));
-        const result = yield* box.record(response("a", "50")).pipe(Effect.flip);
+        yield* box.record(turn("a"));
+        const result = yield* box.record(turn("a", "50")).pipe(Effect.flip);
         assert.equal(result._tag, "UsageOutboxError");
       }),
     ),
@@ -91,9 +121,9 @@ describe("completed Mate usage delivery", () => {
     withOutbox((box) =>
       Effect.gen(function* () {
         yield* box.bind(binding);
-        yield* box.record(response("a"));
+        yield* box.record(turn("a"));
         const first = (yield* box.batch)!;
-        yield* box.record(response("b"));
+        yield* box.record(turn("b"));
         yield* box.acknowledge(
           { ...first, batchId: "unrelated" },
           first.facts.map(({ originId, factId }) => ({ originId, factId })),

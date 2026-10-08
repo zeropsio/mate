@@ -21,19 +21,24 @@ const event = Schema.decodeUnknownSync(ProviderRuntimeEvent)({
   provider: "codex",
   threadId: "mate-thread",
   createdAt: "2026-10-08T10:00:00.000Z",
-  type: "response.usage.completed",
+  type: "turn.usage.completed",
   payload: {
     nativeThreadId: "native-thread",
-    nativeResponseId: "response",
-    model: "gpt-5.6-sol",
-    components: {
-      uncachedInput: "20",
-      cachedInput: "0",
-      cacheCreation: "0",
-      output: "10",
-      reasoning: null,
-      inclusiveTotal: "30",
-    },
+    nativeTurnId: "turn",
+    models: [
+      {
+        model: "gpt-5.6-sol",
+        components: {
+          uncachedInput: "20",
+          cachedInput: "0",
+          cacheCreation: "0",
+          output: "10",
+          reasoning: null,
+          inclusiveTotal: "30",
+        },
+        nativeCost: null,
+      },
+    ],
     nativeCost: null,
     parentId: null,
   },
@@ -82,7 +87,7 @@ describe("Mate usage on the existing HQ link", () => {
         const first = yield* Queue.take(sent);
         if (first.type !== "usage-facts") throw new Error("Expected immutable usage facts");
         assert.equal(first.facts.length, 1);
-        assert.equal(first.facts[0]!.components.inclusiveTotal, "30");
+        assert.equal(first.facts[0]!.models[0]!.components.inclusiveTotal, "30");
         const reconnect = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
         yield* reconnect.state(state);
         const repeated = yield* Queue.take(sent);

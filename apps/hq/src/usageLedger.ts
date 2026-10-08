@@ -147,15 +147,19 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
       try: () => contributionOf(fact),
       catch: () => fail("invalid_contribution"),
     });
-    const { day, model, pricingBand, meterVersion, knownComponents, statistics, nativeCost } =
-      contribution;
-    yield* sql`INSERT INTO hq_usage_receipt(origin_id,fact_id,digest,contribution)
-      VALUES(${fact.originId},${fact.factId},${digest},${json(contribution)}::jsonb)`;
-    yield* sql`INSERT INTO hq_usage_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics,native_cost)
-      VALUES(${fact.originId},${day},${model},${pricingBand},${meterVersion},${knownComponents},${json(statistics)}::jsonb,${json(nativeCost)}::jsonb)
-      ON CONFLICT(origin_id,day,model,pricing_band,meter_version,known_components) DO UPDATE SET statistics=hq_usage_add(hq_usage_daily.statistics,EXCLUDED.statistics,1),native_cost=hq_usage_add(hq_usage_daily.native_cost,EXCLUDED.native_cost,1)`;
-    yield* sql`INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,model,value)
-      VALUES(${fact.originId},${fact.factId},${fact.time.at}::timestamptz,${day},${model},${json(fact)}::jsonb)`;
+    const { headline, models } = contribution;
+    yield* sql`INSERT INTO hq_usage_receipt(origin_id,fact_id,digest)
+      VALUES(${fact.originId},${fact.factId},${digest})`;
+    yield* sql`INSERT INTO hq_usage_daily(origin_id,day,meter_version,statistics,native_cost)
+      VALUES(${fact.originId},${headline.day},${headline.meterVersion},${json(headline.statistics)}::jsonb,${json(headline.nativeCost)}::jsonb)
+      ON CONFLICT(origin_id,day,meter_version) DO UPDATE SET statistics=hq_usage_add(hq_usage_daily.statistics,EXCLUDED.statistics,1),native_cost=hq_usage_add(hq_usage_daily.native_cost,EXCLUDED.native_cost,1)`;
+    for (const line of models) {
+      yield* sql`INSERT INTO hq_usage_model_daily(origin_id,day,model,pricing_band,meter_version,known_components,statistics,native_cost)
+      VALUES(${fact.originId},${line.day},${line.model},${line.pricingBand},${line.meterVersion},${line.knownComponents},${json(line.statistics)}::jsonb,${json(line.nativeCost)}::jsonb)
+      ON CONFLICT(origin_id,day,model,pricing_band,meter_version,known_components) DO UPDATE SET statistics=hq_usage_add(hq_usage_model_daily.statistics,EXCLUDED.statistics,1),native_cost=hq_usage_add(hq_usage_model_daily.native_cost,EXCLUDED.native_cost,1)`;
+    }
+    yield* sql`INSERT INTO hq_usage_fact(origin_id,fact_id,occurrence,day,value,contribution)
+      VALUES(${fact.originId},${fact.factId},${fact.time.at}::timestamptz,${headline.day},${json(fact)}::jsonb,${json(contribution)}::jsonb)`;
     yield* sql`UPDATE hq_usage_origin SET recorded_since=least(recorded_since,${fact.time.at}::timestamptz) WHERE origin_id=${fact.originId}`;
     return true;
   });

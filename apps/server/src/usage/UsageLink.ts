@@ -1,4 +1,4 @@
-/** Live Mate responses are captured independently of HQ connectivity and browser demand. */
+/** Live Mate turns are captured independently of HQ connectivity and browser demand. */
 import { AGENT_USAGE_CAPTURE_PROTOCOL, UsageProviderKind } from "@t3tools/contracts";
 import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { type UsageLinkUp, type UsageLinkDown } from "@t3tools/shared/agentUsage";
@@ -38,7 +38,7 @@ export const makeUsageLink = Effect.gen(function* () {
   yield* Effect.forkScoped(
     bus.events.pipe(
       Stream.runForEach((event) =>
-        event.type === "response.usage.completed"
+        event.type === "turn.usage.completed"
           ? Effect.gen(function* () {
               const provider = yield* decodeProvider(
                 event.provider === "claudeAgent" ? "claude" : event.provider,

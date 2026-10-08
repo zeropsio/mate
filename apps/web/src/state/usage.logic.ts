@@ -30,8 +30,9 @@ export function usageReportQuery(
 }
 export function usageReportTotals(report: UsageReport | null) {
   const records = Number(report?.totals.records ?? 0);
-  const priced = Number(report?.pricing.pricedRecords ?? 0);
-  const unpriced = Number(report?.pricing.unpricedRecords ?? 0);
+  const priced = Number(report?.pricing.pricedModelEntries ?? 0);
+  const unpriced = Number(report?.pricing.unpricedModelEntries ?? 0);
+  const modelEntries = priced + unpriced;
   return {
     costUsd: Number(report?.pricing.costUsdNanos ?? 0) / 1e9,
     uncachedInputTokens: Number(report?.totals.uncachedInput ?? 0),
@@ -44,9 +45,9 @@ export function usageReportTotals(report: UsageReport | null) {
     sessions: records,
     costQuality: {
       providerReportedShare: 0,
-      modelPricedShare: records > 0 ? priced / records : 0,
+      modelPricedShare: modelEntries > 0 ? priced / modelEntries : 0,
       unpricedShare:
-        report?.pricing.costUsdNanos === null ? 1 : records > 0 ? unpriced / records : 0,
+        report?.pricing.costUsdNanos === null ? 1 : modelEntries > 0 ? unpriced / modelEntries : 0,
       cacheSavingsUsd: 0,
     },
   };

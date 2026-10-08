@@ -1,7 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { UsageComponents, UsageQuantity, UsageReportQuery, UsageUtcDay } from "@t3tools/contracts";
-import { usageDigest, usageOriginId, usageFactId } from "./agentUsage.ts";
+import {
+  UsageComponents,
+  UsageFact,
+  UsageQuantity,
+  UsageReportQuery,
+  UsageUtcDay,
+} from "@t3tools/contracts";
+import { usageDigest, usageFactDigest, usageOriginId, usageFactId } from "./agentUsage.ts";
 import { readLinkUp } from "./mateLink.ts";
 
 const decodeComponents = Schema.decodeUnknownSync(UsageComponents);
@@ -48,7 +54,7 @@ describe("durable usage wire", () => {
     for (const type of ["usage-hello", "usage-batch", "usage-snapshot", "usage-snapshot-abandon"])
       assert.notStrictEqual(readLinkUp(JSON.stringify({ type })).kind, "message");
   });
-  it("keys responses by their native thread and response within one registered Mate provider", () => {
+  it("keys responses by their native thread and turn within one registered Mate provider", () => {
     const binding = { orgId: "ORG", projectId: "P", mateId: "M" };
     const observation = { ...binding, label: "renamed" };
     assert.strictEqual(usageOriginId(binding, "claude"), usageOriginId(observation, "claude"));
@@ -58,6 +64,41 @@ describe("durable usage wire", () => {
       usageOriginId({ ...binding, mateId: "M2" }, "claude"),
     );
     assert.notStrictEqual(usageFactId("parent", "response"), usageFactId("child", "response"));
+  });
+  it("keeps model ordering out of native turn identity and rejects repeated model lines", () => {
+    const binding = { orgId: "ORG", projectId: "P", mateId: "M" };
+    const components = {
+      uncachedInput: "30",
+      cachedInput: "0",
+      cacheCreation: "0",
+      output: "0",
+      reasoning: null,
+      inclusiveTotal: "30",
+    };
+    const turn = {
+      originId: usageOriginId(binding, "claude"),
+      factId: usageFactId("session", "turn"),
+      nativeId: "turn",
+      provider: "claude",
+      models: [
+        { model: null, components, nativeCost: null },
+        { model: "known", components, nativeCost: null },
+      ],
+      nativeCost: null,
+      time: { kind: "instant", at: "2026-10-08T00:00:00.000Z", provenance: "server-completion" },
+      evidence: "live-provider-turn",
+      meterVersion: "native-turn-v1",
+      sessionId: "session",
+      parentId: null,
+    };
+    const decode = Schema.decodeUnknownSync(UsageFact);
+    const fact = decode(turn);
+    assert.strictEqual(
+      usageFactDigest(fact),
+      usageFactDigest({ ...fact, models: fact.models.toReversed() }),
+    );
+    assert.throws(() => decode({ ...turn, models: [turn.models[0], turn.models[0]] }));
+    assert.throws(() => decode({ ...turn, models: [] }));
   });
   it("refuses ambiguous UTC trend edges and invalid zones", () => {
     const query = {

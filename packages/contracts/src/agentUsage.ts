@@ -67,14 +67,28 @@ export const UsageNativeCost = Schema.Struct({
   basis: UsageIdentity,
 });
 export type UsageNativeCost = typeof UsageNativeCost.Type;
+export const UsageModelLine = Schema.Struct({
+  model: Schema.NullOr(UsageIdentity),
+  components: UsageComponents,
+  nativeCost: Schema.NullOr(UsageNativeCost),
+});
+export type UsageModelLine = typeof UsageModelLine.Type;
 export const UsageFact = Schema.Struct({
   originId: UsageIdentity,
   factId: UsageIdentity,
-  /** Native completed response identity within the provider thread. */
+  /** Native completed turn identity within the provider thread. */
   nativeId: UsageIdentity,
   provider: UsageProviderKind,
-  model: Schema.NullOr(UsageIdentity),
-  components: UsageComponents,
+  models: Schema.Array(UsageModelLine).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(AGENT_USAGE_BATCH_MAX),
+    Schema.makeFilter((models) =>
+      new Set(models.map((line) => line.model)).size === models.length
+        ? undefined
+        : "Repeated model in one turn",
+    ),
+  ),
+  /** Separately reported turn charge; never added to per-model charges. */
   nativeCost: Schema.NullOr(UsageNativeCost),
   time: UsageTime,
   evidence: UsageIdentity,
@@ -219,8 +233,8 @@ export const UsageReport = Schema.Struct({
     revision: UsageIdentity,
     /** Integer USD nanos; null means no usable rates, never a fully priced zero. */
     costUsdNanos: Schema.NullOr(UsageQuantity),
-    pricedRecords: UsageQuantity,
-    unpricedRecords: UsageQuantity,
+    pricedModelEntries: UsageQuantity,
+    unpricedModelEntries: UsageQuantity,
   }),
   groups: Schema.Array(
     Schema.Struct({
@@ -228,7 +242,9 @@ export const UsageReport = Schema.Struct({
       period: Schema.optionalKey(UsageIdentity),
       provider: Schema.optionalKey(UsageProviderKind),
       model: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
+      /** Model groups count participating turns; these counts overlap across models. */
       totals: UsageStatistics,
+      nativeCosts: Schema.optionalKey(Schema.Record(Schema.String, UsageQuantity)),
       costUsdNanos: Schema.NullOr(UsageQuantity),
     }),
   ).check(Schema.isMaxLength(200)),

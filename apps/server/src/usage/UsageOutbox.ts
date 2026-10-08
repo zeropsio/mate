@@ -1,6 +1,5 @@
-/** Completed native responses wait here until HQ commits and acknowledges their identities. */
+/** Completed native turns wait here until HQ commits and acknowledges their identities. */
 import {
-  UsageComponents,
   UsageNativeCost,
   UsageProviderKind,
   UsageFact,
@@ -31,9 +30,8 @@ const CompletedUsage = Schema.Struct({
   provider: UsageProviderKind,
   at: UsageFact.fields.time.fields.at,
   nativeThreadId: UsageFact.fields.sessionId,
-  nativeResponseId: UsageFact.fields.nativeId,
-  model: UsageFact.fields.model,
-  components: UsageComponents,
+  nativeTurnId: UsageFact.fields.nativeId,
+  models: UsageFact.fields.models,
   nativeCost: Schema.NullOr(UsageNativeCost),
   parentId: UsageFact.fields.parentId,
 });
@@ -47,9 +45,18 @@ const validateBinding = Schema.decodeUnknownEffect(Binding);
 const validateResponse = Schema.decodeUnknownEffect(CompletedUsage);
 const validateFact = Schema.decodeUnknownEffect(UsageFact);
 const validateBatch = Schema.decodeUnknownEffect(UsageLinkUp);
-const semantic = ({ at: _at, ...response }: CompletedUsage) => response;
+const canonicalModels = (models: CompletedUsage["models"]) =>
+  [...models].sort((a, b) => {
+    const left = a.model ?? "";
+    const right = b.model ?? "";
+    return left < right ? -1 : left > right ? 1 : 0;
+  });
+const semantic = ({ at: _at, ...turn }: CompletedUsage) => ({
+  ...turn,
+  models: canonicalModels(turn.models),
+});
 const keyOf = (response: CompletedUsage) =>
-  usageDigest([response.provider, response.nativeThreadId, response.nativeResponseId]);
+  usageDigest([response.provider, response.nativeThreadId, response.nativeTurnId]);
 const bodyOf = ({ batchId: _id, ...frame }: UsageLinkUp) => frame;
 const bytes = (value: unknown) => new TextEncoder().encode(usageCanonical(value)).byteLength;
 
@@ -63,7 +70,7 @@ export const makeUsageOutbox = Effect.gen(function* () {
       if (version[0]!.user_version > 2)
         return yield* new UsageOutboxError({ code: "outbox-version-unsupported" });
       if (version[0]!.user_version < 2) {
-        // Old scanner state has no native completed-response identity and cannot be imported.
+        // Old scanner state has no native completed-turn identity and cannot be imported.
         for (const table of [
           "usage_meta",
           "usage_origins",
@@ -92,7 +99,8 @@ export const makeUsageOutbox = Effect.gen(function* () {
       return yield* new UsageOutboxError({ code: "mate-binding-conflict" });
   });
   const record = Effect.fnUntraced(function* (input: CompletedUsage) {
-    const response = yield* validateResponse(input);
+    const validated = yield* validateResponse(input);
+    const response = { ...validated, models: canonicalModels(validated.models) };
     const identity = keyOf(response);
     yield* sql`INSERT OR IGNORE INTO usage_outbox VALUES (${identity}, ${usageCanonical(response)})`;
     const rows = yield* sql<{
@@ -102,7 +110,7 @@ export const makeUsageOutbox = Effect.gen(function* () {
       usageCanonical(semantic(decodeResponse(rows[0]!.value))) !==
       usageCanonical(semantic(response))
     )
-      return yield* new UsageOutboxError({ code: "native-response-conflict" });
+      return yield* new UsageOutboxError({ code: "native-turn-conflict" });
     yield* sql`INSERT OR IGNORE INTO usage_recorded_since VALUES (${response.provider},${response.at})`;
   });
   const batch = Effect.gen(function* () {
@@ -133,21 +141,20 @@ export const makeUsageOutbox = Effect.gen(function* () {
           through: null,
           gaps:
             response.provider === "claude"
-              ? ["before-first-recorded-response", "claude-sidechain-completions-unavailable"]
-              : ["before-first-recorded-response", "codex-response-completion-delivery-unverified"],
+              ? ["before-first-recorded-turn"]
+              : ["before-first-recorded-turn", "codex-resumed-turns-unavailable"],
         },
       };
       const fact: UsageFact = {
         originId,
-        factId: usageFactId(response.nativeThreadId, response.nativeResponseId),
-        nativeId: response.nativeResponseId,
+        factId: usageFactId(response.nativeThreadId, response.nativeTurnId),
+        nativeId: response.nativeTurnId,
         provider: response.provider,
-        model: response.model,
-        components: response.components,
+        models: response.models,
         nativeCost: response.nativeCost,
         time: { kind: "instant", at: response.at, provenance: "server-completion" },
-        evidence: "live-provider-response",
-        meterVersion: "native-response-v1",
+        evidence: "live-provider-turn",
+        meterVersion: "native-turn-v1",
         sessionId: response.nativeThreadId,
         parentId: response.parentId,
       };
@@ -161,7 +168,7 @@ export const makeUsageOutbox = Effect.gen(function* () {
       };
       const candidate = { ...body, batchId: usageDigest(body) };
       if (bytes(candidate) > AGENT_USAGE_BATCH_BYTES) {
-        if (!frame) return yield* new UsageOutboxError({ code: "response-too-large" });
+        if (!frame) return yield* new UsageOutboxError({ code: "turn-too-large" });
         break;
       }
       facts.push(fact);

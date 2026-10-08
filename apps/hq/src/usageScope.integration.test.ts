@@ -32,15 +32,20 @@ const fact: UsageFact = {
   factId: usageFactId("native-thread", "request"),
   nativeId: "request",
   provider: "claude",
-  model: "fixture-model",
-  components: {
-    uncachedInput: "100",
-    cachedInput: "0",
-    cacheCreation: "0",
-    output: "0",
-    reasoning: "0",
-    inclusiveTotal: "100",
-  },
+  models: [
+    {
+      model: "fixture-model",
+      components: {
+        uncachedInput: "100",
+        cachedInput: "0",
+        cacheCreation: "0",
+        output: "0",
+        reasoning: "0",
+        inclusiveTotal: "100",
+      },
+      nativeCost: null,
+    },
+  ],
   nativeCost: null,
   time: { kind: "instant", at: "2020-01-01T12:00:00.000Z", provenance: "native" },
   evidence: "native",
@@ -160,7 +165,16 @@ describe("usage on the existing HQ sockets", () => {
             ...completed,
             factId: usageFactId("native-thread", "request-2"),
             nativeId: "request-2",
-            components: { ...fact.components, uncachedInput: "150", inclusiveTotal: "150" },
+            models: [
+              {
+                ...fact.models[0]!,
+                components: {
+                  ...fact.models[0]!.components,
+                  uncachedInput: "150",
+                  inclusiveTotal: "150",
+                },
+              },
+            ],
           };
           yield* link.send(batch("second", corrected));
           assert.strictEqual((yield* link.next("usage-ack")).batchId, "second");

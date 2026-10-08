@@ -231,7 +231,7 @@ export function UsagePage({
   const settling = state.kind === "reading";
   const noTotals =
     state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";
-  const sessionsLabel = `${formatCount(merged.records)} ${provenance === "legacy-scanner" ? "records" : merged.records === 1 ? "response" : "responses"}`;
+  const sessionsLabel = `${formatCount(merged.records)} ${provenance === "legacy-scanner" ? "records" : merged.records === 1 ? "turn" : "turns"}`;
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -492,14 +492,14 @@ export function UsagePage({
                   setProvenance(next);
                 }}
               >
-                <Toggle value="live-responses">Mate responses</Toggle>
+                <Toggle value="live-responses">Mate turns</Toggle>
                 <Toggle value="legacy-scanner">Earlier history</Toggle>
               </ToggleGroup>
             )}
             {!showingLimits && provenance === "legacy-scanner" ? (
               <p role="status" className="text-xs text-muted-foreground">
                 Earlier history uses the previous collection method and may include activity outside
-                Mate. It is separate from recorded Mate responses and cannot establish exact
+                Mate. It is separate from recorded Mate turns and cannot establish exact
                 consumption.
               </p>
             ) : null}
@@ -510,18 +510,10 @@ export function UsagePage({
             </p>
             {!showingLimits &&
             report?.coverage.some((source) =>
-              source.value.gaps.includes("claude-sidechain-completions-unavailable"),
+              source.value.gaps.includes("codex-resumed-turns-unavailable"),
             ) ? (
               <p role="status" className="text-xs text-muted-foreground">
-                Claude subagent usage is unavailable from this provider stream.
-              </p>
-            ) : null}
-            {!showingLimits &&
-            report?.coverage.some((source) =>
-              source.value.gaps.includes("codex-response-completion-delivery-unverified"),
-            ) ? (
-              <p role="status" className="text-xs text-muted-foreground">
-                Codex response usage delivery has not been verified for this provider stream.
+                Usage from resumed Codex threads is unavailable.
               </p>
             ) : null}
             {showingLimits ? (
@@ -605,8 +597,8 @@ export function UsagePage({
                                   </PopoverTrigger>
                                   <PopoverPopup side="top" tooltipStyle>
                                     API-equivalent estimate excludes{" "}
-                                    {formatPercent(merged.costQuality.unpricedShare)} unpriced
-                                    records.
+                                    {formatPercent(merged.costQuality.unpricedShare)} unpriced model
+                                    entries.
                                   </PopoverPopup>
                                 </Popover>
                               </>
@@ -626,7 +618,7 @@ export function UsagePage({
                       const share =
                         metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
                       const providerSessions = totals?.sessions ?? 0;
-                      const sessionLabel = `${formatCount(providerSessions)} ${providerSessions === 1 ? "response" : "responses"}`;
+                      const sessionLabel = `${formatCount(providerSessions)} ${provenance === "legacy-scanner" ? "records" : providerSessions === 1 ? "turn" : "turns"}`;
                       return (
                         <div key={provider} className="flex flex-col gap-1">
                           <div className="flex items-baseline justify-between gap-4">
@@ -693,12 +685,10 @@ export function UsagePage({
 
                 {nativeCosts.length === 0 ? null : (
                   <section className="flex flex-col gap-2">
-                    <h2 className="text-sm font-medium text-foreground">
-                      Provider-reported charges
-                    </h2>
-                    {nativeCosts.map((charge) => (
-                      <p key={charge.key} className="text-sm tabular-nums">
-                        {charge.value}
+                    <h2 className="text-sm font-medium text-foreground">Provider-reported costs</h2>
+                    {nativeCosts.map((cost) => (
+                      <p key={cost.key} className="text-sm tabular-nums">
+                        {cost.value}
                       </p>
                     ))}
                   </section>
@@ -767,6 +757,11 @@ export function UsagePage({
                     </ToggleGroup>
                   </div>
 
+                  {breakdown === "model" && provenance === "live-responses" ? (
+                    <p className="text-xs text-muted-foreground">
+                      A turn can use several models. Each model row shows its own consumption.
+                    </p>
+                  ) : null}
                   {breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}

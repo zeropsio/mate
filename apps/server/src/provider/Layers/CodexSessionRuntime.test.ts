@@ -818,6 +818,44 @@ describe("codexSessionAppServerArgs", () => {
 });
 
 describe("openCodexThread", () => {
+  it.effect(
+    "opts fresh native threads into exact raw response usage without public-schema stripping",
+    () =>
+      Effect.gen(function* () {
+        const calls: unknown[] = [];
+        const opened = yield* openCodexThread({
+          client: {
+            request: () => Effect.die("Public start encoding would discard the native opt-in"),
+            raw: {
+              request: (method, payload) => {
+                calls.push({ method, payload });
+                return Effect.succeed(makeThreadOpenResponse("fresh"));
+              },
+            },
+          },
+          threadId: ThreadId.make("mate"),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "model",
+          serviceTier: undefined,
+          resumeThreadId: undefined,
+        });
+        NodeAssert.equal(opened.rawUsageEnabled, true);
+        NodeAssert.equal(calls.length, 1);
+        NodeAssert.deepStrictEqual(calls[0], {
+          method: "thread/start",
+          payload: {
+            cwd: "/tmp/project",
+            model: "model",
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+            approvalsReviewer: "user",
+            experimentalRawEvents: true,
+          },
+        });
+      }),
+  );
+
   it.effect("resumes metadata when historical turns contain unknown error values", () =>
     Effect.gen(function* () {
       const response = makeThreadOpenResponse("saved-thread");
@@ -860,6 +898,7 @@ describe("openCodexThread", () => {
         cwd: response.cwd,
         model: response.model,
         thread: { id: "saved-thread" },
+        rawUsageEnabled: false,
       });
       NodeAssert.deepStrictEqual(calls, [
         {
