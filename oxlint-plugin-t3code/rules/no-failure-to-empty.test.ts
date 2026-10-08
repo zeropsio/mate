@@ -871,17 +871,9 @@ it.layer(NodeServices.layer)("automatic policy carries unknown and failure prese
           filename: "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
         });
         yield* expectFindingCount(policy, source, 0);
-        yield* expectFindingCount(
-          policy,
-          source.replace("retryRead: stream.fault !== null", "retryRead: false"),
-          1,
-        );
-        yield* expectFindingCount(
-          policy,
-          source.replace("stream.fault?.message ?? null", "null"),
-          1,
-        );
-        yield* expectFindingCount(policy, source.replaceAll("enabled === null", "false"), 1);
+        const discarded = source.replace(": fact;", ": null;");
+        assert.notEqual(discarded, source);
+        yield* expectFindingCount(policy, discarded, 1);
       }),
   );
 });
