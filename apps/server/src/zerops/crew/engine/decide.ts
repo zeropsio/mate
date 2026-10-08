@@ -3253,7 +3253,8 @@ const recovered = (b: Builder): void => {
       set: {
         attemptRows: rows.map((row, index) =>
           index === at
-            ? { ...row, ending: "interrupted", endingDetail: stage, endedAt: b.now }
+            ? // When the task last moved: what the restart cut stood then.
+              { ...row, ending: "interrupted", endingDetail: stage, endedAt: task.updatedAt }
             : row,
         ),
       },

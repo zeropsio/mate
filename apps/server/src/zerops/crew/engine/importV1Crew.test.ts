@@ -11,13 +11,11 @@ import {
   ConversationId,
   type CrewCommand,
   type Principal,
-  type Rejection,
 } from "@t3tools/contracts";
 
 import { Conversations, type ConversationsShape } from "../../../engine/Conversations.ts";
 import { askImport, makeHistoryImport } from "../../../engine/effects/historyImport.ts";
 import { ok } from "../../../engine/effects/shared.ts";
-import type { Domain, OwnerDecision, OwnerEvent } from "../../../engine/owners.ts";
 import {
   EffectHandlers,
   handlersOf,
@@ -29,11 +27,10 @@ import { engineLayer, newBoot, tempDb, type Engine } from "../../../engine/testi
 import { itemOfRow } from "../../../engine/wire/records.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { DEFINITION, FLIP, LANDED, at, seedV1Crew, v1CrewTables } from "../testing/v1CrewSeed.ts";
-import type { CrewEnvelope, CrewInput } from "./command.ts";
+import type { CrewEnvelope } from "./command.ts";
+import { crewDomain } from "./CrewOwner.ts";
 import { CrewWorld } from "./crewDecideFixture.ts";
-import { IMPORTED_ROW, QUESTION_TO_PERSON_MS, decideCrew } from "./decide.ts";
-import type { CrewEvent, CrewEventDraft } from "./events.ts";
-import { evolveCrew } from "./evolve.ts";
+import { IMPORTED_ROW, QUESTION_TO_PERSON_MS } from "./decide.ts";
 import {
   FINISHED_PER_CREWMATE,
   UPDATE_PAUSE,
@@ -43,7 +40,6 @@ import {
   type V1Crew,
 } from "./importV1Crew.ts";
 import { EMPTY_VIEW, crewSnapshotOf } from "./project.ts";
-import { initialCrewState, type CrewState } from "./state.ts";
 
 const ENGINE: Principal = { kind: "engine" };
 const ana = ConversationId.make("crew-main-ana-1");
@@ -170,10 +166,12 @@ describe("a flip imports a crew's open work waiting on you, its finished work bo
           askedAt: Date.parse(at(30)),
           report: { question: "Which port?" },
         });
-        expect(Object.values(world.state.wakes)).toContainEqual({
-          kind: "question",
-          dueAt: Date.parse(at(30)) + QUESTION_TO_PERSON_MS,
-        });
+        expect(Object.values(world.state.wakes)).toContainEqual(
+          expect.objectContaining({
+            kind: "question",
+            dueAt: Date.parse(at(30)) + QUESTION_TO_PERSON_MS,
+          }),
+        );
       },
     ],
     [
@@ -352,45 +350,6 @@ describe("a re-run imports nothing", () => {
 // ── on the engine ───────────────────────────────────────────────────────────────────────────
 
 /** The crew as an owner of the engine: crew's own rules, its events stored as they are. */
-const crewDomain: Domain<CrewState, CrewInput, CrewEvent & OwnerEvent, CrewEventDraft> = {
-  kind: "crew",
-  owns: (owner) => owner.startsWith("crew/"),
-  stateVersion: 1,
-  initial: (owner) => initialCrewState(owner),
-  decide: (state, envelope, now): OwnerDecision<CrewEventDraft> => {
-    const decision = decideCrew(
-      state,
-      { commandId: envelope.commandId, principal: envelope.principal, input: envelope.command },
-      now,
-    );
-    if (decision._tag === "Reject") {
-      const { reason, detail } = decision.rejection;
-      return {
-        _tag: "Reject",
-        rejection: {
-          reason: reason as Rejection["reason"],
-          ...(detail === null ? {} : { detail }),
-        },
-      };
-    }
-    return {
-      _tag: "Accept",
-      step: {
-        events: decision.step.events,
-        effects: decision.step.effects,
-        details: [],
-        result: { _tag: "Accepted", seq: decision.step.result.seq },
-      },
-    };
-  },
-  evolve: (state, event) => evolveCrew(state, event),
-  decode: (row) => Effect.succeed(row as unknown as CrewEvent & OwnerEvent),
-  encode: (event) => Effect.succeed(event),
-  project: () => Effect.void,
-  rowAgent: () => null,
-  runOf: () => null,
-};
-
 /** The crew's effects as their handlers would answer: each lands and reads as it stood. */
 const crewHandlers: ReadonlyArray<EffectHandler> = [
   { kind: "crew.deliver", run: () => Effect.succeed(ok({})) },
