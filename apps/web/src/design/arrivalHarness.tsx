@@ -1,8 +1,7 @@
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
-import { usageLimitWords } from "~/zerops/noticeWords";
-import { Switch } from "~/components/ui/switch";
+import { PauseBlock } from "~/components/chat/ConversationRows";
 import { setupFailureReason } from "@t3tools/client-runtime/data";
 /**
  * A Mate's arrival, in every state, at the owner's size (1786 × 1000, the menu at 435): the
@@ -360,7 +359,7 @@ const STATES: ReadonlyArray<HarnessState> = [
     agentReady: true,
   },
   { id: "inventory-failed", label: "Inventory read failed", mate: WREN, phase: null },
-  { id: "limit", label: "Provider usage limit", mate: WREN, phase: null },
+  { id: "limit", label: "Provider usage limit (production timeline)", mate: WREN, phase: null },
   ...[false, true].map((retryingStandUp) => ({
     id: retryingStandUp ? "stand-up-retrying" : "stand-up-failed",
     label: "Stand-up send failure",
@@ -905,27 +904,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <MateEmptyStateView
       addedBy={state.addedBy}
       agentReady={state.agentReady}
-      coming={
-        state.id === "limit"
-          ? {
-              kind: "reaching",
-              headline: usageLimitWords("Claude", undefined, state.mate.name),
-              sentence: "Continue when Claude is available again.",
-              severity: "attention",
-              below: (
-                <div className="flex flex-col items-center gap-4">
-                  <Button variant="ghost" onClick={() => go("conversation")}>
-                    Continue
-                  </Button>
-                  <label className="flex items-center gap-2">
-                    <Switch checked={autoResume} onCheckedChange={setAutoResume} />
-                    Continue automatically
-                  </label>
-                </div>
-              ),
-            }
-          : comingOf(state, nowMs)
-      }
+      coming={comingOf(state, nowMs)}
       // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
       standUpFailure={
         state.standUpFailure
@@ -960,6 +939,26 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
             message="Zerops could not read the project."
             again={() => undefined}
           />
+        ) : state.id === "limit" ? (
+          <div className="mx-auto mt-6 w-full max-w-3xl">
+            <PauseBlock
+              row={{
+                kind: "pause",
+                id: "limit",
+                createdAt: "2026-10-08T08:00:00Z",
+                resetsAt: "2026-10-08T12:00:00Z",
+                resumedAt: null,
+                held: 0,
+                provider: "Claude",
+              }}
+              speaker={WREN}
+              nowMs={Date.parse("2026-10-08T08:00:00Z")}
+              timestampFormat="24-hour"
+              serverPause={{ resetsAt: "2026-10-08T12:00:00Z", autoResume }}
+              onAutoResumeChange={setAutoResume}
+              onContinue={() => go("conversation")}
+            />
+          </div>
         ) : state.conversation === true ? (
           <Conversation />
         ) : (

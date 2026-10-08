@@ -16,3 +16,18 @@ export function restartRefusal(progress: OperationProgress): string | null {
       return null;
   }
 }
+
+/** Carries receipt-specific guidance through the rejected restart promise without using diagnostics as copy. */
+export class MateRestartError extends Error {
+  readonly text: string;
+
+  constructor(progress: OperationProgress) {
+    super(restartRefusal(progress) ?? "The restart did not complete.");
+    this.text =
+      progress.stage === "uncertain"
+        ? this.message
+        : progress.stage === "unresolved"
+          ? `The Mate was stopped, but it was not started again here. ${progress.nextAction ?? "Start the Mate"}.`
+          : "Zerops didn't accept the setup retry.";
+  }
+}

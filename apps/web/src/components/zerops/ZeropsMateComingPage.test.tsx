@@ -16,6 +16,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { awaitMateConversation, takeMateConversation } from "~/zerops/mateOpening";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
@@ -82,6 +83,7 @@ const app = vi.hoisted(() => ({
     | import("@t3tools/client-runtime/data").MateRecovery["process"]
     | undefined,
   restartSetup: vi.fn(async () => undefined),
+  actionTrouble: null as string | null,
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
@@ -181,7 +183,7 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
-  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: null }),
+  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: app.actionTrouble }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
@@ -391,6 +393,7 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
+  app.actionTrouble = null;
   app.setupFailure = undefined;
   app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
@@ -1458,7 +1461,32 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   expect(buttons()).not.toContain("Connect");
 });
 
-it("keeps a refused setup retry in Details beside the original setup diagnostics", async () => {
+it.each([
+  {
+    label: "refused",
+    error: new Error("500: Internal Server Error"),
+    text: "Zerops didn't accept the setup retry.",
+  },
+  {
+    label: "uncertain",
+    error: new MateRestartError({
+      stage: "uncertain",
+      next: "asking-owner",
+    }),
+    text: "Zerops did not answer whether it took the restart. Check the Mate before trying again.",
+  },
+  {
+    label: "stopped but not started",
+    error: new MateRestartError({
+      stage: "unresolved",
+      operationId: null,
+      nextActor: "person",
+      nextAction: "Start the Mate",
+      reason: "500: Internal Server Error",
+    }),
+    text: "The Mate was stopped, but it was not started again here. Start the Mate.",
+  },
+])("keeps $label retry guidance visible and diagnostics in Details", async ({ error, text }) => {
   app.setupFailure = {
     id: "setup-failed",
     projectId: PROJECT,
@@ -1475,7 +1503,7 @@ it("keeps a refused setup retry in Details beside the original setup diagnostics
     placement: null,
     container: true,
   });
-  app.restartSetup.mockRejectedValue(new Error("500: Internal Server Error"));
+  app.restartSetup.mockRejectedValue(error);
   openView();
   const retry = tree!.root
     .findAllByType("button")
@@ -1486,14 +1514,63 @@ it("keeps a refused setup retry in Details beside the original setup diagnostics
   });
   expect(app.restartSetup).toHaveBeenCalledOnce();
   const section = tree!.root.findByType("section");
-  expect(section.children).toContain("Zerops didn't accept the setup retry.");
+  expect(section.children).toContain(text);
   expect(section.children).not.toContain("500: Internal Server Error");
   const details = tree!.root.findByType("details");
   expect(details.props.open).not.toBe(true);
   expect(details.findAllByType("pre").map((node) => node.children.join(""))).toEqual([
-    "500: Internal Server Error",
+    error.message,
     "Original setup diagnostic",
   ]);
+});
+
+it("keeps a Finish setup refusal out of stage copy without a setup process", () => {
+  app.listing = listingOf([
+    {
+      key: KEY,
+      project: QUINN.project,
+      group: "unavailable",
+      missingContainer: true,
+    },
+  ]);
+  beginPress({
+    projectId: PROJECT,
+    organizationId: "org-beviro",
+    startedAt: 0,
+    placement: null,
+    container: true,
+  });
+  app.actionTrouble = "500: Internal Server Error";
+  openView();
+  const section = tree!.root.findByType("section");
+  expect(section.children).toContain("Zerops couldn't finish setting up the Mate.");
+  expect(section.children).not.toContain(app.actionTrouble);
+  expect(tree!.root.findByType("details").findByType("pre").children.join("")).toBe(
+    app.actionTrouble,
+  );
+});
+
+it("keeps a Remove refusal available in Details without a setup process or action slot", () => {
+  let rendered: ReactTestRenderer;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: undefined,
+        progress: undefined,
+        nowMs: undefined,
+        mate: { name: "Quinn", project: undefined },
+        you: null,
+        operationTrouble: {
+          text: "Zerops didn't accept removing the project.",
+          details: "500: Internal Server Error",
+        },
+      }),
+    );
+  });
+  const details = rendered!.root.findByType("details");
+  expect(details.props.open).not.toBe(true);
+  expect(details.findByType("pre").children.join("")).toBe("500: Internal Server Error");
+  act(() => rendered!.unmount());
 });
 
 describe("failed setup recovery fixture", () => {

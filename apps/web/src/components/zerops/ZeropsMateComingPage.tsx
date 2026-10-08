@@ -142,6 +142,7 @@ import {
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -630,7 +631,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             .then(() => forgetPress(projectId))
             .catch((error: unknown) =>
               setTrouble({
-                text: "Zerops didn't accept the setup retry.",
+                text:
+                  error instanceof MateRestartError
+                    ? error.text
+                    : "Zerops didn't accept the setup retry.",
                 details: error instanceof Error ? error.message : String(error),
               }),
             )
@@ -673,6 +677,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       void navigate({ to: "/zerops", replace: true });
     });
   };
+
+  const operationTrouble =
+    trouble ??
+    (mateActions.trouble === null
+      ? null
+      : {
+          text: "Zerops couldn't finish setting up the Mate.",
+          details: mateActions.trouble,
+        });
 
   // On its way to its conversation and not handed over yet — its link being made, its conversation
   // and its sign-in still being read — a new Mate stays coming, its progress whole, until the words
@@ -729,20 +742,21 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
               over: handing,
               pressed: made !== undefined,
               sentence:
-                finish !== undefined && shown.kind === "coming"
+                operationTrouble?.text ??
+                (finish !== undefined && shown.kind === "coming"
                   ? finish.line
                   : comingSentenceOf({
                       coming: shown,
-                      trouble: trouble?.text ?? mateActions.trouble,
                       ...(failedReason === undefined ? {} : { failureReason: failedReason.text }),
                       progress: lineProgress,
                       nowMs: progress?.nowMs,
-                    }),
+                    })),
               below:
-                finish !== undefined && shown.kind === "coming" ? (
+                finish !== undefined && shown.kind === "coming" && operationTrouble === null ? (
                   <PressSteps name={mate.name} steps={finish.steps} />
                 ) : (
                   <ComingBelow
+                    operationTrouble={operationTrouble}
                     coming={shown}
                     mate={mate}
                     nowMs={progress?.nowMs}
@@ -760,7 +774,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                       : {
                           setupFailureDetails: {
                             details: failedReason.details,
-                            operation: trouble,
                             status: failureLog.status,
                             process: failedProcess!,
                             projectUrl: mate.projectUrl,
@@ -1111,10 +1124,11 @@ export function ComingBelow({
   ends,
   projects,
   setupFailureDetails,
+  operationTrouble,
 }: {
+  readonly operationTrouble?: { readonly text: string; readonly details: string } | null;
   readonly setupFailureDetails?: {
     readonly details: string;
-    readonly operation?: { readonly text: string; readonly details: string } | null;
     readonly status: string;
     readonly process: ActivityProcess;
     readonly projectUrl: string | undefined;
@@ -1255,7 +1269,12 @@ export function ComingBelow({
       </Button>
     ) : null;
   const acts = verb ?? finishVerb ?? setupVerb;
-  if (acts === null && read === null) {
+  if (
+    acts === null &&
+    read === null &&
+    operationTrouble == null &&
+    setupFailureDetails === undefined
+  ) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
   // Under the steps, where nothing is read yet: a stop, and *Try again* taking it back, never move
@@ -1268,16 +1287,12 @@ export function ComingBelow({
       }
     >
       {steps}
-      {setupFailureDetails === undefined ? null : (
+      {setupFailureDetails === undefined && operationTrouble == null ? null : (
         <MateStateDetails>
-          {setupFailureDetails.operation == null ? null : (
-            <><p>{setupFailureDetails.operation.text}</p><pre>{setupFailureDetails.operation.details}</pre></>
-          )}
-          <pre>{setupFailureDetails.details}</pre>
-          {setupFailureDetails.status === "loading" ? <p>Reading the setup log…</p> : null}
-          {setupFailureDetails.status === "error" ? (
-            <p>The setup log couldn't be read. Open the process in Zerops.</p>
-          ) : null}
+          {operationTrouble == null ? null : (<><p>{operationTrouble.text}</p><pre>{operationTrouble.details}</pre></>)}
+          {setupFailureDetails === undefined ? null : <pre>{setupFailureDetails.details}</pre>}
+          {setupFailureDetails?.status === "loading" ? <p>Reading the setup log…</p> : null}
+          {setupFailureDetails?.status === "error" ? <p>The setup log couldn't be read. Open the process in Zerops.</p> : null}
         </MateStateDetails>
       )}
       <div className="arrival-acts-block">
