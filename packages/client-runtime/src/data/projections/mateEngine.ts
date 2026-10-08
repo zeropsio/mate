@@ -705,14 +705,18 @@ export interface EngineCardCounts {
 }
 
 /**
- * A card whose run was too long to read whole before it painted: its worked line counts its
- * effort from its runs' summaries, whatever of it is held, and its scroll holds the lines from
- * `since` through `through` (times; `null` is its start, or its end) — the rest page in as it
- * reaches them, through `runId`'s pages.
+ * A card whose run was not held whole when it painted: its worked line counts its effort from its
+ * runs' summaries, whatever of it is held, and its scroll holds the lines from `since` through
+ * `through` (times; `null` is its start, or its end) — the rest page in as it opens and reaches
+ * them, through `runId`'s pages.
  */
 export interface EngineCardPaging {
   readonly runId: string;
   readonly counts: EngineCardCounts;
+  /** Whether its runs did anything its scroll draws: its "Show work" has something to open. */
+  readonly hasWork: boolean;
+  /** Whether any of its lines are held: none until its card first opens. */
+  readonly holdsLines: boolean;
   readonly since: string | null;
   readonly through: string | null;
   readonly reading: "earlier" | "later" | null;
@@ -750,8 +754,13 @@ export function engineCardPagingOf(
     const calls: Record<string, number> = {};
     const tools: Record<string, number> = {};
     let edited: number | null = 0;
+    let hasWork = false;
     for (const member of runs) {
       if (cardOf(member.id) !== card) continue;
+      // Past the person's words and its answer, something it did.
+      const asked = member.trigger.kind === "person" || member.trigger.kind === "imported" ? 1 : 0;
+      const answered = member.summary.answerItemId === null ? 0 : 1;
+      if (member.summary.items > asked + answered) hasWork = true;
       sumInto(calls, member.summary.calls);
       sumInto(tools, member.summary.tools ?? {});
       edited =
@@ -762,6 +771,8 @@ export function engineCardPagingOf(
     cards[card] = {
       runId: span.runId,
       counts: { calls, tools, edited },
+      hasWork,
+      holdsLines: span.from !== null || span.to !== 0,
       since: span.from === null ? null : timeAt(span.runId, span.from, run.endedAt ?? run.queuedAt),
       through: span.to === null ? null : timeAt(span.runId, span.to, run.queuedAt),
       reading: span.reading,

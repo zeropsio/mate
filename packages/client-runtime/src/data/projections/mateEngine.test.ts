@@ -819,7 +819,7 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
   });
 });
 
-describe("an engine card too long to read whole, as its worked line and its scroll read it", () => {
+describe("an engine card not held whole, as its worked line and its scroll read it", () => {
   const AT = 1_760_000_000_000;
   const long = (ordinal: number, patch: Partial<Parameters<typeof engineRun>[2]> = {}) =>
     engineRun("thread-ada", ordinal, {
@@ -854,11 +854,30 @@ describe("an engine card too long to read whole, as its worked line and its scro
           tools: { zerops_deploy: 4, zerops_workflow: 8 },
           edited: 9,
         },
+        hasWork: true,
+        holdsLines: true,
         since: null,
         through: DateTime.formatIso(DateTime.makeUnsafe(AT + 200)),
         reading: null,
       },
     });
+  });
+
+  it("holds none of a finished card's lines until it opens, and says whether it has work to open", () => {
+    const quiet = engineRun("thread-ada", 1, {
+      summary: { items: 2, calls: {}, answerItemId: `${run1}/i/2` as never, lastItemSeq: 2 },
+    });
+    const spans = [{ runId: run1, from: null, to: 0, reading: null }];
+    expect(
+      engineCardPagingOfRecords(key, { runs: [long(1)], items: held, spans })[run1],
+    ).toMatchObject({ holdsLines: false, hasWork: true });
+    // The person's words and its answer, nothing between: nothing to show.
+    expect(engineCardPagingOfRecords(key, { runs: [quiet], items: [], spans })[run1]).toMatchObject(
+      {
+        holdsLines: false,
+        hasWork: false,
+      },
+    );
   });
 
   it("holds a live card's lines from the earliest read to its end", () => {

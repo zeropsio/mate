@@ -50,7 +50,6 @@ import {
   engineFactId,
   engineRowsLink,
   engineRowsScope,
-  ENGINE_WHOLE_RUN_ITEMS,
   type EngineConversationKey,
   type EngineSpanValue,
 } from "../families/mateEngine.ts";
@@ -64,8 +63,8 @@ import { superviseLink } from "../supervisor.ts";
 export const ENGINE_FORGET_AFTER_MS = 5 * 60 * 1_000;
 
 /**
- * How many pages a run reads back to be whole before it is drawn: past them its card draws its
- * newest items. A page is up to the wire's `runPageItems`.
+ * How many pages of what a finished run's result draws from it reads before its card is drawn. A
+ * page is up to the wire's `runPageItems`.
  */
 export const ENGINE_RUN_PAGES = 5;
 
@@ -450,15 +449,15 @@ export function makeMateEngineConversations(options: {
     }) satisfies Row;
 
   /**
-   * What the runs a frame or a page carries lack of their own items, read before they are drawn: a
-   * card draws its run whole, as a V1 run's, so a window's or a page's run never paints its effort
-   * before its calls are held. A run up to `ENGINE_WHOLE_RUN_ITEMS` is read back from its newest
-   * page until each holds as many as its summary counts. A longer one is read at one end — a live
-   * run its newest page, under the lines its card opens on; a finished one its first page, where
-   * "Show work" opens — and, finished, for what its result draws from; its card counts its effort
-   * from its summary, and the rest pages in as its scroll reaches it (`readRunPage`). A run not
-   * held whole says what stretch of it is (`mateEngineSpan`). A read that fails leaves the run
-   * with what it holds.
+   * What the runs a frame or a page carries lack of their own items, before they are drawn. A
+   * card's closed face needs none of its run's items but what its result draws from: its worked
+   * line counts its effort from the run's summary. So a finished run that made calls reads just
+   * those (`only: "outcome"`, one page however long the run, up to `ENGINE_RUN_PAGES`), and a live
+   * one reads nothing — the window carries its newest items, under the lines its card opens on.
+   * Each such run says what stretch of its lines it holds (`mateEngineSpan`): a finished one none
+   * until its card opens, a live one from its earliest held; the rest are read a page at a time
+   * as its card opens and scrolls (`readRunPage`). A read that fails leaves the run with what it
+   * holds, its span all the same.
    */
   const wholeRuns = (
     key: EngineConversationKey,
@@ -472,12 +471,13 @@ export function makeMateEngineConversations(options: {
     Effect.gen(function* () {
       const read = readsOfState(store.state());
       const lacking = runs.flatMap((run) => {
-        const held = new Set<string>(
-          items.flatMap((item) => (item.runId === run.id ? [item.id as string] : [])),
+        const held = new Map<string, Item>(
+          items.flatMap((item) => (item.runId === run.id ? [[item.id as string, item]] : [])),
         );
         for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, run.id))) {
           const fact = read.fact("mateEngineItem", id);
-          if (fact.kind === "known") held.add(fact.value.id);
+          if (fact.kind === "known" && !held.has(fact.value.id))
+            held.set(fact.value.id, fact.value);
         }
         return held.size < run.summary.items ? [{ run, held }] : [];
       });
@@ -486,18 +486,6 @@ export function makeMateEngineConversations(options: {
         lacking,
         ({ run, held }) =>
           Effect.gen(function* () {
-            const items: Item[] = [];
-            const requests: Request[] = [];
-            const take = (answer: EnginePage) => {
-              if (answer._tag !== "Page") return null;
-              for (const item of answer.items)
-                if (!held.has(item.id)) {
-                  held.add(item.id);
-                  items.push(item);
-                }
-              requests.push(...answer.requests);
-              return answer;
-            };
             const span = (from: number | null, to: number | null) => ({
               conversationId: key.conversationId,
               runId: run.id,
@@ -505,53 +493,34 @@ export function makeMateEngineConversations(options: {
               to,
               reading: null,
             });
-            const long = run.summary.items > ENGINE_WHOLE_RUN_ITEMS;
-            if (long && run.end !== null) {
-              const [first] = yield* Effect.all(
-                [
-                  wire.readRun(key, run.id, { after: 0 }),
-                  Effect.gen(function* () {
-                    let after = 0;
-                    for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
-                      const outcome = take(
-                        yield* wire.readRun(key, run.id, { after, only: "outcome" }),
-                      );
-                      if (outcome === null || !outcome.more || outcome.items.length === 0) break;
-                      after = Math.max(...outcome.items.map((item) => item.seq));
+            if (run.end === null) {
+              const lines = [...held.values()].filter((item) => item.kind !== "person");
+              const from =
+                lines.length === 0
+                  ? (run.summary.lastItemSeq ?? 0) + 1
+                  : Math.min(...lines.map((item) => item.seq));
+              return { items: [], requests: [], spans: [span(from, null)] };
+            }
+            const items: Item[] = [];
+            const requests: Request[] = [];
+            if (Object.keys(run.summary.calls).length > 0)
+              yield* Effect.gen(function* () {
+                let after = 0;
+                for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
+                  const answer = yield* wire.readRun(key, run.id, { after, only: "outcome" });
+                  if (answer._tag !== "Page") return;
+                  for (const item of answer.items)
+                    if (!held.has(item.id)) {
+                      held.set(item.id, item);
+                      items.push(item);
                     }
-                  }),
-                ],
-                { concurrency: 2 },
-              );
-              const page = take(first);
-              const to =
-                page === null || page.items.length === 0
-                  ? 0
-                  : Math.max(...page.items.map((item) => item.seq));
-              return { items, requests, spans: [span(null, page?.more === false ? null : to)] };
-            }
-            let before: number | null = null;
-            let more = true;
-            const pages = long ? 1 : ENGINE_RUN_PAGES;
-            for (let page = 0; page < pages && held.size < run.summary.items; page++) {
-              const answer = take(
-                yield* wire.readRun(key, run.id, before === null ? {} : { before }),
-              );
-              if (answer === null) break;
-              more = answer.more && answer.items.length > 0;
-              if (answer.items.length > 0)
-                before = Math.min(...answer.items.map((item) => item.seq));
-              if (!more) break;
-            }
-            return {
-              items,
-              requests,
-              spans:
-                more && held.size < run.summary.items && before !== null
-                  ? [span(before, null)]
-                  : [],
-            };
-          }).pipe(Effect.orElseSucceed(() => ({ items: [], requests: [], spans: [] }))),
+                  requests.push(...answer.requests);
+                  if (!answer.more || answer.items.length === 0) return;
+                  after = Math.max(...answer.items.map((item) => item.seq));
+                }
+              }).pipe(Effect.orElseSucceed(() => undefined));
+            return { items, requests, spans: [span(null, 0)] };
+          }),
         { concurrency: RUN_READS_AT_ONCE },
       );
       return {
