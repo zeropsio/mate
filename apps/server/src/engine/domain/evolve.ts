@@ -404,13 +404,25 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         },
         lastNativeRef: event.nativeRef ?? state.lastNativeRef,
         rotatingFrom: null,
+        rotation: null,
       };
     case "SessionClosed":
       return {
         ...state,
         session: state.session?.id === event.sessionId ? null : state.session,
         closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
-        rotatingFrom: event.reason === "model" ? event.sessionId : state.rotatingFrom,
+        // A session replaced (a model switch, a rotation) hands its place to the next one.
+        rotatingFrom:
+          event.reason === "model" || state.rotation !== null
+            ? event.sessionId
+            : state.rotatingFrom,
+      };
+    case "SessionRotated":
+      // A fresh session opens on a thread of its own: the provider's saved one stays behind.
+      return {
+        ...state,
+        rotation: { reason: event.reason, fresh: event.fresh, seed: event.seed },
+        threadGeneration: event.fresh ? state.threadGeneration + 1 : state.threadGeneration,
       };
     case "AgentAssigned":
       // The agent's own model, none included: null runs its driver's default. Another instance or

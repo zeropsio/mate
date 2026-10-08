@@ -906,6 +906,21 @@ export const SessionClosed = event("SessionClosed", {
   sessionId: SessionId,
   reason: SessionCloseReason,
 });
+/** Why a conversation's session is rotated between turns (`zeropsCrewStates.ts` says each). */
+export const RotateSessionReason = forwardCompatibleLiterals(CREW_SESSION_REASONS);
+export type RotateSessionReason = typeof RotateSessionReason.Type;
+
+/**
+ * The conversation's session is rotated between turns: the open one closes before the next run
+ * (never under a running turn), and the next one opens fresh on a thread of its own (`fresh`) or
+ * resumes, told `seed` as it starts. The boundary is recorded as a marker and the seed as a
+ * `context` item.
+ */
+export const SessionRotated = event("SessionRotated", {
+  reason: RotateSessionReason,
+  fresh: Schema.Boolean,
+  seed: Schema.NullOr(Schema.String),
+});
 /** A usage limit whose reset nobody knew stops holding the queue (the person wrote again). */
 export const UsagePauseLifted = event("UsagePauseLifted", { reason: Schema.String });
 /** The conversation is given the agent it belongs to (and runs that agent's model). */
@@ -1017,6 +1032,7 @@ const knownEvents = [
   SessionOpened,
   SessionClosing,
   SessionClosed,
+  SessionRotated,
   UsagePauseLifted,
   AgentAssigned,
   ModelSwitched,
@@ -1060,10 +1076,6 @@ export const EngineEvent = forwardCompatibleUnion({
 export type EngineEvent = typeof EngineEvent.Type;
 
 // ── internal commands ───────────────────────────────────────────────────────────────────────
-
-/** Why a conversation's session is rotated between turns (`zeropsCrewStates.ts` says each). */
-export const RotateSessionReason = forwardCompatibleLiterals(CREW_SESSION_REASONS);
-export type RotateSessionReason = typeof RotateSessionReason.Type;
 
 /**
  * The crew's command to a crewmate's conversation: close its session between turns and open the

@@ -26,6 +26,7 @@ import type {
   RequestAsk,
   RequestId,
   RequestState,
+  RotateSession,
   RunId,
   SessionId,
   TurnEndSource,
@@ -156,6 +157,11 @@ export type Command =
   | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
   /** Close the conversation's session from outside: the person signed out. */
   | { readonly _tag: "CloseSession"; readonly reason: "signed-out" }
+  /**
+   * The crew's: close the session between turns and open the next one fresh (or resuming), told
+   * the seed as it starts.
+   */
+  | RotateSession
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
   | {

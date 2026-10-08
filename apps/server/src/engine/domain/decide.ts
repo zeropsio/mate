@@ -70,6 +70,7 @@ import {
   type ConversationState,
   type OpenRequest,
   type RunRecord,
+  type SessionRecord,
 } from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
@@ -244,6 +245,8 @@ const handle = (b: StepBuilder, command: Command): void => {
       return;
     case "CloseSession":
       return closeSession(b, command.reason);
+    case "RotateSession":
+      return rotateSession(b, command);
     case "Archive":
       if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
       return;
@@ -377,10 +380,28 @@ const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
 };
 
 /**
- * Sends an admitted run on a fitting session, or asks for one. A session fits by what the engine
- * asked for when it opened it — the model, the instance and the driver — never by the driver's own
- * spelling of the model; a session just opened for this run fits. One that does not fit is closed first (a model switch rotates it).
- * A run whose workspace capture has not settled, or a session closing, waits.
+ * Why an open session cannot take the conversation's next run, or null when it fits — the one
+ * place a session is closed to be opened again. A rotation asked since it opened replaces it. It
+ * fits by what the engine asked for when it opened it — the model, the instance and the driver —
+ * never by the driver's own spelling of the model (a session opened before the engine named its
+ * instance fits any).
+ */
+const misfit = (state: ConversationState, session: SessionRecord): SessionCloseReason | null => {
+  if (state.rotation !== null) return "closed";
+  const agent = state.agent;
+  const fits =
+    session.requestedModel === state.model &&
+    (agent === null ||
+      session.instanceId === null ||
+      (session.instanceId === agent.instanceId && session.driver === agent.driver));
+  return fits ? null : "model";
+};
+
+/**
+ * Sends an admitted run on a fitting session, or asks for one; a session just opened for this run
+ * fits. One that does not fit is closed first, between runs (a model switch or a rotation replaces
+ * it), and the next one opens as the conversation now says. A run whose workspace capture has not
+ * settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (needsPrepare(run) && run.prepare !== "done") return;
@@ -390,17 +411,8 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   );
   if (opening) return;
   const session = b.state.session;
-  const agent = b.state.agent;
-  // A session fits by what the engine asked for when it opened it: the model, and the agent's
-  // instance and driver (a session opened before the engine named its instance fits any).
-  const fits =
-    justOpened ||
-    (session !== null &&
-      session.requestedModel === b.state.model &&
-      (agent === null ||
-        session.instanceId === null ||
-        (session.instanceId === agent.instanceId && session.driver === agent.driver)));
-  if (session !== null && !fits) return closeSession(b, "model");
+  const lacks = session === null || justOpened ? null : misfit(b.state, session);
+  if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
@@ -412,16 +424,44 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
     return;
   }
+  const rotation = b.state.rotation;
   b.effect("session.open", run.id, run.sessionOpenAttempts + 1, run.id, {
     runId: run.id,
     instanceId: b.state.agent?.instanceId ?? null,
     driver: b.state.agent?.driver ?? null,
     model: b.state.model,
     options: b.state.agent?.options ?? null,
-    resume: b.state.lastNativeRef,
+    // A fresh rotation resumes nothing: its session starts on a thread of its own.
+    resume: rotation?.fresh === true ? null : b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
     generation: b.state.threadGeneration,
+    ...(rotation === null ? {} : { fresh: rotation.fresh, seed: rotation.seed }),
   });
+};
+
+/**
+ * The crew rotates a conversation's session between turns: the boundary and the seed are recorded
+ * at once (rule 9: what the agent is told is in the record); the next run closes the open session
+ * (dispatch's `misfit`, the one place a session is replaced) and opens the next as the rotation
+ * says, never under a running turn.
+ */
+const rotateSession = (b: StepBuilder, command: Extract<Command, { _tag: "RotateSession" }>) => {
+  if (b.state.archived) throw new Rejected("archived");
+  b.emit({
+    _tag: "SessionRotated",
+    reason: command.reason,
+    fresh: command.fresh,
+    seed: command.seed,
+  });
+  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason: command.reason } });
+  if (command.seed !== null) recordLoose(b, { kind: "context", notes: [command.seed] });
+};
+
+/** An item of the conversation's own, under no run, closed as it opens. */
+const recordLoose = (b: StepBuilder, body: ItemBody): void => {
+  const id = ItemId.make(`${b.state.conversationId}/b/${b.state.headSeq + 1}`);
+  b.emit({ _tag: "ItemOpened", runId: null, itemId: id, key: null, by: ENGINE_ACTOR, body });
+  b.emit({ _tag: "ItemClosed", runId: null, itemId: id, body });
 };
 
 type Delivery = "delivered" | "refused" | "unknown";

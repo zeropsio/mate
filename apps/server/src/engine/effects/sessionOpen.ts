@@ -42,6 +42,9 @@ interface Payload {
   readonly rotateFrom: string | null;
   /** The conversation's thread generation (absent from an open asked before it existed: 1). */
   readonly generation?: number;
+  /** A rotation's open: a fresh thread (or a resumed one), told `seed` as it starts. */
+  readonly fresh?: boolean;
+  readonly seed?: string | null;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -89,7 +92,14 @@ export const makeSessionOpen = Effect.gen(function* () {
           yield* host.record({
             kind: "start",
             session,
-            from: payload.resume === null && payload.rotateFrom === null ? "fresh" : "resume",
+            from:
+              payload.fresh === true
+                ? payload.seed == null
+                  ? "fresh"
+                  : "seeded"
+                : payload.resume === null && payload.rotateFrom === null
+                  ? "fresh"
+                  : "resume",
           });
           const started = yield* Effect.exit(
             bounded(

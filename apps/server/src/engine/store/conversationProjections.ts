@@ -188,6 +188,7 @@ const projectWith = (
     case "HistoryImportEnded":
     case "AgentAssigned":
     case "SessionClosing":
+    case "SessionRotated":
     case "ModelSwitched":
     case "UsagePauseLifted":
     case "ConversationArchived":

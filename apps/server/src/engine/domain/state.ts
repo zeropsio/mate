@@ -16,6 +16,7 @@ import type {
   Principal,
   RequestAsk,
   RequestId,
+  RotateSessionReason,
   RunEnd,
   RunEndSource,
   RunId,
@@ -32,7 +33,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 7;
+export const STATE_VERSION = 8;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -185,6 +186,15 @@ export interface ConversationState {
   } | null;
   /** The session a model switch closed: the next one opened rotates from it. */
   readonly rotatingFrom: SessionId | null;
+  /**
+   * A rotation asked between turns (`RotateSession`): the open session closes before the next run
+   * and the next one opens as it says. Cleared once that session has opened.
+   */
+  readonly rotation: {
+    readonly reason: RotateSessionReason;
+    readonly fresh: boolean;
+    readonly seed: string | null;
+  } | null;
   /** The native thread of the last session, so the next one resumes it. */
   readonly lastNativeRef: string | null;
   /**
@@ -226,6 +236,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   session: null,
   closing: null,
   rotatingFrom: null,
+  rotation: null,
   lastNativeRef: null,
   pausedUntil: null,
   usageProbeMs: null,
