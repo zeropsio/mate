@@ -71,6 +71,15 @@ export const continueCard = (task: TaskRecord, why: string): SentCard => ({
   card: taskCardOf(task, "continue", why),
 });
 
+/**
+ * A new session's first turn on a task already open: the task and why the session is new, then
+ * the words the turn was sent with.
+ */
+export const carriedCard = (task: TaskRecord, why: string, text: string): SentCard => ({
+  text: lines(`#${task.number} ${task.title} · continues`, [why, "", text.trim()]),
+  card: taskCardOf(task, "continue", why),
+});
+
 export const resolveCard = (task: TaskRecord, paths: ReadonlyArray<string>): SentCard => ({
   text: lines(`#${task.number} ${task.title} · resolve the conflicts`, [
     "Merging your tree's head into your copy stopped on conflicts in:",

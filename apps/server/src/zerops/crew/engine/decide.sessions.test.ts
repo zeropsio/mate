@@ -43,6 +43,33 @@ const journeys: ReadonlyArray<Journey> = [
     expected: [[["message", "Read the README"]], ["task", "message"], 1],
   },
   {
+    sentence:
+      "a message a saved job's new session takes carries its task's card and why the session is new",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      newTask(w, "backend", "First");
+      w.start("backend");
+      w.end("backend");
+      w.checkpoint("backend");
+      w.press(
+        { _tag: "jobSave", handle: "backend", apply: "nextTurn" },
+        PERSON,
+        home(writer("backend", { job: NEW_JOB })),
+      );
+      w.quiet();
+      w.press({ _tag: "message", handle: "backend", text: "Go on.", attachments: [] });
+      w.quiet();
+      const words = w.delivered.flatMap(({ command }) =>
+        command._tag === "Seam" ? [command.words] : command._tag === "Send" ? [command.text] : [],
+      );
+      return words.slice(-2);
+    },
+    expected: [
+      "Its job changed — from its next message",
+      "[Crew task card]\n#1 First · continues\nIts job changed\n\nGo on.",
+    ],
+  },
+  {
     sentence: "a job saved for the next turn rotates the session before that turn",
     journey: (w) => {
       w.apply(home(writer("backend")));
@@ -85,10 +112,12 @@ const journeys: ReadonlyArray<Journey> = [
       w.apply(home(writer("backend")));
       newTask(w, "backend", "First");
       w.start("backend");
+      // Not during a turn: V1's rule, which the crew's journeys hold on both engines.
       w.press({ _tag: "startFresh", handle: "backend" });
-      const waits = w.controls("backend").slice(1);
+      const waits = [w.rejection(), w.rejectionDetail(), w.controls("backend").slice(1)];
       w.end("backend");
       w.checkpoint("backend");
+      w.press({ _tag: "startFresh", handle: "backend" });
       const fresh = [w.controls("backend").slice(1), w.state.members.backend!.session.lastReason];
       w.quiet();
       w.press({ _tag: "message", handle: "backend", text: "Go on.", attachments: [] });
@@ -112,12 +141,12 @@ const journeys: ReadonlyArray<Journey> = [
       ];
     },
     expected: [
-      [],
+      ["wrong-state", "@backend's turn is running", []],
       [["RotateSession"], "cleared"],
       ["RotateSession", "Seam", "Stop"],
       ["RotateSession", "Seam", "Stop", "RotateSession"],
       ["task", "message", "continue"],
-      OTHER,
+      { kind: "crew", startedBy: "user-2" },
     ],
   },
   {

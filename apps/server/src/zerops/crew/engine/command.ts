@@ -176,8 +176,11 @@ export type DeliverCommand =
       readonly profile: { readonly kind: "crewmate"; readonly id: string; readonly name: string };
     }
   | { readonly _tag: "Archive" }
-  /** A `crew.seam` marker on the crewmate's record: a landing, a close, a save. */
-  | { readonly _tag: "Seam"; readonly seam: RecordedCrewSeam };
+  /**
+   * A `crew.seam` marker on the crewmate's record: a landing, a close, a save. `words` are the
+   * line's own when the decider has them (a save's); otherwise the wiring words the seam.
+   */
+  | { readonly _tag: "Seam"; readonly seam: RecordedCrewSeam; readonly words?: string };
 
 /** What a crewmate's copy runs its setup, check and app with: its crew port and `env:`. */
 export interface LaneEnvironment {

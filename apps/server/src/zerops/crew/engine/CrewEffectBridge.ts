@@ -705,7 +705,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
               return told({
                 _tag: "MarkSeam",
                 seam: crewCommand.seam,
-                words: context.seamWords(crewCommand.seam),
+                words: crewCommand.words ?? context.seamWords(crewCommand.seam),
               });
           }
         }),

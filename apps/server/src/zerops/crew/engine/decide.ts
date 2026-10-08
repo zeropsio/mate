@@ -40,6 +40,7 @@ import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import { crewHomeChange } from "../crewAccess.ts";
+import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
 import {
   CHECKED_STATES,
   EDITED_AFTER_CHECK,
@@ -67,6 +68,7 @@ import {
   answerCard,
   claimReleaseCard,
   claimStartCard,
+  carriedCard,
   continueCard,
   fixCard,
   nudgeCard,
@@ -694,15 +696,19 @@ const rotateSession = (
  * The rotation a turn's start finds due (`rotationDecision`): a new session first, counted toward
  * the attempt when the engine's own trigger asked for it; `false` when the task stopped instead.
  */
+/**
+ * Rotates the crewmate's session when its moment calls for it: `false` when the task parked
+ * instead, else why a fresh session opened (its seam words), or `null` when none did.
+ */
 const rotateIfDue = (
   b: Builder,
   member: MemberRecord,
   moment: RotationMoment,
   task: TaskRecord | undefined,
   principal: Principal,
-): boolean => {
+): false | { readonly fresh: string | null } => {
   const applied = b.state.applied;
-  if (applied === null) return true;
+  if (applied === null) return { fresh: null };
   const current = { brief: applied.briefVersion, job: member.jobVersion };
   const user = userOf(principal);
   const decision = rotationDecision({
@@ -727,7 +733,7 @@ const rotateIfDue = (
     if (task !== undefined) park(b, task, ROTATED_TOO_OFTEN);
     return false;
   }
-  if (decision.kind !== "rotate") return true;
+  if (decision.kind !== "rotate") return { fresh: null };
   if (decision.counted && task !== undefined) {
     b.emit({
       _tag: "TaskUpdated",
@@ -736,7 +742,7 @@ const rotateIfDue = (
     });
   }
   rotateSession(b, member, decision.reason, principal);
-  return true;
+  return { fresh: stintReasonWords(decision.reason, member.session.running ?? current, current) };
 };
 
 /* ------------------------------------------------------------ starting and carrying on */
@@ -744,7 +750,7 @@ const rotateIfDue = (
 /** A task's first turn: its copy reset (a writer's), then its card, admitted as `principal`. */
 const startTask = (b: Builder, task: TaskRecord, principal: Principal, ownCall: boolean): void => {
   const member = b.member(task.owner);
-  if (!rotateIfDue(b, member, "task-start", task, principal)) return;
+  if (rotateIfDue(b, member, "task-start", task, principal) === false) return;
   b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { starting: { principal, ownCall } } });
   if (member.kind === "writer") {
     b.effect(
@@ -776,7 +782,8 @@ const continueTask = (
   attachments: ReadonlyArray<ChatAttachment> = [],
 ): void => {
   const member = b.member(task.owner);
-  if (!rotateIfDue(b, member, "turn-start", task, principal)) return;
+  const rotated = rotateIfDue(b, member, "turn-start", task, principal);
+  if (rotated === false) return;
   const reworked = task.state === "rework";
   const moved = stepOrRefuse(
     b,
@@ -791,7 +798,12 @@ const continueTask = (
   );
   // A rework past its cap stopped the task instead: nothing goes to its crewmate.
   if (moved.state !== "working") return;
-  sendTurn(b, b.member(task.owner), sent, principal, purpose, moved.id, attachments);
+  // A new session starts from its task's card, which says why the session is new.
+  const carried =
+    rotated.fresh !== null && sent.card === null
+      ? carriedCard(moved, rotated.fresh, sent.text)
+      : sent;
+  sendTurn(b, b.member(task.owner), carried, principal, purpose, moved.id, attachments);
 };
 
 /**
@@ -1110,11 +1122,12 @@ const seam = (
   b: Builder,
   member: MemberRecord,
   value: Extract<DeliverCommand, { _tag: "Seam" }>["seam"],
+  words?: string,
 ): void => {
   deliver(
     b,
     member,
-    { _tag: "Seam", seam: value },
+    { _tag: "Seam", seam: value, ...(words === undefined ? {} : { words }) },
     { purpose: "seam", taskId: null, principal: { kind: "engine" }, text: null },
   );
 };
@@ -1567,6 +1580,7 @@ const pressed = (
       return releaseClaim(b, press.host, as, "press");
     case "startFresh": {
       const member = b.member(press.handle);
+      if (member.active !== null) throw wrongState(`@${member.handle}'s turn is running`);
       if (isFree(b.state, member.handle)) rotateSession(b, member, "start-fresh", as);
       else {
         b.emit({
@@ -2103,13 +2117,17 @@ const saveHome = (b: Builder, home: CrewDefinition, choice: "nextTurn" | "now" |
   const save = applyHome(b, home, choice);
   const as = b.envelope.principal;
   const reached = [...save.pending, ...save.freshOnly];
+  const change = {
+    kind: b.state.applied!.briefVersion > previous.briefVersion ? "brief" : "job",
+    version: b.state.applied!.briefVersion,
+  } as const;
   for (const handle of reached) {
     const member = b.state.members[handle];
     if (member === undefined) continue;
-    seam(b, member, { seam: "saved", apply: choice });
     const rotation: RotationReason = save.freshOnly.includes(handle)
       ? "login-changed"
       : "prompt-changed";
+    seam(b, member, { seam: "saved", apply: choice }, savedSeamWords(change, rotation, choice));
     if (choice === "nextTurn" && rotation === "prompt-changed") continue;
     const open = openTaskOf(b.state, handle);
     if (choice === "now" && open?.state === "working") {
@@ -2119,7 +2137,8 @@ const saveHome = (b: Builder, home: CrewDefinition, choice: "nextTurn" | "now" |
         set: {
           carryOn: {
             why: "Your job or the crew's goal changed, so a new session goes on with your task now.",
-            as,
+            // Carried on by the crew for whoever saved it (V1's AS_CREW).
+            as: crewAs(userOf(as)),
           },
         },
       });
