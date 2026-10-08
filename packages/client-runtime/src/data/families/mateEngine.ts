@@ -13,6 +13,7 @@ import type {
   Item,
   Request,
   RunRecord,
+  ThreadTokenUsageSnapshot,
 } from "@t3tools/contracts";
 
 import type { LinkKey, ScopeKey } from "../model.ts";
@@ -26,6 +27,17 @@ export interface EngineConversationKey {
   readonly conversationId: string;
 }
 
+/**
+ * What the engine says of a conversation live and never records: how full its agent's context
+ * is, and each running call's latest progress (the stand-up's), by its item. Held while the
+ * conversation is, ordered by the order this tab heard it in.
+ */
+export interface EngineGaugeValue {
+  readonly environmentId: string;
+  readonly usage: ThreadTokenUsageSnapshot | null;
+  readonly progress: Readonly<Record<string, unknown>>;
+}
+
 /** The conversation's own facts: its header, and the window of run groups held. */
 export interface EngineConversationValue {
   readonly environmentId: string;
@@ -36,6 +48,7 @@ export interface EngineConversationValue {
 declare module "../model.ts" {
   interface FamilyValues {
     readonly mateEngineConversation: EngineConversationValue;
+    readonly mateEngineGauge: EngineGaugeValue;
     readonly mateEngineRun: EngineFact<RunRecord>;
     readonly mateEngineItem: EngineFact<Item>;
     readonly mateEngineRequest: EngineFact<Request>;
@@ -50,7 +63,7 @@ export const engineFactId = (environmentId: string, id: string) => encode([envir
 export const engineConversationId = (key: EngineConversationKey) =>
   engineFactId(key.environmentId, key.conversationId);
 
-/** One link per conversation subscription; its four scopes are children of it. */
+/** One link per conversation subscription; its scopes are children of it. */
 export const engineConversationLink = (key: EngineConversationKey): LinkKey =>
   `mate:engine-${encode([key.environmentId, key.conversationId])}`;
 /** One link per Mate's rows. */
@@ -60,6 +73,7 @@ export const engineRowsLink = (environmentId: string): LinkKey =>
 const engineSpec = <
   F extends
     | "mateEngineConversation"
+    | "mateEngineGauge"
     | "mateEngineRun"
     | "mateEngineItem"
     | "mateEngineRequest"
@@ -77,6 +91,8 @@ export const mateEngineConversationFamily = engineSpec(
   "mateEngineConversation",
   "engine-conversation",
 );
+
+export const mateEngineGaugeFamily = engineSpec("mateEngineGauge", "engine-gauge");
 
 export const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
   ...engineSpec("mateEngineRun", "engine-run"),
@@ -130,6 +146,7 @@ export const engineConversationScopes = (key: EngineConversationKey) => {
     run: `${link}:engine-run` as ScopeKey,
     item: `${link}:engine-item` as ScopeKey,
     request: `${link}:engine-request` as ScopeKey,
+    gauge: `${link}:engine-gauge` as ScopeKey,
   };
 };
 
@@ -143,6 +160,7 @@ export const engineRowsKey = (environmentId: string) => encode([environmentId]);
 
 export const MATE_ENGINE_FAMILIES = [
   mateEngineConversationFamily,
+  mateEngineGaugeFamily,
   mateEngineRunFamily,
   mateEngineItemFamily,
   mateEngineRequestFamily,

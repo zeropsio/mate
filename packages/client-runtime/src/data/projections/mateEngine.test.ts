@@ -472,6 +472,39 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(activitiesOf([], [engineRun("thread-ada", 1, { end })])).toEqual([]);
   });
 
+  it("the context meter reads how full the agent's context is, and a call shows its progress", () => {
+    const state = held({ runs: [engineRun("thread-ada", 1)], items: [callItem(run1, 2)] }, [
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: [{ scope: engineConversationScopes(key).gauge, generation: 0 }],
+        reset: false,
+        rows: [
+          {
+            family: "mateEngineGauge",
+            id: engineConversationId(key),
+            value: {
+              environmentId: ENV,
+              usage: { usedTokens: 4_000, maxTokens: 200_000 },
+              progress: { [`${run1}/i/2`]: { step: "deploy" } },
+            },
+            revision: { kind: "mate-link", sequence: 1 },
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    const activities = thread(state)?.activities ?? [];
+    expect(activities.slice(-2)).toMatchObject([
+      {
+        kind: "tool.progress",
+        turnId: run1,
+        payload: { toolCallId: `${run1}/i/2`, zeropsStandUp: { step: "deploy" } },
+      },
+      { kind: "context-window.updated", payload: { usedTokens: 4_000, maxTokens: 200_000 } },
+    ]);
+  });
+
   it("a run that continues another shares its card, and is its latest turn", () => {
     const run2 = "thread-ada/r/2";
     const state = held({

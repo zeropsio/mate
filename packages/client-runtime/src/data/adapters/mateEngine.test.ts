@@ -580,3 +580,32 @@ describe("an engine conversation's older pages", () => {
     }),
   );
 });
+
+describe("what an engine conversation says live and never records", () => {
+  it.live("keeps the context's fullness and each call's progress, the latest of each", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot(),
+        synchronized(12),
+        { type: "context", usage: { usedTokens: 1_000, maxTokens: 200_000 } },
+        { type: "progress", itemId: `${run1}/i/3` as ItemId, value: { step: "build" } },
+        { type: "progress", itemId: `${run1}/i/3` as ItemId, value: { step: "deploy" } },
+        { type: "context", usage: { usedTokens: 4_000, maxTokens: 200_000 } },
+      );
+      const gauge = () => r.read().fact("mateEngineGauge", engineFactId(ENV, "thread-ada"));
+      expect(gauge()).toMatchObject({
+        kind: "known",
+        value: {
+          usage: { usedTokens: 4_000 },
+          progress: { [`${run1}/i/3`]: { step: "deploy" } },
+        },
+      });
+      yield* r.send({ type: "progress", itemId: `${run1}/i/3` as ItemId, value: null });
+      expect(gauge()).toMatchObject({ value: { progress: {} } });
+      r.close();
+    }),
+  );
+});

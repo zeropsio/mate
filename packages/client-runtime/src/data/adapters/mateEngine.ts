@@ -386,6 +386,8 @@ export function makeMateEngineConversations(options: {
   const signal = (key: LinkKey | ScopeKey, event: StreamEvent) =>
     store.dispatch({ kind: "stream", key, now: now(), event });
   const reads = new Set<Fiber.Fiber<unknown>>();
+  /** The order this tab heard live gauges in: a later one replaces an earlier one. */
+  let heard = 0;
 
   /**
    * What the runs a frame or a page carries lack of their own items, read back from the newest
@@ -552,8 +554,37 @@ export function makeMateEngineConversations(options: {
                 return Effect.void;
               case "unserved":
                 return Effect.fail(unservedFault(frame));
+              case "context":
+              case "progress": {
+                const held = readsOfState(store.state()).fact("mateEngineGauge", id);
+                const gauge: FamilyValues["mateEngineGauge"] =
+                  held.kind === "known"
+                    ? held.value
+                    : { environmentId: key.environmentId, usage: null, progress: {} };
+                const progress = { ...gauge.progress };
+                if (frame.type === "progress") {
+                  if (frame.value === null) delete progress[frame.itemId];
+                  else progress[frame.itemId] = frame.value;
+                }
+                deliver(
+                  [
+                    {
+                      family: "mateEngineGauge",
+                      id,
+                      value: {
+                        ...gauge,
+                        usage: frame.type === "context" ? frame.usage : gauge.usage,
+                        progress,
+                      },
+                      revision: { kind: "mate-link", sequence: ++heard },
+                    },
+                  ],
+                  false,
+                );
+                return Effect.void;
+              }
               default:
-                // progress, context and frames of a newer build: nothing this build draws yet.
+                // Frames of a newer build: nothing this build draws.
                 return Effect.void;
             }
           });

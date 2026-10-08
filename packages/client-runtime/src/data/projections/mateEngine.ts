@@ -368,6 +368,49 @@ function unknownActivity(
     : activity(item.id, "engine.item", item.summary, {}, cardOf(item.runId), item.at, item.seq);
 }
 
+/**
+ * What the engine says live of the conversation, as V1 records it: how full the context is (the
+ * meter reads the latest), and each running call's progress (the stand-up's, by its call).
+ */
+function gaugeActivities(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+  cardOfCall: (itemId: string) => string | null,
+  card: string | null,
+  at: number,
+  after: number,
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const gauge = read.fact("mateEngineGauge", engineConversationId(key));
+  if (gauge.kind !== "known") return [];
+  const { usage, progress } = gauge.value;
+  return [
+    ...Object.entries(progress).map(([itemId, value], index) =>
+      activity(
+        `${itemId}#progress`,
+        "tool.progress",
+        "Progress",
+        { toolCallId: itemId, zeropsStandUp: value },
+        cardOfCall(itemId),
+        at,
+        after + 1 + index,
+      ),
+    ),
+    ...(usage === null
+      ? []
+      : [
+          activity(
+            `${key.conversationId}#context`,
+            "context-window.updated",
+            "Context window updated",
+            usage as unknown as Record<string, unknown>,
+            card,
+            at,
+            after + 1 + Object.keys(progress).length,
+          ),
+        ]),
+  ];
+}
+
 /** How a run ended, where V1 records a break: a crash, a failure, the usage limit. */
 function breakActivity(run: RunRecord, card: string): OrchestrationThreadActivity | null {
   const end = run.end;
@@ -517,6 +560,19 @@ export function engineThreadOf(
   }
   activities.sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
   const latest = runs.at(-1) ?? null;
+  activities.push(
+    ...gaugeActivities(
+      read,
+      key,
+      (itemId) => {
+        const call = items.find((item) => item.id === itemId);
+        return call === undefined ? null : cardOf(call.runId);
+      },
+      latest === null ? null : rootOf(latest).id,
+      Math.max(items.at(-1)?.at ?? 0, latest?.queuedAt ?? 0),
+      activities.at(-1)?.sequence ?? 0,
+    ),
+  );
   const active = runs.findLast((run) => run.state !== "ended") ?? null;
   const shell = shellThreadOf(read, key);
   const agent = header.agent;
