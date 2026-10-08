@@ -162,7 +162,10 @@ const drainRoute = HttpRouter.add(
           terminals.subscribe(() => offer),
           (unsubscribe) => Effect.sync(unsubscribe),
         );
-        const facts = readMateUpdateIdleFacts;
+        const facts = readMateUpdateIdleFacts.pipe(
+          Effect.provideService(MateEngine, engine),
+          Effect.provideService(TerminalManager, terminals),
+        );
         return yield* drainMateUpdate({
           allowed: input.value.automatic
             ? (policy?.verify ?? Effect.succeedNone).pipe(
