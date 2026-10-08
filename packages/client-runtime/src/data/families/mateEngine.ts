@@ -80,6 +80,11 @@ export const mateEngineConversationFamily = engineSpec(
 
 export const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
   ...engineSpec("mateEngineRun", "engine-run"),
+  /**
+   * A conversation's older run groups, read when the person asks: they arrive in its own scopes;
+   * this listing's stream says only whether the read is in flight.
+   */
+  mateDetails: [{ suffix: "engine-earlier", leaving: "removed" }],
   indexes: [
     {
       name: "engineRunsIn",
@@ -127,6 +132,10 @@ export const engineConversationScopes = (key: EngineConversationKey) => {
     request: `${link}:engine-request` as ScopeKey,
   };
 };
+
+/** Where reading a conversation's older run groups stands: in flight, done or refused. */
+export const engineEarlierScope = (key: EngineConversationKey): ScopeKey =>
+  `${engineConversationLink(key)}:engine-earlier:${engineConversationId(key)}`;
 
 export const engineRowsScope = (environmentId: string): ScopeKey =>
   `${engineRowsLink(environmentId)}:engine-row`;

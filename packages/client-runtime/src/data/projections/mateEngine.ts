@@ -31,12 +31,14 @@ import * as Option from "effect/Option";
 
 import {
   EMPTY_ENVIRONMENT_THREAD_STATE,
+  type EnvironmentThreadPageState,
   type EnvironmentThreadState,
 } from "../../state/threadState.ts";
 import type { EnvironmentShellState } from "../adapters/mateShellReplay.ts";
 import {
   engineConversationId,
   engineConversationScopes,
+  engineEarlierScope,
   engineRowsKey,
   type EngineConversationKey,
   type EngineFact,
@@ -601,10 +603,30 @@ export const engineThread: Projection<EngineConversationKey, EnvironmentThreadSt
       data: Option.some(thread),
       status: stream.phase === "live" ? "live" : "cached",
       error: error === null ? Option.none() : Option.some(error),
-      page: Option.none(),
+      page: pageOf(read, key),
     };
   },
 };
+
+/**
+ * Whether older run groups exist before the oldest held — run ordinals are gapless, so any held
+ * run past the first says so — and whether reading them is in flight.
+ */
+function pageOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): Option.Option<EnvironmentThreadPageState> {
+  let oldest: number | null = null;
+  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)))
+    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
+  if (oldest === null || oldest <= 1) return Option.none();
+  const phase = read.stream(engineEarlierScope(key)).phase;
+  return Option.some({
+    beforeCursor: String(oldest),
+    hasMore: true,
+    loadingOlder: phase === "connecting" || phase === "baselining",
+  });
+}
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;

@@ -117,6 +117,18 @@ export function requestOlderThreadTurns(
   return defaultOlderTurnRequestRegistry.request(threadKey({ environmentId, threadId }));
 }
 
+/**
+ * Registers who fetches a thread's next older page when asked, for a thread no V1 machine reads
+ * (a Mate's engine conversation). Returns the deregistration.
+ */
+export function registerOlderThreadTurns(
+  environmentId: EnvironmentIdType,
+  threadId: ThreadIdType,
+  handler: () => void,
+): () => void {
+  return defaultOlderTurnRequestRegistry.register(threadKey({ environmentId, threadId }), handler);
+}
+
 function formatThreadError(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
   return error instanceof Error && error.message.trim().length > 0

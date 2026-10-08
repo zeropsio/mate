@@ -224,6 +224,18 @@ export interface FamilySpec<F extends Family> {
    */
   readonly readIsNewer?: (held: FamilyValues[F], read: FamilyValues[F]) => boolean;
   readonly details?: ReadonlyArray<DetailListing>;
+  /**
+   * A Mate's further listings of the family's members: each read by its adapter when asked, into
+   * its link's own scopes; the listing's stream says only where that read stands (an engine
+   * conversation's older pages).
+   */
+  readonly mateDetails?: ReadonlyArray<MateDetailListing>;
+}
+
+/** A further listing a Mate's adapter reads when asked: `…:<suffix>:<ownerId>` under its link. */
+export interface MateDetailListing {
+  readonly suffix: string;
+  readonly leaving: MemberState;
 }
 
 export type AnyFamilySpec = { readonly [F in Family]: FamilySpec<F> }[Family];

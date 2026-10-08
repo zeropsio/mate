@@ -1,7 +1,14 @@
 import type { Cause } from "effect";
-import type { EngineConversationFrame, EngineCursor, ItemId } from "@t3tools/contracts";
+import type {
+  EngineConversationFrame,
+  EngineCursor,
+  EnginePage,
+  Item,
+  ItemId,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
@@ -10,13 +17,21 @@ import { ENGINE_LIVE_POLICY, makeEngineLiveText } from "../engineLive.ts";
 import {
   engineConversationLink,
   engineConversationScopes,
+  engineEarlierScope,
   engineFactId,
   type EngineConversationKey,
 } from "../families/mateEngine.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
-import { engineHeader, engineRun, noteItem, personItem } from "../__fixtures__/mateEngine.ts";
+import {
+  callItem,
+  engineHeader,
+  engineRun,
+  noteItem,
+  personItem,
+} from "../__fixtures__/mateEngine.ts";
+import { engineThread } from "../projections/mateEngine.ts";
 import {
   ENGINE_FORGET_AFTER_MS,
   engineProtocol,
@@ -67,7 +82,24 @@ const synchronized = (head: number, epoch = 4): EngineConversationFrame => ({
   head,
 });
 
-function rig() {
+type Pager = (request: {
+  readonly runId: string | null;
+  readonly before: number | null;
+}) => Effect.Effect<EnginePage, StreamFault>;
+
+const page = (patch: Partial<Extract<EnginePage, { _tag: "Page" }>> = {}): EnginePage =>
+  ({
+    _tag: "Page",
+    runs: [],
+    items: [],
+    requests: [],
+    window: { oldestOrdinal: 1, earlier: false },
+    more: false,
+    ...patch,
+  }) as EnginePage;
+
+function rig(pager: Pager = () => Effect.fail({ outcome: "transient", message: "no pages" })) {
+  const pages: Array<{ readonly runId: string | null; readonly before: number | null }> = [];
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const timers = new Map<number, () => void>();
@@ -105,6 +137,14 @@ function rig() {
           }),
         ),
       subscribeRows: () => Stream.never,
+      readEarlier: (_key, beforeOrdinal) => {
+        pages.push({ runId: null, before: beforeOrdinal });
+        return pager({ runId: null, before: beforeOrdinal });
+      },
+      readRun: (_key, runId, beforeSeq) => {
+        pages.push({ runId, before: beforeSeq });
+        return pager({ runId, before: beforeSeq });
+      },
       watch: (_environmentId, receive) =>
         Effect.sync(() => {
           access = receive;
@@ -122,6 +162,7 @@ function rig() {
     store,
     live,
     conversations,
+    pages,
     opens,
     send,
     read,
@@ -359,4 +400,183 @@ describe("the engine protocol a client speaks with a Mate", () => {
   ])("$name", ({ served, speaks }) => {
     expect(engineProtocol(served)).toBe(speaks);
   });
+});
+
+describe("an engine conversation's older pages", () => {
+  const run = (ordinal: number, items: number, patch = {}) =>
+    engineRun("thread-ada", ordinal, {
+      rev: ordinal,
+      summary: { items, calls: {}, answerItemId: null, lastItemSeq: null },
+      ...patch,
+    });
+  const itemsOf = (r: ReturnType<typeof rig>) =>
+    [...r.read().index("engineItemsIn", engineFactId(ENV, "thread-ada"))]
+      .flatMap((id) => {
+        const fact = r.read().fact("mateEngineItem", id);
+        return fact.kind === "known" ? [fact.value.id] : [];
+      })
+      .sort();
+  const drawn = (r: ReturnType<typeof rig>) => engineThread.derive(r.read(), ada);
+
+  it.live("draws a run its window holds in part only once its items are read whole", () =>
+    Effect.gen(function* () {
+      const answered = yield* Queue.unbounded<EnginePage>();
+      const r = rig(() => Queue.take(answered));
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({
+          runs: [run(1, 3)],
+          items: [personItem(run1, 1, "Deploy the api"), noteItem(run1, 3, "Deployed.")],
+        }),
+        synchronized(12),
+      );
+      expect(drawn(r).data).toEqual(Option.none());
+      expect(r.pages).toEqual([{ runId: run1, before: null }]);
+      Queue.offerUnsafe(
+        answered,
+        page({
+          items: [
+            personItem(run1, 1, "Deploy the api"),
+            callItem(run1, 2) as Item,
+            noteItem(run1, 3, "Deployed."),
+          ],
+        }),
+      );
+      yield* settle;
+      expect(itemsOf(r)).toEqual([`${run1}/i/1`, `${run1}/i/2`, `${run1}/i/3`]);
+      expect(Option.getOrNull(drawn(r).data)?.activities.map((a) => a.kind)).toEqual([
+        "tool.started",
+        "tool.completed",
+      ]);
+      r.close();
+    }),
+  );
+
+  it.live("reads a run longer than a page back page by page", () =>
+    Effect.gen(function* () {
+      const r = rig(({ before }) =>
+        Effect.succeed(
+          before === null
+            ? page({ items: [callItem(run1, 3), callItem(run1, 4)], more: true })
+            : page({ items: [callItem(run1, 2)], more: false }),
+        ),
+      );
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ runs: [run(1, 4)], items: [personItem(run1, 1, "Deploy")] }),
+        synchronized(12),
+      );
+      expect(r.pages).toEqual([
+        { runId: run1, before: null },
+        { runId: run1, before: 3 },
+      ]);
+      expect(itemsOf(r)).toHaveLength(4);
+      r.close();
+    }),
+  );
+
+  it.live("draws what it holds of a run whose items could not be read", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ runs: [run(1, 3)], items: [personItem(run1, 1, "Deploy")] }),
+        synchronized(12),
+      );
+      expect(itemsOf(r)).toEqual([`${run1}/i/1`]);
+      expect(Option.isSome(drawn(r).data)).toBe(true);
+      r.close();
+    }),
+  );
+
+  it.live(
+    "loads earlier run groups into the conversation, each run whole, saying while it loads",
+    () =>
+      Effect.gen(function* () {
+        const answered = yield* Queue.unbounded<EnginePage>();
+        const r = rig(({ runId }) =>
+          runId === null
+            ? Queue.take(answered)
+            : Effect.succeed(page({ items: [callItem("thread-ada/r/2", 2)] })),
+        );
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(
+          snapshot({
+            runs: [run(3, 1)],
+            items: [personItem("thread-ada/r/3", 1, "Third")],
+            window: { oldestOrdinal: 3, earlier: true },
+          }),
+          synchronized(12),
+        );
+        expect(Option.getOrNull(drawn(r).page)).toEqual({
+          beforeCursor: "3",
+          hasMore: true,
+          loadingOlder: false,
+        });
+        expect(r.conversations.readEarlier(ada)).toBe(true);
+        expect(r.conversations.readEarlier(ada)).toBe(false);
+        expect(Option.getOrNull(drawn(r).page)?.loadingOlder).toBe(true);
+        Queue.offerUnsafe(
+          answered,
+          page({
+            runs: [run(1, 1), run(2, 2)],
+            items: [personItem(run1, 1, "First"), personItem("thread-ada/r/2", 1, "Second")],
+          }),
+        );
+        yield* settle;
+        expect(r.pages).toEqual([
+          { runId: null, before: 3 },
+          { runId: "thread-ada/r/2", before: null },
+        ]);
+        expect(itemsOf(r)).toEqual([
+          `${run1}/i/1`,
+          "thread-ada/r/2/i/1",
+          "thread-ada/r/2/i/2",
+          "thread-ada/r/3/i/1",
+        ]);
+        expect(drawn(r).page).toEqual(Option.none());
+        expect(r.conversations.readEarlier(ada)).toBe(false);
+        r.close();
+      }),
+  );
+
+  it.live("offers to load earlier again when a read fails, keeping what it holds", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({
+          runs: [run(2, 1)],
+          items: [personItem("thread-ada/r/2", 1, "Second")],
+          window: { oldestOrdinal: 2, earlier: true },
+        }),
+        synchronized(12),
+      );
+      expect(r.conversations.readEarlier(ada)).toBe(true);
+      yield* settle;
+      expect(Option.getOrNull(drawn(r).page)).toMatchObject({ hasMore: true, loadingOlder: false });
+      expect(r.read().stream(engineEarlierScope(ada)).fault?.message).toBe("no pages");
+      expect(r.conversations.readEarlier(ada)).toBe(true);
+      expect(itemsOf(r)).toEqual(["thread-ada/r/2/i/1"]);
+      r.close();
+    }),
+  );
+
+  it.live("offers nothing earlier when its window starts at the first run", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12));
+      expect(drawn(r).page).toEqual(Option.none());
+      expect(r.conversations.readEarlier(ada)).toBe(false);
+      expect(r.pages).toEqual([]);
+      r.close();
+    }),
+  );
 });
