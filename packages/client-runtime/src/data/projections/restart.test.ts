@@ -303,6 +303,7 @@ it("recovery follows the unresolved receipt when history selects the retry desti
   const evidence = {
     ...NO_RESTARTS,
     processes: { destination: process },
+    sourceByProcess: { destination: source.id },
     running: ["destination"],
     attempts: {
       [source.id]: {

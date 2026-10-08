@@ -34,6 +34,8 @@ export interface RestartReading {
 export interface RestartEvidence {
   readonly processes: Readonly<Record<string, RestartProcess>>;
   readonly running: ReadonlyArray<string>;
+  /** Every recorded destination keeps its source, including superseded retry handles. */
+  readonly sourceByProcess: Readonly<Record<string, string>>;
   readonly attempts: Readonly<
     Record<
       string,
@@ -45,7 +47,12 @@ export interface RestartEvidence {
     >
   >;
 }
-export const NO_RESTARTS: RestartEvidence = { processes: {}, running: [], attempts: {} };
+export const NO_RESTARTS: RestartEvidence = {
+  processes: {},
+  running: [],
+  sourceByProcess: {},
+  attempts: {},
+};
 
 export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
   name: "projectRestarts",
@@ -58,17 +65,22 @@ export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
       if (fact.kind === "known") processes[id] = fact.value;
     }
     const attempts: Record<string, RestartEvidence["attempts"][string]> = {};
+    const sourceByProcess: Record<string, string> = {};
     // Index order is explicit submission order, never a timestamp-based verdict.
     for (const requestId of read.index("restartOperations", `${orgId}/${projectId}`)) {
       const record = read.operation(requestId);
       if (record?.intent.kind !== "mate-restart" || record.intent.sourceProcessId === undefined)
         continue;
+      const sourceProcessId =
+        sourceByProcess[record.intent.sourceProcessId] ?? record.intent.sourceProcessId;
+      for (const handle of [...record.handles, ...(record.receipt?.handles ?? [])])
+        sourceByProcess[handle] = sourceProcessId;
       const processId = record.receipt?.handles[0] ?? record.handles[0];
       if (processId !== undefined) {
         const fact = read.fact("process", processId);
         if (fact.kind === "known") processes[processId] = fact.value;
       }
-      attempts[record.intent.sourceProcessId] = {
+      attempts[sourceProcessId] = {
         requestId,
         progress: operationProgress.derive(read, requestId),
         ...(processId === undefined ? {} : { processId }),
@@ -80,14 +92,16 @@ export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
         ? [...read.index("running", projectId)]
         : [],
       attempts,
+      sourceByProcess,
     };
   },
 };
 
 /** Terminal tool evidence remains useful when owner history is absent; stale RUNNING never ticks. */
 export function readRestart(evidence: RestartEvidence, source: RestartProcess): RestartReading {
-  const attempt = evidence.attempts[source.id];
-  const observed = evidence.processes[attempt?.processId ?? source.id];
+  const sourceProcessId = evidence.sourceByProcess[source.id] ?? source.id;
+  const attempt = evidence.attempts[sourceProcessId];
+  const observed = evidence.processes[attempt?.processId ?? sourceProcessId];
   const terminal = (process: RestartProcess) =>
     ["FAILED", "FINISHED", "CANCELED"].includes(process.status);
   const progress = attempt?.progress;
@@ -137,7 +151,7 @@ export function readRestart(evidence: RestartEvidence, source: RestartProcess): 
                 ? "running"
                 : "uncertain";
   return {
-    sourceProcessId: source.id,
+    sourceProcessId,
     process,
     phase,
     failure: failureWords(process, progress),
@@ -185,9 +199,9 @@ function failureWords(
   progress: OperationProgress | undefined,
 ): RestartReading["failure"] {
   const reason =
-    progress?.stage === "done" && progress.outcome !== "succeeded"
-      ? (progress.reason ?? process.failReason ?? process.error?.message)
-      : (process.failReason ?? process.error?.message);
+    process.failReason ??
+    process.error?.message ??
+    (progress?.stage === "done" && progress.outcome !== "succeeded" ? progress.reason : undefined);
   const verb =
     process.actionName === "stack.restart"
       ? " while restarting"
@@ -281,16 +295,7 @@ export function readRestartRecovery(
   process: RestartProcess | undefined,
   status: string | undefined,
 ): RestartRecovery | undefined {
-  const sourceId =
-    process === undefined
-      ? undefined
-      : Object.keys(evidence.attempts).find(
-          (id) => evidence.attempts[id]?.processId === process.id,
-        );
-  const reading =
-    process === undefined
-      ? undefined
-      : readRestart(evidence, sourceId === undefined ? process : { ...process, id: sourceId });
+  const reading = process === undefined ? undefined : readRestart(evidence, process);
   const actionName =
     reading?.process.actionName === "unknown" ? process?.actionName : reading?.process.actionName;
   const verb =
