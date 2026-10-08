@@ -483,18 +483,33 @@ export function makeMateEngineConversations(options: {
       };
     });
 
+  /** A thought held only by its preview: the rest is read on demand, as the import kept it. */
+  const cutThought = (item: Item) =>
+    item.kind === "thought" && !item.streaming && item.preview.length < item.length;
+
   /**
    * Items as a card draws them: a call's result the wire cut (a document its card decodes whole)
-   * read back whole first; one whose whole cannot be read says it was too long, as V1's does.
+   * read back whole first; one whose whole cannot be read says it was too long, as V1's does. A
+   * thought longer than its preview is read whole too, as V1 holds its reasoning; one that cannot
+   * be keeps its preview.
    */
   const wholeResults = (
     key: EngineConversationKey,
     items: ReadonlyArray<Item>,
   ): Effect.Effect<ReadonlyArray<Item>> =>
-    items.some((item) => item.kind === "call" && item.cut?.part === "result")
+    items.some((item) => (item.kind === "call" && item.cut?.part === "result") || cutThought(item))
       ? Effect.forEach(
           items,
           (item): Effect.Effect<Item> => {
+            if (cutThought(item) && item.kind === "thought")
+              return wire.readDetail(key, item.id, "detail").pipe(
+                Effect.map((detail): Item =>
+                  detail._tag === "Detail" && detail.from === 0 && detail.to === detail.total
+                    ? { ...item, preview: detail.text }
+                    : item,
+                ),
+                Effect.orElseSucceed(() => item),
+              );
             if (item.kind !== "call" || item.cut?.part !== "result" || item.result === undefined)
               return Effect.succeed(item);
             const { cut: _cut, ...uncut } = item;

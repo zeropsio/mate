@@ -32,6 +32,7 @@ import {
   engineRun,
   noteItem,
   personItem,
+  thoughtItem,
 } from "../__fixtures__/mateEngine.ts";
 import { engineThread } from "../projections/mateEngine.ts";
 import {
@@ -895,5 +896,60 @@ describe("an engine call whose result the wire cut", () => {
       });
       r.close();
     }),
+  );
+});
+
+describe("an engine thought longer than its preview", () => {
+  const thought = "I'm weighing the api's deploy against the worker's: ".repeat(12);
+  const preview = thought.slice(0, 280);
+  const cutThought = () => thoughtItem(run1, 2, preview, { length: thought.length });
+  const whole: Detailer = () =>
+    Effect.succeed({
+      _tag: "Detail",
+      text: thought,
+      from: 0,
+      to: thought.length,
+      total: thought.length,
+    });
+
+  it.live("holds the whole thought, read before it is drawn, as V1 holds it", () =>
+    Effect.gen(function* () {
+      const r = rig(undefined, whole);
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ items: [personItem(run1, 1, "Deploy the api"), cutThought()] }),
+        synchronized(12),
+      );
+      expect(r.details).toEqual([`${run1}/i/2 detail`]);
+      expect(r.item(`${run1}/i/2`)).toMatchObject({
+        kind: "known",
+        value: { kind: "thought", preview: thought, length: thought.length },
+      });
+      r.close();
+    }),
+  );
+
+  it.live(
+    "keeps its preview when its whole cannot be read, and reads nothing for a whole one",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(
+          snapshot({
+            items: [
+              personItem(run1, 1, "Deploy the api"),
+              cutThought(),
+              thoughtItem(run1, 3, "Short"),
+            ],
+          }),
+          synchronized(12),
+        );
+        expect(r.details).toEqual([`${run1}/i/2 detail`]);
+        expect(r.item(`${run1}/i/2`)).toMatchObject({ kind: "known", value: { preview } });
+        r.close();
+      }),
   );
 });
