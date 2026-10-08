@@ -1346,6 +1346,7 @@ describe("decide: a question asked by message is answered by a message", () => {
 
   it.each([
     ["the agent did not take it into its turn", "failed"],
+    ["the agent did not say in time whether it took it", "timed-out"],
     ["a restart cut it", "cut"],
   ] as const)("opens the question again when %s", (_name, how) => {
     const scene = play([...whileAsking, answered]);
@@ -1355,7 +1356,9 @@ describe("decide: a question asked by message is answered by a message", () => {
       answered,
       how === "failed"
         ? settled(item, "provider.steer", { kind: "failed", reason: "refused" })
-        : recovered([effect]),
+        : how === "timed-out"
+          ? settled(item, "provider.steer", { kind: "timed-out", after: 30_000 })
+          : recovered([effect]),
     ]);
     expect(closes(log)).toEqual(["reopened"]);
     expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });

@@ -1165,8 +1165,9 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   // A call that timed out says nothing of what the agent did: only evidence ends a run.
   const timedOut = outcome.kind === "timed-out";
   if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
-  if (effect.kind === "provider.steer" && answered !== undefined && !timedOut) {
-    // The answer steered into the turn that waits on it: taken is its evidence.
+  if (effect.kind === "provider.steer" && answered !== undefined) {
+    // The answer steered into the turn that waits on it: taken is its evidence. One the agent
+    // never said it took, refused or unanswered in time, is the person's to give again.
     if (failure === null) {
       b.emit({
         _tag: "RequestClosed",
