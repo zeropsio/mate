@@ -65,6 +65,7 @@ const getHealth = (
             status: Effect.succeed(status),
             changes: Stream.make(status),
             nextAttempt: Effect.never,
+            finished: Effect.void,
             write: () => Effect.die("no writes"),
             release: Effect.void,
             hold: () => Effect.die("no hold"),

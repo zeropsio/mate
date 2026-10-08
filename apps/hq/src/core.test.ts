@@ -22,6 +22,7 @@ describe("the drain", () => {
           status: Effect.succeed({ state: "active" as const, epoch: 1 }),
           changes: Stream.empty,
           nextAttempt: Effect.never,
+          finished: Effect.void,
           release: note("lead released"),
           hold: () => Effect.die("no hold"),
           held: Effect.succeed(null),

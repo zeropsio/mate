@@ -66,6 +66,8 @@ export class Leader extends Context.Service<
     readonly status: Effect.Effect<LeaderStatus>;
     /** An eligibility decision or session ended; does not acknowledge a pending lock acquisition. */
     readonly nextAttempt: Effect.Effect<void>;
+    /** The contender loop has terminated, including cancellation on release. */
+    readonly finished: Effect.Effect<void>;
     /** The status now, then each change of it: what runs only while this Core leads follows it. */
     readonly changes: Stream.Stream<LeaderStatus>;
     /**
@@ -312,6 +314,7 @@ export const leaderLayer = (
       );
       return Leader.of({
         nextAttempt: Effect.suspend(attempts.next),
+        finished: Fiber.await(loop).pipe(Effect.asVoid),
         status: Effect.map(SubscriptionRef.get(status), ({ state, epoch }) => ({ state, epoch })),
         changes: SubscriptionRef.changes(status).pipe(
           Stream.map(({ state, epoch }): LeaderStatus => ({ state, epoch })),

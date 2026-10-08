@@ -460,6 +460,8 @@ describe("leaderLayer", () => {
         const core = yield* startInstance(url);
         yield* statusWhere(core.leader, (status) => status.state === "active");
         yield* core.leader.release;
+        const ended = yield* Effect.exit(core.leader.finished.pipe(Effect.timeout("5 seconds")));
+        assert.strictEqual(ended._tag, "Success", "the released contender must terminate");
         assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
         const rival = yield* PgConnection.make({ url: Redacted.make(url) });
         const taken = yield* rival.query(

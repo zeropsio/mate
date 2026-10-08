@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
@@ -443,43 +444,6 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     ),
   );
 
-  // Its stored key is an API key login's credential: the credential watch never lets its signer
-  // go for want of a credential file it never has.
-  it.effect("keeps an API key login's signer while its key is stored", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { logins, signIns } = yield* makeHarness({});
-        yield* ZeropsAgentLoginModule.make({
-          terminalManager: {} as Parameters<
-            typeof ZeropsAgentLoginModule.make
-          >[0]["terminalManager"],
-          zeropsAgentAuth: { recheckNow: () => Effect.void },
-          isZeropsEnvironment: true,
-          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
-          signIns,
-          credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
-            { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
-            logins,
-          ),
-          credentialGoneAfter: Duration.millis(10),
-        });
-        const { id } = yield* logins.add(
-          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
-          SESSION,
-        );
-        const checked = yield* Stream.runHead(logins.credentials).pipe(
-          Effect.timeout("5 seconds"),
-          Effect.orDie,
-          Effect.forkChild({ startImmediately: true }),
-        );
-        yield* logins.recheckNow(id);
-        assert.deepStrictEqual(Option.getOrThrow(yield* Fiber.join(checked)), [[id, true]]);
-
-        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
-      }),
-    ),
-  );
-
   it.effect("refuses a key for Codex and a key-less API key login", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -578,6 +542,63 @@ it.layer(NodeServices.layer)("extra login attempts stay ended", (it) => {
           rows.some((row) => row.id === id && row.verification?.status === "unknown"),
         );
         assert.deepEqual(yield* Ref.get(verifies), [id, id]);
+      }),
+    ),
+  );
+});
+
+it.layer(NodeServices.layer)("credential watcher", (it) => {
+  // Its stored key is an API key login's credential: the credential watch never lets its signer
+  // go for want of a credential file it never has.
+  it.effect("keeps an API key login's signer while its key is stored", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins, signIns } = yield* makeHarness({});
+        const credentials = yield* handledQueue<ReadonlyArray<readonly [string, boolean]>>();
+        const decisions = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+        yield* ZeropsAgentLoginModule.credentialsHeldOf(
+          { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
+          logins,
+        ).pipe(
+          Stream.runForEach((rows) =>
+            TestClock.withLive(credentials.publish(rows)).pipe(
+              Effect.andThen(Queue.offer(decisions, rows)),
+            ),
+          ),
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: {} as Parameters<
+            typeof ZeropsAgentLoginModule.make
+          >[0]["terminalManager"],
+          zeropsAgentAuth: { recheckNow: () => Effect.void },
+          isZeropsEnvironment: true,
+          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
+          signIns,
+          credentialsHeld: credentials.events,
+          credentialGoneAfter: Duration.millis(10),
+        });
+        const { id } = yield* logins.add(
+          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
+          SESSION,
+        );
+        const checked = yield* Stream.runHead(
+          Stream.fromQueue(decisions).pipe(
+            Stream.filter((rows) => rows.some(([key]) => key === id)),
+          ),
+        ).pipe(
+          Effect.timeout("5 seconds"),
+          TestClock.withLive,
+          Effect.orDie,
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* logins.recheckNow(id);
+        // Run the login check's debounce, then wait until the credential consumer decided.
+        yield* TestClock.adjust(Duration.millis(10));
+        assert.deepStrictEqual(Option.getOrThrow(yield* Fiber.join(checked)), [[id, true]]);
+
+        yield* TestClock.adjust(Duration.millis(10));
+        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
       }),
     ),
   );
