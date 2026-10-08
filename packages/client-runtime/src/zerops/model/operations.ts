@@ -152,7 +152,7 @@ function buildFieldsFor(
     return buildStandupFields(call, context, earlier ?? []);
   }
   if (kind === "delete" || kind === "scale" || kind === "manage" || kind === "env") {
-    return buildSimpleFields(kind, call);
+    return buildSimpleFields(kind, call, context);
   }
   return BUILDER_BY_KIND[kind](call, context);
 }
@@ -169,7 +169,9 @@ function buildStandaloneOperation(
     kind,
     phase,
     ...anchorOf(call),
-    ...(phase !== "running" ? { settledAt: call.settledAt ?? call.startedAt } : {}),
+    ...(phase !== "running"
+      ? { settledAt: fields.restartProcess?.finished ?? call.settledAt ?? call.startedAt }
+      : {}),
     ...(call.settledAt !== undefined ? { returnedAt: call.settledAt } : {}),
     ...(call.status === "inProgress" ? { openedAt: call.startedAt } : {}),
     ...(call.responseId !== undefined ? { responseId: call.responseId } : {}),
@@ -194,6 +196,8 @@ function buildStandaloneOperation(
     hasResult: fields.hasResult,
     ...(fields.version !== undefined ? { version: fields.version } : {}),
     ...(fields.processIds !== undefined ? { processIds: fields.processIds } : {}),
+    ...(fields.restartProcess === undefined ? {} : { restartProcess: fields.restartProcess }),
+    ...(fields.restartReading === undefined ? {} : { restartReading: fields.restartReading }),
     ...(fields.appVersionIds !== undefined ? { appVersionIds: fields.appVersionIds } : {}),
     ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),
     ...(fields.screenshot !== undefined ? { screenshot: fields.screenshot } : {}),

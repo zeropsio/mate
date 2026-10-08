@@ -1,6 +1,6 @@
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
-import { useLastKnownMateWords } from "../zerops/useMenuMateReadings";
+import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { recoveryNotice } from "../zerops/mateRecovery.logic";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
@@ -192,13 +192,12 @@ function SignedInRootRouteView() {
         : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
-  // Seconds tick only while the words count down to the link's next try.
-  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const recovery = useMateRecovery(
     gateInputs.projectId,
     gateInputs.serviceId,
     linkReachability?.kind !== "ready",
   );
+  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
   const projectUnavailable =
     recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
@@ -211,6 +210,13 @@ function SignedInRootRouteView() {
       (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined),
     speakingName,
   );
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const offlineSince = useMateOfflineSince(
+    gateInputs.projectId,
+    gateInputs.serviceId === undefined
+      ? undefined
+      : `${gateInputs.projectId}:${gateInputs.serviceId}`,
+  );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const voice =
     speaksFor !== null &&
@@ -221,6 +227,8 @@ function SignedInRootRouteView() {
           reachability: linkReachability,
           recovery,
           lastKnown,
+          offlineSince,
+          timestampFormat,
           conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
           mateName: speakingName,

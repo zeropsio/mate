@@ -1,3 +1,5 @@
+import type { RestartReading } from "../../data/projections/restart.ts";
+import type { ZeropsProcessOutcome } from "../cards/payloads.ts";
 import type { ImageOccurrence } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the
@@ -353,6 +355,9 @@ export interface ZeropsOperation {
   readonly version?: ZeropsOperationVersion;
   /** `import` only: the platform processes the result says it started — exact attribution keys. */
   readonly processIds?: ReadonlyArray<string>;
+  /** The same restart evidence that determines phase, words and steps. */
+  readonly restartProcess?: NonNullable<ZeropsProcessOutcome["process"]>;
+  readonly restartReading?: RestartReading;
   /** A batch `deploy` only: the app versions its entries' results named — exact attribution keys. */
   readonly appVersionIds?: ReadonlyArray<string>;
   /** A failed or timed-out card's reason and log tail. */

@@ -526,7 +526,7 @@ describe("a Mate's own view while its link is made", () => {
     } satisfies MateLink;
     openView();
     expect(said()).toContain("Quinn is reconnecting.");
-    expect(buttons()).toEqual(["Try now"]);
+    expect(buttons()).toEqual(["Try now", "Open in Zerops"]);
     app.connect.mockClear();
     act(() =>
       tree?.root
@@ -955,7 +955,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     ]);
     act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS * 3));
     rung(retrying, 6);
-    expect(buttons()).toEqual(["Try now"]);
+    expect(buttons()).toEqual(["Try now", "Open in Zerops"]);
   });
 
   it("a Mate this tab made that a whole listing, read well after, lacks is not coming up", () => {

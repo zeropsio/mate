@@ -1,3 +1,4 @@
+import { restartCardReadout } from "../../activity/observedSteps.ts";
 /**
  * delete / scale / manage / env — no `payloads.ts` card, just a message
  * document plus the process outcome `decodeProcessOutcome` reads off it.
@@ -8,6 +9,7 @@ import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
 import type { ZeropsCall, ZeropsEnvChange, ZeropsVaultRequest } from "../types.ts";
 import {
   type BuiltCardFields,
+  type OperationBuildContext,
   KIND_LABEL,
   buildStep,
   decodeCall,
@@ -46,10 +48,11 @@ function readSimpleSubject(
 export function buildSimpleFields(
   kind: "delete" | "scale" | "manage" | "env",
   call: ZeropsCall,
+  context?: OperationBuildContext,
 ): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
-  const phase = phaseFor(call.status);
+  const callPhase = phaseFor(call.status);
   const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
   // The service it names, the one it observes: none where it names none.
   const named =
@@ -79,6 +82,49 @@ export function buildSimpleFields(
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
   const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
+  const returnedRestart =
+    kind === "manage" && outcome?.process?.actionName === "stack.restart"
+      ? outcome.process
+      : undefined;
+  const reading = returnedRestart === undefined ? undefined : context?.restarts?.(returnedRestart);
+  const restart = reading?.process ?? returnedRestart;
+  // Mobile later: without the account restart reading, native retains its tool-result path.
+  const phase =
+    reading?.phase ??
+    (restart === undefined
+      ? callPhase
+      : restart.status === "FAILED" || restart.status === "CANCELED"
+        ? "failed"
+        : restart.status === "FINISHED"
+          ? "done"
+          : "running");
+  const refusal =
+    reading?.progress?.stage === "refused" || reading?.progress?.stage === "unsent"
+      ? reading.progress.reason
+      : undefined;
+  const progress = reading?.progress;
+  const accepted =
+    progress?.stage === "accepted" ||
+    progress?.stage === "reflected" ||
+    (progress?.stage === "unresolved" && progress.operationId !== null);
+  const nextAction = progress?.stage === "unresolved" ? progress.nextAction : undefined;
+  const unconfirmed =
+    reading?.requestId === undefined
+      ? `Zerops last reported ${named ?? subject} restarting. Its outcome is unconfirmed.`
+      : accepted
+        ? "Zerops accepted the restart. Its outcome is unconfirmed."
+        : "Zerops hasn't confirmed the restart request.";
+  const restartWords =
+    restart === undefined
+      ? undefined
+      : phase === "uncertain"
+        ? {
+            status: "Restart unconfirmed",
+            text: `${unconfirmed}${nextAction === undefined ? "" : ` ${nextAction}`}`,
+          }
+        : refusal !== undefined
+          ? { status: "Restart refused", text: refusal }
+          : restartCardReadout(restart, named ?? subject, NaN);
   // An env call's failure never carries an entry it was given: values can be secrets.
   const failure =
     errorInfo === undefined
@@ -97,21 +143,36 @@ export function buildSimpleFields(
 
   return {
     subject,
+    ...(restart !== undefined ? { processIds: [restart.id] } : {}),
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    statusWord: gatedStatusWord(
-      kind,
-      phase,
-      decoded.document !== undefined,
-      call.resultText !== undefined,
-    ),
-    ...(closing !== undefined ? { closing } : {}),
+    ...(restart === undefined
+      ? {}
+      : {
+          phaseOverride: phase,
+          restartProcess: restart,
+          ...(reading === undefined ? {} : { restartReading: reading }),
+        }),
+    statusWord:
+      restartWords?.status ??
+      gatedStatusWord(kind, phase, decoded.document !== undefined, call.resultText !== undefined),
+    ...(restartWords === undefined
+      ? closing !== undefined
+        ? { closing }
+        : {}
+      : { closing: restartWords.text }),
     steps: [
       buildStep(
         kind,
         subject,
-        phase === "failed" ? "FAILED" : phase === "done" ? "ACTIVE" : "in_progress",
+        phase === "failed"
+          ? "FAILED"
+          : phase === "done"
+            ? "ACTIVE"
+            : phase === "uncertain"
+              ? "waiting"
+              : "in_progress",
       ),
     ],
     links: [],
@@ -119,9 +180,11 @@ export function buildSimpleFields(
     ...(named === undefined ? {} : { target: { hostname: named } }),
     ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
-    ...(errorInfo !== undefined
-      ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
-      : explanationField(outcomeReason(decoded.document, outcome))),
+    ...(restart !== undefined
+      ? {}
+      : errorInfo !== undefined
+        ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
+        : explanationField(outcomeReason(decoded.document, outcome))),
   };
 }
 

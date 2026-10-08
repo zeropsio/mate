@@ -583,6 +583,9 @@ export interface ZeropsProcessOutcome {
     readonly actionName: string;
     readonly status: string;
     readonly failReason?: string;
+    readonly created?: string;
+    readonly started?: string;
+    readonly finished?: string;
   };
   /** zcp stopped waiting for the process; it may still be running on the platform. */
   readonly timedOut?: true;
@@ -610,6 +613,9 @@ export function decodeProcessOutcome(document: Record<string, unknown>): ZeropsP
             actionName,
             status,
             ...optional("failReason", readString(raw?.failReason)),
+            ...optional("created", readString(raw?.created)),
+            ...optional("started", readString(raw?.started)),
+            ...optional("finished", readString(raw?.finished)),
           },
         }),
     ...(document.timedOut === true ? { timedOut: true as const } : {}),

@@ -16,6 +16,11 @@ import { useMemo } from "react";
 import { Atom } from "effect/reactivity";
 import {
   projectProcesses,
+  projectRestarts,
+  readRestart,
+  NO_RESTARTS,
+  type RestartReading,
+  type RestartProcess,
   historyScope,
   NOT_READ_PROCESSES,
   type Projection,
@@ -85,6 +90,7 @@ export const projectBuildProcesses: Projection<ProjectKey, DeployBuildsInput["sn
   },
   equals: sameValue,
 };
+const UNREAD_RESTARTS = Atom.make(NO_RESTARTS);
 const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
   processes: NOT_READ_PROCESSES.processes,
   processHistory: NOT_READ_PROCESSES.history,
@@ -94,6 +100,7 @@ const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
 export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): {
   readonly builds: (appVersionId: string) => DeployBuildRead;
   readonly projectId: string | null;
+  readonly restarts: (process: RestartProcess) => RestartReading;
 } {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
@@ -104,6 +111,15 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     projectBuildProcesses,
     orgId === null || projectId === null ? null : { orgId, projectId },
     UNREAD_BUILDS,
+  );
+  const restartEvidence = useProjection(
+    projectRestarts,
+    orgId === null || projectId === null ? null : { orgId, projectId },
+    UNREAD_RESTARTS,
+  );
+  const restarts = useMemo(
+    () => (source: RestartProcess) => readRestart(restartEvidence, source),
+    [restartEvidence],
   );
   const signedIn = session !== null && session.status === "signed-in";
   const project =
@@ -122,19 +138,20 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     () => deployBuildLookup({ signedIn, thread, project, snapshot }),
     [signedIn, thread, project, snapshot],
   );
-  return { builds, projectId };
+  return { builds, projectId, restarts };
 }
 
 /**
- * Keeps the store reading the project while the thread's running operation is a deploy whose
- * build it follows by the appVersion its result named — whether or not its card is drawn.
+ * Keeps the store reading the project while a running operation follows the build or restart
+ * process its result named — whether or not its card is drawn.
  */
 export function useRunningBuildDemand(
   projectId: string | null,
   running: ZeropsOperation | undefined,
 ): void {
   const follows =
-    running?.kind === "deploy" &&
-    (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0);
+    (running?.kind === "deploy" &&
+      (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0)) ||
+    (running?.kind === "manage" && running.restartProcess !== undefined);
   useProjectActivityDemand(follows ? projectId : null);
 }

@@ -776,6 +776,7 @@ describe("decodeProcessOutcome — delete / scale / manage / env", () => {
           actionName: "stack.scale",
           status: "FAILED",
           failReason: "quota exceeded",
+          created: "2026-09-01T00:00:00Z",
         },
         timedOut: true,
         nextActions: "Lower the RAM maximum.",

@@ -113,7 +113,7 @@ describe("environmentRetryFailureToast", () => {
 describe("Mate lifecycle recovery actions", () => {
   it.each([
     { action: "start" as const, label: "Start", tone: "default" as const },
-    { action: "restart" as const, label: "Retry restart", tone: "error" as const },
+    { action: "restart" as const, label: "Try again", tone: "error" as const },
   ])("offers $label directly with its source severity", ({ action, label, tone }) => {
     const item = mateVoiceBannerItem({
       environmentId: EnvironmentId.make("env-Wren"),

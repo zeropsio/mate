@@ -45,7 +45,7 @@ describe("the web Mate's link notice", () => {
     expect(say({ kind: "reconnecting" })).toMatchObject({
       text: "Rosa is reconnecting. The conversation will open when the connection returns.",
       face: "sleep",
-      actions: [],
+      actions: ["open-in-zerops"],
     });
   });
   it("an unread conversation has a visible opening state immediately", () => {
@@ -63,7 +63,9 @@ describe("the web Mate's link notice", () => {
     { kind: "connecting", waitingOn: "access" },
     { kind: "reconnecting" },
   ] satisfies Array<Reachability | null>)("an active attempt offers no retry: %j", (state) => {
-    expect(say(state)).toMatchObject({ actions: [] });
+    expect(say(state)).toMatchObject({
+      actions: state?.kind === "reconnecting" ? ["open-in-zerops"] : [],
+    });
   });
   it.each([
     { kind: "not-answering", overdue: false },
@@ -71,14 +73,19 @@ describe("the web Mate's link notice", () => {
     { kind: "refused-credential" },
     { kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false },
   ] satisfies Reachability[])("failure evidence offers recovery: %j", (state) => {
-    expect(say(state)).toMatchObject({ actions: [expect.stringMatching(/^try-/)] });
+    expect(say(state)).toMatchObject({
+      actions:
+        state.kind === "not-answering" || state.kind === "retrying"
+          ? [expect.stringMatching(/^try-/), "open-in-zerops"]
+          : [expect.stringMatching(/^try-/)],
+    });
   });
   it("keeps the real retry deadline and its action", () => {
     expect(
       say({ kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false }),
     ).toMatchObject({
       text: "Rosa is reconnecting. Rosa isn't answering. Trying again in 5 s.",
-      actions: ["try-now"],
+      actions: ["try-now", "open-in-zerops"],
     });
   });
   it("a provisioning container has no estimated finish time", () => {
@@ -152,7 +159,7 @@ describe("an unreachable Mate's last-known state", () => {
         surface: conversationShown ? "banner" : "stage",
         headline: "Skákala isn't answering.",
         secondary: "Last known 14:20: Skákala hit the Claude limit.",
-        actions: ["try-now"],
+        actions: ["try-now", "open-in-zerops"],
       });
     },
   );
@@ -238,4 +245,47 @@ it("a failed restart separates its cause and Details while retaining last-known 
     details: "500: Internal Server Error",
     actions: ["restart", "open-in-zerops"],
   });
+});
+
+it("uses the offline source time without turning retained work time into outage onset", () => {
+  expect(
+    mateNoticeVoice({
+      reachability: { kind: "not-answering", overdue: false },
+      conversationShown: false,
+      nowMs: Date.parse("2026-10-08T11:00:00Z"),
+      mateName: "Eddy",
+      offlineSince: new Date().toISOString(),
+      timestampFormat: "24-hour",
+      lastKnown: "Last known 09:20: Eddy was working.",
+    }),
+  ).toMatchObject({
+    headline: expect.stringContaining("Eddy isn't answering since"),
+    secondary: "Last known 09:20: Eddy was working.",
+    actions: ["try-now", "open-in-zerops"],
+  });
+});
+
+it("a recovered Mate does not repeat its old failed process as a connection banner", () => {
+  expect(
+    mateNoticeVoice({
+      mateName: "Eddy",
+      conversationShown: true,
+      reachability: { kind: "ready", notice: null },
+      nowMs: 0,
+      recovery: {
+        standing: { kind: "unknown" },
+        status: "ACTIVE",
+        process: {
+          id: "restart-private",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          actionName: "stack.restart",
+          status: "FAILED",
+          created: "2026-10-08T10:00:00Z",
+          finished: "2026-10-08T10:15:00Z",
+          failReason: "platform error",
+        },
+      },
+    }),
+  ).toMatchObject({ surface: "none" });
 });

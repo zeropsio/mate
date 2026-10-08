@@ -28,6 +28,8 @@ declare module "../model.ts" {
       readonly projectId: string;
       readonly serviceId: string;
       readonly way: RestartWay;
+      /** The tool restart this deliberate retry follows; ties its receipt to that card. */
+      readonly sourceProcessId?: string;
     };
   }
 }

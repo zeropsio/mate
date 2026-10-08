@@ -47,3 +47,13 @@ export function lastKnownMateWords(
       : activity.snippet;
   return `Last known ${formatDayAwareTimestamp(held.at, timestampFormat)}: ${words}${preview === undefined ? "" : ` ${preview}`}`;
 }
+
+/** Only a current offline presence establishes when the Mate stopped answering. */
+export function mateUnreachableWords(
+  name: string,
+  since: string | undefined,
+  timestampFormat: TimestampFormat = "locale",
+  reconnecting = false,
+): string {
+  return `${name} ${reconnecting ? "is reconnecting" : "isn't answering"}${since === undefined ? "" : ` since ${formatDayAwareTimestamp(since, timestampFormat)}`}.`;
+}
