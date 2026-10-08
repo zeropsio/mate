@@ -196,6 +196,77 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
+    // Catches a picked effort not reaching the agent with the next message, or not staying picked.
+    it.effect(
+      "the effort a person picks goes with their next message and stays picked after reload",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          chat.fixture().effortCatalog();
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.when.press("GPT-5.4 · Extra High");
+          yield* chat.when.press("High", "radio");
+          yield* chat.when.key("Escape");
+          yield* chat.when.send("Inspect it at high effort");
+          yield* chat.then.once("Inspect it at high effort");
+          const sent = yield* Effect.promise(() =>
+            chat.fixture().waitForTurn("Inspect it at high effort"),
+          );
+          expect(sent.effort).toBe("high");
+          yield* chat.when.reload("Ada", "Inspect it at high effort");
+          yield* chat.when.press("GPT-5.4 · High");
+          yield* chat.then.selected("High");
+          yield* chat.when.key("Escape");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches a picked access snapping back, or never reaching the Mate before the next message.
+    it.effect(
+      "the access a person picks reaches the Mate with their next message and stays picked after reload",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.when.press("GPT-5.4");
+          yield* chat.when.press("Supervised", "radio");
+          yield* chat.when.key("Escape");
+          yield* chat.when.send("Ask before you change anything");
+          yield* chat.then.once("Ask before you change anything");
+          yield* Effect.promise(() => chat.fixture().waitForTurn("Ask before you change anything"));
+          expect(chat.fixture().accessModes()).toEqual(["approval-required"]);
+          yield* chat.when.reload("Ada", "Ask before you change anything");
+          yield* chat.then.text("Supervised");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches plan mode, turned on in settings, not reaching the agent with the message it was picked for.
+    it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.visit("/settings/general");
+        yield* chat.when.press("Legacy features");
+        yield* chat.when.press("Plan mode (legacy)", "switch");
+        yield* chat.when.visit("/env-Ada/thread-Ada");
+        yield* chat.then.ready("Ada");
+        yield* chat.when.press("Default mode — click to enter plan mode");
+        yield* chat.then.control("Plan mode — click to return to normal build mode");
+        yield* chat.when.send("Plan the worker's migration");
+        yield* chat.then.once("Plan the worker's migration");
+        const sent = yield* Effect.promise(() =>
+          chat.fixture().waitForTurn("Plan the worker's migration"),
+        );
+        expect(sent.plan).toBe(true);
+        expect(chat.fixture().sentTurnCount()).toBe(1);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a removed signer's login leaving Send enabled in an open chat.
     it.effect("offboarding the signer blocks new turns without losing history", () =>
       Effect.gen(function* () {

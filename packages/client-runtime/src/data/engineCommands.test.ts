@@ -7,7 +7,8 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
-  engineModeChange,
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
   engineUpdateMetadata,
   engineDismissUserInput,
   engineInterruptTurn,
@@ -392,7 +393,14 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     {
       name: "another agent",
       input: { modelSelection: { instanceId: "codex", model: "gpt-5.4" } },
-      words: /one agent/,
+      call: {
+        kind: "assign-agent",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        instanceId: "codex",
+        model: "gpt-5.4",
+      },
+      route: "the engine's agent pick",
     },
     {
       name: "a changed effort",
@@ -403,40 +411,241 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           options: [{ id: "effort", value: "high" }],
         },
       },
-      words: /effort/,
+      call: {
+        kind: "switch-model",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        model: "claude-sonnet-4-5",
+        options: [{ id: "effort", value: "high" }],
+      },
+      route: "the engine's model switch, with its options",
     },
-    { name: "a branch", input: { branch: "feature" }, words: /branch/ },
-  ])("$name for an engine conversation is refused in words, sending nothing", ({ input, words }) =>
+  ])("$name for an engine conversation goes as $route, never over V1", ({ input, call }) =>
     Effect.gen(function* () {
       const r = rig(1);
       r.header();
-      const failure = yield* Effect.flip(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
-            r.v1,
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+          r.v1,
         ),
       );
-      expect(failure.message).toMatch(words);
+      expect(r.calls).toEqual([call]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  /** Claude's options as its model reports them: an effort, a context window, Fast Mode. */
+  const CLAUDE = {
+    optionDescriptors: [
+      {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium", isDefault: true },
+          { id: "high", label: "High" },
+          { id: "xhigh", label: "Extra High" },
+        ],
+      },
+      { id: "fastMode", label: "Fast Mode", type: "boolean" },
+      {
+        id: "contextWindow",
+        label: "Context Window",
+        type: "select",
+        options: [
+          { id: "200k", label: "200k" },
+          { id: "1m", label: "1M", isDefault: true },
+        ],
+      },
+    ],
+  } as const;
+  const DEFAULTS = [
+    { id: "effort", value: "medium" },
+    { id: "fastMode", value: false },
+    { id: "contextWindow", value: "1m" },
+  ];
+
+  it.effect.each([
+    { name: "the composer's spelled-out defaults", runs: undefined, picked: DEFAULTS },
+    {
+      name: "the same options in another order",
+      runs: [
+        { id: "contextWindow", value: "200k" },
+        { id: "effort", value: "xhigh" },
+      ],
+      picked: [
+        { id: "effort", value: "xhigh" },
+        { id: "fastMode", value: false },
+        { id: "contextWindow", value: "200k" },
+      ],
+    },
+    { name: "no options against the defaults it runs on", runs: DEFAULTS, picked: undefined },
+  ])("$name on the conversation's model change nothing and send nothing", ({ runs, picked }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header({
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          ...(runs === undefined ? {} : { options: runs }),
+          profile: { kind: "mate" },
+        },
+      } as never);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(
+            ENV,
+            {
+              threadId: "thread-ada",
+              modelSelection: {
+                instanceId: "claudeAgent",
+                model: "claude-sonnet-4-5",
+                ...(picked === undefined ? {} : { options: picked }),
+              },
+            } as never,
+            () => CLAUDE as never,
+          ),
+          r.v1,
+        ),
+      );
       expect(r.calls).toEqual([]);
       expect(r.v1Calls).toEqual([]);
     }),
   );
 
-  it.effect.each(["runtime", "interaction"] as const)(
-    "a %s mode change for an engine conversation is refused in words, never sent over V1",
-    (mode) =>
+  it.effect.each([
+    { name: "an effort", option: { id: "effort", value: "xhigh" } },
+    { name: "Fast Mode", option: { id: "fastMode", value: true } },
+    { name: "a context window", option: { id: "contextWindow", value: "200k" } },
+  ])(
+    "a change to $name goes as the engine's model switch carrying only what changed",
+    ({ option }) =>
       Effect.gen(function* () {
         const r = rig(1);
-        const failure = yield* Effect.flip(
-          r.run(viaEngine(r.registry, ENV, engineModeChange(mode), r.v1)),
+        r.header();
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineUpdateMetadata(
+              ENV,
+              {
+                threadId: "thread-ada",
+                modelSelection: {
+                  instanceId: "claudeAgent",
+                  model: "claude-sonnet-4-5",
+                  options: DEFAULTS.map((each) => (each.id === option.id ? option : each)),
+                },
+              } as never,
+              () => CLAUDE as never,
+            ),
+            r.v1,
+          ),
         );
-        expect(failure.message).toMatch(/mode/);
+        expect(r.calls).toEqual([
+          {
+            kind: "switch-model",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            model: "claude-sonnet-4-5",
+            options: [option],
+          },
+        ]);
         expect(r.v1Calls).toEqual([]);
       }),
+  );
+
+  it.effect.each([{ name: "a branch", input: { branch: "feature" }, words: /branch/ }])(
+    "$name for an engine conversation is refused in words, sending nothing",
+    ({ input, words }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.header();
+        const failure = yield* Effect.flip(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+              r.v1,
+            ),
+          ),
+        );
+        expect(failure.message).toMatch(words);
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a runtime mode change for an engine conversation goes as the engine's own call, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineSetRuntimeMode(ENV, {
+              threadId: "thread-ada",
+              runtimeMode: "approval-required",
+            } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "set-runtime-mode",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            runtimeMode: "approval-required",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "an interaction mode change for an engine conversation is never sent over V1: the mode goes with the next message",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode, r.v1));
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind: "send", interactionMode: "plan" }]);
+      }),
+  );
+
+  it.effect("a turn's files go to the engine with it, by the id they were uploaded under", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const file = {
+        type: "file",
+        id: "file-1",
+        name: "spec.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 9,
+      };
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file])), r.v1));
+      expect(r.calls).toMatchObject([{ kind: "send", attachments: [file] }]);
+      expect(r.v1Calls).toEqual([]);
+    }),
   );
 
   it.effect(

@@ -327,6 +327,54 @@ describe("an engine conversation as the thread the view draws", () => {
     });
   });
 
+  it("shows the files and pictures a person's message carried, as V1's message does", () => {
+    const file = {
+      type: "file",
+      id: "file-1",
+      name: "spec.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 9,
+    } as const;
+    const picture = {
+      type: "image",
+      id: "img-1",
+      name: "a.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+    } as const;
+    const state = held({
+      runs: [engineRun("thread-ada", 1)],
+      items: [
+        personItem(run1, 1, "Read these", {
+          attachments: [file, picture, { type: "unknown", was: "audio" }] as never,
+        }),
+      ],
+    });
+    expect(thread(state)?.messages[0]?.attachments).toEqual([file, picture]);
+  });
+
+  it("shows the runtime mode the conversation runs in and its latest message's interaction mode", () => {
+    const state = held({
+      header: {
+        runtimeMode: "approval-required",
+        interactionMode: "plan",
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          options: [{ id: "effort", value: "max" }],
+          profile: { kind: "mate" },
+        },
+      },
+    });
+    expect(thread(state)).toMatchObject({
+      runtimeMode: "approval-required",
+      interactionMode: "plan",
+      modelSelection: { options: [{ id: "effort", value: "max" }] },
+      session: { runtimeMode: "approval-required" },
+    });
+  });
+
   it("gives the menu row the model its held conversation switched to", () => {
     const state = apply(held({ header: { model: "claude-opus-4-1" } }), [
       {

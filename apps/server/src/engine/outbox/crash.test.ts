@@ -82,9 +82,17 @@ const script: ReadonlyArray<Move> = [
   },
   { kind: "work" }, // provider.respond
   { kind: "signals", signals: [turnEnded(1)] },
+  // A setting only a new session runs with: the next run closes the session and reopens it.
+  {
+    kind: "ask",
+    command: { _tag: "SetRuntimeMode", runtimeMode: "approval-required" },
+    id: "mode-1",
+  },
   { kind: "ask", command: { _tag: "Send", text: "again" }, id: "send-2" },
   { kind: "work" }, // workspace.finish of the first run
   { kind: "work" }, // run.prepare
+  { kind: "work" }, // session.close (settings)
+  { kind: "work" }, // session.open
   { kind: "work" }, // provider.send
   { kind: "signals", signals: [turnEnded(2)] },
 ];
@@ -125,6 +133,8 @@ interface Played {
   /** Person texts the engine accepted: each must reach the agent once. */
   readonly accepted: Array<string>;
   session: string | null;
+  /** The runtime mode change was accepted. */
+  modeSet: boolean;
 }
 
 /** Plays the script up to the crash in one lifetime; returns when the process "dies". */
@@ -197,6 +207,8 @@ const playUntilCrash = (file: string, world: World, crash: Crash, played: Played
       );
       if (move.kind === "ask" && move.command._tag === "Send" && Exit.isSuccess(exit))
         played.accepted.push(move.command.text);
+      if (move.kind === "ask" && move.command._tag === "SetRuntimeMode" && Exit.isSuccess(exit))
+        played.modeSet = true;
       if (move.kind === "work")
         played.session =
           [...world.sessions]
@@ -274,6 +286,10 @@ const check = (world: World, played: Played, result: Effect.Success<ReturnType<t
     if (got !== 1)
       broken.push(`a person's message reaches the agent once: "${text}" arrived ${got} times`);
   }
+  const first = world.received.find((r) => r.text === "go");
+  const second = world.received.find((r) => r.text === "again");
+  if (played.modeSet && first !== undefined && second?.session === first.session)
+    broken.push("a setting a new session runs with never reaches a message in the old session");
   const queuedMessages = result.events.filter(
     (e) => (e._tag === "ItemOpened" || e._tag === "ItemUpdated") && e.body.kind === "person",
   );
@@ -297,7 +313,7 @@ describe("crash injection at every step boundary", () => {
       for (const crash of crashes) {
         const file = tempDb("crash");
         const world = new World();
-        const played: Played = { accepted: [], session: null };
+        const played: Played = { accepted: [], session: null, modeSet: false };
         yield* playUntilCrash(file, world, crash, played);
         world.crash();
         const result = yield* reboot(file, world);

@@ -11,6 +11,7 @@ import * as Schema from "effect/Schema";
 import type { MateFake } from "../../fakes/mate.ts";
 import {
   RESPONSE_RECEIVED,
+  effortOf,
   TARGET_QUESTION,
   type ChatAsk,
   type ChatIntent,
@@ -55,8 +56,19 @@ export class V1ChatWire implements ChatWire {
     return this.mate.requests.flatMap((request): ChatIntent[] => {
       if (request.tag !== ORCHESTRATION_WS_METHODS.dispatchCommand) return [];
       const command = decodeCommand(request.payload);
-      if (command.type === "thread.turn.start")
-        return [{ kind: "turn", text: command.message.text }];
+      if (command.type === "thread.turn.start") {
+        const effort = effortOf(command.modelSelection?.options);
+        return [
+          {
+            kind: "turn",
+            text: command.message.text,
+            ...(effort === undefined ? {} : { effort }),
+            ...(command.interactionMode === "plan" ? { plan: true as const } : {}),
+          },
+        ];
+      }
+      if (command.type === "thread.runtime-mode.set")
+        return [{ kind: "access", runtimeMode: command.runtimeMode }];
       if (!this.applied.has(command.commandId)) return [];
       if (command.type === "thread.approval.respond")
         return [{ kind: "decision", ask: asked(command.requestId), decision: command.decision }];

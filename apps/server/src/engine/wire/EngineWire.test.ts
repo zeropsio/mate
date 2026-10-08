@@ -595,6 +595,120 @@ describe("a client's calls to an engine conversation", () => {
       ),
   );
 
+  it.effect(
+    "a model switch carries its options, and the header names the conversation's runtime mode and latest interaction mode",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const call = { protocol, conversationId: mate } as const;
+          const effort = [{ id: "effort", value: "max" }];
+          const switched = yield* wire.switchModel(
+            { ...call, commandId: CommandId.make("switch-1"), model: "m1", options: effort },
+            ana,
+          );
+          const mode = yield* wire.setRuntimeMode(
+            {
+              ...call,
+              commandId: CommandId.make("mode-1"),
+              runtimeMode: "approval-required",
+            },
+            ana,
+          );
+          yield* wire.send(
+            {
+              ...call,
+              commandId: CommandId.make("send-plan"),
+              text: "Plan the migration",
+              interactionMode: "plan",
+            },
+            ana,
+          );
+          assert.deepStrictEqual([switched._tag, mode._tag], ["Accepted", "Accepted"]);
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.deepStrictEqual(snapshot.header.agent?.options, effort);
+          assert.strictEqual(snapshot.header.runtimeMode, "approval-required");
+          assert.strictEqual(snapshot.header.interactionMode, "plan");
+          assert.deepInclude(w.provider.sends.at(-1), { interactionMode: "plan" });
+          assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "an agent picked before the conversation starts becomes its agent, on the driver its instance names",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const result = yield* wire.assignAgent(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("agent-1"),
+              instanceId: "codex:work",
+              model: "gpt-5.4",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          assert.deepInclude(snapshot?.type === "snapshot" ? snapshot.header.agent : null, {
+            instanceId: "codex:work",
+            driver: "codex",
+            model: "gpt-5.4",
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "after the conversation started, an agent on another driver is refused in V1's words; one whose sessions resume the old one's is taken",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* send(wire, "Deploy the api");
+          const pick = (instanceId: string) =>
+            wire.assignAgent(
+              {
+                protocol,
+                conversationId: mate,
+                commandId: CommandId.make(`agent-${instanceId}`),
+                instanceId,
+                model: "m1",
+              },
+              ana,
+            );
+          assert.deepStrictEqual(yield* pick("codex"), {
+            _tag: "Rejected",
+            rejection: {
+              reason: "agent-locked",
+              detail:
+                "This conversation is bound to driver 'claudeAgent' and cannot switch to 'codex'.",
+            },
+          });
+          const elsewhere = yield* pick("claudeAgent:other~another-home");
+          assert.strictEqual(
+            elsewhere._tag === "Rejected" && elsewhere.rejection.reason,
+            "agent-locked",
+          );
+          assert.strictEqual((yield* pick("claudeAgent:second"))._tag, "Accepted");
+          const unknown = yield* pick("nobody");
+          assert.strictEqual(unknown._tag === "Rejected" && unknown.rejection.reason, "unknown");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("a repeated send with the same command id returns the stored result", () =>
     Effect.scoped(
       Effect.gen(function* () {

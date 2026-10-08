@@ -219,6 +219,46 @@ it("switches the conversation's model and sends the new header", async () => {
   }
 });
 
+// Catches an engine fake whose settings a client cannot see take, or that lets a started
+// conversation move to another driver.
+it("applies a model's options, a runtime mode and an agent pick, and refuses another driver once the conversation ran", async () => {
+  const r = await connect();
+  try {
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    const call = async (id: string, tag: string, payload: Record<string, unknown>) =>
+      decodeCall((await r.call(id, tag, { ...conversation, commandId: id, ...payload })).value);
+    const effort = [{ id: "reasoningEffort", value: "high" }];
+    expect(
+      (await call("o", WS_METHODS.engineSwitchModel, { model: "gpt-5.4", options: effort }))._tag,
+    ).toBe("Accepted");
+    expect(
+      (await call("m", WS_METHODS.engineSetRuntimeMode, { runtimeMode: "approval-required" }))._tag,
+    ).toBe("Accepted");
+    await r.until(() =>
+      r
+        .stream("c")
+        .some(
+          (frame) =>
+            frame.type === "changes" &&
+            frame.header?.runtimeMode === "approval-required" &&
+            JSON.stringify(frame.header.agent?.options) === JSON.stringify(effort),
+        ),
+    );
+    expect(
+      (await call("a", WS_METHODS.engineAssignAgent, { instanceId: "claudeAgent", model: "opus" }))
+        ._tag,
+    ).toBe("Accepted");
+    r.wire.engine.personTurn("Deploy the api");
+    const refused = await call("b", WS_METHODS.engineAssignAgent, {
+      instanceId: "codex",
+      model: "gpt-5.4",
+    });
+    expect(refused._tag === "Rejected" && refused.rejection.reason).toBe("agent-locked");
+  } finally {
+    await r.close();
+  }
+});
+
 const decodePage = Schema.decodeUnknownSync(EnginePage);
 
 // Catches a fake that hands the client every record at once, so paging is never exercised.

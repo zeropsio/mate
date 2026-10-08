@@ -13,11 +13,13 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
+import { serverEnvironment } from "./server";
 import { environmentSnapshotAtom } from "./shell";
 
 export const threadEnvironment = createThreadEnvironmentAtoms(
   connectionAtomRuntime,
   environmentSnapshotAtom,
+  { providersAtom: serverEnvironment.providersValueAtom },
 );
 const environmentThreads = {
   stateAtom: createAccountConversationAtoms(connectionAtomRuntime).threadStateAtom,

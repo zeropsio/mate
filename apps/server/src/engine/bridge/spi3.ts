@@ -373,4 +373,10 @@ export interface DriverCapabilities {
   readonly resume: "session-id" | "thread-resume" | "acp-load" | "acp-resume" | "session-get";
   /** How a turn cut by a restart can go on: an empty native turn, or a prompt. */
   readonly continuation: "native" | "prompted";
+  /**
+   * Which model options a live session takes on its next send: every one (the adapter reads the
+   * turn's selection), or the adapter's own list (its `inSessionModelOptions`; any other change
+   * needs a new session), as V1 decides it.
+   */
+  readonly modelOptions: "per-turn" | "adapter";
 }

@@ -6,8 +6,9 @@
  *
  * - A V1 turn is a run that ended (trigger `imported`), its ordinal its place among the turns.
  * - A person's message is a person item; the agent's message a note; its reasoning a thought.
- * - A tool's lifecycle is one call, in its last state, its V1 payload kept as the call's data
- *   (pictures out: they travel by reference, never inline). A task's is one piece of work.
+ * - A tool's lifecycle is one call, in its last state (its completion, once heard), its V1
+ *   payload kept as the call's data (pictures out: they travel by reference, never inline). A
+ *   task's is one piece of work.
  * - An approval or a question is a request in its final state, never answerable here.
  * - A compaction, an error, a warning, a plan, a capture's gap is a marker.
  *
@@ -18,6 +19,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   CommandId,
   ItemId,
@@ -412,12 +414,14 @@ export const planOf = (
   return { runs, entries, leftTurns: first };
 };
 
-/** When a lifecycle ended, as its last word says; none while V1 never heard its end. */
+/** When a lifecycle ended; none while V1 never heard its end. */
 const endOf = (kind: "call" | "work", heads: ReadonlyArray<V1ActivityHead>): number | null => {
+  if (kind === "call") {
+    const completed = heads.findLast((head) => head.kind === "tool.completed");
+    return completed === undefined ? null : ms(completed.createdAt);
+  }
   const last = heads.at(-1);
-  if (last === undefined) return null;
-  const ended = kind === "call" ? last.kind === "tool.completed" : last.kind === "task.completed";
-  return ended ? ms(last.createdAt) : null;
+  return last?.kind === "task.completed" ? ms(last.createdAt) : null;
 };
 
 // ── the records ─────────────────────────────────────────────────────────────────────────────
@@ -430,6 +434,7 @@ const ENGINE: ItemActor = { kind: "engine" };
 
 const isPresentation = Schema.is(ToolPresentation);
 const decodeImage = Schema.decodeUnknownOption(ChatImageAttachment);
+const decodeFile = Schema.decodeUnknownOption(ChatFileAttachment);
 
 /** How a V1 turn ended, as a run's end and who said so. */
 const endOfRun = (run: PlannedRun): { readonly end: RunEnd; readonly source: RunEndSource } => {
@@ -539,6 +544,8 @@ const WORK_STATES: Readonly<Record<string, Extract<ItemBody, { kind: "work" }>["
 const attachmentOf = (raw: unknown): PersonAttachment => {
   const image = decodeImage(raw);
   if (Option.isSome(image)) return image.value;
+  const file = decodeFile(raw);
+  if (Option.isSome(file)) return file.value;
   const type = asText(asRecord(raw)?.type);
   return { type: "unknown", was: type ?? "unknown" };
 };
@@ -646,7 +653,10 @@ export const recordsOf = (
             ? []
             : [{ ...activity, payload: projectedPayload(activity) }];
         });
-        const last = lifecycle.at(-1);
+        // A call V1 heard return has returned: an update kept after its completion (V1 records
+        // one in the same millisecond) carries no end and never takes it back.
+        const last =
+          lifecycle.findLast((activity) => activity.kind === "tool.completed") ?? lifecycle.at(-1);
         const payload = asRecord(last?.payload) ?? {};
         const started = asRecord(lifecycle[0]?.payload) ?? {};
         const itemType =
