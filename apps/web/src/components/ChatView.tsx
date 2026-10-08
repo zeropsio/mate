@@ -9191,6 +9191,8 @@ export default function ChatView(props: ChatViewProps) {
           onAdd={onAddRightPanelSurface}
           onAddTerminal={addTerminalSurface}
           liveAgentCount={agentPanelModel.liveCount}
+          keybindings={keybindings}
+          getShortcutContext={getShortcutContext}
         >
           {rightPanelContent}
           <ServiceBrowserPanels
@@ -9226,6 +9228,8 @@ export default function ChatView(props: ChatViewProps) {
             onAdd={onAddRightPanelSurface}
             onAddTerminal={addTerminalSurface}
             liveAgentCount={agentPanelModel.liveCount}
+            keybindings={keybindings}
+            getShortcutContext={getShortcutContext}
           >
             {rightPanelContent}
             <ServiceBrowserPanels

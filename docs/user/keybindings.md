@@ -88,6 +88,10 @@ successful pick; its hover glow and badge preview the element and color family t
 `rightPanel.toggleMaximized` maximizes or restores the open right panel. It has no default shortcut,
 so add one in **Settings** → **Keybindings** if you want to use it.
 
+`rightPanel.new` opens the open right panel's add menu, or moves to its launcher when no tab is
+open. Its default shortcut is `mod+t` (the desktop app; a browser keeps `mod+t` for itself), and it
+does not run while the terminal has focus.
+
 `thread.settle` settles the active thread or restores it when it is already settled. Its default
 shortcut is `mod+shift+s`, and it does not run while the terminal has focus.
 

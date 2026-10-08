@@ -1,4 +1,4 @@
-import type { ContextMenuItem } from "@t3tools/contracts";
+import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
@@ -23,11 +23,13 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
 } from "react";
 
 import { isElectron } from "~/env";
+import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import {
   launcherActions,
   type RightPanelAvailability,
@@ -71,6 +73,10 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
+  /** Resolve the new-tab shortcut (Mod+T) against the person's bindings;
+      without them the panel has no new-tab shortcut. */
+  keybindings?: ResolvedKeybindingsConfig;
+  getShortcutContext?: () => ShortcutMatchContext;
   children: ReactNode;
 }
 
@@ -459,6 +465,38 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
+  const addSurfaceTriggerRef = useRef<HTMLButtonElement>(null);
+  const surfaceContentRef = useRef<HTMLDivElement>(null);
+  const hasSurfaces = props.surfaces.length > 0;
+
+  // Mod+T opens the add menu; with no tab open the launcher is that menu, so
+  // the shortcut moves to it. Capture phase, like the launcher's letters.
+  const onNewSurfaceKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing || !props.keybindings) return;
+    if (
+      resolveShortcutCommand(event, props.keybindings, {
+        context: { ...props.getShortcutContext?.(), rightPanelOpen: true },
+      }) !== "rightPanel.new"
+    )
+      return;
+    if (!addSurfaceMenuOpen && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.repeat) return;
+    if (!hasSurfaces) {
+      surfaceContentRef.current
+        ?.querySelector<HTMLElement>("[data-surface-launcher-keys]")
+        ?.focus();
+      return;
+    }
+    addSurfaceTriggerRef.current?.focus();
+    setAddSurfaceMenuOpen(true);
+  });
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => onNewSurfaceKeyDown(event);
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
+  }, []);
 
   const addSurfaceActions: SurfaceAction[] = launcherActions(props.availability).map((action) => {
     const kind = action.kind;
@@ -630,11 +668,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 </div>
               );
             })}
-            {props.surfaces.length > 0 ? (
+            {hasSurfaces ? (
               <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
                 <MenuTrigger
                   render={
                     <Button
+                      ref={addSurfaceTriggerRef}
                       aria-label="Add panel surface"
                       className="shrink-0"
                       size="icon-xs"
@@ -672,7 +711,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         </ScrollArea>
         {props.layoutControls}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col" data-right-panel-surface-content>
+      <div
+        ref={surfaceContentRef}
+        className="flex min-h-0 flex-1 flex-col"
+        data-right-panel-surface-content
+      >
         {props.activeSurfaceId === null ? (
           <RightPanelEmptyState actions={addSurfaceActions} />
         ) : (
