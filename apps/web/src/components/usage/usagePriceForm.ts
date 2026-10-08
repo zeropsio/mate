@@ -60,3 +60,37 @@ export function parseUsagePriceForm(
     },
   };
 }
+
+export interface UsageAlias {
+  readonly model: string;
+  readonly target: string;
+}
+
+/** A "counts as" mapping from its two fields, or `null` until it names two different models. */
+export function parseUsageAliasForm(form: {
+  readonly model: string;
+  readonly target: string;
+}): UsageAlias | null {
+  const model = form.model.trim();
+  const target = form.target.trim();
+  if (model === "" || target === "" || model === target) return null;
+  return { model, target };
+}
+
+const PREVIEW_SUFFIX = /-preview(?:-[\w.-]+)?$/u;
+
+/**
+ * Preview model IDs whose released model also appears in usage, as mappings
+ * to offer: a preview counted under its released name joins its row and price.
+ */
+export function previewAliasSuggestions(
+  models: readonly string[],
+  aliases: Readonly<Record<string, string>>,
+): readonly UsageAlias[] {
+  const known = new Set(models);
+  return models.flatMap((model) => {
+    if (Object.hasOwn(aliases, model)) return [];
+    const target = model.replace(PREVIEW_SUFFIX, "");
+    return target !== model && known.has(target) ? [{ model, target }] : [];
+  });
+}

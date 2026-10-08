@@ -42,6 +42,10 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("../../env", () => ({ isElectron: false }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+  useCanGoBack: () => false,
+}));
 vi.mock("../../state/usage", () => ({ useProviderUsage: testState.useProviderUsage }));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({

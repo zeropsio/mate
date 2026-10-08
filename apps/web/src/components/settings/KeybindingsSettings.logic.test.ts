@@ -315,3 +315,14 @@ describe("KeybindingsSettings.logic", () => {
     ).toEqual(["Chat: New Local"]);
   });
 });
+
+describe("usage shortcut labels", () => {
+  it.each([
+    ["usage.cost", "Usage: Cost"],
+    ["usage.limits", "Usage: Limits"],
+    ["usage.period.day", "Usage: Period: Past 24h"],
+    ["usage.period.quarter", "Usage: Period: 90 days"],
+  ] as const)("names %s as the Usage page labels it", (command, label) => {
+    expect(commandLabel(command)).toBe(label);
+  });
+});
