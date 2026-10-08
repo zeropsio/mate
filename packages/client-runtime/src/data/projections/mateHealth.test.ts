@@ -312,8 +312,8 @@ it.each([1000, 0])(
           disk: { free, total: 5000 },
           memory: null,
           io: {
-            some: { avg10: 30, total: 300 },
-            full: { avg10: 24, avg60: 10, avg300: 10, total: 240 },
+            some: { avg10: 0, total: 300 },
+            full: { avg10: 0, avg60: 10, avg300: 10, total: 240 },
           },
         },
       },

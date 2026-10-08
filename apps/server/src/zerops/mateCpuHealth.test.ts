@@ -208,3 +208,62 @@ it("a tighter Mate service cap cannot hide CPU exhausted by container siblings",
     cpu: { window: { scope: r.dir, capacityCpus: 2 } },
   });
 });
+
+it.each([
+  {
+    sentence: "A briefly saturated parent cannot hide sustained child CPU stalls",
+    sustainedChild: true,
+    sustainedParent: false,
+    childSaturated: true,
+    useChild: true,
+  },
+  {
+    sentence: "A briefly saturated child cannot hide sustained parent CPU stalls",
+    sustainedChild: false,
+    sustainedParent: true,
+    childSaturated: true,
+    useChild: false,
+  },
+  {
+    sentence: "Equally sustained CPU stalls retain container-wide attribution",
+    sustainedChild: true,
+    sustainedParent: true,
+    childSaturated: true,
+    useChild: false,
+  },
+  {
+    sentence: "Recovered child CPU averages cannot replace a currently saturated parent",
+    sustainedChild: true,
+    sustainedParent: false,
+    childSaturated: false,
+    useChild: false,
+  },
+])("$sentence", async ({ sustainedChild, sustainedParent, childSaturated, useChild }) => {
+  const r = await rig();
+  const leaf = NodePath.join(r.dir, "service");
+  await NodeFSP.mkdir(leaf);
+  for (const file of ["cpu.stat", "cpu.pressure"])
+    await NodeFSP.copyFile(NodePath.join(r.dir, file), NodePath.join(leaf, file));
+  await NodeFSP.writeFile(NodePath.join(leaf, "cpu.max"), "50000 100000");
+  await NodeFSP.writeFile(NodePath.join(leaf, "cpuset.cpus.effective"), "0-1");
+  let now = 0;
+  const sample = makeCpuSampler([leaf, r.dir], { nowUsec: () => now, procRoot: r.proc });
+  await sample();
+  for (const [scope, sustained, saturated] of [
+    [leaf, sustainedChild, childSaturated],
+    [r.dir, sustainedParent, true],
+  ] as const) {
+    await NodeFSP.writeFile(
+      NodePath.join(scope, "cpu.stat"),
+      `usage_usec ${saturated ? (scope === leaf ? 900000 : 3800000) : 0}\nnr_throttled 0\n`,
+    );
+    await NodeFSP.writeFile(
+      NodePath.join(scope, "cpu.pressure"),
+      `some avg10=${sustained ? 5 : 90} avg60=${sustained ? 40 : 0} avg300=${sustained ? 40 : 0} total=${saturated ? 400000 : 0}\nfull avg10=0 avg60=${sustained ? 10 : 0} avg300=${sustained ? 10 : 0} total=${saturated ? 200000 : 0}\n`,
+    );
+  }
+  now = 2_000_000;
+  const result = await sample();
+  expect(result.cpu?.full?.avg60).toBe((useChild ? sustainedChild : sustainedParent) ? 10 : 0);
+  expect(result.cpu?.window).toMatchObject({ scope: useChild ? leaf : r.dir, saturated: true });
+});

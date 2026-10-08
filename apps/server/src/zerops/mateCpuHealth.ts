@@ -1,5 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Linux cgroup/procfs evidence boundary.
-import type { MateResourceHealth } from "@t3tools/contracts";
+import { sustainedPressureLevel, type MateResourceHealth } from "@t3tools/contracts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeChildProcess from "node:child_process";
@@ -214,11 +214,16 @@ export function makeCpuSampler(
         return { pressure, current, before, window };
       });
       previous = new Map(evaluated.map(({ current }) => [current.scope, current]));
-      // Every ancestor budget constrains Mate. A smaller unit quota cannot hide a larger
-      // container budget exhausted by siblings. Prefer container evidence when both strain.
+      // Choose notice-eligible evidence before collapsing the hierarchy: a brief parent
+      // spike cannot hide sustained child stalls. Equal eligibility keeps container-wide
+      // attribution; raw current saturation and allocation remain the fallbacks.
+      const containerFirst = evaluated.toReversed();
       const chosen =
-        evaluated.toReversed().find(({ window }) => window?.saturated) ??
-        evaluated.toReversed().toSorted((a, b) => a.current.capacity - b.current.capacity)[0]!;
+        containerFirst.find(
+          ({ window, pressure }) => window?.saturated && sustainedPressureLevel(pressure) >= 1,
+        ) ??
+        containerFirst.find(({ window }) => window?.saturated) ??
+        containerFirst.toSorted((a, b) => a.current.capacity - b.current.capacity)[0]!;
       const { current, before, pressure, window } = chosen;
       const unavailable = evaluated.some(({ window }) => window === null) ? ["cpu-window"] : [];
       if (window === null)
