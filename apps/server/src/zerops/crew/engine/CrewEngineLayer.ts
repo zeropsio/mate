@@ -17,8 +17,10 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Random from "effect/Random";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -50,7 +52,12 @@ import {
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
 
+import { pendingUploadOf } from "../../../attachmentStore.ts";
 import { ServerConfig } from "../../../config.ts";
+import {
+  claimMessageAttachments,
+  releaseClaimedAttachments,
+} from "../../../orchestration/Normalizer.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { EngineEffectExtensions } from "../../../engine/effects/index.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
@@ -247,6 +254,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const door = found.value;
     const sql = yield* SqlClient.SqlClient;
     const config = yield* ServerConfig;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const home = yield* CrewHome;
     const shell = yield* CrewShell;
     const reads = yield* CrewReads;
@@ -640,6 +649,42 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         }
       });
 
+    const withFiles = <A, E>(
+      effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | ServerConfig>,
+    ) =>
+      effect.pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(ServerConfig, config),
+      );
+
+    /**
+     * A crew message's attachments, as a thread message's (V1's `crewCore`): each must be a
+     * pending upload, never another message's stored attachment, and is claimed under the
+     * crewmate's conversation as the press goes.
+     */
+    const claimAttachments = (current: CrewState, press: CrewCommand) =>
+      Effect.gen(function* () {
+        if (press._tag !== "message" || press.attachments.length === 0) return undefined;
+        for (const attachment of press.attachments) {
+          const pending = pendingUploadOf({
+            attachmentsDir: config.attachmentsDir,
+            attachmentId: attachment.id,
+          });
+          if (!pending.ok) {
+            return yield* refuse(
+              "not-allowed",
+              `Attachment '${attachment.name}' cannot be sent: ${pending.reason}.`,
+            );
+          }
+        }
+        const member = current.members[press.handle];
+        if (member === undefined) return undefined;
+        return yield* withFiles(
+          claimMessageAttachments(member.conversationId, press.attachments),
+        ).pipe(Effect.mapError((error) => refuse("not-allowed", error.message)));
+      });
+
     const command: CrewEngineService["command"] = (press, principal) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
@@ -653,15 +698,26 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         const refusal = yield* admitAt(doorLogins(current, press, definition), principal);
         if (refusal !== null) return yield* refuse("not-allowed", refusal);
         const seen = press._tag === "taskEdit" ? press.seen : undefined;
+        const claimed = yield* claimAttachments(current, press);
         yield* askAs(
           {
             _tag: "Press",
-            press,
+            press:
+              claimed === undefined || press._tag !== "message"
+                ? press
+                : { ...press, attachments: claimed },
             door: { refusal: null },
             ...(definition === undefined ? {} : { home: definition }),
             ...(seen === undefined ? {} : { seen }),
           },
           principalOf(principal),
+        ).pipe(
+          // A press the crew refused keeps nothing it claimed.
+          Effect.tapError(() =>
+            claimed === undefined
+              ? Effect.void
+              : withFiles(releaseClaimedAttachments(claimed)).pipe(Effect.ignore),
+          ),
         );
         if (press._tag === "apply") yield* activate;
         return { _tag: "done" } satisfies CrewCommandResult;
