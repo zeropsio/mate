@@ -8834,7 +8834,7 @@ export default function ChatView(props: ChatViewProps) {
                       {/* The banners float from a zero-height anchor, so the
                           headline keeps their measured height clear above them. */}
                       <div
-                        className="pb-8"
+                        className="pb-4"
                         style={{
                           ...(forceExpandedMobileComposer
                             ? { viewTransitionName: MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME }
