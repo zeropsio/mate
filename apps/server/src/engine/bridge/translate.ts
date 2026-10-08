@@ -809,11 +809,13 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         emit(owner, { type: "usage.context", usage: event.payload.usage });
         return;
       case "account.rate-limits.updated": {
-        // A refused window with no believable reset parks the turn all the same: until unknown.
-        const refused = event.payload.refused;
+        // A refusal with no reset the driver believes (SPI 2.9 `refused: true`) parks the turn
+        // all the same: until unknown. A recovery (`refused: false`) parks nothing.
         const blocked =
           event.payload.blocked ??
-          (refused === undefined ? undefined : { window: refused.window, resetsAt: "unknown" });
+          (event.payload.refused === true
+            ? { window: REFUSED_WINDOW, resetsAt: "unknown" as const }
+            : undefined);
         if (blocked === undefined) return;
         owner.lastBlocked = blocked;
         const turn = owner.open;
@@ -1198,6 +1200,9 @@ function itemBody(
       return { kind: "other", ...(payload.title === undefined ? {} : { title: payload.title }) };
   }
 }
+
+/** The window a refusal names when the driver says only that the turn is refused. */
+const REFUSED_WINDOW = "usage";
 
 function itemStatus(
   event: Extract<

@@ -453,7 +453,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               payload: {
                 limits: { windows: [] },
                 ...(resetsAt === null
-                  ? { refused: { window: "five_hour" } }
+                  ? { refused: true }
                   : { blocked: { window: "five_hour", resetsAt } }),
               },
             });
