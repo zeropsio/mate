@@ -47,6 +47,7 @@ import * as ServerConfig from "../../../config.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { liveEngineLayer } from "../../../engine/live.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
+import { HandedOverResume } from "../../../engine/ports.ts";
 import { providerThreadOf } from "../../../engine/pump/TurnPump.ts";
 import { makeFakeWorkspaceHistory } from "../../../engine/testing/pump/fakeWorkspaceHistory.ts";
 import {
@@ -936,6 +937,11 @@ const lifeLayer = (
         noRestartEvidence,
         serverWorkspace,
         serverMessagePictures,
+        // No other instance of a driver left a resume on a crewmate's thread.
+        Layer.succeed(
+          HandedOverResume,
+          HandedOverResume.of({ of: () => Effect.succeed(undefined) }),
+        ),
         zeropsRunAdmission,
       ),
     ),
