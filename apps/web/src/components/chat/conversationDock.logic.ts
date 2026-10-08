@@ -18,7 +18,8 @@ const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp"]
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
-import { readUsageLimitNotice, splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
+import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
+import { splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
 import { helperNowWords, helperSpan } from "./helpers.logic";
 

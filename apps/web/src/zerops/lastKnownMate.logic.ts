@@ -1,7 +1,7 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { mateFailureWords, usageLimitWords } from "./noticeWords";
+import { mateFailureWords, usageLimitHistoryWords } from "./noticeWords";
 
 /** Source state is always qualified by its own time, never a reconnect or browser clock. */
 export function lastKnownMateWords(
@@ -12,13 +12,13 @@ export function lastKnownMateWords(
   const held = activity?.lastKnown;
   if (activity === undefined || held === undefined) return undefined;
   const words =
-    held.usageLimited || held.pausedUntil !== undefined
-      ? usageLimitWords(
-          held.limitProvider ?? "coding agent",
-          held.pausedUntil === undefined
-            ? undefined
-            : formatDayAwareTimestamp(held.pausedUntil, timestampFormat),
+    activity.limitHistory !== undefined || held.usageLimited || held.pausedUntil !== undefined
+      ? usageLimitHistoryWords(
+          activity.limitHistory?.provider ?? held.limitProvider ?? "coding agent",
+          null,
+          activity.limitHistory?.resetsAt ?? held.pausedUntil ?? null,
           name,
+          timestampFormat,
         )
       : held.kind === "failed"
         ? held.errorLine === undefined
@@ -38,6 +38,7 @@ export function lastKnownMateWords(
                   ? `${name} had finished the work.`
                   : `${name} had no active work.`;
   const preview =
+    activity.limitHistory !== undefined ||
     held.usageLimited ||
     held.pausedUntil !== undefined ||
     held.kind === "failed" ||

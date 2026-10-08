@@ -97,7 +97,7 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
         return at === undefined ? [] : [[key, at]];
       }),
     );
-    return matesActivityOf({
+    const activity = matesActivityOf({
       projectIds: [projectId],
       attention: { [projectId]: attention },
       overviews: overview === null ? null : new Map([[projectId, overview]]),
@@ -107,6 +107,22 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
       standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),
       lastVisitedAtById: visits,
     }).get(projectId);
+    // The wake only invalidates the projection. The source deadline and current clock decide
+    // whether this refusal still applies, including a tab that wakes after the deadline.
+    const resetsAt = activity?.pausedUntil;
+    if (resetsAt !== undefined && Date.parse(resetsAt) > Date.now()) {
+      // Browser timers use a signed 32-bit millisecond delay. A distant provider deadline
+      // can request another derivation at that bound; it cannot become an early reset.
+      const delay = Math.min(Date.parse(resetsAt) - Date.now(), 2 ** 31 - 1);
+      const timer = setTimeout(() => get.refreshSelf(), delay);
+      const wake = () => get.refreshSelf();
+      window.addEventListener("focus", wake);
+      get.addFinalizer(() => {
+        clearTimeout(timer);
+        window.removeEventListener("focus", wake);
+      });
+    }
+    return activity;
   }).pipe(Atom.withEquality(sameActivity)),
 );
 

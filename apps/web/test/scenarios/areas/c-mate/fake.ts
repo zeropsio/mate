@@ -8,7 +8,6 @@ import {
   ATTACHMENT_UPLOAD_URL_TTL_MS,
   OrchestrationThreadDetailPage,
   ZeropsBrowserStreamEvent,
-  OrchestrationMessage,
   OrchestrationThreadShell,
   OrchestrationThreadDetailSnapshot,
   OrchestrationShellStreamItem,
@@ -39,7 +38,6 @@ import {
   OrchestrationCommand,
   OrchestrationEvent,
   OrchestrationThread,
-  OrchestrationThreadActivity,
   OrchestrationThreadStreamItem,
   WS_METHODS,
   ZeropsAgentAuthSnapshot,
@@ -58,6 +56,8 @@ import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.
 import * as Effect from "effect/Effect";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { reportConversation } from "../b-menu/fake.ts";
+import { V1ChatWire } from "./v1.ts";
+import type { ChatWire } from "./wire.ts";
 
 const wireEncodeSearchEntries = Schema.encodeSync(ProjectSearchEntriesResult);
 
@@ -78,16 +78,13 @@ const wireDecodeMcpServersList = Schema.decodeUnknownSync(McpServersList);
 const wireDecodeOrchestrationCheckpointSummary = Schema.decodeUnknownSync(
   OrchestrationCheckpointSummary,
 );
-const wireDecodeOrchestrationEvent = Schema.decodeUnknownSync(OrchestrationEvent);
 const wireDecodeOrchestrationGetTurnDiffInput = Schema.decodeUnknownSync(
   OrchestrationGetTurnDiffInput,
 );
-const wireDecodeOrchestrationMessage = Schema.decodeUnknownSync(OrchestrationMessage);
 const wireDecodeOrchestrationShellStreamItem = Schema.decodeUnknownSync(
   OrchestrationShellStreamItem,
 );
 const wireDecodeOrchestrationThread = Schema.decodeUnknownSync(OrchestrationThread);
-const wireDecodeOrchestrationThreadActivity = Schema.decodeUnknownSync(OrchestrationThreadActivity);
 const wireDecodeOrchestrationThreadDetailSnapshot = Schema.decodeUnknownSync(
   OrchestrationThreadDetailSnapshot,
 );
@@ -126,9 +123,7 @@ const wireEncodeZeropsDataConsoleResponse = Schema.encodeSync(ZeropsDataConsoleR
 const wireEncodeZeropsDataConsoleSessionEvent = Schema.encodeSync(ZeropsDataConsoleSessionEvent);
 
 const decodeAuth = wireDecodeZeropsAgentAuthSnapshot;
-const decodeActivity = wireDecodeOrchestrationThreadActivity;
 const decodeThread = wireDecodeOrchestrationThread;
-const decodeEvent = wireDecodeOrchestrationEvent;
 
 const AT = "2026-10-05T12:00:00.000Z";
 const decodeCommand = wireDecodeClientOrchestrationCommand;
@@ -179,18 +174,20 @@ export class ChatDriver {
   readonly assets = new Map<string, { bytes: Buffer; mimeType: string }>();
   readonly writes = new Map<string, ReadonlyArray<import("@t3tools/contracts").FileWrite>>();
   readonly http: string[] = [];
-  readonly responses: OrchestrationCommand[] = [];
   ownership: "project-token" | "owner" | "colleague" | "unrecorded" = "project-token";
-  acceptResponses = true;
   signerOffboarded = false;
-  readonly questionTurns = new Map<string, string | null>();
   authSnapshot: ZeropsAgentAuthSnapshot | null = null;
-  private live = false;
   readonly startedLogins: ZeropsAgentLoginStartInput[] = [];
   readonly cancelledLogins: ZeropsAgentLoginCancelInput[] = [];
   readonly mate: MateFake;
-  constructor(mate: MateFake) {
+  /** The V1 thread the area's richer fixtures write to. */
+  readonly v1: V1ChatWire;
+  /** The conversation the journeys arrange and read through, on whichever wire the Mate speaks. */
+  readonly wire: ChatWire;
+  constructor(mate: MateFake, wire?: ChatWire) {
     this.mate = mate;
+    this.v1 = new V1ChatWire(mate);
+    this.wire = wire ?? this.v1;
     this.lifecycle = wireDecodeZeropsLifecycle({ threadId: mate.thread.id, recentTools: [] });
     Object.assign(mate.config, { threadSnapshotPagination: true });
     Object.assign(mate.config.environment.capabilities, {
@@ -580,7 +577,7 @@ export class ChatDriver {
         return true;
       }
       if (command.type === "thread.turn.start" && mate.acceptMessages) {
-        this.live = true;
+        this.v1.live = true;
         const attachments = command.message.attachments.map((attachment, index) => {
           if (!("dataUrl" in attachment)) return attachment;
           const id = `${command.message.messageId}-${index}`;
@@ -625,44 +622,7 @@ export class ChatDriver {
         command.type !== "thread.user-input.respond"
       )
         return false;
-      this.responses.push(command);
-      if (this.acceptResponses) {
-        this.activity(
-          command.type === "thread.approval.respond" ? "approval.resolved" : "user-input.resolved",
-          "Agent received your response",
-          {
-            requestId: command.requestId,
-            ...(command.type === "thread.user-input.respond"
-              ? {
-                  answers: command.answers,
-                  attachmentsByQuestionId: command.attachmentsByQuestionId,
-                }
-              : {}),
-          },
-          this.questionTurns.get(String(command.requestId)) ?? null,
-        );
-        if (
-          command.type === "thread.user-input.respond" &&
-          command.attachmentsByQuestionId &&
-          Object.keys(command.attachmentsByQuestionId).length > 0
-        )
-          this.activity(
-            "user-input.answer-submitted",
-            "Question answer submitted",
-            {
-              requestId: command.requestId,
-              answers: command.answers,
-              questionTextById: { target: "Which environment should I inspect?" },
-              attachmentsByQuestionId: command.attachmentsByQuestionId,
-              detail: Object.values(command.attachmentsByQuestionId)
-                .flat()
-                .map((file) => file.name)
-                .join("\n"),
-            },
-            this.questionTurns.get(String(command.requestId)) ?? null,
-          );
-        this.assistantReply("Agent received your response", command.commandId);
-      }
+      this.v1.respond(command);
       mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
       return true;
     });
@@ -1223,64 +1183,15 @@ export class ChatDriver {
     payload: Record<string, unknown>,
     commandId: string | null = null,
   ) {
-    const mate = this.mate;
-    const event = decodeEvent({
-      sequence: ++mate.sequence,
-      eventId: `event-${mate.sequence}`,
-      aggregateKind: "thread",
-      aggregateId: mate.thread.id,
-      occurredAt: this.at(),
-      commandId,
-      causationEventId: null,
-      correlationId: commandId,
-      metadata: {},
-      type,
-      payload,
-    });
-    mate.events.push(event);
-    for (const [socket, subscriptions] of mate.subscriptions)
-      for (const [id, request] of subscriptions)
-        if (
-          request.tag === ORCHESTRATION_WS_METHODS.subscribeThread &&
-          request.payload.threadId === mate.thread.id
-        )
-          mate.chunk(socket, id, [encodeStream({ kind: "event", event })]);
-    return event;
+    return this.v1.event(type, payload, commandId);
   }
 
   at() {
-    return this.live
-      ? new Date().toISOString()
-      : new Date(Date.parse(AT) + this.mate.sequence).toISOString();
+    return this.v1.at();
   }
 
-  message(
-    id: string,
-    role: OrchestrationMessage["role"],
-    text: string,
-    turnId: string | null = null,
-    extra: Partial<OrchestrationMessage> = {},
-    commandId: string | null = null,
-  ) {
-    const message = wireDecodeOrchestrationMessage({
-      id,
-      role,
-      text,
-      turnId,
-      streaming: false,
-      createdAt: this.at(),
-      updatedAt: this.at(),
-      ...extra,
-    });
-    this.mate.thread = decodeThread({
-      ...this.mate.thread,
-      messages: [...this.mate.thread.messages.filter((row) => row.id !== message.id), message],
-    });
-    this.event(
-      "thread.message-sent",
-      { ...message, messageId: id, threadId: this.mate.thread.id },
-      commandId,
-    );
+  message(...args: Parameters<V1ChatWire["message"]>) {
+    this.v1.message(...args);
   }
 
   run(
@@ -1289,7 +1200,7 @@ export class ChatDriver {
     lastError: string | null = null,
     assistantMessageId: string | null = null,
   ) {
-    this.live = true;
+    this.v1.live = true;
     const at = this.at();
     const previous =
       this.mate.thread.latestTurn?.turnId === turnId ? this.mate.thread.latestTurn : null;
@@ -1364,11 +1275,7 @@ export class ChatDriver {
   }
 
   sentTurnCount() {
-    return this.mate.requests.filter(
-      (request) =>
-        request.tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
-        request.payload.type === "thread.turn.start",
-    ).length;
+    return this.wire.intents().filter((intent) => intent.kind === "turn").length;
   }
 
   doorCount() {
@@ -1376,30 +1283,34 @@ export class ChatDriver {
   }
 
   commandDecisions() {
-    return this.responses.flatMap((command) =>
-      command.type === "thread.approval.respond"
-        ? [
-            command.decision === "accept"
-              ? "approved"
-              : command.decision === "decline"
-                ? "declined"
-                : command.decision,
-          ]
-        : [],
-    );
+    return this.wire
+      .intents()
+      .flatMap((intent) =>
+        intent.kind !== "decision"
+          ? []
+          : [
+              intent.decision === "accept"
+                ? "approved"
+                : intent.decision === "decline"
+                  ? "declined"
+                  : intent.decision,
+            ],
+      );
   }
 
   receivedStagingAnswer() {
-    return this.responses.some(
-      (command) =>
-        command.type === "thread.user-input.respond" &&
-        command.requestId === "question-target" &&
-        command.answers.target === "stage",
-    );
+    return this.wire
+      .intents()
+      .some(
+        (intent) =>
+          intent.kind === "answer" &&
+          intent.ask === "question" &&
+          intent.answers.target === "stage",
+      );
   }
 
   responseCount() {
-    return this.responses.length;
+    return this.wire.intents().filter((intent) => intent.kind !== "turn").length;
   }
 
   /** A recorded login expires at its provider; ownership and conversation remain unchanged. */
@@ -1463,102 +1374,19 @@ export class ChatDriver {
   }
 
   history(text = "The existing conversation is still here", turnId: string | null = null) {
-    this.message("history", "user", text, turnId);
+    this.wire.history(text, turnId);
   }
 
   approval() {
-    this.activity("approval.requested", "Command approval requested", {
-      requestId: "approval-build",
-      requestKind: "command",
-      detail: "vp run build",
-    });
+    this.wire.approval();
   }
 
   question(requestId = "question-target", turnId: string | null = null) {
-    this.questionTurns.set(requestId, turnId);
-    this.activity(
-      "user-input.requested",
-      "User input requested",
-      {
-        requestId,
-        questions: [
-          {
-            id: "target",
-            header: "Target",
-            question: "Which environment should I inspect?",
-            options: [
-              { label: "Staging", value: "stage", description: "Inspect the staging environment" },
-              {
-                label: "Production",
-                value: "production",
-                description: "Inspect the live environment",
-              },
-            ],
-            multiSelect: false,
-            allowCustomAnswer: true,
-          },
-        ],
-      },
-      turnId,
-    );
+    this.wire.question(requestId, turnId);
   }
 
-  assistantReply(text: string, commandId: string) {
-    this.message(
-      `reply-${commandId}`,
-      "assistant",
-      text,
-      this.mate.thread.latestTurn?.turnId ?? null,
-    );
-  }
-
-  activity(
-    kind: string,
-    summary: string,
-    payload: Record<string, unknown>,
-    turnId: string | null = null,
-  ) {
-    const mate = this.mate;
-    const activity = decodeActivity({
-      id: `activity-${++mate.sequence}`,
-      tone: kind.startsWith("approval.")
-        ? "approval"
-        : kind.startsWith("tool.")
-          ? "tool"
-          : kind === "runtime.error"
-            ? "error"
-            : "info",
-      kind,
-      summary,
-      payload,
-      turnId,
-      createdAt: this.at(),
-    });
-    mate.thread = decodeThread({
-      ...mate.thread,
-      activities: [...mate.thread.activities, activity],
-    });
-    const event = decodeEvent({
-      sequence: mate.sequence,
-      eventId: activity.id,
-      aggregateKind: "thread",
-      aggregateId: mate.thread.id,
-      occurredAt: AT,
-      commandId: null,
-      causationEventId: null,
-      correlationId: null,
-      metadata: {},
-      type: "thread.activity-appended",
-      payload: { threadId: mate.thread.id, activity },
-    });
-    mate.events.push(event);
-    for (const [socket, subscriptions] of mate.subscriptions)
-      for (const [id, request] of subscriptions)
-        if (
-          request.tag === ORCHESTRATION_WS_METHODS.subscribeThread &&
-          request.payload.threadId === mate.thread.id
-        )
-          mate.chunk(socket, id, [encodeStream({ kind: "event", event })]);
+  activity(...args: Parameters<V1ChatWire["activity"]>) {
+    this.v1.activity(...args);
   }
 }
 

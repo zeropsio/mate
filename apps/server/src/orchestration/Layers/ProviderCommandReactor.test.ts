@@ -778,6 +778,42 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  effectIt.effect("stopping a session keeps the provider refusal's reset known", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() => createHarness());
+      const threadId = ThreadId.make("thread-1");
+      const now = "2026-10-06T22:24:44Z";
+      yield* harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("refused-before-stop"),
+        threadId,
+        session: {
+          threadId,
+          status: "error",
+          providerName: "claudeAgent",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: "Claude usage limit reached.",
+          usageLimitResetAt: "2026-10-07T02:00:00Z",
+          updatedAt: now,
+        },
+        createdAt: now,
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.session.stop",
+        commandId: CommandId.make("stop-refused-session"),
+        threadId,
+        createdAt: now,
+      });
+      yield* Effect.promise(() => harness.drain());
+      const thread = (yield* Effect.promise(() => harness.readModel())).threads.find(
+        (entry) => entry.id === threadId,
+      );
+      expect(thread?.session?.status).toBe("stopped");
+      expect(thread?.session?.usageLimitResetAt).toBe("2026-10-07T02:00:00Z");
+    }),
+  );
+
   effectIt.effect("a stop cancels a runtime mode change still waiting for the lane", () =>
     Effect.gen(function* () {
       const { harness, release, settle } = yield* heldFirstSendHarness();

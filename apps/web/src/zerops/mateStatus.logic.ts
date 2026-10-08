@@ -15,6 +15,8 @@ export function mateStatus(
   needsSignIn = false,
 ): MateStatus | null {
   if (activity?.remembered === true) return null;
+  if (activity?.pausedUntil !== undefined && Date.parse(activity.pausedUntil) <= Date.now())
+    return null;
   if (
     activity?.usageLimited === true ||
     activity?.pausedUntil !== undefined ||

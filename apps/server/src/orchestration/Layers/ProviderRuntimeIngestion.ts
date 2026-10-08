@@ -2137,17 +2137,19 @@ const make = Effect.gen(function* () {
                 ? null
                 : activeTurnId;
         const lastError =
-          crashWords !== null
-            ? crashWords
-            : event.type === "session.state.changed" && event.payload.state === "error"
-              ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
-              : event.type === "turn.completed" &&
-                  normalizeRuntimeTurnState(event.payload.state) === "failed" &&
-                  !failedAfterStop
-                ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
-                : status === "ready" || status === "interrupted"
-                  ? null
-                  : (thread.session?.lastError ?? null);
+          event.type === "turn.started"
+            ? null
+            : crashWords !== null
+              ? crashWords
+              : event.type === "session.state.changed" && event.payload.state === "error"
+                ? (event.payload.reason ?? thread.session?.lastError ?? "Provider session error")
+                : event.type === "turn.completed" &&
+                    normalizeRuntimeTurnState(event.payload.state) === "failed" &&
+                    !failedAfterStop
+                  ? (event.payload.errorMessage ?? thread.session?.lastError ?? "Turn failed")
+                  : status === "ready" || status === "interrupted"
+                    ? null
+                    : (thread.session?.lastError ?? null);
 
         if (shouldApplyThreadLifecycle) {
           // The turn's record says where it broke off before the session
@@ -2228,6 +2230,13 @@ const make = Effect.gen(function* () {
               runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: nextActiveTurnId,
               lastError,
+              usageLimitResetAt:
+                lastError !== null &&
+                (lastError === thread.session?.lastError ||
+                  (event.type === "turn.completed" &&
+                    event.payload.terminalReason === "usage_limit"))
+                  ? (thread.session?.usageLimitResetAt ?? null)
+                  : null,
               updatedAt: now,
             },
             createdAt: now,
@@ -2947,12 +2956,23 @@ const make = Effect.gen(function* () {
         const lastError = event.payload.refused
           ? `${event.provider === "claudeAgent" ? "Claude" : event.provider === "codex" ? "Codex" : "Coding agent"} usage limit reached.`
           : null;
-        if (lastError !== thread.session.lastError)
+        const usageLimitResetAt = event.payload.refused
+          ? (event.payload.blocked?.resetsAt ?? null)
+          : null;
+        if (
+          lastError !== thread.session.lastError ||
+          usageLimitResetAt !== (thread.session.usageLimitResetAt ?? null)
+        )
           yield* orchestrationEngine.dispatch({
             type: "thread.session.set",
             commandId: yield* providerCommandId(event, "usage-limit-session-set"),
             threadId: thread.id,
-            session: { ...thread.session, lastError, updatedAt: now },
+            session: {
+              ...thread.session,
+              lastError,
+              usageLimitResetAt,
+              updatedAt: now,
+            },
             createdAt: now,
           });
       }
@@ -2988,6 +3008,10 @@ const make = Effect.gen(function* () {
               runtimeMode: thread.session?.runtimeMode ?? "full-access",
               activeTurnId: eventTurnId ?? null,
               lastError: runtimeErrorMessage,
+              usageLimitResetAt:
+                event.payload.class === "usage_limit"
+                  ? (thread.session?.usageLimitResetAt ?? null)
+                  : null,
               updatedAt: now,
             },
             createdAt: now,

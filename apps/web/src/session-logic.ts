@@ -1,3 +1,4 @@
+import { usageLimitProvider } from "./zerops/noticeWords";
 import {
   requestKindFromRequestType,
   type PendingApproval,
@@ -178,6 +179,8 @@ export interface WorkLogEntry {
    * (`usage-limit`, a pause). Typed by the server: never read off the words.
    */
   turnEnd?: "crash" | "failed" | "usage-limit";
+  /** A real provider refusal, retaining its supplied deadline independently of the warning copy. */
+  usageLimit?: { readonly resetsAt: string | null };
   questionAnswer?: UserInputAttachmentAnswerPayload;
   /** `user-input.requested`/`.resolved`: which request the entry belongs to. */
   inputRequestId?: string;
@@ -1249,6 +1252,20 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (detail) {
     entry.detail = detail;
   } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {
+    const limit = asRecord(payload?.detail);
+    if (
+      usageLimitProvider(activity.summary) !== null &&
+      limit?.status === "rejected" &&
+      limit.overageStatus !== "allowed" &&
+      limit.overageStatus !== "allowed_warning" &&
+      limit.isUsingOverage !== true &&
+      limit.overageInUse !== true
+    ) {
+      const reset = typeof limit.resetsAt === "number" ? new Date(limit.resetsAt * 1000) : null;
+      entry.usageLimit = {
+        resetsAt: reset !== null && Number.isFinite(reset.getTime()) ? reset.toISOString() : null,
+      };
+    }
     const message = asTrimmedString(payload?.message);
     if (
       message &&

@@ -1983,6 +1983,7 @@ const make = Effect.gen(function* () {
               runtimeMode: thread.session?.runtimeMode ?? DEFAULT_RUNTIME_MODE,
               activeTurnId: null,
               lastError: thread.session?.lastError ?? null,
+              usageLimitResetAt: thread.session?.usageLimitResetAt ?? null,
               updatedAt: now,
             },
             createdAt: now,

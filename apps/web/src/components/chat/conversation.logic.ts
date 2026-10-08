@@ -12,6 +12,7 @@
  *
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
+import { readUsageLimitNotice, type UsageLimitNotice } from "../../zerops/providerLimit.logic";
 import type { TurnId } from "@t3tools/contracts";
 import {
   envChangeWords,
@@ -159,81 +160,6 @@ export function isImageOnlyPlaceholder(text: string): boolean {
 // Usage limits
 // ---------------------------------------------------------------------------
 
-export interface UsageLimitNotice {
-  /** When the limit resets, when the notice says. */
-  readonly resetsAt: string | null;
-}
-
-const CLI_LIMIT =
-  /you[’']ve hit your [\w\s-]*?limit(?:\s*·\s*resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?)?/i;
-const ADAPTER_LIMIT = /claude(?: ai)? usage limit reached/i;
-const ADAPTER_WAIT = /resets in (?:(\d+)h)?\s*(?:(\d+)m)?/i;
-const EPOCH_SUFFIX = /\|(\d{10})\b/;
-
-/** The zone's offset from UTC at `atMs`, in minutes; null for a zone the runtime does not know. */
-function zoneOffsetMinutes(timeZone: string, atMs: number): number | null {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-    }).formatToParts(new Date(atMs));
-    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value);
-    const asUtc = Date.UTC(
-      read("year"),
-      read("month") - 1,
-      read("day"),
-      read("hour"),
-      read("minute"),
-    );
-    return Math.round((asUtc - Math.floor(atMs / 60_000) * 60_000) / 60_000);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * A usage-limit notice, read from the text Claude writes when a limit stops it
- * ("You've hit your session limit · resets 9:20pm (UTC)") or the Mate server's
- * own row ("Claude usage limit reached. … resets in 32m."). The reset is the
- * first such wall-clock time after the notice was written.
- */
-export function readUsageLimitNotice(text: string, createdAt: string): UsageLimitNotice | null {
-  const writtenMs = parseMs(createdAt);
-  const cli = CLI_LIMIT.exec(text);
-  if (cli && text.trim().length < 240) {
-    if (cli[1] === undefined || writtenMs === null) return { resetsAt: null };
-    let hour = Number(cli[1]) % 12;
-    if ((cli[3] ?? "").toLowerCase() === "pm") hour += 12;
-    if (cli[3] === undefined) hour = Number(cli[1]);
-    const minute = Number(cli[2] ?? "0");
-    const zone = (cli[4] ?? "UTC").trim();
-    const offset = zoneOffsetMinutes(zone === "UTC" ? "UTC" : zone, writtenMs);
-    if (offset === null) return { resetsAt: null };
-    const zoned = new Date(writtenMs + offset * 60_000);
-    let candidate =
-      Date.UTC(zoned.getUTCFullYear(), zoned.getUTCMonth(), zoned.getUTCDate(), hour, minute) -
-      offset * 60_000;
-    if (candidate <= writtenMs) candidate += 24 * 60 * 60_000;
-    return { resetsAt: new Date(candidate).toISOString() };
-  }
-  if (ADAPTER_LIMIT.test(text)) {
-    const epoch = EPOCH_SUFFIX.exec(text);
-    if (epoch) return { resetsAt: new Date(Number(epoch[1]) * 1000).toISOString() };
-    const wait = ADAPTER_WAIT.exec(text);
-    if (wait && writtenMs !== null && (wait[1] !== undefined || wait[2] !== undefined)) {
-      const waitMs = (Number(wait[1] ?? 0) * 60 + Number(wait[2] ?? 0)) * 60_000;
-      return { resetsAt: new Date(writtenMs + waitMs).toISOString() };
-    }
-    return { resetsAt: null };
-  }
-  return null;
-}
-
 /** The server's own row for a limit ("Claude usage limit reached. Send the message again…"). */
 export function isUsageLimitError(entry: TimelineEntry): boolean {
   return (
@@ -247,16 +173,13 @@ export function isUsageLimitError(entry: TimelineEntry): boolean {
 }
 
 function usageLimitErrorNotice(entries: ReadonlyArray<TimelineEntry>): UsageLimitNotice | null {
-  for (const entry of entries.toReversed()) {
-    if (!isUsageLimitError(entry) || entry.kind !== "work") continue;
-    // A typed limit whose words name no reset is a pause all the same.
-    return (
-      readUsageLimitNotice(`${entry.entry.detail ?? ""} ${entry.entry.label}`, entry.createdAt) ?? {
-        resetsAt: null,
-      }
-    );
-  }
-  return null;
+  const error = entries.findLast(isUsageLimitError);
+  if (error?.kind !== "work") return null;
+  return (
+    readUsageLimitNotice(`${error.entry.detail ?? ""} ${error.entry.label}`, error.createdAt) ?? {
+      resetsAt: null,
+    }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,10 +932,20 @@ export function deriveConversationStructure(given: {
         ? terminal
         : null;
     // The limit speaks as Claude's own last words, or as the server's error row.
+    const answerNotice =
+      answer === null ? null : readUsageLimitNotice(answer.message.text, answer.message.createdAt);
+    const structuredLimit =
+      answer === null || answerNotice !== null
+        ? turnEntries.findLast(
+            (entry) => entry.kind === "work" && entry.entry.usageLimit !== undefined,
+          )
+        : undefined;
+    // The provider's timestamp outranks a rounded wait or an undated CLI hour. A later normal
+    // response is recovery evidence, so an earlier rejection cannot replace that response.
     const limit =
-      (answer !== null
-        ? readUsageLimitNotice(answer.message.text, answer.message.createdAt)
-        : null) ?? (live ? null : usageLimitErrorNotice(turnEntries));
+      (structuredLimit?.kind === "work" ? structuredLimit.entry.usageLimit! : null) ??
+      answerNotice ??
+      (live ? null : usageLimitErrorNotice(turnEntries));
     const limitOnly =
       limit !== null &&
       turnEntries.every(
@@ -1020,6 +953,7 @@ export function deriveConversationStructure(given: {
           entry === answer ||
           !hasMeaningfulContent(entry) ||
           isUsageLimitError(entry) ||
+          (entry.kind === "work" && entry.entry.usageLimit !== undefined) ||
           (entry.kind === "message" && entry.message.role === "reasoning") ||
           (entry.kind === "message" &&
             readUsageLimitNotice(entry.message.text, entry.createdAt) !== null),

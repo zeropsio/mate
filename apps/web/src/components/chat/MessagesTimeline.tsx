@@ -2376,16 +2376,24 @@ function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-
   return <CrewTaskCard card={row.task} id={row.id} />;
 }
 
-/** The pause's countdown reads the clock once a minute: words change, the block never moves. */
+/** Wake at the provider deadline; a historical refusal does not keep a clock running. */
 function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
   const ctx = use(TimelineRowCtx);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const waiting = row.resumedAt === null && row.resetsAt !== null;
+  const resetsAt = (row.id === ctx.livePauseId ? ctx.usagePause?.resetsAt : null) ?? row.resetsAt;
+  const waiting = row.resumedAt === null && resetsAt !== null;
   useEffect(() => {
-    if (!waiting) return;
-    const id = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, [waiting]);
+    if (!waiting || resetsAt === null || Date.parse(resetsAt) <= nowMs) return;
+    const refreshClock = () => setNowMs(Date.now());
+    // Browser timer bounds only schedule another comparison, never an early reset.
+    const delay = Math.max(0, Math.min(Date.parse(resetsAt) - Date.now(), 2 ** 31 - 1));
+    const id = setTimeout(refreshClock, delay);
+    window.addEventListener("focus", refreshClock);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("focus", refreshClock);
+    };
+  }, [waiting, resetsAt, nowMs]);
   return (
     <PauseBlock
       nowMs={nowMs}

@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { matesActivityOf, seenResultsOf, type MatesActivityInput } from "./mateActivity";
 
@@ -343,6 +343,8 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
   it.each(["Claude", "Codex"])(
     "keeps %s's limit and source time during an outage without a current marker",
     (provider) => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(ASKED));
       const main = VERA.main!;
       const overview = {
         ...VERA,
@@ -368,7 +370,7 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
       expect(held?.lastKnown?.at).toBe(ASKED);
       expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
       expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
-      expect(lastKnownMateWords(held, "Skákala")).toContain("can continue at");
+      expect(lastKnownMateWords(held, "Skákala")).toContain("; reset ");
       expect(mateStatus(held)).toBeNull();
       expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
         kind: "words",
@@ -391,6 +393,7 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
         until: DONE,
       });
       expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
+      vi.useRealTimers();
     },
   );
   it("keeps a reset-free streaming Claude refusal visible while the provider's turn stays active", () => {
@@ -423,5 +426,33 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
         "Skákala",
       ),
     ).toBeUndefined();
+  });
+});
+
+describe("an expired refusal from HQ", () => {
+  it("a retained attention record cannot turn an expired refusal into a current menu failure", () => {
+    const main = VERA.main!;
+    const overview = {
+      ...VERA,
+      main: {
+        ...main,
+        session: { status: "stopped" as const, lastError: "Claude usage limit reached." },
+        latestTurn: { ...main.latestTurn!, state: "error" as const },
+        usagePause: { resetsAt: "2020-01-01T00:00:00Z" },
+      },
+    };
+    const activity = read({
+      attention: attention(
+        said({
+          questions: [
+            { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+          ],
+        }),
+      ),
+      overviews: new Map([["p-vera", overview]]),
+    });
+    expect(activity?.usageLimited).toBe(false);
+    expect(activity?.kind).toBe("idle");
+    expect(mateStatus(activity)).toBeNull();
   });
 });

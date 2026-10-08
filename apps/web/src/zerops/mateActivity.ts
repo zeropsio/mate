@@ -15,6 +15,7 @@
  * that path goes with the old overview shape.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { usageLimitProvider } from "./noticeWords";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, MateAttention, ThreadId } from "@t3tools/contracts";
@@ -160,7 +161,16 @@ export function attentionActivity(input: {
     input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
   );
   const unread = input.unseen === null ? read.unread : input.unseen > 0;
-  const question = attention.questions[0];
+  const question = attention.questions.find(
+    (question) =>
+      !(
+        question.kind === "failed" &&
+        question.threadId === read.threadId &&
+        read.kind === "idle" &&
+        read.usageLimited === false &&
+        usageLimitProvider(words.session?.lastError) !== null
+      ),
+  );
   const kind: ThreadStatusKind =
     question !== undefined
       ? question.kind

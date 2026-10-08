@@ -3268,3 +3268,29 @@ describe("deriveWorkLogEntries + deriveTimelineEntries — the five real threads
     },
   );
 });
+
+describe("provider admission evidence", () => {
+  it.each([
+    { name: "a real refusal", info: { status: "rejected", resetsAt: 1791338400 }, limit: true },
+    { name: "an allowed notice", info: { status: "allowed", resetsAt: 1791338400 }, limit: false },
+    {
+      name: "an allowed warning",
+      info: { status: "allowed_warning", resetsAt: 1791338400 },
+      limit: false,
+    },
+    {
+      name: "a rejected base window with allowed overage",
+      info: { status: "rejected", overageStatus: "allowed", resetsAt: 1791338400 },
+      limit: false,
+    },
+  ])("only $name becomes a limit in the conversation", ({ info, limit }) => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        kind: "runtime.warning",
+        summary: "Claude usage limit reached.",
+        payload: { message: "Claude usage limit reached.", detail: info },
+      }),
+    ]);
+    expect(entry?.usageLimit).toEqual(limit ? { resetsAt: "2026-10-07T02:00:00.000Z" } : undefined);
+  });
+});
