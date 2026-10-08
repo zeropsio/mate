@@ -71,6 +71,8 @@ export interface ScriptedProviderOptions {
   failStart?: string | undefined;
   /** The agent never confirms a Stop: the interrupt returns and the turn runs on. */
   ignoreInterrupt?: boolean | undefined;
+  /** The session start never returns; letting go of it is recorded as `let-go <thread>`. */
+  startHangs?: boolean | undefined;
   /** The interrupt call never returns. */
   interruptHangs?: boolean | undefined;
   /** A send takes this long before the driver opens its turn and returns. */
@@ -166,6 +168,11 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             const words = options.failStart;
             options.failStart = undefined;
             return yield* Effect.fail(new ScriptedError("ProviderAdapterProcessError", words));
+          }
+          if (options.startHangs === true) {
+            return yield* Effect.never.pipe(
+              Effect.onInterrupt(() => Effect.sync(() => calls.push(`let-go ${threadId}`))),
+            );
           }
           const session: Session = {
             thread: threadId,

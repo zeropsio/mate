@@ -33,6 +33,7 @@ const world = (
       holdNextSend: boolean;
       interruptHangs: boolean;
       slowSendMs: number;
+      startHangs: boolean;
     }>;
   } = {},
 ) =>
@@ -838,6 +839,32 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  // The engine interrupts the call rather than leaving it running: ProviderService then stops
+  // whatever session the start opened, which nothing would stop otherwise.
+  it.effect("a session open the driver never answers is let go at the bound", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex", { scripted: { startHangs: true } });
+        yield* send(w);
+        yield* w.advance(PROVIDER_CALL_BOUND_MS);
+        assert.strictEqual(w.provider.calls.at(-1), `let-go ${w.thread}`);
+        const outcome = yield* w.within(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ readonly kind: string }>`
+              SELECT json_extract(outcome_json, '$.kind') AS kind FROM engine_effect
+              WHERE kind = 'session.open'`;
+          }),
+        );
+        assert.deepStrictEqual(
+          outcome.map((row) => row.kind),
+          ["timed-out"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect("a server stopping never waits on a wedged call", () =>
