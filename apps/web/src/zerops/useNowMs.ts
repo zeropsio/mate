@@ -12,10 +12,10 @@
  * as *local* — which in Prague would put every age two hours out. The `Z` is
  * not decoration.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
-import { subscribeSecond } from "~/lib/secondTicker";
+import { secondSnapshot, subscribeSecond } from "~/lib/secondTicker";
 
 export function useNowMs(): number {
   return Date.parse(`${useNowMinute()}:00Z`);
@@ -23,15 +23,21 @@ export function useNowMs(): number {
 
 /**
  * The clock in milliseconds, moving on each wall-clock second while `active`, for what counts seconds (a
- * running operation's elapsed time, a live read's age). It is state, never a `Date.now()` read in
- * the render: the React Compiler memoises such a read on the render's other inputs, so a
- * running card would keep the second it was first drawn at.
+ * running operation's elapsed time, a live read's age). Clock observations use the same synchronous
+ * subscription contract as account facts, so a clock change cannot leave a concurrent arrival
+ * render working from an older second. Inactive surfaces retain their snapshot without a timer.
  */
 export function useSecondsNowMs(active: boolean): number {
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  // The one second clock (`subscribeSecond`): every counting surface ticks in the same pass.
-  useEffect(() => (active ? subscribeSecond(setNowMs) : undefined), [active]);
-  return nowMs;
+  const clock = useMemo(() => {
+    const initialNow = Date.now();
+    const initialSnapshot = () => initialNow;
+    return {
+      subscribe: active ? subscribeSecond : () => () => {},
+      snapshot: active ? secondSnapshot : initialSnapshot,
+      serverSnapshot: initialSnapshot,
+    };
+  }, [active]);
+  return useSyncExternalStore(clock.subscribe, clock.snapshot, clock.serverSnapshot);
 }
 
 /**
