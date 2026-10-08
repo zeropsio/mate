@@ -29,10 +29,9 @@ import {
   type RestartFacts,
 } from "../engine/ports.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
-
-const ZEROPS_SUBJECT = "zerops:";
 
 /**
  * A person at the keyboard is their session; a crew wake is crew's, every other wake a stand-up's
@@ -47,8 +46,8 @@ export const turnPrincipalOf = (
       if (trigger.kind === "person") return { kind: "session", subject: principal.subject };
       return {
         kind: "standup",
-        startedBy: principal.subject.startsWith(ZEROPS_SUBJECT)
-          ? principal.subject.slice(ZEROPS_SUBJECT.length)
+        startedBy: principal.subject.startsWith(ZEROPS_SUBJECT_PREFIX)
+          ? principal.subject.slice(ZEROPS_SUBJECT_PREFIX.length)
           : principal.subject,
       };
     case "crew":
