@@ -3646,7 +3646,7 @@ code {
   pointer-events: none;
 }
 
-[data-overflow-y-end] + .zerops-new-project-slot::before {
+[data-overflow-y-end] ~ .zerops-new-project-slot::before {
   opacity: 1;
 }
 

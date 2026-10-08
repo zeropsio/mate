@@ -140,6 +140,21 @@ describe("B: text-only drafts", () => {
               }
             }
           });
+          yield* Effect.promise(async () => {
+            const separator = (opacity: string) =>
+              s.page.waitForFunction(
+                (opacity) =>
+                  getComputedStyle(document.querySelector(".zerops-new-project-slot")!, "::before")
+                    .opacity === opacity,
+                {},
+                opacity,
+              );
+            await separator("0");
+            await s.page.setViewport({ width: 1786, height: 200 });
+            await separator("1");
+            await s.page.setViewport({ width: 1786, height: 1000 });
+            await separator("0");
+          });
           const geometry = () =>
             s.page.evaluate(() =>
               ["[data-zerops-surface='sidebar-new-project']", "[data-sidebar='content']"].map(

@@ -554,7 +554,7 @@ function SortablePinnedThreadRow(props: {
 // While the draft is open the row renders a frozen snapshot (see
 // SidebarDraftBlock); memoized so per-keystroke block re-renders skip it
 // entirely.
-const SidebarDraftRow = memo(function SidebarDraftRow(props: {
+export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   draftId: DraftId;
   composer: ComposerThreadDraftState;
   projectTitle: string | null;
