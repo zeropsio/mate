@@ -14,17 +14,18 @@ import {
   toSafeThreadAttachmentSegment,
 } from "../../attachmentStore.ts";
 import {
+  crewJourney,
   eventually,
-  withCrewEngine,
-  writeCrewHome,
+  everyCopyReady,
+  opened,
+  turnsSent,
   type CrewWorld,
-} from "./testing/crewEngineFixture.ts";
-import { command, dispatchedOf, everyCopyReady, latest } from "./testing/crewEngineSteps.ts";
+} from "./testing/crewWorld.ts";
 
 /** A crew of a lead and a writer, applied. */
 const withLead = (world: CrewWorld) =>
   Effect.gen(function* () {
-    writeCrewHome(world.workspace, {
+    world.writeHome({
       "crew.yaml": [
         "name: Game team",
         "briefTitle: Space shooter",
@@ -39,11 +40,11 @@ const withLead = (world: CrewWorld) =>
       ].join("\n"),
       "jobs/lead.md": "Plan the work.\n",
     });
-    yield* command({ _tag: "apply" });
-    yield* eventually(Effect.map(latest, everyCopyReady));
+    yield* world.press({ _tag: "apply" });
+    yield* eventually(Effect.map(world.snapshot, everyCopyReady));
   });
 
-const attachmentsDir = (world: CrewWorld) => NodePath.join(world.workspace, "attachments");
+const attachmentsDir = (world: CrewWorld) => world.attachmentsDir;
 
 /** A file stored under `id`, as an upload or a sent message stores it. */
 const storedFile = (world: CrewWorld, id: string, bytes = "spec"): ChatAttachment => {
@@ -62,28 +63,27 @@ const storedFile = (world: CrewWorld, id: string, bytes = "spec"): ChatAttachmen
 
 const leadTurns = (world: CrewWorld) =>
   Effect.gen(function* () {
-    const creates = yield* dispatchedOf(world, "thread.crew.create");
-    const lead = creates.find((entry) => entry.crew.crewmate === "lead")?.threadId;
-    const turns = yield* dispatchedOf(world, "thread.turn.start");
-    return turns.filter((turn) => turn.threadId === lead);
+    const lead = (yield* opened(world)).find((entry) => entry.handle === "lead")?.chat;
+    const turns = yield* turnsSent(world);
+    return turns.filter((turn) => turn.chat === lead);
   });
 
 describe("a crew message's attachments", () => {
   it.live(
     "are claimed as a thread message's: stored in the crewmate's thread, there after the upload goes",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* withLead(world);
           const upload = storedFile(world, createPendingAttachmentId(".pdf"));
-          yield* command({
+          yield* world.press({
             _tag: "message",
             handle: "lead",
             text: "Read [File 1]",
             attachments: [upload],
           });
           const turn = (yield* leadTurns(world)).at(-1)!;
-          const sent = turn.message.attachments[0]!;
+          const sent = turn.attachments[0]!;
           // The client lets its upload go once the send succeeded.
           NodeFS.rmSync(
             resolveAttachmentPath({ attachmentsDir: attachmentsDir(world), attachment: upload })!,
@@ -98,24 +98,26 @@ describe("a crew message's attachments", () => {
               parseThreadSegmentFromAttachmentId(sent.id),
               NodeFS.readFileSync(stored, "utf8"),
             ],
-            [false, toSafeThreadAttachmentSegment(turn.threadId), "spec"],
+            [false, toSafeThreadAttachmentSegment(turn.chat), "spec"],
           );
         }),
       ),
   );
 
   it.live("are refused when one names another thread's stored attachment", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* withLead(world);
         const theirs = storedFile(world, createAttachmentId("someone-elses-thread", ".pdf")!);
         const before = (yield* leadTurns(world)).length;
-        const refused = yield* command({
-          _tag: "message",
-          handle: "lead",
-          text: "Read [File 1]",
-          attachments: [theirs],
-        }).pipe(Effect.flip);
+        const refused = yield* world
+          .press({
+            _tag: "message",
+            handle: "lead",
+            text: "Read [File 1]",
+            attachments: [theirs],
+          })
+          .pipe(Effect.flip);
         assert.deepStrictEqual(
           [
             refused._tag,

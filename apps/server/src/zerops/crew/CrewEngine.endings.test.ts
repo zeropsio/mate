@@ -3,52 +3,44 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
-import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 
-import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
-
-import { spiEvent, withCrewEngine, type CrewWorld } from "./testing/crewEngineFixture.ts";
 import {
   AS_CREW,
   applied,
-  command,
-  dispatchedOf,
+  crewJourney,
   firstTurn,
-  snapshotWhere,
-} from "./testing/crewEngineSteps.ts";
+  lastAdmitted,
+  turnsSent,
+  type CrewChat,
+  type CrewWorld,
+} from "./testing/crewWorld.ts";
 
 /** The crewmate's current conversation. */
-const currentThread = Effect.map(
-  snapshotWhere((current) => current.crewmates[0]!.currentThreadId !== null),
-  (snapshot) => snapshot.crewmates[0]!.currentThreadId!,
-);
-
-const endsWith = (world: CrewWorld, thread: ThreadId, terminalReason: string) =>
-  world.publish(
-    spiEvent("turn.completed", thread, {
-      state: terminalReason === "completed" ? "completed" : "failed",
-      terminalReason,
-    }),
+const currentChat = (world: CrewWorld) =>
+  Effect.map(
+    world.snapshotWhere((current) => current.crewmates[0]!.currentThreadId !== null),
+    (snapshot) => snapshot.crewmates[0]!.currentThreadId!,
   );
+
+const endsWith = (world: CrewWorld, chat: CrewChat, reason: string) =>
+  world.turnEnds(chat, { state: reason === "completed" ? "completed" : "failed", reason });
 
 /** The person's next message runs a turn in the crewmate's current conversation. */
 const nextTurn = (world: CrewWorld, stints: number) =>
   Effect.gen(function* () {
-    yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === stints);
-    yield* command({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
-    const thread = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.threadId;
-    yield* world.publish(spiEvent("turn.started", thread, {}));
-    return thread;
+    yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === stints);
+    yield* world.press({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
+    const chat = (yield* turnsSent(world)).at(-1)!.chat;
+    yield* world.turnStarts(chat);
+    return chat;
   });
 
 describe("CrewEngine endings", () => {
   it.live(
     "a conversation that outgrows its context rotates at once; the third time the task stops",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const first = yield* firstTurn(world, () => undefined);
@@ -57,7 +49,7 @@ describe("CrewEngine endings", () => {
           yield* endsWith(world, second, "rapid_refill_breaker");
           const third = yield* nextTurn(world, 3);
           yield* endsWith(world, third, "prompt_too_long");
-          const parked = yield* snapshotWhere(
+          const parked = yield* world.snapshotWhere(
             (current) => current.board.tasks[0]?.state === "parked",
           );
           assert.deepStrictEqual(
@@ -81,19 +73,19 @@ describe("CrewEngine endings", () => {
   it.live(
     "a turn the provider broke off queues its task again once; the second time it stops",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () => undefined);
           yield* endsWith(world, thread, "api_error");
-          const again = yield* snapshotWhere(
+          const again = yield* world.snapshotWhere(
             (current) =>
               current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
           );
-          const principal = (yield* Ref.get(world.admitted)).at(-1)?.principal;
-          yield* world.publish(spiEvent("turn.started", thread, {}));
+          const principal = yield* lastAdmitted(world);
+          yield* world.turnStarts(thread);
           yield* endsWith(world, thread, "model_error");
-          const parked = yield* snapshotWhere(
+          const parked = yield* world.snapshotWhere(
             (current) => current.board.tasks[0]?.state === "parked",
           );
           assert.deepStrictEqual(
@@ -105,26 +97,26 @@ describe("CrewEngine endings", () => {
   );
 
   it.live("Try again gives a task its one re-queue after a broken-off turn back", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
         yield* endsWith(world, thread, "api_error");
-        yield* snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
-        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* world.snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
+        yield* world.turnStarts(thread);
         yield* endsWith(world, thread, "model_error");
-        const parked = yield* snapshotWhere(
+        const parked = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "parked",
         );
-        yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
-        const retried = yield* snapshotWhere(
+        yield* world.press({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
+        const retried = yield* world.snapshotWhere(
           (current) =>
             current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 3,
         );
-        const current = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.threadId;
-        yield* world.publish(spiEvent("turn.started", current, {}));
+        const current = (yield* turnsSent(world)).at(-1)!.chat;
+        yield* world.turnStarts(current);
         yield* endsWith(world, current, "api_error");
-        const again = yield* snapshotWhere(
+        const again = yield* world.snapshotWhere(
           (frame) =>
             frame.board.tasks[0]?.state === "working" && frame.board.tasks[0]?.attempts === 4,
         );
@@ -137,10 +129,10 @@ describe("CrewEngine endings", () => {
   );
 
   it.live("in a run, a new conversation after an overflow carries the task on at once", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({
+        yield* world.press({
           _tag: "start",
           budgetUsd: "unlimited",
           timeLimitHours: "unlimited",
@@ -151,12 +143,10 @@ describe("CrewEngine endings", () => {
         });
         const first = yield* firstTurn(world, () => undefined);
         yield* endsWith(world, first, "prompt_too_long");
-        yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
-        const second = yield* currentThread;
-        const carried = (yield* dispatchedOf(world, "thread.turn.start")).findLast(
-          (turn) => turn.threadId === second,
-        );
-        assert.deepStrictEqual(carried?.message.text.split("\n").slice(1, 3), [
+        yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        const second = yield* currentChat(world);
+        const carried = (yield* turnsSent(world)).findLast((turn) => turn.chat === second);
+        assert.deepStrictEqual(carried?.text.split("\n").slice(1, 3), [
           "#1 Change a.txt · continues",
           "A fresh conversation: the last one grew too long",
         ]);
@@ -165,26 +155,27 @@ describe("CrewEngine endings", () => {
   );
 
   it.live("a rotation a turn's start makes counts toward the attempt's two", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const first = yield* firstTurn(world, () => undefined);
         yield* endsWith(world, first, "prompt_too_long");
-        yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
-        const second = yield* currentThread;
+        yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        const second = yield* currentChat(world);
         const transcript = NodePath.join(world.workspace, "second.jsonl");
         NodeFS.writeFileSync(transcript, "{}\n");
-        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(second));
-        yield* (yield* CrewToolHost).sessionStart(member, {
+        yield* world.sessionStart(second, {
           source: "startup",
           sessionId: "session-2",
           transcriptPath: transcript,
         });
-        yield* snapshotWhere((current) => current.crewmates[0]!.stints[1]?.state === "active");
+        yield* world.snapshotWhere(
+          (current) => current.crewmates[0]!.stints[1]?.state === "active",
+        );
         NodeFS.rmSync(transcript);
         const third = yield* nextTurn(world, 2);
         yield* endsWith(world, third, "prompt_too_long");
-        const parked = yield* snapshotWhere(
+        const parked = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "parked",
         );
         assert.deepStrictEqual(
