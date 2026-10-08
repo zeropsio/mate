@@ -10,7 +10,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { ConversationId, EffectId, type EffectOutcome } from "@t3tools/contracts";
 
-import type { EffectLane } from "../../../engine/domain/command.ts";
 import type { EffectRow } from "../../../engine/outbox/EffectOutbox.ts";
 import type { EffectHandler, HandlerResult } from "../../../engine/outbox/EffectWorker.ts";
 import * as CrewReads from "../CrewReads.ts";
@@ -36,7 +35,8 @@ export const effectRow = (
 ): EffectRow => ({
   effectId: EffectId.make(options.effectId ?? `crew/main/e/${kind}/1`),
   conversationId: CREW_OWNER,
-  lane: (options.lane ?? "side") as EffectLane,
+  ownerKind: "crew",
+  lane: options.lane ?? "side",
   kind,
   class: "replay-safe",
   runId: null,
