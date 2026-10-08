@@ -34,7 +34,14 @@ import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import { askImport } from "./effects/historyImport.ts";
 import * as LiveBusModule from "./LiveBus.ts";
-import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
+import {
+  DeliveryUnrecorded,
+  EventsUnreadable,
+  MateEngine,
+  ViewUnreadable,
+  WakeRefused,
+  type MateEngineService,
+} from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
@@ -335,6 +342,22 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => undefined),
       );
 
+    const store = yield* EngineStoreModule.EngineStore;
+
+    const deliver: MateEngineService["deliver"] = (conversationId, command, commandId, principal) =>
+      conversations
+        .tell({ commandId, conversationId, principal, command })
+        .pipe(
+          Effect.mapError(
+            (error) => new DeliveryUnrecorded({ conversationId, message: error.message }),
+          ),
+        );
+
+    const eventsAfter: MateEngineService["eventsAfter"] = (conversationId, afterSeq, limit) =>
+      store
+        .events(conversationId, afterSeq, limit)
+        .pipe(Effect.mapError(() => new EventsUnreadable({ conversationId })));
+
     const wire = yield* makeEngineWire(options.wire);
 
     return MateEngine.of({
@@ -370,6 +393,8 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       callProgress,
       callData,
       runOf,
+      deliver,
+      eventsAfter,
     });
   });
 
