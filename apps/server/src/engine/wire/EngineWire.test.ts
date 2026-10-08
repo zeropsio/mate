@@ -465,6 +465,34 @@ describe("a client's calls to an engine conversation", () => {
     ),
   );
 
+  it.effect(
+    "a model switch becomes the conversation's model, asked by the person who sent it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const result = yield* wire.switchModel(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("switch-1"),
+              model: "claude-opus-4-1",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          assert.strictEqual(
+            snapshot?.type === "snapshot" && snapshot.header.model,
+            "claude-opus-4-1",
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("a repeated send with the same command id returns the stored result", () =>
     Effect.scoped(
       Effect.gen(function* () {

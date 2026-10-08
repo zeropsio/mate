@@ -34,7 +34,8 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineSend
   | typeof WS_METHODS.engineStop
   | typeof WS_METHODS.engineAnswer
-  | typeof WS_METHODS.engineSteer;
+  | typeof WS_METHODS.engineSteer
+  | typeof WS_METHODS.engineSwitchModel;
 
 type EngineRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: EngineRpcTag }>;
 
@@ -122,6 +123,12 @@ export const registerEngineRpc = ({
       observeRpcEffect(
         WS_METHODS.engineSteer,
         asCaller((who) => wire.steer(input, who)),
+        traceAttributes,
+      ),
+    [WS_METHODS.engineSwitchModel]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.engineSwitchModel,
+        asCaller((who) => wire.switchModel(input, who)),
         traceAttributes,
       ),
   } satisfies EngineRpcHandlers;

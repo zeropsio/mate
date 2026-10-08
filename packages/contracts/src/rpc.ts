@@ -31,6 +31,7 @@ import {
   EngineRowsFrame,
   EngineSendInput,
   EngineSteerInput,
+  EngineSwitchModelInput,
   EngineStopInput,
   EngineSubscribeInput,
   EngineSubscribeRowsInput,
@@ -393,6 +394,7 @@ export const WS_METHODS = {
   engineStop: "engine.stop",
   engineAnswer: "engine.answer",
   engineSteer: "engine.steer",
+  engineSwitchModel: "engine.switchModel",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -1335,6 +1337,12 @@ const WsEngineSteerRpc = Rpc.make(WS_METHODS.engineSteer, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+const WsEngineSwitchModelRpc = Rpc.make(WS_METHODS.engineSwitchModel, {
+  payload: EngineSwitchModelInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1458,6 +1466,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineStopRpc,
   WsEngineAnswerRpc,
   WsEngineSteerRpc,
+  WsEngineSwitchModelRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

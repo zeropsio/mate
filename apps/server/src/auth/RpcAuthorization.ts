@@ -153,6 +153,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.engineStop]: AuthOrchestrationOperateScope,
   [WS_METHODS.engineAnswer]: AuthOrchestrationOperateScope,
   [WS_METHODS.engineSteer]: AuthOrchestrationOperateScope,
+  [WS_METHODS.engineSwitchModel]: AuthOrchestrationOperateScope,
   [WS_METHODS.vcsRefreshStatus]: AuthOrchestrationReadScope,
   [WS_METHODS.vcsPull]: AuthOrchestrationOperateScope,
   [WS_METHODS.gitRunStackedAction]: AuthOrchestrationOperateScope,

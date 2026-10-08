@@ -42,6 +42,7 @@ import {
   type EngineRowsFrame,
   type EngineSendInput,
   type EngineSteerInput,
+  type EngineSwitchModelInput,
   type EngineStopInput,
   type EngineSubscribeInput,
   type EngineSubscribeRowsInput,
@@ -104,6 +105,10 @@ export interface EngineWireShape {
     input: EngineSteerInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly switchModel: (
+    input: EngineSwitchModelInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
 }
 
 // ── unserved ────────────────────────────────────────────────────────────────────────────────
@@ -145,6 +150,7 @@ export const unservedWire: EngineWireShape = {
   stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   answer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  switchModel: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
 
 // ── served ──────────────────────────────────────────────────────────────────────────────────
@@ -750,6 +756,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           _tag: "Steer",
           runId: input.runId,
           text: input.text,
+        }),
+      switchModel: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "SwitchModel",
+          model: input.model,
         }),
     } satisfies EngineWireShape;
   });

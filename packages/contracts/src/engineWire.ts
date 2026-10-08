@@ -358,6 +358,10 @@ export type EngineAnswerInput = typeof EngineAnswerInput.Type;
 export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
+/** The conversation's next model, on the agent it already runs (its next session opens with it). */
+export const EngineSwitchModelInput = Schema.Struct({ ...call, model: Schema.String });
+export type EngineSwitchModelInput = typeof EngineSwitchModelInput.Type;
+
 // ── results ─────────────────────────────────────────────────────────────────────────────────
 
 /** A call's answer: the engine's receipt (accepted or refused by its rules), or unserved. */
