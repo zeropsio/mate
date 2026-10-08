@@ -160,4 +160,62 @@ describe("an engine conversation in the account", () => {
     ]);
     expect(factOf(state, "mateEngineRun", engineFactId(ENV, "thread-ada/r/1"))).toBeUndefined();
   });
+
+  describe("forgetting", () => {
+    const held = () =>
+      apply(attached(attached(emptyAccount, ada), scout), [
+        delivery(ada, window(ada), { partial: true }),
+        delivery(scout, window(scout), { partial: true }),
+      ]);
+
+    it("returns a forgotten conversation's records to unknown and keeps every other conversation", () => {
+      const state = apply(held(), [
+        { kind: "forget", scopes: Object.values(engineConversationScopes(ada)) },
+      ]);
+      const read = readsOfState(state);
+      expect(read.fact("mateEngineRun", engineFactId(ENV, "thread-ada/r/1")).kind).toBe("unknown");
+      expect(read.fact("mateEngineItem", engineFactId(ENV, "thread-ada/r/1/i/2")).kind).toBe(
+        "unknown",
+      );
+      expect(read.fact("mateEngineConversation", engineFactId(ENV, "thread-ada")).kind).toBe(
+        "unknown",
+      );
+      expect(read.fact("mateEngineRun", engineFactId(ENV, "thread-scout/r/1")).kind).toBe("known");
+    });
+
+    it("drops a forgotten conversation's memberships, coverage and index entries, never claiming deletion", () => {
+      const state = apply(held(), [
+        { kind: "forget", scopes: Object.values(engineConversationScopes(ada)) },
+      ]);
+      const read = readsOfState(state);
+      const scopes = engineConversationScopes(ada);
+      expect(read.members(scopes.item).ids).toEqual([]);
+      expect(read.coverage(scopes.item)).toBe("unknown");
+      expect(indexOf(state, "engineItemsIn", engineFactId(ENV, "thread-ada")).size).toBe(0);
+      expect(indexOf(state, "engineItemsIn", engineFactId(ENV, "thread-scout")).size).toBe(2);
+      expect(read.members(scopes.item).excluded).toEqual([]);
+    });
+
+    it("publishes each forgotten key so a reader sees it go", () => {
+      const { changed } = reduceAccount(held(), {
+        kind: "forget",
+        scopes: Object.values(engineConversationScopes(ada)),
+      });
+      expect(changed).toContain(`mateEngineRun:${engineFactId(ENV, "thread-ada/r/1")}`);
+      expect(changed).toContain(`members:${engineConversationScopes(ada).run}`);
+      expect(changed).not.toContain(`mateEngineRun:${engineFactId(ENV, "thread-scout/r/1")}`);
+    });
+
+    it("changes nothing when there is nothing to forget", () => {
+      const state = held();
+      const after = reduceAccount(state, {
+        kind: "forget",
+        scopes: Object.values(
+          engineConversationScopes({ environmentId: ENV, conversationId: "x" }),
+        ),
+      });
+      expect(after.state).toBe(state);
+      expect(after.changed.size).toBe(0);
+    });
+  });
 });

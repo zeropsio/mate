@@ -127,6 +127,11 @@ export type AccountInput =
       readonly rows: ReadonlyArray<Row>;
       readonly removals: ReadonlyArray<RemovalInput>;
     }
+  /**
+   * Released detail returns to unknown: every fact these scopes observed, their memberships,
+   * coverage and index entries go. It never claims deletion; a later delivery brings them back.
+   */
+  | { readonly kind: "forget"; readonly scopes: ReadonlyArray<ScopeKey> }
   /** HQ's catchup of these scopes ended: what they list is the whole. */
   | { readonly kind: "hq-ready"; readonly scopes: ReadonlyArray<DeliveryScope> }
   | {
@@ -707,8 +712,41 @@ function completeScopes(
   return next;
 }
 
+function forget(
+  state: AccountState,
+  scopes: ReadonlyArray<ScopeKey>,
+  changed: Set<ReadKey>,
+): AccountState {
+  const forgotten = new Set(scopes);
+  let facts: Map<FactKey, Fact<unknown>> | null = null;
+  for (const [key, fact] of state.facts) {
+    if (!forgotten.has(fact.scope)) continue;
+    facts ??= new Map(state.facts);
+    facts.delete(key);
+    changed.add(key);
+  }
+  let memberships: Map<ScopeKey, Membership> | null = null;
+  for (const scope of scopes) {
+    if (!state.memberships.has(scope)) continue;
+    memberships ??= new Map(state.memberships);
+    memberships.delete(scope);
+    changed.add(`members:${scope}`);
+    changed.add(`coverage:${scope}`);
+  }
+  if (facts === null && memberships === null) return state;
+  return {
+    ...state,
+    facts: facts ?? state.facts,
+    memberships: memberships ?? state.memberships,
+  };
+}
+
 export function reduceAccount(state: AccountState, input: AccountInput): Reduction {
   const changed = new Set<ReadKey>();
+  if (input.kind === "forget") {
+    const next = forget(state, input.scopes, changed);
+    return { state: reindex(state, next, changed), changed, directives: [] };
+  }
   if (input.kind === "stream") {
     const { state: stream, directives } = transition(
       streamOf(state, input.key),
