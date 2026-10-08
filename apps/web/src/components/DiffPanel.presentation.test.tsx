@@ -1,7 +1,11 @@
+// @vitest-environment happy-dom
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ReactNode } from "react";
+import { act, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import DiffPanel from "./DiffPanel";
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const input = vi.hoisted(() => ({
   source: "local",
@@ -9,6 +13,7 @@ const input = vi.hoisted(() => ({
   pending: false,
   retained: false,
   otherKnown: false,
+  refreshes: { preview: vi.fn(), local: vi.fn(), remote: vi.fn() },
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("@tanstack/react-router", () => ({
@@ -98,7 +103,8 @@ vi.mock("../state/query", async (importOriginal) => ({
               : null,
     error: key === input.source ? input.error : null,
     isPending: key === input.source && input.pending,
-    refresh: () => {},
+    refresh:
+      key === "preview" || key === "local" || key === "remote" ? input.refreshes[key] : () => {},
   }),
 }));
 vi.mock("./ui/combobox", () => {
@@ -188,3 +194,36 @@ it.each([
 
 vi.mock("./diffs/AnnotatableCodeView", () => ({ AnnotatableCodeView: () => null }));
 vi.mock("./CheckpointHistoryDiff", () => ({ CheckpointHistoryDiff: () => null }));
+
+it.each(["toolbar", "failed read"])(
+  "%s offers Refresh diff to retry the preview and both ref lists",
+  async (location) => {
+    Object.assign(input, {
+      source: "local",
+      error: "Local refs refused.",
+      pending: false,
+      retained: false,
+      otherKnown: false,
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    try {
+      await act(() => root.render(<DiffPanel />));
+      Object.values(input.refreshes).forEach((refresh) => refresh.mockClear());
+      const button =
+        location === "toolbar"
+          ? container.querySelector<HTMLButtonElement>('button[aria-label="Refresh diff"]')
+          : container.querySelector<HTMLButtonElement>('[role="status"] button');
+      expect(button).not.toBeNull();
+      expect(button?.textContent || button?.getAttribute("aria-label")).toContain("Refresh diff");
+      await act(() => button!.click());
+      expect(input.refreshes.preview).toHaveBeenCalledOnce();
+      expect(input.refreshes.local).toHaveBeenCalledOnce();
+      expect(input.refreshes.remote).toHaveBeenCalledOnce();
+    } finally {
+      await act(() => root.unmount());
+      container.remove();
+    }
+  },
+);

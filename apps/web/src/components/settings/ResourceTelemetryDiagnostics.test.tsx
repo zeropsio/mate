@@ -162,10 +162,43 @@ it.each([
         ]
       : [],
   );
-  expect(tree.textContent?.includes("Waiting for the native process monitor")).toBe(!failed);
+  expect(tree.textContent).not.toContain("Waiting for the native process monitor");
+  if (!failed) expect(tree.textContent).toContain("No processes");
   if (processes.length) expect(tree.textContent).toContain("retained-worker");
   // Native collection does not own application attribution.
   expect(rendered.get("Instrumented application I/O")?.textContent).toContain(
     "No instrumented application I/O has been recorded yet.",
   );
+});
+
+it.each([
+  { name: "initial sample", processes: [], sampled: false },
+  { name: "restarted sample with retained rows", processes: [process], sampled: true },
+])("live tree waits for a $name and labels retained evidence", ({ processes, sampled }) => {
+  const delivered = snapshot(processes, false);
+  Object.assign(reads, {
+    error: null,
+    pending: false,
+    snapshot: {
+      ...delivered,
+      health: {
+        ...delivered.health,
+        native: {
+          status: "starting",
+          lastSampleAt: sampled ? Option.some(now) : Option.none(),
+          lastError: Option.none(),
+        },
+      },
+    },
+  });
+  const tree = sections().get("Live process tree")!;
+  expect(
+    Array.from(tree.querySelectorAll('[role="status"]'), (status) => status.textContent),
+  ).toEqual([
+    processes.length
+      ? "Loading live processes... Showing last-known data."
+      : "Loading live processes...",
+  ]);
+  expect(tree.textContent).not.toContain("No processes");
+  if (processes.length) expect(tree.textContent).toContain("retained-worker");
 });

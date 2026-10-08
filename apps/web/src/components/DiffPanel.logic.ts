@@ -77,6 +77,7 @@ export function baseRefPresentation(
   ];
   return {
     choices: buildBaseRefChoices(localView.items, remoteView.items),
+    canRetry: localView.state === "failed" || remoteView.state === "failed",
     retained: localView.retained || remoteView.retained,
     message: messages.length > 0 ? messages.join(" ") : null,
     emptyMessage:

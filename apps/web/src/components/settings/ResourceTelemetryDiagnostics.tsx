@@ -55,6 +55,7 @@ import {
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,
   shouldShowResourceMonitorRetry,
+  resourceTelemetryProcessPresentation,
   visibleResourceTelemetryProcesses,
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection, useRelativeTimeTick } from "./settingsLayout";
@@ -605,13 +606,6 @@ function ProcessTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {visible.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="px-4 py-5 text-xs text-muted-foreground sm:px-5">
-                  Waiting for the native process monitor.
-                </td>
-              </tr>
-            ) : null}
             {visible.map((process) => (
               <tr key={processIdentityKey(process)} className="hover:bg-muted/20">
                 <td className="px-4 py-2 sm:pl-5">
@@ -1256,15 +1250,8 @@ export function ResourceTelemetryDiagnostics() {
       >
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
-            presentation={collectionPresentation(
-              telemetry,
-              (data) => data.processes,
-              {
-                loading: "Loading live processes...",
-                unavailable: "Live processes unavailable.",
-              },
-              snapshot ? Option.getOrNull(snapshot.health.native.lastError) : null,
-            )}
+            presentation={resourceTelemetryProcessPresentation(telemetry)}
+            emptyLabel="No processes"
           >
             {(processes) => (
               <ProcessTable

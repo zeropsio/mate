@@ -420,6 +420,11 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         })
       : null,
   );
+  const refreshGitDiff = () => {
+    refreshBranchDiffPreview();
+    localBranchRefs.refresh();
+    remoteBranchRefs.refresh();
+  };
   const refPresentation = baseRefPresentation(
     localBranchRefs,
     remoteBranchRefs,
@@ -703,6 +708,11 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                     {refPresentation.retained && baseRefChoices.length > 0
                       ? " Showing last-known refs."
                       : null}
+                    {refPresentation.canRetry ? (
+                      <Button size="xs" variant="outline" onClick={refreshGitDiff}>
+                        Refresh diff
+                      </Button>
+                    ) : null}
                   </p>
                 ) : null}
                 {refPresentation.emptyMessage ? (
@@ -794,7 +804,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                   size="icon-sm"
                   variant="ghost"
                   aria-label={branchDiffPreview.isPending ? "Refreshing diff" : "Refresh diff"}
-                  onClick={refreshBranchDiffPreview}
+                  onClick={refreshGitDiff}
                 />
               }
             >
