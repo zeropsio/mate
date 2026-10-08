@@ -50,6 +50,7 @@ export const CREW_EFFECT_KINDS = {
   sweep: "crew.sweep",
   inspect: "crew.inspect",
   recover: "crew.recover",
+  hostFreeze: "crew.host.freeze",
   claimRead: "crew.claim.read",
   appRun: "crew.app.run",
   appStop: "crew.app.stop",
@@ -63,7 +64,7 @@ export type CrewEffectKind = (typeof CREW_EFFECT_KINDS)[keyof typeof CREW_EFFECT
  * `git/<handle>`: writes to one crewmate's copy (create, reset, checkpoint, merge-in).
  * `check/<handle>`: its setup and check, which can run for minutes. `deliver/<handle>`: what goes
  * into its conversation, in order. `host/<host>`: what touches a service as a whole (a landing on
- * your tree, the boot sweep and inspection, a recovery, the claim read, the crew apps, the deploy
+ * your tree, the boot sweep and inspection, a deploy's freeze and its recovery, the claim read, the crew apps, the deploy
  * poll), so presses on a host queue behind its boot work.
  */
 export const crewLanes = {

@@ -14,6 +14,7 @@ import { makeCheckpoint, type CheckpointPayload } from "./checkpoint.ts";
 import { makeClaimRead, type ClaimReadPayload } from "./claimRead.ts";
 import { makeDeliver, type DeliverPayload } from "./deliver.ts";
 import { makeDeployPoll, type DeployPollPayload } from "./deployPoll.ts";
+import { makeHostFreeze, type HostFreezePayload } from "./hostFreeze.ts";
 import { makeInspect, type InspectPayload } from "./inspect.ts";
 import { makeLand, type LandPayload } from "./land.ts";
 import { makeLaneCreate, type LaneCreatePayload } from "./laneCreate.ts";
@@ -35,6 +36,7 @@ export const makeCrewEffectHandlers = Effect.gen(function* () {
     yield* makeSweep,
     yield* makeInspect,
     yield* makeRecover,
+    yield* makeHostFreeze,
     yield* makeClaimRead,
     yield* makeAppRun,
     yield* makeAppStop,
@@ -61,6 +63,8 @@ export const crewEffects = {
     crewEffect(K.inspect, crewLanes.host(payload.host), payload),
   recover: (payload: RecoverPayload) =>
     crewEffect(K.recover, crewLanes.host(payload.host), payload),
+  hostFreeze: (payload: HostFreezePayload) =>
+    crewEffect(K.hostFreeze, crewLanes.host(payload.host), payload),
   claimRead: (payload: ClaimReadPayload) =>
     crewEffect(K.claimRead, crewLanes.host(payload.host), payload),
   appRun: (payload: AppRunPayload) => crewEffect(K.appRun, crewLanes.host(payload.host), payload),
@@ -79,6 +83,7 @@ export * from "./checkpoint.ts";
 export * from "./claimRead.ts";
 export * from "./deliver.ts";
 export * from "./deployPoll.ts";
+export * from "./hostFreeze.ts";
 export * from "./inspect.ts";
 export * from "./land.ts";
 export * from "./laneCreate.ts";
