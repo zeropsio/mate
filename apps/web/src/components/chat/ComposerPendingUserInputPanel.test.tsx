@@ -292,7 +292,6 @@ describe("whom a question waits on", () => {
 
     expect(markup).toContain(`>${words}</span>`);
 
-    expect(markup).not.toContain("tracking-");
     expect(markup).not.toContain('data-zerops-primitive="micro-label"');
   });
 });

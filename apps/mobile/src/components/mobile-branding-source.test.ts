@@ -13,6 +13,8 @@ vi.mock("react-native", async () => {
       accessibilityLabel?: string;
       accessibilityRole?: string;
       role?: string;
+      value?: string;
+      placeholder?: string;
       accessibilityElementsHidden?: boolean;
     }) =>
       createElement(
@@ -21,10 +23,13 @@ vi.mock("react-native", async () => {
           "aria-label": props.accessibilityLabel,
           role: props.accessibilityRole ?? props.role,
           "aria-hidden": props.accessibilityElementsHidden,
+          defaultValue: props.value,
+          placeholder: props.placeholder,
         },
         props.children,
       );
   return {
+    ScrollView: host("div"),
     View: host("div"),
     Text: host("span"),
     Pressable: host("div"),
@@ -62,6 +67,77 @@ vi.mock("../state/workspace", () => ({
   }),
 }));
 
+vi.mock("@effect/atom-react", async () => {
+  const { AsyncResult } = await import("effect/reactivity");
+  return {
+    useAtomValue: (atom: unknown) => (atom === "server-config" ? null : AsyncResult.success({})),
+    useAtomSet: () => () => {},
+  };
+});
+vi.mock("../state/server", () => ({
+  serverEnvironment: { configValueAtom: () => "server-config" },
+}));
+vi.mock("react-native-reanimated", async () => {
+  const { View } = await import("react-native");
+  return {
+    default: { View },
+    LinearTransition: { duration: () => undefined },
+    FadeIn: { duration: () => undefined },
+    FadeOut: { duration: () => undefined },
+  };
+});
+vi.mock("../features/connection/ConnectionStatusDot", () => ({ ConnectionStatusDot: () => null }));
+vi.mock("../lib/copyTextWithHaptic", () => ({ copyTextWithHaptic: () => {} }));
+vi.mock("@react-navigation/native", () => ({
+  useNavigation: () => ({ goBack: () => {}, navigate: () => {} }),
+}));
+vi.mock("@clerk/expo", () => ({ useAuth: () => ({ isLoaded: true, isSignedIn: false }) }));
+vi.mock("expo-notifications", () => ({}));
+vi.mock("../features/layout/AdaptiveWorkspaceLayout", () => ({
+  useAdaptiveWorkspaceLayout: () => ({ layout: { usesSplitView: false } }),
+}));
+vi.mock("../features/layout/native-glass-header-items", () => ({
+  withNativeGlassHeaderItem: (item: unknown) => item,
+}));
+vi.mock("../features/cloud/publicConfig", () => ({
+  hasCloudPublicConfig: () => false,
+  resolveRelayClerkTokenOptions: () => ({}),
+}));
+vi.mock("../state/use-remote-environment-registry", () => ({
+  useSavedRemoteConnections: () => ({ savedConnectionsById: {} }),
+}));
+vi.mock("../features/zerops/ZeropsSessionProvider", () => ({
+  useZeropsSession: () => ({ status: "signed-out", user: null }),
+}));
+vi.mock("../state/preferences", () => ({
+  mobilePreferencesAtom: "preferences",
+  updateMobilePreferencesAtom: "update-preferences",
+}));
+vi.mock("../lib/runtime", () => ({ runtime: {} }));
+vi.mock("../features/updates/app-updates", () => ({
+  isAppUpdateCheckAvailable: () => false,
+  registerHiddenUpdateTap: () => {},
+  runAppUpdateCheck: () => {},
+}));
+vi.mock("./ThemedSwitch", () => ({ ThemedSwitch: () => null }));
+vi.mock("../features/agent-awareness/capabilities", () => ({
+  supportsAgentAwarenessPush: () => false,
+}));
+vi.mock("../features/agent-awareness/liveActivityPreferences", () => ({
+  setLiveActivityUpdatesEnabled: () => {},
+}));
+vi.mock("../features/agent-awareness/notificationPermissions", () => ({
+  requestAgentNotificationPermission: () => {},
+}));
+vi.mock("../features/agent-awareness/remoteRegistration", () => ({
+  getAgentAwarenessRegistrationStatus: () => "unknown",
+  subscribeAgentAwarenessRegistrationStatus: () => () => {},
+  refreshAgentAwarenessRegistration: () => {},
+}));
+import { EnvironmentId } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
+import { ConnectionEnvironmentRow } from "../features/connection/ConnectionEnvironmentRow";
+import { SettingsRouteScreen } from "../features/settings/SettingsRouteScreen";
 import { BrandMark } from "./BrandMark";
 import { CompactBrandTitle, getCompactBrandHeaderOptions } from "./CompactBrandTitle";
 import { HomeHeader } from "../features/home/HomeHeader.android";
@@ -123,4 +199,49 @@ describe("mobile native branding", () => {
       ).not.toBeNull();
     },
   );
+});
+
+describe("retired mobile connection branding", () => {
+  it("never names a connection T3 Connect in its collapsed or expanded surface", () => {
+    for (const expanded of [false, true]) {
+      const document = render(
+        createElement(ConnectionEnvironmentRow, {
+          environment: {
+            environmentId: EnvironmentId.make("env-ada"),
+            environmentLabel: "Ada",
+            displayUrl: "https://ada.example",
+            isRelayManaged: false,
+            connectionState: "connected",
+            connectionError: null,
+            connectionErrorTraceId: null,
+          },
+          expanded,
+          onToggle: () => {},
+          onReconnect: () => {},
+          onRemove: () => {},
+          onUpdate: async () => AsyncResult.success(undefined),
+        }),
+      );
+      expect(document.body.textContent).toContain("Ada");
+      const labels = Array.from(document.querySelectorAll("[aria-label], input")).map((node) =>
+        [
+          node.getAttribute("aria-label"),
+          node.getAttribute("placeholder"),
+          node.getAttribute("value"),
+        ].join(" "),
+      );
+      expect([document.body.textContent, ...labels].join(" ")).not.toContain("T3 Connect");
+    }
+  });
+  it("never shows T3 Connect on Settings", () => {
+    const document = render(createElement(SettingsRouteScreen));
+    expect(document.body.textContent).toContain("Zerops Account");
+    expect(document.body.textContent).toContain("Environments");
+    expect(document.body.textContent).not.toContain("T3 Connect");
+    expect(
+      Array.from(document.querySelectorAll("[aria-label]"))
+        .map((node) => node.getAttribute("aria-label"))
+        .join(" "),
+    ).not.toContain("T3 Connect");
+  });
 });

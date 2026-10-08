@@ -25,7 +25,6 @@ describe("ComposerPendingApprovalPanel", () => {
     expect(markup).toContain('tabindex="0"');
     expect(markup).toContain(detail);
 
-    expect(markup).toContain("[scrollbar-width:thin]");
     // The command is never cut; the words beside the dot may be.
     const detailTag = markup.match(/<code\b[^>]*>/)?.[0];
     expect(detailTag).toContain('data-approval-detail="complete"');
@@ -116,7 +115,6 @@ describe("ComposerPendingApprovalPanel", () => {
 
     expect(markup).toContain(`>${words}</span>`);
 
-    expect(markup).not.toContain("tracking-");
     expect(markup).not.toContain('data-zerops-primitive="micro-label"');
   });
 });

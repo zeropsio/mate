@@ -2236,7 +2236,12 @@ describe("a project collapsed to its heading", () => {
       task: undefined,
     };
     const html = render([CRM_DEV_CONNECTED], { getActivity: () => failed });
-    expect(markupDom(html).body.textContent).toContain("crm-dev stopped on an error");
+    const document = markupDom(html);
+    expect(document.body.textContent).toContain("crm-dev stopped on an error");
+    expect(document.querySelector('[data-mate-face-state="idle"]')).not.toBeNull();
+    expect(document.querySelector('[data-mate-face-state="needs"]')).toBeNull();
+    expect(document.querySelector('[data-dot="failed"]')).not.toBeNull();
+    expect(document.querySelector('[data-dot="attention"]')).toBeNull();
   });
 
   it("greets nothing its folded heading only stood in for until the Mate's state was read", () => {

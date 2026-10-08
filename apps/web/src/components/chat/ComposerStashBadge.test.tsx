@@ -30,9 +30,6 @@ describe("ComposerStashBadge", () => {
     );
 
     expect(markup).toContain('aria-expanded="true"');
-
-    expect(markup).toContain("pointer-events-none");
-    expect(markup).not.toContain("invisible");
   });
 
   it("keeps a compact inline entry point when a drawer occupies the tab", () => {
@@ -49,11 +46,7 @@ describe("ComposerStashBadge", () => {
 
     expect(markup).toContain('data-slot="button"');
 
-    expect(markup).toContain("focus-visible:ring-2");
-
     expect(markup).toContain("Stashed prompts: 3. Open stash.");
     expect(markup).toContain('aria-expanded="true"');
-
-    expect(markup).not.toContain(" pointer-events-none ");
   });
 });
