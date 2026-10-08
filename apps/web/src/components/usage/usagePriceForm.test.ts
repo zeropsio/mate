@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseUsagePriceForm, usagePriceForm } from "./usagePriceForm.ts";
+import {
+  parseUsageAliasForm,
+  parseUsagePriceForm,
+  previewAliasSuggestions,
+  usagePriceForm,
+} from "./usagePriceForm.ts";
 
 describe("model price entry", () => {
   it("preserves exact model IDs and fractional rates", () => {
@@ -69,5 +74,43 @@ describe("model price entry", () => {
     expect(parseUsagePriceForm({ ...form, cacheReadCostPerMillionTokens: "-1" })).toBeNull();
     expect(parseUsagePriceForm({ ...form, cacheWriteCostPerMillionTokens: "invalid" })).toBeNull();
     expect(parseUsagePriceForm({ ...form, model: " " })).toBeNull();
+  });
+});
+
+describe("parseUsageAliasForm", () => {
+  it.each([
+    {
+      sentence: "maps a model to the model it counts as",
+      form: { model: " a ", target: " b " },
+      parsed: { model: "a", target: "b" },
+    },
+    { sentence: "needs both model IDs", form: { model: "a", target: "  " }, parsed: null },
+    { sentence: "does not map a model to itself", form: { model: "a", target: "a" }, parsed: null },
+  ])("$sentence", ({ form, parsed }) => {
+    expect(parseUsageAliasForm(form)).toEqual(parsed);
+  });
+});
+
+describe("previewAliasSuggestions", () => {
+  it("offers to count a preview model as its released model when both appear in usage", () => {
+    expect(
+      previewAliasSuggestions(
+        [
+          "claude-sonnet-4-5",
+          "claude-sonnet-4-5-preview",
+          "gpt-6-preview-2026-09-01",
+          "gpt-6",
+          "o9-preview",
+        ],
+        {},
+      ),
+    ).toEqual([
+      { model: "claude-sonnet-4-5-preview", target: "claude-sonnet-4-5" },
+      { model: "gpt-6-preview-2026-09-01", target: "gpt-6" },
+    ]);
+  });
+
+  it("does not offer a model that is already mapped", () => {
+    expect(previewAliasSuggestions(["a", "a-preview"], { "a-preview": "a" })).toEqual([]);
   });
 });

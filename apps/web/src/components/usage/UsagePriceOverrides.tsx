@@ -28,7 +28,13 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { parseUsagePriceForm, USAGE_PRICE_FIELDS, usagePriceForm } from "./usagePriceForm";
+import {
+  parseUsageAliasForm,
+  parseUsagePriceForm,
+  previewAliasSuggestions,
+  USAGE_PRICE_FIELDS,
+  usagePriceForm,
+} from "./usagePriceForm";
 
 export function UsagePriceOverrides({
   usage,
@@ -313,6 +319,148 @@ function EnvironmentModelPrices({
           </div>
         </fieldset>
       </form>
+      <EnvironmentModelAliases
+        aliases={settings?.usageModelAliases ?? {}}
+        models={models}
+        unavailable={
+          unavailable ??
+          (environment.serverConfig?.environment.capabilities.usageModelAliases === true
+            ? null
+            : "Update this environment's server to count one model as another.")
+        }
+        save={async (model, target) => {
+          const result = await updateSettings({
+            environmentId: environment.environmentId,
+            input: { patch: { usageModelAliases: { [model]: target } } },
+          });
+          return result._tag !== "Failure";
+        }}
+      />
     </>
+  );
+}
+
+/**
+ * Models counted as another: a preview ID under its released name, say. A
+ * mapped model leaves the page; its tokens and cost join the target's row and
+ * take the target's price.
+ */
+function EnvironmentModelAliases({
+  aliases,
+  models,
+  unavailable,
+  save,
+}: {
+  readonly aliases: Readonly<Record<string, string>>;
+  readonly models: readonly string[];
+  readonly unavailable: string | null;
+  readonly save: (model: string, target: string | null) => Promise<boolean>;
+}) {
+  const [form, setForm] = useState({ model: "", target: "" });
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const readOnly = unavailable !== null || pending;
+  const parsed = parseUsageAliasForm(form);
+  const suggestions = previewAliasSuggestions(models, aliases);
+  const apply = async (model: string, target: string | null) => {
+    if (readOnly) return;
+    setPending(true);
+    setError(null);
+    try {
+      if (await save(model, target)) {
+        if (target !== null) setForm({ model: "", target: "" });
+      } else {
+        setError("Could not save. Try again.");
+      }
+    } finally {
+      setPending(false);
+    }
+  };
+  const mapped = Object.entries(aliases).sort(([left], [right]) => left.localeCompare(right));
+
+  return (
+    <section className="grid gap-3 border-t border-border pt-4">
+      <h3 className="text-sm font-medium">Count one model as another</h3>
+      {suggestions.map((suggestion) => (
+        <div key={suggestion.model} className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="min-w-0 flex-1 break-all text-muted-foreground">
+            {suggestion.model} looks like a preview of {suggestion.target}.
+          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={readOnly}
+            onClick={() => void apply(suggestion.model, suggestion.target)}
+          >
+            Count it as {suggestion.target}
+          </Button>
+        </div>
+      ))}
+      {mapped.length > 0 ? (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {mapped.map(([model, target]) => (
+            <li key={model} className="flex flex-wrap items-center gap-3 p-3">
+              <p className="min-w-0 flex-1 break-all text-sm">
+                {model} <span className="text-muted-foreground">counts as</span> {target}
+              </p>
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={readOnly}
+                aria-label={`Stop counting ${model} as ${target}`}
+                onClick={() => void apply(model, null)}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <form
+        className="grid gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (parsed) void apply(parsed.model, parsed.target);
+        }}
+      >
+        <fieldset disabled={readOnly} className="grid min-w-0 grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="usage-alias-model">Model ID</Label>
+            <Input
+              id="usage-alias-model"
+              list="usage-price-models"
+              value={form.model}
+              placeholder="Exact model ID from usage"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setForm({ ...form, model: event.target.value })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="usage-alias-target">Counts as</Label>
+            <Input
+              id="usage-alias-target"
+              list="usage-price-models"
+              value={form.target}
+              placeholder="The model it belongs to"
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setForm({ ...form, target: event.target.value })}
+            />
+          </div>
+        </fieldset>
+        {unavailable ? <p className="text-sm text-muted-foreground">{unavailable}</p> : null}
+        {error ? (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={parsed === null || readOnly}>
+            {pending ? "Saving..." : "Count it"}
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }

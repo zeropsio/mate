@@ -21,6 +21,10 @@ vi.mock("@effect/atom-react", async (original) => ({
   useAtomValue: () => state.presentations,
 }));
 vi.mock("../../env", () => ({ isElectron: false }));
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+  useCanGoBack: () => false,
+}));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
 vi.mock("../../state/usage", () => ({
   useProviderUsage: () => ({
@@ -142,6 +146,8 @@ const presentation = (phase: "connecting" | "connected") => ({
 });
 
 beforeEach(() => {
+  // The page listens for its keyboard shortcuts and Escape on the window.
+  vi.stubGlobal("window", new EventTarget());
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   state.baseline = "resolving";
   state.answered = false;
