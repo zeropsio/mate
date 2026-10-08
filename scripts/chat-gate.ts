@@ -124,7 +124,13 @@ export const chatGateStages: ReadonlyArray<ChatGateStage> = [
       {
         cwd: "apps/server",
         env: { CREW_WORLD: "engine" },
-        args: ["test", "run", "src/zerops/crew/CrewEngine", "--allowOnly=false"],
+        args: [
+          "test",
+          "run",
+          "src/zerops/crew/CrewEngine",
+          "src/zerops/crew/registerCrewRpc.test.ts",
+          "--allowOnly=false",
+        ],
       },
     ],
   },

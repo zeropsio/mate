@@ -13,6 +13,7 @@ import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
+import { crewJourney } from "./testing/crewWorld.ts";
 
 const observe = {
   observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
@@ -54,10 +55,15 @@ describe("registerCrewRpc", () => {
     ),
   );
 
+  // On the world the crew journeys run on (`CREW_WORLD`): V1's crew, or the engine's.
   it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        const handlers = registerCrewRpc({ crew: yield* CrewEngine, subject: SUBJECT, ...observe });
+        const handlers = registerCrewRpc({
+          crew: yield* world.service,
+          subject: SUBJECT,
+          ...observe,
+        });
         const latest = handlers[WS_METHODS.subscribeZeropsCrew]({}).pipe(
           Stream.take(1),
           Stream.runHead,
@@ -84,7 +90,7 @@ describe("registerCrewRpc", () => {
           files: files.files.map((file) => file.path),
           after: [after.crew?.name, after.crewmates.map((mate) => mate.handle)],
           seq: after.seq > before.seq,
-          installs: yield* Ref.get(world.installs),
+          installs: yield* world.profileInstalls,
         }).toEqual({
           before: "none",
           files: ["brief.md", "crew.yaml", "jobs/erik.md"],
@@ -92,7 +98,7 @@ describe("registerCrewRpc", () => {
           seq: true,
           installs: 1,
         });
-      }),
+      }).pipe(Effect.orDie),
     ),
   );
 });

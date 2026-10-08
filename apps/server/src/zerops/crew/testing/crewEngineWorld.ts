@@ -873,6 +873,7 @@ const enginePort = (input: {
       }),
     toolProfilesInstalled: Effect.map(policy, Option.isSome),
     profileInstalls: Ref.get(fx.installs),
+    service: crew,
     serviceSessions: Ref.get(fx.sshCalls),
     deployReads: Ref.get(fx.processReads),
   };

@@ -86,7 +86,11 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
     ),
   );
   expect(commands).toEqual([
-    ["F: crew journeys on the engine", "engine", ["src/zerops/crew/CrewEngine"]],
+    [
+      "F: crew journeys on the engine",
+      "engine",
+      ["src/zerops/crew/CrewEngine", "src/zerops/crew/registerCrewRpc.test.ts"],
+    ],
   ]);
 });
 

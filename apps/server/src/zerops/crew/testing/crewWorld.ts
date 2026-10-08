@@ -44,7 +44,7 @@ import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import type { MateLogin } from "../../ZeropsLogins.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
-import { CrewEngine } from "../CrewEngine.ts";
+import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import {
   CrewThreadDirectory,
@@ -336,6 +336,8 @@ export interface CrewWorld {
   readonly toolProfilesInstalled: Effect.Effect<boolean>;
   /** How many times the crew set up its tool profiles. */
   readonly profileInstalls: Effect.Effect<number>;
+  /** The crew's service as the server serves it, for its RPCs. */
+  readonly service: Effect.Effect<CrewEngineService>;
   /** How many sessions the crew opened on its services (git and shell). */
   readonly serviceSessions: Effect.Effect<number>;
   /** How many times the crew read the platform's deploy state. */
@@ -691,6 +693,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
       ),
     toolProfilesInstalled: Effect.map(policy, Option.isSome),
     profileInstalls: Ref.get(fakes.installs),
+    service: engine,
     serviceSessions: Ref.get(fakes.sshCalls),
     deployReads: Ref.get(fakes.processReads),
     v1: { fakes, run },
