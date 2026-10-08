@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { EffectHandlers, handlersOf } from "../outbox/EffectWorker.ts";
+import { makeHistoryImport } from "./historyImport.ts";
 import { makeProviderInterrupt } from "./providerInterrupt.ts";
 import { makeProviderRespond } from "./providerRespond.ts";
 import { makeProviderSend } from "./providerSend.ts";
@@ -28,6 +29,7 @@ export const layer = Layer.effect(
       yield* makeProviderRespond,
       yield* makeSessionClose,
       yield* makeWorkspaceFinish,
+      yield* makeHistoryImport(),
     );
   }),
 );
