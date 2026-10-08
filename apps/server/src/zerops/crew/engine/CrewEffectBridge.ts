@@ -375,7 +375,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
       verdict: (value, asked): Effect.Effect<Verdict<"crew.checkpoint">> => {
         if (value._tag === "checked") {
           return value.edits
-            ? Effect.succeed({ _tag: "edited-after-check" })
+            ? withStats(asked.handle, { _tag: "edited-after-check" } as const)
             : withStats(asked.handle, { _tag: "unchanged" } as const);
         }
         const { commit, changes } = value;
@@ -383,19 +383,19 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
           case "committed":
           case "unchanged":
             return changes.length > 0
-              ? Effect.succeed({
+              ? withStats(asked.handle, {
                   _tag: "park",
                   detail: `a ref changed outside the engine: ${changes.map((change) => change.ref).join(", ")}`,
-                })
+                } as const)
               : withStats(asked.handle, { _tag: commit._tag });
           case "parked":
-            return Effect.succeed({
+            return withStats(asked.handle, {
               _tag: "park",
               detail:
                 commit.reason === "unknown-tip"
                   ? MOVED_OUTSIDE
                   : `the WIP commit stopped on ${GUARD_WORDS[commit.reason]}: ${commit.paths.join(", ")}`,
-            });
+            } as const);
           case "rework":
           case "frozen":
           case "lane-missing":

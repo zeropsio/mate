@@ -420,7 +420,12 @@ const rows: ReadonlyArray<Row> = [
         return yield* value("crew.checkpoint", checkpoint());
       }),
     ),
-    expected: () => ({ _tag: "park", detail: "the WIP commit stopped on a secret file: .env" }),
+    // The copy reads as the guard left it: dirty with what it held back.
+    expected: () => ({
+      _tag: "park",
+      detail: "the WIP commit stopped on a secret file: .env",
+      stats: { ahead: 0, insertions: 0, deletions: 0, dirty: true },
+    }),
   },
   {
     sentence: "a turn's save on a checked copy with edits reads as edited after its check",
@@ -431,7 +436,10 @@ const rows: ReadonlyArray<Row> = [
         return yield* value("crew.checkpoint", checkpoint({ checked: true }));
       }),
     ),
-    expected: () => ({ _tag: "edited-after-check" }),
+    expected: () => ({
+      _tag: "edited-after-check",
+      stats: { ahead: 0, insertions: 0, deletions: 0, dirty: true },
+    }),
   },
   {
     sentence:
@@ -458,6 +466,7 @@ const rows: ReadonlyArray<Row> = [
       {
         _tag: "park",
         detail: "a ref changed outside the engine: refs/t3/crew/run-1/task-2-k1/1",
+        stats: { ahead: 2, insertions: 1, deletions: 0, dirty: false },
       },
     ],
   },

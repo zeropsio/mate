@@ -3302,7 +3302,7 @@ const settled = (
       const ending = ((pending.payload as { ending?: Ending }).ending ?? {
         kind: "completed",
       }) as Ending;
-      if (saved._tag === "committed" || saved._tag === "unchanged") {
+      if ("stats" in saved && saved.stats !== undefined) {
         b.emit({
           _tag: "CrewmateUpdated",
           handle: member.handle,

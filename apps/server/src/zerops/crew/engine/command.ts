@@ -341,9 +341,13 @@ export interface CrewEffectValues {
   readonly "crew.checkpoint":
     | { readonly _tag: "committed" | "unchanged"; readonly stats?: LaneStatsValue }
     /** `rework`: an open merge still carries conflict markers; nothing was committed. */
-    | { readonly _tag: "edited-after-check" | "lane-missing" | "frozen" | "rework" }
-    /** A guard stopped the WIP commit, or a ref moved outside the engine: the task stops. */
-    | { readonly _tag: "park"; readonly detail: string };
+    | { readonly _tag: "lane-missing" | "frozen" | "rework" }
+    | { readonly _tag: "edited-after-check"; readonly stats?: LaneStatsValue }
+    /**
+     * A guard stopped the WIP commit, or a ref moved outside the engine: the task stops, its
+     * copy read as it was left (dirty with what the guard held back).
+     */
+    | { readonly _tag: "park"; readonly detail: string; readonly stats?: LaneStatsValue };
   readonly "crew.mergeIn":
     | {
         readonly _tag: "merged" | "current";
