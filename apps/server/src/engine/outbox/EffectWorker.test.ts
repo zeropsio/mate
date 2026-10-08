@@ -764,6 +764,21 @@ describe("EffectWorker: another owner kind", () => {
     }),
   );
 
+  it.effect("each boot tells a crew it restarted, so it reconciles what it holds", () =>
+    Effect.gen(function* () {
+      const recoveries = yield* Effect.gen(function* () {
+        yield* askCrew("git-ana", "test.echo", "git/ana");
+        const first = yield* makeEffectWorker(boot1);
+        yield* first.reconcileAtBoot();
+        const second = yield* makeEffectWorker(boot2);
+        yield* second.reconcileAtBoot();
+        yield* second.reconcileAtBoot();
+        return (yield* (yield* Conversations).owner(tallyDomain).state(tallyOwner)).recoveries;
+      }).pipe(Effect.provide(withCrew([])));
+      expect(recoveries).toBe(2);
+    }),
+  );
+
   it.effect("a crew effect rides out a minute's outage that fails a conversation's for good", () =>
     Effect.gen(function* () {
       const states = yield* Effect.gen(function* () {
