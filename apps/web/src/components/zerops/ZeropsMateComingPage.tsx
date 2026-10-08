@@ -889,13 +889,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         />
       }
     >
-      <div className="absolute inset-x-0 top-0 z-20">
-        <MateHealthNotice projectId={projectId} name={named.name} />
-      </div>
       {opening ? (
-        <ConversationOpeningStage ready={false} name={named.name} mate={named} />
+        <ConversationOpeningStage
+          ready={false}
+          name={named.name}
+          mate={named}
+          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
+        />
       ) : view === null ? null : (
         <MateEmptyStateView
+          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
           coming={view}
           // Handed over to from the creation's view, whose headline held the focus.
           focusOnArrival={made !== undefined}

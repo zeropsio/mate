@@ -248,12 +248,20 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     headline,
     secondary,
     face,
+    notice,
   }: {
+    notice?: ReactNode;
     headline: string;
     secondary: string;
     face: string;
   }) =>
-    h("section", { "data-kind": "reaching", "data-mate-face-state": face }, headline, secondary),
+    h(
+      "section",
+      { "data-kind": "reaching", "data-mate-face-state": face },
+      headline,
+      secondary,
+      notice,
+    ),
   useMateEmptyState: () => ({
     standUpFailure: app.standUpFailed ? { retrying: false, retry: app.standUpRetry } : undefined,
     phase: null,
@@ -265,10 +273,12 @@ vi.mock("./ZeropsMateEmptyState", () => ({
     dialog: null,
   }),
   MateEmptyStateView: ({
+    notice,
     coming,
     mate,
     standUpFailure,
   }: {
+    readonly notice?: ReactNode;
     readonly standUpFailure?: { retry: () => void };
     readonly coming: {
       readonly kind: string;
@@ -284,6 +294,7 @@ vi.mock("./ZeropsMateEmptyState", () => ({
       mate.name,
       coming.headline,
       coming.sentence,
+      notice,
       coming.below,
       standUpFailure === undefined
         ? null

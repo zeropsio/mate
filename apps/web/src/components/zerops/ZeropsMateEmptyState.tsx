@@ -329,6 +329,7 @@ export function MateEmptyStateView({
   runtimes,
   focusOnArrival = false,
   bottomInset = 0,
+  notice,
 }: {
   /** Null while the directory has not named the Mate: its places held, empty. */
   readonly mate: DrawnMate | null;
@@ -354,6 +355,7 @@ export function MateEmptyStateView({
   readonly focusOnArrival?: boolean;
   /** The conversation's measured footer; the stage occupies the room above it. */
   readonly bottomInset?: number;
+  readonly notice?: ReactNode;
 }) {
   const mate = named ?? UNNAMED;
   const headline = useRef<HTMLHeadingElement>(null);
@@ -415,6 +417,7 @@ export function MateEmptyStateView({
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <ArrivalComposition
+      notice={notice}
       bottomInset={bottomInset}
       clauses={clauses}
       headline={headline}
@@ -451,6 +454,7 @@ function ArrivalComposition({
   headline,
   tracks = true,
   bottomInset = 0,
+  notice,
 }: {
   readonly kind: ArrivalKind;
   /** Null while the directory has not named the Mate: its face's place held, empty. */
@@ -467,6 +471,7 @@ function ArrivalComposition({
   readonly headline?: RefObject<HTMLHeadingElement | null>;
   readonly tracks?: boolean;
   readonly bottomInset?: number;
+  readonly notice?: ReactNode;
 }) {
   const sentenceId = useId();
   // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
@@ -559,6 +564,7 @@ function ArrivalComposition({
             </p>
           </ArrivalSwap>
         )}
+        {notice}
         <ArrivalSwap
           className={cn("w-full max-w-126", slot.node !== null && "mt-7")}
           data-arrival-slot={slot.id}
@@ -663,6 +669,7 @@ export function MateConnectionState({
   headline,
   secondary,
   actions,
+  notice,
   severity = "info",
 }: {
   readonly severity?: "info" | "attention" | "danger" | undefined;
@@ -671,9 +678,11 @@ export function MateConnectionState({
   readonly headline: string;
   readonly secondary: string;
   readonly actions: ReactNode;
+  readonly notice?: ReactNode;
 }) {
   return (
     <ArrivalComposition
+      notice={notice}
       clauses={[headline]}
       kind="reaching"
       mate={mate}

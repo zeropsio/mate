@@ -261,7 +261,6 @@ import {
   DownloadIcon,
   GitBranchIcon,
   HistoryIcon,
-  LockIcon,
   Minimize2Icon,
   PaperclipIcon,
   RefreshCwIcon,
@@ -2494,6 +2493,7 @@ export default function ChatView(props: ChatViewProps) {
         id: `health:${environmentId}`,
         variant: healthCopy.severity === "critical" ? "error" : "warning",
         icon: null,
+        layout: "centered",
         title: healthCopy.title,
         description: healthCopy.description,
       });
@@ -5528,10 +5528,11 @@ export default function ChatView(props: ChatViewProps) {
       return {
         id: `agent-login:${zeropsOwnedAgent.agentId}`,
         variant: "warning",
-        icon: <LockIcon />,
+        icon: null,
+        layout: "centered",
         title: expired,
         actions: (
-          <Button size="xs" onClick={openAgentAuthDialog}>
+          <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
             Sign in
           </Button>
         ),
@@ -5543,10 +5544,11 @@ export default function ChatView(props: ChatViewProps) {
     return {
       id: `agent-ownership:${zeropsOwnedAgent.agentId}:${zeropsAgentOwnership}`,
       variant: "warning",
-      icon: <LockIcon />,
+      icon: null,
+      layout: "centered",
       title: notice,
       actions: (
-        <Button size="xs" onClick={openAgentAuthDialog}>
+        <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
           {AGENT_OWNERSHIP_RECOVERY_LABEL}
         </Button>
       ),
