@@ -12,9 +12,9 @@ describe("engineAdapters", () => {
   it.each([
     [
       "a person's run is their session's turn",
-      { kind: "person", subject: "zerops:jan" },
+      { kind: "person", subject: "zerops-user:jan" },
       { kind: "person", itemId: "mate/r/1/i/1" },
-      { kind: "session", subject: "zerops:jan" },
+      { kind: "session", subject: "zerops-user:jan" },
     ],
     [
       "a crew wake is a crew turn for its starter",
@@ -30,7 +30,7 @@ describe("engineAdapters", () => {
     ],
     [
       "any other wake is admitted like a stand-up, for the person it continues",
-      { kind: "person", subject: "zerops:eva" },
+      { kind: "person", subject: "zerops-user:eva" },
       wake("usage-resume"),
       { kind: "standup", startedBy: "eva" },
     ],
