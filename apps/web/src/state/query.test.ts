@@ -104,3 +104,28 @@ describe("collection read evidence", () => {
     ).toBe("failed");
   });
 });
+
+it("an incomplete owner read cannot prove an empty collection", () => {
+  const presentation = collectionPresentation(
+    {
+      data: [] as string[],
+      error: null,
+      isPending: false,
+      read: {
+        state: "known",
+        value: [] as string[],
+        coverage: "partial",
+        asOf: { ordinal: 1, atMs: 10 },
+        freshness: { kind: "live" },
+      },
+    },
+    (value) => value,
+    { loading: "Loading...", unavailable: "Unavailable." },
+  );
+  expect(presentation).toEqual({
+    state: "loading",
+    items: [],
+    message: "Loading...",
+    retained: true,
+  });
+});

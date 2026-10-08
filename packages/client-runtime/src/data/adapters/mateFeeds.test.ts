@@ -18,7 +18,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AsyncResult, AtomRegistry } from "effect/reactivity";
-import { type MateFeedKey } from "../families/mateFeeds.ts";
+import { mateFeedScope, type MateFeedKey } from "../families/mateFeeds.ts";
 import { mateFeed } from "../projections/mateFeeds.ts";
 import { readsOfState, makeAccountStore } from "../store.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
@@ -109,7 +109,13 @@ describe("account-owned Mate feeds", () => {
       expect(r.read()).toMatchObject({
         state: "known",
         value: auth,
-        freshness: { kind: "stale", reason: { kind: "source-recovering" } },
+        freshness: {
+          kind: "stale",
+          reason: {
+            kind: "revalidation-failed",
+            failure: { kind: "transport", detail: "offline" },
+          },
+        },
       });
       feeds.close();
       r.close();
@@ -407,7 +413,11 @@ it.live(
         freshness: { kind: "stale" },
         value: { config: { cwd: "/first" } },
       });
-      expect(r.registry.get(binding)).toMatchObject({ _tag: "Failure", waiting: false });
+      expect(r.registry.get(binding)).toMatchObject({
+        _tag: "Success",
+        waiting: true,
+        read: { freshness: { kind: "stale" }, evidence: { stream: { fault: null } } },
+      });
       yield* SubscriptionRef.set(sessions, Option.some(session(Deferred.await(second))));
       yield* settle;
       expect(read()).toMatchObject({
@@ -596,3 +606,40 @@ it("refresh retries the account in its own registry after another registry reads
     b.close();
   }
 });
+
+it.live(
+  "retained evidence awaiting its source without a fault does not invent a read failure",
+  () =>
+    Effect.gen(function* () {
+      const r = rig();
+      const feeds = makeMateFeeds({
+        store: r.store,
+        wire: {
+          open: () =>
+            Stream.concat(
+              Stream.make({ kind: "session" as const }, { kind: "value" as const, value: auth }),
+              Stream.never,
+            ),
+        },
+      });
+      r.registry.set(mateFeedReadsAtom, { data: r.store.data, ...feeds });
+      const atom = mateFeedAsyncAtom(key);
+      const unmount = r.registry.mount(atom);
+      yield* settle;
+      r.store.dispatch({
+        kind: "stream",
+        key: mateFeedScope(key),
+        now: 0,
+        event: { kind: "parent-lost" },
+      });
+      expect(r.registry.get(atom)).toMatchObject({
+        _tag: "Success",
+        value: auth,
+        waiting: true,
+        read: { freshness: { kind: "stale" }, evidence: { stream: { fault: null } } },
+      });
+      unmount();
+      feeds.close();
+      r.close();
+    }),
+);

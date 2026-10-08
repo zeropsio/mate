@@ -10,11 +10,13 @@ import {
   type WorkspaceValue,
 } from "../families/mateWorkspace.ts";
 import type { Projection } from "../store.ts";
-import type { Coverage } from "../model.ts";
-import type { StreamFault } from "../streamMachine.ts";
+import type { Coverage, PublicRead } from "../model.ts";
+import type { StreamFault, StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 
 export interface WorkspaceReading<A> {
+  readonly fact: PublicRead<A>;
+  readonly stream: StreamState;
   readonly result: AsyncResult.AsyncResult<A, StreamFault>;
   readonly coverage: Coverage;
   readonly refused: boolean;
@@ -52,7 +54,13 @@ export function workspaceReading<K extends WorkspaceRead>(
           : value === undefined
             ? AsyncResult.initial<WorkspaceValue<K>, StreamFault>(waiting)
             : AsyncResult.success<WorkspaceValue<K>, StreamFault>(value, { waiting });
-      return { result, coverage: read.coverage(scope), refused: stream.phase === "refused" };
+      return {
+        fact: fact as PublicRead<WorkspaceValue<K>>,
+        stream,
+        result,
+        coverage: read.coverage(scope),
+        refused: stream.phase === "refused",
+      };
     },
     equals: sameValue,
   };

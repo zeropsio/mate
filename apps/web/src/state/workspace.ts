@@ -40,12 +40,17 @@ export function workspaceQuery<K extends WorkspaceRead>(kind: K) {
     return Atom.readable(
       (get) => {
         const host = get(holder);
-        return host === null
-          ? AsyncResult.initial<
-              import("@t3tools/client-runtime/data").WorkspaceValue<K>,
-              import("@t3tools/client-runtime/data").StreamFault
-            >(true)
-          : get(host.data.project(projection, target)).result;
+        if (host === null)
+          return AsyncResult.initial<
+            import("@t3tools/client-runtime/data").WorkspaceValue<K>,
+            import("@t3tools/client-runtime/data").StreamFault
+          >(true);
+        const read = get(host.data.project(projection, target));
+        return Object.assign(
+          Object.create(Object.getPrototypeOf(read.result)) as typeof read.result,
+          read.result,
+          { read },
+        );
       },
       (refresh) => {
         manual = true;

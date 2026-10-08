@@ -89,14 +89,16 @@ export function useUsualAgent(projectId: string | undefined): {
     return () => window.clearTimeout(timer);
   }, [projectId]);
 
-  // What each Mate is signed in with as read before or now; a Mate whose read failed answers no
-  // agent, as one signed in with none.
+  // Known sign-ins may guide the suggestion; completing a failed read only settles the wait.
   const read = serviceIds.flatMap((serviceId) => {
     const value = agents[serviceId]?.value;
-    return value !== undefined ? [value] : settledReads.has(serviceId) ? [[]] : [];
+    return value !== undefined ? [value] : [];
   });
   return {
     usual: usualAgentOf(read),
-    settled: waited || orgId === null || read.length === serviceIds.length,
+    settled:
+      waited ||
+      orgId === null ||
+      serviceIds.every((serviceId) => agents[serviceId]?.settled || settledReads.has(serviceId)),
   };
 }

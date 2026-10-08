@@ -365,7 +365,7 @@ export {
 export { repositorySource } from "./projections/repositorySource.ts";
 export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
 
-export { workspaceReading } from "./projections/mateWorkspace.ts";
+export { workspaceReading, type WorkspaceReading } from "./projections/mateWorkspace.ts";
 export { makeWorkspaceReads, makeWorkspaceWire } from "./adapters/mateWorkspace.ts";
 export { WORKSPACE_READS } from "./families/mateWorkspace.ts";
 export type { WorkspaceRead, WorkspaceTarget, WorkspaceValue } from "./families/mateWorkspace.ts";
@@ -476,6 +476,7 @@ export {
 export * from "./families/mateFeeds.ts";
 export * from "./projections/mateFeeds.ts";
 export * from "./adapters/mateFeeds.ts";
+export type { MateFeedReading } from "./projections/mateFeeds.ts";
 export * from "./mateFeedReads.ts";
 export * from "./operations/mateActions.ts";
 export * from "./operations/executors/mateActions.ts";
@@ -603,3 +604,5 @@ export {
   type AgentAdmissionAttention,
   type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";
+
+export { initialStream } from "./streamMachine.ts";

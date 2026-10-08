@@ -19,7 +19,7 @@ import {
   type HqMateOwner,
   type HqProjectPeople,
 } from "@t3tools/client-runtime/data";
-import { organizationMembers, type MembersRead } from "@t3tools/client-runtime/data";
+import { organizationMembers, initialStream, type MembersRead } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useCallback, useEffect } from "react";
@@ -48,6 +48,10 @@ const NO_MEMBERS: ReadonlyArray<ZeropsOrganizationMember> = [];
 export type ZeropsOrganizationMembersStatus = "idle" | "loading" | "ready" | "failed";
 
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
+  fact: { kind: "unknown" },
+  coverage: "unknown",
+  stream: initialStream({ parent: null, mode: "sampled" }),
+  link: null,
   members: NO_MEMBERS,
   status: "loading",
   settled: false,
@@ -58,11 +62,8 @@ export function useZeropsOrganizationMembersRead(input: {
   readonly clientId: string | undefined;
   /** Nothing is read until a surface would use it. */
   readonly enabled: boolean;
-}): {
-  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
+}): Omit<MembersRead, "status"> & {
   readonly status: ZeropsOrganizationMembersStatus;
-  /** The members are what a read settled, not ones being read again. */
-  readonly settled: boolean;
   /**
    * The read ended with no answer and nothing reads it again on its own: refused, until a
    * person's again.
@@ -89,9 +90,8 @@ export function useZeropsOrganizationMembersRead(input: {
   );
   const status: ZeropsOrganizationMembersStatus = owner === null ? "idle" : read.status;
   return {
-    members: read.members,
+    ...read,
     status,
-    settled: read.settled,
     refusedForGood: read.refused,
   };
 }

@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import {
@@ -11,7 +11,7 @@ import {
   makeVcsReads,
   workspaceReading,
 } from "@t3tools/client-runtime/data";
-import { workspaceCommand, workspaceHostAtom } from "./workspace";
+import { workspaceCommand, workspaceHostAtom, workspaceQuery } from "./workspace";
 
 it("MCP changes apply in the order requested and cannot publish an older action last", async () => {
   const registry = AtomRegistry.make();
@@ -72,4 +72,62 @@ it("MCP changes apply in the order requested and cannot publish an older action 
   reads.close();
   vcs.close();
   registry.dispose();
+});
+
+it("the history binding keeps owner evidence without changing the projected result", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const reads = makeWorkspaceReads(store, {
+    read: () => Effect.fail({ outcome: "definitive-refusal", message: "History source refused." }),
+  });
+  const vcs = makeVcsReads(store, () => Stream.never);
+  registry.set(workspaceHostAtom, {
+    data: store.data,
+    reads,
+    vcs,
+    act: makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "action",
+      mcpAnswer: reads.mcpAnswer,
+      wire: { call: () => Effect.never },
+    }),
+    writeFile: makeFileWrites({
+      store,
+      reads,
+      current: () => true,
+      makeId: () => "save",
+      write: () => Effect.never,
+    }),
+  });
+  const target = {
+    environmentId: EnvironmentId.make("mate"),
+    input: { windowMs: 60_000, bucketMs: 1_000 },
+  };
+  try {
+    await reads.sample("resourceTelemetryHistory", target);
+    const result = registry.get(workspaceQuery("resourceTelemetryHistory")(target));
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      read: {
+        fact: { kind: "unknown" },
+        coverage: "unknown",
+        refused: true,
+        stream: {
+          phase: "refused",
+          fault: { outcome: "definitive-refusal", message: "History source refused." },
+        },
+      },
+    });
+    expect(AsyncResult.isAsyncResult(result)).toBe(true);
+    const owner = registry.get(
+      store.data.project(workspaceReading("resourceTelemetryHistory"), target),
+    );
+    expect(Object.hasOwn(owner.result, "read")).toBe(false);
+  } finally {
+    reads.close();
+    vcs.close();
+    store.close();
+    registry.dispose();
+  }
 });
