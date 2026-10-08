@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import { act, createElement as h, useSyncExternalStore, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -312,12 +313,17 @@ vi.mock("../ui/button", () => ({
     onClick,
     inert,
     disabled,
+    render,
   }: {
+    readonly render?: { readonly type: string; readonly props: Record<string, unknown> };
     readonly children?: ReactNode;
     readonly onClick?: () => void;
     readonly inert?: boolean;
     readonly disabled?: boolean;
-  }) => h("button", { onClick, inert, disabled }, children),
+  }) =>
+    render?.type === "a" && render.props.target === "_blank"
+      ? h("a", render.props, children)
+      : h("button", { onClick, inert, disabled }, children),
 }));
 vi.mock("./removeFailedZeropsProject", () => ({
   removeFailedZeropsProject: async () => ({ ok: true }),
@@ -1412,7 +1418,7 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
 });
 
 describe("failed setup recovery fixture", () => {
-  it("keeps a fixed failed duration and offers retry, removal and the raw details", () => {
+  it("keeps a fixed failed duration and offers retry, removal and the raw details", async () => {
     const process = {
       id: "process-dns",
       projectId: PROJECT,
@@ -1425,9 +1431,10 @@ describe("failed setup recovery fixture", () => {
     };
     const retry = vi.fn();
     const remove = vi.fn();
-    let rendered: ReactTestRenderer;
-    act(() => {
-      rendered = create(
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    await act(async () => {
+      root.render(
         h(ComingBelow, {
           coming: {
             kind: "failed",
@@ -1465,21 +1472,30 @@ describe("failed setup recovery fixture", () => {
         }),
       );
     });
-    const said = JSON.stringify(rendered!.toJSON());
+    const said = host.textContent!;
     expect(said).toContain("Nic's workspace");
     expect(said).toContain("1:10");
     expect(said).not.toContain("61:10");
-    expect(rendered!.root.findByType("summary").children).toEqual(["Details"]);
-    expect(rendered!.root.findByType("pre").children.join("")).toContain("Could not resolve host");
-    const actions = rendered!.root.findAllByType("button");
-    expect(actions.map((button) => button.children.join(""))).toEqual(["Try again", "Remove"]);
-    act(() => actions[0]!.props.onClick());
-    act(() => actions[1]!.props.onClick());
+    expect(host.querySelector("details, summary")).toBeNull();
+    const disclosure = host.querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')!;
+    expect(disclosure.textContent).toBe("Details");
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(host.textContent).not.toContain("Could not resolve host");
+    await act(async () => disclosure.click());
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector("pre")?.textContent).toContain("Could not resolve host");
+    expect(host.textContent).not.toContain(process.id);
+    const actions = [...host.querySelectorAll<HTMLButtonElement>(".arrival-acts button")];
+    expect(actions.map((button) => button.textContent)).toEqual(["Try again", "Remove"]);
+    await act(async () => actions[0]!.click());
+    await act(async () => actions[1]!.click());
     expect(retry).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
-    expect(rendered!.root.findByType("a").props.href).toBe(
+    expect(host.querySelector(".arrival-acts a")?.getAttribute("href")).toBe(
       `https://app.zerops.io/project/${PROJECT}`,
     );
-    act(() => rendered!.unmount());
+    expect(host.querySelector("a")?.textContent).toBe("Open the process in Zerops");
+    await act(async () => root.unmount());
+    host.remove();
   });
 });

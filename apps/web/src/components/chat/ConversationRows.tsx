@@ -1,4 +1,3 @@
-import { MateStatusMarker } from "../zerops/MateStatusMarker";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -433,12 +432,6 @@ export function PauseBlock({
       role="status"
     >
       <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
-        {/* Its words keep their gap, so its mark gives the gap back: 14 + 6 px. */}
-        <LineMark className="w-3.5">
-          <PauseIcon
-            className={cn("size-3.5", history ? "text-muted-foreground" : "text-status-attention")}
-          />
-        </LineMark>
         <span className="font-medium">
           {history
             ? usageLimitHistoryWords(
@@ -452,18 +445,6 @@ export function PauseBlock({
               ? usageLimitWords("coding agent", undefined, speaker.name)
               : usageLimitWords(row.provider, undefined, speaker.name)}
         </span>
-        {history ? null : (
-          <MateStatusMarker
-            mateName={speaker.name}
-            status={{
-              kind: "limit",
-              severity: "attention",
-              until: resetsAt ?? undefined,
-              provider: row.provider,
-            }}
-            timestampFormat={timestampFormat}
-          />
-        )}
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger
@@ -480,12 +461,11 @@ export function PauseBlock({
           </Tooltip>
         ) : null}
       </div>
-      {/* Under its words: past the mark's w-4 and the head's gap-1.5. */}
-      <p className="ps-5 text-line text-muted-foreground" data-pause-detail>
+      <p className="text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
       {!resumed && onContinue !== null ? (
-        <div className="ps-5">
+        <div>
           <Button size="sm" variant="ghost" onClick={onContinue}>
             Continue
           </Button>
@@ -493,7 +473,7 @@ export function PauseBlock({
       ) : null}
       {!history && serverPause !== null && onAutoResumeChange !== null ? (
         <label
-          className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
+          className="flex w-fit cursor-pointer items-center gap-2 text-line text-foreground"
           data-pause-switch
         >
           <Switch

@@ -7884,6 +7884,7 @@ button.rv-relrow:hover .rv-relrow-go {
 /* A stop's one way on, and a stage's press: centred under the sentence. */
 .arrival-acts {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -9791,18 +9792,8 @@ button.rv-relrow:hover .rv-relrow-go {
   text-align: center;
 }
 
-.arrival-failure-details summary {
-  width: fit-content;
-  margin-inline: auto;
-}
-
-.arrival-failure-details summary,
-.arrival-failure-details a {
-  cursor: pointer;
-  color: var(--zerops-status-attention-text);
-}
-
-.arrival-failure-details pre {
+.arrival-failure-details pre,
+.arrival-failure-details p {
   max-height: 12rem;
   overflow: auto;
   white-space: pre-wrap;

@@ -1,4 +1,3 @@
-import { CircleAlertIcon, CircleHelpIcon } from "lucide-react";
 /**
  * An empty conversation with a Mate, and the Mate's own view before the conversation exists
  * (`ZeropsMateComingPage`): the approved "Arrival" board's stage (`mateArrival.ts`). The Mate's
@@ -400,8 +399,8 @@ export function MateEmptyStateView({
             <div className="flex flex-col items-center gap-3" role="status">
               <p>The message to {mate.name} didn't go through.</p>
               <Button
-                variant="outline"
-                size="sm"
+                variant="pill"
+                size="compact"
                 disabled={standUpFailure.retrying}
                 onClick={standUpFailure.retry}
               >
@@ -444,7 +443,6 @@ function ArrivalComposition({
   mate,
   state,
   restarting,
-  severity,
   clauses,
   sentence,
   slot,
@@ -538,7 +536,6 @@ function ArrivalComposition({
           >
             {/* One run of words, set on the room's last lines where it holds more than it says. */}
             <span ref={setHeadlineWords}>
-              <SeverityMark severity={severity} />
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
@@ -688,19 +685,6 @@ export function MateConnectionState({
       state={face}
       status
       tracks={false}
-    />
-  );
-}
-
-/** What a wait that needs the person, or a refusal, wears before its headline. */
-function SeverityMark({ severity }: { readonly severity: MateEmptyComing["severity"] }) {
-  if (severity === undefined || severity === "info") return null;
-  return severity === "danger" ? (
-    <CircleAlertIcon aria-hidden="true" className="me-2 inline size-5 align-[-0.15em] text-error" />
-  ) : (
-    <CircleHelpIcon
-      aria-hidden="true"
-      className="me-2 inline size-5 align-[-0.15em] text-status-attention"
     />
   );
 }

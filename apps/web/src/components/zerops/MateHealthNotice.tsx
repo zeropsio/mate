@@ -24,9 +24,7 @@ export function MateHealthMessage({
   if (copy === null) return null;
   return (
     <div role="status" className="px-4 py-3 text-sm">
-      <p className={copy.severity === "critical" ? "text-destructive" : "text-warning"}>
-        {copy.title}
-      </p>
+      <p className="font-medium">{copy.title}</p>
       <p className="mt-1 text-muted-foreground">{copy.description}</p>
     </div>
   );

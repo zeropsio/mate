@@ -49,11 +49,13 @@ function Alert({
   variant,
   surface,
   controlAlignment = "center",
+  layout = "row",
   children,
   ...props
 }: React.ComponentProps<"div"> &
   VariantProps<typeof alertVariants> & {
     controlAlignment?: "center" | "first-line";
+    layout?: "row" | "centered";
   }) {
   const icon: React.ReactNode[] = [];
   const content: React.ReactNode[] = [];
@@ -85,8 +87,11 @@ function Alert({
       <div
         className={cn(
           "flex gap-2",
-          controlAlignment === "first-line" ? "items-start" : "items-center",
-          controlAlignment === "first-line" &&
+          layout === "centered" &&
+            "flex-col items-center gap-3 text-center [&_[data-slot=alert-action]]:flex-wrap [&_[data-slot=alert-action]]:justify-center",
+          layout === "row" && (controlAlignment === "first-line" ? "items-start" : "items-center"),
+          layout === "row" &&
+            controlAlignment === "first-line" &&
             action.length > 0 &&
             "min-h-7 pt-1 sm:min-h-6 sm:pt-0.5",
         )}
@@ -110,7 +115,11 @@ function Alert({
           <div
             className={cn(
               "flex shrink-0 items-center",
-              controlAlignment === "first-line" ? "h-lh self-start" : "self-center",
+              layout === "centered"
+                ? "w-full justify-center"
+                : controlAlignment === "first-line"
+                  ? "h-lh self-start"
+                  : "self-center",
             )}
           >
             {action}
