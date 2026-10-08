@@ -763,26 +763,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [followEnd, timelineViewportElement]);
-  // LegendList re-pins the end itself only for a measurement that moved a row
-  // by more than 5 px, so a row easing taller is followed here too — on the
-  // next frame, as LegendList does: the scroll range takes the growth once the
-  // list has re-rendered its new size.
-  const onItemSizeChanged = useCallback(
-    ({ previous, size }: { readonly previous: number; readonly size: number }) => {
-      if (!followingEndRef.current || size <= previous) return;
-      // In the frame the row grew, once the list has drawn its new size (its
-      // render runs in a microtask queued before this one), so nothing under
-      // the reader moves for a frame; and again on the next frame, for a
-      // render the list put off.
-      queueMicrotask(followEnd);
-      if (endRepinFrameRef.current !== null) return;
-      endRepinFrameRef.current = requestAnimationFrame(() => {
-        endRepinFrameRef.current = null;
-        followEnd();
-      });
-    },
-    [followEnd],
-  );
+  // Every measurement can move the end, including an estimated row becoming
+  // shorter. Follow after the list applies its layout, in this turn and the
+  // next frame if React deferred it.
+  const onItemSizeChanged = useCallback(() => {
+    if (!followingEndRef.current) return;
+    queueMicrotask(followEnd);
+    if (endRepinFrameRef.current !== null) return;
+    endRepinFrameRef.current = requestAnimationFrame(() => {
+      endRepinFrameRef.current = null;
+      followEnd();
+    });
+  }, [followEnd]);
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above

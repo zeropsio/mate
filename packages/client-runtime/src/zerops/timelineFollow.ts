@@ -103,22 +103,21 @@ export function classifyTimelineScroll(input: {
 const TIMELINE_JUMP_PX = 40;
 
 /**
- * Whether the list jumped up since the last read by something other than its
- * content changing — find in page, a fragment link, focus moving into an
- * earlier control, an autoscroll — none of which the person's scroll session
- * sees. The list re-anchoring as rows change or the view shrinks moves it a
- * few pixels, or as far as the content changed: never a jump.
+ * An unobserved jump away is provable only while content height is unchanged.
+ * Measurements can shrink and grow between readings: the browser clamps at
+ * an intermediate end even when the final content is taller. Direct person
+ * input is classified separately, so it still releases follow during layout.
  */
 export function jumpedAway(input: {
   readonly previous: TimelineScrollReading | null;
   readonly current: TimelineScrollReading;
 }): boolean {
   const { previous, current } = input;
-  if (previous === null) return false;
-  const moved = current.scrollTop - previous.scrollTop;
-  if (moved > -TIMELINE_JUMP_PX) return false;
-  const grew = current.contentHeight - previous.contentHeight;
-  return !(grew < 0 && Math.abs(grew) >= Math.abs(moved) - 1);
+  return (
+    previous !== null &&
+    previous.contentHeight === current.contentHeight &&
+    current.scrollTop - previous.scrollTop <= -TIMELINE_JUMP_PX
+  );
 }
 
 /**

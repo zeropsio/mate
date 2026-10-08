@@ -661,6 +661,53 @@ describe("MessagesTimeline", () => {
     }
   });
 
+  async function shrinkRow(follows: boolean, expectedTop: number) {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = { scrollTop: 1180, scrollHeight: 2000, clientHeight: 800 };
+    const listRef = {
+      current: {
+        getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+        getScrollableNode: () => viewport,
+      } as unknown as LegendListRef,
+    };
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            listRef={listRef}
+            liveFollowEnabled={follows}
+            routeThreadKey="environment-local:thread-shrinking-row"
+            timelineEntries={[buildUserTimelineEntry("Keep my place.")]}
+          />,
+        );
+      });
+      await act(async () => {
+        renderer!.root.findByType(LegendList).props.onItemSizeChanged({
+          index: 0,
+          itemKey: "message-1",
+          itemData: undefined,
+          previous: 300,
+          size: 120,
+        });
+        for (const frame of frames.splice(0)) frame(0);
+      });
+      expect(viewport.scrollTop).toBe(expectedTop);
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  }
+
+  it("a shrinking row keeps a followed conversation at its end", () => shrinkRow(true, 1200));
+  it("a shrinking row does not move a conversation being read", () => shrinkRow(false, 1180));
+
   // The review, 2026-10-04: one step taller than the list and the composer —
   // a long answer landing on a phone — turned the list's own reading of its
   // end stale after the glide's first frame, and the end was lost for good.

@@ -247,6 +247,32 @@ describe("classifyTimelineScroll", () => {
 });
 
 describe("jumpedAway", () => {
+  it("a browser layout correction during row measurement does not release end-follow", () => {
+    const previous = { scrollTop: 2944, contentHeight: 3779 };
+    const current = { scrollTop: 2776, contentHeight: 4009 };
+    expect(
+      nextTimelineFollow(true, {
+        type: "position",
+        atEnd: false,
+        ...classifyTimelineScroll({ previous, current, personScrolling: false }),
+        jumped: jumpedAway({ previous, current }),
+      }),
+    ).toBe(true);
+  });
+
+  it("manual history navigation during row measurement still releases end-follow", () => {
+    const previous = { scrollTop: 2944, contentHeight: 3779 };
+    const current = { scrollTop: 2776, contentHeight: 4009 };
+    expect(
+      nextTimelineFollow(true, {
+        type: "position",
+        atEnd: false,
+        ...classifyTimelineScroll({ previous, current, personScrolling: true }),
+        jumped: jumpedAway({ previous, current }),
+      }),
+    ).toBe(false);
+  });
+
   it.each([
     {
       name: "find in page jumps to a match far above",
