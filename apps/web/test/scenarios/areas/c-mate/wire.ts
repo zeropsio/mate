@@ -1,4 +1,8 @@
-import type { ProviderApprovalDecision, ProviderUserInputAnswers } from "@t3tools/contracts";
+import type {
+  ProviderApprovalDecision,
+  ProviderUserInputAnswers,
+  UserInputAttachments,
+} from "@t3tools/contracts";
 
 /** Which of this area's asks a response answers. */
 export type ChatAsk = "approval" | "question" | "other";
@@ -11,7 +15,13 @@ export type ChatIntent =
       readonly ask: ChatAsk;
       readonly decision: ProviderApprovalDecision;
     }
-  | { readonly kind: "answer"; readonly ask: ChatAsk; readonly answers: ProviderUserInputAnswers };
+  | {
+      readonly kind: "answer";
+      readonly ask: ChatAsk;
+      readonly requestId: string;
+      readonly answers: ProviderUserInputAnswers;
+      readonly attachmentsByQuestionId?: UserInputAttachments;
+    };
 
 /** The reply the Mate gives once the person answers an ask. */
 export const RESPONSE_RECEIVED = "Agent received your response";
@@ -42,6 +52,8 @@ export interface ChatWire {
   approval(): void;
   /** The agent asks TARGET_QUESTION as `requestId`, in run `turnId` when given; same reply. */
   question(requestId?: string, turnId?: string | null): void;
+  /** The agent works in run `turnId`, or that run ends as `state` says. */
+  run(turnId: string, state: "running" | "completed" | "error" | "interrupted"): void;
   /** Every intent the Mate applied, in order. */
   intents(): ReadonlyArray<ChatIntent>;
   /** Settles once the conversation durably holds a person message reading exactly `text`. */

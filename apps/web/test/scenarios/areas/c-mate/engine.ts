@@ -43,13 +43,17 @@ export class EngineChatWire implements ChatWire {
     this.asks.set(id, "approval");
   }
 
-  question() {
-    const id = this.engine.ask({
-      kind: "question",
-      questions: [TARGET_QUESTION],
-      dismissible: true,
-    });
+  /** A question its agent waits on, as V1's TARGET_QUESTION is: answered, never dismissed. */
+  question(requestId = "question-target", turnId: string | null = null) {
+    const id = this.engine.ask(
+      { kind: "question", questions: [TARGET_QUESTION], dismissible: false },
+      { requestId, ...(turnId === null ? {} : { runId: turnId }) },
+    );
     this.asks.set(id, "question");
+  }
+
+  run(turnId: string, state: "running" | "completed" | "error" | "interrupted") {
+    this.engine.run(turnId, state);
   }
 
   intents() {
@@ -59,7 +63,18 @@ export class EngineChatWire implements ChatWire {
       const ask = this.asks.get(String(payload.requestId)) ?? "other";
       const answer = payload.answer as EngineAnswer;
       if (answer.kind === "approval") return [{ kind: "decision", ask, decision: answer.decision }];
-      if (answer.kind === "input") return [{ kind: "answer", ask, answers: answer.answers }];
+      if (answer.kind === "input")
+        return [
+          {
+            kind: "answer",
+            ask,
+            requestId: String(payload.requestId),
+            answers: answer.answers,
+            ...(answer.attachmentsByQuestionId === undefined
+              ? {}
+              : { attachmentsByQuestionId: answer.attachmentsByQuestionId }),
+          },
+        ];
       return [];
     });
   }

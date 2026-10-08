@@ -175,3 +175,111 @@ it("refuses and flags a V1 turn sent to an engine conversation", async () => {
     await r.close();
   }
 });
+
+const preview = {
+  type: "image",
+  id: "img-1",
+  name: "question-preview.png",
+  mimeType: "image/png",
+  sizeBytes: 2048,
+};
+
+// Catches an engine fake that drops an answer's pictures, so a journey cannot see them arrive.
+it("applies an answer with the pictures attached to each question, and its record keeps them", async () => {
+  const r = await connect();
+  try {
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    r.chat.run("question-custom-run", "running");
+    r.chat.question("question-custom", "question-custom-run");
+    const given = {
+      answers: { target: "Inspect the preview shown here" },
+      attachmentsByQuestionId: { target: [preview] },
+    };
+    const exit = await r.call("a", WS_METHODS.engineAnswer, {
+      ...conversation,
+      commandId: "answer-1",
+      requestId: "question-custom",
+      answer: { kind: "input", ...given },
+      summary: "Answered",
+    });
+    expect(decodeCall(exit.value)).toMatchObject({
+      _tag: "Accepted",
+      requestId: "question-custom",
+    });
+    expect(await r.chat.waitForAnswer("question-custom")).toMatchObject({
+      requestId: "question-custom",
+      ...given,
+    });
+    await r.until(() =>
+      r
+        .stream("c")
+        .some(
+          (frame) =>
+            frame.type === "changes" &&
+            frame.requests.some((request) => request.state === "answered"),
+        ),
+    );
+    const answered = r
+      .stream("c")
+      .flatMap((frame) => (frame.type === "changes" ? frame.requests : []))
+      .findLast((request) => request.id === "question-custom");
+    expect(answered).toMatchObject({ runId: "question-custom-run", answer: given });
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches an engine fake that lets a person dismiss a question its agent waits on.
+it("dismisses a question asked by message, and refuses one its agent waits on", async () => {
+  const r = await connect();
+  try {
+    const asked = r.wire.engine.ask({ kind: "question", questions: [], dismissible: true });
+    const waits = r.wire.engine.ask({ kind: "question", questions: [], dismissible: false });
+    const dismiss = async (id: string, requestId: string) =>
+      decodeCall(
+        (await r.call(id, WS_METHODS.engineDismiss, { ...conversation, commandId: id, requestId }))
+          .value,
+      );
+    expect(await dismiss("d1", asked)).toMatchObject({ _tag: "Accepted", requestId: asked });
+    expect(r.wire.engine.requests.get(asked)?.state).toBe("dismissed");
+    expect(await dismiss("d2", waits)).toEqual({
+      _tag: "Rejected",
+      rejection: { reason: "not-dismissible" },
+    });
+    expect(r.wire.engine.applied.map(({ op, payload }) => [op, payload.requestId])).toEqual([
+      ["dismiss", asked],
+    ]);
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches an engine fake whose refusal never reaches the client the way the Mate's own does.
+it("refuses an answer for want of authority in the area's words, applying nothing", async () => {
+  const r = await connect();
+  try {
+    r.chat.question("question-custom");
+    r.chat.responseRefusal = "Your answer was refused. Sign in and retry.";
+    const exit = await r.call("a", WS_METHODS.engineAnswer, {
+      ...conversation,
+      commandId: "answer-1",
+      requestId: "question-custom",
+      answer: { kind: "input", answers: { target: "stage" } },
+      summary: "Answered",
+    });
+    expect(exit).toMatchObject({
+      _tag: "Failure",
+      cause: [
+        {
+          error: {
+            _tag: "EnvironmentAuthorizationError",
+            message: "Your answer was refused. Sign in and retry.",
+          },
+        },
+      ],
+    });
+    expect(r.wire.intents()).toEqual([]);
+  } finally {
+    await r.close();
+  }
+});

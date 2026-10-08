@@ -61,7 +61,17 @@ export class V1ChatWire implements ChatWire {
       if (command.type === "thread.approval.respond")
         return [{ kind: "decision", ask: asked(command.requestId), decision: command.decision }];
       if (command.type === "thread.user-input.respond")
-        return [{ kind: "answer", ask: asked(command.requestId), answers: command.answers }];
+        return [
+          {
+            kind: "answer",
+            ask: asked(command.requestId),
+            requestId: command.requestId,
+            answers: command.answers,
+            ...(command.attachmentsByQuestionId === undefined
+              ? {}
+              : { attachmentsByQuestionId: command.attachmentsByQuestionId }),
+          },
+        ];
       return [];
     });
   }
@@ -80,6 +90,16 @@ export class V1ChatWire implements ChatWire {
       requestKind: "command",
       detail: "vp run build",
     });
+  }
+
+  /** Writes a run as the thread's latest turn and session: the area's driver owns the thread. */
+  writeRun: (turnId: string, state: "running" | "completed" | "error" | "interrupted") => void =
+    () => {
+      throw new Error("V1's runs are written by the area's driver");
+    };
+
+  run(turnId: string, state: "running" | "completed" | "error" | "interrupted") {
+    this.writeRun(turnId, state);
   }
 
   question(requestId = "question-target", turnId: string | null = null) {
