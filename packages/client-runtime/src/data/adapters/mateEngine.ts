@@ -16,6 +16,7 @@ import {
   type EngineConversationFrame,
   type EnvironmentId,
   type EngineCursor,
+  type EngineDetail,
   type EnginePage,
   type EngineRowsFrame,
   type Item,
@@ -85,6 +86,12 @@ export interface EngineConversationWire {
     runId: string,
     beforeSeq: number | null,
   ) => Effect.Effect<EnginePage, StreamFault>;
+  /** An item's whole part (`engine.readDetail`): a cut message, a call's output or result. */
+  readonly readDetail: (
+    key: EngineConversationKey,
+    itemId: string,
+    part: string,
+  ) => Effect.Effect<EngineDetail, StreamFault>;
   /** The Mate's access as its connection learns it: a fault, or `null` once verified again. */
   readonly watch?: (
     environmentId: string,
@@ -184,6 +191,18 @@ export function makeEngineConversationWire(
             conversationId: key.conversationId as never,
             runId: runId as never,
             ...(beforeSeq === null ? {} : { beforeSeq }),
+          }),
+        )
+        .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
+    readDetail: (key, itemId, part) =>
+      registry
+        .run(
+          key.environmentId as EnvironmentId,
+          request(WS_METHODS.engineReadDetail, {
+            protocol: PROTOCOL,
+            conversationId: key.conversationId as never,
+            itemId: itemId as never,
+            part,
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
@@ -445,6 +464,36 @@ export function makeMateEngineConversations(options: {
       };
     });
 
+  /**
+   * Items as a card draws them: a call's result the wire cut (a document its card decodes whole)
+   * read back whole first; one whose whole cannot be read says it was too long, as V1's does.
+   */
+  const wholeResults = (
+    key: EngineConversationKey,
+    items: ReadonlyArray<Item>,
+  ): Effect.Effect<ReadonlyArray<Item>> =>
+    items.some((item) => item.kind === "call" && item.cut?.part === "result")
+      ? Effect.forEach(
+          items,
+          (item): Effect.Effect<Item> => {
+            if (item.kind !== "call" || item.cut?.part !== "result" || item.result === undefined)
+              return Effect.succeed(item);
+            const { cut: _cut, ...uncut } = item;
+            const result = item.result;
+            const tooLong: Item = { ...uncut, result: { ...result, truncated: true } };
+            return wire.readDetail(key, item.id, "result").pipe(
+              Effect.map((detail): Item =>
+                detail._tag === "Detail" && detail.from === 0 && detail.to === detail.total
+                  ? { ...uncut, result: { ...result, resultText: detail.text } }
+                  : tooLong,
+              ),
+              Effect.orElseSucceed(() => tooLong),
+            );
+          },
+          { concurrency: RUN_READS_AT_ONCE },
+        )
+      : Effect.succeed(items);
+
   const forget = (key: EngineConversationKey) => {
     cursors.delete(engineConversationId(key));
     live.forget(key);
@@ -506,11 +555,13 @@ export function makeMateEngineConversations(options: {
                   (cursor.origin !== frame.origin || frame.epoch < cursor.epoch)
                 )
                   forget(key);
-                return Effect.map(wholeRuns(key, frame.runs, frame.items), (lacked) => {
+                return Effect.gen(function* () {
+                  const lacked = yield* wholeRuns(key, frame.runs, frame.items);
+                  const items = yield* wholeResults(key, [...frame.items, ...lacked.items]);
                   if (closed) return;
                   const whole = {
                     ...frame,
-                    items: [...frame.items, ...lacked.items],
+                    items,
                     requests: [...frame.requests, ...lacked.requests],
                   };
                   Atom.batch(() => deliver(rowsOf(key, frame.epoch, whole, frame.window), true));
@@ -525,11 +576,16 @@ export function makeMateEngineConversations(options: {
                   held?.kind === "value"
                     ? (held.value as FamilyValues["mateEngineConversation"]).window
                     : undefined;
-                Atom.batch(() =>
-                  deliver(rowsOf(key, frame.epoch, { ...frame, head: frame.to }, window), false),
-                );
-                cursors.set(id, { ...cursor, epoch: frame.epoch, seq: frame.to });
-                return Effect.void;
+                return Effect.map(wholeResults(key, frame.items), (items) => {
+                  if (closed) return;
+                  Atom.batch(() =>
+                    deliver(
+                      rowsOf(key, frame.epoch, { ...frame, items, head: frame.to }, window),
+                      false,
+                    ),
+                  );
+                  cursors.set(id, { ...cursor, epoch: frame.epoch, seq: frame.to });
+                });
               }
               case "synchronized": {
                 if (cursor === undefined) return Effect.fail(RESUBSCRIBE);
@@ -652,7 +708,11 @@ export function makeMateEngineConversations(options: {
       wire.readEarlier(key, beforeOrdinal).pipe(
         Effect.flatMap((page) =>
           page._tag === "Page"
-            ? Effect.map(wholeRuns(key, page.runs, page.items), (lacked) => ({ page, lacked }))
+            ? Effect.gen(function* () {
+                const lacked = yield* wholeRuns(key, page.runs, page.items);
+                const items = yield* wholeResults(key, [...page.items, ...lacked.items]);
+                return { page, lacked: { items, requests: lacked.requests } };
+              })
             : Effect.fail(unservedFault(page.unserved)),
         ),
         Effect.match({
@@ -673,7 +733,7 @@ export function makeMateEngineConversations(options: {
                   cursor.epoch,
                   {
                     runs: page.runs,
-                    items: [...page.items, ...lacked.items],
+                    items: lacked.items,
                     requests: [...page.requests, ...lacked.requests],
                     head: cursor.seq,
                   },
