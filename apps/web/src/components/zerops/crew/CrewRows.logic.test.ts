@@ -722,6 +722,47 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
   });
 }
 
+it("offers Continue for work the engine's crew could not finish, and Drop it for its task", () => {
+  const engine = quiet({ revision: { epoch: 3, seq: 41 } });
+  const row = (fields: Partial<CrewAttention>) =>
+    needing(
+      "interrupted",
+      { id: "effect:crew.check:task-12", text: "the check could not run", ...fields },
+      engine,
+    ).needs[0];
+  expect(row({})?.line.text).toBe("Interrupted · the check could not run");
+  expect(row({})?.actions).toMatchObject([
+    {
+      label: "Continue",
+      command: {
+        _tag: "operationContinue",
+        handle: "backend",
+        operationId: "effect:crew.check:task-12",
+      },
+    },
+    {
+      label: "Drop it",
+      command: {
+        _tag: "operationDiscard",
+        handle: "backend",
+        operationId: "effect:crew.check:task-12",
+      },
+    },
+  ]);
+  expect(row({ taskId: null })?.actions.map((action) => action.label)).toEqual(["Continue"]);
+});
+
+it("names a redeploy the engine's crew could not read, offering to thaw its service", () => {
+  const engine = quiet({ revision: { epoch: 3, seq: 41 } });
+  const [need] = needing(
+    "deploy-unreadable",
+    { id: "deploy-unreadable:appdev", taskId: null, host: "appdev" },
+    engine,
+  ).needs;
+  expect(need?.line.text).toBe("The redeploy of appdev can't be read. Thaw it if it ended.");
+  expect(need?.actions).toMatchObject([{ command: { _tag: "thawHost", host: "appdev" } }]);
+});
+
 it("offers a selected rebuild for a missing crew copy", () => {
   const row = needing("copy-missing", { taskId: null });
   expect(row.needs[0]?.actions.map((action) => action.label)).toEqual(["Rebuild crew copy"]);
