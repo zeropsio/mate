@@ -12,10 +12,11 @@
  *
  * @module mcpFileStore
  */
-import * as NodeCrypto from "node:crypto";
 
 import { McpServersError } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
+import * as Crypto from "effect/Crypto";
+import * as Hex from "effect/encoding/Hex";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -56,6 +57,7 @@ const writeError = (file: string, cause: unknown) =>
 export const nodeFileStore = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const crypto = yield* Crypto.Crypto;
 
   const read = (file: string) =>
     fs.readFileString(file).pipe(
@@ -82,7 +84,8 @@ export const nodeFileStore = Effect.gen(function* () {
       yield* fs
         .makeDirectory(path.dirname(target), { recursive: true })
         .pipe(Effect.mapError((cause) => writeError(file, cause)));
-      const temporary = `${target}.mate-${NodeCrypto.randomBytes(4).toString("hex")}.tmp`;
+      const suffix = Hex.encode(yield* crypto.randomBytes(4).pipe(Effect.orDie));
+      const temporary = `${target}.mate-${suffix}.tmp`;
       yield* fs.writeFileString(temporary, text, { mode }).pipe(
         Effect.andThen(fs.rename(temporary, target)),
         Effect.tapError(() => fs.remove(temporary).pipe(Effect.ignore)),
