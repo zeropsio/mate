@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   demands: [] as { family: string; owner: string | null }[],
   refresh: vi.fn(),
   accounting: "1",
+  access: "0".repeat(64),
 }));
 vi.mock("../zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => ({ orgId: "org", retryDetail: state.refresh }),
@@ -30,10 +31,29 @@ vi.mock("../zerops/ZeropsAccountData", () => ({
                       costUsdNanos: "7830000000",
                     },
                   ]
-                : recordedReport().groups,
+                : JSON.parse(key.owner).groupBy === "provider"
+                  ? [
+                      {
+                        key: "codex",
+                        provider: "codex",
+                        totals: recordedReport().totals,
+                        costUsdNanos: "7830000000",
+                      },
+                    ]
+                  : JSON.parse(key.owner).groupBy === "day"
+                    ? [
+                        {
+                          key: "period",
+                          provider: "codex",
+                          period: "2026-10-01",
+                          totals: recordedReport().totals,
+                          costUsdNanos: "7830000000",
+                        },
+                      ]
+                    : recordedReport().groups,
             generation: {
               accounting: JSON.parse(key.owner).groupBy === "model" ? state.accounting : "1",
-              access: "0".repeat(64),
+              access: JSON.parse(key.owner).groupBy === "model" ? state.access : "0".repeat(64),
               pricing: "prices",
             },
           }),
@@ -56,7 +76,12 @@ function Harness({
   const view = useAgentUsage(window, {}, enabled, provenance);
   return (
     <span data-models={JSON.stringify(view.merged.models)}>
-      {view.detailPending ? "Reading breakdown" : "Read"}
+      {view.merged.providers.length} provider rows; {view.merged.daily.length} recorded periods;
+      {view.detailUnavailable
+        ? "Unavailable breakdown"
+        : view.detailPending
+          ? "Reading breakdown"
+          : "Read"}
     </span>
   );
 }
@@ -64,6 +89,7 @@ beforeEach(() => {
   state.demands = [];
   state.refresh.mockClear();
   state.accounting = "1";
+  state.access = "0".repeat(64);
 });
 describe("usage observation ownership", () => {
   it("Cost and Tokens demand only HQ reports without opening Mate sockets", () => {
@@ -90,5 +116,17 @@ describe("usage observation ownership", () => {
     const markup = renderToStaticMarkup(<Harness />);
     expect(markup).toContain("Reading breakdown");
     expect(markup).toContain('data-models="[]"');
+  });
+  it("grouping the same authorized query settles the model/provider/period breakdown", () => {
+    const markup = renderToStaticMarkup(<Harness />);
+    expect(markup).toContain("native-model");
+    expect(markup).toContain("1 provider rows; 1 recorded periods;");
+    expect(markup).not.toContain("Reading breakdown");
+  });
+  it("a breakdown from another authorized source generation stays fenced", () => {
+    state.access = "f".repeat(64);
+    const markup = renderToStaticMarkup(<Harness />);
+    expect(markup).toContain("Reading breakdown");
+    expect(markup).not.toContain("native-model");
   });
 });

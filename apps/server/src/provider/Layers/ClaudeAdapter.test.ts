@@ -1679,7 +1679,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 10).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(10),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -2070,7 +2072,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 11).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(11),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3554,7 +3558,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 6).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(6),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3613,7 +3619,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 6).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(6),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3674,7 +3682,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(7),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -4504,7 +4514,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(7),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -7836,7 +7848,9 @@ describe("ClaudeAdapterLive", () => {
       return Effect.gen(function* () {
         const adapter = yield* ClaudeAdapter;
 
-        const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
+        const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.filter((event) => event.type !== "turn.usage.completed"),
+          Stream.take(8),
           Stream.runCollect,
           Effect.forkChild,
         );
@@ -8093,7 +8107,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(8),
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -8162,7 +8178,9 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 13).pipe(
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type !== "turn.usage.completed"),
+        Stream.take(13),
         Stream.runCollect,
         Effect.forkChild,
       );

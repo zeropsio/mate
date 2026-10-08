@@ -8,6 +8,8 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as Schedule from "effect/Schedule";
+import { SqlError } from "effect/sql/SqlError";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
@@ -27,6 +29,7 @@ export interface UsageLink {
 const orgBody = Schema.Struct({ clientId: Schema.NonEmptyString });
 const decodeOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeProvider = Schema.decodeUnknownEffect(UsageProviderKind);
+const isSqlError = Schema.is(SqlError);
 
 export const makeUsageLink = Effect.gen(function* () {
   const outbox = yield* makeUsageOutbox;
@@ -43,13 +46,23 @@ export const makeUsageLink = Effect.gen(function* () {
               const provider = yield* decodeProvider(
                 event.provider === "claudeAgent" ? "claude" : event.provider,
               );
-              yield* outbox.record({ provider, at: event.createdAt, ...event.payload });
-            }).pipe(
-              Effect.tap(() => Effect.sync(() => wake?.())),
-              Effect.catchCause((cause) =>
-                Effect.logError("Usage capture failed; pending facts remain durable", cause),
-              ),
-            )
+              yield* outbox.record({ provider, at: event.createdAt, ...event.payload }).pipe(
+                Effect.tapError((error) =>
+                  Effect.logError(
+                    isSqlError(error)
+                      ? "Usage capture failed; completion retained for retry"
+                      : "Usage capture rejected; accounting stopped",
+                    error,
+                  ),
+                ),
+                // The lossless subscription retains this completion until its write succeeds.
+                // This interval bounds retry load; it never expires or discards a completion.
+                Effect.retry({
+                  schedule: Schedule.spaced("1 second"),
+                  while: isSqlError,
+                }),
+              );
+            }).pipe(Effect.tap(() => Effect.sync(() => wake?.())))
           : Effect.void,
       ),
     ),

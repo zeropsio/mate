@@ -103,4 +103,57 @@ describe("turn usage at the real provider adapter seam", () => {
       ["parent", "pturn", "33"],
     ]);
   });
+  it("optional native Codex usage does not poison later parent and child turns", async () => {
+    const frames = ["parent", "child"].flatMap((threadId) => [
+      {
+        method: "rawResponse/completed",
+        params: {
+          threadId,
+          turnId: `empty-${threadId}`,
+          responseId: `empty-${threadId}`,
+          usage: null,
+        },
+      },
+      {
+        method: "turn/completed",
+        params: {
+          threadId,
+          turn: { id: `empty-${threadId}`, items: [], status: "completed", error: null },
+        },
+      },
+      {
+        method: "rawResponse/completed",
+        params: { threadId, turnId: `valid-${threadId}`, responseId: `valid-${threadId}`, usage },
+      },
+      {
+        method: "turn/completed",
+        params: {
+          threadId,
+          turn: { id: `valid-${threadId}`, items: [], status: "completed", error: null },
+        },
+      },
+    ]);
+    for (const frame of frames.filter((frame) => frame.method === "rawResponse/completed"))
+      expect(isCodexCompletion(frame.params)).toBe(true);
+    const fixture: Fixture = {
+      name: "constructed-optional-native-usage",
+      dir: codexDir,
+      meta: { driver: "codex", synthetic: true },
+      lines: frames.map((message) => ({ kind: "message", message })),
+    };
+    const events = await replayCodex(fixture);
+    expect(events.filter((event) => event.type === "runtime.warning")).toEqual([]);
+    expect(
+      events
+        .filter((event) => event.type === "turn.usage.completed")
+        .map((fact) => [
+          fact.payload.nativeThreadId,
+          fact.payload.nativeTurnId,
+          fact.payload.models[0]?.components.inclusiveTotal,
+        ]),
+    ).toEqual([
+      ["parent", "valid-parent", "130"],
+      ["child", "valid-child", "130"],
+    ]);
+  });
 });

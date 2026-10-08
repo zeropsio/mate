@@ -98,7 +98,7 @@ describe("durable usage wire", () => {
       usageFactDigest({ ...fact, models: fact.models.toReversed() }),
     );
     assert.throws(() => decode({ ...turn, models: [turn.models[0], turn.models[0]] }));
-    assert.throws(() => decode({ ...turn, models: [] }));
+    assert.deepStrictEqual(decode({ ...turn, models: [] }).models, []);
   });
   it("refuses ambiguous UTC trend edges and invalid zones", () => {
     const query = {

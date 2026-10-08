@@ -35,6 +35,7 @@ export interface ProviderTotals {
 }
 
 export interface ModelTotals {
+  readonly costKnown?: boolean;
   readonly model: string;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
@@ -60,7 +61,7 @@ export interface ModelTotals {
  * Clients must not present its `costUsd` as a real dollar figure.
  */
 export function isModelCostUnknown(model: ModelTotals): boolean {
-  return model.records > 0 && model.unpricedRecords >= model.records;
+  return model.costKnown === false || (model.records > 0 && model.unpricedRecords >= model.records);
 }
 
 export interface DailyTotals {
@@ -116,6 +117,7 @@ export interface SpeedCost {
 
 /** One environment's own share of the merge, after de-duplication. */
 export interface EnvironmentTotals {
+  readonly costKnown?: boolean;
   readonly environmentId: EnvironmentId;
   readonly costUsd: number;
   readonly totalTokens: number;

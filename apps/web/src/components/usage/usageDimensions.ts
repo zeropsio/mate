@@ -132,7 +132,7 @@ export function usageDimensions(input: {
         projectName: identity?.projectName ?? null,
         owner: identity?.owner ?? null,
         costUsd: row.costUsd,
-        costKnown: row.records === 0 || row.unpricedRecords < row.records,
+        costKnown: row.costKnown ?? (row.records === 0 || row.unpricedRecords < row.records),
         totalTokens: row.totalTokens,
         costShare: totalCost === 0 ? 0 : row.costUsd / totalCost,
         tokenShare: totalTokens === 0 ? 0 : row.totalTokens / totalTokens,

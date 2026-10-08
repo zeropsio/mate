@@ -103,6 +103,66 @@ const report: UsageReport = {
   ],
   next: null,
 };
+it.effect("an HQ report for another query cannot replace the authorized usage answer", () =>
+  Effect.gen(function* () {
+    const store = makeAccountStore(AtomRegistry.make());
+    const fixture = hqFixtureWire();
+    const link = hqNavigationLink({ orgId: "org", wire: fixture.wire, store });
+    const release = link.demandDetail({ family: "agentUsage", ownerId: owner });
+    const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+    const fiber = yield* Effect.forkChild(supervisor.run);
+    yield* settle;
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "hq",
+      revision: 1,
+      core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
+    });
+    yield* settle;
+    yield* fixture.send({
+      type: "scope-reset",
+      scope,
+      incarnation: "usage",
+      revision: 1,
+      values: [{ key: "report", value: report }],
+      removals: [],
+    });
+    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* settle;
+    let revision = 1;
+    for (const wrong of [
+      { mateId: "other" },
+      { groupBy: "model" },
+      { provenance: "legacy-scanner" },
+      { since: "2026-09-01T00:00:00.000Z" },
+    ]) {
+      yield* fixture.send({
+        type: "scope-values",
+        scope,
+        incarnation: "usage",
+        revision: ++revision,
+        values: [
+          {
+            key: "report",
+            value: {
+              ...report,
+              query: { ...query, ...wrong },
+              totals: { ...totals, tokens: "999" },
+            },
+          },
+        ],
+        removals: [],
+      });
+      yield* settle;
+      expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject(
+        { kind: "read", report: { totals: { tokens: "100" } } },
+      );
+    }
+    release();
+    yield* Fiber.interrupt(fiber);
+  }),
+);
 for (const capability of [undefined, 1]) {
   it.effect(
     `HQ ${capability === undefined ? "without usage capability" : "report 1"} is not sent new usage scopes and names the required update`,

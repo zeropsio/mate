@@ -157,11 +157,11 @@ export function makeClaudeTurnUsage(baseline: unknown) {
     ledger = current;
     nativeSession = nativeThreadId;
     results.set(nativeTurnId, encoded);
-    if (models.length === 0) return [];
+    if (models.length === 0 && nativeCost === null) return [];
     const fact = completedUsage({
       nativeThreadId,
       nativeTurnId: nativeTurnId,
-      models: participating.length > 0 ? participating : [models[0]!],
+      models: participating,
       nativeCost,
       parentId: null,
     });
@@ -218,6 +218,8 @@ export function makeCodexTurnUsage() {
     const envelope = record(payload);
     if (!envelope) return [];
     if (method === "rawResponse/completed") {
+      // Native raw completions may omit a meter; absence is not a corrupt accounting receipt.
+      if (envelope.usage === null || envelope.usage === undefined) return [];
       const threadId = text(envelope.threadId),
         turnId = text(envelope.turnId),
         responseId = text(envelope.responseId);

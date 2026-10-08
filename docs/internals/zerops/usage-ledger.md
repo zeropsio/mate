@@ -49,6 +49,8 @@ counts overlap across groups and are never summed into headline turn counts. A m
 that model's participation, components and reported charge. Native headline charges are never added
 to model charges or allocated to a model without provider evidence. Automatic pricing uses model
 cells; its coverage denominator is model entries, independently of headline turn counts.
+A turn with an observed zero model delta has no model lines. It still counts one completed turn,
+without inferring participation from models used by earlier turns.
 
 Exact rows and their per-turn model contributions expire after 30 days. Permanent receipts retain
 only identity and a semantic digest. Leader activation and daily maintenance prune bounded batches;
@@ -62,7 +64,7 @@ An empty result or a working connection cannot prove zero unrecorded consumption
 The forward migration preserves previous scanner origins, facts, receipts and daily history with
 original provenance in separate history tables, and removes receipt contributions and its alias, journal, snapshot and
 protection machinery. Reports default to `live-responses`. An explicit `legacy-scanner` query
-reads historical daily accounting separately, marks its provenance and coverage gap, and refuses
+reads historical daily accounting separately, marks its provenance and partial coverage, and refuses
 exact or hourly reporting. Historical scanner values are never added to live turn accounting.
 Restoration operates on the complete database, with receipts and daily cells together, and marks
 restored coverage partial; today's live Mates cannot establish missing historical sources.
@@ -77,7 +79,9 @@ last placement and have no current owner.
 Live sources require `observe_mate` on the execution project. Retired sources require ACTIVE
 membership in the original organization and org READ_ONLY or higher. Every filter, coverage row
 and detail page uses the same admitted sources. An inaccessible selector is refused; absence
-from the viewer's listing is not deletion. New facts, access changes and pricing generations
+from the viewer's listing is not deletion. Summary groupings share a read generation only when
+their authorized sources and every filter agree. Detail generations also bind the grouping to
+protect pagination. New facts, access changes and pricing generations
 invalidate detail cursors. Reports do not open Mate sockets.
 
 Reports have bounded server groups and keyset detail pages with explicit truncation. Daily

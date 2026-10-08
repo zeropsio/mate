@@ -28,7 +28,10 @@ export const agentUsageFamily: FamilySpec<"agentUsage"> = {
     idOf: (key, owner) =>
       key === "report" && owner.ownerId !== null ? agentUsageId(owner.orgId, owner.ownerId) : null,
     keyOf: () => "report",
-    decode: (raw) => Option.getOrNull(decode(raw)),
+    decode: (raw, _key, owner) => {
+      const report = Option.getOrNull(decode(raw));
+      return report !== null && agentUsageOwner(report.query) === owner?.ownerId ? report : null;
+    },
     wireScope: (owner) => ({ kind: "agentUsage", query: query(owner) }),
   },
 };

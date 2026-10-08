@@ -80,7 +80,6 @@ export const UsageFact = Schema.Struct({
   nativeId: UsageIdentity,
   provider: UsageProviderKind,
   models: Schema.Array(UsageModelLine).check(
-    Schema.isMinLength(1),
     Schema.isMaxLength(AGENT_USAGE_BATCH_MAX),
     Schema.makeFilter((models) =>
       new Set(models.map((line) => line.model)).size === models.length

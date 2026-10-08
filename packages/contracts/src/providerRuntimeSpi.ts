@@ -99,6 +99,8 @@
  *   identity, model lines and separately reported turn cost. Claude uses cumulative
  *   final-result ledgers minus a live native baseline, including Task/sidechains.
  *   Codex aggregates exact upstream response meters until the native turn completes.
+ *   Zero/cost-only turns retain their native receipt with empty model lines; historical
+ *   models are never inferred as participants. Optional absent Codex meters do not fail accounting.
  *   The Claude replay goldens change from individual-response to final-turn facts;
  *   the fresh live baseline replies are constructed, not captured provider evidence.
  *

@@ -583,7 +583,7 @@ export function UsagePage({
                         {sessionsLabel}
                         {metric === "cost" && (
                           <>
-                            {" · API-equivalent estimate"}
+                            {" · API-equivalent estimate for priced usage"}
                             {merged.costQuality.unpricedShare > 0 && (
                               <>
                                 {" "}
@@ -615,6 +615,7 @@ export function UsagePage({
 
                     {activeProviders.map((provider) => {
                       const totals = merged.providers.find((entry) => entry.provider === provider);
+                      if (totals === undefined) return null;
                       const share =
                         metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
                       const providerSessions = totals?.sessions ?? 0;
@@ -650,7 +651,7 @@ export function UsagePage({
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {metric === "cost"
-                              ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
+                              ? `${totals.costKnown === false ? "Unpriced" : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
                               : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsd(totals?.costUsd ?? 0)}`}
                           </span>
                         </div>
@@ -661,7 +662,7 @@ export function UsagePage({
                   <div className="flex min-w-0 flex-col gap-3">
                     <h2 className="text-sm font-medium text-foreground">
                       {isPast24Hours ? "Hourly" : "Daily"}{" "}
-                      {metric === "tokens" ? "processed tokens" : "cost"}
+                      {metric === "tokens" ? "processed tokens" : "priced cost"}
                     </h2>
                     {metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
                       <p className="text-sm text-muted-foreground">
@@ -781,7 +782,7 @@ export function UsagePage({
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
                           <th className="py-2 font-normal">Model</th>
-                          <th className="py-2 text-right font-normal">Cost</th>
+                          <th className="py-2 text-right font-normal">Priced cost</th>
                           <th className="py-2 text-right font-normal">Share</th>
                           <th className="py-2 text-right font-normal">Tokens</th>
                         </tr>
@@ -853,7 +854,7 @@ export function UsagePage({
                               {PROVIDER_PRESENTATION[provider].label}
                             </th>
                           ))}
-                          <th className="py-2 text-right font-normal">Total</th>
+                          <th className="py-2 text-right font-normal">Priced cost</th>
                           <th className="py-2 text-right font-normal">Tokens</th>
                         </tr>
                       </thead>
@@ -887,9 +888,11 @@ export function UsagePage({
                                   key={provider}
                                   className="py-2 text-right text-muted-foreground tabular-nums"
                                 >
-                                  {period.byProvider.get(provider)?.costKnown === false
-                                    ? "Unpriced"
-                                    : formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                                  {period.byProvider.get(provider) === undefined
+                                    ? "No data"
+                                    : period.byProvider.get(provider)?.costKnown === false
+                                      ? "Unpriced"
+                                      : formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">

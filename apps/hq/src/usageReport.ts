@@ -159,7 +159,6 @@ export const readUsageReport = Effect.fnUntraced(function* (
                 ? {
                     ...source.coverage,
                     state: "partial" as const,
-                    gaps: [...source.coverage.gaps, "legacy-scanner"],
                   }
                 : source.coverage,
             provider: source.provider,
@@ -196,12 +195,13 @@ export const readUsageReport = Effect.fnUntraced(function* (
         )
       )
         return yield* new UsageRefused({ code: "unresolved_owner_scope" });
+      const { groupBy: _groupBy, ...summaryQuery } = q;
       const generation = {
         accounting: state.revision,
         access: usageDigest({
           userId,
           scoped: scoped.map(({ coverage: _coverage, ...item }) => item),
-          query: q,
+          query: scope.detail === undefined ? summaryQuery : q,
           detailTier: scope.detail?.tier ?? null,
         }),
         pricing: state.pricing,

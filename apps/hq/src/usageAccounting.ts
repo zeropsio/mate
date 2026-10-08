@@ -55,10 +55,7 @@ const statisticsOf = (line: UsageModelLine): UsageStatistics => {
   };
 };
 export const contributionOf = (fact: UsageFact): UsageContribution => {
-  if (
-    fact.models.length === 0 ||
-    new Set(fact.models.map((line) => line.model)).size !== fact.models.length
-  )
+  if (new Set(fact.models.map((line) => line.model)).size !== fact.models.length)
     throw new Error("Expected unique model lines for one turn");
   const models = fact.models.map((line): UsageModelContribution => ({
     day: fact.time.at.slice(0, 10),

@@ -10,7 +10,7 @@ import { treeMigrations } from "./migrationFiles.ts";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
+import { UsageFact, UsageReport, type UsageReportQuery } from "@t3tools/contracts";
 import { usageOriginId, usageFactId, type UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { activeCoreLayer } from "../test/harness/activeCore.ts";
@@ -21,6 +21,8 @@ import { pruneUsageDetail } from "./usageRetention.ts";
 import { readUsageReport, type UsageReportAccess } from "./usageReport.ts";
 import { installAutomaticUsageRates } from "./usagePrices.ts";
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeFact = Schema.decodeUnknownEffect(UsageFact);
+const decodeReport = Schema.decodeUnknownEffect(UsageReport);
 const binding = { orgId: "ORG", projectId: "P", mateId: "00000000-0000-0000-0000-000000000001" };
 const originId = usageOriginId(binding, "claude");
 const fact = (
@@ -407,6 +409,141 @@ describe("HQ immutable usage", () => {
         ),
       );
     }
+    it.effect(
+      "a known zero turn does not infer participation from Haiku 10 and Opus 100 history",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, sql } = yield* setup;
+            const zero = yield* decodeFact({
+              ...fact("zero", "0"),
+              models: [],
+              nativeCost: { amount: "0", scale: 9, currency: "USD", basis: "reported-turn" },
+            });
+            yield* ledger.receive(
+              sender,
+              batch([
+                fact("haiku", "10", undefined, "haiku"),
+                fact("opus", "100", undefined, "opus"),
+                zero,
+              ]),
+            );
+            yield* ledger.receive(sender, batch([zero]));
+            for (const groupBy of ["model", "provider", "mate"] as const) {
+              const report = yield* readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: { ...baseQuery, groupBy },
+                },
+                access,
+                new Map(),
+              );
+              assert.strictEqual(report.totals.records, "3");
+              assert.strictEqual(report.totals.tokens, "110");
+              assert.strictEqual(report.pricing.unpricedModelEntries, "2");
+              if (groupBy === "model") {
+                assert.deepStrictEqual(
+                  report.groups.map((group) => [
+                    group.model,
+                    group.totals.records,
+                    group.totals.tokens,
+                  ]),
+                  [
+                    ["haiku", "1", "10"],
+                    ["opus", "1", "100"],
+                  ],
+                );
+              } else assert.strictEqual(report.groups[0]!.totals.records, "3");
+              yield* decodeReport(report);
+            }
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            const exact = yield* readUsageReport(
+              sql,
+              "owner",
+              {
+                kind: "agentUsage",
+                query: {
+                  ...baseQuery,
+                  mode: "exact",
+                  groupBy: "hour",
+                  since: "2020-01-01T11:00:00.000Z",
+                  until: "2020-01-01T13:00:00.000Z",
+                },
+                detail: { tier: "exact" },
+              },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(exact.totals.records, "3");
+            assert.strictEqual(exact.totals.tokens, "110");
+            assert.lengthOf(exact.detail, 3);
+            const recordedZero = exact.detail.find(
+              (detail) => "nativeId" in detail && detail.nativeId === "zero",
+            );
+            assert.deepStrictEqual(recordedZero, zero);
+          }),
+        ),
+    );
+    it.effect(
+      "summary groupings share access binding while filters, access and detail groupings stay fenced",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { ledger, sender, batch, sql } = yield* setup;
+            yield* ledger.receive(sender, batch([fact("binding", "10")]));
+            yield* sql`UPDATE hq_usage_state SET exact_since='2020-01-01T00:00:00Z'`;
+            const query = {
+              ...baseQuery,
+              mode: "exact" as const,
+              since: "2020-01-01T11:00:00.000Z",
+              until: "2020-01-01T13:00:00.000Z",
+            };
+            const read = (
+              groupBy: UsageReportQuery["groupBy"],
+              model: string | null = null,
+              admitted = access,
+              detail = false,
+            ) =>
+              readUsageReport(
+                sql,
+                "owner",
+                {
+                  kind: "agentUsage",
+                  query: { ...query, groupBy, model },
+                  ...(detail ? { detail: { tier: "exact" as const } } : {}),
+                },
+                admitted,
+                new Map(),
+              );
+            const model = yield* read("model");
+            for (const groupBy of ["provider", "hour", "day", "mate"] as const) {
+              const grouped = yield* read(groupBy);
+              assert.deepStrictEqual(grouped.generation, model.generation);
+            }
+            const filtered = yield* read("model", "model-a");
+            assert.notStrictEqual(filtered.generation.access, model.generation.access);
+            const changedAccess: UsageReportAccess = {
+              ...access,
+              facts: {
+                ...access.facts,
+                projects: [
+                  {
+                    ...access.facts.projects[0]!,
+                    userRoles: [{ clientUserId: "C-owner", roleCode: "ADMIN" }],
+                  },
+                ],
+              },
+            };
+            const changed = yield* read("model", null, changedAccess);
+            assert.notStrictEqual(changed.generation.access, model.generation.access);
+            const modelDetail = yield* read("model", null, access, true);
+            const providerDetail = yield* read("provider", null, access, true);
+            assert.notStrictEqual(modelDetail.generation.access, providerDetail.generation.access);
+          }),
+        ),
+    );
     it.effect("exact expiry preserves permanent daily facts and clone deduplication", () =>
       database(
         Effect.gen(function* () {
@@ -583,7 +720,7 @@ describe("HQ immutable usage", () => {
       ),
     );
     it.effect(
-      "forward migration preserves old provenance without adding scanner accounting to live totals",
+      "forward migration preserves old provenance and 32 original gaps without adding scanner accounting to live totals",
       () =>
         Effect.gen(function* () {
           const pg = yield* TempPostgres;
@@ -592,8 +729,9 @@ describe("HQ immutable usage", () => {
             const sql = yield* SqlClient.SqlClient;
             const old = treeMigrations().filter((file) => file.name < "0050_usage_turns.sql");
             yield* migrate(old);
+            const originalGaps = Array.from({ length: 32 }, (_, index) => `source-gap-${index}`);
             yield* sql`INSERT INTO hq_usage_producer(ledger_id,org_id,project_id,mate_id,channel,process_id,digest) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old',repeat('0',64))`;
-            yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,ledger_id,writer_id,provider,label,coverage) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old','claude','Old Mate',${json({ state: "partial", since: "2020-01-01T00:00:00.000Z", through: "2020-01-02T00:00:00.000Z", gaps: [] })}::jsonb)`;
+            yield* sql`INSERT INTO hq_usage_origin(origin_id,org_id,project_id,mate_id,ledger_id,writer_id,provider,label,coverage) VALUES('old','ORG','P','00000000-0000-0000-0000-000000000001','old','old','claude','Old Mate',${json({ state: "partial", since: "2020-01-01T00:00:00.000Z", through: "2020-01-02T00:00:00.000Z", gaps: originalGaps })}::jsonb)`;
             const historicalTurn = fact("old", "150");
             const { models, ...historicalIdentity } = historicalTurn;
             const original = {
@@ -637,7 +775,9 @@ describe("HQ immutable usage", () => {
             );
             assert.strictEqual(historic.provenance, "legacy-scanner");
             assert.strictEqual(historic.totals.tokens, "150");
-            assert.include(historic.coverage[0]!.value.gaps, "legacy-scanner");
+            assert.deepStrictEqual(historic.coverage[0]!.value.gaps, originalGaps);
+            assert.strictEqual(historic.state, "partial");
+            yield* decodeReport(historic);
             const exactLegacy = yield* Effect.result(
               readUsageReport(
                 sql,

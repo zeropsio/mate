@@ -119,12 +119,35 @@ describe("completed native turn accounting", () => {
         .uncachedInput,
     ).toBe("5");
   });
-  it("a reported zero turn retains a known model line", () => {
-    const read = makeClaudeTurnUsage(baseline({ model: model(100) }));
-    expect(
-      read(result("zero", { model: model(100) }))[0]?.models[0]?.components.uncachedInput,
-    ).toBe("0");
+  it("an unchanged Haiku 10 / Opus 100 ledger reports a zero turn without model participation", () => {
+    const history = { Haiku: model(10), Opus: model(100) };
+    const read = makeClaudeTurnUsage(baseline(history));
+    const facts = read(result("zero", history));
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.models).toEqual([]);
+    expect(facts[0]?.nativeCost?.amount).toBe("0");
+    expect(read(result("zero", history))).toEqual([]);
   });
+  it("an empty native ledger with a reported zero cost still records the completed turn", () => {
+    const read = makeClaudeTurnUsage(baseline());
+    expect(read(result("zero", {}))).toMatchObject([
+      { nativeTurnId: "zero", models: [], nativeCost: { amount: "0" } },
+    ]);
+  });
+  it.each([null, undefined])(
+    "Codex optional usage %s does not block a later exact meter",
+    (usage) => {
+      const read = makeCodexTurnUsage();
+      expect(
+        read("rawResponse/completed", { ...raw("parent", "empty", "empty", 0), usage }),
+      ).toEqual([]);
+      expect(read("turn/completed", complete("parent", "empty"))).toEqual([]);
+      read("rawResponse/completed", raw("parent", "turn", "response", 30));
+      expect(
+        read("turn/completed", complete("parent", "turn"))[0]?.models[0]?.components.inclusiveTotal,
+      ).toBe("130");
+    },
+  );
   it.each(["turn/completed", "collabAgent/turnCompleted"])(
     "Codex counts each own response once at %s",
     (method) => {

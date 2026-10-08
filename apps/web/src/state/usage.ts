@@ -123,6 +123,7 @@ export function usageReportView(
             {
               provider: row.provider,
               model: row.model ?? "Unknown model",
+              costKnown: row.costUsdNanos !== null,
               costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
               totalTokens: Number(row.totals.tokens),
               records: Number(row.totals.records),
@@ -174,6 +175,7 @@ export function usageReportView(
   const periodRows = [...buckets.values()].sort((a, b) => a.hourStart.localeCompare(b.hourStart));
   const byEnvironment = (report?.groups ?? []).map((row) => ({
     environmentId: EnvironmentId.make(row.key),
+    costKnown: row.costUsdNanos !== null,
     costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
     totalTokens: Number(row.totals.tokens),
     records: Number(row.totals.records),

@@ -183,6 +183,8 @@ The native print runtime restores resumed/forked history before accepting this c
 results supply cumulative `modelUsage`, which includes Task/sidechains and query-pipeline calls;
 Mate subtracts the baseline/previous result and keys the fact by `session_id` plus result `uuid`.
 Individual message meters and main-only `result.usage` are not added. A native
+result without model increments records its turn with empty model lines and retains its
+separately reported cost; unchanged historical counters do not identify participating models. A native
 `conversation_reset` supplies an explicit reset receipt: the native reset empties model counters
 and USD before the next result. Mate adopts that known-zero ledger, retires the old native
 session, and reads the next native session identity from its result (the conversation marker
@@ -195,6 +197,8 @@ The app-server inherits the raw flag when attaching children and buffers their e
 Mate routes raw usage and native completions before child UI registration, deduplicates exact
 response IDs inside each native thread/turn, and emits one aggregate at own turn completion.
 No context/lifetime counter participates. The raw meter supplies no model, so that model is null.
+Raw response usage is optional: an absent meter creates no fact and does not stop later
+reported parent or child usage from being recorded.
 Codex 0.160.1's native `ThreadResumeParams` has no raw opt-in, and its resume listener defaults
 raw off. Resumed chat continues with an explicit usage-unavailable warning and creates no guessed
 facts. Provider child creation broadcast lag is a native delivery limitation; no end-to-end

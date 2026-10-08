@@ -360,6 +360,29 @@ describe("recorded HQ usage presentation", () => {
     expect(markup).toContain("Unpriced");
     expect(markup).not.toContain("$0.00");
   });
+  it("a provider omitted from a recorded period is unknown rather than free", () => {
+    testState.providers = recordedReport({
+      groups: [
+        { key: "codex", provider: "codex", totals: statistics(), costUsdNanos: null },
+        { key: "claude", provider: "claude", totals: statistics(), costUsdNanos: "7830000000" },
+      ],
+    });
+    testState.periods = recordedReport({
+      groups: [
+        {
+          key: "period",
+          period: "2026-10-01",
+          provider: "claude",
+          totals: statistics(),
+          costUsdNanos: "7830000000",
+        },
+      ],
+    });
+    const body = bodyOf(renderPage());
+    expect(body).toContain("$7.83");
+    expect(body).toContain("No data");
+    expect(body).not.toContain("$0.00");
+  });
   it("provider-reported costs remain separate from the API-equivalent estimate", () => {
     testState.report = recordedReport({ nativeCosts: { '["USD","response",6]': "1250000" } });
     const markup = renderPage();

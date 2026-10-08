@@ -365,7 +365,7 @@ export function hqNavigationLink(options: {
             for (const { spec } of entry.registered.families) {
               const id = spec.hq!.idOf(recordKey, entry.registered.owner);
               if (id === null) continue;
-              const decoded = spec.hq!.decode(value, recordKey);
+              const decoded = spec.hq!.decode(value, recordKey, entry.registered.owner);
               // A record this build cannot read changes nothing: its last value stays.
               if (decoded !== null)
                 rows.push({

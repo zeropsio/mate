@@ -5669,7 +5669,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         };
 
         const context: ClaudeSessionContext = {
-          responseUsage: makeClaudeResponseUsage(usageBaseline),
+          turnUsage,
           session,
           stderrTail,
           startInput: input,
