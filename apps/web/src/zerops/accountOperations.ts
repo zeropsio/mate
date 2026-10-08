@@ -6,6 +6,7 @@ import { zeropsClientsFromUser } from "@t3tools/client-runtime/zerops";
  * the operation's progress projection; it never calls the platform itself.
  */
 import {
+  observeAutoUpdatePolicy,
   creationSteps,
   mateRegistration,
   registrationRequestId,
@@ -107,6 +108,7 @@ export function accountOperations(
     executors: {
       hq: makeHqExecutor({
         apiOf: hqWritesOf,
+        observeAutoUpdatePolicy: (policy) => observeAutoUpdatePolicy(store, policy),
         zerops: client,
         active: captureAccountLifetime(),
         hqProjectIdOf,

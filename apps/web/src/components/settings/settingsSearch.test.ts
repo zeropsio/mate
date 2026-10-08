@@ -125,3 +125,14 @@ describe("Zerops settings section", () => {
     });
   });
 });
+
+it.each(["Update Mates", "automatically", "Mates automatically"])(
+  "finds the organization update control by %s",
+  (query) => {
+    expect(
+      searchSettings(query).some(
+        (item) => item.id === "zerops-auto-update" && item.to === "/settings/zerops",
+      ),
+    ).toBe(true);
+  },
+);

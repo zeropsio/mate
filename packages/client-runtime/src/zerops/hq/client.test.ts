@@ -1828,3 +1828,51 @@ describe("HQ's final account fence", () => {
     },
   );
 });
+
+describe("HQ automatic-update policy transport", () => {
+  it("reads and changes a schema-checked policy through the authorized door", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/auto-update"
+        ? json(200, {
+            orgId: "ORG",
+            enabled: seen.method === "GET",
+            revision: seen.method === "GET" ? 0 : 1,
+          })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    expect(await api.autoUpdatePolicy()).toEqual({ orgId: "ORG", enabled: true, revision: 0 });
+    expect(await api.setAutoUpdatePolicy(false)).toEqual({
+      orgId: "ORG",
+      enabled: false,
+      revision: 1,
+    });
+    expect(hq.seen.filter((seen) => seen.path === "/api/auto-update")).toMatchObject([
+      { method: "GET", authorization: "Bearer session-1" },
+      { method: "PUT", authorization: "Bearer session-1", body: { enabled: false } },
+    ]);
+  });
+  it.each(["lost", "malformed"])(
+    "keeps a %s PUT answer uncertain and sends it only once",
+    async (failure) => {
+      const hq = fakeHq((seen) => {
+        if (seen.path !== "/api/auto-update") return undefined;
+        if (failure === "lost") throw new Error("connection reset");
+        return json(200, { enabled: false });
+      });
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        throughDoor: doors().throughDoor,
+        openSocket: NO_SOCKET,
+      });
+      await expect(api.setAutoUpdatePolicy(false)).rejects.toMatchObject({ kind: "uncertain" });
+      expect(hq.seen.filter((seen) => seen.path === "/api/auto-update")).toHaveLength(1);
+    },
+  );
+});

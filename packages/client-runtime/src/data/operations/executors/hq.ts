@@ -1,3 +1,4 @@
+import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 /**
  * HQ as the owner of the operations it executes: each kind's write through the organization's
@@ -53,7 +54,9 @@ export type HqWrites = Pick<
   | "keepDeployToken"
 > &
   FlowWrites &
-  Partial<Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate">>;
+  Partial<
+    Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
+  >;
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -189,6 +192,7 @@ export function makeHqExecutor(ports: {
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
+  readonly observeAutoUpdatePolicy?: (policy: HqAutoUpdatePolicy) => void;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
 }): OperationExecutor {
   /** The environment's own token minted, then kept by HQ; a refused one taken back. */
@@ -222,6 +226,27 @@ export function makeHqExecutor(ports: {
 
   const creationWrite = (requestId: string, api: HqWrites, intent: HqWriteIntent) => {
     switch (intent.kind) {
+      case "set-auto-update-policy":
+        return Effect.map(
+          write(async () => {
+            if (api.setAutoUpdatePolicy === undefined)
+              throw new HqError({
+                kind: "refused",
+                code: "unsupported",
+                message: "Update HQ to change automatic updates.",
+              });
+            const policy = await api.setAutoUpdatePolicy(intent.enabled);
+            if (policy.orgId !== intent.orgId || policy.enabled !== intent.enabled)
+              throw new HqError({
+                kind: "uncertain",
+                code: "unreadable",
+                message: "HQ did not confirm this organization's policy change.",
+              });
+            if (ports.active?.() !== false) ports.observeAutoUpdatePolicy?.(policy);
+            return policy;
+          }),
+          (policy) => answered(requestId, intent.orgId, { policy }),
+        );
       case "update-mate-face":
         return Effect.as(
           write(() => {

@@ -7,6 +7,7 @@
  *
  * @module data/operations/hqWrites
  */
+import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqMateSetUp } from "../../zerops/hq/client.ts";
 import { linkKeys, type OperationIntent } from "../model.ts";
@@ -16,6 +17,7 @@ import { shownInFacts } from "./shownInFacts.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
+    readonly "set-auto-update-policy": { readonly orgId: string; readonly enabled: boolean };
     readonly "update-mate-face": {
       readonly orgId: string;
       readonly projectId: string;
@@ -60,6 +62,7 @@ declare module "../model.ts" {
     };
   }
   interface OperationResults {
+    readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
     readonly "create-app": { readonly appId: string };
     readonly "record-birth": { readonly birthId: string };
   }
@@ -195,7 +198,17 @@ export const updateMateFace = shown(
 );
 
 /** Each HQ write's kind. */
+export const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
+  kind: "set-auto-update-policy",
+  executor: "hq",
+  reflected: (read, intent) => {
+    const policy = read.fact("hqAutoUpdatePolicy", intent.orgId);
+    return policy.kind === "known" && policy.value.enabled === intent.enabled;
+  },
+  // No adoption predicate: another admin's identical write cannot settle our lost answer.
+};
 export const HQ_WRITE_KINDS = [
+  setAutoUpdatePolicy,
   updateMateFace,
   createApp,
   recordBirth,

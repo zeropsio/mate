@@ -8,6 +8,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { Leader, type NotLeader } from "./leader.ts";
+import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { StructureRefused } from "./structure.ts";
@@ -53,7 +54,23 @@ export const autoUpdatePolicyLayer = Layer.effect(
     return AutoUpdatePolicy.of({
       current: Effect.flatMap(roles.view, (view) => readOrg(view.orgId)),
       changes: SubscriptionRef.changes(ticks),
-      read: (userId) => confirmingRefusal(Effect.flatMap(authorize(userId), readOrg)),
+      read: (userId) =>
+        confirmingRefusal(
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            if (
+              !view.members.some(
+                (member) =>
+                  member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+              )
+            )
+              return yield* new StructureRefused({
+                code: "forbidden",
+                reason: "not_active_member",
+              });
+            return yield* readOrg(view.orgId);
+          }),
+        ),
       set: (userId, enabled) =>
         confirmingRefusal(
           Effect.gen(function* () {

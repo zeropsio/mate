@@ -51,6 +51,19 @@ describe("HQ's organization auto-update switch", () => {
       }),
     );
 
+    for (const door of ["door-dev", "door-reader"] as const) {
+      it.effect(`lets ${door} read the organization policy without changing it`, () =>
+        Effect.gen(function* () {
+          const { call } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, door);
+          const result = yield* call("GET", "/api/auto-update", { session });
+          assert.strictEqual(result.status, 200);
+          assert.deepStrictEqual(result.body, { orgId: "ORG", enabled: true, revision: 0 });
+        }),
+      );
+    }
+
     for (const door of [undefined, "door-dev", "door-reader"] as const) {
       it.effect(`refuses an organization-wide change from ${door ?? "no identity"}`, () =>
         Effect.gen(function* () {

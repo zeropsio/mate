@@ -264,6 +264,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/zerops",
   },
   {
+    id: "zerops-auto-update",
+    title: "Update Mates automatically",
+    to: "/settings/zerops",
+  },
+  {
     id: "zerops-organizations",
     title: "Zerops organizations",
     to: "/settings/zerops",
