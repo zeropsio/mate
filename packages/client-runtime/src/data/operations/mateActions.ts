@@ -30,6 +30,7 @@ export const MATE_ACTIONS = {
   loginRemove: WS_METHODS.zeropsLoginRemove,
   crewCommand: WS_METHODS.zeropsCrewCommand,
   crewFilesPut: WS_METHODS.zeropsCrewFilesPut,
+  crewTaskPage: WS_METHODS.zeropsCrewTaskPage,
   terminalOpen: WS_METHODS.terminalOpen,
   terminalClear: WS_METHODS.terminalClear,
   terminalRestart: WS_METHODS.terminalRestart,

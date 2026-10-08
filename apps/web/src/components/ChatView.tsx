@@ -1462,6 +1462,7 @@ export default function ChatView(props: ChatViewProps) {
   // it holds its Mate until it answers (A9).
   const startThreadTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const sendCrewCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
+  const readCrewTaskPage = useAtomCommand(crewCommands.taskPage, { reportFailure: false });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -5704,6 +5705,13 @@ export default function ChatView(props: ChatViewProps) {
         crewDoor.crewmate(activeCrewOrigin.crewmate) === null
           ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
           : null,
+      // The engine crew's board is bounded: older finished work is read a page at a time.
+      readTaskPage: (input) =>
+        readCrewTaskPage({ environmentId, input }).then((result) =>
+          result._tag === "Success"
+            ? result.value
+            : Promise.reject(new Error("The crew's finished work could not be read.")),
+        ),
     };
   }, [
     activeCrewOrigin,
@@ -5715,6 +5723,7 @@ export default function ChatView(props: ChatViewProps) {
     environmentId,
     loadEarlierTurns,
     navigate,
+    readCrewTaskPage,
     threadId,
     zeropsMates,
   ]);

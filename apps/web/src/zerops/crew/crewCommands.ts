@@ -26,6 +26,8 @@ export function createCrewCommandAtoms<R, E>(
         }),
     }),
     filesPut: mateActionCommand(runtime, "crewFilesPut"),
+    /** A crewmate's finished work past the engine crew's board, a page at a time. */
+    taskPage: mateActionCommand(runtime, "crewTaskPage"),
   };
 }
 export const crewCommands = createCrewCommandAtoms(connectionAtomRuntime);
