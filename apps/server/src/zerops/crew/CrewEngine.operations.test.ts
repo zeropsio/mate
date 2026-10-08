@@ -18,10 +18,10 @@ import {
   applied,
   command,
   commandWhenFree,
-  copyOperationsFinished,
   dispatchedOf,
   firstTurn,
   latest,
+  readyTask,
   reportDone,
   seamsOf,
   snapshotWhere,
@@ -986,19 +986,6 @@ it.live("Drop it settles a stopped copy save outside any task, and its queue mov
     }),
   ),
 );
-
-const readyTask = (world: CrewWorld) =>
-  Effect.gen(function* () {
-    yield* applied(world);
-    const thread = yield* firstTurn(world, () =>
-      write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
-    );
-    yield* reportDone(thread);
-    yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-    yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
-    yield* copyOperationsFinished("backend");
-    return thread;
-  });
 
 it.live("a restart never commits edits on a checked copy: its task stops, the edits kept", () => {
   let tip = "";

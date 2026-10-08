@@ -9,14 +9,8 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { CrewEngine, inertCrewEngine } from "../CrewEngine.ts";
 import { CREW_OFF_SNAPSHOT } from "../crewSnapshot.ts";
-import {
-  applied,
-  copyOperationsFinished,
-  firstTurn,
-  reportDone,
-  snapshotWhere,
-} from "./crewEngineSteps.ts";
-import { spiEvent, withCrewEngine } from "./crewEngineFixture.ts";
+import { copyOperationsFinished, readyTask, snapshotWhere } from "./crewEngineSteps.ts";
+import { withCrewEngine } from "./crewEngineFixture.ts";
 import { git, write } from "./crewGitFixture.ts";
 
 describe("snapshotWhere", () => {
@@ -100,13 +94,8 @@ describe("snapshotWhere", () => {
 it.live("a ready task still owns its copy until its final lane read completes", () =>
   withCrewEngine((world) =>
     Effect.gen(function* () {
-      yield* applied(world);
-      const thread = yield* firstTurn(world, () =>
-        write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
-      );
       const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
-      yield* reportDone(thread);
-      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      const waiting = yield* readyTask(world).pipe(Effect.forkChild);
       yield* check.reached;
       const hold = yield* world.holdSsh((script) => script.includes("dirty=no"));
       yield* check.release;
@@ -117,8 +106,10 @@ it.live("a ready task still owns its copy until its final lane read completes", 
           (operation) => operation.kind === "check" && operation.status === "running",
         ),
       );
+      yield* Effect.yieldNow;
+      assert.isUndefined(waiting.pollUnsafe());
       yield* hold.release;
-      yield* copyOperationsFinished("backend");
+      yield* Fiber.join(waiting);
       const copy = NodePath.join(world.root, ".crew/backend");
       write(copy, "after-check.txt", "unchecked\n");
       git(copy, ["add", "-A"]);
