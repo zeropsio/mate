@@ -83,12 +83,16 @@ export const zeropsRunAdmission = Layer.effect(
 
 const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 
-/** The restart in V1's words: the container action, its replacement, or a plain restart. */
+/** The same restart evidence as V1: the container action, its replacement, or a plain restart. */
 const explainRestart = (
   facts: RestartFacts | null,
   window: { readonly lastActivityAt: number; readonly bootAt: number },
 ) =>
-  `${restartCause({ evidence: facts, lastActivityAt: iso(window.lastActivityAt), bootAt: iso(window.bootAt) })}.`;
+  restartCause({
+    evidence: facts,
+    lastActivityAt: iso(window.lastActivityAt),
+    bootAt: iso(window.bootAt),
+  });
 
 /** No platform to read a restart from: a fixture scene, or a process outside Zerops. */
 export const noRestartEvidence = Layer.succeed(

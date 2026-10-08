@@ -13,6 +13,7 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
+import type { MateRestart } from "@t3tools/contracts";
 import type {
   ChatAttachment,
   ConversationId,
@@ -69,8 +70,8 @@ export interface RestartFacts {
 }
 
 /**
- * The restart's evidence, or `null` where there is none to read, and the sentence a run the
- * restart cut reads: what happened to the Mate between the run's last sign of life and the boot.
+ * The restart's evidence, or `null` where there is none to read, and the structured cause of a run the
+ * restart cut: what happened to the Mate between the run's last sign of life and the boot.
  */
 export class RestartEvidence extends Context.Service<
   RestartEvidence,
@@ -79,7 +80,7 @@ export class RestartEvidence extends Context.Service<
     readonly explain: (
       facts: RestartFacts | null,
       window: { readonly lastActivityAt: number; readonly bootAt: number },
-    ) => string;
+    ) => MateRestart;
   }
 >()("t3/engine/ports/RestartEvidence") {}
 

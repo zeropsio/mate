@@ -55,6 +55,19 @@ export function isSlashCommand(text: string): boolean {
   return SLASH_COMMAND.test(text.trim());
 }
 
+/** A harness compaction maintains context; it does not continue the interrupted task. */
+export function isCompactCommandMessage(message: {
+  readonly role: string;
+  readonly text: string;
+  readonly attachments?: ReadonlyArray<unknown> | undefined;
+}): boolean {
+  return (
+    message.role === "user" &&
+    (message.attachments?.length ?? 0) === 0 &&
+    message.text.trim().toLowerCase() === "/compact"
+  );
+}
+
 export function isUsageLimitResumePrompt(text: string): boolean {
   return text.trim() === USAGE_LIMIT_RESUME_PROMPT;
 }

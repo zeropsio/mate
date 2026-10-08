@@ -54,6 +54,12 @@ describe("pending user input", () => {
   }>([
     { name: "nothing asked", activities: [], open: 0, question: null },
     {
+      name: "a restart resolution is final even at the same timestamp before the request sorts",
+      activities: [answered(1, "r1"), asked(1, "r1", ["Where?"])],
+      open: 0,
+      question: null,
+    },
+    {
       name: "a question waits: its words",
       activities: [asked(1, "r1", ["Ship the status page now, or after the review?"])],
       open: 1,

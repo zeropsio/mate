@@ -3051,8 +3051,16 @@ function MateRowView<T extends RosterCandidate>({
           )}
           {outsideHq ? null : status !== null && retainedReply === undefined ? (
             <span className="flex min-w-0 items-center gap-2">
-              <MateStatusMarker mateName={name} status={status} timestampFormat={timestampFormat} />
-              {status.kind === "limit" || view.reply === undefined ? null : (
+              <span className="min-w-0 max-w-full shrink-0">
+                <MateStatusMarker
+                  mateName={name}
+                  status={status}
+                  timestampFormat={timestampFormat}
+                />
+              </span>
+              {status.kind === "limit" ||
+              status.kind === "interrupted" ||
+              view.reply === undefined ? null : (
                 <MateReply known={known} reply={view.reply} />
               )}
             </span>

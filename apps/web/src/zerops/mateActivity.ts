@@ -150,7 +150,9 @@ export function attentionActivity(input: {
   readonly lastVisitedAtById: Readonly<Record<string, string>>;
 }): ZeropsAgentActivity | undefined {
   const { attention, environmentId } = input;
-  const threadId = attention.mainThreadId ?? attention.lastThreadId;
+  const restartQuestion =
+    attention.questions[0]?.interruption === undefined ? undefined : attention.questions[0];
+  const threadId = restartQuestion?.threadId ?? attention.mainThreadId ?? attention.lastThreadId;
   if (threadId === null) return undefined;
   const main = input.overview?.main ?? null;
   const visited = input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))];
@@ -169,13 +171,18 @@ export function attentionActivity(input: {
           : main.id === threadId
             ? { ...main, environmentId }
             : wordlessChat(threadId, environmentId, main.updatedAt)));
+  const heldWords =
+    words ??
+    (restartQuestion?.interruption?.restart.at == null
+      ? undefined
+      : wordlessChat(threadId, environmentId, restartQuestion.interruption.restart.at));
   const limit = input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
   const read =
     row !== undefined
       ? rowAgentActivity(row, environmentId, visited, undefined, limit)
-      : words === undefined
+      : heldWords === undefined
         ? undefined
-        : threadAgentActivity(words, visited, undefined, limit);
+        : threadAgentActivity(heldWords, visited, undefined, limit);
   if (read === undefined) return undefined;
   const unread = input.unseen === null ? read.unread : input.unseen > 0;
   const question = attention.questions.find(
@@ -198,9 +205,17 @@ export function attentionActivity(input: {
           : unread
             ? "done"
             : "idle";
-  const { liveStep, waitsOnHelpers, question: asked, errorLine, ...rest } = read;
+  const {
+    liveStep,
+    waitsOnHelpers,
+    question: asked,
+    errorLine,
+    interruption: _interruption,
+    ...rest
+  } = read;
   const activity: ZeropsAgentActivity = {
     ...rest,
+    interruption: question?.interruption,
     kind,
     status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
     face: mateMarkStateForThread(

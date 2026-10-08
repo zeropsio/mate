@@ -16,6 +16,7 @@
  *
  * @module engine/domain/decide
  */
+import type { MateRestart } from "@t3tools/contracts";
 import * as Cron from "effect/Cron";
 import * as Result from "effect/Result";
 import {
@@ -290,7 +291,13 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "ProviderSignals":
       return signals(b, command.sessionId, command.signals);
     case "Recovered":
-      return recovered(b, command.cutEffects, command.unstartedEffects ?? [], command.words);
+      return recovered(
+        b,
+        command.cutEffects,
+        command.unstartedEffects ?? [],
+        command.words,
+        command.restart,
+      );
     case "ImportHistory":
       return importHistory(b, command);
     case "HistoryBatch":
@@ -2100,6 +2107,7 @@ const recovered = (
   cutEffects: ReadonlyArray<EffectId>,
   unstartedEffects: ReadonlyArray<EffectId>,
   words: string | undefined,
+  restart: MateRestart | undefined,
 ): void => {
   const record = (id: EffectId, reason: string) => {
     const effect = b.state.effects[id];
@@ -2146,6 +2154,7 @@ const recovered = (
         continuedBy: null,
         ...(refusal === null ? {} : { notContinued: refusal }),
         ...(words === undefined ? {} : { words }),
+        ...(restart === undefined ? {} : { restart }),
       },
       "inferred-from-restart",
       neverSent.has(run.id) ? "refused" : "unknown",

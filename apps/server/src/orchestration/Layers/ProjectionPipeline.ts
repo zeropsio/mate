@@ -1,5 +1,6 @@
 import {
   ApprovalRequestId,
+  mateInterruptionOf,
   UserInputAttachmentAnswerPayload,
   type ChatAttachment,
   type MessageId,
@@ -9,7 +10,7 @@ import {
   type ThreadMessagePreview,
 } from "@t3tools/contracts";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
-import { userAskPreviewText } from "@t3tools/shared/userAsk";
+import { userAskPreviewText, isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -153,16 +154,6 @@ function threadMessagePreviewFromSource(
 // How many of the newest messages a preview looks through for one that
 // previews: past this many slash commands in a row, it says nothing.
 const PREVIEW_SOURCE_WINDOW = 20;
-
-// A request to compact the conversation — `/compact` alone, as the command
-// reactor reads it.
-function isCompactRequest(message: ProjectionThreadMessage): boolean {
-  return (
-    message.role === "user" &&
-    (message.attachments?.length ?? 0) === 0 &&
-    message.text.trim().toLowerCase() === "/compact"
-  );
-}
 
 function firstThreadMessagePreview(
   sources: ReadonlyArray<ProjectionThreadMessagePreviewSource>,
@@ -580,9 +571,36 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       return next;
     });
 
+    // Older events lack the verdict: read their immutable accepted message, never another projector's head.
+    const continuesWork = Effect.fn("continuesWork")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.turn-start-requested" }>,
+    ) {
+      if (event.payload.purpose !== undefined) return event.payload.purpose === "work";
+      const source = yield* eventStore
+        .readAggregateRange({
+          aggregateKind: "thread",
+          aggregateId: event.payload.threadId,
+          fromSequenceExclusive: 0,
+          toSequenceInclusive: event.sequence,
+        })
+        .pipe(
+          Stream.filter(
+            (each) =>
+              each.type === "thread.message-sent" &&
+              each.payload.messageId === event.payload.messageId,
+          ),
+          Stream.runHead,
+        );
+      return (
+        Option.isSome(source) &&
+        source.value.type === "thread.message-sent" &&
+        !isCompactCommandMessage(source.value.payload)
+      );
+    });
+
     const isCompactRequestId = Effect.fn("isCompactRequestId")(function* (messageId: MessageId) {
       const message = yield* projectionThreadMessageRepository.getByMessageId({ messageId });
-      return Option.isSome(message) && isCompactRequest(message.value);
+      return Option.isSome(message) && isCompactCommandMessage(message.value);
     });
 
     // Whether the person's message lands in a run already on — a turn the
@@ -1224,8 +1242,30 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           const existingTurns = yield* projectionTurnRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
+          const interruptedStarts = yield* eventStore
+            .readAggregateRange({
+              aggregateKind: "thread",
+              aggregateId: event.payload.threadId,
+              fromSequenceExclusive: 0,
+              toSequenceInclusive: event.sequence,
+            })
+            .pipe(
+              Stream.runFold(
+                () => new Set<MessageId>(),
+                (anchors, source) => {
+                  if (source.type === "thread.created") anchors.clear();
+                  const item =
+                    source.type === "thread.session-set"
+                      ? source.payload.session.interruption
+                      : null;
+                  if (item?.turnId === null && item.messageId !== undefined)
+                    anchors.add(item.messageId);
+                  return anchors;
+                },
+              ),
+            );
           const keptRows = retainProjectionMessagesAfterRevert(
-            existingRows,
+            existingRows.filter((row) => !interruptedStarts.has(row.messageId)),
             existingTurns,
             event.payload.turnCount,
           );
@@ -1318,6 +1358,43 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           return;
 
+        case "thread.turn-start-requested": {
+          // Fold this projector's event-ordered history, not another projector's current head.
+          const rows = yield* projectionThreadActivityRepository.listByThreadId({
+            threadId: event.payload.threadId,
+            activityKinds: ["runtime.interrupted"],
+          });
+          if (
+            !rows.some((row) => mateInterruptionOf(row)?.continuation === "manual") ||
+            !(yield* continuesWork(event))
+          )
+            return;
+          for (const row of rows) {
+            const item = mateInterruptionOf(row);
+            if (item?.continuation !== "manual") continue;
+            yield* projectionThreadActivityRepository.upsert({
+              ...row,
+              payload: { interruption: { ...item, continuation: "requested" } },
+            });
+          }
+          return;
+        }
+        case "thread.session-set": {
+          const interruption = event.payload.session.interruption;
+          if (interruption == null) return;
+          yield* projectionThreadActivityRepository.upsert({
+            activityId: event.eventId,
+            threadId: event.payload.threadId,
+            turnId: interruption.turnId,
+            tone: "info",
+            kind: "runtime.interrupted",
+            summary: "Interrupted by a Mate restart",
+            payload: { interruption },
+            sequence: event.sequence,
+            createdAt: event.payload.session.updatedAt,
+          });
+          return;
+        }
         case "thread.activity-appended":
           yield* projectionThreadActivityRepository.upsert({
             activityId: event.payload.activity.id,
@@ -1348,7 +1425,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             existingRows,
             existingTurns,
             event.payload.turnCount,
-          );
+          ).filter((row) => mateInterruptionOf(row)?.turnId !== null);
           if (keptRows.length === existingRows.length) {
             return;
           }
@@ -1376,9 +1453,46 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         });
         return;
       }
+      if (event.type === "thread.turn-start-requested") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (
+          Option.isSome(session) &&
+          session.value.interruption != null &&
+          (yield* continuesWork(event))
+        ) {
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            interruption: null,
+            status: session.value.status === "interrupted" ? "ready" : session.value.status,
+            updatedAt: event.occurredAt,
+          });
+        }
+        return;
+      }
+      if (event.type === "thread.reverted") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (Option.isNone(session) || session.value.interruption == null) return;
+        const turns = yield* projectionTurnRepository.listByThreadId(event.payload);
+        const retained = turns.some(
+          (turn) =>
+            turn.turnId === session.value.interruption?.turnId &&
+            turn.turnId !== null &&
+            turn.checkpointTurnCount !== null &&
+            turn.checkpointTurnCount <= event.payload.turnCount,
+        );
+        if (!retained)
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            interruption: null,
+            status: session.value.status === "interrupted" ? "ready" : session.value.status,
+            updatedAt: event.occurredAt,
+          });
+        return;
+      }
       if (event.type !== "thread.session-set") {
         return;
       }
+      const current = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
       yield* projectionThreadSessionRepository.upsert({
         threadId: event.payload.threadId,
         status: event.payload.session.status,
@@ -1387,6 +1501,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         runtimeMode: event.payload.session.runtimeMode,
         activeTurnId: event.payload.session.activeTurnId,
         lastError: event.payload.session.lastError,
+        // Provider rebinds omit restart evidence; only explicit evidence or acceptance replaces it.
+        interruption:
+          event.payload.session.interruption === undefined
+            ? Option.isSome(current)
+              ? current.value.interruption
+              : null
+            : event.payload.session.interruption,
         usageLimitResetAt: event.payload.session.usageLimitResetAt,
         updatedAt: event.payload.session.updatedAt,
       });
@@ -1410,7 +1531,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             const pendingMessage = yield* projectionThreadMessageRepository.getByMessageId({
               messageId: pendingTurnStart.value.messageId,
             });
-            if (Option.isSome(pendingMessage) && isCompactRequest(pendingMessage.value)) {
+            if (Option.isSome(pendingMessage) && isCompactCommandMessage(pendingMessage.value)) {
               return;
             }
           }
@@ -1479,7 +1600,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               threadId: event.payload.threadId,
             });
             yield* Effect.forEach(
-              existingTurns.filter((turn) => turn.turnId !== null && turn.state === "running"),
+              existingTurns.filter(
+                (turn) =>
+                  turn.turnId !== null &&
+                  (turn.state === "running" ||
+                    (event.payload.session.interruption?.turnId === turn.turnId &&
+                      turn.state === "error")),
+              ),
               (turn) =>
                 turn.turnId === null
                   ? Effect.void

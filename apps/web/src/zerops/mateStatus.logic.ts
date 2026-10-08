@@ -3,11 +3,16 @@ import type { ZeropsAgentActivity } from "./agentActivity";
 
 export type MateStatus = {
   readonly admission?: AgentAdmissionAttention;
-  readonly kind: "limit" | "sign-in" | "answer" | "broken";
   readonly severity: "attention" | "danger";
   readonly until?: string | undefined;
   readonly provider?: string | undefined;
-};
+} & (
+  | { readonly kind: "limit" | "sign-in" | "answer" | "broken" }
+  | {
+      readonly kind: "interrupted";
+      readonly interruption: import("@t3tools/contracts").MateInterruption;
+    }
+);
 
 /** Status evidence is shared by the menu and conversation; a reset never proves a resume. */
 export function mateStatus(
@@ -37,6 +42,9 @@ export function mateStatus(
     activity?.kind === "planReady"
   ) {
     return { kind: "answer", severity: "attention" };
+  }
+  if (activity?.interruption?.continuation === "manual") {
+    return { kind: "interrupted", severity: "attention", interruption: activity.interruption };
   }
   if (activity?.kind === "failed") return { kind: "broken", severity: "danger" };
   return null;

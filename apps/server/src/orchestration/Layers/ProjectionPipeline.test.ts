@@ -5036,3 +5036,322 @@ it.layer(Layer.fresh(BaseTestLayer))("checkpoint root history", (it) => {
     }),
   );
 });
+
+it.layer(
+  OrchestrationProjectionSnapshotQueryLive.pipe(
+    Layer.provide(ThreadBackgroundLiveness.layer),
+    Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(ThreadLiveStep.layer),
+    Layer.provide(RepositoryIdentityResolver.layer),
+    Layer.provideMerge(BaseTestLayer),
+  ),
+)("restart interruption projections", (it) => {
+  it.effect(
+    "the same restart event settles its turn and keeps history after accepted continuation",
+    () =>
+      Effect.gen(function* () {
+        const pipeline = yield* OrchestrationProjectionPipeline;
+        const store = yield* OrchestrationEventStore;
+        const query = yield* ProjectionSnapshotQuery;
+        const sql = yield* SqlClient.SqlClient;
+        const threadId = ThreadId.make("restart-thread");
+        const projectId = ProjectId.make("restart-project");
+        const turnId = TurnId.make("cut-turn");
+        const at = "2026-10-08T08:24:39.700Z";
+        const fields = {
+          aggregateKind: "thread" as const,
+          aggregateId: threadId,
+          occurredAt: at,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+        };
+        const append = (event: Parameters<typeof store.append>[0]) =>
+          Effect.gen(function* () {
+            const persisted = yield* store.append(event);
+            yield* pipeline.projectEvent(persisted);
+          });
+        yield* pipeline.bootstrap;
+        yield* append({
+          ...fields,
+          aggregateKind: "project",
+          aggregateId: projectId,
+          eventId: EventId.make("project"),
+          type: "project.created",
+          payload: {
+            projectId,
+            title: "Project",
+            workspaceRoot: "/tmp/restart-project",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("thread"),
+          type: "thread.created",
+          payload: {
+            threadId,
+            projectId,
+            title: "Conversation",
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        const session = {
+          threadId,
+          providerName: "codex",
+          runtimeMode: "full-access" as const,
+          lastError: null,
+          updatedAt: at,
+        };
+        yield* append({
+          ...fields,
+          eventId: EventId.make("running"),
+          type: "thread.session-set",
+          payload: { threadId, session: { ...session, status: "running", activeTurnId: turnId } },
+        });
+        const interruption = {
+          turnId,
+          restart: { cause: "replaced" as const, at },
+          continuation: "manual" as const,
+        };
+        yield* append({
+          ...fields,
+          eventId: EventId.make("restart"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: { ...session, status: "interrupted", activeTurnId: null, interruption },
+          },
+        });
+        const snapshot = yield* query.getCommandReadModel();
+        const thread = snapshot.threads.find((value) => value.id === threadId);
+        assert.deepStrictEqual(thread?.session?.interruption, interruption);
+        assert.strictEqual(thread?.latestTurn?.state, "interrupted");
+        const history = yield* sql<{
+          readonly turnId: string;
+          readonly kind: string;
+        }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.deepStrictEqual(history, [{ turnId, kind: "runtime.interrupted" }]);
+
+        yield* append({
+          ...fields,
+          eventId: EventId.make("permission-rebind"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: {
+              ...session,
+              runtimeMode: "approval-required",
+              status: "ready",
+              activeTurnId: null,
+            },
+          },
+        });
+        const rebound = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.deepStrictEqual(rebound?.session?.interruption, interruption);
+
+        const compactId = MessageId.make("compact-maintenance");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("compact-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId: compactId,
+            role: "user",
+            text: "/compact",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("compact-request"),
+          type: "thread.turn-start-requested",
+          payload: {
+            threadId,
+            messageId: compactId,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: at,
+          },
+        });
+        const compacted = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.deepStrictEqual(compacted?.session?.interruption, interruption);
+        const [compactHistory] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(compactHistory?.continuation, "manual");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("continue-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId: MessageId.make("continue"),
+            role: "user",
+            text: "Continue",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("accepted"),
+          type: "thread.turn-start-requested",
+          payload: {
+            threadId,
+            messageId: MessageId.make("continue"),
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: at,
+          },
+        });
+        const after = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(after?.session?.interruption, null);
+        const retained = yield* sql<{
+          readonly turnId: string;
+          readonly kind: string;
+        }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.deepStrictEqual(retained, history);
+        const [continued] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(continued?.continuation, "requested");
+
+        // The activity projector can be rebuilt while the session cursor is already ahead.
+        yield* sql`DELETE FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        yield* sql`UPDATE projection_state SET last_applied_sequence = 0 WHERE projector = 'projection.thread-activities'`;
+        yield* pipeline.bootstrap;
+        const [replayed] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(replayed?.continuation, "requested");
+        yield* sql`DELETE FROM projection_state`;
+        yield* pipeline.bootstrap;
+        const [rebuilt] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(rebuilt?.continuation, "requested");
+        // Rewind removes the original affected turn as well as its recovery item.
+        yield* append({
+          ...fields,
+          eventId: EventId.make("restart-again"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: { ...session, status: "interrupted", activeTurnId: null, interruption },
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("rewind"),
+          type: "thread.reverted",
+          payload: { threadId, turnCount: 0 },
+        });
+        const rewound = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(rewound?.session?.interruption, null);
+        assert.strictEqual(rewound?.latestTurn, null);
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_activities WHERE thread_id = ${threadId}`,
+          [],
+        );
+
+        // The accepted first message can be cut off before a provider assigns any turn id.
+
+        const backgroundTurn = TurnId.make("background-without-opener");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("background-checkpoint"),
+          type: "thread.turn-diff-completed",
+          payload: {
+            threadId,
+            turnId: backgroundTurn,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("refs/checkpoints/background"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: at,
+          },
+        });
+        const messageId = MessageId.make("handshake-message");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId,
+            role: "user",
+            text: "Work",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-restart"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: {
+              ...session,
+              status: "interrupted",
+              activeTurnId: null,
+              interruption: { ...interruption, turnId: null, messageId },
+            },
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-rewind"),
+          type: "thread.reverted",
+          payload: { threadId, turnCount: 1 },
+        });
+        const removedHandshake = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(removedHandshake?.session?.interruption, null);
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_activities WHERE thread_id = ${threadId}`,
+          [],
+        );
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId} AND message_id = ${messageId}`,
+          [],
+        );
+        // The background checkpoint has no opener; another projector has already pruned the anchor.
+        yield* sql`DELETE FROM projection_thread_messages WHERE thread_id = ${threadId}`;
+        yield* sql`UPDATE projection_state SET last_applied_sequence = 0 WHERE projector = 'projection.thread-messages'`;
+        yield* pipeline.bootstrap;
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId} AND message_id = ${messageId}`,
+          [],
+        );
+      }),
+  );
+});

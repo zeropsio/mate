@@ -1,4 +1,5 @@
 /** Startup evidence, read once with this Mate's own key, never retried. */
+import type { MateRestart } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -112,24 +113,12 @@ export const make = Effect.fnUntraced(function* (input: {
 
 export const layer = Layer.effect(ZeropsRestartRead, make({ serviceId: process.env["serviceId"] }));
 
-/** The newest completed container action within this turn's interruption window. */
-export function interruptedTurnMessage(input: {
-  readonly evidence: MateRestartEvidence | null;
-  readonly lastActivityAt: string;
-  readonly bootAt: string;
-}): string {
-  return `${restartCause(input)}; its running turn was interrupted. Send a message to continue.`;
-}
-
-/**
- * What happened to the Mate between a turn's last sign of life and the boot: the newest completed
- * container action in that window, its container's replacement, or a plain restart.
- */
+/** The newest completed action, container replacement, or observed server boot. */
 export function restartCause(input: {
   readonly evidence: MateRestartEvidence | null;
   readonly lastActivityAt: string;
   readonly bootAt: string;
-}): string {
+}): MateRestart {
   const { evidence, bootAt } = input;
   const after = Date.parse(input.lastActivityAt);
   const before = Date.parse(bootAt);
@@ -161,12 +150,9 @@ export function restartCause(input: {
       // started is the action's time, not finished (the server may boot during the restart).
       const at = text(process["started"]) ?? text(process["created"]);
       if (!inWindow(at)) return [];
-      const user = record(process["createdByUser"]);
-      const person = text(user?.["fullName"]) ?? text(user?.["firstName"]);
-      return [{ at, person, action }];
+      return [{ at, action }];
     })
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
-  const name = evidence?.name ?? "Mate";
   if (matched !== undefined) {
     const verb =
       matched.action === "stack.stop"
@@ -174,10 +160,26 @@ export function restartCause(input: {
         : matched.action.startsWith("stack.deploy")
           ? "redeployed"
           : "restarted";
-    return `${name} was ${verb}${matched.person === null ? "" : ` by ${matched.person}`} at ${matched.at}`;
+    return { cause: verb, at: matched.at };
   }
   if (inWindow(evidence?.containerStartedAt ?? null)) {
-    return `${name}'s container was replaced at ${evidence!.containerStartedAt}`;
+    return { cause: "replaced", at: evidence!.containerStartedAt! };
   }
-  return `${name} restarted at ${bootAt}`;
+  return { cause: "restarted", at: bootAt };
+}
+
+// Only the exact sentence written by the old boot reconciler is legacy restart evidence.
+const oldRestart =
+  /^.+(?: was (restarted|stopped|redeployed)(?: by .+)? at |'s container was (replaced) at | (restarted) at )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z); its running turn was interrupted\. Send a message to continue\.$/u;
+
+export function legacyRestartCause(lastError: string | null): MateRestart | null {
+  const match = lastError === null ? null : oldRestart.exec(lastError);
+  if (match === null) return null;
+  const cause = match[1] ?? match[2] ?? match[3];
+  return cause === "restarted" ||
+    cause === "replaced" ||
+    cause === "stopped" ||
+    cause === "redeployed"
+    ? { cause, at: match[4]! }
+    : null;
 }

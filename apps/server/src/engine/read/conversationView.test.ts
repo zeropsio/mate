@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -108,12 +109,13 @@ describe("a run a restart cut, as a person reads it", () => {
         yield* w.tell({ _tag: "Send", text: "Deploy the api" });
         yield* w.agent((agent, thread) => agent.call(thread));
         yield* w.crash;
+        const bootAt = yield* Clock.currentTimeMillis;
         yield* w.boot;
         const view = yield* viewOf(w);
         assert.deepStrictEqual(view?.lastEnded?.end, {
           kind: "cut-by-restart",
           continuedBy: runId(mate, 2),
-          words: "Mate restarted.",
+          restart: { cause: "restarted", at: DateTime.formatIso(DateTime.makeUnsafe(bootAt)) },
         });
         assert.strictEqual(view?.activeRun?.id, runId(mate, 2));
         assert.strictEqual(conversationRowOf(view!, revision).state.kind, "working");
@@ -133,7 +135,7 @@ describe("a run a restart cut, as a person reads it", () => {
         assert.deepStrictEqual(conversationRowOf(view!, revision).state, {
           kind: "failed",
           errorLine:
-            "Mate restarted. The run was cut and not continued (a maintenance turn): send a message to go on.",
+            "The Mate restarted. The run was cut and not continued (a maintenance turn): send a message to go on.",
         });
         yield* w.shutdown;
       }),

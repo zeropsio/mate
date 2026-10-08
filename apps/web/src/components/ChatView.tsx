@@ -5756,7 +5756,7 @@ export default function ChatView(props: ChatViewProps) {
     // so only the viewer's own connection is said.
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
-    const urgentSystemItems = [...systemComposerBannerItems.filter(isUrgentSystemItem)];
+    const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     // What belongs to the conversation — another of its chats at work, its compaction, its waking
     // or parking, its branch — waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
@@ -8673,6 +8673,36 @@ export default function ChatView(props: ChatViewProps) {
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
                   onUsageAutoResumeChange,
+                  interruption: activeServerThread?.session?.interruption ?? null,
+                  onRestartContinue:
+                    isWorking ||
+                    isSendBusy ||
+                    queueBlockedByPendingRequest ||
+                    zeropsSendBlockReason !== undefined
+                      ? null
+                      : (interruption) => {
+                          const pending = activeServerThread?.session?.interruption;
+                          if (
+                            activeThreadKey === null ||
+                            pending == null ||
+                            pending.turnId !== interruption.turnId ||
+                            pending.messageId !== interruption.messageId
+                          )
+                            return;
+                          const message = useQueuedMessageStore
+                            .getState()
+                            .enqueue(activeThreadKey, {
+                              prompt: "Continue the work that was interrupted by the restart.",
+                              images: [],
+                              terminalContexts: [],
+                              reviewComments: [],
+                              submissionIntent: "foreground",
+                              queuedAfterToolActivityId: null,
+                              createdAt: new Date().toISOString(),
+                              holdUntilUserAction: true,
+                            });
+                          void onSend(undefined, "foreground", message);
+                        },
                   onUsageContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null

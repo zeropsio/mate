@@ -479,6 +479,18 @@ export function deriveTurnSpans(input: {
     }
     const turnId = entryTurnId(entry, calls);
     if (turnId === null) {
+      const messageId = entry.kind === "work" ? entry.entry.interruption?.messageId : undefined;
+      if (messageId !== undefined) {
+        const openerIndex = input.timelineEntries.findIndex(
+          (candidate) => isUserMessageEntry(candidate) && candidate.message.id === messageId,
+        );
+        const opener = input.timelineEntries[openerIndex];
+        if (opener !== undefined && isUserMessageEntry(opener)) {
+          const span = open(null, { entry: opener, index: openerIndex });
+          span.entryIndexes.push(index);
+          unclaimed = unclaimed.filter((candidate) => candidate.index > openerIndex);
+        }
+      }
       if (endsTheWait(entry)) unclaimed = [];
       continue;
     }
@@ -577,6 +589,7 @@ export interface ConversationTurn {
    */
   readonly waiting: boolean;
   readonly interrupted: boolean;
+  readonly interruption?: import("@t3tools/contracts").MateInterruption;
   /** Interrupted by the person's next message, not by their Stop. */
   readonly byMessage: boolean;
   /**
@@ -893,6 +906,10 @@ export function deriveConversationStructure(given: {
     const waiting = span === waitingSpan;
     const latestTurnId = input.latestTurn?.turnId ?? null;
     const isLatestTurn = latestTurnId !== null && span.turnIds.at(-1) === latestTurnId;
+    const interruption = turnEntries.findLast(
+      (entry) => entry.kind === "work" && entry.entry.interruption !== undefined,
+    );
+    const restart = interruption?.kind === "work" ? interruption.entry.interruption : undefined;
     const interrupted =
       !live &&
       !waiting &&
@@ -909,6 +926,7 @@ export function deriveConversationStructure(given: {
         entry.entry.toolLifecycleStatus === "stopped",
     );
     const byMessage =
+      restart === undefined &&
       interrupted &&
       !stoppedTasks &&
       next?.opener != null &&
@@ -1085,6 +1103,7 @@ export function deriveConversationStructure(given: {
       live,
       waiting,
       interrupted,
+      ...(restart === undefined ? {} : { interruption: restart }),
       byMessage,
       brokeOff,
       limit,
@@ -1676,6 +1695,7 @@ export function stretchFace(input: {
   const { stretch, turn } = input;
   if (stretch.live) return "working";
   if (turn.brokeOff !== null && stretch.last) return "brokeOff";
+  if (turn.interruption?.continuation === "manual" && stretch.last) return "interrupted";
   if (turn.interrupted && stretch.last) return turn.byMessage ? "interrupted" : "stopped";
   if (input.pausedHere) return "paused";
   const operations = stretchOperations(stretch);

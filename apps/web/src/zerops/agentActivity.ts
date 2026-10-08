@@ -85,6 +85,7 @@ export type AgentActivityThread = Pick<
 > & {
   readonly session: {
     readonly status: OrchestrationSession["status"];
+    readonly interruption?: OrchestrationSession["interruption"];
     readonly lastError: string | null;
     readonly usageLimitResetAt?: string | null | undefined;
     readonly providerName?: string | null;
@@ -106,6 +107,7 @@ export type AgentActivityThread = Pick<
 };
 
 export interface ZeropsAgentActivity {
+  readonly interruption?: OrchestrationSession["interruption"];
   readonly threadId: ThreadId;
   readonly kind: ThreadStatusKind;
   /**
@@ -414,6 +416,7 @@ export function threadAgentActivity(
   const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
   return {
     threadId: thread.id,
+    interruption: thread.session?.interruption ?? null,
     kind: resolved.kind,
     status: threadStatusPill(resolved),
     face: mateMarkStateForThread(resolved.kind, usageLimited),

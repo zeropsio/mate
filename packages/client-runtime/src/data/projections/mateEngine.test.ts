@@ -1,4 +1,5 @@
 import {
+  RunId,
   importedCallFields,
   type ConversationRow,
   type Item,
@@ -1479,3 +1480,33 @@ describe("the crew on an engine conversation's record", () => {
     },
   );
 });
+
+it.each([
+  { continuedBy: null, notContinued: undefined, continuation: "automatic" },
+  { continuedBy: "thread-ada/r/2", notContinued: undefined, continuation: "continued" },
+  { continuedBy: null, notContinued: "a Stop was asked", continuation: "none" },
+])(
+  "restart continuation is shown only as its run records it: $continuation",
+  ({ continuedBy, notContinued, continuation }) => {
+    const restart = { cause: "replaced" as const, at: "2026-10-08T08:24:39.700Z" };
+    const view = thread(
+      held({
+        runs: [
+          engineRun("thread-ada", 1, {
+            state: "ended",
+            end: {
+              kind: "cut-by-restart",
+              continuedBy: continuedBy === null ? null : RunId.make(continuedBy),
+              restart,
+              ...(notContinued === undefined ? {} : { notContinued }),
+            },
+          }),
+        ],
+      }),
+    );
+    expect(
+      view?.activities.find((activity) => activity.kind === "runtime.interrupted")?.payload,
+    ).toEqual({ interruption: { turnId: run1, restart, continuation } });
+    expect(view?.session?.lastError).toBeNull();
+  },
+);

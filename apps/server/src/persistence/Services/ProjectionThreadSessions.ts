@@ -10,6 +10,7 @@ import {
   RuntimeMode,
   IsoDateTime,
   OrchestrationSessionStatus,
+  MateInterruption,
   ProviderInstanceId,
   ThreadId,
   TurnId,
@@ -29,6 +30,7 @@ export const ProjectionThreadSession = Schema.Struct({
   runtimeMode: RuntimeMode,
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(Schema.String),
+  interruption: Schema.optional(Schema.NullOr(MateInterruption)),
   usageLimitResetAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   updatedAt: IsoDateTime,
 });

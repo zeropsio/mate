@@ -10,6 +10,7 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
+import { isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -1260,6 +1261,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         causationEventId: userMessageEvent.eventId,
         type: "thread.turn-start-requested",
         payload: {
+          purpose: isCompactCommandMessage({ ...command.message, role: "user" })
+            ? "compact"
+            : "work",
           threadId: command.threadId,
           messageId: command.message.messageId,
           ...(command.modelSelection !== undefined

@@ -3742,3 +3742,54 @@ it("a normal response after a provider rejection is not replaced by a limit card
   expect(only?.limit).toBeNull();
   expect(only?.answer?.message.text).toBe("The work is done.");
 });
+
+it("a restart remains the cause on its turn after a later message", () => {
+  const interruption = {
+    turnId: turn("t1"),
+    restart: { cause: "replaced" as const, at: at(2) },
+    continuation: "manual" as const,
+  };
+  const entries = [
+    user("m1", 0),
+    tool("cut", "t1", 2, {
+      sourceActivityKind: "runtime.interrupted",
+      interruption,
+      command: undefined as never,
+    }),
+    user("m2", 3),
+    tool("w2", "t2", 4),
+  ];
+  const read = structure(entries, { latest: { id: "t2", state: "completed", completed: true } });
+  expect(read.turns[0]?.interruption).toEqual(interruption);
+  expect(read.turns[0]?.byMessage).toBe(false);
+});
+
+it("a restart before the provider acknowledges its first turn stays with the accepted message", () => {
+  const opener = user("accepted", 0, "Inspect the service");
+  if (opener.kind !== "message") throw new Error("Expected accepted message");
+  const interruption = {
+    turnId: null,
+    messageId: opener.message.id,
+    restart: { cause: "restarted" as const, at: at(9) },
+    continuation: "manual" as const,
+  };
+  const cut: TimelineEntry = {
+    id: "restart",
+    kind: "work",
+    createdAt: at(9),
+    entry: {
+      id: "restart",
+      createdAt: at(9),
+      label: "Interrupted",
+      tone: "info",
+      interruption,
+      turnId: null,
+      sourceActivityKind: "runtime.interrupted",
+    },
+  };
+  const read = structure([opener, cut, user("next", 10, "Continue")]);
+  expect(read.turns).toHaveLength(1);
+  expect(read.turns[0]?.span.opener?.message.id).toBe(opener.message.id);
+  expect(read.turns[0]?.interruption).toEqual(interruption);
+  expect(read.turns[0]?.byMessage).toBe(false);
+});

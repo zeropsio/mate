@@ -16,6 +16,7 @@ import {
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
   CREW_SEAM_ACTIVITY_KIND,
+  MateInterruption,
   CrewSeam,
   isToolLifecycleItemType,
   type AssetResource,
@@ -173,6 +174,7 @@ function readCallInput(input: Record<string, unknown> | null): WorkCallInput | u
 }
 
 export interface WorkLogEntry {
+  interruption?: MateInterruption;
   /**
    * `runtime.error`: how the server says its turn ended — its agent died
    * (`crash`), it failed (`failed`), or the usage limit refused it
@@ -1163,6 +1165,7 @@ function extractWorkLogToolLifecycleStatus(
   return undefined;
 }
 
+const decodeMateInterruption = Schema.decodeUnknownOption(MateInterruption);
 const decodeQuestionAttachmentAnswer = Schema.decodeUnknownOption(UserInputAttachmentAnswerPayload);
 
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
@@ -1245,6 +1248,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     if (questions.length > 0) entry.inputQuestions = questions;
     const answers = readInputAnswers(payload?.answers);
     if (answers.length > 0) entry.inputAnswers = answers;
+  }
+  if (activity.kind === "runtime.interrupted") {
+    const interruption = decodeMateInterruption(payload?.interruption);
+    if (Option.isSome(interruption)) entry.interruption = interruption.value;
   }
   const itemType = extractWorkLogItemType(payload);
   const requestKind = extractWorkLogRequestKind(payload);
