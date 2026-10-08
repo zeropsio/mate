@@ -85,6 +85,31 @@ const makeHarness = Effect.gen(function* () {
   return { controller, phase, started, verified, attempts: () => attempts };
 });
 
+it.effect("an acquired update watcher wakes after authentication really returns to idle", () =>
+  Effect.gen(function* () {
+    const { controller, started, verified } = yield* makeHarness;
+    const state = yield* controller.start("owner");
+    yield* Deferred.await(started);
+    assert.isTrue(yield* controller.isChangingCredentials!);
+    assert.ok(controller.subscribeUpdateChanges);
+    const { changes } = yield* controller.subscribeUpdateChanges;
+    yield* controller.respond!("owner", {
+      instanceId,
+      flowId: state.flowId!,
+      interactionId: "consent",
+      response: { type: "browser", action: "accept" },
+    });
+    // Complete before consuming: the post-idle receipt must remain available.
+    yield* Deferred.succeed(verified, void 0);
+    yield* changes.pipe(
+      Stream.mapEffect(() => controller.isChangingCredentials!),
+      Stream.filter((changing) => !changing),
+      Stream.runHead,
+    );
+    assert.isFalse(yield* controller.isChangingCredentials!);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect("requires owner consent and provider verification before success", () =>
   Effect.gen(function* () {
     const { controller, phase, started, verified, attempts } = yield* makeHarness;

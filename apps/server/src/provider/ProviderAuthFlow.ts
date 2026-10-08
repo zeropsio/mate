@@ -1,3 +1,5 @@
+import { subscribeUpdateChanges } from "../update/subscribeChanges.ts";
+import * as PubSub from "effect/PubSub";
 import {
   ProviderSetupError,
   type ProviderAuthInteraction,
@@ -85,6 +87,8 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
   const snapshot = yield* SubscriptionRef.make({ owner: null as string | null, state: empty });
   let active: Flow | undefined;
   let operation: "idle" | "auth" | "stopping" | "closed" = "idle";
+  const updateChanges = yield* PubSub.sliding<void>(1);
+  const updateChanged = PubSub.publish(updateChanges, void 0).pipe(Effect.asVoid);
   const sessions = new Set<Scope.Closeable>();
   const stopOwnedSessions = Effect.suspend(() =>
     Effect.forEach(Array.from(sessions), (session) => Scope.close(session, Exit.void), {
@@ -143,7 +147,15 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
     invalidate: lock.withPermit(
       Effect.gen(function* () {
         if (operation !== "idle") return;
-        yield* stopOwnedSessions;
+        operation = "stopping";
+        yield* updateChanged;
+        yield* stopOwnedSessions.pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              operation = "idle";
+            }).pipe(Effect.andThen(updateChanged)),
+          ),
+        );
         yield* SubscriptionRef.set(snapshot, {
           owner: null,
           state: {
@@ -155,6 +167,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
       }),
     ),
     isChangingCredentials: Effect.sync(() => operation !== "idle"),
+    subscribeUpdateChanges: subscribeUpdateChanges(updateChanges),
     withAccess: (task) =>
       Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
@@ -219,6 +232,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
           };
           active = flow;
           operation = "auth";
+          yield* updateChanged;
           const state: ProviderAuthState = {
             ...empty,
             methods: snapshot.value.state.methods ?? [],
@@ -304,6 +318,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
                     });
                     active = undefined;
                     operation = "idle";
+                    yield* updateChanged;
                   }),
                 );
               }),
@@ -391,6 +406,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
         if (flow.responseFiber) yield* Fiber.interrupt(flow.responseFiber);
         if (flow.fiber) yield* Fiber.interrupt(flow.fiber);
         operation = "idle";
+        yield* updateChanged;
         return snapshot.value.state;
       }).pipe(Effect.uninterruptible),
     logout: (stopSessions) =>
@@ -404,6 +420,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
                 detail: "Provider setup is already stopping.",
               });
             operation = "stopping";
+            yield* updateChanged;
             const flow = active;
             active = undefined;
             return flow;
@@ -425,6 +442,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
           Effect.gen(function* () {
             yield* SubscriptionRef.set(snapshot, { owner: null, state });
             operation = "idle";
+            yield* updateChanged;
           }),
         );
         if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause);
@@ -451,6 +469,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       operation = "closed";
+      yield* updateChanged;
       const flow = active;
       active = undefined;
       if (flow?.responseFiber) yield* Fiber.interrupt(flow.responseFiber);
