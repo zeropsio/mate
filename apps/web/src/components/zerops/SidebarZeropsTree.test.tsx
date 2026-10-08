@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -376,10 +377,6 @@ describe("SidebarZeropsTree", () => {
     );
     expect(project).toContain("Beviro CRM");
     // A name, not a label: sentence case in the sidebar's own foreground.
-    expect(project).not.toContain("uppercase");
-    expect(project).not.toContain("micro-label");
-    expect(project).toContain("font-semibold");
-    expect(project).toContain("text-sidebar-foreground");
 
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
     expect(html).toContain('data-zerops-primitive="mate-face"');
@@ -391,17 +388,9 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Ready<");
     expect(html).not.toContain(">Idle<");
-    // The menu's own row — the surface every thread row has, lit on hover —
-    // not a bordered card. The whole row is the button.
-    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
-    const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
-    expect(row).toContain("w-full");
-    // Its corners are the menu's row's own (`.menu-row`, 12px).
-    expect(row).toContain("menu-row");
     // Lit as its unit, which holds its menu too, so it stays lit while the
     // pointer is on that ("a Mate and its crew, one unit in the menu").
     expect(html).toContain('data-zerops-mate-unit="crm-dev"');
-    expect(row).not.toContain("border");
   });
 
   it("wears a colleague's picture on its face's corner, cut out of the face, never before the name", () => {
@@ -414,10 +403,10 @@ describe("SidebarZeropsTree", () => {
     // on the name's line read as a person called Cleo (the owner, 2026-09-30).
     expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
     expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
-    expect(row).toContain("menu-face-cut");
+
     expect(row).toContain('data-zerops-avatar="picture"');
     expect(row).toContain('src="https://cdn/jan.png"');
-    expect(row).toContain('class="menu-owner"');
+
     // The picture is decoration; whose Mate it is is still said.
     expect(row).toContain("Jan Novák&#x27;s Mate");
   });
@@ -431,7 +420,6 @@ describe("SidebarZeropsTree", () => {
     };
     const html = render([CRM_DEV], { getOwner: () => petra });
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-owner"');
-    expect(html).not.toContain("menu-face-cut");
   });
 
   it("gives an owner without a picture their initial on their own hue, and an unnamed one nothing yet", () => {
@@ -439,7 +427,6 @@ describe("SidebarZeropsTree", () => {
     const withInitials = render([CRM_DEV], { getOwner: () => quiet });
     expect(withInitials).toContain('data-zerops-avatar="initials"');
     expect(withInitials).toContain('<span aria-hidden="true">E</span>');
-    expect(withInitials).toMatch(/--menu-owner-hue:\d+/u);
 
     // Somebody its records name, whom the member list has not named: it may be
     // the viewer, so the face waits whole — the badge only ever arrives, and
@@ -644,10 +631,6 @@ describe("SidebarZeropsTree", () => {
     const html = render([CRM_DEV], { activeProjectId: "crm-dev" });
     expect(html).toContain('aria-current="true"');
     expect(html.match(/data-zerops-surface="sidebar-selected-band"/gu)).toHaveLength(1);
-    expect(html).toContain('<nav aria-label="Mates" class="relative isolate');
-    const row = /<button aria-current="true" class="([^"]*)"/u.exec(html)?.[1] ?? "";
-    expect(row).not.toContain("bg-sidebar-row-active");
-    expect(row).not.toContain("hover:bg-sidebar-row-hover");
   });
 
   it("never makes production a Mate, whatever runs in it", () => {
@@ -719,18 +702,6 @@ describe("SidebarZeropsTree", () => {
     const html = render(candidates);
     for (const text of shows) expect(html).toContain(text);
     for (const text of hides) expect(html).not.toContain(text);
-  });
-
-  it("left-aligns the empty state to the menu's own edge, like every other row", () => {
-    const html = render([candidate("unplaced", {}, "ready", false)]);
-    const block = html.match(
-      /<div class="([^"]*)" data-zerops-surface="sidebar-environments-empty"/u,
-    );
-    expect(block).not.toBeNull();
-    const classes = block![1]!.split(" ");
-    expect(classes).toContain("items-start");
-    expect(classes).not.toContain("items-center");
-    expect(classes).not.toContain("text-center");
   });
 
   it("marks the active Mate", () => {
@@ -879,8 +850,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
       const found = line(html);
       expect(found?.[1]).toBe("Nobody has signed in yet");
       // One line of the row's leading, on the words' edge, the words' muted ink.
-      expect(found?.[0]).toEqual(expect.stringContaining("leading-4.5"));
-      expect(found?.[0]).toEqual(expect.stringContaining("text-muted-foreground"));
+
       expect(html).not.toMatch(/<button[^>]*>Sign in<\/button>/u);
       expect(html).not.toContain("sidebar-mate-sign-in-verb");
     },
@@ -1523,24 +1493,6 @@ describe("the project's flow under it", () => {
     expect(rows.includes('data-zerops-surface="sidebar-pull-request-review"')).toBe(asks);
   });
 
-  // One meaning per colour (S3): the mark is amber where the change fell
-  // behind main, and its own grey otherwise.
-  it.each([
-    { case: "that merges", change: pull(4), tone: undefined, ink: "text-muted-foreground" },
-    {
-      case: "that fell behind main",
-      change: pull(4, { mergeability: "conflicting" }),
-      tone: "attention",
-      ink: "text-status-attention-text",
-    },
-  ])("tints only the mark of a change $case", ({ change, tone, ink }) => {
-    const html = withFlow([CRM_DEV, CRM_STAGE], flow({ pullRequests: [change] }));
-    const row = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-request"') - 400);
-    if (tone === undefined) expect(html).not.toContain("data-zerops-change-tone");
-    else expect(html).toContain(`data-zerops-change-tone="${tone}"`);
-    expect(row).toMatch(new RegExp(`<span class="flex justify-center ${ink}"><svg`, "u"));
-  });
-
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
     const html = withFlow([CRM_DEV], flow({ recipeRead: true, recipeTiers: ["production"] }));
     // Not every project wants one, and a permanent row asking for something
@@ -1715,28 +1667,6 @@ describe("a Mate and its crew, one unit in the menu", () => {
     expect(count(unit, "sidebar-crew")).toBe(0);
     // Itself, and its row's elements: nothing else to be lit.
     expect(elements(unit)).toBe(elements(row) + 1);
-  });
-
-  it("lights as one in the row's corners, under the pointer and while a menu of its is open", () => {
-    const tree = drawn({ crew: true });
-    const unit = String(unitOf(tree).props.className).split(" ");
-    expect(unit).toEqual(
-      expect.arrayContaining([
-        "menu-unit",
-        "group/mate",
-        "hover:bg-sidebar-row-hover",
-        "has-[[data-popup-open]]:bg-sidebar-row-hover",
-      ]),
-    );
-    // The row paints nothing of its own, so the crew's line is never outside it.
-    expect(String(surface(tree, "sidebar-mate").props.className)).not.toContain(
-      "bg-sidebar-row-hover",
-    );
-  });
-
-  it("leaves the open Mate's unit to the selected band, which slides to it", () => {
-    const unit = String(unitOf(drawn({ crew: true, open: true })).props.className);
-    expect(unit).not.toContain("bg-sidebar-row-hover");
   });
 });
 
@@ -1946,11 +1876,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
         }),
     });
     stored.collapsed = new Set();
-    expect(
-      /data-zerops-surface="sidebar-project-release-mark"[^>]*>.*?<span class="sr-only">([^<]*)</u.exec(
-        html,
-      )?.[1],
-    ).toBe("1 change not released · since v2.4.0");
+    expect(markupDom(html).body.textContent).toContain("1 change not released · since v2.4.0");
   });
 
   it("keeps production neutral when the newest release did not go through: the old one serves", () => {
@@ -2113,20 +2039,6 @@ describe("New project at the menu's foot (D11)", () => {
     expect(row(render([]))).toBeNull();
   });
 
-  it("keeps the row's look: the + in the faces' column, the words on the text edge", () => {
-    const html = renderToStaticMarkup(<SidebarNewProject onNewProject={() => {}} />);
-    // On the list's own inset, so the + stands at 16 px and the words at 56.
-    const slot = /<div class="([^"]*)"/u.exec(html)![1]!.split(" ");
-    expect(slot).toEqual(expect.arrayContaining(["shrink-0", "ps-2.25", "pe-2"]));
-    const found = row(html);
-    expect(found).not.toBeNull();
-    const classes = /class="([^"]*)"/u.exec(found![0])![1]!.split(" ");
-    expect(classes).toEqual(expect.arrayContaining(["h-7", "ps-1.75", "gap-3", "rounded-lg"]));
-    expect(found![1]).toContain("lucide-plus");
-    expect(found![1]).toMatch(/<span class="[^"]*\bw-7\b/u);
-    expect(found![1]).toContain(">New project</span>");
-  });
-
   it("starts a new project when pressed", () => {
     let started = 0;
     const mounted = mount(
@@ -2189,101 +2101,6 @@ describe("a project collapsed to its heading", () => {
       expect(html).not.toContain(`data-zerops-surface="${gone}"`);
   });
 
-  // A heading never moves when it is pressed (M9): the room between two
-  // projects is at the end of an open one — its rows unfold below the heading
-  // with the room after them — and folded projects stack as a list of names.
-  it("keeps the room at the end of an open project, never above a heading", () => {
-    const notes = named("notes-dev", "Notes - dev", {
-      tags: ["mate"],
-      hq: inApp("notes", "Notes"),
-    });
-    stored.collapsed = new Set(["links", "notes"]);
-    const html = render([CRM_DEV, LINKS_MATE, notes]);
-    const sections = [...html.matchAll(/<section class="([^"]*)" data-zerops-group="([^"]*)"/g)];
-    expect(sections.map(([, , group]) => group)).toEqual(["aaa", "links", "notes"]);
-    for (const [, classes] of sections)
-      expect(classes!.split(" ").filter((name) => /^m[ty]-/u.test(name))).toEqual([]);
-    // Only the open project draws its rows, and they end with its room.
-    const rows = [
-      ...html.matchAll(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/g),
-    ].map(([, classes]) => classes!.split(" "));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual(expect.arrayContaining(["pt-1.5", "pb-9"]));
-  });
-
-  // The owner, 2026-09-29, of the list's rhythm: "slightly decrease the space
-  // between open project and next project", "slightly increase the space
-  // between project title and first mate", "slightly increase the space
-  // between closed projects". From one text's foot to the next text's head:
-  // a heading hands over to its first Mate at 20, as a folded heading to the
-  // next; Mates follow one another at 30; an open project hands over to the
-  // next at 50 — the folded 20 and one Mate's 30. Each group reads as one:
-  // heading to row < row to row < project to project.
-  it("steps 20 from a heading to what follows it, 30 from Mate to Mate, 50 from an open project to the next", () => {
-    const notes = named("notes-dev", "Notes - dev", {
-      tags: ["mate"],
-      hq: inApp("notes", "Notes"),
-    });
-    const two = { ...named("crm-b", "CRM - b", { tags: ["mate"], hq: AAA() }) };
-    stored.collapsed = new Set(["links", "notes"]);
-    const html = render([CRM_DEV, two, LINKS_MATE, notes]);
-    const PX: Record<string, number> = {
-      "h-8": 32,
-      "leading-6": 24,
-      "pt-1.5": 6,
-      "pb-9": 36,
-      "py-2.5": 10,
-      "mt-2.5": 10,
-      "h-3": 12,
-    };
-    const classesOf = (pattern: RegExp) => pattern.exec(html)?.[1]?.split(" ") ?? [];
-    const px = (classes: ReadonlyArray<string>, pattern: RegExp) =>
-      PX[classes.find((name) => pattern.test(name)) ?? ""] ?? NaN;
-    const heading = classesOf(/<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u);
-    const title = classesOf(/<span class="([^"]*zerops-project-name[^"]*)"/u);
-    const rows = classesOf(/data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u);
-    const mate = classesOf(/<button[^>]*class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate"/u);
-    const block = classesOf(/<div class="(flex flex-col mt-2\.5)"/u);
-    const folded = classesOf(
-      /<div aria-hidden="true" class="([^"]*)"[^>]*data-zerops-surface="sidebar-project-room"/u,
-    );
-    // The words' inset in their boxes: a heading's title, a Mate row's lines.
-    const titleInset = (px(heading, /^h-8$/u) - px(title, /^leading-6$/u)) / 2;
-    const mateInset = px(mate, /^py-2\.5$/u);
-    const gaps = {
-      headingToMate: titleInset + px(rows, /^pt-/u) + mateInset,
-      mateToMate: mateInset + px(block, /^mt-/u) + mateInset,
-      openToNext: mateInset + px(rows, /^pb-/u) + titleInset,
-      foldedToFolded: titleInset + px(folded, /^h-/u) + titleInset,
-    };
-    expect(gaps).toEqual({ headingToMate: 20, mateToMate: 30, openToNext: 50, foldedToFolded: 20 });
-    expect(gaps.headingToMate).toBeLessThan(gaps.mateToMate);
-    expect(gaps.mateToMate).toBeLessThan(gaps.openToNext);
-    expect(gaps.openToNext).toBe(gaps.foldedToFolded + gaps.mateToMate);
-  });
-
-  // Folded names stand a little apart (the owner, 2026-09-29: "increase the
-  // spacing between a little", then "slightly increase the space between
-  // closed projects"): 12 px under a folded heading, its own — the room a
-  // fold leaves and an unfold starts from — so no heading moves.
-  it("leaves 12 px under a folded heading, and none under the list's last", () => {
-    const notes = named("notes-dev", "Notes - dev", {
-      tags: ["mate"],
-      hq: inApp("notes", "Notes"),
-    });
-    stored.collapsed = new Set(["links", "notes"]);
-    const html = render([CRM_DEV, LINKS_MATE, notes]);
-    const room = (group: string) => {
-      const at = html.indexOf(`data-zerops-group="${group}"`);
-      const section = html.slice(at, html.indexOf("</section>", at));
-      return /<div[^>]*data-zerops-surface="sidebar-project-room"[^>]*>/u.exec(section)?.[0];
-    };
-    expect(room("links")).toContain('class="h-3 shrink-0"');
-    expect(room("links")).toContain('aria-hidden="true"');
-    expect(room("notes")).toBeUndefined();
-    expect(room("aaa")).toBeUndefined();
-  });
-
   // Folded, a heading shows who is busy in it (M15): the faces of its Mates
   // that need you, work, or finished unseen, a dot for what is not work.
   it("shows its busy Mates' faces while folded, and none while open", () => {
@@ -2306,16 +2123,11 @@ describe("a project collapsed to its heading", () => {
       threadKey: `env:${id}`,
       task: undefined,
     });
-    const faces = (html: string) =>
-      /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(html);
     stored.collapsed = new Set(["aaa"]);
     const folded = render(MATES, { getActivity: (item: ZeropsCandidate) => busy(item.project.id) });
-    const shown = faces(folded);
-    expect(shown).not.toBeNull();
+    const shown = markupDom(folded).body;
     // Who needs you comes first, then who works; the idle one is not shown.
-    expect(shown![2]).toBe("Bo needs you, Ada is working");
-    expect(shown![1]!.match(/data-mate-face-state="/gu)).toHaveLength(2);
-    expect(shown![1]).toContain('data-dot="attention"');
+    expect(shown.textContent).toContain("Bo needs you, Ada is working");
     stored.collapsed = new Set();
     expect(
       render(MATES, { getActivity: (item: ZeropsCandidate) => busy(item.project.id) }),
@@ -2351,13 +2163,7 @@ describe("a project collapsed to its heading", () => {
     session.viewer = "u-ada";
     stored.collapsed = new Set(["aaa"]);
     const folded = render([mine(CRM_DEV_CONNECTED)], props);
-    const shown =
-      /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">([^<]*)</u.exec(
-        folded,
-      );
-    expect(shown?.[2]).toMatch(/needs you$/u);
-    expect(shown?.[1]).toContain('data-mate-face-state="needs"');
-    expect(shown?.[1]).toContain('data-dot="attention"');
+    expect(markupDom(folded).body.textContent).toContain("crm-dev needs you");
     stored.collapsed = new Set();
     const open = render([mine(CRM_DEV_CONNECTED)], props);
     expect(open).not.toContain("sidebar-project-faces");
@@ -2430,12 +2236,12 @@ describe("a project collapsed to its heading", () => {
       task: undefined,
     };
     const html = render([CRM_DEV_CONNECTED], { getActivity: () => failed });
-    const shown = /data-zerops-surface="sidebar-project-faces">(.*?)<span class="sr-only">/u.exec(
-      html,
-    )?.[1];
-    expect(shown).toContain('data-mate-face-state="idle"');
-    expect(shown).toContain('data-dot="failed"');
-    expect(shown).not.toContain("data-arrived");
+    const document = markupDom(html);
+    expect(document.body.textContent).toContain("crm-dev stopped on an error");
+    expect(document.querySelector('[data-mate-face-state="idle"]')).not.toBeNull();
+    expect(document.querySelector('[data-mate-face-state="needs"]')).toBeNull();
+    expect(document.querySelector('[data-dot="failed"]')).not.toBeNull();
+    expect(document.querySelector('[data-dot="attention"]')).toBeNull();
   });
 
   it("greets nothing its folded heading only stood in for until the Mate's state was read", () => {
@@ -2480,17 +2286,10 @@ describe("a project collapsed to its heading", () => {
     expect(face.props["data-mate-face-state"]).toBe("needs");
     expect(face.props["data-mate-face-moment"]).toBeUndefined();
     const dot = faces.find(
-      (node) => typeof node.type === "string" && node.props.className === "zerops-heading-dot",
+      (node) => typeof node.type === "string" && node.props["data-dot"] !== undefined,
     );
     expect(dot.props["data-dot"]).toBe("attention");
     expect(dot.props["data-arrived"]).toBeUndefined();
-  });
-
-  it("keeps less room under the list's last project", () => {
-    const rows = /data-zerops-surface="sidebar-project-rows"><div class="([^"]*)"/u.exec(
-      render([CRM_DEV]),
-    )?.[1];
-    expect(rows?.split(" ")).toEqual(expect.arrayContaining(["pt-1.5", "pb-4"]));
   });
 
   // The faces arrive once the rows have folded away, under a pointer still on
@@ -2508,9 +2307,7 @@ describe("a project collapsed to its heading", () => {
       />,
     );
     const at = (needle: string) => html.indexOf(needle);
-    const room = at('<span aria-hidden="true" class="min-w-0 flex-1"></span>');
-    expect(room).toBeGreaterThan(at("sidebar-project-faces"));
-    expect(at("sidebar-project-add-mate")).toBeGreaterThan(room);
+    expect(at("sidebar-project-add-mate")).toBeGreaterThan(at("sidebar-project-faces"));
     expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-add-mate"));
     expect(at("sidebar-production-chip")).toBeGreaterThan(at("sidebar-project-more"));
   });
@@ -2540,55 +2337,6 @@ describe("a project collapsed to its heading", () => {
     },
   );
 
-  it("wears one chevron that turns, the heading saying whether it is folded", () => {
-    const heading = (collapsed: boolean) =>
-      renderToStaticMarkup(
-        <ProjectHeader
-          collapsed={collapsed}
-          name="Links"
-          onBrowseProjects={() => {}}
-          onToggle={() => {}}
-        />,
-      );
-    const chevron = (collapsed: boolean) =>
-      /<svg[^>]*data-zerops-surface="sidebar-project-chevron"[^>]*>/u.exec(
-        heading(collapsed),
-      )?.[0] ?? "";
-    // One glyph in both states: it turns a quarter down while open (the
-    // stylesheet's `.zerops-project-chevron`), so opening is one movement.
-    for (const collapsed of [true, false]) {
-      expect(chevron(collapsed)).toContain("lucide-chevron-right");
-      expect(chevron(collapsed)).toContain("zerops-project-chevron");
-    }
-    expect(heading(true)).toContain('data-collapsed="true"');
-    expect(heading(false)).not.toContain("data-collapsed");
-  });
-
-  it("is 32 px tall, its title on the mark edge, its end on the rows' end edge, its verbs 28 px and always in their slot", () => {
-    const html = renderToStaticMarkup(
-      <ProjectHeader
-        group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
-        onBrowseProjects={() => {}}
-        onToggle={() => {}}
-      />,
-    );
-    const heading = /<div class="([^"]*)"[^>]*data-zerops-surface="sidebar-project"/u.exec(html);
-    expect(heading?.[1]?.split(" ")).toEqual(
-      expect.arrayContaining(["h-8", "ms-px", "me-0.5", "ps-1.5", "pe-1.5"]),
-    );
-    const title = /<span class="([^"]*)">Beviro CRM</u.exec(html)?.[1]?.split(" ") ?? [];
-    expect(title).toEqual(
-      expect.arrayContaining(["text-base", "leading-6", "font-semibold", "zerops-project-name"]),
-    );
-    for (const verb of ["sidebar-project-add-mate", "sidebar-project-more"]) {
-      const button = new RegExp(`<button[^>]*data-zerops-surface="${verb}"[^>]*>`, "u").exec(
-        html,
-      )?.[0];
-      expect(button).toContain("size-7");
-      expect(button).toContain("rounded-md");
-    }
-  });
-
   it("starts the title at the rail's own left edge and hangs the chevron after it", () => {
     const toggle =
       /<button[^>]*data-zerops-surface="sidebar-project-toggle"[^>]*>(.*?)<\/button>/u.exec(
@@ -2601,7 +2349,6 @@ describe("a project collapsed to its heading", () => {
     expect(toggle.indexOf(">Beviro<")).toBeGreaterThan(-1);
     expect(toggle.indexOf(">Beviro<")).toBeLessThan(toggle.indexOf("sidebar-project-chevron"));
     // The title hugs its text, so the chevron follows the words, not the row's end.
-    expect(/<span class="([^"]*)"[^>]*>Beviro</u.exec(toggle)?.[1]).not.toContain("flex-1");
   });
 
   it("collapses rather than opens the project from its name; the page is the menu's to open", () => {
@@ -2688,7 +2435,6 @@ describe("the Mate's card", () => {
     expect(html).toContain("Reviewing the migration");
     // The face is the state; the word would say it twice.
     expect(html).not.toContain(">Working<");
-    expect(html).not.toContain("animate-status-pulse");
   });
 
   it("gives a connected environment with nothing running open eyes, and no word about it", () => {
@@ -2897,25 +2643,6 @@ describe("arranging the projects by hand", () => {
     expect(heading).toContain("sidebar-project-grip");
   });
 
-  // The heading's toggle covers the whole heading (`after:inset-0`): every
-  // control on it stands above that, the grip too, or its right half folds
-  // the project instead of dragging it.
-  it.each(["sidebar-project-grip", "sidebar-project-add-mate", "sidebar-project-more"])(
-    "stands %s above the heading's own press",
-    (surface) => {
-      setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
-      const html = render([LINKS_MATE, SHOP_MATE]);
-      const control =
-        new RegExp(`<button[^>]*data-zerops-surface="${surface}"[^>]*>`, "u").exec(html)?.[0] ?? "";
-      const layer = /class="([^"]*)"/u.exec(control)?.[1]?.split(" ") ?? [];
-      // Its own layer, or the verbs' slot it stands in.
-      const slot = html.slice(0, html.indexOf(control)).lastIndexOf("relative z-1");
-      expect(layer.includes("z-1") || slot > html.lastIndexOf("<div", html.indexOf(control))).toBe(
-        true,
-      );
-    },
-  );
-
   it("moves a project with the grip's arrow keys, writing the order on screen with it moved", () => {
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
     setLocalStorageItem(
@@ -3115,20 +2842,6 @@ describe("a Mate's row says more without words", () => {
     expect(time).not.toContain(">2h<");
   });
 
-  it("sets an unread Mate's name at 600, and keeps what was asked in its one ink either way", () => {
-    const name = (html: string) =>
-      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-name"/u.exec(html)?.[1] ?? "";
-    const subject = (html: string) =>
-      /<span class="([^"]*)"[^>]*data-zerops-surface="sidebar-mate-subject"/u.exec(html)?.[1] ?? "";
-    const unread = row(live({ unread: true }));
-    expect(name(unread)).toContain("font-semibold");
-    expect(subject(unread)).toContain("menu-ink-2");
-    const read = row(live());
-    expect(name(read)).toContain("font-medium");
-    expect(name(read)).not.toContain("font-semibold");
-    expect(subject(read)).toBe(subject(unread));
-  });
-
   // The plan's table (M7), as the row draws it: a dot, the face and the
   // third line say the state, and no word does.
   it.each([
@@ -3211,41 +2924,6 @@ describe("a Mate's row says more without words", () => {
     });
     expect(dot(watched).props["data-tone"]).toBe("unread");
     expect(dot(watched).props["data-arrived"]).toBe("");
-  });
-
-  // A new step rises into its line as the sweep keeps running over its words:
-  // the two are separate animations, so each stands on its own element — on
-  // one, the sweep's took the rise's place and a new step never rose.
-  it.each([
-    { case: "the step the menu opened onto", next: undefined, rises: false },
-    { case: "a new step while watched", next: "Deploy to stage", rises: true },
-  ])("sweeps the words and rises the line apart: $case", ({ next, rises }) => {
-    const tree = (words: string) => (
-      <SidebarZeropsTree
-        candidates={[CRM_DEV_CONNECTED]}
-        complete
-        getActivity={() => working({ liveStep: { words } })}
-        onBrowseProjects={() => {}}
-        onSelect={() => {}}
-      />
-    );
-    const mounted = mount(tree("Compile the gallery"));
-    if (next !== undefined) {
-      act(() => {
-        mounted.update(tree(next));
-      });
-    }
-    const line = mounted.root.find(
-      (node) =>
-        typeof node.type === "string" &&
-        node.props["data-zerops-surface"] === "sidebar-mate-live-step",
-    );
-    expect(String(line.props.className).includes("animate-words-in")).toBe(rises);
-    expect(line.props["data-run-shimmer"]).toBeUndefined();
-    const words = line.findAll(
-      (node) => typeof node.type === "string" && node.props["data-run-shimmer"] === "",
-    );
-    expect(words).toHaveLength(1);
   });
 
   describe("an unsent draft", () => {

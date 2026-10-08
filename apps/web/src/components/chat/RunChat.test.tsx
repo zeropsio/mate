@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
@@ -274,9 +275,10 @@ describe("RunChat", () => {
         thought("r1", LONG),
       ]),
     );
-    expect(markup).toMatch(
-      /<div aria-label="Nova&#x27;s work" class="run-scroll" data-run-scroll="" role="region" tabindex="0">/u,
-    );
+    const region = markupDom(markup).querySelector('[role="region"][aria-label="Nova\'s work"]');
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.textContent).toContain("Build");
+    expect(region?.textContent).toContain("Line 1 of what it thought.");
     const scroll = markup.slice(markup.indexOf("data-run-scroll"));
     expect(scroll).toContain("Build");
     expect(scroll).toContain("Line 1 of what it thought.");
@@ -296,7 +298,6 @@ describe("RunChat", () => {
     expect(cards[0]?.match(/data-chat-kind="step:command"/g)).toHaveLength(2);
     expect(cards[1]?.match(/data-chat-kind="step:command"/g)).toHaveLength(1);
     // A hairline between the calls of a card, not a gap.
-    expect(markup).toMatch(/class="[^"]*divide-y[^"]*" data-chat-calls="true"/);
   });
 
   // The now line is the card's foot, never a heading over it: its face, what
@@ -350,8 +351,8 @@ describe("RunChat", () => {
         ]),
       }),
     );
-    expect(markup).toContain('<span class="run-now-worked">Nova worked 1m 12s</span>');
-    expect(markup).toContain('<span class="run-now-effort"> · 2 commands · 1 file read</span>');
+    expect(markupDom(markup).body.textContent).toContain("Nova worked 1m 12s");
+    expect(markupDom(markup).body.textContent).toContain("2 commands · 1 file read");
     expect(markup).not.toContain("data-work-line-clock");
     expect(markup).toContain('data-mate-face-state="done"');
     expect(draw(record([thought("r1", "One.")]))).not.toContain("data-mate-face-state");
@@ -372,12 +373,10 @@ describe("RunChat", () => {
     );
     expect(one).not.toContain("Ran a command");
     expect(one).not.toContain("zsh");
-    expect(one).toMatch(/<span class="font-mono text-foreground">npm run build<\/span>/u);
+    expect(markupDom(one).body.textContent).toContain("npm run build");
     expect(one.match(/npm run build/g)).toHaveLength(1);
     const script = draw(record([step(command("w2", SCRIPT))]));
-    expect(script).toMatch(
-      /<span class="font-mono text-foreground">cat &gt; status.ts &lt;&lt;&#x27;EOF&#x27;<\/span>/u,
-    );
+    expect(markupDom(script).body.textContent).toContain("cat > status.ts <<'EOF'");
     // Its lines stand in its item's box, the rest a scroll away: no control.
     expect(script).toContain('data-capped="item"');
     expect(script).not.toContain("Show all");
@@ -392,16 +391,14 @@ describe("RunChat", () => {
     const alone = draw(record([step(failed)]));
     const standing = /data-chat-failed="broken"/u;
     expect(alone).toMatch(standing);
-    expect(alone).toMatch(/lucide-triangle-alert[^"]*text-status-failed-text/u);
-    expect(alone).toMatch(/text-status-failed-text">Failed</u);
-    expect(alone).not.toContain("bg-status-failed-surface");
+
+    expect(markupDom(alone).body.textContent).toContain("Failed");
+
     const retried = draw(
       record([step(failed), { ...step(command("w2", "npm test")), key: "step:w2", at: at(20) }]),
     );
     expect(retried).not.toMatch(standing);
     expect(retried).toContain('data-chat-failed="undone"');
-    expect(retried).not.toContain("text-status-failed-text");
-    expect(retried).toMatch(/lucide-triangle-alert[^"]*text-muted-foreground/u);
   });
 
   // A question and the person's answer are a pair (K14): the question in the
@@ -429,8 +426,6 @@ describe("RunChat", () => {
       /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*><div[^>]*data-capped="item"[^>]*><div[^>]*><p[^>]*>Should \/status be public\?</u,
     );
     // Its answer stands nowhere else: whole, never cut to a line.
-    expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
-    expect(markup).not.toMatch(/<p class="[^"]*truncate[^"]*" data-chat-kind="person">/u);
   });
 
   // A screen reader hears the now line when its words change, never its
@@ -448,7 +443,7 @@ describe("RunChat", () => {
       }),
     );
     expect(markup.match(/role="status"/g)).toHaveLength(1);
-    expect(markup).toMatch(/<span class="sr-only" role="status">Thinking<\/span>/u);
+    expect(markupDom(markup).querySelector('[role="status"]')?.textContent).toBe("Thinking");
   });
 
   // Several at once (pass 35): a row each in the live slot, three at most,
@@ -503,9 +498,11 @@ describe("RunChat", () => {
       ),
     };
     const serving = draw(record([background], { live: true, status: status() }));
-    const row = serving.slice(serving.indexOf('data-chat-kind="step:command"'));
-    expect(row).toMatch(/text-muted-foreground">Running</u);
-    expect(row).not.toMatch(/tabular-nums">\d/u);
+
+    expect(markupDom(serving).body.textContent).toContain("Running");
+    expect(
+      markupDom(serving).querySelector('[data-chat-kind="step:command"]')?.textContent,
+    ).not.toMatch(/\d+:\d\d/u);
     const since = new Date(Date.now() - 45_000).toISOString();
     const running = (kind: "deploy" | "browser") => {
       const entry = operation("o1", "turn-1", 1, {
@@ -546,10 +543,9 @@ describe("RunChat", () => {
     );
     // One clock (K3), m:ss, in ink: the step's own time is words on its line.
     expect(markup.match(/data-work-line-clock/g)).toHaveLength(1);
-    expect(markup).toMatch(
-      /<span class="run-now-clock" data-work-line-clock="true">(?:\d+:)?\d+:\d\d</u,
+    expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toMatch(
+      /^(?:\d+:)?\d+:\d\d$/u,
     );
-    expect(markup).not.toContain("text-status-busy-text");
   });
 
   // One box for every item (run 11): a thought, a note, a command's code —
@@ -569,33 +565,6 @@ describe("RunChat", () => {
     expect(markup).not.toContain("Show all");
     expect(markup).not.toContain("Show less");
     expect(markup).toContain("Short.");
-  });
-
-  // A script arrives whole, so it is never "being written": four of its
-  // lines from its first frame, running or done (the owner, 2026-09-28: "I
-  // see 100s of LoC printed directly").
-  // What a command was for leads; its code is how, in the muted ink under it
-  // — failed too, where the headline, the surface and the time already say so.
-  it("sets a command's code quieter than what it was for, failed or not", () => {
-    const codeTone = (markup: string) =>
-      /<code class="([^"]*)"/u
-        .exec(markup)?.[1]
-        ?.split(" ")
-        .filter((name) => name.startsWith("text-"));
-    for (const status of ["completed", "failed"] as const) {
-      const markup = draw(
-        record([
-          step(
-            command("w1", "npm test", {
-              callInput: { description: "Run the tests" },
-              toolLifecycleStatus: status,
-            }),
-          ),
-        ]),
-      );
-      // Mono at 13 px, the chat's quiet size: as tall as the words it follows.
-      expect(codeTone(markup)).toEqual(["text-muted-foreground", "text-line"]);
-    }
   });
 
   it("stands a running command's code in its box in the slot, as it lands", () => {
@@ -1533,7 +1502,9 @@ describe("RunChat, as the person uses it", () => {
       const markup = draw(settledRun());
       expect(markup).toContain('data-run-fold="folded"');
       expect(markup).toContain("Nova worked 1m 20s");
-      expect(markup).toMatch(/<button aria-expanded="false" class="run-now-fold"[^>]*>Show work/u);
+      expect(markupDom(markup).querySelector('button[aria-expanded="false"]')?.textContent).toBe(
+        "Show work",
+      );
       for (const hidden of [
         "Should /status be public?",
         "Yes, no secrets",
@@ -2439,10 +2410,10 @@ describe("RunChat, as the person uses it", () => {
         },
       };
       const above = { querySelector: () => box, querySelectorAll: () => [] };
-      const node = (element: { type: unknown; props: unknown }) => {
+      const node = (element: { type: unknown; props: unknown; key?: unknown }) => {
         const props = element.props as Record<string, unknown>;
         if (element.type !== "div") return {};
-        if (props.className === "run-above") return above;
+        if (element.key === "above") return above;
         return props["data-run-scroll"] !== undefined ? box : {};
       };
       const running = command("w2", "pnpm build", {

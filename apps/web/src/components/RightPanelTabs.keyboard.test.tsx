@@ -9,6 +9,7 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import type { RightPanelSurface } from "../rightPanelStore";
+import { ZeropsReviewDialog } from "./zerops/review/ZeropsReviewDialog";
 import { RightPanelTabs } from "./RightPanelTabs";
 
 vi.mock("~/hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -156,4 +157,34 @@ describe("the right panel's new-tab shortcut", () => {
     expect((await press("t", { metaKey: true })).defaultPrevented).toBe(false);
     expect(openMenu()).toBeNull();
   });
+});
+
+it("the review wins over the panel launcher's capture shortcut, then the launcher returns on closure", async () => {
+  await renderPanel();
+  const reviewRoot = createRoot(document.body.appendChild(document.createElement("div")));
+  try {
+    await act(() =>
+      reviewRoot.render(
+        <ZeropsReviewDialog
+          open
+          onOpenChange={noop}
+          onClosed={noop}
+          from={null}
+          labelledBy="review-title"
+        >
+          <h2 id="review-title">Review change</h2>
+        </ZeropsReviewDialog>,
+      ),
+    );
+    expect(document.activeElement?.getAttribute("role")).toBe("dialog");
+    await press("t", { metaKey: true });
+    expect(openMenu()).toBeNull();
+    expect(onAdd).not.toHaveBeenCalled();
+    await act(() => reviewRoot.render(null));
+    document.body.focus();
+    await press("t", { metaKey: true });
+    expect(openMenu()?.textContent).toContain("Diff");
+  } finally {
+    await act(() => reviewRoot.unmount());
+  }
 });

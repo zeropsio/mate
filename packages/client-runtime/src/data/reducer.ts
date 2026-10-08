@@ -39,6 +39,7 @@ import {
   type StreamKey,
 } from "./model.ts";
 import {
+  acceptedProjectOf,
   isOperationInput,
   reduceOperation,
   requestIdOf,
@@ -607,6 +608,12 @@ function reindex(before: AccountState, after: AccountState, changed: Set<ReadKey
         if (is !== null) draftOf(`${index.name}:${is}`).add(id);
       }
   }
+  // Acceptance bridges only the first row/verdict, never resurrects forgotten project evidence.
+  for (const id of touched("project", before, after, changed)) {
+    const key = `accepted-project:${id}`;
+    if (after.facts.has(factKey("project", id)) && (after.indexes.get(key)?.size ?? 0) > 0)
+      draftOf(key).clear();
+  }
   if (drafts.size === 0) return after;
   const indexes = new Map(after.indexes);
   for (const [key, draft] of drafts) indexes.set(key, draft);
@@ -768,7 +775,28 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
     const next = reduceOperation(current, input);
     if (next === current || next === undefined) return { state, changed, directives: [] };
     changed.add(`operation:${requestId}`);
+    const was = acceptedProjectOf(current);
+    const is = acceptedProjectOf(next);
+    const wasKey = was === null ? null : `accepted-project:${was.projectId}`;
+    const isKey =
+      is === null || state.facts.has(factKey("project", is.projectId))
+        ? null
+        : `accepted-project:${is.projectId}`;
     let indexes = state.indexes;
+    if (wasKey !== isKey) {
+      const updated = new Map(indexes);
+      if (wasKey !== null) {
+        const ids = new Set(indexes.get(wasKey));
+        ids.delete(requestId);
+        updated.set(wasKey, ids);
+        changed.add(`index:${wasKey}`);
+      }
+      if (isKey !== null) {
+        updated.set(isKey, new Set([...(indexes.get(isKey) ?? []), requestId]));
+        changed.add(`index:${isKey}`);
+      }
+      indexes = updated;
+    }
     if (
       current === undefined &&
       next.intent.kind === "mate-restart" &&
@@ -779,7 +807,7 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       changed.add(`index:${key}`);
     }
     return {
-      state: { ...state, indexes, operations: new Map(state.operations).set(requestId, next) },
+      state: { ...state, operations: new Map(state.operations).set(requestId, next), indexes },
       changed,
       directives: [],
     };

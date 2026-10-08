@@ -5,6 +5,7 @@ import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
 import { visibleText } from "../../harness/browser.ts";
+import { rendered } from "../../harness/completedHttp.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -44,6 +45,7 @@ export function creation(s: Scenario) {
       await page.locator(`::-p-aria(${name})`).setTimeout(15_000).click({ clickCount: 3 });
       await page.keyboard.press("Backspace");
       await page.keyboard.type(value);
+      await rendered(page);
     });
   const openProjectDetails = async (group: string) => {
     const toggle = page
@@ -136,9 +138,7 @@ export function creation(s: Scenario) {
     settled: Effect.promise(network.settled),
     pastRetryWindow: Effect.gen(function* () {
       yield* Effect.promise(network.settled);
-      // Drain requests before advancing: their continuations may install the 5 s re-check.
-      // Ten fake seconds gives that window another full 5 s of headroom on a loaded CPU.
-      yield* Effect.promise(() => s.clock.advance(10_000));
+      yield* Effect.promise(() => s.clock.advanceStepped(5_000, { settle: network.settled }));
       yield* Effect.promise(network.settled);
     }),
     text,

@@ -1,10 +1,11 @@
-import type { ProjectScript, ResolvedKeybindingsConfig } from "@t3tools/contracts";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+// @vitest-environment happy-dom
+import type { ProjectScript } from "@t3tools/contracts";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import ProjectScriptsControl from "./ProjectScriptsControl";
 
-const EMPTY_KEYBINDINGS: ResolvedKeybindingsConfig = [];
 const PRIMARY_SCRIPT: ProjectScript = {
   id: "dev",
   name: "Dev",
@@ -12,55 +13,53 @@ const PRIMARY_SCRIPT: ProjectScript = {
   icon: "play",
   runOnWorktreeCreate: false,
 };
-
-function renderControl(scripts: ReadonlyArray<ProjectScript>) {
-  return renderToStaticMarkup(
-    <ProjectScriptsControl
-      scripts={scripts}
-      keybindings={EMPTY_KEYBINDINGS}
-      onRunScript={() => {}}
-      onAddScript={async () => undefined as never}
-      onUpdateScript={async () => undefined as never}
-      onDeleteScript={async () => undefined as never}
-    />,
+let root: Root;
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  root = createRoot(document.body.appendChild(document.createElement("div")));
+});
+afterEach(async () => {
+  await act(() => root.unmount());
+  document.body.innerHTML = "";
+  vi.unstubAllGlobals();
+});
+async function renderControl(scripts: ReadonlyArray<ProjectScript>) {
+  const onRunScript = vi.fn();
+  await act(() =>
+    root.render(
+      <ProjectScriptsControl
+        scripts={scripts}
+        keybindings={[]}
+        onRunScript={onRunScript}
+        onAddScript={vi.fn()}
+        onUpdateScript={vi.fn()}
+        onDeleteScript={vi.fn()}
+      />,
+    ),
   );
+  return onRunScript;
 }
-
-function buttonTag(html: string, ariaLabel: string) {
-  return html.match(new RegExp(`<button[^>]*aria-label="${ariaLabel}"[^>]*>`))?.[0];
-}
-
-function expectResponsiveXsControl(markup: string | undefined) {
-  expect(markup).toBeDefined();
-  expect(markup).toContain("h-7");
-  expect(markup).toContain("gap-1");
-  expect(markup).toContain("text-sm");
-  expect(markup).toContain("sm:h-6");
-  expect(markup).toContain("sm:text-xs");
-  expect(markup).toContain("w-7");
-  // The xs size's own padding at every width: the icon is centred in the square
-  // either way, and the label brings its own width when the header has room.
-  expect(markup).toContain("px-[calc(--spacing(2)-1px)]");
-  expect(markup).toContain("sm:w-6");
-  expect(markup).toContain("@3xl/header-actions:w-auto!");
-}
-
-describe("ProjectScriptsControl compact controls", () => {
-  it("keeps the primary Run control compact and expands it with its label", () => {
-    const html = renderControl([PRIMARY_SCRIPT]);
-
-    expectResponsiveXsControl(buttonTag(html, "Run Dev"));
-    expect(html).toContain(
-      'class="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5"',
-    );
+describe("ProjectScriptsControl", () => {
+  it("runs the named primary action when pressed", async () => {
+    const onRunScript = await renderControl([PRIMARY_SCRIPT]);
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Run Dev"]');
+    expect(button).not.toBeNull();
+    await act(() => button!.click());
+    expect(onRunScript).toHaveBeenCalledWith({
+      id: "dev",
+      name: "Dev",
+      command: "vp dev",
+      icon: "play",
+      runOnWorktreeCreate: false,
+    });
   });
-
-  it("keeps the standalone Add control compact and expands it with its label", () => {
-    const html = renderControl([]);
-
-    expectResponsiveXsControl(buttonTag(html, "Add action"));
-    expect(html).toContain(
-      'class="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5"',
-    );
+  it("opens the action editor from Add action", async () => {
+    await renderControl([]);
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Add action"]');
+    expect(button).not.toBeNull();
+    await act(() => button!.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Add Action");
+    expect(dialog?.querySelector("input")).not.toBeNull();
   });
 });

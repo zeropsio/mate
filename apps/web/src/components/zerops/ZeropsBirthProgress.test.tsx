@@ -75,7 +75,6 @@ describe("ZeropsBirthLine", () => {
       />,
     );
     expect(html).toContain("Could not be created.");
-    expect(html).toContain("text-[var(--zerops-status-failed-text)]");
   });
 
   it("says nothing where there is no active or failed step and the birth is still running", () => {

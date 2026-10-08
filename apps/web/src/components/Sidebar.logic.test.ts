@@ -17,8 +17,6 @@ import {
   orderItemsByPreferredIds,
   openAddProjectFromSidebar,
   resolveSidebarStageBadgeLabel,
-  resolveThreadRowLayoutPresentation,
-  resolveThreadProviderIconClassName,
   resolveWorkspaceNewThreadAction,
   resolveWorkingStartedAt,
   searchSidebarThreads,
@@ -135,33 +133,6 @@ describe("resolveWorkspaceNewThreadAction", () => {
     expect(resolveWorkspaceNewThreadAction([active], isUntouchedSidebarThread)).toEqual({
       kind: "create",
     });
-  });
-});
-
-describe("resolveThreadRowLayoutPresentation", () => {
-  it("lets cards grow to two title lines without reserving fixed-height emptiness", () => {
-    const card = resolveThreadRowLayoutPresentation("card");
-
-    expect(card.titleClassName).toContain("line-clamp-2");
-    expect(card.titleClassName).toContain("leading-");
-    expect(card.titleClassName).not.toContain("truncate");
-    expect(card.contentClassName).toContain("min-h-");
-    expect(card.contentClassName.split(/\s+/u)).not.toContain("h-[4.875rem]");
-  });
-
-  it("keeps settled and snoozed rows single-line", () => {
-    expect(resolveThreadRowLayoutPresentation("slim").titleClassName).toContain("truncate");
-  });
-});
-
-describe("resolveThreadProviderIconClassName", () => {
-  it("keeps provider identity quieter than status until the row is explored", () => {
-    const className = resolveThreadProviderIconClassName();
-
-    expect(className).toContain("grayscale");
-    expect(className).toContain("opacity-40");
-    expect(className).toContain("group-hover/sidebar-row:grayscale-0");
-    expect(className).toContain("group-hover/sidebar-row:opacity-70");
   });
 });
 

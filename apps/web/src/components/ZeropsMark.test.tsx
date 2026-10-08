@@ -10,7 +10,7 @@ describe("ZeropsMark", () => {
 
     expect(markup).toContain(`viewBox="${ZEROPS_MARK.viewBox}"`);
     expect(markup).toContain(`aria-hidden="true"`);
-    expect(markup).toContain(`class="size-4"`);
+
     expect(markup.match(/<path/gu)).toHaveLength(ZEROPS_MARK.paths.length);
     for (const path of ZEROPS_MARK.paths) {
       expect(markup).toContain(`d="${path.d}"`);

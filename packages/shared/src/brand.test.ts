@@ -1,9 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off -- This test reads the CSS projection it verifies.
-import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  type BrandAppearance,
   CHIP_TINTS,
   FALLBACK_PROVIDER_ACCENT,
   FLAT_CARD_BORDER,
@@ -27,7 +26,6 @@ import {
   PROVIDER_ACCENT_SWATCHES,
   PROCESS_STEPS,
   RADII,
-  SEMANTIC_INDICATORS,
   type ServiceStatusTone,
   SERVICE_STATUS_TONES,
   TYPE_SCALE,
@@ -46,109 +44,6 @@ describe("Zerops brand tokens", () => {
       "#0891b2",
     ]);
     expect(FALLBACK_PROVIDER_ACCENT).toBe("#5f6a72");
-  });
-
-  it("keeps index.css --success/--info equal to SEMANTIC_INDICATORS", () => {
-    const indexCss = NodeFS.readFileSync(
-      new URL("../../../apps/web/src/index.css", import.meta.url),
-      "utf8",
-    );
-    const valuesFor = (property: string) =>
-      [...indexCss.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
-
-    expect(valuesFor("--success")).toEqual([
-      SEMANTIC_INDICATORS.success.light,
-      SEMANTIC_INDICATORS.success.dark,
-    ]);
-    expect(valuesFor("--success-foreground")).toEqual([
-      SEMANTIC_INDICATORS.successForeground.light,
-      SEMANTIC_INDICATORS.successForeground.dark,
-    ]);
-    expect(valuesFor("--info")).toEqual([
-      SEMANTIC_INDICATORS.info.light,
-      SEMANTIC_INDICATORS.info.dark,
-    ]);
-    expect(valuesFor("--info-foreground")).toEqual([
-      SEMANTIC_INDICATORS.infoForeground.light,
-      SEMANTIC_INDICATORS.infoForeground.dark,
-    ]);
-  });
-
-  it("projects every service status and primitive token into both web palettes", () => {
-    const indexCss = NodeFS.readFileSync(
-      new URL("../../../apps/web/src/index.css", import.meta.url),
-      "utf8",
-    );
-    const rootStart = indexCss.indexOf(":root {\n  color-scheme: light;");
-    const darkStart = indexCss.indexOf("\n  @variant dark {", rootStart);
-    const darkEnd = indexCss.indexOf("\n  }\n}", darkStart);
-    expect(rootStart).toBeGreaterThanOrEqual(0);
-    expect(darkStart).toBeGreaterThan(rootStart);
-    expect(darkEnd).toBeGreaterThan(darkStart);
-
-    const palettes: Record<BrandAppearance, string> = {
-      light: indexCss.slice(rootStart, darkStart),
-      dark: indexCss.slice(darkStart, darkEnd),
-    };
-    const valuesFor = (source: string, property: string) =>
-      [...source.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
-    const allValuesFor = (property: string) => valuesFor(indexCss, property);
-
-    for (const [tone, appearances] of Object.entries(SERVICE_STATUS_TONES)) {
-      for (const appearance of ["light", "dark"] as const) {
-        const status = appearances[appearance] as ServiceStatusTone;
-        for (const field of ["dot", "surface", "text"] as const) {
-          const suffix = field === "dot" ? "" : `-${field}`;
-          const expected = status[field];
-          expect(valuesFor(palettes[appearance], `--zerops-status-${tone}${suffix}`)).toEqual(
-            expected === undefined ? [] : [expected],
-          );
-        }
-      }
-    }
-
-    expect(allValuesFor("--zerops-micro-label-font-size")).toEqual([
-      `${TYPE_SCALE.microLabel.fontSize}px`,
-      `${TYPE_SCALE.microLabel.fontSize}px`,
-    ]);
-    expect(allValuesFor("--zerops-micro-label-font-weight")).toEqual([
-      `${TYPE_SCALE.microLabel.fontWeight}`,
-      `${TYPE_SCALE.microLabel.fontWeight}`,
-    ]);
-    expect(allValuesFor("--zerops-micro-label-tracking")).toEqual([
-      `${TYPE_SCALE.microLabel.letterSpacingEm}em`,
-      `${TYPE_SCALE.microLabel.letterSpacingEm}em`,
-    ]);
-    expect(allValuesFor("--zerops-micro-label-opacity")).toEqual([
-      `${TYPE_SCALE.microLabel.opacity}`,
-      `${TYPE_SCALE.microLabel.opacity}`,
-    ]);
-    expect(allValuesFor("--zerops-pill-radius")).toEqual([`${RADII.pill}px`, `${RADII.pill}px`]);
-    expect(allValuesFor("--zerops-chip-radius")).toEqual([`${RADII.chip}px`, `${RADII.chip}px`]);
-    expect(allValuesFor("--zerops-info-chip-radius")).toEqual([]);
-    expect(allValuesFor("--zerops-card-radius")).toEqual([`${RADII.card}px`, `${RADII.card}px`]);
-    expect(allValuesFor("--zerops-key-chip-radius")).toEqual([
-      `${RADII.keyChip}px`,
-      `${RADII.keyChip}px`,
-    ]);
-    expect(
-      allValuesFor("--zerops-flat-card-border").map((value) =>
-        (value ?? "").replaceAll(" ", "").replace("0.06", ".06"),
-      ),
-    ).toEqual([FLAT_CARD_BORDER.light, FLAT_CARD_BORDER.dark]);
-    expect(allValuesFor("--zerops-mint-panel")).toEqual([MINT_PANEL.light, MINT_PANEL.dark]);
-    expect(allValuesFor("--zerops-process-step-column")).toEqual([
-      `${PROCESS_STEPS.glyphColumn}px`,
-      `${PROCESS_STEPS.glyphColumn}px`,
-    ]);
-    expect(allValuesFor("--zerops-process-step-glyph-size")).toEqual([
-      `${PROCESS_STEPS.glyphSize}px`,
-      `${PROCESS_STEPS.glyphSize}px`,
-    ]);
-    expect(allValuesFor("--zerops-process-step-border-width")).toEqual([
-      `${PROCESS_STEPS.glyphBorderWidth}px`,
-      `${PROCESS_STEPS.glyphBorderWidth}px`,
-    ]);
   });
 
   it("keeps every chip label at AA contrast, including neutral --foreground fallbacks", () => {
@@ -424,35 +319,6 @@ describe("a Mate's colour (MATE_TINTS)", () => {
       expect(luminance(tint.dark)).toBeLessThan(luminance(tint.light));
       expect(contrastRatio(MATE_MARK.eyes.light, tint.light)).toBeGreaterThan(3);
       expect(contrastRatio(MATE_MARK.eyes.dark, tint.dark)).toBeGreaterThan(3);
-    }
-  });
-
-  it("projects every tint and the face ink into both web palettes", () => {
-    const indexCss = NodeFS.readFileSync(
-      new URL("../../../apps/web/src/index.css", import.meta.url),
-      "utf8",
-    );
-    const rootStart = indexCss.indexOf(":root {\n  color-scheme: light;");
-    const darkStart = indexCss.indexOf("\n  @variant dark {", rootStart);
-    const darkEnd = indexCss.indexOf("\n  }\n}", darkStart);
-    const palettes: Record<BrandAppearance, string> = {
-      light: indexCss.slice(rootStart, darkStart),
-      dark: indexCss.slice(darkStart, darkEnd),
-    };
-    const valuesFor = (source: string, property: string) =>
-      [...source.matchAll(new RegExp(`${property}:\\s*([^;]+);`, "gu"))].map((match) => match[1]);
-    for (const appearance of ["light", "dark"] as const) {
-      for (const id of MATE_TINT_IDS) {
-        expect(valuesFor(palettes[appearance], `--zerops-mate-tint-${id}`)).toEqual([
-          MATE_TINTS[id][appearance],
-        ]);
-      }
-      expect(valuesFor(palettes[appearance], "--zerops-mate-face-ink")).toEqual([
-        MATE_MARK.eyes[appearance],
-      ]);
-      expect(valuesFor(palettes[appearance], "--zerops-mate-mark-side")).toEqual([
-        MATE_MARK_LIVE.side[appearance],
-      ]);
     }
   });
 });

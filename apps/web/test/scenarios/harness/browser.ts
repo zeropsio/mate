@@ -2,7 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
-import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
+import puppeteer, { type Page, type BrowserContext, type HTTPRequest } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
@@ -174,7 +174,9 @@ export async function openBrowser(
     });
     await network.send("Network.enable");
     await page.setRequestInterception(true);
-    page.on("request", async (request) => {
+    // Awaiting interception work here blocks later request observers behind a held fake response.
+    // Legacy interception responds explicitly; native completion remains the HTTP receipt.
+    const intercept = async (request: HTTPRequest) => {
       const requestId = "id" in request && typeof request.id === "string" ? request.id : null;
       try {
         const url = new URL(request.url());
@@ -229,6 +231,9 @@ export async function openBrowser(
           opaqueBodies.delete(requestId);
         }
       }
+    };
+    page.on("request", (request) => {
+      void intercept(request).catch((error) => errors.push(String(error)));
     });
     // Only transport addresses change. The app still computes production container URLs and
     // exchanges real frames; no stores, components or app functions are accessed here.
@@ -319,34 +324,12 @@ export async function visibleText(page: Page, surface: string, text: string, tim
 }
 
 export async function clickText(page: Page, surface: string, text: string) {
-  const until = Date.now() + 10_000;
-  for (;;) {
-    await visibleText(page, surface, text, Math.max(1, until - Date.now()));
-    const handle = await page.evaluateHandle(
-      (surface, text) =>
-        [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].find(
-          (element) =>
-            element.innerText.split("\n").some((line) => line.trim() === text) &&
-            element.getBoundingClientRect().height > 0,
-        ),
-      surface,
-      text,
-    );
-    try {
-      const element = handle.asElement();
-      if (element) {
-        await (element as import("puppeteer-core").ElementHandle<Element>).click();
-        return;
-      }
-    } catch (error) {
-      // A row can be replaced after it becomes visible but before Chrome checks clickability.
-      // Reacquire through the same visible-text condition; every other click error is a failure.
-      if (!/Node is detached|Node is either not clickable or not an Element/u.test(String(error)))
-        throw error;
-      if (Date.now() >= until) throw error;
-    } finally {
-      await handle.dispose();
-    }
-    if (Date.now() >= until) throw new Error(`Missing clickable ${surface}: ${text}`);
-  }
+  const parts = text.split('"').map((part) => `"${part}"`);
+  const literal = parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+  await page
+    .locator(
+      `::-p-xpath(//*[@data-zerops-surface="${surface}"][.//text()[normalize-space(.)=${literal}]])`,
+    )
+    .setTimeout(10_000)
+    .click();
 }

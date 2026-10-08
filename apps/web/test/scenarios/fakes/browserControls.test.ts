@@ -2,7 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { openBrowser, clickText } from "../harness/browser.ts";
 import { completedHttp } from "../harness/completedHttp.ts";
 
@@ -223,3 +223,71 @@ it.each(["fetch", "file upload"] as const)(
     }
   },
 );
+
+it("filtered HTTP settling waits for an actual new document while navigation is held", async () => {
+  const { serve, deadline } = await import("../harness/http.ts");
+  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-navigation-"));
+  await NodeFSP.writeFile(
+    NodePath.join(dist, "index.html"),
+    "<!doctype html><title>Old document</title>",
+  );
+  let bodyAsked = () => {};
+  const bodyRequest = new Promise<void>((resolve) => {
+    bodyAsked = resolve;
+  });
+  let navigationAsked = () => {};
+  const navigationRequest = new Promise<void>((resolve) => {
+    navigationAsked = resolve;
+  });
+  let releaseBody = () => {};
+  const heldBody = new Promise<void>((resolve) => {
+    releaseBody = resolve;
+  });
+  let releaseNavigation = () => {};
+  const heldNavigation = new Promise<void>((resolve) => {
+    releaseNavigation = resolve;
+  });
+  const api = await serve(async ({ url }) => {
+    if (url.pathname === "/held-body") {
+      bodyAsked();
+      await heldBody;
+      return { body: { done: true } };
+    }
+    navigationAsked();
+    await heldNavigation;
+    return { html: "<!doctype html><title>New document</title>" };
+  });
+  const web = await openBrowser(dist, { "https://navigation.example.test": api.origin });
+  const settle = completedHttp(web.page, (request) => request.url().endsWith("/held-body"));
+  try {
+    await web.page.goto(web.origin);
+    await web.page.evaluate(() => {
+      void fetch("https://navigation.example.test/held-body").catch(() => {});
+    });
+    await deadline(bodyRequest, "old document body requested");
+    const evaluate = vi.spyOn(web.page, "evaluate");
+    const drained = settle();
+    const cleanupDrained = Promise.allSettled([drained]);
+    const navigation = web.page.goto("https://navigation.example.test/landing");
+    try {
+      await deadline(navigationRequest, "new document navigation requested");
+      expect(evaluate, "A held navigation must not enter the old renderer").not.toHaveBeenCalled();
+      releaseNavigation();
+      await navigation;
+      await drained;
+      expect(await web.page.title()).toBe("New document");
+    } finally {
+      releaseNavigation();
+      releaseBody();
+      await Promise.allSettled([navigation, cleanupDrained]);
+      evaluate.mockRestore();
+    }
+  } finally {
+    releaseNavigation();
+    releaseBody();
+    settle.close();
+    await web.close();
+    await api.close();
+    await NodeFSP.rm(dist, { recursive: true, force: true });
+  }
+});

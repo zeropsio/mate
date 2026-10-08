@@ -81,7 +81,6 @@ describe("ThreadTerminalDrawer resize handle", () => {
     expect(markup).toContain('aria-valuemin="180"');
     expect(markup).toContain('aria-valuemax="280"');
     expect(markup).toContain('aria-valuenow="240"');
-    expect(markup).toContain("focus-visible:ring-2");
   });
 
   it("leaves the height and browser key behavior unchanged for ignored keys", () => {

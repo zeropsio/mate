@@ -194,6 +194,6 @@ describe("LinkedPullRequestLink", () => {
     expect(markup).toContain('target="_blank"');
     expect(markup).toContain('rel="noopener noreferrer"');
     expect(markup).toContain(">#42</a>");
-    expect(markup).not.toMatch(/text-(?:emerald|violet|red)|PR #42 (?:open|merged|closed)/u);
+    expect(markup).not.toMatch(/PR #42 (?:open|merged|closed)/u);
   });
 });

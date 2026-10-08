@@ -112,8 +112,11 @@ Counts enumerate every remaining ledger entry, including repeated uses in a file
 Mate resource health has its own revision and subscription, independent of conversation reads,
 and travels to HQ in an independent `health` frame, retained in `hq_mate_health`. Both paths enter the `mateHealth` family. The health
 projection uses measured health evidence; a configured RAM minimum cannot prove an allocation
-update failed. The cgroup hard limit is `memory.max`; `memory.high` is a reclaim threshold.
-Memory PSI, increasing high/max/OOM events and swap growth establish memory strain. I/O stalls
+update failed. `memory.max` is currently granted RAM; `memory.high` is a routinely crossed reclaim threshold.
+Raw reclaim, swap and PSI evidence remains available in the health drawer. Notices require a new
+OOM kill or sustained stalls: full PSI avg60 and avg300 ≥ 10%, or some PSI avg60 and avg300 ≥ 40%.
+The longer-average fallback applies to memory, I/O and CPU because previous samples are not retained.
+CPU notices additionally require measured current saturation. I/O stalls
 are distinct from state-disk exhaustion. New counters are optional on the wire for retained
 reports and older Mates. Kernel cgroup v2 evidence and state-disk free space determine resource strain; a transport failure never does. An unavailable
 source retains the permitted report labelled last-known. Memory and disk reads run at startup and on

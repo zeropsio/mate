@@ -15,6 +15,39 @@ const setup = Effect.gen(function* () {
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // A reported version difference alone must never offer a chat-level restart.
+    it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.project("Bea", { mate: true });
+        chat.fixture("Bea").history();
+        for (const [name, version] of [
+          ["Ada", "0.14.11"],
+          ["Bea", "999.0.0"],
+        ] as const) {
+          const mate = chat.fixture(name).mate;
+          Object.assign(mate.descriptor, { serverVersion: version });
+          Object.assign(mate.config.environment, { serverVersion: version });
+        }
+        yield* s.given.signedIn;
+        for (const name of ["Ada", "Bea"]) {
+          yield* chat.when.open(name);
+          const shown = yield* Effect.promise(() =>
+            s.page.evaluate(() => ({
+              words: document.body.textContent,
+              actions: [...document.querySelectorAll("button")]
+                .filter((button) => button.getBoundingClientRect().height > 0)
+                .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim()),
+            })),
+          );
+          expect(shown.words).not.toContain("Server versions differ");
+          expect(shown.actions).not.toContain("Restart Mate");
+          expect(shown.actions).not.toContain("Restart server");
+        }
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
     it.effect("first open crosses the door and OAuth", () =>
       Effect.gen(function* () {

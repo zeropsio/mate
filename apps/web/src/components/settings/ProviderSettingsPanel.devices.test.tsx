@@ -1,3 +1,5 @@
+import { markupDom } from "../../../test/markupDom";
+import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { EnvironmentId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -74,11 +76,17 @@ describe("ProviderSettingsPanel — devices", () => {
   it("offers only the Mates the app is connected to, and says so", () => {
     const tree = renderContent();
 
-    const tabLabels = collect(
+    const group = collect(
       tree,
-      (element) => element.props.className === "max-w-40 truncate",
-    ).map((element) => element.props.children);
-    expect(tabLabels).toEqual(["Fen"]);
+      (element) => element.props.role === "group" && element.props["aria-label"] === "Devices",
+    )[0];
+    expect(group).toBeDefined();
+    const document = markupDom(renderToStaticMarkup(group!));
+    const buttons = Array.from(document.querySelectorAll("button[aria-pressed]"));
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toContain("Fen");
+    expect(buttons[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(document.body.textContent).not.toContain("Ida");
     expect(
       collect(tree, (element) => element.props.children === "Only Mates the app is connected to."),
     ).not.toHaveLength(0);

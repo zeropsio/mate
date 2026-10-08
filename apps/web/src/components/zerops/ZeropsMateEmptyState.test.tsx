@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 import { EnvironmentId, type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
@@ -139,11 +140,9 @@ const readable = (markup: string) =>
 /** The stage as a person reads it: its headline, its sentence, its face, and what its slot holds. */
 const stage = (html: string) => ({
   headline: readable(/<h1[^>]*>(.*?)<\/h1>/u.exec(html)?.[1] ?? ""),
-  sentence: readable(
-    /<p[^>]*(?:class="arrival-sentence"|data-arrival-secondary="")[^>]*>(.*?)<\/p>/u.exec(
-      html,
-    )?.[1] ?? "",
-  ),
+  sentence:
+    markupDom(html).querySelector("[data-arrival-sentence] p, [data-arrival-secondary]")
+      ?.textContent ?? "",
   face: /data-mate-face-state="(\w+)"/u.exec(html)?.[1],
   signIn: html.includes("data-sign-in-module"),
 });
