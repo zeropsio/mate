@@ -947,7 +947,7 @@ describe("an engine card not held whole, as its worked line and its scroll read 
       }),
     ).toEqual({
       [run1]: {
-        runId: run1,
+        pageRuns: { earlier: null, later: run1 },
         counts: {
           calls: { command: 300, edit: 40, mcp: 12 },
           tools: { zerops_deploy: 4, zerops_workflow: 8 },

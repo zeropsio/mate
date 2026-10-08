@@ -34,7 +34,7 @@ import {
   personItem,
   thoughtItem,
 } from "../__fixtures__/mateEngine.ts";
-import { engineThread } from "../projections/mateEngine.ts";
+import { engineCardPaging, engineThread } from "../projections/mateEngine.ts";
 import {
   ENGINE_FORGET_AFTER_MS,
   engineProtocol,
@@ -823,28 +823,47 @@ describe("an engine run its card does not hold whole when it paints", () => {
    * A run of `total` items as the server holds it: the person's words first, the answer last, a
    * deploy with its result every 50th item, notes and commands between; read as the wire reads it.
    */
-  const longRun = (total: number, end: "settled" | "live" = "settled") => {
+  const longRun = (
+    total: number,
+    end: "settled" | "live" = "settled",
+    /** A run that continues the first (a restart's continuation): no person's words, later. */
+    continues = false,
+  ) => {
+    const runId = continues ? run2 : run1;
     const items = Array.from({ length: total }, (_, index): Item => {
       const ordinal = index + 1;
-      if (ordinal === 1) return personItem(run1, 1, "Bring the whole stack up");
-      if (ordinal === total && end === "settled") return noteItem(run1, ordinal, "All up.");
-      if (ordinal % 50 === 0)
-        return callItem(run1, ordinal, {
-          step: "mcp",
-          tool: { name: "zerops_deploy", server: "zerops" },
-          result: { toolName: "zerops_deploy" },
-        } as never);
-      return ordinal % 2 === 0
-        ? callItem(run1, ordinal)
-        : noteItem(run1, ordinal, `Step ${ordinal}`);
+      const item = ((): Item => {
+        if (ordinal === 1)
+          return continues
+            ? noteItem(runId, 1, "Picking up where it stopped")
+            : personItem(runId, 1, "Bring the whole stack up");
+        if (ordinal === total && end === "settled") return noteItem(runId, ordinal, "All up.");
+        if (ordinal % 50 === 0)
+          return callItem(runId, ordinal, {
+            step: "mcp",
+            tool: { name: "zerops_deploy", server: "zerops" },
+            result: { toolName: "zerops_deploy" },
+          } as never);
+        return ordinal % 2 === 0
+          ? callItem(runId, ordinal)
+          : noteItem(runId, ordinal, `Step ${ordinal}`);
+      })();
+      return continues ? ({ ...item, at: item.at + 100_000 } as Item) : item;
     });
-    const record = engineRun("thread-ada", 1, {
-      rev: 1,
+    const record = engineRun("thread-ada", continues ? 2 : 1, {
+      rev: continues ? 2 : 1,
+      ...(continues
+        ? {
+            joins: run1,
+            trigger: { kind: "wake", cause: "restart", wakeId: null },
+            queuedAt: 1_760_000_100_000,
+          }
+        : {}),
       ...(end === "live" ? { state: "running", end: null, endedAt: null } : {}),
       summary: {
         items: total,
         calls: { command: total / 2, mcp: total / 50 },
-        answerItemId: end === "settled" ? (`${run1}/i/${total}` as ItemId) : null,
+        answerItemId: end === "settled" ? (`${runId}/i/${total}` as ItemId) : null,
         lastItemSeq: total,
       },
     } as never);
@@ -863,11 +882,14 @@ describe("an engine run its card does not hold whole when it paints", () => {
         page({ runs: [record], items: earlier.slice(-200), more: earlier.length > 200 }),
       );
     };
-    const window = [items[0]!, ...(end === "settled" ? [items.at(-1)!] : items.slice(-40))];
+    const window = [
+      ...(continues ? [] : [items[0]!]),
+      ...(end === "settled" ? [items.at(-1)!] : items.slice(-40)),
+    ];
     return { items, record, pager, window };
   };
-  const heldSeqs = (r: ReturnType<typeof rig>) =>
-    [...r.read().index("engineItemsOfRun", engineFactId(ENV, run1))]
+  const heldSeqs = (r: ReturnType<typeof rig>, runId = run1) =>
+    [...r.read().index("engineItemsOfRun", engineFactId(ENV, runId))]
       .flatMap((id) => {
         const fact = r.read().fact("mateEngineItem", id);
         return fact.kind === "known" ? [fact.value.seq] : [];
@@ -969,6 +991,42 @@ describe("an engine run its card does not hold whole when it paints", () => {
         expect(r.conversations.readRunPage(ada, run1, "later")).toBe(false);
         r.close();
       }),
+  );
+
+  // Catches a card that read one of its runs: a run a restart cut and the run that continues it
+  // share a card, and both lie outside the window on a cold open.
+  it.live("pages through every run its card draws, in order, until it holds them whole", () =>
+    Effect.gen(function* () {
+      const cut = longRun(1_700);
+      const next = longRun(600, "settled", true);
+      const r = rig((request) =>
+        request.runId === run2 ? next.pager(request) : cut.pager(request),
+      );
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ runs: [cut.record, next.record], items: [...cut.window, ...next.window] }),
+        synchronized(12),
+      );
+      const read: Array<string> = [];
+      for (let page = 0; page < 20; page++) {
+        const card = engineCardPaging.derive(r.read(), ada)[run1];
+        const runId = card?.pageRuns.later ?? null;
+        if (runId === null) break;
+        read.push(runId);
+        expect(r.conversations.readRunPage(ada, runId, "later")).toBe(true);
+        yield* settle;
+      }
+      // The cut run's nine pages, then its continuation's three.
+      expect(read).toEqual([...Array(9).fill(run1), ...Array(3).fill(run2)]);
+      expect(heldSeqs(r, run1)).toHaveLength(1_700);
+      expect(heldSeqs(r, run2)).toHaveLength(600);
+      expect(engineCardPaging.derive(r.read(), ada)[run1]).toMatchObject({
+        since: null,
+        through: null,
+      });
+      r.close();
+    }),
   );
 
   it.live("keeps what a run holds when a page fails, and reads it again when asked", () =>

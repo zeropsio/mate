@@ -781,13 +781,15 @@ export interface EngineCardCounts {
 }
 
 /**
- * A card whose run was not held whole when it painted: its worked line counts its effort from its
- * runs' summaries, whatever of it is held, and its scroll holds the lines from `since` through
+ * A card whose runs were not held whole when it painted: its worked line counts its effort from its
+ * runs' summaries, whatever of them is held, and its scroll holds the lines from `since` through
  * `through` (times; `null` is its start, or its end) — the rest page in as it opens and reaches
- * them, through `runId`'s pages.
+ * them, through the pages of the run each way names (`pageRuns`): one run at a time, in the order
+ * the card draws them.
  */
 export interface EngineCardPaging {
-  readonly runId: string;
+  /** The run its scroll reads its next page from, each way; null where it holds every line. */
+  readonly pageRuns: { readonly earlier: string | null; readonly later: string | null };
   readonly counts: EngineCardCounts;
   /** Whether its runs did anything its scroll draws: its "Show work" has something to open. */
   readonly hasWork: boolean;
@@ -822,17 +824,28 @@ export function engineCardPagingOf(
     }
     return iso(otherwise);
   };
+  const spanOf = new Map(spans.map((span) => [span.runId as string, span]));
   const cards: Record<string, EngineCardPaging> = {};
   for (const span of spans) {
-    const run = runs.find((candidate) => candidate.id === span.runId);
     const card = cardOf(span.runId);
-    if (run === undefined || card === null || cards[card] !== undefined) continue;
+    if (card === null || cards[card] !== undefined) continue;
+    // The card's runs in the order it draws them. Its scroll holds one stretch: from the start, or
+    // from the last run before the first gap whose start is not held, through the first run whose
+    // end is not held (a run read from its start), so the next page each way is always beside it.
+    const members = runs.filter((member) => cardOf(member.id) === card);
+    if (members.length === 0) continue;
+    const laterAt = members.findIndex((member) => (spanOf.get(member.id)?.to ?? null) !== null);
+    const later = laterAt === -1 ? undefined : members[laterAt];
+    const earlier = (laterAt === -1 ? members : members.slice(0, laterAt + 1)).findLast(
+      (member) => (spanOf.get(member.id)?.from ?? null) !== null,
+    );
+    const laterSpan = later === undefined ? undefined : spanOf.get(later.id);
+    const earlierSpan = earlier === undefined ? undefined : spanOf.get(earlier.id);
     const calls: Record<string, number> = {};
     const tools: Record<string, number> = {};
     let edited: number | null = 0;
     let hasWork = false;
-    for (const member of runs) {
-      if (cardOf(member.id) !== card) continue;
+    for (const member of members) {
       // Past the person's words and its answer, something it did.
       const asked = member.trigger.kind === "person" || member.trigger.kind === "imported" ? 1 : 0;
       const answered = member.summary.answerItemId === null ? 0 : 1;
@@ -845,13 +858,21 @@ export function engineCardPagingOf(
           : edited + member.summary.edited;
     }
     cards[card] = {
-      runId: span.runId,
+      pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
       counts: { calls, tools, edited },
       hasWork,
-      holdsLines: span.from !== null || span.to !== 0,
-      since: span.from === null ? null : timeAt(span.runId, span.from, run.endedAt ?? run.queuedAt),
-      through: span.to === null ? null : timeAt(span.runId, span.to, run.queuedAt),
-      reading: span.reading,
+      // None until it first opens: its first run read from its start, nothing of it read yet.
+      holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,
+      since:
+        earlier === undefined || earlierSpan === undefined || earlierSpan.from === null
+          ? null
+          : timeAt(earlier.id, earlierSpan.from, earlier.endedAt ?? earlier.queuedAt),
+      through:
+        later === undefined || laterSpan === undefined || laterSpan.to === null
+          ? null
+          : timeAt(later.id, laterSpan.to, later.queuedAt),
+      reading:
+        members.map((member) => spanOf.get(member.id)?.reading ?? null).find(Boolean) ?? null,
     };
   }
   return cards;
