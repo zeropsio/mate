@@ -3,65 +3,68 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 import { assert, describe, it } from "@effect/vitest";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { CrewStore } from "./CrewStore.ts";
-import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { sweptSeamWords } from "./crewCards.ts";
 import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
+import { write, git } from "./testing/crewGitFixture.ts";
 import {
   applied,
-  command,
-  commandWhenFree,
-  dispatchedOf,
+  crewJourney,
+  eventually,
   firstTurn,
-  latest,
+  itV1,
+  onV1,
+  onV1Value,
+  pressWhenFree,
   reportDone,
   seamsOf,
-  snapshotWhere,
-} from "./testing/crewEngineSteps.ts";
-import {
-  eventually,
-  spiEvent,
-  withCrewEngine,
-  withCrewEngines,
-  writeCrewHome,
+  turnsSent,
+  v1Journey,
   type CrewWorld,
-} from "./testing/crewEngineFixture.ts";
-import { write, git } from "./testing/crewGitFixture.ts";
+  type V1CrewWorld,
+} from "./testing/crewWorld.ts";
 
 describe("owned crew operations", () => {
   it.live("a broken-off turn's operation records its ending and holds nothing", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
-        const store = yield* CrewStore;
-        const operation = (yield* store.operations(CREW_ID)).find(
-          (row) => row.kind === "dispatch",
-        )!;
-        yield* world.publish(
-          spiEvent("turn.completed", thread, { state: "failed", terminalReason: "api_error" }),
+        const operation = yield* onV1Value(world, (v1) =>
+          v1.v1.run(
+            Effect.map(
+              Effect.flatMap(CrewStore, (store) => store.operations(CREW_ID)),
+              (rows) => rows.find((row) => row.kind === "dispatch"),
+            ),
+          ),
         );
-        const again = yield* snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
-        const ended = yield* store.getOperation(operation.id);
-        assert.strictEqual(ended._tag === "Some" ? ended.value.status : null, "succeeded");
+        yield* world.turnEnds(thread, { state: "failed", reason: "api_error" });
+        const again = yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
+        yield* onV1(world, (v1) =>
+          Effect.gen(function* () {
+            const ended = yield* v1.v1.run(
+              Effect.flatMap(CrewStore, (store) => store.getOperation(operation!.id)),
+            );
+            assert.strictEqual(ended._tag === "Some" ? ended.value.status : null, "succeeded");
+          }).pipe(Effect.orDie),
+        );
         assert.isFalse(again.attention.some((need) => need.kind === "interrupted"));
         const refusal = yield* Effect.flip(
-          command({ _tag: "taskRetry", taskId: operation.taskId! }),
+          world.press({ _tag: "taskRetry", taskId: again.board.tasks[0]!.id }),
         );
         assert.strictEqual(refusal.reason, "wrong-state");
       }),
     ),
   );
 
-  it.live("a failed boot inspection records one visible ending and refuses new effects", () =>
-    withCrewEngines([
+  // A broken crew database is V1's own: the engine keeps crew state in its own store.
+  itV1("a failed boot inspection records one visible ending and refuses new effects", () =>
+    v1Journey([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
@@ -76,19 +79,15 @@ describe("owned crew operations", () => {
         }),
       (world) =>
         Effect.gen(function* () {
-          const before = yield* latest;
+          const before = yield* world.snapshot;
           const refused = yield* Effect.flip(
-            command({ _tag: "message", handle: "backend", text: "Work", attachments: [] }),
+            world.press({ _tag: "message", handle: "backend", text: "Work", attachments: [] }),
           );
           assert.strictEqual(refused.reason, "io");
-          yield* (yield* CrewEngine).readFiles;
-          const ending = yield* snapshotWhere((frame) => frame.seq > before.seq);
+          yield* world.readFiles;
+          const ending = yield* world.snapshotWhere((frame) => frame.seq > before.seq);
           assert.isNotNull(ending.lastError, "the inspection failure must end visibly");
-          assert.strictEqual(
-            (yield* Ref.get(world.dispatched)).filter((row) => row.type === "thread.turn.start")
-              .length,
-            0,
-          );
+          assert.strictEqual((yield* turnsSent(world)).length, 0);
         }),
     ]),
   );
@@ -96,41 +95,48 @@ describe("owned crew operations", () => {
   it.live(
     "a failed check's verdict holds nothing: a fix during its final read goes out at once",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () =>
             write(NodePath.join(world.root, ".crew/backend"), "work.txt", "work\n"),
           );
-          yield* reportDone(thread);
-          let reads = 0;
-          const hold = yield* world.holdSsh(
-            (script) => script.includes("dirty=no") && ++reads === 2,
-          );
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* reportDone(world, thread);
+          const hold = yield* world.hold({ step: "verdict", nth: 2 });
+          yield* world.turnEnds(thread);
           yield* hold.reached;
-          const store = yield* CrewStore;
-          const operation = (yield* store.operations(CREW_ID)).find((row) => row.kind === "check")!;
-          assert.strictEqual(operation.status, "running");
-          assert.strictEqual(operation.confirmedStage, "checking");
-          assert.isNull(operation.detail);
-          yield* command({ _tag: "askFix", taskId: operation.taskId! });
-          assert.strictEqual((yield* store.assignments(CREW_ID))[0]!.attempt, 2);
+          const operation = yield* onV1Value(world, (v1) =>
+            v1.v1.run(
+              Effect.map(
+                Effect.flatMap(CrewStore, (store) => store.operations(CREW_ID)),
+                (rows) => rows.find((row) => row.kind === "check"),
+              ),
+            ),
+          );
+          if (operation !== undefined) {
+            assert.strictEqual(operation.status, "running");
+            assert.strictEqual(operation.confirmedStage, "checking");
+            assert.isNull(operation.detail);
+          }
+          const taskId = (yield* world.snapshot).board.tasks[0]!.id;
+          yield* world.press({ _tag: "askFix", taskId });
+          assert.strictEqual((yield* world.tasks)[0]!.attempt, 2);
           yield* hold.release;
-          yield* snapshotWhere(
-            (frame) => !frame.operations?.some((row) => row.id === operation.id),
+          yield* world.snapshotWhere(
+            (frame) => !frame.operations?.some((row) => row.id === operation?.id),
           );
         }),
       ),
   );
 
-  it.live("records the dispatch identity and attempt before starting the turn", () =>
-    withCrewEngine((world) =>
+  // An operation's record is V1's own; the engine's effects carry their identity (part C).
+  itV1("records the dispatch identity and attempt before starting the turn", () =>
+    v1Journey((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const store = yield* CrewStore;
         yield* Ref.set(
-          world.beforeDispatch,
+          world.v1.fakes.beforeDispatch,
           Effect.gen(function* () {
             const operations = yield* store.operations(CREW_ID);
             const dispatch = operations.find((row) => row.kind === "dispatch");
@@ -143,25 +149,26 @@ describe("owned crew operations", () => {
             assert.strictEqual((yield* store.attemptsOf(task!.assignment)).length, 1);
           }).pipe(Effect.orDie),
         );
-        yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
+        yield* world.press({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
       }),
     ),
   );
 
   for (const kind of ["checkpoint", "check", "landing"] as const) {
-    it.live(`records ${kind}'s target and stage before its side effect`, () =>
-      withCrewEngine((world) =>
+    // An operation's record is V1's own; the engine's effects carry their identity (part C).
+    itV1(`records ${kind}'s target and stage before its side effect`, () =>
+      v1Journey((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () =>
             write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ready\n"),
           );
-          if (kind !== "checkpoint") yield* reportDone(thread);
+          if (kind !== "checkpoint") yield* reportDone(world, thread);
           if (kind === "landing") {
-            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-            yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+            yield* world.turnEnds(thread);
+            yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
           }
-          const hold = yield* world.holdSsh((script) =>
+          const hold = yield* world.v1.fakes.holdSsh((script) =>
             kind === "checkpoint"
               ? script.includes("wip(")
               : kind === "check"
@@ -170,11 +177,11 @@ describe("owned crew operations", () => {
           );
           const fiber = yield* (
             kind === "landing"
-              ? command({
+              ? world.press({
                   _tag: "land",
                   taskId: (yield* (yield* CrewStore).assignments(CREW_ID))[0]!.assignment,
                 })
-              : world.publish(spiEvent("turn.completed", thread, { state: "completed" }))
+              : world.turnEnds(thread)
           ).pipe(Effect.forkChild);
           yield* hold.reached;
           const operations = yield* (yield* CrewStore).operations(CREW_ID);
@@ -192,9 +199,10 @@ describe("owned crew operations", () => {
 });
 
 for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work kept`, () => {
+  // A crash's operation row is written into V1's own tables; part C carries the sentence for the engine's effects.
+  itV1(`restart carries ${kind} on from its confirmed stage, its dirty work kept`, () => {
     let head = "";
-    return withCrewEngines([
+    return v1Journey([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
@@ -228,8 +236,8 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          const settled = yield* snapshotWhere(
+          yield* world.serverReady;
+          const settled = yield* world.snapshotWhere(
             (frame) =>
               !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
               (kind === "dispatch" || kind === "checkpoint"
@@ -256,12 +264,7 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
           if (kind === "checkpoint") {
             // Its turn had ended: the save is redone, and no turn goes out outside a run.
             assert.strictEqual(git(copy, ["rev-parse", "HEAD~1"]), head);
-            assert.strictEqual(
-              (yield* Ref.get(world.dispatched)).filter(
-                (entry) => entry.type === "thread.turn.start",
-              ).length,
-              1,
-            );
+            assert.strictEqual((yield* turnsSent(world)).length, 1);
           }
           if (kind === "dispatch") {
             // The boot sweep saved the dirty work as a commit on the copy's tip, and said so in
@@ -275,12 +278,7 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
                 { seam: "swept", branch: "crew/backend", commit: saved, paths: ["ok.txt"] },
               ],
             );
-            yield* eventually(
-              Effect.map(
-                Ref.get(world.dispatched),
-                (rows) => rows.filter((entry) => entry.type === "thread.turn.start").length === 2,
-              ),
-            );
+            yield* eventually(Effect.map(turnsSent(world), (rows) => rows.length === 2));
           }
         }),
     ]);
@@ -288,23 +286,25 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
 }
 
 it.live("a killed check ends after one command and waits for a person", () =>
-  withCrewEngine((world) =>
+  crewJourney((world) =>
     Effect.gen(function* () {
-      writeCrewHome(world.workspace);
+      world.writeHome();
       const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
       const config = NodeFS.readFileSync(home, "utf8").replace(
         "test -f ok.txt",
         () => "printf x >> check-count.txt; kill -TERM $$",
       );
-      writeCrewHome(world.workspace, { "crew.yaml": config });
-      yield* command({ _tag: "apply" });
-      yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+      world.writeHome({ "crew.yaml": config });
+      yield* world.press({ _tag: "apply" });
+      yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
       const thread = yield* firstTurn(world, () =>
         write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
       );
-      yield* reportDone(thread);
-      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-      const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+      yield* reportDone(world, thread);
+      yield* world.turnEnds(thread);
+      const stopped = yield* world.snapshotWhere(
+        (frame) => frame.board.tasks[0]?.state === "parked",
+      );
       assert.strictEqual(
         NodeFS.readFileSync(NodePath.join(world.root, ".crew/backend/check-count.txt"), "utf8"),
         "x",
@@ -319,17 +319,17 @@ for (const [ending, setup] of [
   ["killed", "if [ -f fail-setup.txt ]; then kill -TERM $$; fi"],
 ] as const) {
   it.live(`a ${ending} setup ends its check operation before the check command starts`, () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        writeCrewHome(world.workspace);
+        world.writeHome();
         const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
         const config = NodeFS.readFileSync(home, "utf8").replace(
           "    check: test -f ok.txt",
           () => `    setup: ${setup}\n    check: printf x >> check-count.txt; test -f ok.txt`,
         );
-        writeCrewHome(world.workspace, { "crew.yaml": config });
-        yield* command({ _tag: "apply" });
-        yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+        world.writeHome({ "crew.yaml": config });
+        yield* world.press({ _tag: "apply" });
+        yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
         const lane = NodePath.join(world.root, ".crew/backend");
         const thread = yield* firstTurn(world, () => {
           write(lane, "ok.txt", "ok\n");
@@ -338,13 +338,13 @@ for (const [ending, setup] of [
         write(world.root, "package-lock.json", "{}\n");
         git(world.root, ["add", "package-lock.json"]);
         git(world.root, ["commit", "-m", "new lockfile"]);
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const stopped = yield* snapshotWhere((frame) =>
+        yield* reportDone(world, thread);
+        yield* world.turnEnds(thread);
+        const stopped = yield* world.snapshotWhere((frame) =>
           ["ready", "parked"].includes(frame.board.tasks[0]?.state ?? ""),
         );
         assert.strictEqual(stopped.board.tasks[0]!.state, "parked");
-        const receipt = yield* snapshotWhere(
+        const receipt = yield* world.snapshotWhere(
           (frame) =>
             frame.operations?.some((row) => row.kind === "check" && row.status === "failed") ===
             true,
@@ -354,8 +354,12 @@ for (const [ending, setup] of [
         assert.strictEqual(operation.confirmedStage, "setting-up");
         assert.strictEqual(NodeFS.existsSync(NodePath.join(lane, "check-count.txt")), false);
         NodeFS.unlinkSync(NodePath.join(lane, "fail-setup.txt"));
-        yield* command({ _tag: "operationContinue", handle: "backend", operationId: operation.id });
-        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+        yield* world.press({
+          _tag: "operationContinue",
+          handle: "backend",
+          operationId: operation.id,
+        });
+        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
         assert.strictEqual(
           NodeFS.readFileSync(NodePath.join(lane, "check-count.txt"), "utf8"),
           "x",
@@ -366,25 +370,28 @@ for (const [ending, setup] of [
 }
 
 for (const taskState of ["landing", "landed"] as const) {
-  it.live(
+  // A crash's operation row is written into V1's own tables.
+  itV1(
     `restart records an already landed outcome for a ${taskState} task without landing again`,
     () => {
       let operationId = "";
       let landedHead = "";
-      return withCrewEngines([
+      return v1Journey([
         (world) =>
           Effect.gen(function* () {
             yield* applied(world);
             const thread = yield* firstTurn(world, () =>
               write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
             );
-            yield* reportDone(thread);
-            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-            const ready = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
-            const hold = yield* world.holdSsh((script) => script.includes("commit-tree"));
-            const landing = yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id }).pipe(
-              Effect.forkChild,
+            yield* reportDone(world, thread);
+            yield* world.turnEnds(thread);
+            const ready = yield* world.snapshotWhere(
+              (frame) => frame.board.tasks[0]?.state === "ready",
             );
+            const hold = yield* world.hold({ step: "land" });
+            const landing = yield* world
+              .press({ _tag: "land", taskId: ready.board.tasks[0]!.id })
+              .pipe(Effect.forkChild);
             yield* hold.reached;
             const store = yield* CrewStore;
             const operation = (yield* store.operations(CREW_ID)).find(
@@ -404,8 +411,8 @@ for (const taskState of ["landing", "landed"] as const) {
           }),
         (world) =>
           Effect.gen(function* () {
-            yield* (yield* ServerCommandReadiness).complete;
-            const recorded = yield* snapshotWhere(
+            yield* world.serverReady;
+            const recorded = yield* world.snapshotWhere(
               (frame) =>
                 frame.board.tasks[0]?.state === "landed" &&
                 !frame.attention.some((need) => need.operation?.id === operationId),
@@ -427,7 +434,7 @@ it.live(
   "Drop it cancels a task its restart could not carry on, its saved work left in its copy",
   () => {
     let head = "";
-    return withCrewEngines([
+    return crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
@@ -438,9 +445,9 @@ it.live(
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* Ref.set(world.refusal, "not the login's signer");
-          yield* (yield* ServerCommandReadiness).complete;
-          const stopped = yield* snapshotWhere((frame) =>
+          yield* world.refuseTurns("not the login's signer");
+          yield* world.serverReady;
+          const stopped = yield* world.snapshotWhere((frame) =>
             frame.attention.some(
               (need) =>
                 need.kind === "interrupted" &&
@@ -450,17 +457,13 @@ it.live(
           const operation = stopped.attention.find(
             (need) => need.kind === "interrupted",
           )!.operation!;
-          assert.strictEqual(
-            (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-              .length,
-            1,
-          );
-          yield* command({
+          assert.strictEqual((yield* turnsSent(world)).length, 1);
+          yield* world.press({
             _tag: "operationDiscard",
             handle: "backend",
             operationId: operation.id,
           });
-          yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "discarded");
+          yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "discarded");
           assert.strictEqual(
             git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD~1"]),
             head,
@@ -476,24 +479,24 @@ it.live(
 
 it.live("a missing copy comes back at boot from its recorded branch, its work kept", () => {
   let tip = "";
-  return withCrewEngines([
+  return crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "kept\n"),
         );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* world.turnEnds(thread);
         tip = git(world.root, ["rev-parse", "crew/backend"]);
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
+        yield* world.serverReady;
         yield* eventually(
           Effect.sync(() => NodeFS.existsSync(NodePath.join(world.root, ".crew/backend/ok.txt"))),
         );
-        const back = yield* snapshotWhere(
+        const back = yield* world.snapshotWhere(
           (frame) =>
             frame.crewmates[0]?.lane?.state === "ready" &&
             !frame.attention.some((need) => need.kind === "copy-missing"),
@@ -507,32 +510,28 @@ it.live("a missing copy comes back at boot from its recorded branch, its work ke
           NodeFS.readFileSync(NodePath.join(world.root, ".crew/backend/ok.txt"), "utf8"),
           "kept\n",
         );
-        assert.strictEqual(
-          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-            .length,
-          1,
-        );
+        assert.strictEqual((yield* turnsSent(world)).length, 1);
       }),
   ]);
 });
 
 it.live("a missing copy whose branch is gone stays missing at boot and names the loss", () =>
-  withCrewEngines([
+  crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "kept\n"),
         );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* world.turnEnds(thread);
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
         git(world.root, ["worktree", "prune"]);
         git(world.root, ["branch", "-D", "-q", "crew/backend"]);
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        const lost = yield* snapshotWhere(
+        yield* world.serverReady;
+        const lost = yield* world.snapshotWhere(
           (frame) => frame.lastError?.includes("crew/backend") === true,
         );
         assert.notStrictEqual(lost.crewmates[0]?.lane?.state, "ready");
@@ -541,8 +540,9 @@ it.live("a missing copy whose branch is gone stays missing at boot and names the
   ]),
 );
 
-it.live("Continue after a rebuild interrupted during setup leaves its existing copy in place", () =>
-  withCrewEngines([
+// A crash's operation row is written into V1's own tables.
+itV1("Continue after a rebuild interrupted during setup leaves its existing copy in place", () =>
+  v1Journey([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -574,11 +574,11 @@ it.live("Continue after a rebuild interrupted during setup leaves its existing c
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* snapshotWhere((frame) =>
+        yield* world.serverReady;
+        yield* world.snapshotWhere((frame) =>
           frame.attention.some((need) => need.operation?.id === "rebuild-crash"),
         );
-        yield* command({
+        yield* world.press({
           _tag: "operationContinue",
           handle: "backend",
           operationId: "rebuild-crash",
@@ -593,8 +593,9 @@ it.live("Continue after a rebuild interrupted during setup leaves its existing c
   ]),
 );
 
-it.live("Continue explicitly preserves dirty edits that held a new dispatch", () =>
-  withCrewEngine((world) =>
+// The copy's last landing is set in V1's own lane row.
+itV1("Continue explicitly preserves dirty edits that held a new dispatch", () =>
+  v1Journey((world) =>
     Effect.gen(function* () {
       yield* applied(world);
       const store = yield* CrewStore;
@@ -604,18 +605,23 @@ it.live("Continue explicitly preserves dirty edits that held a new dispatch", ()
       git(world.root, ["add", "-A"]);
       git(world.root, ["commit", "-q", "-m", "person"]);
       write(world.root, ".crew/backend/README.md", "preserved edit\n");
-      yield* command({ _tag: "message", handle: "backend", text: "Next task", attachments: [] });
+      yield* world.press({
+        _tag: "message",
+        handle: "backend",
+        text: "Next task",
+        attachments: [],
+      });
       assert.strictEqual((yield* store.assignments(CREW_ID))[0]!.state, "queued");
       const operation = (yield* store.operations(CREW_ID)).find(
         (row) => row.kind === "dispatch" && row.status === "failed",
       )!;
-      yield* command({ _tag: "operationContinue", handle: "backend", operationId: operation.id });
+      yield* world.press({
+        _tag: "operationContinue",
+        handle: "backend",
+        operationId: operation.id,
+      });
       assert.strictEqual((yield* store.assignments(CREW_ID))[0]!.state, "working");
-      assert.strictEqual(
-        (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-          .length,
-        1,
-      );
+      assert.strictEqual((yield* turnsSent(world)).length, 1);
       assert.strictEqual(
         NodeFS.readFileSync(NodePath.join(world.root, ".crew/backend/README.md"), "utf8"),
         "preserved edit\n",
@@ -626,46 +632,58 @@ it.live("Continue explicitly preserves dirty edits that held a new dispatch", ()
 
 it.live("a graceful shutdown during a check leaves it for the next boot to carry on", () => {
   let operationId = "";
-  return withCrewEngines([
+  return crewJourney([
     (world) =>
       Effect.gen(function* () {
         const marker = NodePath.join(world.workspace, "first-check");
-        writeCrewHome(world.workspace);
+        world.writeHome();
         const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
         const config = NodeFS.readFileSync(home, "utf8").replace(
           "test -f ok.txt",
           () => `"if [ ! -f ${marker} ]; then touch ${marker}; sleep 30; fi; test -f ok.txt"`,
         );
-        writeCrewHome(world.workspace, { "crew.yaml": config });
-        yield* command({ _tag: "apply" });
-        yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+        world.writeHome({ "crew.yaml": config });
+        yield* world.press({ _tag: "apply" });
+        yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
         const thread = yield* firstTurn(world, () =>
           write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
         );
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* reportDone(world, thread);
+        yield* world.turnEnds(thread);
         yield* eventually(Effect.sync(() => NodeFS.existsSync(marker)));
-        const store = yield* CrewStore;
-        operationId = (yield* store.operations(CREW_ID)).find((row) => row.kind === "check")!.id;
+        operationId =
+          (yield* onV1Value(world, (v1) =>
+            v1.v1.run(
+              Effect.map(
+                Effect.flatMap(CrewStore, (store) => store.operations(CREW_ID)),
+                (rows) => rows.find((row) => row.kind === "check"),
+              ),
+            ),
+          ))?.id ?? "";
         // The phase ends here: the engine's scope closes with the check still sleeping.
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* snapshotWhere(
+        yield* world.serverReady;
+        yield* world.snapshotWhere(
           (frame) =>
             frame.board.tasks[0]?.state === "ready" &&
             !frame.operations?.some((row) => row.id === operationId),
         );
-        const operation = yield* (yield* CrewStore).getOperation(operationId);
-        assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "continued");
-        assert.strictEqual(
-          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-            .length,
-          1,
+        yield* onV1(world, (v1) =>
+          Effect.gen(function* () {
+            const operation = yield* v1.v1.run(
+              Effect.flatMap(CrewStore, (store) => store.getOperation(operationId)),
+            );
+            assert.strictEqual(
+              operation._tag === "Some" ? operation.value.status : null,
+              "continued",
+            );
+          }).pipe(Effect.orDie),
         );
-        const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
-        const [attempt] = yield* (yield* CrewStore).attemptsOf(task!.assignment);
+        assert.strictEqual((yield* turnsSent(world)).length, 1);
+        const [task] = yield* world.tasks;
+        const [attempt] = yield* world.attempts(task!.id);
         assert.strictEqual(
           attempt!.endingDetail,
           "Its turn had ended; the Mate restarted during its check.",
@@ -674,8 +692,9 @@ it.live("a graceful shutdown during a check leaves it for the next boot to carry
   ]);
 });
 
-it.live("a WIP commit its checkpoint finished after the Mate stopped is adopted, not parked", () =>
-  withCrewEngines([
+// A crash's operation row is written into V1's own tables; part C carries the sentence for the engine's checkpoint.
+itV1("a WIP commit its checkpoint finished after the Mate stopped is adopted, not parked", () =>
+  v1Journey([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -705,8 +724,8 @@ it.live("a WIP commit its checkpoint finished after the Mate stopped is adopted,
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        const settled = yield* snapshotWhere(
+        yield* world.serverReady;
+        const settled = yield* world.snapshotWhere(
           (frame) =>
             !frame.operations?.some((row) => row.id === "crashed-checkpoint") &&
             frame.board.tasks[0]?.attempts === 1,
@@ -725,25 +744,28 @@ it.live("a WIP commit its checkpoint finished after the Mate stopped is adopted,
   ]),
 );
 
-it.live(
+// A crash's operation and lane rows are written into V1's own tables; part C carries the sentence for the engine's landing.
+itV1(
   "a landing the service finished after the Mate stopped is landed, its copy moved to it",
   () => {
     let landedHead = "";
-    return withCrewEngines([
+    return v1Journey([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const copy = NodePath.join(world.root, ".crew/backend");
           const thread = yield* firstTurn(world, () => write(copy, "ok.txt", "ok\n"));
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const ready = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+          yield* reportDone(world, thread);
+          yield* world.turnEnds(thread);
+          const ready = yield* world.snapshotWhere(
+            (frame) => frame.board.tasks[0]?.state === "ready",
+          );
           const store = yield* CrewStore;
           const before = (yield* store.getLane(CREW_ID, "backend")).pipe(Option.getOrThrow);
-          const hold = yield* world.holdSsh((script) => script.includes("commit-tree"));
-          const landing = yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id }).pipe(
-            Effect.forkChild,
-          );
+          const hold = yield* world.hold({ step: "land" });
+          const landing = yield* world
+            .press({ _tag: "land", taskId: ready.board.tasks[0]!.id })
+            .pipe(Effect.forkChild);
           yield* hold.reached;
           const operation = (yield* store.operations(CREW_ID)).find(
             (row) => row.kind === "landing",
@@ -766,8 +788,8 @@ it.live(
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
+          yield* world.serverReady;
+          yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
           const copy = NodePath.join(world.root, ".crew/backend");
           yield* eventually(
             Effect.map(
@@ -786,8 +808,9 @@ it.live(
 );
 
 for (const state of ["blocked", "ready", "review"] as const) {
-  it.live(`a restart leaves a ${state} task whose turn it cut off as it stands`, () =>
-    withCrewEngines([
+  // A task's state is set in V1's own tables.
+  itV1(`a restart leaves a ${state} task whose turn it cut off as it stands`, () =>
+    v1Journey([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
@@ -798,17 +821,15 @@ for (const state of ["blocked", "ready", "review"] as const) {
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          const settled = yield* snapshotWhere(
+          yield* world.serverReady;
+          const settled = yield* world.snapshotWhere(
             (frame) => frame.operations?.every((row) => row.status !== "interrupted") === true,
           );
           assert.deepStrictEqual(
             [
               settled.board.tasks[0]!.state,
               settled.board.tasks[0]!.attempts,
-              (yield* Ref.get(world.dispatched)).filter(
-                (entry) => entry.type === "thread.turn.start",
-              ).length,
+              (yield* turnsSent(world)).length,
             ],
             [state, 1, 1],
           );
@@ -817,8 +838,9 @@ for (const state of ["blocked", "ready", "review"] as const) {
   );
 }
 
-it.live("a restart merges and checks a task whose turn-end save it cut off after a report", () =>
-  withCrewEngines([
+// A crash's operation row is written into V1's own tables.
+itV1("a restart merges and checks a task whose turn-end save it cut off after a report", () =>
+  v1Journey([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -839,10 +861,12 @@ it.live("a restart merges and checks a task whose turn-end save it cut off after
         const [task] = yield* store.assignments(CREW_ID);
         yield* store.putAssignment({ ...task!, state: "merging" });
       }),
-    () =>
+    (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        const ready = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+        yield* world.serverReady;
+        const ready = yield* world.snapshotWhere(
+          (frame) => frame.board.tasks[0]?.state === "ready",
+        );
         assert.strictEqual(ready.board.tasks[0]!.attempts, 1);
       }),
   ]),
@@ -850,11 +874,11 @@ it.live("a restart merges and checks a task whose turn-end save it cut off after
 
 it.live("a restart sends no turn into a run the person paused; Resume carries the task on", () => {
   let runId = "";
-  return withCrewEngines([
+  return crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({
+        yield* world.press({
           _tag: "start",
           budgetUsd: "unlimited",
           timeLimitHours: "unlimited",
@@ -863,37 +887,31 @@ it.live("a restart sends no turn into a run the person paused; Resume carries th
           devGrant: false,
           leadMayStart: false,
         });
-        runId = (yield* snapshotWhere((frame) => frame.run?.state === "running")).run!.id;
+        runId = (yield* world.snapshotWhere((frame) => frame.run?.state === "running")).run!.id;
         yield* firstTurn(world, () => undefined);
-        yield* command({ _tag: "pause", runId });
-        yield* snapshotWhere((frame) => frame.run?.state === "paused");
+        yield* world.press({ _tag: "pause", runId });
+        yield* world.snapshotWhere((frame) => frame.run?.state === "paused");
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        const held = yield* snapshotWhere(
+        yield* world.serverReady;
+        const held = yield* world.snapshotWhere(
           (frame) => frame.operations?.every((row) => row.status !== "interrupted") === true,
         );
-        const turns = (yield* Ref.get(world.dispatched)).filter(
-          (entry) => entry.type === "thread.turn.start",
-        ).length;
+        const turns = (yield* turnsSent(world)).length;
         assert.deepStrictEqual(
           [held.run?.state, held.board.tasks[0]!.state, turns],
           ["paused", "working", 1],
         );
-        yield* command({ _tag: "resume", runId });
-        yield* eventually(
-          Effect.map(
-            Ref.get(world.dispatched),
-            (rows) => rows.filter((entry) => entry.type === "thread.turn.start").length === 2,
-          ),
-        );
+        yield* world.press({ _tag: "resume", runId });
+        yield* eventually(Effect.map(turnsSent(world), (rows) => rows.length === 2));
       }),
   ]);
 });
 
-it.live("a copy save outside any task carries on at boot and holds nothing", () =>
-  withCrewEngines([
+// A crash's operation row is written into V1's own tables.
+itV1("a copy save outside any task carries on at boot and holds nothing", () =>
+  v1Journey([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -923,28 +941,29 @@ it.live("a copy save outside any task carries on at boot and holds nothing", () 
           updatedAt: "2026-10-03T10:00:00.000Z",
         });
       }),
-    () =>
+    (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* snapshotWhere(
+        yield* world.serverReady;
+        yield* world.snapshotWhere(
           (frame) => !frame.operations?.some((row) => row.id === "crashed-idle-save"),
         );
         const operation = yield* (yield* CrewStore).getOperation("crashed-idle-save");
         assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "continued");
         // Once the boot's own work lets go of the copy, a new message starts its task.
-        yield* commandWhenFree({
+        yield* pressWhenFree(world, {
           _tag: "message",
           handle: "backend",
           text: "Work",
           attachments: [],
         });
-        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
       }),
   ]),
 );
 
-it.live("Drop it settles a stopped copy save outside any task, and its queue moves", () =>
-  withCrewEngine((world) =>
+// A stopped operation's row is written into V1's own tables.
+itV1("Drop it settles a stopped copy save outside any task, and its queue moves", () =>
+  v1Journey((world) =>
     Effect.gen(function* () {
       yield* applied(world);
       yield* (yield* CrewStore).putOperation({
@@ -971,15 +990,15 @@ it.live("Drop it settles a stopped copy save outside any task, and its queue mov
         startedAt: "2026-10-03T10:00:00.000Z",
         updatedAt: "2026-10-03T10:00:00.000Z",
       });
-      yield* command({
+      yield* world.press({
         _tag: "operationDiscard",
         handle: "backend",
         operationId: "failed-idle-save",
       });
       const operation = yield* (yield* CrewStore).getOperation("failed-idle-save");
       assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "discarded");
-      yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
-      yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+      yield* world.press({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
+      yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
     }),
   ),
 );
@@ -990,15 +1009,15 @@ const readyTask = (world: CrewWorld) =>
     const thread = yield* firstTurn(world, () =>
       write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
     );
-    yield* reportDone(thread);
-    yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-    yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+    yield* reportDone(world, thread);
+    yield* world.turnEnds(thread);
+    yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
     return thread;
   });
 
 it.live("a restart never commits edits on a checked copy: its task stops, the edits kept", () => {
   let tip = "";
-  return withCrewEngines([
+  return crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* readyTask(world);
@@ -1008,8 +1027,10 @@ it.live("a restart never commits edits on a checked copy: its task stops, the ed
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+        yield* world.serverReady;
+        const stopped = yield* world.snapshotWhere(
+          (frame) => frame.board.tasks[0]?.state === "parked",
+        );
         const copy = NodePath.join(world.root, ".crew/backend");
         assert.deepStrictEqual(
           [stopped.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
@@ -1021,15 +1042,17 @@ it.live("a restart never commits edits on a checked copy: its task stops, the ed
 });
 
 it.live("a turn's end never commits edits on a checked copy: its task stops", () =>
-  withCrewEngine((world) =>
+  crewJourney((world) =>
     Effect.gen(function* () {
       const thread = yield* readyTask(world);
       const copy = NodePath.join(world.root, ".crew/backend");
       const tip = git(copy, ["rev-parse", "HEAD"]);
-      yield* world.publish(spiEvent("turn.started", thread, {}));
+      yield* world.turnStarts(thread);
       write(copy, "ok.txt", "edited after the check\n");
-      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-      const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+      yield* world.turnEnds(thread);
+      const stopped = yield* world.snapshotWhere(
+        (frame) => frame.board.tasks[0]?.state === "parked",
+      );
       assert.deepStrictEqual(
         [stopped.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
         [EDITED_AFTER_CHECK, tip],
@@ -1038,8 +1061,9 @@ it.live("a turn's end never commits edits on a checked copy: its task stops", ()
   ),
 );
 
-it.live("Land refuses a copy that moved after its check and lands nothing", () =>
-  withCrewEngine((world) =>
+// The copy's moved tip is recorded in V1's own lane row.
+itV1("Land refuses a copy that moved after its check and lands nothing", () =>
+  v1Journey((world) =>
     Effect.gen(function* () {
       yield* readyTask(world);
       const copy = NodePath.join(world.root, ".crew/backend");
@@ -1054,8 +1078,10 @@ it.live("Land refuses a copy that moved after its check and lands nothing", () =
         recordedTip: moved,
       }));
       const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
-      yield* command({ _tag: "land", taskId: task!.assignment });
-      const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+      yield* world.press({ _tag: "land", taskId: task!.assignment });
+      const stopped = yield* world.snapshotWhere(
+        (frame) => frame.board.tasks[0]?.state === "parked",
+      );
       assert.deepStrictEqual(
         [stopped.board.tasks[0]!.reason, git(world.root, ["rev-parse", "HEAD"])],
         [MOVED_AFTER_CHECK, head],
@@ -1065,42 +1091,42 @@ it.live("Land refuses a copy that moved after its check and lands nothing", () =
 );
 
 it.live("the boot sweep holds each crewmate's copy: a press during it waits its turn", () =>
-  withCrewEngines([
+  crewJourney([
     (world) => applied(world),
     (world) =>
       Effect.gen(function* () {
-        const hold = yield* world.holdSsh((script) => script.includes("ignoring broken ref"));
-        yield* (yield* ServerCommandReadiness).complete;
+        const hold = yield* world.hold({ step: "sweep" });
+        yield* world.serverReady;
         yield* hold.reached;
-        const press = yield* command({
-          _tag: "message",
-          handle: "backend",
-          text: "Work",
-          attachments: [],
-        }).pipe(Effect.forkChild);
+        const press = yield* world
+          .press({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          })
+          .pipe(Effect.forkChild);
         yield* Effect.sleep("300 millis");
         assert.strictEqual(press.pollUnsafe() === undefined, true);
         yield* hold.release;
         yield* Fiber.join(press);
-        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
       }),
   ]),
 );
 
 it.live("a Land whose browser went away mid-landing still lands", () =>
-  withCrewEngine((world) =>
+  crewJourney((world) =>
     Effect.gen(function* () {
       yield* readyTask(world);
-      const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
-      const hold = yield* world.holdSsh((script) => script.includes("commit-tree"));
-      const press = yield* command({ _tag: "land", taskId: task!.assignment }).pipe(
-        Effect.forkChild,
-      );
+      const [task] = yield* world.tasks;
+      const hold = yield* world.hold({ step: "land" });
+      const press = yield* world.press({ _tag: "land", taskId: task!.id }).pipe(Effect.forkChild);
       yield* hold.reached;
       // The RPC server interrupts a disconnecting client's request.
       yield* Fiber.interrupt(press);
       yield* hold.release;
-      const landed = yield* snapshotWhere(
+      const landed = yield* world.snapshotWhere(
         (frame) =>
           frame.board.tasks[0]?.state === "landed" &&
           frame.operations?.every((row) => row.status !== "running") === true,
@@ -1111,25 +1137,27 @@ it.live("a Land whose browser went away mid-landing still lands", () =>
 );
 
 it.live("untracked files never stop a checked task, nor get committed or landed", () =>
-  withCrewEngines([
+  crewJourney([
     (world) =>
       Effect.gen(function* () {
         const thread = yield* readyTask(world);
         const copy = NodePath.join(world.root, ".crew/backend");
         // A show-on-dev turn leaves a build log behind.
-        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* world.turnStarts(thread);
         write(copy, "build.log", "untracked\n");
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* world.turnEnds(thread);
         yield* Effect.sleep("200 millis");
-        assert.strictEqual((yield* latest).board.tasks[0]!.state, "ready");
+        assert.strictEqual((yield* world.snapshot).board.tasks[0]!.state, "ready");
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
+        yield* world.serverReady;
         const copy = NodePath.join(world.root, ".crew/backend");
-        const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
-        yield* commandWhenFree({ _tag: "land", taskId: task!.assignment });
-        const landed = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
+        const [task] = yield* world.tasks;
+        yield* pressWhenFree(world, { _tag: "land", taskId: task!.id });
+        const landed = yield* world.snapshotWhere(
+          (frame) => frame.board.tasks[0]?.state === "landed",
+        );
         assert.deepStrictEqual(
           [
             landed.board.tasks[0]!.state,
@@ -1143,49 +1171,45 @@ it.live("untracked files never stop a checked task, nor get committed or landed"
 );
 
 it.live("a task card a restart cut off before it went out is sent, not a Continue", () =>
-  withCrewEngines([
+  crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        const reached = yield* Deferred.make<void>();
-        yield* Ref.set(
-          world.beforeDispatch,
-          Deferred.succeed(reached, undefined).pipe(Effect.andThen(Effect.never)),
-        );
-        yield* command({
-          _tag: "message",
-          handle: "backend",
-          text: "Change a.txt",
-          attachments: [],
-        }).pipe(Effect.forkChild);
-        yield* Deferred.await(reached);
+        const send = yield* world.hold({ step: "send" });
+        yield* world
+          .press({
+            _tag: "message",
+            handle: "backend",
+            text: "Change a.txt",
+            attachments: [],
+          })
+          .pipe(Effect.forkChild);
+        yield* send.reached;
         // The phase ends here: the engine shuts down before the card reached its agent.
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* Ref.set(world.beforeDispatch, Effect.void);
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 1),
-        );
-        const [turn] = yield* dispatchedOf(world, "thread.turn.start");
-        assert.include(turn!.message.text, "Change a.txt");
-        assert.notInclude(turn!.message.text, "Continue where you stopped");
+        yield* world.serverReady;
+        yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length === 1));
+        const [turn] = yield* turnsSent(world);
+        assert.include(turn!.text, "Change a.txt");
+        assert.notInclude(turn!.text, "Continue where you stopped");
       }),
   ]),
 );
 
-it.live("a fix hand-off a restart cut off before its card is sent with its card", () =>
-  withCrewEngines([
+// A crash's operation row is written into V1's own tables.
+itV1("a fix hand-off a restart cut off before its card is sent with its card", () =>
+  v1Journey([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(NodePath.join(world.root, ".crew/backend"), "work.txt", "no ok.txt\n"),
         );
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "rework");
+        yield* reportDone(world, thread);
+        yield* world.turnEnds(thread);
+        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "rework");
         const store = yield* CrewStore;
         const [task] = yield* store.assignments(CREW_ID);
         // Ask to fix began its dispatch; the restart came before the task moved or the card went.
@@ -1216,22 +1240,20 @@ it.live("a fix hand-off a restart cut off before its card is sent with its card"
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
-        );
-        const fix = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-        assert.include(fix.message.text, "fix the check");
+        yield* world.serverReady;
+        yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length === 2));
+        const fix = (yield* turnsSent(world)).at(-1)!;
+        assert.include(fix.text, "fix the check");
       }),
   ]),
 );
 
 it.live("a restart after a finished run carries a died turn on: a finished run holds nothing", () =>
-  withCrewEngines([
+  crewJourney([
     (world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({
+        yield* world.press({
           _tag: "start",
           budgetUsd: "unlimited",
           timeLimitHours: "unlimited",
@@ -1240,27 +1262,28 @@ it.live("a restart after a finished run carries a died turn on: a finished run h
           devGrant: false,
           leadMayStart: false,
         });
-        const runId = (yield* snapshotWhere((frame) => frame.run?.state === "running")).run!.id;
-        yield* command({ _tag: "finish", runId });
-        yield* snapshotWhere((frame) => frame.run?.state === "finished");
+        const runId = (yield* world.snapshotWhere((frame) => frame.run?.state === "running")).run!
+          .id;
+        yield* world.press({ _tag: "finish", runId });
+        yield* world.snapshotWhere((frame) => frame.run?.state === "finished");
         yield* firstTurn(world, () => undefined);
       }),
     (world) =>
       Effect.gen(function* () {
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
-        );
+        yield* world.serverReady;
+        yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length === 2));
       }),
   ]),
 );
 
-const landedCopy = (world: CrewWorld) =>
+const landedCopy = (world: V1CrewWorld) =>
   Effect.gen(function* () {
     yield* readyTask(world);
-    const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
-    yield* command({ _tag: "land", taskId: task!.assignment });
-    yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
+    const [task] = yield* world.v1.run(
+      Effect.flatMap(CrewStore, (store) => store.assignments(CREW_ID)),
+    );
+    yield* world.press({ _tag: "land", taskId: task!.assignment });
+    yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
     // Your tree moves on past the landing.
     write(world.root, "person.txt", "person\n");
     git(world.root, ["add", "-A"]);
@@ -1269,7 +1292,7 @@ const landedCopy = (world: CrewWorld) =>
   });
 
 const interruptedDispatch = (
-  world: CrewWorld,
+  world: V1CrewWorld,
   task: { readonly assignment: string; readonly attempt: number },
   result: unknown,
 ) =>
@@ -1304,8 +1327,9 @@ for (const [title, recorded, parked] of [
   ["its own dispatch's reset, to the target it recorded, is adopted", true, false],
   ["a reset to your tree no dispatch recorded is not the engine's: the copy parks", false, true],
 ] as const) {
-  it.live(title, () =>
-    withCrewEngines([
+  // A crash's operation row is written into, and the lane read from, V1's own tables.
+  itV1(title, () =>
+    v1Journey([
       (world) =>
         Effect.gen(function* () {
           const { head, task } = yield* landedCopy(world);
@@ -1314,7 +1338,7 @@ for (const [title, recorded, parked] of [
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
+          yield* world.serverReady;
           const head = git(world.root, ["rev-parse", "HEAD"]);
           yield* eventually(
             Effect.map((yield* CrewStore).getLane(CREW_ID, "backend"), (row) => {
