@@ -32,8 +32,9 @@ it.each(["requestfinished", "requestfailed"])(
   },
 );
 
-it("a new main document settles without waiting for abandoned requests from the old document", async () => {
+function navigationBrowser() {
   let rendererTurns = 0;
+  const client = new NodeEvents.EventEmitter();
   const mainFrame = {};
   const events = Object.assign(new NodeEvents.EventEmitter(), {
     isClosed: () => false,
@@ -42,22 +43,85 @@ it("a new main document settles without waiting for abandoned requests from the 
       rendererTurns++;
     },
   });
-  const settle = completedHttp(events as unknown as Page);
-  const abandoned = { isNavigationRequest: () => false } as HTTPRequest;
+  const body = { isNavigationRequest: () => false } as HTTPRequest;
   const navigation = {
+    client,
     isNavigationRequest: () => true,
     frame: () => mainFrame,
   } as unknown as HTTPRequest;
-  events.emit("request", abandoned);
-  events.emit("request", navigation);
+  return { events, client, body, navigation, rendererTurns: () => rendererTurns };
+}
+
+it.each(["requestfinished", "requestfailed"])(
+  "navigation %s before document commit cannot retire an unfinished old body",
+  async (terminal) => {
+    const browser = navigationBrowser();
+    const settle = completedHttp(browser.events as unknown as Page);
+    browser.events.emit("request", browser.body);
+    const drained = settle();
+    browser.events.emit("request", browser.navigation);
+    browser.events.emit(terminal, browser.navigation);
+    await Promise.resolve();
+    try {
+      expect(
+        browser.rendererTurns(),
+        "Rendering must wait for document replacement or the old body",
+      ).toBe(0);
+    } finally {
+      browser.events.emit("requestfinished", browser.body);
+      browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
+      await drained;
+      settle.close();
+    }
+  },
+);
+
+it("a committed main document retires old bodies but waits for its own body even when the filter excludes navigation", async () => {
+  const browser = navigationBrowser();
+  const settle = completedHttp(
+    browser.events as unknown as Page,
+    (request) => request === browser.body,
+  );
+  browser.events.emit("request", browser.body);
+  browser.events.emit("request", browser.navigation);
   const drained = settle();
-  events.emit("requestfinished", navigation);
+  browser.client.emit("Page.frameNavigated", { frame: { parentId: "main" } });
+  browser.client.emit("Page.navigatedWithinDocument", { frameId: "main" });
   await Promise.resolve();
   try {
-    expect(rendererTurns, "The new document is still waiting for an abandoned old body").toBe(1);
+    expect(
+      browser.rendererTurns(),
+      "Subframes and same-document navigation cannot retire old bodies",
+    ).toBe(0);
+    browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
+    await Promise.resolve();
+    expect(browser.rendererTurns(), "The new document body must finish before rendering").toBe(0);
+    browser.events.emit("requestfinished", browser.navigation);
+    await drained;
+    expect(browser.rendererTurns()).toBe(1);
   } finally {
-    events.emit("requestfailed", abandoned);
+    browser.events.emit("requestfinished", browser.body);
+    browser.events.emit("requestfinished", browser.navigation);
+    browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
     await drained;
     settle.close();
   }
+  expect(browser.client.listenerCount("Page.frameNavigated")).toBe(0);
+});
+
+it("a navigation body finishing before document commit does not enter the old renderer", async () => {
+  const browser = navigationBrowser();
+  const settle = completedHttp(browser.events as unknown as Page);
+  browser.events.emit("request", browser.navigation);
+  const drained = settle();
+  browser.events.emit("requestfinished", browser.navigation);
+  await Promise.resolve();
+  try {
+    expect(browser.rendererTurns(), "The body finishing is not a document commit receipt").toBe(0);
+  } finally {
+    browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
+    await drained;
+    settle.close();
+  }
+  expect(browser.rendererTurns()).toBe(1);
 });

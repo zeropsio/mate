@@ -1,4 +1,4 @@
-import type { HTTPRequest, Page } from "puppeteer-core";
+import type { CDPSession, HTTPRequest, Page } from "puppeteer-core";
 import { deadline } from "./http.ts";
 
 /** Native scheduler jobs and React continuations get a renderer turn before the next action. */
@@ -17,25 +17,48 @@ export function completedHttp(
 ) {
   const pending = new Set<HTTPRequest>();
   const waiters = new Set<() => void>();
-  const asked = (request: HTTPRequest) => {
-    // Chrome can abandon intercepted bodies without a terminal event when their document leaves.
-    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-      pending.clear();
+  let navigationClient: CDPSession | undefined;
+  let awaitingCommit: HTTPRequest | undefined;
+  const isMainNavigation = (request: HTTPRequest) =>
+    request.isNavigationRequest() && request.frame() === page.mainFrame();
+  const notifyIfDrained = () => {
+    if (pending.size === 0 && awaitingCommit === undefined)
       for (const resolve of waiters) resolve();
+  };
+  const committed = ({ frame }: { frame: { parentId?: string } }) => {
+    if (frame.parentId !== undefined) return;
+    awaitingCommit = undefined;
+    // This native receipt excludes same-document navigation. Only replacement abandons old bodies.
+    for (const request of pending) if (!isMainNavigation(request)) pending.delete(request);
+    notifyIfDrained();
+  };
+  const asked = (request: HTTPRequest) => {
+    const navigation = isMainNavigation(request);
+    if (navigation) awaitingCommit = request;
+    if (navigation && navigationClient !== request.client) {
+      navigationClient?.off("Page.frameNavigated", committed);
+      navigationClient = request.client;
+      navigationClient.on("Page.frameNavigated", committed);
     }
-    if (includes(request)) pending.add(request);
+    // Navigation's body remains a barrier even for a platform-only HTTP filter.
+    if (navigation || includes(request)) pending.add(request);
   };
   const answered = (request: HTTPRequest) => {
     pending.delete(request);
-    if (pending.size === 0) for (const resolve of waiters) resolve();
+    notifyIfDrained();
   };
   page.on("request", asked);
   page.on("requestfinished", answered);
-  page.on("requestfailed", answered);
+  const failed = (request: HTTPRequest) => {
+    if (awaitingCommit === request) awaitingCommit = undefined;
+    answered(request);
+  };
+  page.on("requestfailed", failed);
   const close = () => {
+    navigationClient?.off("Page.frameNavigated", committed);
     page.off("request", asked);
     page.off("requestfinished", answered);
-    page.off("requestfailed", answered);
+    page.off("requestfailed", failed);
     page.off("close", close);
     for (const resolve of waiters) resolve();
   };
@@ -47,7 +70,7 @@ export function completedHttp(
         (async () => {
           for (;;) {
             if (page.isClosed()) throw new Error("Page closed while settling HTTP");
-            if (pending.size > 0) {
+            if (pending.size > 0 || awaitingCommit !== undefined) {
               let resolve = () => {};
               try {
                 await new Promise<void>((done) => {
@@ -64,7 +87,7 @@ export function completedHttp(
             // Observe a renderer turn after body completion: fetch continuations and native scheduler
             // jobs can dispatch another request. This is a rendering receipt, never a quiet-time sleep.
             await rendered(page);
-            if (pending.size === 0) return;
+            if (pending.size === 0 && awaitingCommit === undefined) return;
           }
         })(),
         "completed browser HTTP and renderer continuations",

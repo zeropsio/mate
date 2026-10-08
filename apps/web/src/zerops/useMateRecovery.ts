@@ -1,13 +1,12 @@
 import {
   mateRecovery,
-  shownProjectsAtom,
+  ownRowWanted,
   usageOwnerOf,
   type MateRecovery,
 } from "@t3tools/client-runtime/data";
-import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useDetailDemand, useProjection } from "./ZeropsAccountData";
-import { useVisibleProjectAccess } from "./useVisibleProjectAccess";
+import { useZeropsSessionOptional } from "./sessionContext";
 
 const NONE = Atom.make<MateRecovery>({
   standing: { kind: "unknown" },
@@ -26,20 +25,23 @@ export function useMateRecovery(
     orgId === null || projectId === null ? null : { orgId, projectId, serviceId },
     NONE,
   );
-  const roster = useAtomValue(shownProjectsAtom);
+  const viewerRole = useZeropsSessionOptional()?.activeOrganization?.roleCode;
   useDetailDemand(
     "usage",
     undefined,
     orgId === null || projectId === null ? null : usageOwnerOf(orgId, projectId),
   );
-  useVisibleProjectAccess(projectId === null ? [] : [projectId]);
-  // A cold URL missing from a complete roster needs an owner verdict; absence alone proves nothing.
+  // Unknown identity needs an owner verdict even before a roster baseline or beyond its page cap.
+  // Known rows use the same listing-grant policy as the menu, through one demand.
   useDetailDemand(
     "project",
     "project",
-    recovery.standing.kind === "unknown" &&
-      roster.complete &&
-      !roster.projects.some((project) => project.id === projectId)
+    orgId !== null &&
+      (recovery.standing.kind === "unknown" ||
+        ownRowWanted(
+          viewerRole,
+          recovery.standing.kind === "listed" ? recovery.standing.project : null,
+        ))
       ? projectId
       : null,
   );

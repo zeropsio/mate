@@ -1,7 +1,12 @@
 /** A drawn row holds only the source detail that decides project access. */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { RegistryContext } from "@effect/atom-react";
-import { accountReadsAtom } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  makeAccountStore,
+  projectsScope,
+  type MateRecovery,
+} from "@t3tools/client-runtime/data";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -12,6 +17,7 @@ import {
   useVisibleProjectAccess,
 } from "./useVisibleProjectAccess";
 import { useMateRecovery } from "./useMateRecovery";
+import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 
 const viewer = vi.hoisted(() => ({ role: "OWNER" }));
 vi.mock("./sessionContext", () => ({
@@ -32,8 +38,11 @@ function RowsProbe() {
   });
   return null;
 }
-function RecoveryProbe() {
-  useMateRecovery("p-cy", undefined, false);
+function RecoveryProbe({ seen }: { readonly seen: MateRecovery[] }) {
+  const recovery = useMateRecovery("p-cy", undefined, false);
+  useLayoutEffect(() => {
+    seen.push(recovery);
+  }, [recovery, seen]);
   return null;
 }
 let tree: ReactTestRenderer | undefined;
@@ -185,45 +194,154 @@ it("holds one access detail while any row is drawn and releases it with the last
   expect(held).toEqual([]);
 });
 
-it.each([
-  { role: "OWNER", listed: true, named: false, expected: [] },
-  { role: "READ_ONLY", listed: true, named: false, expected: [] },
-  { role: "NO_ACCESS", listed: true, named: true, expected: [] },
-  { role: "NO_ACCESS", listed: true, named: false, expected: ["project/project/p-cy"] },
-  { role: "OWNER", listed: false, named: false, expected: ["project/project/p-cy"] },
-])(
-  "Mate recovery asks for an own row only when $role access needs it (listing grant: $named)",
-  async ({ role, listed, named, expected }) => {
-    viewer.role = role;
-    const registry = AtomRegistry.make();
-    const held: string[] = [];
-    const roster = Atom.make({
-      projects: listed
-        ? [{ id: "p-cy", name: "Cy", status: "ACTIVE", listingNamesGrants: named }]
+function recoveryAccount(role: string) {
+  viewer.role = role;
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const scope = projectsScope("org-1");
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+  const held: string[] = [];
+  const asked: string[] = [];
+  const seen: MateRecovery[] = [];
+  const account = {
+    data: store.data,
+    orgId: "org-1",
+    demandDetail: (demand: { family: string; ownerId: string }) => {
+      if (demand.family !== "project") return () => {};
+      held.push(demand.ownerId);
+      asked.push(demand.ownerId);
+      return () => {
+        held.splice(held.indexOf(demand.ownerId), 1);
+      };
+    },
+    renewHeld: () => {},
+  } as AccountData;
+  registry.set(accountReadsAtom, account);
+  const roster = (listed: boolean, named = false, partial = false) => {
+    const scope = projectsScope("org-1");
+    store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-realtime",
+      partial,
+      members: listed ? ["p-cy"] : [],
+      rows: listed
+        ? [
+            {
+              family: "project",
+              id: "p-cy",
+              value: {
+                id: "p-cy",
+                name: "Cy",
+                status: "STOPPED",
+                ...(named ? { viewerRoleCode: "BASIC_USER" } : {}),
+              },
+              revision: { kind: "zerops", version: null },
+            },
+          ]
         : [],
-      read: "read",
-      complete: true,
-      live: true,
-      reconnecting: false,
     });
-    registry.set(accountReadsAtom, {
-      data: { project: () => roster } as never,
-      orgId: "org-1",
-      demandDetail: (demand) => {
-        const key = `${demand.family}/${demand.listing}/${demand.ownerId}`;
-        held.push(key);
-        return () => held.splice(held.indexOf(key), 1);
-      },
-      renewHeld: () => {},
-    });
+  };
+  const mount = async () => {
     await act(async () => {
       tree = create(
-        createElement(RegistryContext.Provider, { value: registry }, createElement(RecoveryProbe)),
+        createElement(
+          RegistryContext.Provider,
+          { value: registry },
+          createElement(
+            AccountDataContext.Provider,
+            { value: account },
+            createElement(RecoveryProbe, { seen }),
+          ),
+        ),
       );
     });
-    expect(held).toEqual(expected);
-    await act(async () => tree?.unmount());
-    tree = undefined;
-    expect(held).toEqual([]);
+  };
+  return { store, held, asked, seen, roster, mount };
+}
+
+it.each([
+  { role: "OWNER", named: false, expected: [] },
+  { role: "READ_ONLY", named: false, expected: [] },
+  { role: "NO_ACCESS", named: true, expected: [] },
+  // Positive control: this member needs an own-row verdict even with a known listing row.
+  { role: "NO_ACCESS", named: false, expected: ["p-cy"] },
+])(
+  "recovery uses the listed grant for $role (named: $named)",
+  async ({ role, named, expected }) => {
+    const account = recoveryAccount(role);
+    account.roster(true, named);
+    await account.mount();
+    expect(account.held).toEqual(expected);
+    expect(account.seen.at(-1)).toMatchObject({ standing: { kind: "listed" }, status: "STOPPED" });
   },
 );
+
+it.each([
+  { role: "OWNER", verdict: "deleted", partial: true },
+  { role: "READ_ONLY", verdict: "denied", partial: true },
+  { role: "OWNER", verdict: "denied", partial: false },
+  { role: "READ_ONLY", verdict: "deleted", partial: false },
+] as const)(
+  "a cold $role URL gets its $verdict verdict from a roster with partial=$partial",
+  async ({ role, verdict, partial }) => {
+    const account = recoveryAccount(role);
+    account.roster(false, false, partial);
+    await account.mount();
+    expect(account.seen.at(-1)?.standing).toEqual({ kind: "unknown" });
+    expect(account.held).toEqual(["p-cy"]);
+    await act(async () => {
+      account.store.dispatch(
+        verdict === "deleted"
+          ? {
+              kind: "proven-deletion",
+              family: "project",
+              id: "p-cy",
+              scope: "zerops:org-1:project:p-cy",
+              evidence: "projectNotFound",
+            }
+          : {
+              kind: "access",
+              family: "project",
+              id: "p-cy",
+              scope: "zerops:org-1:project:p-cy",
+              access: "denied",
+            },
+      );
+    });
+    expect(account.seen.at(-1)).toEqual({
+      standing: { kind: verdict },
+      status: undefined,
+      process: undefined,
+    });
+    expect(account.held).toEqual([]);
+    expect(account.asked).toEqual(["p-cy"]);
+  },
+);
+
+it.each(["OWNER", "READ_ONLY"])(
+  "an unread roster does not block a cold %s URL, and a known row ends the probe",
+  async (role) => {
+    const account = recoveryAccount(role);
+    await account.mount();
+    expect(account.held).toEqual(["p-cy"]);
+    await act(async () => account.roster(true));
+    expect(account.seen.at(-1)).toMatchObject({ standing: { kind: "listed" }, status: "STOPPED" });
+    expect(account.held).toEqual([]);
+    expect(account.asked).toEqual(["p-cy"]);
+  },
+);
+
+it("a NO_ACCESS recovery releases its own-row read when the listing supplies a grant", async () => {
+  const account = recoveryAccount("NO_ACCESS");
+  account.roster(true);
+  await account.mount();
+  expect(account.held).toEqual(["p-cy"]);
+  await act(async () => account.roster(true, true));
+  expect(account.seen.at(-1)?.standing.kind).toBe("listed");
+  expect(account.held).toEqual([]);
+  expect(account.asked).toEqual(["p-cy"]);
+});

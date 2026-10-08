@@ -2,7 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
-import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
+import puppeteer, { type Page, type BrowserContext, type HTTPRequest } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
@@ -174,7 +174,9 @@ export async function openBrowser(
     });
     await network.send("Network.enable");
     await page.setRequestInterception(true);
-    page.on("request", async (request) => {
+    // Awaiting interception work here blocks later request observers behind a held fake response.
+    // Legacy interception responds explicitly; native completion remains the HTTP receipt.
+    const intercept = async (request: HTTPRequest) => {
       const requestId = "id" in request && typeof request.id === "string" ? request.id : null;
       try {
         const url = new URL(request.url());
@@ -229,6 +231,9 @@ export async function openBrowser(
           opaqueBodies.delete(requestId);
         }
       }
+    };
+    page.on("request", (request) => {
+      void intercept(request).catch((error) => errors.push(String(error)));
     });
     // Only transport addresses change. The app still computes production container URLs and
     // exchanges real frames; no stores, components or app functions are accessed here.
