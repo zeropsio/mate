@@ -78,6 +78,10 @@ const app = vi.hoisted(() => ({
     status: undefined,
     process: undefined,
   } as import("@t3tools/client-runtime/data").MateRecovery,
+  setupFailure: undefined as
+    | import("@t3tools/client-runtime/data").MateRecovery["process"]
+    | undefined,
+  restartSetup: vi.fn(async () => undefined),
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
@@ -200,8 +204,12 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => null,
   useAccountOrgId: () => "org-1",
   useDetailDemand: () => undefined,
-  useProjection: () => undefined,
+  useProjection: () => app.setupFailure,
   useProjectServices: () => ({ services: undefined, live: false, reconnecting: false }),
+}));
+vi.mock("~/zerops/mateRestart", () => ({
+  useRestartMate: () => app.restartSetup,
+  useReviveFailedMate: () => () => false,
 }));
 vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ submit: () => new Promise(() => {}) }),
@@ -383,6 +391,8 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
+  app.setupFailure = undefined;
+  app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
   app.observeRefused = false;
   app.standUpRetry.mockClear();
@@ -698,18 +708,22 @@ describe("the footer in a Mate's own view", () => {
 });
 
 describe("the header in a Mate's own view", () => {
-  it("a known deleted project stays named and removes its platform link", () => {
-    app.listing = listingOf([]);
-    app.recovery = {
-      standing: { kind: "deleted", name: "Quinn" },
-      status: undefined,
-      process: undefined,
-    };
-    openView();
-    expect(said()).toContain("Quinn's project was deleted");
-    expect(said()).not.toContain("Open in Zerops");
-    expect(buttons()).toContain("Go to projects");
-  });
+  it.each(["deleted", "denied"] as const)(
+    "does not identify a Mate by a retained platform label after %s",
+    (kind) => {
+      app.listing = listingOf([]);
+      app.recovery = {
+        standing: { kind, name: "Radotin - Eddy" },
+        status: undefined,
+        process: undefined,
+      };
+      openView();
+      expect(said()).not.toContain("Radotin - Eddy");
+      expect(said()).toContain("The Mate");
+      expect(said()).not.toContain("Open in Zerops");
+      expect(buttons()).toContain("Go to projects");
+    },
+  );
   it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
     app.told = { subject: "Rename the orders column" };
@@ -747,6 +761,22 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     step: "created",
     failed: null,
   };
+
+  it.each(["deleted", "denied"] as const)(
+    "keeps the explicit Mate name after %s removes its listing",
+    (kind) => {
+      app.listing = listingOf([]);
+      app.creations = [{ ...QUINN_MADE, name: "Radotin", botName: "Eddy" }];
+      app.recovery = {
+        standing: { kind, name: "Radotin - Eddy" },
+        status: undefined,
+        process: undefined,
+      };
+      openView();
+      expect(said()).toContain("Eddy");
+      expect(said()).not.toContain("Radotin - Eddy");
+    },
+  );
 
   it("a Mate this tab made is coming up from its first frame, its container up or not", () => {
     app.creations = [QUINN_MADE];
@@ -1426,6 +1456,44 @@ it("shows HQ's read-only refusal and never connects a listed Mate", () => {
   expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();
   expect(buttons()).not.toContain("Connect");
+});
+
+it("keeps a refused setup retry in Details beside the original setup diagnostics", async () => {
+  app.setupFailure = {
+    id: "setup-failed",
+    projectId: PROJECT,
+    serviceStackIds: ["zcp"],
+    actionName: "stack.create",
+    status: "FAILED",
+    created: "2026-10-07T10:00:00Z",
+    failReason: "Original setup diagnostic",
+  };
+  beginPress({
+    projectId: PROJECT,
+    organizationId: "org-beviro",
+    startedAt: 0,
+    placement: null,
+    container: true,
+  });
+  app.restartSetup.mockRejectedValue(new Error("500: Internal Server Error"));
+  openView();
+  const retry = tree!.root
+    .findAllByType("button")
+    .find((node) => node.children.join("") === "Try again");
+  expect(retry).toBeDefined();
+  await act(async () => {
+    retry!.props.onClick();
+  });
+  expect(app.restartSetup).toHaveBeenCalledOnce();
+  const section = tree!.root.findByType("section");
+  expect(section.children).toContain("Zerops didn't accept the setup retry.");
+  expect(section.children).not.toContain("500: Internal Server Error");
+  const details = tree!.root.findByType("details");
+  expect(details.props.open).not.toBe(true);
+  expect(details.findAllByType("pre").map((node) => node.children.join(""))).toEqual([
+    "500: Internal Server Error",
+    "Original setup diagnostic",
+  ]);
 });
 
 describe("failed setup recovery fixture", () => {

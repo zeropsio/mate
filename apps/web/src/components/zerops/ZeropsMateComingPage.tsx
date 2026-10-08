@@ -362,13 +362,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         return listed;
       return { ...listed, name: nameUnderApp(candidate.project.name, app) };
     }
+    // A retained project label is not a Mate identity; only explicit Mate naming survives here.
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
-      name:
-        ("name" in recovery.standing ? recovery.standing.name : undefined) ??
-        creation?.botName ??
-        press?.placement?.displayName ??
-        "",
+      name: creation?.botName ?? press?.placement?.displayName ?? "",
       tint: face.tint,
       shape: face.shape,
       project: creation?.name ?? press?.placement?.groupName,
@@ -377,17 +374,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [
-    identity,
-    press,
-    candidate,
-    creation,
-    projectId,
-    projectUnavailable,
-    recovery.standing,
-    tints,
-    viewer,
-  ]);
+  }, [identity, press, candidate, creation, projectId, tints, viewer]);
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
@@ -642,9 +629,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           })
             .then(() => forgetPress(projectId))
             .catch((error: unknown) =>
-              setTrouble(
-                error instanceof Error ? error.message : "Zerops didn't accept the setup retry.",
-              ),
+              setTrouble({
+                text: "Zerops didn't accept the setup retry.",
+                details: error instanceof Error ? error.message : String(error),
+              }),
             )
             .finally(() => setRetryingSetup(false));
         };
@@ -659,7 +647,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   const deleteProject = useDeleteProject();
   const [removing, setRemoving] = useState(false);
-  const [trouble, setTrouble] = useState<string | null>(null);
+  const [trouble, setTrouble] = useState<{
+    readonly text: string;
+    readonly details: string;
+  } | null>(null);
   const remove = () => {
     if (activeOrganization === null) return;
     const organization = organizationRef(activeOrganization.id);
@@ -676,7 +667,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     }).then((outcome) => {
       setRemoving(false);
       if (!outcome.ok) {
-        setTrouble(outcome.error);
+        setTrouble({ text: "Zerops didn't accept removing the project.", details: outcome.error });
         return;
       }
       void navigate({ to: "/zerops", replace: true });
@@ -742,7 +733,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                   ? finish.line
                   : comingSentenceOf({
                       coming: shown,
-                      trouble: trouble ?? mateActions.trouble,
+                      trouble: trouble?.text ?? mateActions.trouble,
                       ...(failedReason === undefined ? {} : { failureReason: failedReason.text }),
                       progress: lineProgress,
                       nowMs: progress?.nowMs,
@@ -769,6 +760,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                       : {
                           setupFailureDetails: {
                             details: failedReason.details,
+                            operation: trouble,
                             status: failureLog.status,
                             process: failedProcess!,
                             projectUrl: mate.projectUrl,
@@ -1122,6 +1114,7 @@ export function ComingBelow({
 }: {
   readonly setupFailureDetails?: {
     readonly details: string;
+    readonly operation?: { readonly text: string; readonly details: string } | null;
     readonly status: string;
     readonly process: ActivityProcess;
     readonly projectUrl: string | undefined;
@@ -1277,6 +1270,9 @@ export function ComingBelow({
       {steps}
       {setupFailureDetails === undefined ? null : (
         <MateStateDetails>
+          {setupFailureDetails.operation == null ? null : (
+            <><p>{setupFailureDetails.operation.text}</p><pre>{setupFailureDetails.operation.details}</pre></>
+          )}
           <pre>{setupFailureDetails.details}</pre>
           {setupFailureDetails.status === "loading" ? <p>Reading the setup log…</p> : null}
           {setupFailureDetails.status === "error" ? (
