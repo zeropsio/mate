@@ -35,7 +35,7 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /** Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. */
-export const STATE_VERSION = 8;
+export const STATE_VERSION = 9;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -75,6 +75,11 @@ export interface RunRecord {
   readonly personBody: PersonBody | null;
   /** The turn's interaction mode: `plan` asks the agent for a plan. */
   readonly interactionMode: ProviderInteractionMode;
+  /**
+   * Its turn sleeps on a question asked by message that the person dismissed (Codex waits for
+   * input inside the turn): the person's next message goes into this turn, not after it.
+   */
+  readonly awaitsMessage: boolean;
 }
 
 export type PersonBody = Extract<ItemBody, { readonly kind: "person" }>;

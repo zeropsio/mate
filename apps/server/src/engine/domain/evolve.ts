@@ -108,6 +108,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         prepare: "none",
         personBody: null,
         interactionMode: event.interactionMode ?? "default",
+        awaitsMessage: false,
       };
       const next: ConversationState = {
         ...state,
@@ -185,6 +186,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         endSource: event.source,
         endedAt: event.at,
         waitingOn: null,
+        awaitsMessage: false,
       }));
       const kept = [...state.endedRuns.filter((id) => id !== event.runId), event.runId];
       const dropped = kept.length > KEPT_ENDED_RUNS ? kept.shift() : undefined;
@@ -216,7 +218,13 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         },
         event.runId,
-        (run) => ({ ...run, state: "queued", sessionId: null, admittedAt: null }),
+        (run) => ({
+          ...run,
+          state: "queued",
+          sessionId: null,
+          admittedAt: null,
+          awaitsMessage: false,
+        }),
       );
     case "RunNotContinued":
       return withRun(state, event.runId, (run) =>
@@ -248,6 +256,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           lastActivityAt: body.kind === "person" ? run.lastActivityAt : event.at,
           sinceSeq: own ? event.seq : run.sinceSeq,
           personBody: own ? body : run.personBody,
+          // A person's message reached the sleeping turn: it no longer waits for one.
+          awaitsMessage: body.kind === "person" ? false : run.awaitsMessage,
         };
       });
       if (body.kind === "person" && body.delivery.state !== "steered") {
@@ -384,14 +394,29 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ),
       };
     }
-    case "RequestClosed":
+    case "RequestClosed": {
+      const request = state.requests[event.requestId];
+      const asking = request === undefined ? undefined : state.runs[request.runId];
+      // A question asked by message, dismissed while the turn that asked lives on this session:
+      // that turn still sleeps, waiting for input.
+      const sleeps =
+        event.state === "dismissed" &&
+        request?.dismissible === true &&
+        asking !== undefined &&
+        (asking.state === "running" || asking.state === "waiting") &&
+        asking.sessionId !== null &&
+        asking.sessionId === state.session?.id;
+      const closed = sleeps
+        ? withRun(state, asking.id, (run) => ({ ...run, awaitsMessage: true }))
+        : state;
       return {
-        ...state,
+        ...closed,
         requests: without(state.requests, event.requestId),
         answering: Object.fromEntries(
           Object.entries(state.answering).filter(([, open]) => open.id !== event.requestId),
         ),
       };
+    }
     case "SessionOpened":
       return {
         ...state,
