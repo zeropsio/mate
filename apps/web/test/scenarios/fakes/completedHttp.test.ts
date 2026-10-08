@@ -52,6 +52,38 @@ function navigationBrowser() {
   return { events, client, body, navigation, rendererTurns: () => rendererTurns };
 }
 
+it("document replacement during renderer continuations settles the new document", async () => {
+  const browser = navigationBrowser();
+  let rejectOldRenderer = (_error: Error) => {};
+  let turns = 0;
+  browser.events.evaluate = () => {
+    turns++;
+    return turns === 1
+      ? new Promise<void>((_resolve, reject) => {
+          rejectOldRenderer = reject;
+        })
+      : Promise.resolve();
+  };
+  const settle = completedHttp(browser.events as unknown as Page);
+  const outcome = settle().then(
+    () => "settled",
+    (error: Error) => error.message,
+  );
+  expect(turns).toBe(1);
+  browser.events.emit("request", browser.navigation);
+  browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
+  rejectOldRenderer(new Error("Execution context was destroyed"));
+  browser.events.emit("requestfinished", browser.navigation);
+  try {
+    expect(await outcome, "A successful document replacement must survive the old renderer").toBe(
+      "settled",
+    );
+    expect(turns).toBe(2);
+  } finally {
+    settle.close();
+  }
+});
+
 it("navigation starting after the last body wakes a settler still blocks the old renderer", async () => {
   const browser = navigationBrowser();
   const settle = completedHttp(browser.events as unknown as Page);

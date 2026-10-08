@@ -249,6 +249,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         }),
       { kind: "attention", projectId: name },
     ).pipe(Effect.scoped);
+    return credential;
   });
 
   const web = yield* Effect.promise(() =>

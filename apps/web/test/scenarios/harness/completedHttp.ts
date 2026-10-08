@@ -17,6 +17,7 @@ export function completedHttp(
 ) {
   const pending = new Set<HTTPRequest>();
   const waiters = new Set<() => void>();
+  const rendererWaiters = new Set<() => void>();
   let navigationClient: CDPSession | undefined;
   let awaitingCommit: HTTPRequest | undefined;
   const isMainNavigation = (request: HTTPRequest) =>
@@ -27,6 +28,7 @@ export function completedHttp(
   };
   const committed = ({ frame }: { frame: { parentId?: string } }) => {
     if (frame.parentId !== undefined) return;
+    for (const resolve of rendererWaiters) resolve();
     awaitingCommit = undefined;
     // This native receipt excludes same-document navigation. Only replacement abandons old bodies.
     for (const request of pending) if (!isMainNavigation(request)) pending.delete(request);
@@ -34,7 +36,10 @@ export function completedHttp(
   };
   const asked = (request: HTTPRequest) => {
     const navigation = isMainNavigation(request);
-    if (navigation) awaitingCommit = request;
+    if (navigation) {
+      awaitingCommit = request;
+      for (const resolve of rendererWaiters) resolve();
+    }
     if (navigation && navigationClient !== request.client) {
       navigationClient?.off("Page.frameNavigated", committed);
       navigationClient = request.client;
@@ -61,6 +66,7 @@ export function completedHttp(
     page.off("requestfailed", failed);
     page.off("close", close);
     for (const resolve of waiters) resolve();
+    for (const resolve of rendererWaiters) resolve();
   };
   page.once("close", close);
   const settle = async (timeout = 10_000) => {
@@ -88,7 +94,18 @@ export function completedHttp(
             if (page.isClosed()) throw new Error("Page closed while settling HTTP");
             // Observe a renderer turn after body completion: fetch continuations and native scheduler
             // jobs can dispatch another request. This is a rendering receipt, never a quiet-time sleep.
-            await rendered(page);
+            let replaced = () => {};
+            try {
+              const navigation = new Promise<false>((resolve) => {
+                replaced = () => resolve(false);
+                rendererWaiters.add(replaced);
+              });
+              // Replacement supersedes this document's continuations; its body/commit receipts
+              // lead the next loop to a renderer turn in the new document. Losing rejection is observed.
+              if (!(await Promise.race([navigation, rendered(page).then(() => true)]))) continue;
+            } finally {
+              rendererWaiters.delete(replaced);
+            }
             if (pending.size === 0 && awaitingCommit === undefined) return;
           }
         })(),

@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import { HqChange } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
-import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
 import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
 import type { createScenario } from "../../harness/scenario.ts";
@@ -24,9 +23,9 @@ export function anotherOrganization(s: Scenario) {
 
 /** zcp's actual git/HTTP boundary: real commits, change records, descriptions and merge receipts. */
 export const changeFixture = Effect.fn(function* (s: Scenario) {
-  yield* s.given.project("Ada", { mate: true, app: "Shop" });
+  const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
   const appId = s.appIds.get("Shop")!;
-  const credential = yield* enrollMate(s.drivers.core.call, s.drivers.core.fake, "Ada");
+  if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
   const headers = { authorization: `Mate ${credential}` };
   const created = yield* s.drivers.core.call("POST", "/api/mate/repos", {
     headers,
