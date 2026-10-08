@@ -31,11 +31,13 @@ export function mateFeedAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
 }
 export function mateFeedAsyncAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
   const source = mateFeedAtom(key);
-  let retry = () => {};
+  // Refresh invalidates this registry-owned node; ordinary reads and account changes do not retry.
+  const retry = Atom.make((get) => {
+    if (Option.isSome(get.self())) get.once(mateFeedReadsAtom)?.retry(key);
+  });
   return Atom.readable(
     (get): AsyncResult.AsyncResult<MateFeedValues[F], unknown> => {
-      const host = get(mateFeedReadsAtom);
-      retry = () => host?.retry(key);
+      get(retry);
       const read = get(source);
       switch (read.state) {
         case "known": {
@@ -63,7 +65,7 @@ export function mateFeedAsyncAtom<F extends MateFeedFamily>(key: MateFeedKey<F>)
           return AsyncResult.initial(true);
       }
     },
-    () => retry(),
+    (refresh) => refresh(retry),
   );
 }
 

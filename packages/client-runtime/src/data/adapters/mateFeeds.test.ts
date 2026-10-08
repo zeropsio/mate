@@ -561,3 +561,38 @@ it.live(
       }
     }),
 );
+
+it("refresh retries the account in its own registry after another registry reads or an account handover", () => {
+  const a = rig();
+  const b = rig();
+  const calls: Array<string> = [];
+  const host = (r: ReturnType<typeof rig>, name: string) => ({
+    data: r.store.data,
+    hold: () => () => {},
+    revalidate: () => {},
+    onClose: () => () => {},
+    retry: () => {
+      calls.push(name);
+    },
+  });
+  a.registry.set(mateFeedReadsAtom, host(a, "account A"));
+  b.registry.set(mateFeedReadsAtom, host(b, "account B"));
+  const atom = mateFeedAsyncAtom(key);
+  const releaseA = a.registry.subscribe(atom, () => {}, { immediate: true });
+  const releaseB = b.registry.subscribe(atom, () => {}, { immediate: true });
+  try {
+    expect(calls).toEqual([]);
+    a.registry.refresh(atom);
+    expect(calls).toEqual(["account A"]);
+    a.registry.set(mateFeedReadsAtom, host(a, "new account A"));
+    expect(calls).toEqual(["account A"]);
+    b.registry.refresh(atom);
+    a.registry.refresh(atom);
+    expect(calls).toEqual(["account A", "account B", "new account A"]);
+  } finally {
+    releaseA();
+    releaseB();
+    a.close();
+    b.close();
+  }
+});

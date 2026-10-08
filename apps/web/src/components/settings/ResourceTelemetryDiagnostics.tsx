@@ -1256,10 +1256,15 @@ export function ResourceTelemetryDiagnostics() {
       >
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
           <CollectionRead
-            presentation={collectionPresentation(telemetry, (data) => data.processes, {
-              loading: "Loading live processes...",
-              unavailable: "Live processes unavailable.",
-            })}
+            presentation={collectionPresentation(
+              telemetry,
+              (data) => data.processes,
+              {
+                loading: "Loading live processes...",
+                unavailable: "Live processes unavailable.",
+              },
+              snapshot ? Option.getOrNull(snapshot.health.native.lastError) : null,
+            )}
           >
             {(processes) => (
               <ProcessTable
