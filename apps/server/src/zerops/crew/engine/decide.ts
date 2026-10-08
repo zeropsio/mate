@@ -3039,8 +3039,17 @@ const thaw = (
       set: { lane: { ...member.lane, state: "missing" } },
     });
   }
-  for (const member of membersInOrder(b.state)) {
-    if (member.host !== host) continue;
+  for (const found of membersInOrder(b.state)) {
+    if (found.host !== host) continue;
+    // A copy the recovery brought back from its branch stands ready again.
+    if (found.lane?.state === "missing" && !lost.includes(found.handle)) {
+      b.emit({
+        _tag: "CrewmateUpdated",
+        handle: found.handle,
+        set: { lane: { ...found.lane, state: "ready" } },
+      });
+    }
+    const member = b.state.members[found.handle]!;
     // What the redeploy or a restart left in the copy is saved first, as at boot.
     if (
       member.kind === "writer" &&

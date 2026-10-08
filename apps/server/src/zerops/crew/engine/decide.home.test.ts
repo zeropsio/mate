@@ -11,6 +11,18 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence: "a missing copy comes back at boot from its recorded branch, its work kept",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
+      w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "missing" } });
+      const missing = w.state.members.backend!.lane?.state;
+      w.settle("crew.recover", "appdev", { lost: [], losses: [] });
+      return [missing, w.state.members.backend!.lane?.state];
+    },
+    expected: ["missing", "ready"],
+  },
+  {
     sentence: "Remove from crew keeps a copy with unlanded work until Discard",
     journey: (w) => {
       w.apply(home(writer("backend"), writer("frontend")));
