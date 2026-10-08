@@ -82,8 +82,7 @@ import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
 import { doorLogins, filesDoorLogins } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
-// The bridge between the decider's effects and their handlers lands with crew/bridge.
-import { makeCrewEffectHandlers as makeCrewEngineEffectHandlers } from "./effects/index.ts";
+import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
 import { membersInOrder, type CrewState } from "./state.ts";
 
