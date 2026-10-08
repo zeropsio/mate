@@ -7,7 +7,8 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
-  engineModeChange,
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
   engineUpdateMetadata,
   engineDismissUserInput,
   engineRespondToApproval,
@@ -311,7 +312,14 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     {
       name: "another agent",
       input: { modelSelection: { instanceId: "codex", model: "gpt-5.4" } },
-      words: /one agent/,
+      call: {
+        kind: "assign-agent",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        instanceId: "codex",
+        model: "gpt-5.4",
+      },
+      route: "the engine's agent pick",
     },
     {
       name: "a changed effort",
@@ -322,40 +330,116 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           options: [{ id: "effort", value: "high" }],
         },
       },
-      words: /effort/,
+      call: {
+        kind: "switch-model",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        model: "claude-sonnet-4-5",
+        options: [{ id: "effort", value: "high" }],
+      },
+      route: "the engine's model switch, with its options",
     },
-    { name: "a branch", input: { branch: "feature" }, words: /branch/ },
-  ])("$name for an engine conversation is refused in words, sending nothing", ({ input, words }) =>
+  ])("$name for an engine conversation goes as $route, never over V1", ({ input, call }) =>
     Effect.gen(function* () {
       const r = rig(1);
       r.header();
-      const failure = yield* Effect.flip(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
-            r.v1,
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+          r.v1,
         ),
       );
-      expect(failure.message).toMatch(words);
-      expect(r.calls).toEqual([]);
+      expect(r.calls).toEqual([call]);
       expect(r.v1Calls).toEqual([]);
     }),
   );
 
-  it.effect.each(["runtime", "interaction"] as const)(
-    "a %s mode change for an engine conversation is refused in words, never sent over V1",
-    (mode) =>
+  it.effect.each([{ name: "a branch", input: { branch: "feature" }, words: /branch/ }])(
+    "$name for an engine conversation is refused in words, sending nothing",
+    ({ input, words }) =>
       Effect.gen(function* () {
         const r = rig(1);
+        r.header();
         const failure = yield* Effect.flip(
-          r.run(viaEngine(r.registry, ENV, engineModeChange(mode), r.v1)),
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+              r.v1,
+            ),
+          ),
         );
-        expect(failure.message).toMatch(/mode/);
+        expect(failure.message).toMatch(words);
+        expect(r.calls).toEqual([]);
         expect(r.v1Calls).toEqual([]);
       }),
+  );
+
+  it.effect(
+    "a runtime mode change for an engine conversation goes as the engine's own call, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineSetRuntimeMode(ENV, {
+              threadId: "thread-ada",
+              runtimeMode: "approval-required",
+            } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "set-runtime-mode",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            runtimeMode: "approval-required",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "an interaction mode change for an engine conversation is never sent over V1: the mode goes with the next message",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode, r.v1));
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind: "send", interactionMode: "plan" }]);
+      }),
+  );
+
+  it.effect("a turn's files go to the engine with it, by the id they were uploaded under", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const file = {
+        type: "file",
+        id: "file-1",
+        name: "spec.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 9,
+      };
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file])), r.v1));
+      expect(r.calls).toMatchObject([{ kind: "send", attachments: [file] }]);
+      expect(r.v1Calls).toEqual([]);
+    }),
   );
 
   it.effect(

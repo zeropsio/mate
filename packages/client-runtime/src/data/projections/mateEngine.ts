@@ -655,7 +655,7 @@ export function engineThreadOf(
     ...(agent === null
       ? {}
       : { providerInstanceId: agent.instanceId as OrchestrationSession["providerInstanceId"] }),
-    runtimeMode: shell?.runtimeMode ?? "full-access",
+    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
     activeTurnId: turn.activeTurnId as OrchestrationSession["activeTurnId"],
     lastError:
       latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
@@ -676,8 +676,9 @@ export function engineThreadOf(
           } as OrchestrationThread["modelSelection"])
         : (shell?.modelSelection ??
           ({ instanceId: "unknown", model: "default" } as OrchestrationThread["modelSelection"])),
-    runtimeMode: shell?.runtimeMode ?? "full-access",
-    interactionMode: shell?.interactionMode ?? "default",
+    // The engine's own word once a person set the mode or sent a message; V1's until then.
+    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
+    interactionMode: header.interactionMode ?? shell?.interactionMode ?? "default",
     branch: shell?.branch ?? null,
     worktreePath: shell?.worktreePath ?? null,
     latestTurn: turn.latestTurn,

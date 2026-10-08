@@ -66,7 +66,8 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
-  engineModeChange,
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
   engineUpdateMetadata,
   engineDismissUserInput,
   engineInterruptTurn,
@@ -216,7 +217,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         viaEngine(
           registry,
           environmentId,
-          engineModeChange("runtime"),
+          engineSetRuntimeMode(environmentId, input),
           setThreadRuntimeMode(input),
         ),
       scheduler,
@@ -228,7 +229,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         viaEngine(
           registry,
           environmentId,
-          engineModeChange("interaction"),
+          engineSetInteractionMode,
           setThreadInteractionMode(input),
         ),
       scheduler,

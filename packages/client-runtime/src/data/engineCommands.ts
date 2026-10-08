@@ -1,12 +1,14 @@
 /**
  * The thread commands a conversation's view already sends — start a turn, interrupt it, answer an
- * approval or a question, dismiss a question — routed per Mate: through the account's engine operations when the
+ * approval or a question, dismiss a question, set the model, effort, agent, runtime or plan
+ * mode — routed per Mate: through the account's engine operations when the
  * Mate's door named an engine protocol this build speaks, else unchanged over V1. The view keeps
  * its calls; the Mate decides the wire.
  *
  * @module data/engineCommands
  */
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   OrchestrationDispatchCommandError,
   type ConversationHeader,
@@ -38,8 +40,6 @@ type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
   Extract<ClientOrchestrationCommand, { readonly type: T }>,
   "type" | "commandId" | "createdAt"
 >;
-
-const refuse = (message: string) => Effect.fail(new OrchestrationDispatchCommandError({ message }));
 
 /**
  * `v1` unless the Mate's prepared connection names an engine protocol: then the engine's
@@ -87,16 +87,22 @@ export function viaEngine<E, R>(
   });
 }
 
-/** A picture already in the Mate's asset store: the engine takes pictures by reference only. */
-const isReferencedPicture = Schema.is(ChatImageAttachment);
+/**
+ * A picture already in the Mate's asset store, or a file already uploaded: the engine takes
+ * pictures by reference and files by their upload id only.
+ */
+const isReferenced = Schema.is(Schema.Union([ChatImageAttachment, ChatFileAttachment]));
 
 const PICTURES_BY_REFERENCE =
   "Pictures reach this Mate once they are uploaded; send the words, then the pictures again.";
 
-/** A turn's start as the engine's send: the message's own id is the command id. */
+/**
+ * A turn's start as the engine's send: the message's own id is the command id, its files and
+ * pictures go with it, and its interaction mode with it (the engine keeps no thread-wide mode).
+ */
 export const engineStartTurn =
   (environmentId: string, input: Command<"thread.turn.start">) => (host: MateEngineHost) => {
-    const attachments = input.message.attachments.filter(isReferencedPicture);
+    const attachments = input.message.attachments.filter(isReferenced);
     if (attachments.length !== input.message.attachments.length)
       return Effect.fail(
         new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
@@ -106,6 +112,7 @@ export const engineStartTurn =
       conversationId: input.threadId,
       text: input.message.text,
       attachments,
+      ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
       commandId: input.message.messageId,
     });
   };
@@ -169,9 +176,10 @@ const sameOptions = (left: unknown, right: unknown) =>
 
 /**
  * A thread's metadata on an engine conversation: its title is never sent (the engine generates
- * none; the menu's subject is the person's latest message), a model change on the agent the
- * conversation runs goes as the engine's model switch, and anything the engine does not take —
- * another agent, a changed effort, a branch or worktree — is refused in words.
+ * none; the menu's subject is the person's latest message), another agent goes as the engine's
+ * agent pick (the engine refuses one it cannot run the conversation on, in V1's words), a model or
+ * effort change on the agent it runs as the engine's model switch with its options, and a branch
+ * or worktree — which the engine does not take — is refused in words.
  */
 export const engineUpdateMetadata =
   (environmentId: string, input: Command<"thread.meta.update">) =>
@@ -195,25 +203,39 @@ export const engineUpdateMetadata =
       return refused("Open this conversation before changing its model.");
     const { header } = conversation.value as { readonly header: ConversationHeader };
     const agent = header.agent;
-    if (agent !== null && selection.instanceId !== agent.instanceId)
-      return refused(
-        "This Mate's engine runs one agent per conversation; switch the model, not the agent.",
-      );
-    if (agent !== null && !sameOptions(selection.options, agent.options))
-      return refused("This Mate's engine does not take an effort change yet; keep the effort.");
-    if (selection.model === (header.model ?? agent?.model ?? null))
+    const options = selection.options === undefined ? {} : { options: selection.options };
+    if (agent === null || selection.instanceId !== agent.instanceId)
+      return host.operations.assignAgent({
+        environmentId,
+        conversationId: input.threadId,
+        instanceId: selection.instanceId,
+        model: selection.model,
+        ...options,
+      });
+    if (
+      selection.model === (header.model ?? agent.model ?? null) &&
+      sameOptions(selection.options, agent.options)
+    )
       return Effect.succeed({ seq: 0 });
     return host.operations.switchModel({
       environmentId,
       conversationId: input.threadId,
       model: selection.model,
+      ...options,
     });
   };
 
-/** The engine takes neither mode: the workspace sets the runtime mode, and there is no plan mode. */
-export const engineModeChange = (mode: "runtime" | "interaction") => () =>
-  refused(
-    mode === "runtime"
-      ? "This Mate's engine takes its runtime mode from its workspace; it cannot be changed here."
-      : "This Mate's engine has no plan mode yet; send the message as it is.",
-  );
+/** How freely the agent works, set on the engine conversation: it applies from the next run on. */
+export const engineSetRuntimeMode =
+  (environmentId: string, input: Command<"thread.runtime-mode.set">) => (host: MateEngineHost) =>
+    host.operations.setRuntimeMode({
+      environmentId,
+      conversationId: input.threadId,
+      runtimeMode: input.runtimeMode,
+    });
+
+/**
+ * Plan mode on an engine conversation goes with each message (`engineStartTurn`): there is no
+ * thread-wide mode to set, so nothing is sent and nothing is lost.
+ */
+export const engineSetInteractionMode = () => Effect.succeed<EngineAcceptance>({ seq: 0 });

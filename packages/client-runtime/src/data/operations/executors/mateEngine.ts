@@ -1,10 +1,11 @@
 /**
- * The engine conversation's one write boundary: send, stop, answer, dismiss and steer, each recorded before
- * it leaves under the engine command id it carries. The engine's receipt is the answer; a call
- * that never left stays unsent (Send again re-sends under the same id); a lost answer is asked of
- * the engine by that id — its stored receipt settles it, its absence lets the same id go once
- * more (the engine applies a command once), and an engine that cannot be asked leaves the
- * operation unresolved with the next action named. Nothing is decided by a clock.
+ * The engine conversation's one write boundary: send, stop, answer, dismiss, steer and the
+ * conversation's settings (model and options, runtime mode, agent), each recorded before it leaves
+ * under the engine command id it carries. The engine's receipt is the answer; a call that never
+ * left stays unsent (Send again re-sends under the same id); a lost answer is asked of the engine
+ * by that id — its stored receipt settles it, its absence lets the same id go once more (the
+ * engine applies a command once), and an engine that cannot be asked leaves the operation
+ * unresolved with the next action named. Nothing is decided by a clock.
  *
  * @module data/operations/executors/mateEngine
  */
@@ -18,7 +19,11 @@ import {
   type EngineCallResult,
   type EngineReceiptResult,
   type EnvironmentId,
+  type ChatFileAttachment,
   type ChatImageAttachment,
+  type ProviderInteractionMode,
+  type ProviderOptionSelection,
+  type RuntimeMode,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -70,7 +75,8 @@ export interface EngineCallWire {
           readonly conversationId: string;
           readonly commandId: string;
           readonly text: string;
-          readonly attachments: ReadonlyArray<ChatImageAttachment>;
+          readonly attachments: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+          readonly interactionMode?: ProviderInteractionMode;
         }
       | {
           readonly kind: "stop";
@@ -104,6 +110,21 @@ export interface EngineCallWire {
           readonly conversationId: string;
           readonly commandId: string;
           readonly model: string;
+          readonly options?: ReadonlyArray<ProviderOptionSelection>;
+        }
+      | {
+          readonly kind: "set-runtime-mode";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly runtimeMode: RuntimeMode;
+        }
+      | {
+          readonly kind: "assign-agent";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly instanceId: string;
+          readonly model: string;
+          readonly options?: ReadonlyArray<ProviderOptionSelection>;
         },
   ) => Effect.Effect<EngineCallResult, EngineCallError>;
   readonly receipt: (
@@ -134,6 +155,9 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               ...base,
               text: command.text,
               ...(command.attachments.length === 0 ? {} : { attachments: command.attachments }),
+              ...(command.interactionMode === undefined
+                ? {}
+                : { interactionMode: command.interactionMode }),
             }),
           );
         case "stop":
@@ -174,7 +198,29 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
         case "switch-model":
           return registry.run(
             id,
-            request(WS_METHODS.engineSwitchModel, { ...base, model: command.model }),
+            request(WS_METHODS.engineSwitchModel, {
+              ...base,
+              model: command.model,
+              ...(command.options === undefined ? {} : { options: command.options }),
+            }),
+          );
+        case "set-runtime-mode":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineSetRuntimeMode, {
+              ...base,
+              runtimeMode: command.runtimeMode,
+            }),
+          );
+        case "assign-agent":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineAssignAgent, {
+              ...base,
+              instanceId: command.instanceId,
+              model: command.model,
+              ...(command.options === undefined ? {} : { options: command.options }),
+            }),
           );
       }
     },
@@ -205,6 +251,9 @@ const REFUSALS: Readonly<Record<string, string>> = {
   "run-not-running": "Nothing is running to stop.",
   "stop-already-asked": "Stop was already asked.",
   "steer-unsupported": "This agent cannot take a message while it works.",
+  "background-work":
+    "The agent is still running background work, and this change needs a new session that would end it.",
+  "agent-locked": "This conversation started on another agent; start a new one to use this agent.",
 };
 
 export function makeMateEngineOperations(options: {
@@ -397,7 +446,10 @@ export function makeMateEngineOperations(options: {
     send: (
       target: EngineOperationTarget & {
         readonly text: string;
-        readonly attachments?: ReadonlyArray<ChatImageAttachment>;
+        /** Pictures by reference, files by the id they were uploaded under. */
+        readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+        /** `plan`: the agent plans the turn. Absent: default. */
+        readonly interactionMode?: ProviderInteractionMode;
         /** The send's own id where its caller already gave it one (the message's id). */
         readonly commandId?: string;
       },
@@ -416,6 +468,9 @@ export function makeMateEngineOperations(options: {
           commandId,
           text: target.text,
           attachments: target.attachments ?? [],
+          ...(target.interactionMode === undefined
+            ? {}
+            : { interactionMode: target.interactionMode }),
         }),
         target.commandId,
       ),
@@ -490,20 +545,67 @@ export function makeMateEngineOperations(options: {
           text: target.text,
         }),
       ),
-    /** The conversation's next model, on the agent it already runs. */
-    switchModel: (target: EngineOperationTarget & { readonly model: string }) =>
+    /** The conversation's next model and its options, on the agent it already runs. */
+    switchModel: (
+      target: EngineOperationTarget & {
+        readonly model: string;
+        readonly options?: ReadonlyArray<ProviderOptionSelection>;
+      },
+    ) =>
       execute(
         {
           kind: "mate-engine-switch-model",
           environmentId: target.environmentId,
           conversationId: target.conversationId,
           model: target.model,
+          ...(target.options === undefined ? {} : { options: target.options }),
         },
         (commandId) => ({
           kind: "switch-model",
           conversationId: target.conversationId,
           commandId,
           model: target.model,
+          ...(target.options === undefined ? {} : { options: target.options }),
+        }),
+      ),
+    /** How freely the agent works, from its next run on. */
+    setRuntimeMode: (target: EngineOperationTarget & { readonly runtimeMode: RuntimeMode }) =>
+      execute(
+        {
+          kind: "mate-engine-set-runtime-mode",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          runtimeMode: target.runtimeMode,
+        },
+        (commandId) => ({
+          kind: "set-runtime-mode",
+          conversationId: target.conversationId,
+          commandId,
+          runtimeMode: target.runtimeMode,
+        }),
+      ),
+    /** The conversation's agent: another provider instance, as the engine allows it. */
+    assignAgent: (
+      target: EngineOperationTarget & {
+        readonly instanceId: string;
+        readonly model: string;
+        readonly options?: ReadonlyArray<ProviderOptionSelection>;
+      },
+    ) =>
+      execute(
+        {
+          kind: "mate-engine-assign-agent",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          instanceId: target.instanceId,
+        },
+        (commandId) => ({
+          kind: "assign-agent",
+          conversationId: target.conversationId,
+          commandId,
+          instanceId: target.instanceId,
+          model: target.model,
+          ...(target.options === undefined ? {} : { options: target.options }),
         }),
       ),
     close: () => {
