@@ -33,7 +33,7 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
-import { readCarriedCore } from "./accountHq";
+import { readCarriedCore } from "./bundledCore";
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
 import { accountThrowawayDebt } from "./throwawayDebt";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";

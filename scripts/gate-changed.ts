@@ -585,6 +585,11 @@ if (import.meta.main) {
     args: ["scripts/check-guard-exceptions.ts", "--base", comparison],
   });
   steps.push({
+    name: "runtime cycle ratchet",
+    command: "node",
+    args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
+  });
+  steps.push({
     name: "test sentence retention",
     command: "node",
     args: ["scripts/check-test-sentences.ts", "--base", comparison],

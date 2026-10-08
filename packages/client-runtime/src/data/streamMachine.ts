@@ -342,3 +342,11 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
       return state.demanded && state.phase === "recovering" ? attempt(state, now) : settle(state);
   }
 }
+
+/** Phases in which a link observes nothing more until something outside it changes. */
+export const UNOBSERVED_PHASES: ReadonlySet<string> = new Set([
+  "paused",
+  "refused",
+  "unsupported",
+  "closed",
+]);

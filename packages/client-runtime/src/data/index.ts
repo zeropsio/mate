@@ -293,6 +293,10 @@ export {
   inventoryPlacementStatus,
   type InventoryKey,
   type InventoryRead,
+  findInventoryProjectRef,
+  inventoryProjectRefKey,
+  type InventoryProjection,
+  type InventoryContents,
 } from "./projections/inventory.ts";
 
 export {

@@ -18,7 +18,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { useProjection } from "./ZeropsAccountData";
+import { useProjection } from "./accountData";
 
 const registryAtom = connectionAtomRuntime.atom(
   Effect.map(EnvironmentRegistry, (registry) => registry),

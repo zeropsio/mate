@@ -64,6 +64,9 @@ jobs:
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
 
+      - name: Check runtime cycle ratchet
+        run: node scripts/check-runtime-cycles.ts
+
       - name: Check test sentence retention
         run: node scripts/check-test-sentences.ts
 

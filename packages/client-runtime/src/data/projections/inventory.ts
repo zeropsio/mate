@@ -167,3 +167,22 @@ export const NOT_READ_INVENTORY: InventoryRead = {
   isLoading: true,
   error: null,
 };
+
+export type InventoryProjection = Pick<InventoryContents, "projects" | "projectRefs" | "authority">;
+
+export function inventoryProjectRefKey(ref: ProjectRef): string {
+  return projectKeyOf(ref);
+}
+
+export function findInventoryProjectRef(
+  inventory: Pick<InventoryContents, "projectRefs">,
+  projectId: string,
+  organizationId?: string,
+): ProjectRef | null {
+  const matches = [...inventory.projectRefs.values()].filter(
+    (ref) =>
+      ref.projectId === projectId &&
+      (organizationId === undefined || ref.organization.organizationId === organizationId),
+  );
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}

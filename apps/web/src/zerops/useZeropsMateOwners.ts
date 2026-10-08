@@ -27,7 +27,7 @@ import { useCallback, useEffect } from "react";
 import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
-import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
+import { useAccountDataOptional, useProjection } from "./accountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */

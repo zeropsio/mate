@@ -283,6 +283,7 @@ it("the lane gate lists its chosen comparison and stops on unapproved test remov
       NodeFS.mkdirSync(NodePath.join(root, directory));
     // Other guards are outside this fixture's concern; sentence retention runs through the real runner.
     write("scripts/check-guard-exceptions.ts", "process.exitCode = 0;");
+    write("scripts/check-runtime-cycles.ts", "process.exitCode = 0;");
     commit("gate fixture");
     const base = git("rev-parse", "HEAD");
     write("old.test.ts", "export {};");

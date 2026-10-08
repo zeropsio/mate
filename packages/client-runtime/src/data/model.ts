@@ -1,3 +1,5 @@
+// Include every registered kind's declarations even for consumers that reach only a model leaf.
+import type * as _RegisteredOperationKinds from "./operations/kinds.ts";
 /**
  * The account's knowledge, as one store holds it: facts keyed by domain id, never
  * by the source that delivered them, each carrying its value, its owner's revision, the scope that

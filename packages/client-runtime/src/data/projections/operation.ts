@@ -46,17 +46,15 @@ export type OperationProgress =
     };
 
 /**
- * Progress over a registry of operation kinds: the account's, or a test's own. The registry is
- * read when it derives — the kinds read projections, which read this — never as it loads.
+ * Progress over a registry of operation kinds: the account's, or a test's own.
  */
 export const operationProgressOf = (
-  kindsOf: ReadonlyArray<RegisteredOperationKind> | (() => ReadonlyArray<RegisteredOperationKind>),
+  kinds: ReadonlyArray<RegisteredOperationKind>,
 ): Projection<string, OperationProgress> => ({
   name: "operationProgress",
   keyOf: (requestId) => requestId,
   equals: sameValue,
   derive: (read, requestId) => {
-    const kinds = typeof kindsOf === "function" ? kindsOf() : kindsOf;
     const record = read.operation(requestId);
     if (record === undefined) return { stage: "unknown" };
     const { receipt } = record;
@@ -109,4 +107,4 @@ export const operationProgressOf = (
   },
 });
 
-export const operationProgress = operationProgressOf(() => OPERATION_KINDS);
+export const operationProgress = operationProgressOf(OPERATION_KINDS);

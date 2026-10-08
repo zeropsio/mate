@@ -18,10 +18,13 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@types/madge": "^5.0.3",
     "@types/pngjs": "6.0.5",
     "lightningcss": "1.33.0",
+    "madge": "8.0.0",
     "oxc-parser": "0.148.0",
     "parse5": "7.3.0",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   }
 }

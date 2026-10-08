@@ -9,7 +9,7 @@ import {
   THROWAWAY_REUSE_MS,
   type ThrowawayDebt,
   type ThrowawayMintBudgets,
-} from "../../zerops/doorThrowaway.ts";
+} from "../../zerops/doorThrowawayState.ts";
 
 /** This tab's budgets, shared by every platform built here. */
 let tabMintBudgets: ThrowawayMintBudgets | undefined;

@@ -1,3 +1,5 @@
+import { UNOBSERVED_PHASES } from "../streamMachine.ts";
+export { UNOBSERVED_PHASES } from "../streamMachine.ts";
 /**
  * Where a verb waiting on its operation stops waiting: the operation's progress once it is final
  * for now — done, refused, not taken, uncertain with the person to ask again, unresolved — or
@@ -14,14 +16,6 @@ import { OPERATION_KINDS, operationKind } from "../operations/kinds.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { operationProgress, type OperationProgress } from "./operation.ts";
-
-/** Phases in which a link observes nothing more until something outside it changes. */
-export const UNOBSERVED_PHASES: ReadonlySet<string> = new Set([
-  "paused",
-  "refused",
-  "unsupported",
-  "closed",
-]);
 
 /** The organization's link an executor answers over; a Mate's link is its project's, not one. */
 export function organizationLink(executor: Authority, orgId: string): LinkKey | null {

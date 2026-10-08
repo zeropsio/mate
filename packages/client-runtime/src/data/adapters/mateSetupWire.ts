@@ -2,7 +2,7 @@
 import { browserTransportFetch } from "./mateTransport.ts";
 import { zeropsMateBaseUrl } from "../../zerops/candidates.ts";
 import type { FetchLike } from "./containerHealth.ts";
-import { parseMateSetup, type MateSetupReading } from "../../zerops/mateSetup.ts";
+import { parseMateSetup, type MateSetupReading } from "../../zerops/mateSetupModel.ts";
 
 export async function readMateSetup(
   origin: string,
