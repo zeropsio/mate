@@ -1,3 +1,4 @@
+import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -27,7 +28,6 @@ import {
   readsAsAnswer,
   splitBatchDeploy,
   toolCallWords,
-  readUsageLimitNotice,
   stretchFace,
   stretchIncidents,
   stretchOperations,
@@ -3666,4 +3666,45 @@ describe("a run, its woken turns and its work", () => {
     );
     expect(late.turns).toHaveLength(2);
   });
+});
+
+describe("the provider's refusal record", () => {
+  it("retains the supplied reset instead of a rounded wait or an undated CLI hour", () => {
+    const warning = tool("warning", "t1", 48);
+    if (warning.kind !== "work") throw new Error("Expected a work entry");
+    warning.entry = {
+      ...warning.entry,
+      tone: "info",
+      sourceActivityKind: "runtime.warning",
+      label: "Claude usage limit reached. resets in 4h 7m",
+      usageLimit: { resetsAt: "2026-10-07T02:00:00.000Z" },
+    };
+    const [only] = structure(
+      [
+        user("m0", 0),
+        warning,
+        assistant("a1", "t1", 48, "You've hit your weekly limit · resets 2am (UTC)"),
+      ],
+      { latest: { id: "t1", state: "error", completed: true } },
+    ).turns;
+    expect(only?.limit).toEqual({ resetsAt: "2026-10-07T02:00:00.000Z" });
+    expect(only?.limitOnly).toBe(true);
+  });
+});
+
+it("a normal response after a provider rejection is not replaced by a limit card", () => {
+  const warning = tool("warning", "t1", 1);
+  if (warning.kind !== "work") throw new Error("Expected a work entry");
+  warning.entry = {
+    ...warning.entry,
+    tone: "info",
+    label: "Claude usage limit reached.",
+    usageLimit: { resetsAt: "2026-10-07T02:00:00Z" },
+  };
+  const [only] = structure(
+    [user("m0", 0), warning, assistant("a1", "t1", 48, "The work is done.")],
+    { latest: { id: "t1", state: "completed", completed: true } },
+  ).turns;
+  expect(only?.limit).toBeNull();
+  expect(only?.answer?.message.text).toBe("The work is done.");
 });

@@ -243,8 +243,11 @@ Do not put environment variable assignments in `Launch arguments`.
 
 ## Usage limits
 
-If your Claude subscription reaches a usage limit, Mate shows a quiet pause in the
-conversation and menu. A reset time appears only when Claude reports one.
+When Claude refuses work because of a usage limit, Mate shows a quiet pause in the
+conversation and menu. Allowed and warning notices do not count as refusals. A
+reset time appears only when Claude reports one. After that time, the menu stops
+showing the limit and the conversation keeps the dated refusal and reset record
+with **Continue**.
 
 Use **Continue** to ask the coding agent to pick up the paused work. Your unsent
 message stays in the composer; the agent may still refuse while its limit holds.

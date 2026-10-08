@@ -505,3 +505,21 @@ it("HQ learns which provider paused the Mate, with the provider's reset", () => 
   expect(overview.main?.session?.lastError).toBe("Claude usage limit reached.");
   expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-08T16:00:00Z" });
 });
+
+it("HQ keeps a provider deadline after the scheduling pause clears", () => {
+  const overview = overviewOf([
+    shell("main", {
+      session: {
+        threadId: "main",
+        status: "stopped",
+        providerName: "claudeAgent",
+        activeTurnId: null,
+        lastError: "Claude usage limit reached.",
+        usageLimitResetAt: "2026-10-07T02:00:00Z",
+        updatedAt: "2026-10-07T02:00:30Z",
+      },
+      usagePause: null,
+    }),
+  ]);
+  expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-07T02:00:00Z" });
+});

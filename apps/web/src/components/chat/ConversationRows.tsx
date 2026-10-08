@@ -28,7 +28,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
-import { usageLimitWords } from "../../zerops/noticeWords";
+import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -404,12 +404,13 @@ export function PauseBlock({
   const reset = resetsAt === null ? null : Date.parse(resetsAt);
   const passed = reset !== null && reset <= nowMs;
   const autoResume = serverPause?.autoResume ?? false;
+  const history = resumed || passed;
   const detail = resumed
     ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
     : resetsAt === null
       ? "The coding agent hasn't given a reset time yet."
       : passed
-        ? `${speaker.name} is still paused after the reset time; the coding agent hasn't allowed continuation.`
+        ? `Reset time passed. Continue to try again.`
         : serverPause === null
           ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
           : autoResume
@@ -422,28 +423,34 @@ export function PauseBlock({
         // on: a line like an event's, its mark on the text edge — and keeps
         // its height: newer rows may already sit under it.
         "relative grid gap-1 rounded-xl border py-2.5",
-        resumed
+        history
           ? "border-x-0 border-transparent text-muted-foreground"
           : "border-border bg-muted/35 px-3.5",
       )}
-      data-conversation-pause={resumed ? "resumed" : "paused"}
+      data-conversation-pause={resumed ? "resumed" : passed ? "expired" : "paused"}
       role="status"
     >
       <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
         {/* Its words keep their gap, so its mark gives the gap back: 14 + 6 px. */}
         <LineMark className="w-3.5">
           <PauseIcon
-            className={cn("size-3.5", resumed ? "text-muted-foreground" : "text-status-attention")}
+            className={cn("size-3.5", history ? "text-muted-foreground" : "text-status-attention")}
           />
         </LineMark>
         <span className="font-medium">
-          {resumed
-            ? `${speaker.name} is back to work.`
+          {history
+            ? usageLimitHistoryWords(
+                row.provider ?? "coding agent",
+                row.createdAt,
+                resetsAt,
+                speaker.name,
+                timestampFormat,
+              )
             : row.provider === undefined
               ? usageLimitWords("coding agent", undefined, speaker.name)
               : usageLimitWords(row.provider, undefined, speaker.name)}
         </span>
-        {resumed ? null : (
+        {history ? null : (
           <MateStatusMarker
             mateName={speaker.name}
             status={{
@@ -482,7 +489,7 @@ export function PauseBlock({
           </Button>
         </div>
       ) : null}
-      {!resumed && serverPause !== null && onAutoResumeChange !== null ? (
+      {!history && serverPause !== null && onAutoResumeChange !== null ? (
         <label
           className="flex w-fit cursor-pointer items-center gap-2 ps-5 text-line text-foreground"
           data-pause-switch

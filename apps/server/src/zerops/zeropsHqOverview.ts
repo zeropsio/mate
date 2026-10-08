@@ -150,9 +150,11 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
     planProgress: withText(thread.planProgress?.step, (step) => ({ step })),
     pendingQuestion: textOf(thread.pendingQuestion),
     usagePause:
-      thread.usagePause === null || thread.usagePause === undefined
-        ? null
-        : { resetsAt: thread.usagePause.resetsAt },
+      thread.usagePause != null
+        ? { resetsAt: thread.usagePause.resetsAt }
+        : thread.session?.usageLimitResetAt != null
+          ? { resetsAt: thread.session.usageLimitResetAt }
+          : null,
     liveStep: liveStepOf(thread.liveStep),
   };
 }

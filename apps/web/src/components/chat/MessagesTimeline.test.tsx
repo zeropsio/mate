@@ -1859,7 +1859,7 @@ describe("MessagesTimeline — the conversation", () => {
       />,
     );
     expect(markup.match(/data-conversation-pause=/g)).toHaveLength(1);
-    expect(markup).toContain("This Mate hit the coding agent&#x27;s limit.");
+    expect(markup).toContain("This Mate hit the coding agent&#x27;s limit on ");
     expect(markup).toContain("2 more attempts");
     expect(markup).not.toContain("You&#x27;ve hit your session limit");
   });
