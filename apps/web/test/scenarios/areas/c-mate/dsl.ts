@@ -48,7 +48,18 @@ export function mateChat(
         );
       } catch (cause) {
         throw new Error(
-          `Visible text ${present ? "missing" : "still present"}: ${value}\n${await page.evaluate(() => document.body.innerText)}`,
+          `Visible text ${present ? "missing" : "still present"}: ${value}\n${await page.evaluate(
+            () => {
+              // Where the conversation stood: a list left at its top hides its end's rows.
+              const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+              const timeline = list?.closest("[data-timeline-thread]");
+              const stood =
+                list === null || list === undefined
+                  ? "no conversation list"
+                  : `list at ${Math.round(list.scrollTop)} of ${list.scrollHeight - list.clientHeight}${timeline?.hasAttribute("data-timeline-placing") ? ", placing" : ""}${timeline?.hasAttribute("data-timeline-follows-end") ? ", following its end" : ""}`;
+              return `${stood}\n${document.body.innerText}`;
+            },
+          )}`,
           { cause },
         );
       }

@@ -213,9 +213,7 @@ const databaseFrom = (dump: string, target: RestoreTarget, stamp: string, query:
       (yield* query("SELECT to_regclass('public.hq_usage_state') IS NOT NULL AS present"))
         .rows[0]?.["present"] === true
     ) {
-      yield* query(
-        "UPDATE hq_usage_state SET recovery='partial',protection_verified=false,protected_revision=NULL,protected_set=NULL,revision=revision+1 WHERE id=1",
-      );
+      yield* query("UPDATE hq_usage_state SET recovery='partial',revision=revision+1 WHERE id=1");
       yield* query("DELETE FROM hq_usage_sender");
     }
     // Older sets predate person Git passwords; restored ones never revive an old password.

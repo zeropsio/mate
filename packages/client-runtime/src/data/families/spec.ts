@@ -79,7 +79,7 @@ export interface HqFamilySource<Value> {
    * A record's value, its key naming which record it is (an application detail's `releases` or
    * `recipe:stage`); `null` for one this build cannot read, which then changes nothing.
    */
-  readonly decode: (raw: unknown, key: string) => Value | null;
+  readonly decode: (raw: unknown, key: string, owner?: ScopeOwner) => Value | null;
   /**
    * A detail family's scope for one owner (`DetailDemand.ownerId`). A family without one rides
    * the scope another family demands, from the records of the same kind of scope.

@@ -27,7 +27,6 @@ import {
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
-import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/reactivity";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -65,6 +64,24 @@ const shell = vi.hoisted(() => ({
   /** Every route the gate handed the account runtime, in order. */
   routes: [] as Array<string | null>,
   /** When the account runtime's sweep asked for each target it reads again. */
+}));
+
+// This fixture proves route lifetime; the shared stage's rendering is covered by its own tests.
+vi.mock("../components/zerops/ZeropsMateEmptyState", () => ({
+  MateConnectionState: ({
+    headline,
+    secondary,
+    actions,
+  }: {
+    readonly headline: string;
+    readonly secondary: string;
+    readonly actions: ReactNode;
+  }) => (
+    <section>
+      {headline} {secondary}
+      {actions}
+    </section>
+  ),
 }));
 
 vi.mock("../state/environments", () => ({

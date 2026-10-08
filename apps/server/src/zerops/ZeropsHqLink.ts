@@ -88,9 +88,8 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
-import { makeUsageLink, type UsageLink } from "../usage/UsageLink.ts";
-import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
-import * as UsageSqlite from "../persistence/NodeSqliteClient.ts";
+import type { UsageLink } from "../usage/UsageLink.ts";
+import { makeUsageCapture } from "../usage/UsageCapture.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
@@ -599,6 +598,13 @@ export const layer = (crew: OverviewSources["crew"]) =>
     ZeropsHqLink,
     Effect.gen(function* () {
       const config = yield* ServerConfig;
+      const paths = yield* Path.Path;
+      const projection = yield* ProjectionSnapshotQuery;
+      const engine = yield* OrchestrationEngineService;
+      const providers = yield* ProviderInstances;
+      // Separate home database: capture IO cannot lock the orchestration event store.
+      // Admission waits for a subscribed capture service, including across storage recovery.
+      const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
       const path = config.zerops?.hqEnrollmentPath;
       if (path === undefined) {
         return ZeropsHqLink.of({
@@ -606,25 +612,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         });
       }
       const fs = yield* FileSystem.FileSystem;
-      const paths = yield* Path.Path;
-      const projection = yield* ProjectionSnapshotQuery;
-      const engine = yield* OrchestrationEngineService;
-      const providers = yield* ProviderInstances;
-      const runtimeEvents = yield* ProviderRuntimeEventBus;
-      // Separate home database: capture IO cannot lock the orchestration event store.
-      const usage = yield* Effect.gen(function* () {
-        const usageDatabase = yield* Layer.build(
-          UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
-        );
-        return yield* makeUsageLink(runtimeEvents.events).pipe(Effect.provide(usageDatabase));
-      }).pipe(
-        Effect.asSome,
-        Effect.catchCause(() =>
-          Effect.logWarning("Usage ledger unavailable; HQ link remains active").pipe(
-            Effect.as(Option.none<UsageLink>()),
-          ),
-        ),
-      );
       // While the Mate engine owns the conversation, its conversations are the chats: V1's
       // projections (a thread left running at the flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -674,7 +661,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,
-        ...(Option.isSome(usage) ? { usage: usage.value } : {}),
+        usage,
         ...feed,
       });
     }),

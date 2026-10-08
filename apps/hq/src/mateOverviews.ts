@@ -150,6 +150,14 @@ const kindsOf = (overview: MateOverview | null) =>
     ...(overview?.conversations?.map((row) => `${row.conversationId}:${row.state.kind}`) ?? []),
   ].join(" ");
 
+/** Refusal and reset evidence must survive a Core restart even when the thread's kind stays put. */
+const retainedStateOf = (overview: MateOverview | null) =>
+  JSON.stringify([
+    kindsOf(overview),
+    overview?.main?.session?.lastError ?? null,
+    overview?.main?.usagePause ?? null,
+  ]);
+
 export const makeMateOverviews = (
   store: OverviewStore,
 ): Effect.Effect<MateOverviews["Service"], never, Scope.Scope> =>
@@ -247,7 +255,7 @@ export const makeMateOverviews = (
               : undefined;
           if (overview === undefined) return;
           yield* update(projectId, () => ({ ...entry, overview, fullOn: link }));
-          if (frame.full || kindsOf(entry.overview) !== kindsOf(overview)) {
+          if (frame.full || retainedStateOf(entry.overview) !== retainedStateOf(overview)) {
             yield* Queue.offer(unsaved, { id: projectId });
           }
         }),

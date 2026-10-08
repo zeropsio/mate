@@ -517,7 +517,7 @@ describe("an expired refusal from HQ", () => {
       ...VERA,
       main: {
         ...main,
-        session: { status: "stopped" as const, lastError: "Claude usage limit reached." },
+        session: { status: "stopped" as const, lastError: "You've hit your weekly limit" },
         latestTurn: { ...main.latestTurn!, state: "error" as const },
         usagePause: { resetsAt: "2020-01-01T00:00:00Z" },
       },

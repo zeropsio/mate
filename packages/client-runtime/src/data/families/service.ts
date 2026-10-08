@@ -22,7 +22,7 @@ import { scopeOf, type FamilySpec } from "./spec.ts";
 export interface ServiceValue extends ZeropsService {
   readonly projectId: string;
   readonly clientId?: string;
-  /** The service's variables, where the row carries them. */
+  /** Only the active deploy's id and display label, where the listing carries them. */
   readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string | null }>;
 }
 
@@ -32,37 +32,121 @@ declare module "../model.ts" {
   }
 }
 
-/** The fields a service is known by; the rest of its row is carried as the platform sent it. */
+/** Only evidence consumed by service projections crosses into account memory. */
+const optionalString = Schema.optionalKey(Schema.String);
+const optionalNullableString = Schema.optionalKey(Schema.NullOr(Schema.String));
+const optionalNumber = Schema.optionalKey(Schema.NullOr(Schema.Finite));
+const GitIntegration = Schema.Struct({
+  isActive: Schema.optionalKey(Schema.Boolean),
+  eventType: optionalString,
+  branchName: optionalNullableString,
+  tagName: optionalNullableString,
+  commit: optionalNullableString,
+  repositoryFullName: optionalNullableString,
+});
+const Resource = Schema.Struct({
+  cpuCoreCount: optionalNumber,
+  memoryGBytes: optionalNumber,
+  diskGBytes: optionalNumber,
+});
 const Row = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
   name: Schema.String,
   status: Schema.String,
-  _version: Schema.optionalKey(Schema.Union([Schema.Finite, Schema.Null])),
+  clientId: optionalString,
+  _version: optionalNumber,
+  isSystem: Schema.optionalKey(Schema.Boolean),
+  subdomainAccess: Schema.optionalKey(Schema.Boolean),
+  ports: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        port: Schema.Finite,
+        protocol: optionalString,
+        scheme: optionalString,
+        httpSupport: Schema.optionalKey(Schema.Boolean),
+      }),
+    ),
+  ),
+  serviceStackTypeInfo: Schema.optionalKey(
+    Schema.Struct({
+      serviceStackTypeName: optionalString,
+      serviceStackTypeVersionName: optionalString,
+      serviceStackTypeCategory: optionalString,
+    }),
+  ),
+  versionNumber: optionalString,
+  mode: optionalNullableString,
+  created: optionalString,
+  lastUpdate: optionalString,
+  activeAppVersion: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        id: optionalString,
+        name: optionalNullableString,
+        status: optionalString,
+        source: optionalString,
+        created: optionalString,
+        lastUpdate: optionalString,
+        activationDate: optionalNullableString,
+        githubIntegration: Schema.optionalKey(Schema.NullOr(GitIntegration)),
+        gitlabIntegration: Schema.optionalKey(Schema.NullOr(GitIntegration)),
+        publicGitSource: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Struct({
+              branchName: optionalNullableString,
+              repositoryUrl: optionalNullableString,
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+  githubIntegration: Schema.optionalKey(Schema.NullOr(GitIntegration)),
+  gitlabIntegration: Schema.optionalKey(Schema.NullOr(GitIntegration)),
+  currentAutoscaling: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        verticalAutoscaling: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Struct({
+              minResource: Schema.optionalKey(Schema.NullOr(Resource)),
+              maxResource: Schema.optionalKey(Schema.NullOr(Resource)),
+              cpuMode: optionalNullableString,
+              startCpuCoreCount: optionalNumber,
+            }),
+          ),
+        ),
+        horizontalAutoscaling: Schema.optionalKey(
+          Schema.NullOr(
+            Schema.Struct({
+              minContainerCount: optionalNumber,
+              maxContainerCount: optionalNumber,
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+  userData: Schema.optionalKey(Schema.Unknown),
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
+const Variable = Schema.Struct({ key: Schema.String, content: optionalNullableString });
+const decodeVariable = Schema.decodeUnknownOption(Variable);
 
-/**
- * The variables a surface reads off a row (A14): which deploy the service last started and its
- * name. Every other one — the user's own `ZEROPS_YAML` among them, which may hold secrets — is
- * dropped here and never stored.
- */
+/** Deploy labels belong to listing evidence; full variables have their own demanded family. */
 const KEPT_VARIABLES: ReadonlySet<string> = new Set(["appVersionId", "appVersionName"]);
 
-/** The row's fields, as it states them, its variables but the kept ones dropped. */
-function valueOf(raw: Readonly<Record<string, unknown>>): ServiceValue {
-  const { _version: _ignored, userData, ...fields } = raw;
-  if (!Array.isArray(userData)) return fields as unknown as ServiceValue;
-  const kept = userData.flatMap((entry: unknown) =>
-    typeof entry === "object" &&
-    entry !== null &&
-    "key" in entry &&
-    typeof entry.key === "string" &&
-    KEPT_VARIABLES.has(entry.key)
-      ? [{ key: entry.key, content: "content" in entry ? entry.content : null }]
-      : [],
-  );
-  return { ...fields, userData: kept } as unknown as ServiceValue;
+function valueOf(row: typeof Row.Type): ServiceValue {
+  const { _version: _ignored, userData, ...fields } = row;
+  if (!Array.isArray(userData)) return fields;
+  const kept = userData.flatMap((entry: unknown) => {
+    const variable = Option.getOrUndefined(decodeVariable(entry));
+    return variable !== undefined && KEPT_VARIABLES.has(variable.key)
+      ? [{ key: variable.key, content: variable.content ?? null }]
+      : [];
+  });
+  return { ...fields, userData: kept };
 }
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];
@@ -111,7 +195,7 @@ export const serviceFamily: FamilySpec<"service"> = {
         onNone: () => null,
         onSome: (row) => ({
           id: row.id,
-          value: valueOf(raw as Readonly<Record<string, unknown>>),
+          value: valueOf(row),
           version: row._version ?? null,
         }),
       }),

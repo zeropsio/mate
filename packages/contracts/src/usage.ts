@@ -233,7 +233,7 @@ export const UsageSummary = Schema.Struct({
 export type UsageSummary = typeof UsageSummary.Type;
 
 export class UsageReadError extends Schema.TaggedError<UsageReadError>()("UsageReadError", {
-  reason: Schema.Literals(["scanFailed", "invalidWindow"]),
+  reason: Schema.Literals(["unsupported"]),
   /** Stable, bounded description. The underlying failure travels in `cause`. */
   detail: TrimmedNonEmptyString,
   cause: Schema.optional(Schema.Defect()),

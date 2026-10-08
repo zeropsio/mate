@@ -285,7 +285,7 @@ describe("a stored event from a newer build still decodes (rule 10)", () => {
     [
       "attachment",
       opened(
-        { ...person, attachments: [{ type: "file", id: "f1", name: "notes.pdf" }] },
+        { ...person, attachments: [{ type: "audio", id: "a1", name: "voice.m4a" }] },
         { kind: "person", principal: { kind: "person", subject: "ana" } },
       ),
     ],

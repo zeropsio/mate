@@ -1,12 +1,14 @@
 /**
- * What a person does to an engine conversation — send, stop, answer, dismiss, steer — as operations the
- * Mate owns. The operation's request id is the engine's command id: the engine keeps one receipt
+ * What a person does to an engine conversation — send, stop, answer, dismiss, steer, set its
+ * model, runtime mode or agent — as operations the Mate owns. The operation's request id is the engine's command id: the engine keeps one receipt
  * per command, so a lost answer is asked of it by that id and a repeat is applied once. A send,
  * an answer, a dismissal and a steer settle when the engine accepts them (delivery is then the
  * item's own fact); a stop settles when its run's record ends.
  *
  * @module data/operations/mateEngine
  */
+import type { ProviderOptionSelection, RuntimeMode } from "@t3tools/contracts";
+
 import { engineFactId } from "../families/mateEngine.ts";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
@@ -44,7 +46,14 @@ declare module "../model.ts" {
       readonly runId: string;
       readonly text: string;
     };
-    readonly "mate-engine-switch-model": EngineOperationTarget & { readonly model: string };
+    readonly "mate-engine-switch-model": EngineOperationTarget & {
+      readonly model: string;
+      readonly options?: ReadonlyArray<ProviderOptionSelection>;
+    };
+    readonly "mate-engine-set-runtime-mode": EngineOperationTarget & {
+      readonly runtimeMode: RuntimeMode;
+    };
+    readonly "mate-engine-assign-agent": EngineOperationTarget & { readonly instanceId: string };
   }
   interface OperationResults {
     readonly "mate-engine-send": EngineAcceptance;
@@ -53,6 +62,8 @@ declare module "../model.ts" {
     readonly "mate-engine-dismiss": EngineAcceptance;
     readonly "mate-engine-steer": EngineAcceptance;
     readonly "mate-engine-switch-model": EngineAcceptance;
+    readonly "mate-engine-set-runtime-mode": EngineAcceptance;
+    readonly "mate-engine-assign-agent": EngineAcceptance;
   }
 }
 
@@ -153,17 +164,41 @@ export const stopObservable = (
   read.fact("mateEngineRow", engineFactId(intent.environmentId, intent.conversationId)).kind ===
     "known";
 
-/** A model switch shows once the conversation's header names the model. */
+const headerOf = (read: ProjectionReads, intent: EngineOperationTarget) => {
+  const conversation = read.fact(
+    "mateEngineConversation",
+    engineFactId(intent.environmentId, intent.conversationId),
+  );
+  return conversation.kind === "known" ? conversation.value.header : null;
+};
+
+/** A model switch shows once the conversation's header names the model and its options. */
 export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = {
   kind: "mate-engine-switch-model",
   executor: "mate",
   reflected: (read, intent) => {
-    const conversation = read.fact(
-      "mateEngineConversation",
-      engineFactId(intent.environmentId, intent.conversationId),
+    const header = headerOf(read, intent);
+    return (
+      header !== null &&
+      header.model === intent.model &&
+      (intent.options === undefined ||
+        JSON.stringify(header.agent?.options ?? []) === JSON.stringify(intent.options))
     );
-    return conversation.kind === "known" && conversation.value.header.model === intent.model;
   },
+};
+
+/** A runtime mode shows once the conversation's header names it. */
+export const mateEngineSetRuntimeMode: OperationKind<"mate-engine-set-runtime-mode"> = {
+  kind: "mate-engine-set-runtime-mode",
+  executor: "mate",
+  reflected: (read, intent) => headerOf(read, intent)?.runtimeMode === intent.runtimeMode,
+};
+
+/** An agent pick shows once the conversation's header names its instance. */
+export const mateEngineAssignAgent: OperationKind<"mate-engine-assign-agent"> = {
+  kind: "mate-engine-assign-agent",
+  executor: "mate",
+  reflected: (read, intent) => headerOf(read, intent)?.agent?.instanceId === intent.instanceId,
 };
 
 export const MATE_ENGINE_KINDS = [
@@ -173,4 +208,6 @@ export const MATE_ENGINE_KINDS = [
   mateEngineDismiss,
   mateEngineSteer,
   mateEngineSwitchModel,
+  mateEngineSetRuntimeMode,
+  mateEngineAssignAgent,
 ] as const;

@@ -56,7 +56,7 @@ describe("buildPeriodColumns", () => {
         ]),
       },
     ],
-    // 2026-08-02 is deliberately absent: a day with no activity.
+    // 2026-08-02 is deliberately absent: no recorded evidence for that day.
     [
       "2026-08-03",
       {
@@ -70,13 +70,17 @@ describe("buildPeriodColumns", () => {
 
   it("plots each day on its own", () => {
     expect(buildPeriodColumns(days, byDay, "cost").map((column) => column.total)).toEqual([
-      30, 0, 5,
+      30,
+      null,
+      5,
     ]);
   });
 
   it("reads the requested metric", () => {
     expect(buildPeriodColumns(days, byDay, "tokens").map((column) => column.total)).toEqual([
-      300, 0, 50,
+      300,
+      null,
+      50,
     ]);
   });
 
@@ -88,17 +92,17 @@ describe("buildPeriodColumns", () => {
     expect(first?.bands).toEqual([
       { provider: "codex", value: 10 },
       { provider: "claude", value: 20 },
-      { provider: "grok", value: 0 },
-      { provider: "cursor", value: 0 },
-      { provider: "opencode", value: 0 },
-      { provider: "antigravity", value: 0 },
+      { provider: "grok", value: null },
+      { provider: "cursor", value: null },
+      { provider: "opencode", value: null },
+      { provider: "antigravity", value: null },
     ]);
   });
 
   it("reports the total as the sum of its bands", () => {
     for (const column of buildPeriodColumns(days, byDay, "cost")) {
-      const sum = column.bands.reduce((running, band) => running + band.value, 0);
-      expect(column.total).toBeCloseTo(sum, 9);
+      const sum = column.bands.reduce((running, band) => running + (band.value ?? 0), 0);
+      if (column.total !== null) expect(column.total).toBeCloseTo(sum, 9);
     }
   });
 });
@@ -115,7 +119,7 @@ describe("providersWithUsage", () => {
 });
 
 describe("hourly chart columns", () => {
-  it("zero-fills inactive hours and preserves hourly provider values", () => {
+  it("keeps missing hours unknown and preserves hourly provider values", () => {
     const byHour = new Map([
       [
         "2026-08-11T09:37:00.000Z",
@@ -135,6 +139,6 @@ describe("hourly chart columns", () => {
         byHour,
         "cost",
       ).map((column) => column.total),
-    ).toEqual([0, 4, 0]);
+    ).toEqual([null, 4, null]);
   });
 });

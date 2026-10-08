@@ -25,6 +25,7 @@ import {
   WS_METHODS,
   type RequestAsk,
   type RunEnd,
+  type RunSummary,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as NodeEvents from "node:events";
@@ -54,13 +55,60 @@ const OPS: Readonly<Record<string, EngineOp>> = {
   [WS_METHODS.engineDismiss]: "dismiss",
   [WS_METHODS.engineStop]: "stop",
   [WS_METHODS.engineSteer]: "steer",
+  [WS_METHODS.engineSwitchModel]: "switch-model",
+  [WS_METHODS.engineSetRuntimeMode]: "set-runtime-mode",
+  [WS_METHODS.engineAssignAgent]: "assign-agent",
 };
 const PROTOCOL = Math.max(...MATE_ENGINE_PROTOCOLS);
 export const ENGINE_MOVED =
   "This Mate moved to its new engine. Reload or update this app to keep talking to it.";
 
 type Changed = { runs: Set<string>; items: Set<string>; requests: Set<string>; header: boolean };
-export type EngineOp = "send" | "answer" | "dismiss" | "stop" | "steer" | "switch-model";
+export type EngineOp =
+  | "send"
+  | "answer"
+  | "dismiss"
+  | "stop"
+  | "steer"
+  | "switch-model"
+  | "set-runtime-mode"
+  | "assign-agent";
+
+const FILE_KEYS = new Set(["path", "filePath", "relativePath", "filename", "newPath", "oldPath"]);
+
+function namedFiles(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) for (const entry of value) namedFiles(entry, into);
+  else if (typeof value === "object" && value !== null)
+    for (const [field, entry] of Object.entries(value)) {
+      if (FILE_KEYS.has(field) && typeof entry === "string") into.add(entry);
+      else namedFiles(entry, into);
+    }
+}
+
+/** A run's summary with one more item counted, as the server counts a call: by step and tool. */
+function countedCall(
+  summary: RunSummary,
+  body: Record<string, unknown>,
+  edited: { files: Set<string>; unnamed: number },
+): RunSummary {
+  if (body.kind !== "call") return summary;
+  const step = typeof body.step === "string" ? body.step : "tool";
+  const tool = (body.tool as { name?: string } | undefined)?.name ?? "tool";
+  if (step === "edit") {
+    const own = new Set<string>();
+    namedFiles(body.shows, own);
+    if (own.size === 0) edited.unnamed += 1;
+    for (const file of own) edited.files.add(file);
+  }
+  const tools = { ...summary.tools };
+  if (step === "tool" || step === "mcp") tools[tool] = (tools[tool] ?? 0) + 1;
+  return {
+    ...summary,
+    calls: { ...summary.calls, [step]: (summary.calls[step] ?? 0) + 1 },
+    tools,
+    edited: edited.files.size + edited.unnamed,
+  };
+}
 
 export class MateEngineFake {
   readonly mate: MateFake;
@@ -179,7 +227,7 @@ export class MateEngineFake {
           runId: run,
           seq,
           rev: seq,
-          at: AT + seq,
+          at: this.stamp(seq),
           ask,
           state: "open",
           answerable: true,
@@ -198,13 +246,28 @@ export class MateEngineFake {
 
   /** The agent starts a run of its own, joining the last: its engine id. */
   startRun(): string {
-    return this.commit((change) =>
-      this.openRun(
+    return this.commit((change) => {
+      this.openSession(change);
+      return this.openRun(
         change,
         { kind: "wake", cause: "self", wakeId: null },
         [...this.runs.values()].at(-1)?.id ?? null,
-      ),
-    );
+      );
+    });
+  }
+
+  /** The agent's session is open: it can take a message into the turn it runs. */
+  private openSession(change: Changed) {
+    if (this.header.session !== null) return;
+    this.header = decodeHeader({
+      ...this.header,
+      session: {
+        driver: this.header.agent?.driver ?? "codex",
+        model: this.header.model,
+        steer: true,
+      },
+    });
+    change.header = true;
   }
 
   /** Run `id` ends as the agent's turn did. */
@@ -326,6 +389,14 @@ export class MateEngineFake {
     return ++this.seq;
   }
 
+  /** Once a person sends, the engine records the wall clock, as the real one always does. */
+  private wallClock = false;
+  /** How far the Mate's clock runs from the person's, once it records the wall clock. */
+  clockSkewMs = 0;
+  private stamp(seq: number) {
+    return this.wallClock ? Date.now() + this.clockSkewMs : AT + seq;
+  }
+
   private openRun(
     change: Changed,
     trigger: { kind: "person" } | { kind: "wake"; cause: string; wakeId: null },
@@ -354,9 +425,9 @@ export class MateEngineFake {
         endSource: null,
         sessionId: null,
         providerTurnId: null,
-        queuedAt: AT + seq,
-        admittedAt: AT + seq,
-        startedAt: AT + seq,
+        queuedAt: this.stamp(seq),
+        admittedAt: this.stamp(seq),
+        startedAt: this.stamp(seq),
         endedAt: null,
         unresponsiveSince: null,
         summary: { items: 0, calls: {}, answerItemId: null, lastItemSeq: null },
@@ -380,9 +451,20 @@ export class MateEngineFake {
       waitingOn: null,
       end,
       endSource: "agent",
-      endedAt: AT + this.seq,
+      endedAt: this.stamp(this.seq),
       summary: { ...run.summary, answerItemId: answerItemId ?? run.summary.answerItemId },
     });
+  }
+
+  /** The files each run's edits named, and its edits naming none, as the server counts them. */
+  private readonly editedFiles = new Map<string, { files: Set<string>; unnamed: number }>();
+  private edited(run: string) {
+    let held = this.editedFiles.get(run);
+    if (held === undefined) {
+      held = { files: new Set(), unnamed: 0 };
+      this.editedFiles.set(run, held);
+    }
+    return held;
   }
 
   private addItem(change: Changed, run: string, body: Record<string, unknown>): string {
@@ -397,7 +479,7 @@ export class MateEngineFake {
         runId: run,
         seq,
         rev: seq,
-        at: AT + seq,
+        at: this.stamp(seq),
         ...body,
       }),
     );
@@ -408,7 +490,11 @@ export class MateEngineFake {
       decodeRun({
         ...held,
         rev: seq,
-        summary: { ...held.summary, items: held.summary.items + 1, lastItemSeq: seq },
+        summary: {
+          ...countedCall(held.summary, body, this.edited(run)),
+          items: held.summary.items + 1,
+          lastItemSeq: seq,
+        },
       }),
     );
     change.runs.add(run);
@@ -541,7 +627,7 @@ export class MateEngineFake {
         latest === null ? null : { id: latest.id, end: latest.end, endedAt: latest.endedAt },
       subject: person?.kind === "person" ? person.text.split("\n")[0] : null,
       snippet: note?.kind === "note" ? note.text : null,
-      at: AT + this.seq,
+      at: this.stamp(this.seq),
       askedAt: open?.at ?? null,
     });
   }
@@ -639,7 +725,9 @@ export class MateEngineFake {
       case WS_METHODS.engineDismiss:
       case WS_METHODS.engineStop:
       case WS_METHODS.engineSteer:
-      case WS_METHODS.engineSwitchModel: {
+      case WS_METHODS.engineSwitchModel:
+      case WS_METHODS.engineSetRuntimeMode:
+      case WS_METHODS.engineAssignAgent: {
         if (unserved !== null) {
           this.mate.reply(socket, id, encodeCall({ _tag: "Unserved", unserved }));
           return true;
@@ -701,11 +789,22 @@ export class MateEngineFake {
       case WS_METHODS.engineReadRun: {
         const runId = String(payload.runId);
         const beforeSeq = payload.beforeSeq as number | undefined;
+        const afterSeq = payload.afterSeq as number | undefined;
+        // What a closed card draws its result from, as the server's `only: "outcome"` reads it.
+        const outcome = (item: Item) =>
+          item.kind === "work" ||
+          (item.kind === "call" && (item.result !== undefined || item.step === "look"));
         const items = [...this.items.values()]
           .filter(
-            (item) => item.runId === runId && (beforeSeq === undefined || item.seq < beforeSeq),
+            (item) =>
+              item.runId === runId &&
+              (beforeSeq === undefined || item.seq < beforeSeq) &&
+              (afterSeq === undefined || item.seq > afterSeq) &&
+              (payload.only !== "outcome" || outcome(item)),
           )
-          .sort((left, right) => right.seq - left.seq);
+          .sort((left, right) =>
+            afterSeq === undefined ? right.seq - left.seq : left.seq - right.seq,
+          );
         const page = items.slice(0, this.runPageItems);
         this.mate.reply(
           socket,
@@ -713,7 +812,9 @@ export class MateEngineFake {
           encodePage({
             _tag: "Page",
             runs: [],
-            items: page.toReversed().map((item) => this.sent(item)),
+            items: (afterSeq === undefined ? page.toReversed() : page).map((item) =>
+              this.sent(item),
+            ),
             requests: [],
             window: { oldestOrdinal: null, earlier: false },
             more: items.length > page.length,
@@ -782,7 +883,13 @@ export class MateEngineFake {
     switch (tag) {
       case WS_METHODS.engineSend: {
         this.applied.push({ commandId, op: "send", payload });
+        this.wallClock = true;
+        const interactionMode = payload.interactionMode === "plan" ? "plan" : "default";
         const [runId, itemId] = this.commit((change) => {
+          if (this.header.interactionMode !== interactionMode) {
+            this.header = decodeHeader({ ...this.header, interactionMode });
+            change.header = true;
+          }
           const run = this.openRun(change, { kind: "person" });
           this.setRun(change, run, { state: "admitted", startedAt: null });
           const item = this.addItem(change, run, {
@@ -796,14 +903,45 @@ export class MateEngineFake {
           return [run, item] as const;
         });
         const accepted = { _tag: "Accepted" as const, seq: this.seq, runId, itemId };
+        // The run is sent as its session opens, then runs: each its own commit, as the engine's.
         queueMicrotask(() => {
           this.commit((change) => {
-            this.setItem(change, itemId, { delivery: { state: "delivered", at: AT + this.seq } });
-            this.setRun(change, runId, { state: "running", startedAt: AT + this.seq });
+            this.setRun(change, runId, { state: "sending" });
+            this.openSession(change);
           });
-          this.mate.publishAttention();
+          queueMicrotask(() => {
+            this.commit((change) => {
+              this.setItem(change, itemId, {
+                delivery: { state: "delivered", at: this.stamp(this.seq) },
+              });
+              this.setRun(change, runId, { state: "running", startedAt: this.stamp(this.seq) });
+            });
+            this.mate.publishAttention();
+          });
         });
         return accepted as never;
+      }
+      case WS_METHODS.engineSteer: {
+        // Into the run that works, while its session can take it, as the engine's steer.
+        const run = this.runs.get(String(payload.runId));
+        if (run === undefined)
+          return { _tag: "Rejected", rejection: { reason: "unknown-run" } } as never;
+        if (run.state !== "running" && run.state !== "waiting")
+          return { _tag: "Rejected", rejection: { reason: "run-not-running" } } as never;
+        if (this.header.session?.steer !== true)
+          return { _tag: "Rejected", rejection: { reason: "steer-unsupported" } } as never;
+        this.applied.push({ commandId, op: "steer", payload });
+        const itemId = this.commit((change) =>
+          this.addItem(change, run.id, {
+            kind: "person",
+            by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+            text: String(payload.text),
+            attachments: [],
+            sendId: commandId,
+            delivery: { state: "steered", at: this.stamp(this.seq) },
+          }),
+        );
+        return { _tag: "Accepted", seq: this.seq, runId: run.id, itemId } as never;
       }
       case WS_METHODS.engineAnswer: {
         const requestId = String(payload.requestId);
@@ -832,7 +970,7 @@ export class MateEngineFake {
               state: "answered",
               answer: {
                 by: { kind: "person", subject: "owner" },
-                at: AT + seq,
+                at: this.stamp(seq),
                 summary: String(payload.summary),
                 // A question's record keeps its words and pictures, as the engine's does.
                 ...(request.ask.kind === "question"
@@ -857,7 +995,58 @@ export class MateEngineFake {
         this.applied.push({ commandId, op: "switch-model", payload });
         this.commit((change) => {
           this.next();
-          this.header = decodeHeader({ ...this.header, model: String(payload.model) });
+          const agent = this.header.agent;
+          this.header = decodeHeader({
+            ...this.header,
+            model: String(payload.model),
+            agent:
+              agent === null
+                ? null
+                : {
+                    ...agent,
+                    model: String(payload.model),
+                    ...(payload.options === undefined ? {} : { options: payload.options }),
+                  },
+          });
+          change.header = true;
+        });
+        return { _tag: "Accepted", seq: this.seq } as never;
+      }
+      case WS_METHODS.engineSetRuntimeMode: {
+        this.applied.push({ commandId, op: "set-runtime-mode", payload });
+        this.commit((change) => {
+          this.next();
+          this.header = decodeHeader({ ...this.header, runtimeMode: payload.runtimeMode });
+          change.header = true;
+        });
+        return { _tag: "Accepted", seq: this.seq } as never;
+      }
+      case WS_METHODS.engineAssignAgent: {
+        // As the engine: another driver only before the conversation started.
+        const driver = String(payload.instanceId).split(":")[0]!;
+        const current = this.header.agent;
+        if (current !== null && current.driver !== driver && this.runs.size > 0)
+          return {
+            _tag: "Rejected",
+            rejection: {
+              reason: "agent-locked",
+              detail: `This conversation is bound to driver '${current.driver}' and cannot switch to '${driver}'.`,
+            },
+          } as never;
+        this.applied.push({ commandId, op: "assign-agent", payload });
+        this.commit((change) => {
+          this.next();
+          this.header = decodeHeader({
+            ...this.header,
+            model: String(payload.model),
+            agent: {
+              instanceId: String(payload.instanceId),
+              driver,
+              model: String(payload.model),
+              ...(payload.options === undefined ? {} : { options: payload.options }),
+              profile: { kind: "mate" },
+            },
+          });
           change.header = true;
         });
         return { _tag: "Accepted", seq: this.seq } as never;

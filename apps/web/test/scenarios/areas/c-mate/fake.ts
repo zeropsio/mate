@@ -1309,6 +1309,36 @@ export class ChatDriver {
       );
   }
 
+  /** The runtime modes the Mate applied, in order, on whichever wire it speaks. */
+  accessModes() {
+    return this.wire
+      .intents()
+      .flatMap((intent) => (intent.kind === "access" ? [intent.runtimeMode] : []));
+  }
+
+  /** Settles with the message the Mate received reading `text`, on whichever wire it speaks. */
+  async waitForTurn(text: string) {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+      return await deadline(
+        new Promise<Extract<ChatIntent, { kind: "turn" }>>((resolve) => {
+          const check = () => {
+            const found = this.wire
+              .intents()
+              .findLast((intent) => intent.kind === "turn" && intent.text === text);
+            if (found?.kind === "turn") resolve(found);
+          };
+          check();
+          timer = setInterval(check, 25);
+        }),
+        `Mate received "${text}"`,
+        8000,
+      );
+    } finally {
+      clearInterval(timer);
+    }
+  }
+
   /** Settles with the answer the Mate applied to `requestId`, on whichever wire it speaks. */
   async waitForAnswer(requestId: string) {
     const applied = () =>
@@ -1346,7 +1376,9 @@ export class ChatDriver {
   }
 
   responseCount() {
-    return this.wire.intents().filter((intent) => intent.kind !== "turn").length;
+    return this.wire
+      .intents()
+      .filter((intent) => intent.kind === "decision" || intent.kind === "answer").length;
   }
 
   /** A recorded login expires at its provider; ownership and conversation remain unchanged. */
@@ -1411,6 +1443,18 @@ export class ChatDriver {
 
   history(text = "The existing conversation is still here", turnId: string | null = null) {
     this.wire.history(text, turnId);
+  }
+
+  exchange(question: string, answer: string) {
+    this.wire.exchange(question, answer);
+  }
+
+  skewClock(ms: number) {
+    this.wire.skewClock(ms);
+  }
+
+  reply(turnId: string, text: string) {
+    this.wire.reply(turnId, text);
   }
 
   approval() {

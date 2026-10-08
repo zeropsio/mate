@@ -146,17 +146,6 @@ describe("the sets of a store", () => {
 
 describe("the room a set makes in its store", () => {
   const set = (id: string, bytes: number, whole = true): StoredSet => ({ id, bytes, whole });
-  it("keeps a protected accounting cut while newer backups proceed, and refuses quota eviction of it", () => {
-    const protectedSet = "20260101T000000.000Z";
-    const stored = [set(protectedSet, 30), set("20261002T100000.000Z", 20)];
-    const incoming = { id: "20261002T110000.000Z", bytes: 30 };
-    const room = roomFor(stored, incoming, 100, NOW, protectedSet);
-    assert.isTrue(room.fits);
-    assert.notInclude(room.remove, protectedSet);
-    const full = roomFor(stored, incoming, 40, NOW, protectedSet);
-    assert.isFalse(full.fits);
-    assert.notInclude(full.remove, protectedSet);
-  });
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly stored: ReadonlyArray<StoredSet>;

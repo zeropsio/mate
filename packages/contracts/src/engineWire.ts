@@ -38,10 +38,14 @@ import {
   forwardCompatibleLiterals,
   forwardCompatibleUnion,
 } from "./engine.ts";
+import { ProviderOptionSelection } from "./model.ts";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   ProviderApprovalDecision,
+  ProviderInteractionMode,
   ProviderUserInputAnswers,
+  RuntimeMode,
   UserInputAttachments,
 } from "./orchestration.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
@@ -85,6 +89,13 @@ export const RunSummary = Schema.Struct({
   items: Schema.Int,
   /** Calls by step (`command`, `edit`, `web`, `look`, `helper`, `tool`, …). */
   calls: Schema.Record(Schema.String, Schema.Int),
+  /**
+   * The generic and MCP calls (`tool`, `mcp`) by the tool's name: a card counts some by what they
+   * did ("the workflow checked"), some not at all (a deploy is a row of its result).
+   */
+  tools: Schema.optionalKey(Schema.Record(Schema.String, Schema.Int)),
+  /** The files its edits changed, each once, and one for each edit naming none. */
+  edited: Schema.optionalKey(Schema.Int),
   /** The agent's last whole words in the run: its answer. */
   answerItemId: Schema.NullOr(ItemId),
   lastItemSeq: Schema.NullOr(Schema.Int),
@@ -113,6 +124,10 @@ export const ConversationHeader = Schema.Struct({
   pausedUntil: Schema.NullOr(Schema.Union([Millis, Schema.Literal("unknown")])),
   /** Messages waiting their turn. */
   queued: Schema.Int,
+  /** How freely the agent works, once a person set it; absent: the workspace's mode. */
+  runtimeMode: Schema.optionalKey(RuntimeMode),
+  /** The interaction mode of the person's latest message; absent: default. */
+  interactionMode: Schema.optionalKey(ProviderInteractionMode),
 });
 export type ConversationHeader = typeof ConversationHeader.Type;
 
@@ -284,12 +299,18 @@ export const EngineReadEarlierInput = Schema.Struct({
 });
 export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
 
-/** A run's items, the newest page first (`beforeSeq` pages back). */
+/**
+ * A run's items, the newest page first (`beforeSeq` pages back); with `afterSeq`, the oldest page
+ * after it (`more`: later ones exist). `only: "outcome"` reads just the items a closed card draws
+ * its result from: calls with a result or a picture looked at, and background work.
+ */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,
   conversationId: ConversationId,
   runId: RunId,
   beforeSeq: Schema.optionalKey(Schema.Int),
+  afterSeq: Schema.optionalKey(Schema.Int),
+  only: Schema.optionalKey(Schema.Literal("outcome")),
   limit: Schema.optionalKey(Schema.Int),
 });
 export type EngineReadRunInput = typeof EngineReadRunInput.Type;
@@ -321,11 +342,17 @@ export type EngineReceiptInput = typeof EngineReceiptInput.Type;
 
 const call = { ...protocol, conversationId: ConversationId, commandId: CommandId };
 
-/** A person's message: queued, or sent at once when nothing is on. Pictures by reference. */
+/**
+ * A person's message: queued, or sent at once when nothing is on. Pictures by reference, files by
+ * the id they were uploaded under; `plan` asks the agent for a plan.
+ */
 export const EngineSendInput = Schema.Struct({
   ...call,
   text: Schema.String,
-  attachments: Schema.optionalKey(Schema.Array(ChatImageAttachment)),
+  attachments: Schema.optionalKey(
+    Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
+  ),
+  interactionMode: Schema.optionalKey(ProviderInteractionMode),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
@@ -371,9 +398,34 @@ export type EngineDismissInput = typeof EngineDismissInput.Type;
 export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
-/** The conversation's next model, on the agent it already runs (its next session opens with it). */
-export const EngineSwitchModelInput = Schema.Struct({ ...call, model: Schema.String });
+/**
+ * The conversation's next model and its options (effort, fast mode, thinking), on the agent it
+ * already runs. An option its session takes per turn goes with the next message; any other change
+ * opens a new session that resumes this one, between runs.
+ */
+export const EngineSwitchModelInput = Schema.Struct({
+  ...call,
+  model: Schema.String,
+  /** Absent: the options the conversation has. */
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+});
 export type EngineSwitchModelInput = typeof EngineSwitchModelInput.Type;
+
+/** How freely the agent works: from the next run on, in a session that resumes this one. */
+export const EngineSetRuntimeModeInput = Schema.Struct({ ...call, runtimeMode: RuntimeMode });
+export type EngineSetRuntimeModeInput = typeof EngineSetRuntimeModeInput.Type;
+
+/**
+ * The conversation's agent: another provider instance. Taken while the conversation has not
+ * started; after that only an instance of its driver whose sessions resume the old one's.
+ */
+export const EngineAssignAgentInput = Schema.Struct({
+  ...call,
+  instanceId: Schema.String,
+  model: Schema.String,
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+});
+export type EngineAssignAgentInput = typeof EngineAssignAgentInput.Type;
 
 // ── results ─────────────────────────────────────────────────────────────────────────────────
 

@@ -63,7 +63,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
-import { currentProviderLimit, usageLimitProvider } from "./providerLimit.logic";
+import { projectMateLimit, type MateLimit } from "@t3tools/client-runtime/data";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**
@@ -88,6 +88,7 @@ export type AgentActivityThread = Pick<
     readonly lastError: string | null;
     readonly usageLimitResetAt?: string | null | undefined;
     readonly providerName?: string | null;
+    readonly updatedAt?: string | undefined;
   } | null;
   readonly latestTurn: Pick<
     OrchestrationLatestTurn,
@@ -97,7 +98,10 @@ export type AgentActivityThread = Pick<
   readonly latestMessagePreview?: Pick<ThreadMessagePreview, "role" | "text"> | null | undefined;
   readonly planProgress?: { readonly step: string } | null | undefined;
   readonly pendingQuestion?: string | null | undefined;
-  readonly usagePause?: { readonly resetsAt: string } | null | undefined;
+  readonly usagePause?:
+    | { readonly resetsAt: string; readonly pausedAt?: string | undefined }
+    | null
+    | undefined;
   readonly liveStep?: ThreadLiveStep | null | undefined;
 };
 
@@ -166,6 +170,7 @@ export interface ZeropsAgentActivity {
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
   /** A provider refusal can prove a limit without knowing its reset. */
+  readonly limit?: MateLimit;
   readonly usageLimited?: boolean;
   readonly limitProvider?: string | undefined;
   /** A retained refusal record, independent of whether its deadline still applies. */
@@ -402,60 +407,11 @@ export function threadAgentActivity(
   thread: AgentActivityThread,
   lastVisitedAt: string | undefined,
   nowMs = Date.now(),
-): ZeropsAgentActivity {
-  // A shell is immutable, and kept while nothing in it changes: every Mate read again on each
-  // event of one streaming chat reads its own unchanged shell.
-  const known = activityByThread.get(thread);
-  if (
-    known !== undefined &&
-    known.lastVisitedAt === lastVisitedAt &&
-    (known.activity.limitHistory?.resetsAt == null ||
-      known.activity.usageLimited === Date.parse(known.activity.limitHistory.resetsAt) > nowMs)
-  )
-    return known.activity;
-  const activity = readThreadAgentActivity(thread, lastVisitedAt, nowMs);
-  activityByThread.set(thread, { lastVisitedAt, activity });
-  return activity;
-}
-
-const activityByThread = new WeakMap<
-  AgentActivityThread,
-  { readonly lastVisitedAt: string | undefined; readonly activity: ZeropsAgentActivity }
->();
-
-function readThreadAgentActivity(
-  thread: AgentActivityThread,
-  lastVisitedAt: string | undefined,
-  nowMs: number,
+  limit = projectMateLimit(thread, nowMs),
 ): ZeropsAgentActivity {
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
-  const pause = thread.usagePause ?? undefined;
-  const limit = currentProviderLimit({
-    pause,
-    resetAt: thread.session?.usageLimitResetAt,
-    lastError: thread.session?.lastError,
-    lastMessage:
-      thread.latestMessagePreview?.role === "assistant"
-        ? thread.latestMessagePreview.text
-        : undefined,
-    noticeAt: thread.latestTurn?.completedAt ?? thread.latestTurn?.startedAt,
-    nowMs,
-  });
-  const provider =
-    limit.provider ??
-    (thread.session?.providerName === "claudeAgent"
-      ? "Claude"
-      : thread.session?.providerName === "codex"
-        ? "Codex"
-        : "coding agent");
-  const usageLimited = limit.current;
-  const settledRefusal = limit.expired;
-  const status = resolveThreadStatus({ ...thread, ...visited });
-  // An expired refusal is a stopped attempt, not an ongoing failure or a successful turn.
-  const resolved =
-    settledRefusal && status.kind === "failed"
-      ? { kind: "idle" as const, toneId: "neutral" as const }
-      : status;
+  const usageLimited = limit.kind === "limited";
+  const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
   return {
     threadId: thread.id,
     kind: resolved.kind,
@@ -466,11 +422,12 @@ function readThreadAgentActivity(
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
-    pausedUntil: usageLimited ? limit.resetsAt : undefined,
+    limit,
+    pausedUntil: usageLimited ? (limit.resetsAt ?? undefined) : undefined,
     usageLimited,
-    limitProvider: usageLimited ? provider : undefined,
-    ...(limit.provider !== null || pause !== undefined
-      ? { limitHistory: { provider, resetsAt: limit.resetsAt ?? null } }
+    limitProvider: usageLimited ? limit.provider : undefined,
+    ...(limit.kind !== "none"
+      ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
       : {}),
     threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
     task: agentActivitySubject(thread, "idle"),
@@ -480,7 +437,7 @@ function readThreadAgentActivity(
       ? { waitsOnHelpers: true as const }
       : {}),
     ...agentActivityQuestion(thread, resolved.kind),
-    ...(settledRefusal ? {} : agentActivityErrorLine(thread, resolved.kind)),
+    ...(limit.kind === "expired" ? {} : agentActivityErrorLine(thread, resolved.kind)),
   };
 }
 
@@ -537,7 +494,7 @@ export function agentActivityErrorLine(
   thread: Pick<AgentActivityThread, "session">,
   kind: ThreadStatusKind,
 ): { readonly errorLine?: string } {
-  if (kind !== "failed" && usageLimitProvider(thread.session?.lastError) === null) return {};
+  if (kind !== "failed") return {};
   const first = thread.session?.lastError
     ?.split("\n")
     .map((line) => line.trim())
@@ -549,6 +506,7 @@ export function agentActivityErrorLine(
 export function deriveZeropsAgentActivity(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit>,
 ): ReadonlyMap<EnvironmentId, ZeropsAgentActivity> {
   const shellsByEnvironment = new Map<EnvironmentId, Array<EnvironmentThreadShell>>();
   for (const thread of threads) {
@@ -566,6 +524,8 @@ export function deriveZeropsAgentActivity(
       threadAgentActivity(
         primary,
         lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
+        undefined,
+        limits?.get(scopedThreadKey(scopeThreadRef(environmentId, primary.id))),
       ),
     );
   }
@@ -625,14 +585,6 @@ export function activityOfNow(
  */
 const isoOf = (millis: number) => new Date(millis).toISOString();
 
-/** The provider a paused engine row names, in the words a row's limit line uses. */
-const providerOf = (row: ConversationRow): string =>
-  row.agent?.driver === "claudeAgent"
-    ? "Claude"
-    : row.agent?.driver === "codex"
-      ? "Codex"
-      : "coding agent";
-
 /** The kind a row's state is, before the person's visit: what the engine says it is on. */
 function kindOf(state: ConversationRow["state"]): ThreadStatusKind {
   switch (state.kind) {
@@ -654,11 +606,16 @@ const firstLine = (text: string): string | undefined =>
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
-/** What an engine Mate is up to in one conversation, from its row and this device's visit. */
+/**
+ * What an engine Mate is up to in one conversation, from its row and this device's visit; its
+ * usage limit is the row's own pause (`projectMateLimit`), or the one `limit` holds of it.
+ */
 export function rowAgentActivity(
   row: ConversationRow,
   environmentId: EnvironmentId,
   lastVisitedAt: string | undefined,
+  nowMs = Date.now(),
+  limit = projectMateLimit({ engineRow: row, latestTurn: null, session: null }, nowMs),
 ): ZeropsAgentActivity {
   const { state } = row;
   const threadId = ThreadId.make(row.conversationId);
@@ -669,7 +626,7 @@ export function rowAgentActivity(
   });
   const told = kindOf(state);
   const kind: ThreadStatusKind = told === "idle" && unread ? "done" : told;
-  const paused = state.kind === "paused";
+  const usageLimited = limit.kind === "limited";
   const asked = row.subject === null ? null : { text: row.subject };
   const words = {
     title: "",
@@ -679,13 +636,11 @@ export function rowAgentActivity(
   };
   const question = state.kind === "waiting" && kind === "input" ? state.words?.trim() : undefined;
   const errorLine = state.kind === "failed" ? firstLine(state.errorLine) : undefined;
-  const provider = providerOf(row);
-  const resetsAt = paused && state.resetsAt !== null ? isoOf(state.resetsAt) : undefined;
   return {
     threadId,
     kind,
     status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
-    face: mateMarkStateForThread(kind, paused),
+    face: mateMarkStateForThread(kind, usageLimited),
     subject: agentActivitySubject(words, kind),
     at: isoOf(
       state.kind === "working" || state.kind === "queued" ? state.since : (endedAt ?? row.at),
@@ -694,10 +649,13 @@ export function rowAgentActivity(
     snippet: state.kind === "queued" || row.snippet === null ? undefined : maskSecrets(row.snippet),
     ...(state.kind === "queued" ? { awaitingWords: true as const } : {}),
     unread,
-    pausedUntil: resetsAt,
-    usageLimited: paused,
-    limitProvider: paused ? provider : undefined,
-    ...(paused ? { limitHistory: { provider, resetsAt: resetsAt ?? null } } : {}),
+    limit,
+    pausedUntil: usageLimited ? (limit.resetsAt ?? undefined) : undefined,
+    usageLimited,
+    limitProvider: usageLimited ? limit.provider : undefined,
+    ...(limit.kind !== "none"
+      ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
+      : {}),
     threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
     task: agentActivitySubject(words, "idle"),
     ...(state.kind === "working" && state.waitsOnHelpers ? { waitsOnHelpers: true as const } : {}),
@@ -708,24 +666,30 @@ export function rowAgentActivity(
 
 /**
  * A Mate's activity from HQ's overview of it: its main chat read as its shell is — an engine Mate's
- * off its own row (`rowAgentActivity`) — with this device's visit — at rest unless HQ's word is live (`restingActivity`). Undefined where HQ holds
- * no overview of it, or it has no main chat yet.
+ * off its own row (`rowAgentActivity`) — with this device's visit, at rest unless HQ's word is
+ * live (`restingActivity`). Undefined where HQ holds no overview of it, or it has no main chat yet.
  */
 export function overviewAgentActivity(
   mate: MateLiveView,
   live: boolean,
   lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit> | undefined,
 ): ZeropsAgentActivity | undefined {
   if (mate.identity === undefined || !mate.main) return undefined;
   const { environmentId } = mate.identity;
   const main = mate.main;
-  const visited = lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, main.id))];
+  const key = scopedThreadKey(scopeThreadRef(environmentId, main.id));
   // An engine Mate's own row of its main conversation, where it sends rows; its shell fields else.
   const row = mate.conversations?.find((each) => (each.conversationId as string) === main.id);
   const activity =
     row === undefined
-      ? threadAgentActivity({ ...main, environmentId }, visited)
-      : rowAgentActivity(row, environmentId, visited);
+      ? threadAgentActivity(
+          { ...main, environmentId },
+          lastVisitedAtById[key],
+          undefined,
+          limits?.get(key),
+        )
+      : rowAgentActivity(row, environmentId, lastVisitedAtById[key], undefined, limits?.get(key));
   return live
     ? activity
     : restingActivity(activity, row === undefined ? main.updatedAt : isoOf(row.at));

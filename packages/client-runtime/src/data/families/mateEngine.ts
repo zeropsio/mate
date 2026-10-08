@@ -40,6 +40,22 @@ export interface EngineGaugeValue {
   readonly earlier?: { readonly before: number; readonly more: boolean };
 }
 
+/**
+ * A run not held whole when its card painted: the stretch of its lines held, from `from` to `to`
+ * (each an item's sequence; `null` is the run's start, or its end; `to` 0 holds none yet), and
+ * which way a page is being read. Past the stretch the account holds only what the card's result
+ * draws from; the rest is read a page at a time as the card opens and scrolls. A run every item of
+ * which is held has none.
+ */
+export interface EngineSpanValue {
+  readonly environmentId: string;
+  readonly conversationId: string;
+  readonly runId: string;
+  readonly from: number | null;
+  readonly to: number | null;
+  readonly reading: "earlier" | "later" | null;
+}
+
 /** The conversation's own facts: its header, and the window of run groups held. */
 export interface EngineConversationValue {
   readonly environmentId: string;
@@ -51,6 +67,7 @@ declare module "../model.ts" {
   interface FamilyValues {
     readonly mateEngineConversation: EngineConversationValue;
     readonly mateEngineGauge: EngineGaugeValue;
+    readonly mateEngineSpan: EngineSpanValue;
     readonly mateEngineRun: EngineFact<RunRecord>;
     readonly mateEngineItem: EngineFact<Item>;
     readonly mateEngineRequest: EngineFact<Request>;
@@ -76,6 +93,7 @@ const engineSpec = <
   F extends
     | "mateEngineConversation"
     | "mateEngineGauge"
+    | "mateEngineSpan"
     | "mateEngineRun"
     | "mateEngineItem"
     | "mateEngineRequest"
@@ -95,6 +113,16 @@ export const mateEngineConversationFamily = engineSpec(
 );
 
 export const mateEngineGaugeFamily = engineSpec("mateEngineGauge", "engine-gauge");
+
+export const mateEngineSpanFamily: FamilySpec<"mateEngineSpan"> = {
+  ...engineSpec("mateEngineSpan", "engine-span"),
+  indexes: [
+    {
+      name: "engineSpansIn",
+      keyOf: (span) => engineFactId(span.environmentId, span.conversationId),
+    },
+  ],
+};
 
 export const mateEngineRunFamily: FamilySpec<"mateEngineRun"> = {
   ...engineSpec("mateEngineRun", "engine-run"),
@@ -149,6 +177,7 @@ export const engineConversationScopes = (key: EngineConversationKey) => {
     item: `${link}:engine-item` as ScopeKey,
     request: `${link}:engine-request` as ScopeKey,
     gauge: `${link}:engine-gauge` as ScopeKey,
+    span: `${link}:engine-span` as ScopeKey,
   };
 };
 
@@ -163,6 +192,7 @@ export const engineRowsKey = (environmentId: string) => encode([environmentId]);
 export const MATE_ENGINE_FAMILIES = [
   mateEngineConversationFamily,
   mateEngineGaugeFamily,
+  mateEngineSpanFamily,
   mateEngineRunFamily,
   mateEngineItemFamily,
   mateEngineRequestFamily,

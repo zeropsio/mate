@@ -19,6 +19,8 @@ import {
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   usageEnvironmentIdentities,
+  usageEnvironmentOwner,
+  type UsageEnvironmentOwner,
   usageBaselineStatus,
   usageOwnersStatus,
   type UsageEnvironmentIdentities,
@@ -38,6 +40,7 @@ export function useUsageEnvironmentIdentities(): {
   readonly listed: boolean;
   readonly baseline: UsageOwnersStatus;
   readonly projects: ReadonlyMap<string, string>;
+  readonly people: ReadonlyMap<string, UsageEnvironmentOwner>;
 } {
   const session = useZeropsSession();
   const signedIn = session.status === "signed-in";
@@ -94,5 +97,14 @@ export function useUsageEnvironmentIdentities(): {
       for (const app of navigation.structure.apps) projects.set(app.id, app.name);
     return projects;
   }, [sameOrg, navigation.structure]);
-  return { identities, owners, listed, baseline, projects };
+  const knownPeople = useMemo(() => {
+    const values = new Map<string, UsageEnvironmentOwner>();
+    if (signedIn && sameOrg)
+      for (const person of Object.values(projectPeople)) {
+        const owner = usageEnvironmentOwner(person.owner, viewerUserId);
+        if (owner !== null) values.set(owner.id, owner);
+      }
+    return values;
+  }, [signedIn, sameOrg, projectPeople, viewerUserId]);
+  return { identities, owners, listed, baseline, projects, people: knownPeople };
 }

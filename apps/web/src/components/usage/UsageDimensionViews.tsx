@@ -37,11 +37,22 @@ function personColor(person: UsagePersonRow, index: number): string {
     : (PERSON_SERIES[index % PERSON_SERIES.length] ?? "var(--muted-foreground)");
 }
 
-function amount(metric: UsageDimensionMetric, row: { costUsd: number; totalTokens: number }) {
-  return metric === "cost" ? formatUsd(row.costUsd) : formatTokens(row.totalTokens);
+function amount(
+  metric: UsageDimensionMetric,
+  row: { costUsd: number; totalTokens: number; costKnown?: boolean },
+) {
+  return metric === "cost"
+    ? row.costKnown === false
+      ? "Unpriced"
+      : formatUsd(row.costUsd)
+    : formatTokens(row.totalTokens);
 }
 
-function share(metric: UsageDimensionMetric, row: { costShare: number; tokenShare: number }) {
+function share(
+  metric: UsageDimensionMetric,
+  row: { costShare: number; tokenShare: number; costKnown?: boolean },
+) {
+  if (metric === "cost" && row.costKnown === false) return "—";
   return formatPercent(metric === "cost" ? row.costShare : row.tokenShare);
 }
 
@@ -224,7 +235,9 @@ export function UsageDimensionTable({
       <thead>
         <tr className="border-b border-border text-left text-xs text-muted-foreground">
           <th className="py-2 font-normal">{DIMENSION_HEADING[dimension]}</th>
-          <th className="py-2 text-right font-normal">{metric === "cost" ? "Cost" : "Tokens"}</th>
+          <th className="py-2 text-right font-normal">
+            {metric === "cost" ? "Priced cost" : "Tokens"}
+          </th>
           <th className="py-2 text-right font-normal">Share</th>
         </tr>
       </thead>

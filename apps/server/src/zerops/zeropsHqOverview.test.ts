@@ -582,8 +582,10 @@ it("HQ learns which provider paused the Mate, with the provider's reset", () => 
       },
     }),
   ]);
-  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached.");
-  expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-08T16:00:00Z" });
+  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791475200");
+  expect(overview.main?.usagePause).toEqual({
+    resetsAt: "2026-10-08T16:00:00Z",
+  });
 });
 
 it("HQ keeps a provider deadline after the scheduling pause clears", () => {
@@ -601,5 +603,50 @@ it("HQ keeps a provider deadline after the scheduling pause clears", () => {
       usagePause: null,
     }),
   ]);
-  expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-07T02:00:00Z" });
+  expect(overview.main?.usagePause).toBeNull();
+  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791338400");
+});
+
+it("a generic weekly refusal retains Claude's identity through HQ compaction", () => {
+  const overview = overviewOf([
+    shell("main", {
+      session: {
+        ...RUNNING.session,
+        providerName: "claudeAgent",
+        lastError: "You've hit your weekly limit · resets 2am (UTC)",
+        usageLimitResetAt: "2026-10-10T02:00:00Z",
+      },
+    }),
+  ]);
+  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791597600");
+  expect(overview.main?.usagePause).toBeNull();
+});
+
+it("a newer admitted turn publishes no inherited refusal to existing HQ readers", () => {
+  const overview = overviewOf([
+    shell("main", {
+      latestTurn: {
+        ...RUNNING.latestTurn!,
+        turnId: "admitted",
+        startedAt: "2026-10-08T11:00:00Z",
+        state: "running",
+      },
+      session: {
+        ...RUNNING.session!,
+        providerName: "claudeAgent",
+        lastError: "You've hit your weekly limit",
+        updatedAt: "2026-10-08T10:00:00Z",
+      },
+      usagePause: {
+        resetsAt: "2026-10-10T02:00:00Z",
+        pausedAt: "2026-10-08T10:00:00Z",
+        window: "7-day",
+        held: 0,
+        autoResume: false,
+      },
+    }),
+  ]);
+  expect(overview.main?.session?.lastError).toBeNull();
+  expect(overview.main?.usagePause).toBeNull();
+  expect(overview.threads.list.find((thread) => thread.id === "main")?.kind).toBe("working");
 });

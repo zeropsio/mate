@@ -110,7 +110,9 @@ describe("RouteGateView", () => {
           </RouteGateView>,
         ),
       );
-      expect(readableText(container)).toBe(`${recoveryPhrase?.text}Go to projects`);
+      expect(readableText(container)).toContain(recoveryPhrase?.headline);
+      expect(readableText(container)).toContain(recoveryPhrase?.secondary);
+      expect(readableText(container)).toContain("Go to projects");
       expect(readableText(container)).not.toContain("Open in Zerops");
       expect(readableText(container)).not.toContain("refused this project's services");
     },

@@ -16,6 +16,7 @@
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
@@ -28,6 +29,7 @@ import {
   EngineWireError,
   MATE_ENGINE_PROTOCOLS,
   type ChatAttachment,
+  type ChatFileAttachment,
   type ChatImageAttachment,
   type CommandId,
   type ConversationId,
@@ -46,6 +48,8 @@ import {
   type EngineSendInput,
   type EngineSteerInput,
   type EngineSwitchModelInput,
+  type EngineSetRuntimeModeInput,
+  type EngineAssignAgentInput,
   type EngineStopInput,
   type EngineSubscribeInput,
   type EngineSubscribeRowsInput,
@@ -56,6 +60,7 @@ import {
   type Principal,
 } from "@t3tools/contracts";
 
+import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { Conversations } from "../Conversations.ts";
 import type { Command } from "../domain/command.ts";
 import type { ConversationState } from "../domain/state.ts";
@@ -117,6 +122,14 @@ export interface EngineWireShape {
     input: EngineSwitchModelInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly setRuntimeMode: (
+    input: EngineSetRuntimeModeInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly assignAgent: (
+    input: EngineAssignAgentInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
 }
 
 // ── unserved ────────────────────────────────────────────────────────────────────────────────
@@ -164,6 +177,8 @@ export const unservedWire: EngineWireShape = {
   dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   switchModel: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  setRuntimeMode: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  assignAgent: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
 
 // ── served ──────────────────────────────────────────────────────────────────────────────────
@@ -211,6 +226,8 @@ const headerOf = (state: ConversationState): ConversationHeader => ({
         },
   pausedUntil: state.pausedUntil,
   queued: state.queue.length,
+  ...(state.runtimeMode === null ? {} : { runtimeMode: state.runtimeMode }),
+  ...(state.interactionMode === null ? {} : { interactionMode: state.interactionMode }),
 });
 
 type Inbox =
@@ -236,6 +253,21 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const resumeRecords = options.resumeRecords ?? ENGINE_WIRE_BUDGETS.resumeRecords;
     const snapshotBytes = options.snapshotBytes ?? ENGINE_WIRE_BUDGETS.snapshotBytes;
     const changesBytes = options.changesBytes ?? ENGINE_WIRE_BUDGETS.changesBytes;
+    const providers = yield* Effect.serviceOption(ProviderService);
+
+    /** An instance's driver and the key its sessions resume by; null when this Mate has none. */
+    const instanceOf = (instanceId: string) =>
+      Option.match(providers, {
+        onNone: () => Effect.succeed(null),
+        onSome: (provider) =>
+          provider.getInstanceInfo(instanceId as never).pipe(
+            Effect.map((info) => ({
+              driver: String(info.driverKind),
+              continuationKey: info.continuationIdentity.continuationKey,
+            })),
+            Effect.orElseSucceed(() => null),
+          ),
+      });
 
     const header = (conversation: ConversationId) =>
       Effect.map(conversations.state(conversation), headerOf);
@@ -702,6 +734,8 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           Effect.gen(function* () {
             const page = yield* records.runPage(input.conversationId, input.runId, {
               ...(input.beforeSeq === undefined ? {} : { beforeSeq: input.beforeSeq }),
+              ...(input.afterSeq === undefined ? {} : { afterSeq: input.afterSeq }),
+              ...(input.only === undefined ? {} : { only: input.only }),
               limit,
             });
             return {
@@ -832,7 +866,12 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               text: input.text,
               ...(input.attachments === undefined
                 ? {}
-                : { attachments: claimed as ReadonlyArray<ChatImageAttachment> }),
+                : {
+                    attachments: claimed as ReadonlyArray<ChatImageAttachment | ChatFileAttachment>,
+                  }),
+              ...(input.interactionMode === undefined
+                ? {}
+                : { interactionMode: input.interactionMode }),
             }),
           ),
         ),
@@ -905,6 +944,48 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "SwitchModel",
           model: input.model,
+          ...(input.options === undefined ? {} : { options: input.options }),
         }),
+      setRuntimeMode: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "SetRuntimeMode",
+          runtimeMode: input.runtimeMode,
+        }),
+      // The instance names its driver, and whether its sessions resume the current agent's.
+      assignAgent: (input, caller) =>
+        Effect.gen(function* () {
+          const refused = protocolRefusal(input.protocol);
+          if (refused !== undefined) {
+            return { _tag: "Unserved", unserved: refused } satisfies EngineCallResult;
+          }
+          const next = yield* instanceOf(input.instanceId);
+          if (next === null) {
+            return {
+              _tag: "Rejected",
+              rejection: {
+                reason: "unknown",
+                detail: `This Mate has no agent '${input.instanceId}' set up.`,
+              },
+            } satisfies EngineCallResult;
+          }
+          const current = yield* conversations
+            .state(input.conversationId)
+            .pipe(Effect.map((state) => state.agent));
+          const was =
+            current === null || current.instanceId === input.instanceId
+              ? null
+              : yield* instanceOf(current.instanceId);
+          return yield* command(input.protocol, input.conversationId, input.commandId, caller, {
+            _tag: "ChooseAgent",
+            instanceId: input.instanceId,
+            driver: next.driver,
+            model: input.model,
+            ...(input.options === undefined ? {} : { options: input.options }),
+            resumes:
+              was !== null &&
+              was.driver === next.driver &&
+              was.continuationKey === next.continuationKey,
+          });
+        }).pipe(Effect.catch(wireError(UNTAKEN))),
     } satisfies EngineWireShape;
   });

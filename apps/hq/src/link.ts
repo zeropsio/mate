@@ -166,7 +166,7 @@ export const serveMateLink = (
                 yield* writer.write(
                   encodeDown({
                     type: "usage-error",
-                    ledgerId: "unknown",
+                    batchId: "unknown",
                     code: "usage_frame_invalid",
                     disposition: "refused",
                   }),
@@ -184,7 +184,7 @@ export const serveMateLink = (
                     writer.write(
                       encodeDown({
                         type: "usage-error",
-                        ledgerId: message.ledgerId,
+                        batchId: message.batchId,
                         code:
                           error._tag === "UsageRefused" ? error.code : "usage_ingest_unavailable",
                         disposition:

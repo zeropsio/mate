@@ -23,12 +23,14 @@ import {
   requestId as deriveRequestId,
   runId as deriveRunId,
   wakeId as deriveWakeId,
-  type ChatImageAttachment,
   type CommandResult,
   type EffectId,
   type EffectOutcome,
   type ItemBody,
+  type PersonAttachment,
   type Principal,
+  type ProviderInteractionMode,
+  type ProviderOptionSelection,
   type ProviderUserInputAnswers,
   type RejectionReason,
   type RequestId,
@@ -36,6 +38,7 @@ import {
   type RunEndSource,
   type RunId,
   type RunTrigger,
+  type RuntimeMode,
   type SessionCapabilities,
   type SessionCloseReason,
   type SessionId,
@@ -45,6 +48,7 @@ import {
   WORK_ENDED,
 } from "@t3tools/contracts";
 
+import { changedOptionIds } from "../../orchestration/modelSelectionChange.ts";
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type {
@@ -69,6 +73,7 @@ import {
   type ConversationState,
   type OpenRequest,
   type RunRecord,
+  type SessionRecord,
 } from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
@@ -76,13 +81,17 @@ export const WATCHDOG_SILENCE_MS = 10 * 60_000;
 /** The first probe of a usage limit whose reset is unknown, and the longest a probe waits. */
 export const USAGE_PROBE_FIRST_MS = 15 * 60_000;
 export const USAGE_PROBE_MAX_MS = 60 * 60_000;
-/** A usage resume waits this long past the reset the driver gave: the window reopens late. */
-export const USAGE_RESUME_GRACE_MS = 30_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
 /** A message a restart cut mid-send goes again in its own words, marked so the agent knows. */
 export const resentText = (text: string): string =>
   `(Sent again after a server restart; it may have reached you already.)\n\n${text}`;
+/**
+ * Why a setting a run needs a new session for waits (V1's words, for every driver): the session it
+ * would replace still runs the agent's background work.
+ */
+export const BACKGROUND_WORK_WORDS =
+  "The agent is still running background work, and this change needs a new session that would end it. Wait for it to finish or stop it, or keep the current settings, then send the message again.";
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 
@@ -111,6 +120,10 @@ export interface SessionOpenedValue {
   readonly requestedModel?: string | null;
   /** The instance the open asked for. */
   readonly instanceId?: string | null;
+  /** The model options the open asked for. */
+  readonly options?: ReadonlyArray<ProviderOptionSelection> | null;
+  /** The runtime mode the session opened with. */
+  readonly runtimeMode?: RuntimeMode;
 }
 
 const ENGINE: Principal = { kind: "engine" };
@@ -210,11 +223,11 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "Steer":
       return steer(b, command);
     case "SwitchModel":
-      if (b.state.archived) throw new Rejected("archived");
-      if (b.state.model !== command.model) {
-        b.emit({ _tag: "ModelSwitched", model: command.model, by: b.envelope.principal });
-      }
-      return;
+      return switchModel(b, command.model, command.options);
+    case "SetRuntimeMode":
+      return setRuntimeMode(b, command.runtimeMode);
+    case "ChooseAgent":
+      return chooseAgent(b, command);
     case "AssignAgent":
       if (b.state.archived) throw new Rejected("archived");
       if (JSON.stringify(b.state.agent) !== JSON.stringify(command.agent)) {
@@ -260,6 +273,7 @@ const queueRun = (
     readonly principal: Principal;
     readonly maintenance: boolean;
     readonly text: string;
+    readonly interactionMode?: ProviderInteractionMode;
   },
 ): RunId => {
   const ordinal = b.state.nextRunOrdinal;
@@ -273,6 +287,9 @@ const queueRun = (
     principal: input.principal,
     maintenance: input.maintenance,
     text: input.text,
+    ...(input.interactionMode === undefined || input.interactionMode === "default"
+      ? {}
+      : { interactionMode: input.interactionMode }),
   });
   b.result = { ...b.result, runId: id };
   return id;
@@ -356,10 +373,75 @@ const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
 };
 
 /**
- * Sends an admitted run on a fitting session, or asks for one. A session fits by what the engine
- * asked for when it opened it — the model, the instance and the driver — never by the driver's own
- * spelling of the model; a session just opened for this run fits. One that does not fit is closed first (a model switch rotates it).
- * A run whose workspace capture has not settled, or a session closing, waits.
+ * What a live session lacks to run the conversation's next run, or null when it fits. It fits by
+ * what the engine asked for when it opened it — the model, the instance and the driver, never the
+ * driver's own spelling of the model — and by the conversation's settings: its runtime mode, and
+ * every model option it does not take per turn (a session opened before the engine said fits any).
+ */
+const misfit = (state: ConversationState, session: SessionRecord): "model" | "settings" | null => {
+  const agent = state.agent;
+  if (session.requestedModel !== state.model) return "model";
+  if (
+    agent !== null &&
+    session.instanceId !== null &&
+    (session.instanceId !== agent.instanceId || session.driver !== agent.driver)
+  ) {
+    return "model";
+  }
+  if (
+    state.runtimeMode !== null &&
+    session.runtimeMode !== null &&
+    session.runtimeMode !== state.runtimeMode
+  ) {
+    return "settings";
+  }
+  if (session.options === null) return null;
+  const changed = changedOptionIds(session.options, agent?.options);
+  const inSession = session.capabilities.inSessionOptions ?? [];
+  return inSession === "all" || changed.every((id) => inSession.includes(id)) ? null : "settings";
+};
+
+/**
+ * A session is gone, and with it the background work it ran: nothing can report that work's end
+ * any more (a session's own close says so through the bridge, but a restart or a close recorded
+ * first never hears it), so the work ends as lost and its card stops showing it running.
+ */
+const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionCloseReason): void => {
+  b.emit({ _tag: "SessionClosed", sessionId, reason });
+  for (const item of Object.values(b.state.items)) {
+    if (item.body.kind !== "work" || WORK_ENDED.has(item.body.status)) continue;
+    b.emit({
+      _tag: "ItemClosed",
+      runId: item.runId,
+      itemId: item.id,
+      body: { ...item.body, status: "lost" },
+    });
+  }
+};
+
+/** The agent's background work lives in the session: a new session would end it. */
+const workLives = (state: ConversationState): boolean =>
+  Object.values(state.items).some(
+    (item) => item.body.kind === "work" && !WORK_ENDED.has(item.body.status),
+  );
+
+/** The model selection a send carries, so a session applies the options it takes per turn. */
+const selectionOf = (state: ConversationState) =>
+  state.agent === null || state.model === null
+    ? null
+    : {
+        instanceId: state.agent.instanceId,
+        model: state.model,
+        ...(state.agent.options === undefined ? {} : { options: state.agent.options }),
+      };
+
+/**
+ * Sends an admitted run on a fitting session, or asks for one; a session just opened for this run
+ * fits. One that does not fit is closed first and the next one resumes it (a model switch or a
+ * setting rotates it) — between runs, never under a running turn. A run that needs a new session
+ * for a setting while the agent's background work lives in this one waits — never ending that
+ * work — until the work ends or the setting changes back (a message sent meanwhile is refused in
+ * V1's words). A run whose workspace capture has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (needsPrepare(run) && run.prepare !== "done") return;
@@ -369,24 +451,21 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   );
   if (opening) return;
   const session = b.state.session;
-  const agent = b.state.agent;
-  // A session fits by what the engine asked for when it opened it: the model, and the agent's
-  // instance and driver (a session opened before the engine named its instance fits any).
-  const fits =
-    justOpened ||
-    (session !== null &&
-      session.requestedModel === b.state.model &&
-      (agent === null ||
-        session.instanceId === null ||
-        (session.instanceId === agent.instanceId && session.driver === agent.driver)));
-  if (session !== null && !fits) return closeSession(b, "model");
+  const lacks = session === null || justOpened ? null : misfit(b.state, session);
+  if (lacks === "settings" && workLives(b.state)) return;
+  if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
+    const selection = selectionOf(b.state);
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
       turn: run.id,
       text: run.text,
-      attachments: run.personBody?.attachments ?? [],
+      attachments: (run.personBody?.attachments ?? []).filter(
+        (attachment) => attachment.type === "image" || attachment.type === "file",
+      ),
+      ...(selection === null ? {} : { modelSelection: selection }),
+      ...(run.interactionMode === "default" ? {} : { interactionMode: run.interactionMode }),
     });
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
     return;
@@ -397,9 +476,106 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     driver: b.state.agent?.driver ?? null,
     model: b.state.model,
     options: b.state.agent?.options ?? null,
+    ...(b.state.runtimeMode === null ? {} : { runtimeMode: b.state.runtimeMode }),
     resume: b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
     generation: b.state.threadGeneration,
+  });
+};
+
+// ── settings ────────────────────────────────────────────────────────────────────────────────
+
+/** The admitted run sends now, if nothing holds it any more. */
+const redispatch = (b: StepBuilder): void => {
+  const run = activeRun(b.state);
+  if (run?.state === "admitted") dispatch(b, run);
+};
+
+/**
+ * A change that only a new session runs with, asked while the agent's background work lives in
+ * the session, is refused: it would end that work (V1 refuses it the same way). So is a message
+ * that would need such a session.
+ */
+const refuseOverWork = (b: StepBuilder): void => {
+  const session = b.state.session;
+  if (session === null || !workLives(b.state)) return;
+  if (misfit(b.state, session) === "settings") {
+    throw new Rejected("background-work", BACKGROUND_WORK_WORDS);
+  }
+};
+
+const sameOptions = (
+  left: ReadonlyArray<ProviderOptionSelection> | undefined,
+  right: ReadonlyArray<ProviderOptionSelection> | undefined,
+) => changedOptionIds(left, right).length === 0;
+
+/** The next model and its options: they apply from the next run on, never under a running turn. */
+const switchModel = (
+  b: StepBuilder,
+  model: string,
+  options: ReadonlyArray<ProviderOptionSelection> | undefined,
+): void => {
+  if (b.state.archived) throw new Rejected("archived");
+  const optionsChange = options !== undefined && !sameOptions(b.state.agent?.options, options);
+  if (b.state.model === model && !optionsChange) return;
+  b.emit({
+    _tag: "ModelSwitched",
+    model,
+    by: b.envelope.principal,
+    ...(optionsChange ? { options: [...options] } : {}),
+  });
+  refuseOverWork(b);
+  redispatch(b);
+};
+
+/** How freely the agent works: from the next run on, in a session that resumes this one. */
+const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void => {
+  if (b.state.archived) throw new Rejected("archived");
+  if (b.state.runtimeMode === runtimeMode) return;
+  b.emit({ _tag: "RuntimeModeSet", runtimeMode, by: b.envelope.principal });
+  refuseOverWork(b);
+  redispatch(b);
+};
+
+/**
+ * A person's pick of another agent. Before the conversation has started, any instance; after,
+ * only an instance of its driver whose sessions resume the current one's — its thread carries
+ * over and the next session resumes it. Another driver is refused in V1's words.
+ */
+const chooseAgent = (b: StepBuilder, command: Extract<Command, { _tag: "ChooseAgent" }>): void => {
+  actsForSomeone(b);
+  if (b.state.archived) throw new Rejected("archived");
+  const current = b.state.agent;
+  if (current !== null && current.instanceId === command.instanceId) {
+    return switchModel(b, command.model, command.options);
+  }
+  const started =
+    b.state.nextRunOrdinal > 1 || b.state.session !== null || b.state.lastNativeRef !== null;
+  if (current !== null && started) {
+    if (current.driver !== command.driver) {
+      throw new Rejected(
+        "agent-locked",
+        `This conversation is bound to driver '${current.driver}' and cannot switch to '${command.driver}'.`,
+      );
+    }
+    if (!command.resumes) {
+      throw new Rejected(
+        "agent-locked",
+        `This conversation cannot switch from instance '${current.instanceId}' to '${command.instanceId}' because their provider resume state is incompatible.`,
+      );
+    }
+  }
+  b.emit({
+    _tag: "AgentAssigned",
+    agent: {
+      instanceId: command.instanceId,
+      driver: command.driver,
+      model: command.model,
+      ...(command.options === undefined ? {} : { options: [...command.options] }),
+      profile: current?.profile ?? { kind: "mate" },
+    },
+    by: b.envelope.principal,
+    ...(current !== null && started ? { keepsThread: true } : {}),
   });
 };
 
@@ -559,6 +735,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
+  refuseOverWork(b);
   const ordinal = b.state.nextRunOrdinal;
   const item = deriveItemId(deriveRunId(b.state.conversationId, ordinal), 1);
   const run = queueRun(b, {
@@ -567,6 +744,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     principal: b.envelope.principal,
     maintenance: command.maintenance === true,
     text: command.text,
+    ...(command.interactionMode === undefined ? {} : { interactionMode: command.interactionMode }),
   });
   b.emit({
     _tag: "ItemOpened",
@@ -672,20 +850,41 @@ const answerByMessage = (
     const named = files.map((file) => `Attached file: ${file.name} (${file.id})`).join("\n");
     return [`${question.question}\n${said.trim()}`, named].filter(Boolean).join("\n");
   });
-  const pictures = Object.values(byQuestion)
-    .flat()
-    .filter((file): file is ChatImageAttachment => file.type === "image");
-  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
-  send(b, { _tag: "Send", text: replies.join("\n\n"), attachments: pictures });
-  b.emit({
+  // The message carries every attachment as V1's does: pictures and files, each also named.
+  const attachments = Object.values(byQuestion).flat();
+  const text = replies.join("\n\n");
+  // The person's message shows the answer, so the question's record keeps its summary alone.
+  const answered = {
     _tag: "RequestAnswered",
     runId: request.runId,
     requestId: request.id,
     by: b.envelope.principal,
     summary: command.summary,
-    bySend: carrier,
-    ...given,
+  } as const;
+  const asking = b.state.runs[request.runId];
+  const session = b.state.session;
+  if (
+    asking !== undefined &&
+    (asking.state === "running" || asking.state === "waiting") &&
+    session !== null &&
+    session.id === asking.sessionId
+  ) {
+    // The agent waits inside the turn that asked (Codex sleeps until the input comes): the
+    // answer goes into that turn, as V1's turn start does, measured on Codex 0.161.0.
+    const effect = steerInto(b, asking, session.id, text, attachments);
+    b.emit({ ...answered, effectId: effect });
+    b.result = { ...b.result, requestId: request.id, runId: asking.id };
+    return;
+  }
+  // Its turn is over: the answer is the next message, a run of its own.
+  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
+  send(b, {
+    _tag: "Send",
+    text,
+    attachments,
+    ...(b.state.interactionMode === null ? {} : { interactionMode: b.state.interactionMode }),
   });
+  b.emit({ ...answered, bySend: carrier });
   b.result = { ...b.result, requestId: request.id, runId: carrier };
 };
 
@@ -762,6 +961,17 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   if (session === null || session.id !== run.sessionId || !session.capabilities.steer) {
     throw new Rejected("steer-unsupported");
   }
+  steerInto(b, run, session.id, command.text, []);
+};
+
+/** The person's message into the run's turn: its item, steered, and the effect that sends it. */
+const steerInto = (
+  b: StepBuilder,
+  run: RunRecord,
+  sessionId: SessionId,
+  text: string,
+  attachments: ReadonlyArray<PersonAttachment>,
+): EffectId => {
   const item = deriveItemId(run.id, run.nextItemOrdinal);
   b.emit({
     _tag: "ItemOpened",
@@ -771,21 +981,23 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
     by: { kind: "person", principal: b.envelope.principal },
     body: {
       kind: "person",
-      text: command.text,
-      attachments: [],
+      text,
+      attachments: [...attachments],
       sendId: b.envelope.commandId,
       delivery: { state: "steered", at: b.now },
     },
   });
-  b.effect("provider.steer", item, 1, run.id, {
+  const effect = b.effect("provider.steer", item, 1, run.id, {
     runId: run.id,
-    sessionId: session.id,
+    sessionId,
     itemId: item,
-    text: command.text,
+    text,
+    ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
     instanceId: b.state.agent?.instanceId ?? null,
     principal: b.envelope.principal,
   });
   b.result = { ...b.result, runId: run.id, itemId: item };
+  return effect;
 };
 
 // ── wakes ───────────────────────────────────────────────────────────────────────────────────
@@ -906,12 +1118,15 @@ const startFromWake = (
     readonly text: string | null;
   },
 ): void => {
+  // A run that continues another (a restart's continuation, a usage resume) works as it did.
+  const joined = wake.joins === null ? undefined : b.state.runs[wake.joins];
   queueRun(b, {
     trigger: () => ({ kind: "wake", cause, wakeId: id }),
     joins: wake.joins,
     principal: wake.principal,
     maintenance: false,
     text: wake.text ?? "",
+    ...(joined === undefined ? {} : { interactionMode: joined.interactionMode }),
   });
   admitNext(b);
 };
@@ -948,6 +1163,18 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   // A call that timed out says nothing of what the agent did: only evidence ends a run.
   const timedOut = outcome.kind === "timed-out";
   if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
+  if (effect.kind === "provider.steer" && answered !== undefined) {
+    // The answer steered into the turn that waits on it: taken is its evidence. One the agent
+    // never said it took, refused or unanswered in time, is the person's to give again.
+    if (failure === null) {
+      b.emit({
+        _tag: "RequestClosed",
+        runId: answered.runId,
+        requestId: answered.id,
+        state: "answered",
+      });
+    } else reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`);
+  }
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
   if (run === undefined || run.state === "ended") {
     if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
@@ -1074,7 +1301,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
 const sendsAgain = (b: StepBuilder, run: RunRecord, reason: string): boolean => {
   if (run.sendAttempts >= 2 || run.stopAsked !== null || run.state !== "sending") return false;
   if (b.state.session !== null && b.state.session.id === run.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "exited" });
+    sessionClosed(b, b.state.session.id, "exited");
   }
   b.emit({ _tag: "RunRequeued", runId: run.id, reason: `undelivered: ${reason}` });
   admitNext(b);
@@ -1137,7 +1364,7 @@ const sessionCloseSettled = (
     );
   }
   if (b.state.session?.id === closing.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: closing.sessionId, reason: closing.reason });
+    sessionClosed(b, closing.sessionId, closing.reason);
   }
   const admitted = activeRun(b.state);
   if (admitted?.state === "admitted") return dispatch(b, admitted);
@@ -1161,7 +1388,7 @@ const openSession = (b: StepBuilder, value: unknown): void => {
   if (opened === undefined || typeof opened.sessionId !== "string") return;
   const previous = b.state.session;
   if (previous !== null && previous.id !== opened.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: previous.id, reason: "model" });
+    sessionClosed(b, previous.id, "model");
   }
   b.emit({
     _tag: "SessionOpened",
@@ -1170,6 +1397,8 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     // What the open asked for, never what the conversation says now: a switch meanwhile rotates.
     requestedModel: opened.requestedModel !== undefined ? opened.requestedModel : b.state.model,
     ...(opened.instanceId === undefined ? {} : { instanceId: opened.instanceId }),
+    ...(opened.options == null ? {} : { options: [...opened.options] }),
+    ...(opened.runtimeMode === undefined ? {} : { runtimeMode: opened.runtimeMode }),
     model: opened.model,
     nativeRef: opened.nativeRef,
     capabilities: opened.capabilities,
@@ -1315,6 +1544,19 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         answerable: (live || byMessage) && (signal.answerable ?? true),
         principal: run.principal,
       });
+      // The agent's message that asked it: the request takes its place in the record.
+      const asker =
+        signal.item === undefined
+          ? undefined
+          : Object.values(b.state.items).find((item) => item.key === signal.item);
+      if (asker !== undefined) {
+        b.emit({
+          _tag: "ItemClosed",
+          runId: asker.runId,
+          itemId: asker.id,
+          body: { kind: "request", requestId: id },
+        });
+      }
       if (byMessage) return;
       if (!live) {
         // Its turn already ended: nothing can take the answer.
@@ -1362,8 +1604,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (closed !== undefined) return updateClosed(b, closed, body);
       const open = Object.values(b.state.items).find((item) => item.key === signal.work);
       if (open !== undefined) {
-        if (ends) b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
-        else if (contentDigest(open.body) !== contentDigest(body)) {
+        if (ends) {
+          b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
+          // A run held for a setting the live work stood against goes now.
+          return redispatch(b);
+        } else if (contentDigest(open.body) !== contentDigest(body)) {
           b.emit({ _tag: "ItemUpdated", runId: open.runId, itemId: open.id, body });
         }
         return;
@@ -1398,7 +1643,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         _tag: "WakeArmed",
         wakeId: deriveWakeId(b.state.conversationId, "usage-resume", probe.joins ?? "limit"),
         kind: "usage-resume",
-        dueAt: signal.resetsAt + USAGE_RESUME_GRACE_MS,
+        dueAt: signal.resetsAt,
         cron: null,
         principal: probe.principal,
         joins: probe.joins,
@@ -1430,7 +1675,10 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash");
         }
       }
-      b.emit({ _tag: "SessionClosed", sessionId, reason: "exited" });
+      sessionClosed(b, sessionId, "exited");
+      // A run held for a setting the lost work stood against goes on a new session now.
+      const admitted = activeRun(b.state);
+      if (admitted?.state === "admitted") return dispatch(b, admitted);
       admitNext(b);
       return;
     }
@@ -1475,8 +1723,8 @@ const resetTime = (resetsAt: string): number | null => {
 };
 
 /**
- * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it, 30
- * seconds after the reset (V1's grace: the window reopens late); an
+ * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it at the
+ * provider's reported reset; an
  * unknown one arms a probe that tries to resume it, waiting 15 minutes, then twice as long after
  * each probe the limit refuses, up to an hour. Only the probe's outcome ends anything; the
  * person can write sooner.
@@ -1503,7 +1751,7 @@ const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void 
     _tag: "WakeArmed",
     wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
     kind: "usage-resume",
-    dueAt: resetsAt + USAGE_RESUME_GRACE_MS,
+    dueAt: resetsAt,
     cron: null,
     principal: run.principal,
     joins: run.id,
@@ -1574,7 +1822,15 @@ const recovered = (
     });
     return effect;
   };
-  for (const id of cutEffects) record(id, "the server restarted");
+  for (const id of cutEffects) {
+    // An answer steered into a turn the restart cut may not have arrived, and nothing sends it
+    // again: the person answers again.
+    const carried =
+      b.state.effects[id]?.kind === "provider.steer" ? b.state.answering[id] : undefined;
+    record(id, "the server restarted");
+    if (carried !== undefined)
+      reopenCarried(b, carried, "The server restarted before the agent took the answer.");
+  }
   const neverSent = new Set<string>();
   for (const id of unstartedEffects) {
     const effect = record(id, "the server restarted before it was tried");
@@ -1616,7 +1872,7 @@ const recovered = (
     }
   }
   if (b.state.session !== null) {
-    b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "restart" });
+    sessionClosed(b, b.state.session.id, "restart");
   }
   const admitted = activeRun(b.state);
   if (admitted?.state === "admitted") {

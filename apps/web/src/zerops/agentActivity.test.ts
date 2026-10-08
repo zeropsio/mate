@@ -720,7 +720,7 @@ describe("what a Mate's row says without words", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-05T10:05:00Z"));
     const paused = shell({
-      latestTurn: COMPLETED,
+      latestTurn: { ...COMPLETED, state: "error" },
       usagePause: {
         resetsAt: "2026-09-05T14:20:00.000Z",
         window: "5-hour",
@@ -1023,6 +1023,7 @@ describe("a provider refusal in the menu", () => {
         runtimeMode: "full-access",
         activeTurnId: null,
         lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        usageLimitResetAt: "2026-10-07T02:00:00.000Z",
         updatedAt: "2026-10-06T22:24:44.519Z",
       },
       usagePause: null,
@@ -1052,7 +1053,13 @@ describe("a provider refusal in the menu", () => {
     const parked = {
       ...thread,
       latestMessagePreview: null,
-      session: { ...thread.session!, usageLimitResetAt: "2026-10-07T02:00:00Z" },
+      latestTurn: { ...thread.latestTurn!, state: "running" as const, completedAt: null },
+      session: {
+        ...thread.session!,
+        status: "running" as const,
+        activeTurnId: thread.latestTurn!.turnId,
+        usageLimitResetAt: "2026-10-07T02:00:00Z",
+      },
     };
     expect(
       threadAgentActivity(parked, undefined, Date.parse("2026-10-07T01:59:59Z")).usageLimited,
@@ -1060,6 +1067,8 @@ describe("a provider refusal in the menu", () => {
     const expired = threadAgentActivity(parked, undefined, Date.parse("2026-10-08T10:00:00Z"));
     expect(expired.usageLimited).toBe(false);
     expect(expired.errorLine).toBeUndefined();
+    expect(expired.kind).toBe("idle");
+    expect(expired.face).not.toBe("working");
   });
   it("a new turn keeps the past refusal out of the menu", () => {
     const thread = refused();
@@ -1159,29 +1168,44 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
     ],
     ["in a state a later engine adds", { state: { kind: "dreaming" } }, { kind: "idle" }],
   ])("reads a row %s as the menu's kind and face", (_case, patch, expected) => {
-    expect(rowAgentActivity(row(patch), ENV, undefined)).toMatchObject(expected);
+    expect(rowAgentActivity(row(patch), ENV, undefined, STARTED)).toMatchObject(expected);
+  });
+
+  it("reads a row's pause whose reset has passed as at rest, not asleep", () => {
+    const paused = row({ state: { kind: "paused", resetsAt: RESETS } });
+    expect(rowAgentActivity(paused, ENV, undefined, RESETS + 1)).toMatchObject({
+      kind: "idle",
+      face: "idle",
+      usageLimited: false,
+      limit: { kind: "expired" },
+    });
   });
 
   it("reads a result as unseen when its run ended after the person's last visit", () => {
-    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:01:00.000Z")).toMatchObject({
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:01:00.000Z", STARTED)).toMatchObject({
       kind: "done",
       face: "done",
       unread: true,
     });
-    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:06:00.000Z")).toMatchObject({
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:06:00.000Z", STARTED)).toMatchObject({
       kind: "idle",
       unread: false,
     });
   });
 
   it("takes its task and last words from the row, never a command to the harness", () => {
-    const read = rowAgentActivity(row(), ENV, undefined);
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
     expect([read.subject, read.task, read.snippet]).toEqual([
       "Add a login page",
       "Add a login page",
       "The login page is up at /login.",
     ]);
-    const command = rowAgentActivity(row({ subject: "/compact", snippet: null }), ENV, undefined);
+    const command = rowAgentActivity(
+      row({ subject: "/compact", snippet: null }),
+      ENV,
+      undefined,
+      STARTED,
+    );
     expect([command.subject, command.snippet]).toEqual([undefined, undefined]);
   });
 
@@ -1190,17 +1214,17 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
       state: { kind: "working", since: STARTED, waitsOnHelpers: false },
       at: ENDED + 1,
     });
-    expect(rowAgentActivity(working, ENV, undefined).at).toBe("2026-10-08T09:00:00.000Z");
-    expect(rowAgentActivity(row({ at: ENDED + 60_000 }), ENV, undefined).at).toBe(
+    expect(rowAgentActivity(working, ENV, undefined, STARTED).at).toBe("2026-10-08T09:00:00.000Z");
+    expect(rowAgentActivity(row({ at: ENDED + 60_000 }), ENV, undefined, STARTED).at).toBe(
       "2026-10-08T09:05:00.000Z",
     );
-    expect(rowAgentActivity(row({ latestRun: null }), ENV, undefined).at).toBe(
+    expect(rowAgentActivity(row({ latestRun: null }), ENV, undefined, STARTED).at).toBe(
       "2026-10-08T09:05:00.000Z",
     );
   });
 
   it("names the conversation it reads, under the key its draft is kept by", () => {
-    const read = rowAgentActivity(row(), ENV, undefined);
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
     expect([read.threadId, read.threadKey]).toEqual([
       "t1",
       scopedThreadKey(scopeThreadRef(ENV, ThreadId.make("t1"))),

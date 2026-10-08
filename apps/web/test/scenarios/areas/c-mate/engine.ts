@@ -4,6 +4,7 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { MateEngineFake } from "../../fakes/mateEngine.ts";
 import {
   RESPONSE_RECEIVED,
+  effortOf,
   TARGET_QUESTION,
   type ChatAsk,
   type ChatIntent,
@@ -41,6 +42,14 @@ export class EngineChatWire implements ChatWire {
     this.engine.personTurn(text);
   }
 
+  skewClock(ms: number) {
+    this.engine.clockSkewMs = ms;
+  }
+
+  exchange(question: string, answer: string) {
+    this.engine.note(this.engine.personRun(question), answer, { kind: "completed" });
+  }
+
   approval() {
     const id = this.engine.ask({
       kind: "approval",
@@ -60,6 +69,11 @@ export class EngineChatWire implements ChatWire {
     this.asks.set(id, { ask: "question", named: requestId });
   }
 
+  reply(turnId: string, text: string) {
+    const run = this.journeyRuns.get(turnId);
+    if (run !== undefined) this.engine.note(run, text);
+  }
+
   /** The journey's runs are the engine's own runs, under the engine's ids. */
   run(turnId: string, state: "running" | "completed" | "error" | "interrupted") {
     const run = this.journeyRuns.get(turnId);
@@ -71,8 +85,27 @@ export class EngineChatWire implements ChatWire {
   }
 
   intents() {
+    // The conversation's options as the engine held them when each message was sent.
+    let options: unknown = undefined;
     return this.engine.applied.flatMap(({ op, payload }): ChatIntent[] => {
-      if (op === "send") return [{ kind: "turn", text: String(payload.text) }];
+      if (op === "switch-model" || op === "assign-agent") {
+        if (payload.options !== undefined) options = payload.options;
+        return [];
+      }
+      if (op === "set-runtime-mode")
+        return [{ kind: "access", runtimeMode: String(payload.runtimeMode) }];
+      // A message steered into the running run is a turn as V1's mid-turn send is.
+      if (op === "send" || op === "steer") {
+        const effort = effortOf(options as never);
+        return [
+          {
+            kind: "turn",
+            text: String(payload.text),
+            ...(effort === undefined ? {} : { effort }),
+            ...(payload.interactionMode === "plan" ? { plan: true as const } : {}),
+          },
+        ];
+      }
       if (op !== "answer") return [];
       const asked = this.asks.get(String(payload.requestId));
       const ask = asked?.ask ?? "other";

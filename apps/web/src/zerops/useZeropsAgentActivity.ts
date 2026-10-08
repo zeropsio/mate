@@ -3,11 +3,14 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
-import { useThreadShell } from "../state/entities";
-import { useUiStateStore } from "../uiStateStore";
-import { threadAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
+import type { ZeropsAgentActivity } from "./agentActivity";
 import { createLiveStepPacer, sameLiveStep, type ShownLiveSteps } from "./liveStep";
-import { mateActivityAtom, matesActivityAtom, matesMenuActivityAtom } from "./mateActivityAtoms";
+import {
+  mateActivityAtom,
+  matesActivityAtom,
+  matesMenuActivityAtom,
+  threadActivityAtom,
+} from "./mateActivityAtoms";
 
 /** What each Mate is up to, found by its project or by the environment it runs in. */
 export interface MatesActivity {
@@ -85,12 +88,5 @@ export function usePacedLiveSteps<K>(
 export function useZeropsThreadActivity(
   threadRef: ScopedThreadRef | null,
 ): ZeropsAgentActivity | undefined {
-  const thread = useThreadShell(threadRef);
-  const lastVisitedAt = useUiStateStore((state) =>
-    threadRef === null ? undefined : state.threadLastVisitedAtById[scopedThreadKey(threadRef)],
-  );
-  return useMemo(
-    () => (thread === null ? undefined : threadAgentActivity(thread, lastVisitedAt)),
-    [lastVisitedAt, thread],
-  );
+  return useAtomValue(threadActivityAtom(threadRef === null ? null : scopedThreadKey(threadRef)));
 }

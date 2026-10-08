@@ -106,6 +106,125 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
+    // Catches the conversation jumping to its top once a sent message's run arrives (the engine's did).
+    it.effect("a sent message keeps a long conversation at its end", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        for (const round of [1, 2, 3])
+          chat
+            .fixture()
+            .exchange(
+              `How did deploy ${round} go?`,
+              "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                30,
+              ),
+            );
+        chat.fixture().exchange("And now?", "The existing conversation is still here");
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        // How far the view stands from the end, frame by frame, for about two seconds.
+        const fromEnd = () =>
+          Effect.promise(() =>
+            s.page.evaluate(async () => {
+              const readings: number[] = [];
+              for (let frame = 0; frame < 120; frame += 1) {
+                await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
+                if (scroll !== null)
+                  readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
+              }
+              return readings;
+            }),
+          );
+        const before = yield* fromEnd();
+        expect(Math.max(...before.slice(-10))).toBeLessThanOrEqual(2);
+        yield* chat.when.send("Keep me at the end of this conversation");
+        // Every frame after Send, while its run is sent, starts and works: never far from the end.
+        const after = yield* fromEnd();
+        expect(Math.max(...after)).toBeLessThan(400);
+        expect(after.at(-1)).toBeLessThanOrEqual(2);
+        yield* chat.then.once("Keep me at the end of this conversation");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a row above the sent message changing as the Mate's record replaces the person's (a
+    // day divider the Mate's clock moves) and the list leaving its end for its top.
+    it.effect(
+      "a message the Mate's clock puts on another day keeps a long conversation at its end",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          for (const round of [1, 2, 3])
+            chat
+              .fixture()
+              .exchange(
+                `How did deploy ${round} go?`,
+                "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                  30,
+                ),
+              );
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          chat.fixture().skewClock(-3 * 24 * 60 * 60 * 1000);
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          const fromEnd = () =>
+            Effect.promise(() =>
+              s.page.evaluate(async () => {
+                const readings: number[] = [];
+                for (let frame = 0; frame < 120; frame += 1) {
+                  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                  const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
+                  if (scroll !== null)
+                    readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
+                }
+                return readings;
+              }),
+            );
+          const before = yield* fromEnd();
+          expect(Math.max(...before.slice(-10))).toBeLessThanOrEqual(2);
+          yield* chat.when.send("Keep me at the end, whatever day the Mate says it is");
+          const after = yield* fromEnd();
+          expect(Math.max(...after)).toBeLessThan(400);
+          expect(after.at(-1)).toBeLessThanOrEqual(2);
+          yield* chat.then.once("Keep me at the end, whatever day the Mate says it is");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches "Send now" starting a run of its own behind the running one (the engine's did) instead of steering it.
+    it.effect("Send now puts a waiting message into the running turn", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        chat.fixture().run("story-run", "running");
+        yield* chat.then.control("Stop generation");
+        yield* chat.when.send("Change of plan: keep it under 120 words");
+        yield* chat.when.press("Send now");
+        yield* chat.then.once("Change of plan: keep it under 120 words");
+        expect(chat.fixture().sentTurnCount()).toBe(1);
+        chat.fixture().reply("story-run", "A short story about a lighthouse cat");
+        chat.fixture().run("story-run", "completed");
+        yield* chat.then.text("A short story about a lighthouse cat");
+        // The message went into that turn: when it ends, nothing else works.
+        yield* chat.then.control("Stop generation", "button", false);
+        const text = yield* Effect.promise(() =>
+          s.page.evaluate(() => document.querySelector("main")?.innerText ?? ""),
+        );
+        // Where V1 draws a message sent into its running turn: after the answer it settled with.
+        expect(text.indexOf("Change of plan: keep it under 120 words")).toBeGreaterThan(
+          text.indexOf("A short story about a lighthouse cat"),
+        );
+        yield* chat.then.once("Change of plan: keep it under 120 words");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches an agent's approval never appearing or Approve failing to release the pending command.
     it.effect("approve an agent command and see it resolve", () =>
       Effect.gen(function* () {
@@ -192,6 +311,77 @@ describe("C: opening a Mate and chat", () => {
             yield* chat.then.control("Open question-preview.png");
           }),
         );
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a picked effort not reaching the agent with the next message, or not staying picked.
+    it.effect(
+      "the effort a person picks goes with their next message and stays picked after reload",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          chat.fixture().effortCatalog();
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.when.press("GPT-5.4 · Extra High");
+          yield* chat.when.press("High", "radio");
+          yield* chat.when.key("Escape");
+          yield* chat.when.send("Inspect it at high effort");
+          yield* chat.then.once("Inspect it at high effort");
+          const sent = yield* Effect.promise(() =>
+            chat.fixture().waitForTurn("Inspect it at high effort"),
+          );
+          expect(sent.effort).toBe("high");
+          yield* chat.when.reload("Ada", "Inspect it at high effort");
+          yield* chat.when.press("GPT-5.4 · High");
+          yield* chat.then.selected("High");
+          yield* chat.when.key("Escape");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches a picked access snapping back, or never reaching the Mate before the next message.
+    it.effect(
+      "the access a person picks reaches the Mate with their next message and stays picked after reload",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.when.press("GPT-5.4");
+          yield* chat.when.press("Supervised", "radio");
+          yield* chat.when.key("Escape");
+          yield* chat.when.send("Ask before you change anything");
+          yield* chat.then.once("Ask before you change anything");
+          yield* Effect.promise(() => chat.fixture().waitForTurn("Ask before you change anything"));
+          expect(chat.fixture().accessModes()).toEqual(["approval-required"]);
+          yield* chat.when.reload("Ada", "Ask before you change anything");
+          yield* chat.then.text("Supervised");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    // Catches plan mode, turned on in settings, not reaching the agent with the message it was picked for.
+    it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.visit("/settings/general");
+        yield* chat.when.press("Legacy features");
+        yield* chat.when.press("Plan mode (legacy)", "switch");
+        yield* chat.when.visit("/env-Ada/thread-Ada");
+        yield* chat.then.ready("Ada");
+        yield* chat.when.press("Default mode — click to enter plan mode");
+        yield* chat.then.control("Plan mode — click to return to normal build mode");
+        yield* chat.when.send("Plan the worker's migration");
+        yield* chat.then.once("Plan the worker's migration");
+        const sent = yield* Effect.promise(() =>
+          chat.fixture().waitForTurn("Plan the worker's migration"),
+        );
+        expect(sent.plan).toBe(true);
+        expect(chat.fixture().sentTurnCount()).toBe(1);
         yield* s.then.noExternalNetwork;
       }),
     );

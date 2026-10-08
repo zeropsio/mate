@@ -2976,14 +2976,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/usage/UsagePage.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"size-3 text-emerald-600 dark:text-emerald-300/90\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in UsagePage awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/usage/usageProviders.ts",
     "kind": "Literal",
     "fingerprint": "\"#d97757\"",

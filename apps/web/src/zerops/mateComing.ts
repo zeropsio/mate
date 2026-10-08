@@ -79,6 +79,7 @@ export type MateComing =
       /** Why it did not come, as its row says it. */
       readonly line: string;
       readonly verb: MateComingVerb;
+      readonly details?: string | undefined;
     };
 
 export interface MateComingInput {
@@ -215,7 +216,8 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   if (candidate?.creationFailed !== undefined) {
     return {
       kind: "failed",
-      line: creationFailedLine(candidate.creationFailed.message),
+      line: NOT_SET_UP_LINE,
+      details: candidate.creationFailed.message,
       verb: "remove",
     };
   }
@@ -223,7 +225,8 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     const why = asSentence(input.setUpFailed);
     return {
       kind: "failed",
-      line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
+      line: NOT_SET_UP_LINE,
+      details: why,
       verb: press?.retryable === true ? "try-again" : "remove",
     };
   }
@@ -234,7 +237,8 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     const why = asSentence(input.firstBuild.why);
     return {
       kind: "failed",
-      line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
+      line: NOT_SET_UP_LINE,
+      details: why,
       verb: "remove",
     };
   }

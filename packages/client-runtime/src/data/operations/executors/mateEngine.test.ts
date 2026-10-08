@@ -13,11 +13,29 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentRpcUnavailableError } from "../../../rpc/client.ts";
-import { engineFactId, engineRowsScope } from "../../families/mateEngine.ts";
+import {
+  engineConversationId,
+  engineConversationScopes,
+  engineFactId,
+  engineRowsScope,
+} from "../../families/mateEngine.ts";
 import type { Row } from "../../reducer.ts";
 import { makeAccountStore, readsOfState } from "../../store.ts";
-import { engineRequest, engineRow, engineRun, personItem } from "../../__fixtures__/mateEngine.ts";
-import { mateEngineAnswer, mateEngineDismiss, mateEngineSend } from "../mateEngine.ts";
+import {
+  engineHeader,
+  engineRequest,
+  engineRow,
+  engineRun,
+  personItem,
+} from "../../__fixtures__/mateEngine.ts";
+import {
+  mateEngineAnswer,
+  mateEngineAssignAgent,
+  mateEngineDismiss,
+  mateEngineSend,
+  mateEngineSetRuntimeMode,
+  mateEngineSwitchModel,
+} from "../mateEngine.ts";
 import {
   makeMateEngineOperations,
   type EngineCallError,
@@ -449,6 +467,88 @@ describe("when an engine operation shows in the conversation", () => {
       },
     ]);
     expect(mateEngineSend.reflected(readsOfState(r.store.state()), intent, receipt)).toBe(true);
+  });
+
+  it.each([
+    {
+      name: "a model and its options",
+      kind: mateEngineSwitchModel,
+      intent: {
+        kind: "mate-engine-switch-model" as const,
+        ...target,
+        model: "claude-opus-4-5",
+        options: [{ id: "effort", value: "max" }],
+      },
+      header: {
+        model: "claude-opus-4-5",
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-opus-4-5",
+          options: [{ id: "effort", value: "max" }],
+          profile: { kind: "mate" as const },
+        },
+      },
+    },
+    {
+      name: "a runtime mode",
+      kind: mateEngineSetRuntimeMode,
+      intent: {
+        kind: "mate-engine-set-runtime-mode" as const,
+        ...target,
+        runtimeMode: "approval-required" as const,
+      },
+      header: { runtimeMode: "approval-required" as const },
+    },
+    {
+      name: "an agent",
+      kind: mateEngineAssignAgent,
+      intent: { kind: "mate-engine-assign-agent" as const, ...target, instanceId: "codex" },
+      header: {
+        agent: {
+          instanceId: "codex",
+          driver: "codex",
+          model: "gpt-5.4",
+          profile: { kind: "mate" as const },
+        },
+      },
+    },
+  ])("$name shows once the conversation's header names it", ({ kind, intent, header }) => {
+    const r = rig({ answers: [] });
+    const key = { environmentId: "env-ada", conversationId: "thread-ada" };
+    const hold = (patch: Parameters<typeof engineHeader>[1], seq: number) =>
+      r.store.dispatch({
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+          scope,
+          generation: 0,
+        })),
+        reset: true,
+        rows: [
+          {
+            family: "mateEngineConversation",
+            id: engineConversationId(key),
+            value: {
+              environmentId: "env-ada",
+              header: engineHeader("thread-ada", patch),
+              window: { oldestOrdinal: null, earlier: false },
+            },
+            revision: { kind: "mate-conversation", environmentId: "env-ada", epoch: 1, seq },
+          },
+        ],
+        removals: [],
+      });
+    const reflected = () =>
+      (kind.reflected as (...args: ReadonlyArray<unknown>) => boolean)(
+        readsOfState(r.store.state()),
+        intent,
+        receipt,
+      );
+    hold({}, 1);
+    expect(reflected()).toBe(false);
+    hold(header, 2);
+    expect(reflected()).toBe(true);
   });
 
   it("an answer shows once its request is no longer open", () => {

@@ -1342,6 +1342,33 @@ describe("thread outbox", () => {
     ).toBe(true);
   });
 
+  it.each([
+    {
+      name: "a setting the engine refuses comes back to the draft with its words",
+      error: new OrchestrationDispatchCommandError({
+        message: "This Mate's engine has no plan mode yet; send the message as it is.",
+      }),
+      action: "restore",
+    },
+    {
+      name: "a setting that could not reach the engine waits to go again",
+      error: new EnvironmentRpcUnavailableError({
+        environmentId: EnvironmentId.make("environment-1"),
+        message: "This account is not ready to talk to the Mate yet.",
+      }),
+      action: "retry",
+    },
+  ])("for an engine Mate, $name", ({ error, action }) => {
+    expect(
+      resolveThreadOutboxFailureAction({
+        stage: "settings-sync",
+        error,
+        interrupted: false,
+        engine: true,
+      }),
+    ).toBe(action);
+  });
+
   it("retains queued messages when settings synchronization fails before startTurn", () => {
     const deterministicFailure = new Error("Thread no longer exists");
 

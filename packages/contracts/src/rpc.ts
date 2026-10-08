@@ -33,6 +33,8 @@ import {
   EngineSendInput,
   EngineSteerInput,
   EngineSwitchModelInput,
+  EngineSetRuntimeModeInput,
+  EngineAssignAgentInput,
   EngineStopInput,
   EngineSubscribeInput,
   EngineSubscribeRowsInput,
@@ -226,7 +228,6 @@ import {
   McpServersListInput,
   McpServerTargetInput,
 } from "./mcpServers.ts";
-import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
   ProjectCloneActionInput,
@@ -352,7 +353,6 @@ export const WS_METHODS = {
   serverReportClientActivity: "server.reportClientActivity",
   serverReportHostPowerState: "server.reportHostPowerState",
   serverGetBackgroundPolicy: "server.getBackgroundPolicy",
-  serverGetUsageSummary: "server.getUsageSummary",
 
   // Cloud environment methods
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
@@ -397,6 +397,8 @@ export const WS_METHODS = {
   engineDismiss: "engine.dismiss",
   engineSteer: "engine.steer",
   engineSwitchModel: "engine.switchModel",
+  engineSetRuntimeMode: "engine.setRuntimeMode",
+  engineAssignAgent: "engine.assignAgent",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -607,12 +609,6 @@ const WsServerRetryResourceTelemetryRpc = Rpc.make(WS_METHODS.serverRetryResourc
   payload: Schema.Struct({}),
   success: ResourceTelemetryRetryResult,
   error: EnvironmentAuthorizationError,
-});
-
-const WsServerGetUsageSummaryRpc = Rpc.make(WS_METHODS.serverGetUsageSummary, {
-  payload: UsageSummaryInput,
-  success: UsageSummary,
-  error: Schema.Union([EnvironmentAuthorizationError, UsageReadError]),
 });
 
 const WsServerSignalProcessRpc = Rpc.make(WS_METHODS.serverSignalProcess, {
@@ -1354,6 +1350,18 @@ const WsEngineSwitchModelRpc = Rpc.make(WS_METHODS.engineSwitchModel, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+const WsEngineSetRuntimeModeRpc = Rpc.make(WS_METHODS.engineSetRuntimeMode, {
+  payload: EngineSetRuntimeModeInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineAssignAgentRpc = Rpc.make(WS_METHODS.engineAssignAgent, {
+  payload: EngineAssignAgentInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1383,7 +1391,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetProcessResourceHistoryRpc,
   WsServerGetResourceTelemetryHistoryRpc,
   WsServerRetryResourceTelemetryRpc,
-  WsServerGetUsageSummaryRpc,
   WsServerSignalProcessRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,
@@ -1479,6 +1486,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineDismissRpc,
   WsEngineSteerRpc,
   WsEngineSwitchModelRpc,
+  WsEngineSetRuntimeModeRpc,
+  WsEngineAssignAgentRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

@@ -1,8 +1,10 @@
+import { mateArrivalNotice } from "./mateNoticeVoice";
+import { MateRestartError } from "./mateRestartRefusal";
 import { act, useLayoutEffect } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { useReviveFailedMate } from "./mateRestart";
+import { useRestartMate, useReviveFailedMate } from "./mateRestart";
 
 const mock = vi.hoisted(() => ({
   submit: vi.fn(),
@@ -111,3 +113,60 @@ describe("useReviveFailedMate", () => {
     expect(mock.toasts).toEqual([]);
   });
 });
+
+let restart: ReturnType<typeof useRestartMate>;
+function RestartProbe() {
+  restart = useRestartMate();
+  return null;
+}
+
+it.each([
+  {
+    progress: { stage: "uncertain", next: "asking-owner" },
+    text: "Zerops did not answer whether it took the restart. Check the Mate before trying again.",
+  },
+  {
+    progress: {
+      stage: "unresolved",
+      operationId: null,
+      nextActor: "person",
+      nextAction: "Start the Mate",
+      reason: "500: Internal Server Error",
+    },
+    text: "The Mate was stopped, but it was not started again here. Start the Mate.",
+  },
+])(
+  "keeps receipt guidance through a rejected restart: $progress.stage",
+  async ({ progress, text }) => {
+    mock.submit.mockResolvedValue({ progress });
+    let rendered: ReturnType<typeof create>;
+    await act(async () => {
+      rendered = create(<RestartProbe />);
+    });
+    const error = await restart({
+      key: "p1:s1",
+      projectId: "p1",
+      serviceId: "s1",
+      status: "SERVICE_FAILED",
+    }).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(MateRestartError);
+    if (!(error instanceof MateRestartError)) throw error;
+    expect(
+      mateArrivalNotice({
+        coming: { kind: "failed", line: "Setup stopped.", verb: "try-again" },
+        progress: undefined,
+        nowMs: 0,
+        attemptId: "failed",
+        refusal: {
+          kind: "retry",
+          attemptId: "failed",
+          details: error.message,
+          receipt: error.receipt,
+        },
+      }).secondary,
+    ).toBe(text);
+    await act(async () => {
+      rendered!.unmount();
+    });
+  },
+);

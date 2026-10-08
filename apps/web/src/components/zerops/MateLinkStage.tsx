@@ -1,3 +1,5 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { useClientSettings } from "~/hooks/useSettings";
 /**
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
  * thread, the route's link being made, the Mate down): its header — the face and the name — as its
@@ -18,6 +20,8 @@ import { MateDetailFailure } from "./MateDetailFailure";
 
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { useThreadDetail } from "~/state/entities";
+import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { RouteStandIn } from "./RouteStandIn";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
@@ -34,7 +38,11 @@ export function MateLinkStage({
   voice,
   projectId,
   composer = null,
+  threadKey,
+  readPending,
 }: {
+  readonly readPending?: boolean | undefined;
+  readonly threadKey?: string | undefined;
   readonly environmentId: EnvironmentId | null;
   readonly voice: Spoken;
   readonly projectId: string | null;
@@ -49,6 +57,8 @@ export function MateLinkStage({
   ) : (
     <MateLinkStageOf
       composer={composer}
+      threadKey={threadKey}
+      readPending={readPending}
       failure={failure}
       again={again}
       environmentId={environmentId}
@@ -85,7 +95,11 @@ function MateLinkStageOf({
   voice,
   projectId,
   composer,
+  threadKey,
+  readPending,
 }: {
+  readonly readPending?: boolean | undefined;
+  readonly threadKey?: string | undefined;
   readonly environmentId: EnvironmentId;
   readonly voice: Spoken;
   readonly projectId: string | null;
@@ -93,7 +107,9 @@ function MateLinkStageOf({
   readonly failure: { readonly message: string } | null;
   readonly again: () => void;
 }) {
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const at = useZeropsMate(environmentId);
+  const activity = useToldActivity(projectId ?? "");
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
   if (at.kind === "nobody" && failure === null) return <MateLinkWords voice={voice} />;
@@ -123,37 +139,56 @@ function MateLinkStageOf({
         !voice.processes &&
         voice.actions.length === 0 &&
         voice.restarting !== true) ? (
-        <ConversationOpeningStage ready={false} name={known?.name} mate={mate} />
-      ) : (
-        <MateEmptyStateView
-          coming={{
-            kind: "reaching",
-            face: voice.text === null ? "sleep" : voice.face,
-            severity: voice.severity,
-            headline:
-              voice.headline ??
-              voice.text ??
-              `${known?.name || "The Mate"} is opening the conversation.`,
-            sentence: voice.secondary,
-            restarting: voice.restarting === true,
-            below: (
-              <MateLinkLine
-                mateServiceId={mate?.serviceId}
-                onTryNow={onTryNow}
-                projectId={projectId}
-                projectUrl={
-                  mate?.projectUrl ?? (projectId === null ? undefined : zeropsProjectUrl(projectId))
-                }
-                voice={{ ...voice, text: null }}
-              />
-            ),
-          }}
+        <ConversationOpeningStage
+          ready={false}
+          name={known?.name}
           mate={mate}
-          phase={null}
-          signIn={null}
-          signInRequired={false}
-          unknown={null}
+          activity={activity}
+          timestampFormat={timestampFormat}
+          threadKey={threadKey}
+          readPending={readPending}
         />
+      ) : (
+        <ConversationOpeningStage
+          ready={false}
+          name={known?.name}
+          mate={mate}
+          activity={activity}
+          timestampFormat={timestampFormat}
+          threadKey={threadKey}
+        >
+          <MateEmptyStateView
+            coming={{
+              kind: "reaching",
+              face: voice.text === null ? "sleep" : voice.face,
+              severity: voice.severity,
+              headline:
+                voice.headline ??
+                voice.text ??
+                `${known?.name || "The Mate"} is opening the conversation.`,
+              sentence: voice.secondary,
+              restarting: voice.restarting === true,
+              restartLines: voice.restartLines,
+              below: (
+                <MateLinkLine
+                  mateServiceId={mate?.serviceId}
+                  onTryNow={onTryNow}
+                  projectId={projectId}
+                  projectUrl={
+                    mate?.projectUrl ??
+                    (projectId === null ? undefined : zeropsProjectUrl(projectId))
+                  }
+                  voice={{ ...voice, text: null }}
+                />
+              ),
+            }}
+            mate={mate}
+            phase={null}
+            signIn={null}
+            signInRequired={false}
+            unknown={null}
+          />
+        </ConversationOpeningStage>
       )}
     </MateComingFrame>
   );
@@ -167,8 +202,11 @@ function MateLinkStageOf({
  */
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();
+  const held = useThreadDetail(threadRef, (detail) => detail !== null);
   return (
     <MateLinkStage
+      threadKey={scopedThreadKey(threadRef)}
+      readPending={!held}
       composer={<RouteStandIn threadRef={threadRef} />}
       environmentId={threadRef.environmentId}
       projectId={null}

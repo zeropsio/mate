@@ -1,3 +1,6 @@
+import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
+import { MateConnectionState } from "../zerops/ZeropsMateEmptyState";
+import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -22,11 +25,15 @@ import {
   SendIcon,
   TerminalIcon,
 } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import {
+  formatChatTimestampTooltip,
+  formatDayAwareTimestamp,
+  formatUpcomingTimestamp,
+} from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -383,40 +390,110 @@ export interface ServerUsagePause {
  * block: a centred headline, what it says under its words, and its controls.
  */
 export function PauseBlock({
+  mate = null,
   row,
   speaker,
   nowMs,
   timestampFormat,
   serverPause,
+  limit = NO_MATE_LIMIT,
   onAutoResumeChange,
   onContinue = null,
+  blockedByAnswer = false,
 }: {
+  readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
   readonly speaker: ConversationSpeaker;
   readonly nowMs: number;
   readonly timestampFormat: TimestampFormat;
   /** Present only on the pause that holds the thread now, on a server that keeps one. */
   readonly serverPause: ServerUsagePause | null;
+  /** Current source refusal; a historical deadline alone cannot block another attempt. */
+  readonly limit?: MateLimit;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
+  readonly blockedByAnswer?: boolean;
 }) {
   const resumed = row.resumedAt !== null;
-  const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
-  const reset = resetsAt === null ? null : Date.parse(resetsAt);
-  const passed = reset !== null && reset <= nowMs;
+  const resetsAt = limit.kind === "none" ? row.resetsAt : limit.resetsAt;
+  const refused = limit.kind === "limited";
+  const passed = limit.kind === "expired";
+  const provider = limit.kind === "none" ? row.provider : limit.provider;
   const autoResume = serverPause?.autoResume ?? false;
-  const history = resumed || passed;
-  const detail = resumed
-    ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
-    : resetsAt === null
-      ? "The coding agent hasn't given a reset time yet."
-      : passed
-        ? `Reset time passed. Continue to try again.`
-        : serverPause === null
-          ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
-          : autoResume
-            ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
-            : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
+  const history = resumed || passed || !refused;
+  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  const detail =
+    !history && resetsAt !== null && waitingAt === resetsAt
+      ? `${speaker.name} can't continue with ${provider ?? "the coding agent"} before ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}: the provider's limit still holds this work.`
+      : resumed
+        ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
+        : passed
+          ? "Reset time passed. Continue to try again."
+          : !refused
+            ? "Continue to try again."
+            : resetsAt === null
+              ? "The coding agent hasn't given a reset time yet."
+              : serverPause === null
+                ? `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
+                : autoResume
+                  ? `${speaker.name} will try again automatically at ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
+                  : `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}. Automatic continuation is off.`;
+  const actions = !resumed ? (
+    <div className="flex flex-col items-center gap-4">
+      {blockedByAnswer ? (
+        <p className="text-line text-muted-foreground">
+          Respond to {speaker.name}'s pending request before continuing.
+        </p>
+      ) : null}
+      {onContinue === null && !blockedByAnswer ? null : (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={blockedByAnswer}
+          onClick={() => {
+            if (refused && resetsAt !== null) setWaitingAt(resetsAt);
+            else onContinue?.();
+          }}
+        >
+          Continue
+        </Button>
+      )}
+      {history || serverPause === null || onAutoResumeChange === null ? null : (
+        <label
+          className="flex cursor-pointer items-center gap-2 text-line text-foreground"
+          data-pause-switch
+        >
+          <Switch
+            checked={serverPause.autoResume}
+            onCheckedChange={(checked) => onAutoResumeChange(checked)}
+          />
+          Continue automatically
+        </label>
+      )}
+    </div>
+  ) : null;
+  if (!history && serverPause !== null) {
+    const voice = mateNoticeVoice({
+      reachability: null,
+      conversationShown: false,
+      nowMs,
+      mateName: speaker.name,
+      limit: { provider: provider ?? "coding agent", detail },
+    });
+    if (voice.surface === "none") return null;
+    return (
+      <div className="h-full" data-conversation-pause="paused">
+        <MateConnectionState
+          mate={mate}
+          face="sleep"
+          headline={voice.headline ?? ""}
+          secondary={voice.secondary ?? ""}
+          severity={voice.severity}
+          actions={actions}
+        />
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -428,22 +505,24 @@ export function PauseBlock({
           ? "border-x-0 border-transparent text-muted-foreground"
           : "border-border bg-muted/35 px-3.5",
       )}
-      data-conversation-pause={resumed ? "resumed" : passed ? "expired" : "paused"}
+      data-conversation-pause={
+        resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused"
+      }
       role="status"
     >
       <div className="flex min-w-0 flex-col items-center gap-1 text-line" data-pause-head>
         <span className="font-medium">
           {history
             ? usageLimitHistoryWords(
-                row.provider ?? "coding agent",
+                provider ?? "coding agent",
                 row.createdAt,
                 resetsAt,
                 speaker.name,
                 timestampFormat,
               )
-            : row.provider === undefined
+            : provider === undefined
               ? usageLimitWords("coding agent", undefined, speaker.name)
-              : usageLimitWords(row.provider, undefined, speaker.name)}
+              : usageLimitWords(provider, undefined, speaker.name)}
         </span>
         {row.held > 0 ? (
           <Tooltip>
@@ -462,25 +541,7 @@ export function PauseBlock({
       <p className="text-line text-muted-foreground" data-pause-detail>
         {detail}
       </p>
-      {!resumed && onContinue !== null ? (
-        <div className="arrival-acts">
-          <Button size="compact" variant="pill" onClick={onContinue}>
-            Continue
-          </Button>
-        </div>
-      ) : null}
-      {!history && serverPause !== null && onAutoResumeChange !== null ? (
-        <label
-          className="mx-auto flex w-fit cursor-pointer items-center gap-2 text-line text-foreground"
-          data-pause-switch
-        >
-          <Switch
-            checked={serverPause.autoResume}
-            onCheckedChange={(checked) => onAutoResumeChange(checked)}
-          />
-          Continue automatically
-        </label>
-      ) : null}
+      {actions}
     </div>
   );
 }

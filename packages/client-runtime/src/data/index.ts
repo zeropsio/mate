@@ -505,9 +505,25 @@ export * from "./operations/executors/mateEngine.ts";
 export {
   ENGINE_UPDATE_WORDS,
   HISTORY_CUT_KIND,
+  engineCardPaging,
+  engineCardPagingOf,
   engineRows,
   engineThread,
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  type EngineCardCounts,
+  type EngineCardPaging,
 } from "./projections/mateEngine.ts";
+
+export {
+  projectMateLimit,
+  NO_MATE_LIMIT,
+  readUsageLimitNotice,
+  type MateLimit,
+  type MateLimitSource,
+  type UsageLimitNotice,
+} from "./projections/mateLimit.ts";
+export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";
+export { agentUsageOwner } from "./families/agentUsage.ts";
+export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";

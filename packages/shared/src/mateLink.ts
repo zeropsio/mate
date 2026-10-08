@@ -301,7 +301,7 @@ export type MateOverviewSections = typeof MateOverviewSections.Type;
 
 export const MateLinkUp = Schema.Union([
   Schema.Struct({ type: Schema.Literal("auto-update-policy"), requestId: Schema.String }),
-  ...UsageLinkUp.members,
+  UsageLinkUp,
   Schema.Struct({ type: Schema.Literal("pong") }),
   Schema.Struct({
     type: Schema.Literal("overview"),

@@ -1,7 +1,7 @@
 import { autoAnimate } from "@formkit/auto-animate";
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import { shownHqPersonFactsAtom, mateLimitAtom } from "@t3tools/client-runtime/data";
 import * as Schema from "effect/Schema";
 import {
   DndContext,
@@ -896,7 +896,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   })
     ? null
     : props.wokeAt;
-  const resolvedStatus = resolveThreadStatus({ ...thread, ...clientVisit, wokeAt });
+  const limit = useAtomValue(
+    mateLimitAtom(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+  );
+  const resolvedStatus = resolveThreadStatus({ ...thread, ...clientVisit, wokeAt }, limit.kind);
   const status = resolvedStatus.kind;
   const isWoke = status === "woke";
   // Background work always recedes when it is not selected: an unread parent

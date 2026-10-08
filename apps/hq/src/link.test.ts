@@ -342,7 +342,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     Effect.gen(function* () {
       const { state } = yield* statesOf(Effect.succeed(sender));
       const offered = yield* state((frame) => frame.usage !== undefined);
-      assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+      assert.deepStrictEqual(offered.usage, { capture: 2, report: 2, mateId: "M", orgId: "ORG" });
     }),
   );
 
@@ -355,7 +355,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
         yield* state((frame) => frame.usage === undefined);
         yield* Deferred.succeed(opening, sender);
         const offered = yield* state((frame) => frame.usage !== undefined);
-        assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+        assert.deepStrictEqual(offered.usage, { capture: 2, report: 2, mateId: "M", orgId: "ORG" });
       }),
   );
 

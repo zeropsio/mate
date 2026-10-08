@@ -3,13 +3,16 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
 import { ShellSnapshotLoader } from "./shellSnapshotHttp.ts";
 import type { EnvironmentCatalogState } from "./connections.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import { engineRouteOf, mateEngineHostAtom, mateEngineReaderAtom } from "../data/engineHost.ts";
+import { engineShellChanges, type EngineShellOverlay } from "../data/engineThreadChanges.ts";
 
 import { openShellReplay, EMPTY_SHELL_STATE } from "../data/adapters/mateShellReplay.ts";
 export const makeEnvironmentShellState = openShellReplay;
@@ -20,10 +23,48 @@ export type {
 } from "../data/adapters/mateShellReplay.ts";
 import type { EnvironmentShellState } from "../data/adapters/mateShellReplay.ts";
 
-function shellStateChanges(environmentId: EnvironmentId) {
+/**
+ * What an engine Mate's rows lay over its V1 shell, once its door names a protocol this build
+ * speaks and the account's engine host is mounted; `null` for every other Mate.
+ */
+function engineShellOverlays(
+  registry: AtomRegistry.AtomRegistry,
+  environmentId: EnvironmentId,
+): Stream.Stream<EngineShellOverlay | null, never, EnvironmentSupervisor> {
+  return Stream.unwrap(
+    Effect.map(EnvironmentSupervisor, (supervisor) =>
+      SubscriptionRef.changes(supervisor.prepared).pipe(
+        Stream.filter(Option.isSome),
+        Stream.map(
+          (prepared) =>
+            engineRouteOf(prepared.value).kind === "engine" &&
+            registry.get(mateEngineReaderAtom) === "engine",
+        ),
+        Stream.changes,
+        Stream.switchMap((engine) =>
+          engine
+            ? AtomRegistry.toStream(registry, mateEngineHostAtom).pipe(
+                Stream.switchMap((host) =>
+                  host === null ? Stream.succeed(null) : engineShellChanges(host, environmentId),
+                ),
+              )
+            : Stream.succeed(null),
+        ),
+      ),
+    ),
+  );
+}
+
+function shellStateChanges(registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) {
+  // A V1 Mate's shell passes through as its replay says; an engine Mate's carries its rows.
   return followStreamInEnvironment(
     environmentId,
-    Stream.unwrap(makeEnvironmentShellState().pipe(Effect.map(SubscriptionRef.changes))),
+    Stream.zipLatest(
+      Stream.unwrap(makeEnvironmentShellState().pipe(Effect.map(SubscriptionRef.changes))),
+      Stream.concat(Stream.succeed(null), engineShellOverlays(registry, environmentId)).pipe(
+        Stream.changes,
+      ),
+    ).pipe(Stream.map(([shell, overlay]) => (overlay === null ? shell : overlay(shell)))),
   );
 }
 
@@ -148,7 +189,7 @@ export function createEnvironmentShellAtoms<R, E>(
   >,
 ) {
   const stateAtom = Atom.family((environmentId: EnvironmentId) =>
-    runtime.atom(shellStateChanges(environmentId), {
+    runtime.atom((get) => shellStateChanges(get.registry, environmentId), {
       initialValue: EMPTY_SHELL_STATE,
     }),
   );

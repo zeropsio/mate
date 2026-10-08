@@ -4,6 +4,7 @@ import {
   WS_METHODS,
   type EnvironmentId,
   type OrchestrationShellSnapshot,
+  type ServerProvider,
 } from "@t3tools/contracts";
 
 import { createOptimisticThreadLifecycle } from "./threadLifecycle.ts";
@@ -66,8 +67,10 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
-  engineModeChange,
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
   engineUpdateMetadata,
+  modelCapabilitiesIn,
   engineDismissUserInput,
   engineInterruptTurn,
   engineRespondToApproval,
@@ -106,6 +109,12 @@ export type {
 export function createThreadEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
   snapshotAtom: (environmentId: EnvironmentId) => Atom.Atom<OrchestrationShellSnapshot | null>,
+  options: {
+    /** A Mate's providers, so an engine conversation judges a model options change by its defaults. */
+    readonly providersAtom?: (
+      environmentId: EnvironmentId,
+    ) => Atom.Atom<ReadonlyArray<ServerProvider> | null>;
+  } = {},
 ) {
   const scheduler = createAtomCommandScheduler();
   const concurrency = {
@@ -204,7 +213,14 @@ export function createThreadEnvironmentAtoms<R, E>(
         viaEngine(
           registry,
           environmentId,
-          engineUpdateMetadata(environmentId, input),
+          engineUpdateMetadata(environmentId, input, (selection) =>
+            modelCapabilitiesIn(
+              options.providersAtom === undefined
+                ? null
+                : registry.get(options.providersAtom(environmentId as EnvironmentId)),
+              selection,
+            ),
+          ),
           updateThreadMetadata(input),
         ),
       scheduler,
@@ -216,7 +232,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         viaEngine(
           registry,
           environmentId,
-          engineModeChange("runtime"),
+          engineSetRuntimeMode(environmentId, input),
           setThreadRuntimeMode(input),
         ),
       scheduler,
@@ -228,7 +244,7 @@ export function createThreadEnvironmentAtoms<R, E>(
         viaEngine(
           registry,
           environmentId,
-          engineModeChange("interaction"),
+          engineSetInteractionMode,
           setThreadInteractionMode(input),
         ),
       scheduler,

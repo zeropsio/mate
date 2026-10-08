@@ -2072,8 +2072,63 @@
     }
   },
   {
-    "type": "thread.token-usage.updated",
     "eventId": "evt-38",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "turn.usage.completed",
+    "provider": "claudeAgent",
+    "threadId": "spi-replay-claude-thread",
+    "providerRefs": {},
+    "payload": {
+      "nativeThreadId": "eb868018-ad42-4b78-869c-a3c08eada6d2",
+      "nativeTurnId": "1a6f8b9c-3591-4b1f-95f5-93fe2446f88d",
+      "models": [
+        {
+          "model": "claude-haiku-4-5-20251001",
+          "components": {
+            "uncachedInput": "914",
+            "cachedInput": "0",
+            "cacheCreation": "0",
+            "output": "15",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "989000",
+            "scale": 9,
+            "currency": "USD",
+            "basis": "list"
+          }
+        },
+        {
+          "model": "claude-opus-5[1m]",
+          "components": {
+            "uncachedInput": "8",
+            "cachedInput": "96801",
+            "cacheCreation": "18472",
+            "output": "537",
+            "reasoning": null,
+            "inclusiveTotal": null
+          },
+          "nativeCost": {
+            "amount": "246585500",
+            "scale": 9,
+            "currency": "USD",
+            "basis": "list"
+          }
+        }
+      ],
+      "nativeCost": {
+        "amount": "247574500",
+        "scale": 9,
+        "currency": "USD",
+        "basis": "provider-reported-estimate"
+      },
+      "parentId": null
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-39",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",
@@ -2203,7 +2258,7 @@
   },
   {
     "type": "turn.completed",
-    "eventId": "evt-39",
+    "eventId": "evt-40",
     "provider": "claudeAgent",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "threadId": "spi-replay-claude-thread",

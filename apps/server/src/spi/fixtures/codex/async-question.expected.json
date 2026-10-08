@@ -2,44 +2,44 @@
   {
     "eventId": "evt-0",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/started",
       "payload": {
         "thread": {
-          "id": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+          "id": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
           "environments": [
             {
               "environmentId": "local",
-              "cwd": "/tmp/mate-chat3",
-              "runtimeWorkspaceRoots": ["/tmp/mate-chat3"]
+              "cwd": "/tmp/mate-probe",
+              "runtimeWorkspaceRoots": ["/tmp/mate-probe"]
             }
           ],
           "extra": null,
-          "sessionId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+          "sessionId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
           "forkedFromId": null,
           "parentThreadId": null,
           "preview": "",
-          "ephemeral": false,
+          "ephemeral": true,
           "section": null,
           "sectionEnteredAt": null,
           "projectId": null,
           "historyMode": "paginated",
           "modelProvider": "openai",
-          "model": "gpt-6-luna",
-          "reasoningEffort": "low",
-          "createdAt": 1791412973,
-          "updatedAt": 1791412973,
-          "recencyAt": 1791412973,
+          "model": "gpt-6-astra",
+          "reasoningEffort": null,
+          "createdAt": 1791446399,
+          "updatedAt": 1791446399,
+          "recencyAt": 1791446399,
           "status": {
             "type": "idle"
           },
-          "path": "/home/zerops/.codex/sessions/2026/10/07/rollout-2026-10-07T22-42-53-01a11888-b06d-70d0-9a9a-1c60284d165a.jsonl",
-          "cwd": "/tmp/mate-chat3",
-          "cliVersion": "0.160.0",
-          "originator": "mate_spi_recorder",
+          "path": null,
+          "cwd": "/tmp/mate-probe",
+          "cliVersion": "0.161.0",
+          "originator": "mate_probe",
           "source": "vscode",
           "canAcceptDirectInput": true,
           "threadSource": null,
@@ -54,20 +54,20 @@
     },
     "type": "thread.started",
     "payload": {
-      "providerThreadId": "01a11888-b06d-70d0-9a9a-1c60284d165a"
+      "providerThreadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3"
     }
   },
   {
     "type": "thread.state.changed",
     "eventId": "evt-1",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/status/changed",
       "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "status": {
           "type": "active",
           "activeFlags": []
@@ -77,7 +77,7 @@
     "payload": {
       "state": "active",
       "detail": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "status": {
           "type": "active",
           "activeFlags": []
@@ -88,7 +88,7 @@
   {
     "eventId": "evt-2",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "providerRefs": {
@@ -98,14 +98,14 @@
       "source": "codex.app-server.notification",
       "method": "turn/started",
       "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turn": {
           "id": "turn-0",
           "items": [],
           "itemsView": "notLoaded",
           "status": "inProgress",
           "error": null,
-          "startedAt": 1791412974,
+          "startedAt": 1791446399,
           "completedAt": null,
           "durationMs": null
         }
@@ -117,7 +117,7 @@
   {
     "eventId": "evt-3",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-0",
@@ -136,14 +136,14 @@
           "content": [
             {
               "type": "text",
-              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text": "If you have a tool for asking the user a question (request_user_input or similar), use it to ask which colour I prefer, Red or Blue, then reply with the colour. If you have no such tool, reply exactly: NO QUESTION TOOL.",
               "text_elements": []
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "startedAtMs": 1791412975424
+        "startedAtMs": 1791446401922
       }
     },
     "type": "item.started",
@@ -159,21 +159,21 @@
           "content": [
             {
               "type": "text",
-              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text": "If you have a tool for asking the user a question (request_user_input or similar), use it to ask which colour I prefer, Red or Blue, then reply with the colour. If you have no such tool, reply exactly: NO QUESTION TOOL.",
               "text_elements": []
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "startedAtMs": 1791412975424
+        "startedAtMs": 1791446401922
       }
     }
   },
   {
     "eventId": "evt-4",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-0",
@@ -192,14 +192,14 @@
           "content": [
             {
               "type": "text",
-              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text": "If you have a tool for asking the user a question (request_user_input or similar), use it to ask which colour I prefer, Red or Blue, then reply with the colour. If you have no such tool, reply exactly: NO QUESTION TOOL.",
               "text_elements": []
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "completedAtMs": 1791412975424
+        "completedAtMs": 1791446401922
       }
     },
     "type": "item.completed",
@@ -215,21 +215,21 @@
           "content": [
             {
               "type": "text",
-              "text": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+              "text": "If you have a tool for asking the user a question (request_user_input or similar), use it to ask which colour I prefer, Red or Blue, then reply with the colour. If you have no such tool, reply exactly: NO QUESTION TOOL.",
               "text_elements": []
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "completedAtMs": 1791412975424
+        "completedAtMs": 1791446401922
       }
     }
   },
   {
     "eventId": "evt-5",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-1",
@@ -244,20 +244,20 @@
         "item": {
           "type": "agentMessage",
           "id": "item-1",
-          "text": "",
+          "text": "Which colour do you prefer?\n- Red\n- Blue",
           "phase": "final_answer",
           "memoryCitation": null,
           "delivery": "async",
           "questions": [
             {
-              "title": "Which package manager?",
-              "options": ["pnpm", "npm"]
+              "title": "Which colour do you prefer?",
+              "options": ["Red", "Blue"]
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "startedAtMs": 1791412980753
+        "startedAtMs": 1791446405403
       }
     },
     "type": "item.started",
@@ -265,81 +265,32 @@
       "itemType": "assistant_message",
       "status": "inProgress",
       "title": "Assistant message",
+      "detail": "Which colour do you prefer?\n- Red\n- Blue",
       "data": {
         "item": {
           "type": "agentMessage",
           "id": "item-1",
-          "text": "",
+          "text": "Which colour do you prefer?\n- Red\n- Blue",
           "phase": "final_answer",
           "memoryCitation": null,
           "delivery": "async",
           "questions": [
             {
-              "title": "Which package manager?",
-              "options": ["pnpm", "npm"]
+              "title": "Which colour do you prefer?",
+              "options": ["Red", "Blue"]
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "startedAtMs": 1791412980753
+        "startedAtMs": 1791446405403
       }
     }
   },
   {
     "eventId": "evt-6",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-0",
-    "providerRefs": {
-      "providerTurnId": "turn-0"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "item/agentMessage/delta",
-      "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
-        "turnId": "turn-0",
-        "itemId": "item-1",
-        "delta": "Which package"
-      }
-    },
-    "type": "content.delta",
-    "payload": {
-      "streamKind": "assistant_text",
-      "delta": "Which package"
-    }
-  },
-  {
-    "eventId": "evt-7",
-    "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
-    "createdAt": "1970-01-01T00:00:00.000Z",
-    "turnId": "turn-0",
-    "providerRefs": {
-      "providerTurnId": "turn-0"
-    },
-    "raw": {
-      "source": "codex.app-server.notification",
-      "method": "item/agentMessage/delta",
-      "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
-        "turnId": "turn-0",
-        "itemId": "item-1",
-        "delta": " manager?"
-      }
-    },
-    "type": "content.delta",
-    "payload": {
-      "streamKind": "assistant_text",
-      "delta": " manager?"
-    }
-  },
-  {
-    "eventId": "evt-8",
-    "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "itemId": "item-1",
@@ -354,20 +305,20 @@
         "item": {
           "type": "agentMessage",
           "id": "item-1",
-          "text": "Which package manager?",
+          "text": "Which colour do you prefer?\n- Red\n- Blue",
           "phase": "final_answer",
           "memoryCitation": null,
           "delivery": "async",
           "questions": [
             {
-              "title": "Which package manager?",
-              "options": ["pnpm", "npm"]
+              "title": "Which colour do you prefer?",
+              "options": ["Red", "Blue"]
             }
           ]
         },
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
-        "completedAtMs": 1791412980770
+        "completedAtMs": 1791446405403
       }
     },
     "type": "user-input.requested",
@@ -378,14 +329,14 @@
         {
           "id": "0",
           "header": "Question",
-          "question": "Which package manager?",
+          "question": "Which colour do you prefer?",
           "options": [
             {
-              "label": "pnpm",
+              "label": "Red",
               "description": ""
             },
             {
-              "label": "npm",
+              "label": "Blue",
               "description": ""
             }
           ],
@@ -397,9 +348,9 @@
   },
   {
     "type": "thread.token-usage.updated",
-    "eventId": "evt-9",
+    "eventId": "evt-7",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "providerRefs": {
@@ -409,23 +360,23 @@
       "source": "codex.app-server.notification",
       "method": "thread/tokenUsage/updated",
       "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turnId": "turn-0",
         "tokenUsage": {
           "total": {
-            "totalTokens": 69795,
-            "inputTokens": 69656,
-            "cachedInputTokens": 63232,
+            "totalTokens": 14819,
+            "inputTokens": 14783,
+            "cachedInputTokens": 12288,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 139,
+            "outputTokens": 36,
             "reasoningOutputTokens": 0
           },
           "last": {
-            "totalTokens": 14750,
-            "inputTokens": 14744,
-            "cachedInputTokens": 13056,
+            "totalTokens": 14819,
+            "inputTokens": 14783,
+            "cachedInputTokens": 12288,
             "cacheWriteInputTokens": 0,
-            "outputTokens": 6,
+            "outputTokens": 36,
             "reasoningOutputTokens": 0
           },
           "modelContextWindow": 258400
@@ -434,17 +385,364 @@
     },
     "payload": {
       "usage": {
-        "usedTokens": 14750,
-        "totalProcessedTokens": 69795,
+        "usedTokens": 14819,
         "maxTokens": 258400,
-        "inputTokens": 14744,
-        "cachedInputTokens": 13056,
-        "outputTokens": 6,
+        "inputTokens": 14783,
+        "cachedInputTokens": 12288,
+        "outputTokens": 36,
         "reasoningOutputTokens": 0,
-        "lastUsedTokens": 14750,
-        "lastInputTokens": 14744,
-        "lastCachedInputTokens": 13056,
-        "lastOutputTokens": 6,
+        "lastUsedTokens": 14819,
+        "lastInputTokens": 14783,
+        "lastCachedInputTokens": 12288,
+        "lastOutputTokens": 36,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-8",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 29675,
+            "inputTokens": 29620,
+            "cachedInputTokens": 26880,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 55,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 14856,
+            "inputTokens": 14837,
+            "cachedInputTokens": 14592,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 19,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 14856,
+        "totalProcessedTokens": 29675,
+        "maxTokens": 258400,
+        "inputTokens": 14837,
+        "cachedInputTokens": 14592,
+        "outputTokens": 19,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 14856,
+        "lastInputTokens": 14837,
+        "lastCachedInputTokens": 14592,
+        "lastOutputTokens": 19,
+        "lastReasoningOutputTokens": 0,
+        "compactsAutomatically": true
+      }
+    }
+  },
+  {
+    "eventId": "evt-9",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-2"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-2",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Which colour do you prefer?\nRed",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "startedAtMs": 1791446409413
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "user_message",
+      "status": "inProgress",
+      "title": "User message",
+      "data": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-2",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Which colour do you prefer?\nRed",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "startedAtMs": 1791446409413
+      }
+    }
+  },
+  {
+    "eventId": "evt-10",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-2",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-2"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-2",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Which colour do you prefer?\nRed",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "completedAtMs": 1791446409413
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "user_message",
+      "status": "completed",
+      "title": "User message",
+      "data": {
+        "item": {
+          "type": "userMessage",
+          "id": "item-2",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Which colour do you prefer?\nRed",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "completedAtMs": 1791446409413
+      }
+    }
+  },
+  {
+    "eventId": "evt-11",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-3",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-3"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-3",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "startedAtMs": 1791446412556
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "inProgress",
+      "title": "Assistant message",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-3",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "startedAtMs": 1791446412556
+      }
+    }
+  },
+  {
+    "eventId": "evt-12",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/agentMessage/delta",
+      "payload": {
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "itemId": "item-3",
+        "delta": "Red"
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "Red"
+    }
+  },
+  {
+    "eventId": "evt-13",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-3",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-3"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-3",
+          "text": "Red",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "completedAtMs": 1791446412566
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed",
+      "title": "Assistant message",
+      "detail": "Red",
+      "data": {
+        "item": {
+          "type": "agentMessage",
+          "id": "item-3",
+          "text": "Red",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "completedAtMs": 1791446412566
+      }
+    }
+  },
+  {
+    "type": "thread.token-usage.updated",
+    "eventId": "evt-14",
+    "provider": "codex",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "thread/tokenUsage/updated",
+      "payload": {
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
+        "turnId": "turn-0",
+        "tokenUsage": {
+          "total": {
+            "totalTokens": 44573,
+            "inputTokens": 44513,
+            "cachedInputTokens": 39168,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 60,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 14898,
+            "inputTokens": 14893,
+            "cachedInputTokens": 12288,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 5,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 258400
+        }
+      }
+    },
+    "payload": {
+      "usage": {
+        "usedTokens": 14898,
+        "totalProcessedTokens": 44573,
+        "maxTokens": 258400,
+        "inputTokens": 14893,
+        "cachedInputTokens": 12288,
+        "outputTokens": 5,
+        "reasoningOutputTokens": 0,
+        "lastUsedTokens": 14898,
+        "lastInputTokens": 14893,
+        "lastCachedInputTokens": 12288,
+        "lastOutputTokens": 5,
         "lastReasoningOutputTokens": 0,
         "compactsAutomatically": true
       }
@@ -452,15 +750,15 @@
   },
   {
     "type": "thread.state.changed",
-    "eventId": "evt-10",
+    "eventId": "evt-15",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "raw": {
       "source": "codex.app-server.notification",
       "method": "thread/status/changed",
       "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "status": {
           "type": "idle"
         }
@@ -469,7 +767,7 @@
     "payload": {
       "state": "idle",
       "detail": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "status": {
           "type": "idle"
         }
@@ -477,9 +775,9 @@
     }
   },
   {
-    "eventId": "evt-11",
+    "eventId": "evt-16",
     "provider": "codex",
-    "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+    "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "turnId": "turn-0",
     "providerRefs": {
@@ -489,14 +787,14 @@
       "source": "codex.app-server.notification",
       "method": "turn/completed",
       "payload": {
-        "threadId": "01a11888-b06d-70d0-9a9a-1c60284d165a",
+        "threadId": "01a11a86-b540-7890-941d-8faf4bc2e5c3",
         "turn": {
           "id": "turn-0",
           "items": [
             {
               "type": "agentMessage",
-              "id": "item-1",
-              "text": "trace-ok",
+              "id": "item-3",
+              "text": "Red",
               "phase": "final_answer",
               "memoryCitation": null,
               "delivery": null,
@@ -506,9 +804,9 @@
           "itemsView": "summary",
           "status": "completed",
           "error": null,
-          "startedAt": 1791412974,
-          "completedAt": 1791412980,
-          "durationMs": 6913
+          "startedAt": 1791446399,
+          "completedAt": 1791446412,
+          "durationMs": 13575
         }
       }
     },

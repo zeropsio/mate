@@ -196,12 +196,8 @@ describe("readUsageLimitNotice", () => {
       at(48),
       new Date(Date.UTC(2026, 8, 25, 0, 30)).toISOString(),
     ],
-    // Written after the named time: it is tomorrow's.
-    [
-      "You’ve hit your weekly limit · resets 4:10pm (UTC)",
-      at(48),
-      new Date(Date.UTC(2026, 8, 25, 16, 10)).toISOString(),
-    ],
+    // A weekly refusal without a date cannot name its reset day.
+    ["You’ve hit your weekly limit · resets 4:10pm (UTC)", at(48), null],
     [
       "You've hit your session limit · resets 11pm (Europe/Prague)",
       at(48),

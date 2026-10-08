@@ -9,9 +9,11 @@ import {
   requestId,
   runId,
   wakeId,
+  type ChatFileAttachment,
   type ChatImageAttachment,
   type EffectOutcome,
   type EngineEventTag,
+  type ItemBody,
   type KnownEngineEvent,
   type Principal,
   type RejectionReason,
@@ -25,9 +27,9 @@ import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
 import {
+  BACKGROUND_WORK_WORDS,
   CONTINUE_TEXT,
   SESSION_IDLE_MS,
-  USAGE_RESUME_GRACE_MS,
   WATCHDOG_SILENCE_MS,
   decide,
   resentText,
@@ -435,7 +437,7 @@ const transitions: ReadonlyArray<Row> = [
     run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
   {
-    name: "a usage limit ends the run and arms a resume 30 seconds after the reset",
+    name: "a usage limit ends the run and holds work until the exact provider reset",
     given: running,
     when: signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE }),
     events: ["WakeCancelled", "RunEnded", "EffectRequested", "WakeArmed", "WakeArmed"],
@@ -443,9 +445,9 @@ const transitions: ReadonlyArray<Row> = [
     also: (scene) => {
       expect(scene.events[3]).toMatchObject({
         kind: "usage-resume",
-        dueAt: T0 + 60 * MINUTE + USAGE_RESUME_GRACE_MS,
+        dueAt: T0 + 60 * MINUTE,
       });
-      expect(scene.state.pausedUntil).toBe(T0 + 60 * MINUTE + USAGE_RESUME_GRACE_MS);
+      expect(scene.state.pausedUntil).toBe(T0 + 60 * MINUTE);
     },
   },
   {
@@ -1289,12 +1291,106 @@ describe("decide: a question asked by message is answered by a message", () => {
         sendId: "c6",
       },
     });
-    expect(scene.events.find((e) => e._tag === "RequestAnswered")).toMatchObject({
-      requestId: requestId(r(1), 1),
-      bySend: r(2),
-      answers: { "0": "pnpm", "1": "api" },
+    const recorded = scene.events.find((e) => e._tag === "RequestAnswered");
+    expect(recorded).toMatchObject({ requestId: requestId(r(1), 1), bySend: r(2) });
+    expect(recorded).not.toHaveProperty("effectId");
+    // The person's message shows the answer: the question's record does not show it again.
+    expect(recorded).not.toHaveProperty("answers");
+    expect(recorded).not.toHaveProperty("attachmentsByQuestionId");
+  });
+
+  const steered = (scene: Scene) => {
+    const item = scene.events.find((e) => e._tag === "ItemOpened" && e.runId === r(1));
+    if (item?._tag !== "ItemOpened") throw new Error("no steered message");
+    return { item: item.itemId, effect: effectId(item.itemId, "provider.steer", 1) };
+  };
+  const whileAsking: ReadonlyArray<Step> = [...proofRunning, asked()];
+
+  it("while the turn that asked still runs, the answer goes into that turn as the person's message, with its pictures", () => {
+    const scene = play([...whileAsking, answered]);
+    expect(scene.events.some((e) => e._tag === "RunQueued")).toBe(false);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(1),
+      body: {
+        kind: "person",
+        text: [
+          "Which package manager?\npnpm",
+          "What should it be named?\napi\nAttached file: question-preview.png (img-q)",
+        ].join("\n\n"),
+        attachments: [preview],
+        delivery: { state: "steered" },
+      },
     });
-    expect(scene.events.find((e) => e._tag === "RequestAnswered")).not.toHaveProperty("effectId");
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.steer", runId: r(1), payload: { attachments: [preview] } },
+    ]);
+    const recorded = scene.events.find((e) => e._tag === "RequestAnswered");
+    expect(recorded).toMatchObject({ effectId: steered(scene).effect });
+    expect(recorded).not.toHaveProperty("bySend");
+    expect(recorded).not.toHaveProperty("answers");
+  });
+
+  it("is answered once the agent took it into its turn, never before", () => {
+    const scene = play([...whileAsking, answered]);
+    expect(closes(playAll([...whileAsking, answered]).log)).toEqual([]);
+    const { log, state } = playAll([
+      ...whileAsking,
+      answered,
+      settled(steered(scene).item, "provider.steer", { kind: "ok", value: { as: "steered" } }),
+    ]);
+    expect(closes(log)).toEqual(["closed answered"]);
+    expect(state.requests).toEqual({});
+    expect(state.answering).toEqual({});
+  });
+
+  it.each([
+    ["the agent did not take it into its turn", "failed"],
+    ["the agent did not say in time whether it took it", "timed-out"],
+    ["a restart cut it", "cut"],
+  ] as const)("opens the question again when %s", (_name, how) => {
+    const scene = play([...whileAsking, answered]);
+    const { item, effect } = steered(scene);
+    const { log, state } = playAll([
+      ...whileAsking,
+      answered,
+      how === "failed"
+        ? settled(item, "provider.steer", { kind: "failed", reason: "refused" })
+        : how === "timed-out"
+          ? settled(item, "provider.steer", { kind: "timed-out", after: 30_000 })
+          : recovered([effect]),
+    ]);
+    expect(closes(log)).toEqual(["reopened"]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
+  });
+
+  it("the message that asked it becomes the question's place, leaving no empty words", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      signal({
+        kind: "item-opened",
+        turn: T(1),
+        key: "h1.i1",
+        by: { kind: "mate" },
+        body: note("h1.i1"),
+      }),
+      signal({
+        kind: "request-opened",
+        turn: T(1),
+        key: "codex-async:q1",
+        item: "h1.i1",
+        ask: {
+          kind: "question",
+          questions: [{ id: "0", question: "Which one?" }],
+          dismissible: true,
+        },
+      }),
+    ]);
+    const asking = log.find((e) => e._tag === "ItemOpened" && e.by.kind === "mate");
+    expect(log.at(-1)).toMatchObject({
+      _tag: "ItemClosed",
+      itemId: asking?._tag === "ItemOpened" ? asking.itemId : "",
+      body: { kind: "request", requestId: requestId(r(1), 1) },
+    });
   });
 
   it("is answered once the message reaches the agent, never before", () => {
@@ -1338,15 +1434,34 @@ describe("decide: a question asked by message is answered by a message", () => {
     expect(closes(log)).toEqual(["closed answered"]);
   });
 
-  it("codex/async-question [recorded]: the question the trace asks is answered by the person's message", () => {
+  it("codex/async-question [recorded]: the answer goes into the turn that waits on it, which ends with the agent's reply", () => {
     const events = readGolden("codex", "async-question");
     const translator = makeTranslator({ driver: "codex", threadId: String(events[0]!.threadId) });
     const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
-    const traced = commandLogAround("codex", events)
-      .flatMap((input) => translator.step(input))
-      .flatMap((driverSignal) => toCore.step(driverSignal, T0).signals);
-    const turn = traced.find((one) => one.kind === "turn-started");
-    const traceTurn = [
+    const inputs = commandLogAround("codex", events);
+    // Codex takes the answer into the running turn: its user message is the second one.
+    const injected = inputs.findIndex(
+      (input, index) =>
+        input.kind === "event" &&
+        input.event.type === "item.started" &&
+        inputs
+          .slice(0, index)
+          .some(
+            (before) =>
+              before.kind === "event" &&
+              before.event.type === "item.started" &&
+              (before.event.payload as { itemType?: string }).itemType === "user_message",
+          ) &&
+        (input.event.payload as { itemType?: string }).itemType === "user_message",
+    );
+    const native = events.find((event) => event.type === "turn.started")?.turnId;
+    const core = (part: ReadonlyArray<(typeof inputs)[number]>) =>
+      part
+        .flatMap((input) => translator.step(input))
+        .flatMap((driverSignal) => toCore.step(driverSignal, T0).signals);
+    const asking = core(inputs.slice(0, injected));
+    const turn = asking.find((one) => one.kind === "turn-started");
+    const traceTurn: ReadonlyArray<Step> = [
       send("go"),
       prepared(1),
       opened(1),
@@ -1354,27 +1469,44 @@ describe("decide: a question asked by message is answered by a message", () => {
         kind: "ok",
         value: { turn: turn?.kind === "turn-started" ? turn.turn : null, providerTurnId: "x" },
       }),
-      { _tag: "ProviderSignals", sessionId: s1, signals: traced } as Command,
+      { _tag: "ProviderSignals", sessionId: s1, signals: asking } as Command,
     ];
     const asked = playAll(traceTurn);
-    expect(asked.state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
-    expect(Object.values(asked.state.requests)).toMatchObject([
-      { dismissible: true, answerable: true, questions: [{ id: "0" }] },
-    ]);
+    expect(asked.state.runs[r(1)]?.state).toBe("running");
     const answering: Command = {
       _tag: "Answer",
       requestId: requestId(r(1), 1),
-      answer: { answers: { "0": "pnpm" } },
+      answer: { answers: { "0": "Red" } },
       summary: "Answered",
     };
-    const { log } = playAll([...traceTurn, answering, prepared(2), sentTurn(2)]);
-    expect(log.find((e) => e._tag === "ItemOpened" && e.runId === r(2))).toMatchObject({
-      body: { kind: "person", text: "Which package manager?\npnpm" },
-    });
+    const steer = steered(play([...traceTurn, answering]));
+    const replied = core([
+      { kind: "send", turn: steer.item as string as TurnHandle, mode: "steer" },
+      { kind: "sent", turn: steer.item as string as TurnHandle, nativeTurn: String(native) },
+      ...inputs.slice(injected),
+    ]);
+    const { log, state } = playAll([
+      ...traceTurn,
+      answering,
+      settled(steer.item, "provider.steer", { kind: "ok", value: { as: "steered" } }),
+      { _tag: "ProviderSignals", sessionId: s1, signals: replied } as Command,
+    ]);
+    expect(log.some((e) => e._tag === "RunQueued" && e.runId !== r(1))).toBe(false);
     expect(log.some((e) => e._tag === "EffectRequested" && e.kind === "provider.respond")).toBe(
       false,
     );
     expect(closes(log)).toEqual(["closed answered"]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
+    // No empty words: the message that asked is the question's place, the reply is a note.
+    const bodies = new Map<string, ItemBody>();
+    for (const e of log)
+      if (e._tag === "ItemOpened" || e._tag === "ItemUpdated" || e._tag === "ItemClosed")
+        bodies.set(e.itemId, e.body);
+    expect(
+      [...bodies.values()].map((body) =>
+        body.kind === "note" ? `note ${body.text}` : body.kind === "person" ? "person" : body.kind,
+      ),
+    ).toEqual(["person", "request", "person", "note Red"]);
   });
 
   it("refuses an answer that leaves a question unanswered", () => {
@@ -1452,12 +1584,12 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
     ]);
     expect(state.wakes[probeOf(1)]).toBeUndefined();
     expect(state.wakes[wakeId(conversation, "usage-resume", r(1))]).toMatchObject({
-      dueAt: reset + USAGE_RESUME_GRACE_MS,
+      dueAt: reset,
       joins: r(1),
     });
     expect({ queued: state.runs[r(2)]?.state, paused: state.pausedUntil }).toEqual({
       queued: "queued",
-      paused: reset + USAGE_RESUME_GRACE_MS,
+      paused: reset,
     });
   });
   it("an answer the provider can no longer take expires its request", () => {
@@ -1955,5 +2087,423 @@ describe("decide: every run acts for someone", () => {
       },
     ]);
     expect(Object.values(state.runs).every((run) => run.principal.kind !== "engine")).toBe(true);
+  });
+});
+
+describe("decide: a conversation's settings reach its agent as V1's do", () => {
+  const effortHigh = [{ id: "effort", value: "high" }] as const;
+  const agent = {
+    instanceId: "claude-ana",
+    driver: "claudeAgent",
+    model: "opus",
+    options: effortHigh,
+    profile: { kind: "mate" },
+  } as const;
+  /** The session opened as asked; `inSessionOptions` is what its driver takes per turn. */
+  const openedWith = (run: number, inSessionOptions: "all" | ReadonlyArray<string>) =>
+    settled(r(run), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s1",
+        driver: "claudeAgent",
+        model: "opus",
+        nativeRef: "native-1",
+        capabilities: { steer: false, inSessionOptions },
+        requestedModel: "opus",
+        instanceId: "claude-ana",
+        options: effortHigh,
+        runtimeMode: "full-access",
+      },
+    });
+  const firstRun = (inSession: "all" | ReadonlyArray<string>): ReadonlyArray<Step> => [
+    { _tag: "AssignAgent", agent },
+    send("go"),
+    prepared(1),
+    openedWith(1, inSession),
+    sentTurn(1),
+  ];
+  const firstRunOver = (inSession: "all" | ReadonlyArray<string>) => [
+    ...firstRun(inSession),
+    ended(1),
+  ];
+  const effortLow: Command = {
+    _tag: "SwitchModel",
+    model: "opus",
+    options: [{ id: "effort", value: "low" }],
+  };
+  const fastMode: Command = {
+    _tag: "SwitchModel",
+    model: "opus",
+    options: [...effortHigh, { id: "fastMode", value: true }],
+  };
+  const approvalRequired: Command = { _tag: "SetRuntimeMode", runtimeMode: "approval-required" };
+  const work = (status: "running" | "completed"): Command =>
+    signal({
+      kind: "work-upserted",
+      work: "w1",
+      origin: T(1),
+      workKind: "shell",
+      status,
+      title: "watch",
+    });
+
+  it.each([
+    ["Claude's effort", ["effort"], effortLow],
+    ["an option its driver reads per turn", "all", fastMode],
+  ] as const)("%s goes with the next message, in the same session", (_name, inSession, change) => {
+    const scene = play([...firstRunOver(inSession), change, send("next"), prepared(2)]);
+    expect(scene.effects).toMatchObject([
+      {
+        kind: "provider.send",
+        payload: {
+          sessionId: "s1",
+          modelSelection: {
+            instanceId: "claude-ana",
+            model: "opus",
+            options: (change as Extract<Command, { _tag: "SwitchModel" }>).options,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("an option only a new session runs with closes the session between runs, and the next one resumes it", () => {
+    const steps = [...firstRunOver(["effort"]), fastMode, send("next"), prepared(2)];
+    expect(play(steps).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: {
+          options: [...effortHigh, { id: "fastMode", value: true }],
+          resume: "native-1",
+          rotateFrom: "s1",
+        },
+      },
+    ]);
+  });
+
+  it("a runtime mode change reopens the session with it between runs, resuming the old one", () => {
+    const steps = [...firstRunOver("all"), approvalRequired, send("next"), prepared(2)];
+    expect(play(steps).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: { runtimeMode: "approval-required", resume: "native-1", rotateFrom: "s1" },
+      },
+    ]);
+  });
+
+  it("the session opens with the conversation's runtime mode once a person set it", () => {
+    const scene = play([{ _tag: "AssignAgent", agent }, approvalRequired, send("go"), prepared(1)]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", payload: { runtimeMode: "approval-required" } },
+    ]);
+    const unset = play([{ _tag: "AssignAgent", agent }, send("go"), prepared(1)]);
+    expect(unset.effects[0]?.payload).not.toHaveProperty("runtimeMode");
+  });
+
+  it("a setting never cuts a running turn: it applies at the next run", () => {
+    const { log, state } = playAll([...firstRun(["effort"]), approvalRequired, fastMode]);
+    expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
+    expect(state.runs[r(1)]?.state).toBe("running");
+    const next = play([
+      ...firstRun(["effort"]),
+      approvalRequired,
+      fastMode,
+      ended(1),
+      send("next"),
+      prepared(2),
+    ]);
+    expect(next.effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+  });
+
+  it.each([
+    ["a runtime mode", approvalRequired],
+    ["an option only a new session runs with", fastMode],
+  ] as const)(
+    "%s is refused in V1's words while the agent's background work lives in the session",
+    (_name, change) => {
+      const scene = play([...firstRun(["effort"]), work("running"), ended(1), change]);
+      expect(scene.decision).toEqual({
+        _tag: "Reject",
+        rejection: { reason: "background-work", detail: BACKGROUND_WORK_WORDS },
+      });
+      const done = play([...firstRun(["effort"]), work("running"), work("completed"), change]);
+      expect(done.decision._tag).toBe("Accept");
+    },
+  );
+
+  it("an option the session takes per turn is taken while background work lives", () => {
+    const scene = play([...firstRun(["effort"]), work("running"), ended(1), effortLow]);
+    expect(scene.decision._tag).toBe("Accept");
+  });
+
+  it("a message that needs a new session while background work lives is refused in V1's words, the session kept", () => {
+    const steps = [...firstRunOver(["effort"]), approvalRequired, work("running")];
+    const scene = play([...steps, send("next")]);
+    expect(scene.decision).toEqual({
+      _tag: "Reject",
+      rejection: { reason: "background-work", detail: BACKGROUND_WORK_WORDS },
+    });
+    const { log, state } = playAll(steps);
+    expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
+    expect(state.session?.id).toBe("s1");
+  });
+
+  it("a message queued before the work started waits while it lives, never ending it, and goes once it ends", () => {
+    const held = [
+      ...firstRun(["effort"]),
+      send("next"),
+      approvalRequired,
+      work("running"),
+      ended(1),
+      prepared(2),
+    ];
+    const { log, state } = playAll(held);
+    expect(state.runs[r(2)]?.state).toBe("admitted");
+    expect(
+      log.some((e) => e._tag === "SessionClosing" || (e._tag === "RunEnded" && e.runId === r(2))),
+    ).toBe(false);
+    expect(play([...held, work("completed")]).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+  });
+
+  it("background work a restart cut is lost, and holds no setting after it", () => {
+    const afterRestart = [
+      ...firstRun(["effort"]),
+      work("running"),
+      ended(1),
+      recovered(),
+      send("next"),
+      prepared(2),
+      openedWith(2, ["effort"]),
+    ];
+    const { log, state } = playAll(afterRestart);
+    expect(log).toContainEqual(
+      expect.objectContaining({
+        _tag: "ItemClosed",
+        body: expect.objectContaining({ kind: "work", status: "lost" }),
+      }),
+    );
+    expect(Object.values(state.items).some((item) => item.body.kind === "work")).toBe(false);
+    expect(play([...afterRestart, approvalRequired]).decision._tag).toBe("Accept");
+  });
+
+  it("a message held for background work whose session dies goes on a new session", () => {
+    const held = [
+      ...firstRun(["effort"]),
+      send("next"),
+      approvalRequired,
+      work("running"),
+      ended(1),
+      prepared(2),
+    ];
+    const scene = play([...held, signal({ kind: "session-exited", reason: "exit 137" })]);
+    expect(scene.events).toContainEqual(
+      expect.objectContaining({
+        _tag: "ItemClosed",
+        body: expect.objectContaining({ status: "lost" }),
+      }),
+    );
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", runId: r(2), payload: { runtimeMode: "approval-required" } },
+    ]);
+  });
+
+  it.each([
+    ["plan", { interactionMode: "plan" } as const, "plan"],
+    ["default", {}, undefined],
+  ] as const)("a %s message goes to the agent in its interaction mode", (_name, extra, mode) => {
+    const scene = play([send("go", extra), prepared(1), opened(1)]);
+    expect(scene.effects).toMatchObject([{ kind: "provider.send" }]);
+    const payload = scene.effects[0]?.payload as { readonly interactionMode?: string } | undefined;
+    expect(payload?.interactionMode).toBe(mode);
+  });
+
+  it("the conversation keeps its runtime mode and the latest message's interaction mode", () => {
+    const { state } = playAll([approvalRequired, send("go", { interactionMode: "plan" })]);
+    expect(state.runtimeMode).toBe("approval-required");
+    expect(state.interactionMode).toBe("plan");
+  });
+
+  it("the same setting again records nothing", () => {
+    expect(play([approvalRequired, approvalRequired]).events).toEqual([]);
+    const same = play([
+      { _tag: "AssignAgent", agent },
+      { _tag: "SwitchModel", model: "opus", options: [...effortHigh] },
+    ]);
+    expect(same.events).toEqual([]);
+  });
+});
+
+describe("decide: a person picks the conversation's agent", () => {
+  const agent = {
+    instanceId: "claude",
+    driver: "claudeAgent",
+    model: "opus",
+    profile: { kind: "mate" },
+  } as const;
+  const choose = (instanceId: string, driver: string, resumes = false): Command => ({
+    _tag: "ChooseAgent",
+    instanceId,
+    driver,
+    model: "m2",
+    resumes,
+  });
+  const started: ReadonlyArray<Step> = [{ _tag: "AssignAgent", agent }, ...proofRunning, ended(1)];
+
+  it("before the conversation starts, any agent: its sessions open on it", () => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      choose("codex", "codex"),
+      send("go"),
+      prepared(1),
+    ]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", payload: { instanceId: "codex", driver: "codex", model: "m2" } },
+    ]);
+    expect(scene.state.agent?.profile).toEqual({ kind: "mate" });
+  });
+
+  it("after it started, another driver is refused in V1's words", () => {
+    expect(play([...started, choose("codex", "codex", true)]).decision).toEqual({
+      _tag: "Reject",
+      rejection: {
+        reason: "agent-locked",
+        detail: "This conversation is bound to driver 'claudeAgent' and cannot switch to 'codex'.",
+      },
+    });
+  });
+
+  it("after it started, an instance of its driver whose sessions do not resume the old one's is refused", () => {
+    expect(play([...started, choose("claude-2", "claudeAgent")]).decision).toMatchObject({
+      _tag: "Reject",
+      rejection: { reason: "agent-locked" },
+    });
+  });
+
+  it("after it started, an instance of its driver whose sessions resume the old one's carries the thread over", () => {
+    const steps = [...started, choose("claude-2", "claudeAgent", true), send("next"), prepared(2)];
+    const scene = play(steps);
+    expect(scene.state.threadGeneration).toBe(1);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: { instanceId: "claude-2", generation: 1, resume: "native-1", rotateFrom: "s1" },
+      },
+    ]);
+  });
+
+  it("the agent it already runs takes a model and its options as a model switch", () => {
+    const scene = play([
+      ...started,
+      {
+        _tag: "ChooseAgent",
+        instanceId: "claude",
+        driver: "claudeAgent",
+        model: "sonnet",
+        options: [{ id: "effort", value: "low" }],
+        resumes: false,
+      },
+    ]);
+    expect(scene.events).toMatchObject([
+      { _tag: "ModelSwitched", model: "sonnet", options: [{ id: "effort", value: "low" }] },
+    ]);
+  });
+});
+
+describe("decide: files go with a message", () => {
+  const file = {
+    type: "file",
+    id: "file-1",
+    name: "notes.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 4096,
+  } as unknown as ChatFileAttachment;
+
+  it("a message's files are in its record and in its send, by the id they were uploaded under", () => {
+    const queued = play([{ _tag: "Send", text: "read this", attachments: [file] }]);
+    expect(queued.events[1]).toMatchObject({ body: { kind: "person", attachments: [file] } });
+    const sending = play([
+      { _tag: "Send", text: "read this", attachments: [file] },
+      prepared(1),
+      opened(1),
+    ]);
+    expect(sending.effects[0]).toMatchObject({
+      kind: "provider.send",
+      payload: { attachments: [file] },
+    });
+  });
+
+  it("an answer by message carries the files attached to each question, each also named", () => {
+    const scene = play([
+      ...proofRunning,
+      signal({
+        kind: "request-opened",
+        turn: T(1),
+        key: "codex-async:q1",
+        ask: {
+          kind: "question",
+          questions: [{ id: "0", question: "Which spec?" }],
+          dismissible: true,
+        },
+      }),
+      ended(1),
+      {
+        _tag: "Answer",
+        requestId: requestId(r(1), 1),
+        answer: { answers: { "0": "this one" }, attachmentsByQuestionId: { "0": [file] } },
+        summary: "Answered",
+      },
+    ]);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      body: {
+        kind: "person",
+        text: "Which spec?\nthis one\nAttached file: notes.pdf (file-1)",
+        attachments: [file],
+      },
+    });
+  });
+
+  it("an answer steered into the turn that waits on it carries its files too, each also named", () => {
+    const scene = play([
+      ...proofRunning,
+      signal({
+        kind: "request-opened",
+        turn: T(1),
+        key: "codex-async:q1",
+        ask: {
+          kind: "question",
+          questions: [{ id: "0", question: "Which spec?" }],
+          dismissible: true,
+        },
+      }),
+      {
+        _tag: "Answer",
+        requestId: requestId(r(1), 1),
+        answer: { answers: { "0": "this one" }, attachmentsByQuestionId: { "0": [file] } },
+        summary: "Answered",
+      },
+    ]);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(1),
+      body: {
+        kind: "person",
+        text: "Which spec?\nthis one\nAttached file: notes.pdf (file-1)",
+        attachments: [file],
+        delivery: { state: "steered" },
+      },
+    });
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.steer", runId: r(1), payload: { attachments: [file] } },
+    ]);
   });
 });

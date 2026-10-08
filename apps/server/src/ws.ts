@@ -162,7 +162,6 @@ import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
@@ -627,7 +626,6 @@ const makeWsRpcLayer = (
           ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
           : run(threadFileWrites);
       const crew = yield* CrewEngine;
-      const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
         new EnvironmentAuthorizationError({
@@ -2285,10 +2283,6 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
-        [WS_METHODS.serverGetUsageSummary]: (input) =>
-          observeRpcEffect(WS_METHODS.serverGetUsageSummary, usage.readSummary(input), {
-            "rpc.aggregate": "server",
-          }),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",
