@@ -21,6 +21,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -529,9 +530,18 @@ const enginePort = (input: {
                 ),
               )
             : undefined;
-        if (stopped !== undefined) stopsTaken.add(stopped.run_id);
-        else {
+        const conversation = run(
+          Effect.flatMap(Conversations, (conversations) =>
+            conversations.state(ConversationId.make(chat)),
+          ),
+        ).pipe(Effect.orDie);
+        let ending: string | null;
+        if (stopped !== undefined) {
+          stopsTaken.add(stopped.run_id);
+          ending = stopped.run_id;
+        } else {
           yield* waitFor(`a turn in ${chat} to end`, turnRunning(chat));
+          ending = (yield* conversation).activeRunId;
           const thread = yield* threadOf(chat);
           const payload = {
             state: end.state ?? "completed",
@@ -542,20 +552,17 @@ const enginePort = (input: {
           yield* provider.agent.end(thread, payload);
         }
         const member = yield* handleOf(chat);
-        // The engine recorded the run's end, and the crew read its record past it.
-        const conversation = run(
-          Effect.flatMap(Conversations, (conversations) =>
-            conversations.state(ConversationId.make(chat)),
-          ),
-        ).pipe(Effect.orDie);
+        // The engine recorded that run's end (another may follow at once: a nudge, a carry-on),
+        // and the crew read its record past it.
         yield* waitFor(
           `${chat}'s run to end`,
-          Effect.map(conversation, (state) => state.activeRunId === null),
+          Effect.map(conversation, (state) => state.activeRunId !== ending),
         );
         const ended = yield* Effect.flatMap(sql, (client) =>
           client<{ readonly seq: number | null }>`
             SELECT MAX(seq) AS seq FROM engine_event
             WHERE conversation_id = ${chat} AND type = 'RunEnded'
+              AND json_extract(payload_json, '$.runId') = ${ending}
           `.pipe(
             Effect.map((rows) => rows[0]?.seq ?? 0),
             Effect.orDie,
@@ -567,7 +574,7 @@ const enginePort = (input: {
             crewState,
             (state) =>
               (state.cursors[chat] ?? 0) >= ended &&
-              state.members[member?.handle ?? ""]?.active == null,
+              state.members[member?.handle ?? ""]?.active?.runId !== ending,
           ),
         );
         // As V1's turn end returned once the turn's work was saved in its copy.
@@ -716,7 +723,22 @@ const enginePort = (input: {
           run: task.runId,
         })),
     ),
-    attempts: () => Effect.succeed([]),
+    attempts: (taskId) =>
+      Effect.map(crewState, (state) => {
+        const task = state.tasks[taskId];
+        if (task === undefined) return [];
+        const chat = state.members[task.owner]?.conversationId ?? null;
+        return (task.attemptRows ?? []).map((row) => ({
+          attempt: row.attempt,
+          chat,
+          rotations: row.attempt === task.counters.attempt ? task.counters.rotations : 0,
+          ending: row.ending,
+          endingDetail: row.endingDetail,
+          costUsd: row.costUsd,
+          endedAt:
+            row.endedAt === null ? null : DateTime.formatIso(DateTime.makeUnsafe(row.endedAt)),
+        }));
+      }),
     log: (kinds) =>
       Effect.flatMap(sql, (client) =>
         client<{ readonly kind: string; readonly payload_json: string }>`
