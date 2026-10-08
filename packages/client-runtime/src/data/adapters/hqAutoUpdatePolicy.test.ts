@@ -36,6 +36,7 @@ it.effect("settings observes another admin's changes and a fresh Core's lower re
     yield* show("old-hq", 8, false, "scope-reset");
     yield* fixture.send({
       type: "scope-ready",
+      core: { protocol: 1, autoUpdatePolicy: 1 },
       scope: { kind: "navigation" },
       incarnation: "old-hq",
       revision: 8,
@@ -49,12 +50,48 @@ it.effect("settings observes another admin's changes and a fresh Core's lower re
     yield* show("fresh-hq", 0, true, "scope-reset");
     yield* fixture.send({
       type: "scope-ready",
+      core: { protocol: 1, autoUpdatePolicy: 1 },
       scope: { kind: "navigation" },
       incarnation: "fresh-hq",
       revision: 0,
     });
     yield* settle;
     expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
+    yield* Fiber.interrupt(fiber);
+  }),
+);
+
+it.effect("an existing HQ without policy streaming gives an actionable upgrade state", () =>
+  Effect.gen(function* () {
+    const store = makeAccountStore(AtomRegistry.make());
+    const fixture = hqFixtureWire();
+    const link = hqNavigationLink({ orgId: "org", wire: fixture.wire, store });
+    const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+    const fiber = yield* Effect.forkChild(supervisor.run);
+    yield* settle;
+    yield* fixture.send({
+      type: "scope-reset",
+      scope: { kind: "navigation" },
+      incarnation: "old",
+      revision: 1,
+      values: [],
+      removals: [],
+    });
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "old",
+      revision: 1,
+      core: { protocol: 1 },
+    });
+    yield* settle;
+    expect(
+      autoUpdatePolicySettings.derive(readsOfState(store.state()), { orgId: "org", admin: true }),
+    ).toMatchObject({
+      editable: false,
+      enabled: null,
+      words: "Update HQ Core to manage automatic Mate updates.",
+    });
     yield* Fiber.interrupt(fiber);
   }),
 );

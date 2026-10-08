@@ -26,7 +26,12 @@ import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
-import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
+import {
+  Structure,
+  StructureRefused,
+  type StructureRead,
+  type StructureSource,
+} from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 import * as Socket from "effect/socket/Socket";
@@ -293,7 +298,12 @@ const fixture = Effect.gen(function* () {
     Layer.succeed(AutoUpdatePolicy, {
       current: Effect.sync(() => policy),
       changes: Stream.fromPubSub(policyChanges),
-      read: () => Effect.sync(() => policy),
+      read: (userId) =>
+        Effect.gen(function* () {
+          if (!org.members.some((member) => member.userId === userId && member.status === "ACTIVE"))
+            return yield* new StructureRefused({ code: "forbidden", reason: "not_active_member" });
+          return policy;
+        }),
       set: (_userId, enabled) =>
         Effect.gen(function* () {
           policy = { ...policy, enabled, revision: policy.revision + 1 };
@@ -455,6 +465,18 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    revokeMember: (userId: string, remove: boolean) =>
+      Effect.gen(function* () {
+        org = {
+          ...org,
+          members: remove
+            ? org.members.filter((member) => member.userId !== userId)
+            : org.members.map((member) =>
+                member.userId === userId ? { ...member, status: "SUSPENDED" } : member,
+              ),
+        };
+        yield* PubSub.publish(structureChanged, 1);
+      }),
     changePolicy: (enabled: boolean) =>
       Effect.gen(function* () {
         policy = { ...policy, enabled, revision: policy.revision + 1 };
@@ -643,6 +665,44 @@ describe("revisioned HQ values", () => {
         );
       }),
   );
+  for (const remove of [false, true])
+    it.effect(
+      `a ${remove ? "removed" : "suspended"} member loses policy evidence and cannot read later changes`,
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const reader = yield* f.connect("reader");
+          yield* reader.subscribe([{ scope: nav }]);
+          assert.isTrue(
+            resetOf(yield* reader.take).values.some((value) => value.key === "auto-update-policy"),
+          );
+          yield* reader.take;
+          yield* f.revokeMember("reader", remove);
+          let revoked = resetOf(yield* reader.take);
+          while (!revoked.removals.some((removal) => removal.key === "auto-update-policy"))
+            revoked = resetOf(yield* reader.take);
+          assert.deepStrictEqual(
+            revoked.removals.find((removal) => removal.key === "auto-update-policy"),
+            { key: "auto-update-policy", reason: "no-access" },
+          );
+          assert.isFalse(revoked.values.some((value) => value.key === "auto-update-policy"));
+          yield* f.changePolicy(false);
+          yield* reader.request({ type: "unsubscribe", scopes: [nav] });
+          yield* reader.subscribe([{ scope: nav }]);
+          let message = yield* reader.take;
+          while (message.type !== "scope-ready") {
+            assert.isFalse(
+              resetOf(message).values.some((value) => value.key === "auto-update-policy"),
+            );
+            message = yield* reader.take;
+          }
+          const reconnect = yield* f.connect("reader", "retained-session");
+          yield* reconnect.subscribe([{ scope: nav }]);
+          const baseline = resetOf(yield* reconnect.take);
+          assert.isFalse(baseline.values.some((value) => value.key === "auto-update-policy"));
+          assert.include(json(baseline.removals), "auto-update-policy");
+        }),
+    );
   it.effect("a cold navigation delivery budgets one role read before and one after loading", () =>
     Effect.scoped(
       Effect.gen(function* () {

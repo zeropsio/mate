@@ -219,3 +219,45 @@ function observePolicy(
     ],
   });
 }
+
+it.each(["receipt-first", "stream-first"])(
+  "a confirmed toggle stays locked until reflection in %s order",
+  (order) => {
+    observePolicy(store, { orgId: "org", enabled: false, revision: 1 });
+    store.dispatch({
+      kind: "operation-recorded",
+      requestId: "auto-update-policy/org/1",
+      intent: { kind: "set-auto-update-policy", orgId: "org", enabled: true },
+    });
+    const answer = () =>
+      store.dispatch({
+        kind: "operation-receipt",
+        receipt: {
+          requestId: "auto-update-policy/org/1",
+          operationId: "org",
+          executor: "hq",
+          affected: [],
+          handles: [],
+          acceptance: {
+            kind: "accepted",
+            result: { policy: { orgId: "org", enabled: true, revision: 2 } },
+          },
+          outcome: { kind: "succeeded", evidence: "HQ answered" },
+        },
+      });
+    const observe = () => observePolicy(store, { orgId: "org", enabled: true, revision: 2 });
+    if (order === "receipt-first") answer();
+    else observe();
+    expect(control(render())?.props.disabled).toBe(true);
+    if (order === "receipt-first") observe();
+    else answer();
+    const toggle = control(render());
+    if (toggle === null) throw new Error("Expected a reflected admin toggle");
+    expect(toggle.props).toMatchObject({ checked: true, disabled: false });
+    (toggle.props.onCheckedChange as (value: boolean) => void)(false);
+    expect(fixture.submit).toHaveBeenCalledWith(
+      { kind: "set-auto-update-policy", orgId: "org", enabled: false },
+      "auto-update-policy/org/2",
+    );
+  },
+);

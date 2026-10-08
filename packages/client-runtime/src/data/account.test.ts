@@ -344,7 +344,13 @@ describe("an account's HQ", () => {
             values: [{ key: "auto-update-policy", value: { orgId: "org-a", enabled, revision } }],
             removals: [],
           }),
-          wire.send({ type: "scope-ready", scope: { kind: "navigation" }, incarnation, revision }),
+          wire.send({
+            type: "scope-ready",
+            core: { protocol: 1, autoUpdatePolicy: 1 },
+            scope: { kind: "navigation" },
+            incarnation,
+            revision,
+          }),
         );
       account.show("org-a");
       account.showHq({ orgId: "org-a", ownerId: "old-project", wire: old.wire });

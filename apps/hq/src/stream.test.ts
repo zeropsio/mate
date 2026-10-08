@@ -91,7 +91,7 @@ describe("serveStructureSocket: who ended a socket, and with what code", () => {
         scope: { kind: "navigation" },
         incarnation: "i",
         revision: 1,
-        core: { protocol: 1, build: "core-build" },
+        core: { protocol: 1, autoUpdatePolicy: 1, build: "core-build" },
       });
       yield* Fiber.interrupt(serving);
     }).pipe(Effect.provide(liveSocketsLayer)),

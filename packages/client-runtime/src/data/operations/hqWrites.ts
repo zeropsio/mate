@@ -201,9 +201,15 @@ export const updateMateFace = shown(
 export const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
   kind: "set-auto-update-policy",
   executor: "hq",
-  reflected: (read, intent) => {
+  reflected: (read, intent, receipt) => {
     const policy = read.fact("hqAutoUpdatePolicy", intent.orgId);
-    return policy.kind === "known" && policy.value.enabled === intent.enabled;
+    const result = receipt.acceptance.kind === "accepted" ? receipt.acceptance.result : undefined;
+    return (
+      policy.kind === "known" &&
+      result !== undefined &&
+      "policy" in result &&
+      policy.value.revision >= result.policy.revision
+    );
   },
   // No adoption predicate: another admin's identical write cannot settle our lost answer.
 };

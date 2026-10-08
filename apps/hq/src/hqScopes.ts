@@ -425,6 +425,19 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           standupRequestedBy: mate?.standupRequestedBy ?? null,
         });
       };
+      const policyFor = (userId: string) =>
+        autoUpdate.read(userId).pipe(
+          Effect.map((policy) => ({
+            values: [{ key: "auto-update-policy", value: policy }] as HqValue[],
+            removals: [] as HqRemoval[],
+          })),
+          Effect.catchTag("StructureRefused", () =>
+            Effect.succeed({
+              values: [] as HqValue[],
+              removals: [{ key: "auto-update-policy", reason: "no-access" }] as HqRemoval[],
+            }),
+          ),
+        );
       const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
           const view = viewFor(current, entry.userId);
@@ -457,6 +470,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           if (!exists)
             return yield* new ScopeReadRefused({ code: "scope_not_found", reason: "deleted" });
           const values: HqValue[] = [];
+          const policyRemovals: HqRemoval[] = [];
           if (scope.kind === "navigation") {
             const member = current.facts.members.find(
               (member) => member.kind === "person" && member.userId === entry.userId,
@@ -549,7 +563,9 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
-              values.push({ key: "auto-update-policy", value: yield* autoUpdate.current });
+              const policy = yield* policyFor(entry.userId);
+              values.push(...policy.values);
+              policyRemovals.push(...policy.removals);
               for (const record of view.lifecycle ?? [])
                 values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
@@ -722,7 +738,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               );
               return removal === undefined ? [] : [removal];
             });
-          return { values, removals };
+          return { values, removals: [...removals, ...policyRemovals] };
         });
       const refreshUnlocked = (entry: Entry) =>
         Effect.gen(function* () {
@@ -1102,10 +1118,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                   if (entry.scope.kind === "navigation" && entry.failure === undefined)
                     yield* entry.one.withPermits(1)(
                       Effect.gen(function* () {
-                        const policy = yield* autoUpdate.current;
-                        const message = entry.journal.commit([
-                          { key: "auto-update-policy", value: policy },
-                        ]);
+                        const policy = yield* policyFor(entry.userId);
+                        const message = entry.journal.commit(policy.values, policy.removals);
                         if (message !== undefined) yield* send(entry, [message]);
                       }),
                     );

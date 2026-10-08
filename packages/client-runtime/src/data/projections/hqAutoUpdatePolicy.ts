@@ -2,6 +2,7 @@ import {
   autoUpdatePolicyRequestId,
   autoUpdatePolicyScope,
 } from "../families/hqAutoUpdatePolicy.ts";
+import { setAutoUpdatePolicy } from "../operations/hqWrites.ts";
 import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { hqVerdict } from "./hqVerdict.ts";
@@ -35,9 +36,25 @@ export const autoUpdatePolicySettings: Projection<
       attempt === 1
         ? null
         : operationProgress.derive(read, autoUpdatePolicyRequestId(orgId, attempt - 1));
+    const protocol = read.fact("hqProtocol", orgId);
+    const upgradeRequired =
+      stream.phase === "live" &&
+      protocol.kind === "known" &&
+      protocol.value.autoUpdatePolicy === undefined;
+    const record =
+      attempt === 1 ? undefined : read.operation(autoUpdatePolicyRequestId(orgId, attempt - 1));
+    const awaitingReflection =
+      progress?.stage === "done" &&
+      progress.outcome === "succeeded" &&
+      record?.intent.kind === "set-auto-update-policy" &&
+      record.receipt !== null &&
+      !setAutoUpdatePolicy.reflected(read, record.intent, record.receipt);
     const pending =
-      progress !== null &&
-      ["submitting", "accepted", "reflected", "uncertain", "unresolved"].includes(progress.stage);
+      awaitingReflection ||
+      (progress !== null &&
+        ["submitting", "accepted", "reflected", "uncertain", "unresolved"].includes(
+          progress.stage,
+        ));
     const unconfirmed = progress?.stage === "uncertain" || progress?.stage === "unresolved";
     const enabled = fact.kind === "known" ? fact.value.enabled : null;
     const error =
@@ -49,24 +66,38 @@ export const autoUpdatePolicySettings: Projection<
     return {
       enabled,
       pending,
-      recoverable: admin && available && enabled !== null && stream.phase === "live" && unconfirmed,
+      recoverable:
+        admin &&
+        available &&
+        !upgradeRequired &&
+        enabled !== null &&
+        stream.phase === "live" &&
+        unconfirmed,
       error,
-      editable: admin && available && enabled !== null && stream.phase === "live" && !pending,
-      words: pending
-        ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
-          ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${enabled === null ? "unknown" : enabled ? "On" : "Off"}; change unconfirmed`
-          : "Saving…"
-        : enabled === null
-          ? hq === "none"
-            ? "Set up HQ to read this policy."
-            : hq === "unreadable"
-              ? "HQ is unavailable; check its connection."
-              : fact.kind === "withheld"
-                ? "Access refused"
-                : stream.fault !== null
-                  ? "Policy unavailable"
-                  : "Waiting for HQ…"
-          : `${available && stream.phase === "live" ? "" : "Last known: "}${enabled ? "On" : "Off"}`,
+      editable:
+        admin &&
+        available &&
+        !upgradeRequired &&
+        enabled !== null &&
+        stream.phase === "live" &&
+        !pending,
+      words: upgradeRequired
+        ? "Update HQ Core to manage automatic Mate updates."
+        : pending
+          ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
+            ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${enabled === null ? "unknown" : enabled ? "On" : "Off"}; change unconfirmed`
+            : "Saving…"
+          : enabled === null
+            ? hq === "none"
+              ? "Set up HQ to read this policy."
+              : hq === "unreadable"
+                ? "HQ is unavailable; check its connection."
+                : fact.kind === "withheld"
+                  ? "Access refused"
+                  : stream.fault !== null
+                    ? "Policy unavailable"
+                    : "Waiting for HQ…"
+            : `${available && stream.phase === "live" ? "" : "Last known: "}${enabled ? "On" : "Off"}`,
       retryRead: stream.fault !== null,
       requestId: autoUpdatePolicyRequestId(orgId, attempt),
     };
