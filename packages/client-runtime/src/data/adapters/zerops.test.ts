@@ -87,6 +87,25 @@ function answers(
 }
 
 describe("zeropsNavigationLink", () => {
+  it.effect("shows services while an unrelated process baseline is still opening", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const held = yield* Deferred.make<void>();
+      const baseline = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === PROCESS_SEARCH && request.body?.wsOutputType === "listStream"
+          ? Effect.andThen(Deferred.await(held), baseline(request))
+          : request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream"
+            ? Effect.succeed({ items: [RECORDED_SERVICE] })
+            : baseline(request),
+      );
+      const fiber = yield* run(store, fixture);
+      expect(factOf(store.state(), "service", RECORDED_SERVICE.id)?.content.kind).toBe("value");
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("baselining");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "an identical reconnect publishes no roster values and reports only failed recovery",
     () =>
@@ -618,6 +637,28 @@ describe("a demanded detail", () => {
   const historyReads = (fixture: ReturnType<typeof fixtureWire>) =>
     fixture.requests.filter((request) => request.method === "GET" && request.path === HISTORY_PATH)
       .length;
+
+  it.effect("shows demanded history once its own family is ready, while versions still open", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const held = yield* Deferred.make<void>();
+      const baseline = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === "/app-version/search" && request.body?.wsOutputType === "listStream"
+          ? Effect.andThen(Deferred.await(held), baseline(request))
+          : request.method === "GET"
+            ? Effect.succeed({ status: 200, body: { list: [finished] } })
+            : baseline(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(DEMAND);
+      yield* settle;
+      expect(factOf(store.state(), "process", "old")?.content).toMatchObject({
+        value: { status: "FINISHED" },
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 
   it.effect("reads a demanded history once as its baseline and lets it go when released", () =>
     Effect.gen(function* () {

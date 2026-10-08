@@ -257,12 +257,22 @@ export const make = Effect.gen(function* () {
           CACHED_ENDPOINT_SOCKET_TIMEOUT_MS,
         ).pipe(Effect.result);
         if (Result.isSuccess(cachedSocket)) {
-          const descriptor = yield* fetchDescriptor(cached.value.endpoint.httpBaseUrl).pipe(
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-          );
+          const descriptor =
+            recentDescriptors.recent(cached.value.endpoint.httpBaseUrl) ??
+            (yield* fetchDescriptor(cached.value.endpoint.httpBaseUrl).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+            ));
+          if (descriptor.environmentId !== input.expectedEnvironmentId) {
+            return yield* environmentMismatchError({
+              expected: input.expectedEnvironmentId,
+              actual: descriptor.environmentId,
+            });
+          }
+          const threadSnapshot = threadSnapshotCapabilitiesOf(descriptor);
           return {
             contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
             ...mateEngineOf(descriptor),
+            ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
             environmentId: cached.value.environmentId,
             label: cached.value.label,
             httpBaseUrl: cached.value.endpoint.httpBaseUrl,

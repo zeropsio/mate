@@ -754,7 +754,7 @@ export function zeropsNavigationLink(options: {
        * generation), and then it is read again.
        */
       const observed = new Map<ScopeKey, number>();
-      let navigationRegistered = false;
+      const navigationRegistered = new Set<ScopeKey>();
       /** A sampled detail reads nothing a registration observes: it is read at once. */
       const readsAtOnce = (scope: ScopeKey) => {
         const { spec, detail } = scopeListing(scope);
@@ -786,7 +786,11 @@ export function zeropsNavigationLink(options: {
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
           const renewed = demands.takeRenewal(scope);
-          if (!navigationRegistered && !readsAtOnce(scope)) continue;
+          if (
+            !readsAtOnce(scope) &&
+            !navigationRegistered.has(scopeOf(scopeListing(scope).spec, orgId))
+          )
+            continue;
           const stream = streamOf(store.state(), scope);
           if (stream.phase === "refused") continue;
           // A read that passed its deadline may still hang: its retry does not wait for it, and
@@ -844,73 +848,82 @@ export function zeropsNavigationLink(options: {
         return wakeAt;
       });
       /**
-       * The organization's navigation, registered scope by scope: updates first, each membership
-       * answer committed as its scope's baseline.
+       * Each navigation family opens independently: updates first, then its membership baseline.
+       * A slow family cannot hold back another family or its demanded details.
        */
-      const registerNavigation = Effect.gen(function* () {
-        for (const scope of scopes) {
-          yield* signal(scope, { kind: "attempt" });
-          // A scope refused alone stays so until the person tries again: nothing registers it.
-          if (streamOf(store.state(), scope).phase === "refused") continue;
-          generations.set(scope, streamOf(store.state(), scope).generation);
-          yield* signal(scope, { kind: "handshake" });
-          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
-          const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
-          for (const registration of registrations.filter((entry) => entry.scope === scope)) {
-            const subscriptionName = options.makeId();
-            subscriptions.set(subscriptionName, {
-              ...registration,
-              generation: generationOf(scope),
-            });
-            const answer = yield* link
-              .post(registration.path, {
-                search: registration.search,
-                sort: [],
-                receiverId: link.receiverId,
-                subscriptionName,
-                ...(registration.role === "membership"
-                  ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
-                  : { wsOutputType: "updateStream", disableOutput: true }),
-              })
-              .pipe(
-                Effect.catchIf(
-                  (fault) =>
-                    refusedAlone &&
-                    (fault.outcome === "recoverable-session" ||
-                      fault.outcome === "authoritative-denial"),
-                  (fault) => Effect.succeed<RefusedAlone>({ refusedAlone: fault }),
-                ),
-              );
-            if (isRefusedAlone(answer)) {
-              subscriptions.delete(subscriptionName);
-              yield* signal(scope, {
-                kind: "fault",
-                fault: { outcome: "authoritative-denial", message: answer.refusedAlone.message },
-                jitter: 0,
-              });
-              break;
+      const registerNavigation = Effect.forEach(
+        scopes,
+        (scope) =>
+          Effect.gen(function* () {
+            yield* signal(scope, { kind: "attempt" });
+            // A scope refused alone stays so until the person tries again: nothing registers it.
+            if (streamOf(store.state(), scope).phase === "refused") {
+              navigationRegistered.add(scope);
+              wake();
+              return;
             }
-            if (registration.role !== "membership") continue;
-            const list = Option.getOrUndefined(decodeList(answer));
-            if (list === undefined)
-              return yield* Effect.fail(corrupt("A baseline answer is malformed."));
-            const rows = rowsOf(registration.family, list.items);
-            yield* carryOut(
-              store.dispatch({
-                kind: "baseline-commit",
-                scope,
+            generations.set(scope, streamOf(store.state(), scope).generation);
+            yield* signal(scope, { kind: "handshake" });
+            store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+            const refusedAlone = scopeSpec(scope).zerops?.refusedAlone === true;
+            for (const registration of registrations.filter((entry) => entry.scope === scope)) {
+              const subscriptionName = options.makeId();
+              subscriptions.set(subscriptionName, {
+                ...registration,
                 generation: generationOf(scope),
-                via: "zerops-realtime",
-                // Membership is every item's id: a damaged row keeps its member and its last value.
-                members: membersOf(list.items),
-                rows,
-                partial: partialAnswer(list.items, rows, list.totalHits),
-              }),
-            );
-            yield* signal(scope, { kind: "baseline-committed" });
-          }
-        }
-      });
+              });
+              const answer = yield* link
+                .post(registration.path, {
+                  search: registration.search,
+                  sort: [],
+                  receiverId: link.receiverId,
+                  subscriptionName,
+                  ...(registration.role === "membership"
+                    ? { wsOutputType: "listStream", limit: ORGANIZATION_SEARCH_LIMIT }
+                    : { wsOutputType: "updateStream", disableOutput: true }),
+                })
+                .pipe(
+                  Effect.catchIf(
+                    (fault) =>
+                      refusedAlone &&
+                      (fault.outcome === "recoverable-session" ||
+                        fault.outcome === "authoritative-denial"),
+                    (fault) => Effect.succeed<RefusedAlone>({ refusedAlone: fault }),
+                  ),
+                );
+              if (isRefusedAlone(answer)) {
+                subscriptions.delete(subscriptionName);
+                yield* signal(scope, {
+                  kind: "fault",
+                  fault: { outcome: "authoritative-denial", message: answer.refusedAlone.message },
+                  jitter: 0,
+                });
+                break;
+              }
+              if (registration.role !== "membership") continue;
+              const list = Option.getOrUndefined(decodeList(answer));
+              if (list === undefined)
+                return yield* Effect.fail(corrupt("A baseline answer is malformed."));
+              const rows = rowsOf(registration.family, list.items);
+              yield* carryOut(
+                store.dispatch({
+                  kind: "baseline-commit",
+                  scope,
+                  generation: generationOf(scope),
+                  via: "zerops-realtime",
+                  // Membership is every item's id: a damaged row keeps its member and its last value.
+                  members: membersOf(list.items),
+                  rows,
+                  partial: partialAnswer(list.items, rows, list.totalHits),
+                }),
+              );
+              yield* signal(scope, { kind: "baseline-committed" });
+            }
+            navigationRegistered.add(scope);
+            wake();
+          }),
+        { concurrency: "unbounded", discard: true },
+      );
       const observeForever = Effect.forever(
         Effect.gen(function* () {
           const wakeAt = yield* observeDemanded;
@@ -926,7 +939,6 @@ export function zeropsNavigationLink(options: {
       const details = yield* Effect.forkIn(observeForever, attemptScope);
       yield* registerNavigation;
       yield* signal(key, { kind: "baseline-committed" });
-      navigationRegistered = true;
       wake();
       yield* Effect.raceAllFirst([Fiber.join(frames), Fiber.join(details), Deferred.await(ended)]);
       return yield* Effect.fail(corrupt("The receiver's socket closed."));

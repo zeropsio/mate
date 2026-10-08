@@ -249,11 +249,24 @@ export const keepInlineImage = async (
   return { mimeType: image.mimeType, asset, ...size };
 };
 
+function activityMediaNeedsCapture(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(activityMediaNeedsCapture);
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    isInlineImage(value) ||
+    (typeof record.imagePath === "string" && !record.imagePath.startsWith("mate-asset:")) ||
+    Object.values(record).some(activityMediaNeedsCapture)
+  );
+}
+
 export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
   activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
   threadId: ThreadId,
   workspaceRoot: string,
 ) {
+  // A captured or image-free tool result needs no asset store and no async payload clone.
+  if (!activityMediaNeedsCapture(activity.payload)) return activity;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
   const owner = { threadId: threadId, ownerId: activity.id, provenance: "capture" as const };
@@ -307,6 +320,19 @@ export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
   snapshot: OrchestrationThreadDetailSnapshot,
   workspaceRoot: string,
 ) {
+  if (
+    !snapshot.thread.messages.some(
+      (message) =>
+        message.text.includes("![") ||
+        message.attachments?.some(
+          (attachment) =>
+            attachment.type === "image" &&
+            (!("asset" in attachment) || attachment.asset === undefined),
+        ),
+    ) &&
+    !snapshot.thread.activities.some((activity) => activityMediaNeedsCapture(activity.payload))
+  )
+    return snapshot;
   return {
     ...snapshot,
     thread: {
