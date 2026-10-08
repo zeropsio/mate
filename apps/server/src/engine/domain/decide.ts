@@ -421,9 +421,10 @@ const selectionOf = (state: ConversationState) =>
 /**
  * Sends an admitted run on a fitting session, or asks for one; a session just opened for this run
  * fits. One that does not fit is closed first and the next one resumes it (a model switch or a
- * setting rotates it) — between runs, never under a running turn. A setting only a new session
- * runs with waits for none: while the agent's background work lives in the session, the run is
- * refused in V1's words. A run whose workspace capture has not settled, or a session closing, waits.
+ * setting rotates it) — between runs, never under a running turn. A run that needs a new session
+ * for a setting while the agent's background work lives in this one waits — never ending that
+ * work — until the work ends or the setting changes back (a message sent meanwhile is refused in
+ * V1's words). A run whose workspace capture has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (needsPrepare(run) && run.prepare !== "done") return;
@@ -434,17 +435,7 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (opening) return;
   const session = b.state.session;
   const lacks = session === null || justOpened ? null : misfit(b.state, session);
-  if (lacks === "settings" && workLives(b.state)) {
-    endRun(
-      b,
-      run,
-      { kind: "failed", reason: BACKGROUND_WORK_WORDS, next: null },
-      "inferred-from-effect",
-      "refused",
-    );
-    admitNext(b);
-    return;
-  }
+  if (lacks === "settings" && workLives(b.state)) return;
   if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
     const selection = selectionOf(b.state);
@@ -477,9 +468,16 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
 
 // ── settings ────────────────────────────────────────────────────────────────────────────────
 
+/** The admitted run sends now, if nothing holds it any more. */
+const redispatch = (b: StepBuilder): void => {
+  const run = activeRun(b.state);
+  if (run?.state === "admitted") dispatch(b, run);
+};
+
 /**
  * A change that only a new session runs with, asked while the agent's background work lives in
- * the session, is refused: it would end that work (V1 refuses it the same way).
+ * the session, is refused: it would end that work (V1 refuses it the same way). So is a message
+ * that would need such a session.
  */
 const refuseOverWork = (b: StepBuilder): void => {
   const session = b.state.session;
@@ -510,6 +508,7 @@ const switchModel = (
     ...(optionsChange ? { options: [...options] } : {}),
   });
   refuseOverWork(b);
+  redispatch(b);
 };
 
 /** How freely the agent works: from the next run on, in a session that resumes this one. */
@@ -518,6 +517,7 @@ const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void => {
   if (b.state.runtimeMode === runtimeMode) return;
   b.emit({ _tag: "RuntimeModeSet", runtimeMode, by: b.envelope.principal });
   refuseOverWork(b);
+  redispatch(b);
 };
 
 /**
@@ -718,6 +718,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
+  refuseOverWork(b);
   const ordinal = b.state.nextRunOrdinal;
   const item = deriveItemId(deriveRunId(b.state.conversationId, ordinal), 1);
   const run = queueRun(b, {
@@ -1531,8 +1532,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (closed !== undefined) return updateClosed(b, closed, body);
       const open = Object.values(b.state.items).find((item) => item.key === signal.work);
       if (open !== undefined) {
-        if (ends) b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
-        else if (contentDigest(open.body) !== contentDigest(body)) {
+        if (ends) {
+          b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
+          // A run held for a setting the live work stood against goes now.
+          return redispatch(b);
+        } else if (contentDigest(open.body) !== contentDigest(body)) {
           b.emit({ _tag: "ItemUpdated", runId: open.runId, itemId: open.id, body });
         }
         return;

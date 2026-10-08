@@ -2115,20 +2115,34 @@ describe("decide: a conversation's settings reach its agent as V1's do", () => {
   });
 
   it("a message that needs a new session while background work lives is refused in V1's words, the session kept", () => {
-    const { state, log } = playAll([
-      ...firstRunOver(["effort"]),
-      approvalRequired,
-      work("running"),
-      send("next"),
-      prepared(2),
-    ]);
-    expect(state.runs[r(2)]?.end).toEqual({
-      kind: "failed",
-      reason: BACKGROUND_WORK_WORDS,
-      next: null,
+    const steps = [...firstRunOver(["effort"]), approvalRequired, work("running")];
+    const scene = play([...steps, send("next")]);
+    expect(scene.decision).toEqual({
+      _tag: "Reject",
+      rejection: { reason: "background-work", detail: BACKGROUND_WORK_WORDS },
     });
+    const { log, state } = playAll(steps);
     expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
     expect(state.session?.id).toBe("s1");
+  });
+
+  it("a message queued before the work started waits while it lives, never ending it, and goes once it ends", () => {
+    const held = [
+      ...firstRun(["effort"]),
+      send("next"),
+      approvalRequired,
+      work("running"),
+      ended(1),
+      prepared(2),
+    ];
+    const { log, state } = playAll(held);
+    expect(state.runs[r(2)]?.state).toBe("admitted");
+    expect(
+      log.some((e) => e._tag === "SessionClosing" || (e._tag === "RunEnded" && e.runId === r(2))),
+    ).toBe(false);
+    expect(play([...held, work("completed")]).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
   });
 
   it.each([
