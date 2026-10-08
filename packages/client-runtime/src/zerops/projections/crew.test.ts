@@ -437,6 +437,45 @@ describe("deriveCrewView on the engine", () => {
     return (Option.getOrNull(shell.snapshot)?.threads ?? []) as unknown as ReadonlyArray<Shell>;
   };
 
+  it("joins each crewmate to its conversation's row and reads its status there", () => {
+    const view = deriveCrewView(crewEngineSnapshotFixture(), shellsOf(rows));
+
+    expect(
+      view.crewmates.map((row) => [row.crewmate.handle, row.shell?.id ?? null, row.status?.kind]),
+    ).toEqual([
+      ["lead", conversation("lead"), "idle"],
+      ["backend", conversation("backend"), "working"],
+      ["frontend", conversation("frontend"), "working"],
+      ["erik", conversation("erik"), "input"],
+    ]);
+    expect(view.crewmates.map((row) => row.statusWord)).toEqual([
+      null,
+      "Working",
+      "Working",
+      "Input",
+    ]);
+  });
+
+  it("reads the conversation of a crewmate no longer on the crew as retired, archived or not", () => {
+    const snapshot = crewEngineSnapshotFixture();
+    const withoutErik = {
+      ...snapshot,
+      crewmates: snapshot.crewmates.filter((mate) => mate.handle !== "erik"),
+    };
+    const erik = shellsOf([rowOf("erik", IDLE)])[0]!;
+    const table = [
+      { name: "not archived", shells: [erik] },
+      { name: "archived", shells: [{ ...erik, archivedAt: "2026-09-27T10:00:00.000Z" }] },
+    ];
+    for (const row of table) {
+      const view = deriveCrewView(withoutErik, row.shells);
+      expect([row.name, view.stints.get(ThreadId.make(conversation("erik")))]).toEqual([
+        row.name,
+        { handle: "erik", stint: 1, current: false, retired: true },
+      ]);
+    }
+  });
+
   it("has no shell and no status for a crewmate before its first turn or whose shell is not here", () => {
     const view = deriveCrewView(
       crewEngineSnapshotFixture(),
