@@ -101,7 +101,9 @@ it("publishes typed requests and response receipts on the real wire and retains 
       }),
     );
     expect(mate.snapshot().thread.activities.at(-1)?.kind).toBe("user-input.resolved");
-    expect(chat.responses).toMatchObject([{ answers: { target: "stage" } }]);
+    expect(chat.wire.intents()).toMatchObject([
+      { kind: "answer", ask: "question", answers: { target: "stage" } },
+    ]);
   } finally {
     socket.terminate();
     await server.close();
