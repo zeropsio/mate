@@ -2114,7 +2114,7 @@ export function ProjectHeader({
           never hovers — so a coarse pointer gets them at rest. A slot that is
           always there: nothing moves when they show. */}
         {muted ? null : (
-          <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
+          <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-any-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
             {/* In the Custom order the grip leads the verbs: inside the band,
               clear of its rounded ends, and the name keeps the mark edge. */}
             {reorder?.custom === true && group !== undefined ? (
@@ -2978,7 +2978,7 @@ function MateRowView<T extends RosterCandidate>({
               className={cn(
                 "relative flex h-5 min-w-11 shrink-0 justify-end",
                 actions !== undefined &&
-                  "transition-opacity group-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+                  "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
                 armed && "opacity-0",
               )}
             >
@@ -3030,7 +3030,7 @@ function MateRowView<T extends RosterCandidate>({
       {actions === undefined ? null : (
         <span
           className={cn(
-            "absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            "absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
             armed && "opacity-100",
           )}
           data-zerops-surface="sidebar-mate-actions"
