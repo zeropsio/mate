@@ -1,6 +1,6 @@
 /** Mate workspace samples share account demand and the common retry/refusal supervisor. */
 import { EnvironmentAuthorizationError } from "@t3tools/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { workspaceReading } from "../projections/mateWorkspace.ts";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";

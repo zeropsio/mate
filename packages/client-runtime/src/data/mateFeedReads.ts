@@ -1,8 +1,8 @@
 /** Surface bindings hold demand and read projections; they own neither transport nor remote values. */
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 import type { AccountStore } from "./store.ts";
 import { mateFeed } from "./projections/mateFeeds.ts";

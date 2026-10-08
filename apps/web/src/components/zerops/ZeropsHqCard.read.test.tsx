@@ -14,7 +14,7 @@ import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { RegistryContext } from "@effect/atom-react";
-import { type Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { type Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -49,7 +49,7 @@ vi.mock("~/zerops/accountHq", () => ({
 // Where HQ stands, as its stream says it (`hqStandingAtom`): written here as the stream would.
 vi.mock("~/state/zerops", async (importOriginal) => {
   const actual = await importOriginal<typeof import("~/state/zerops")>();
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   return { ...actual, hqStandingAtom: Atom.make<HqStanding>({ kind: "unknown" }) };
 });
 vi.mock("~/hooks/useSettings", () => ({

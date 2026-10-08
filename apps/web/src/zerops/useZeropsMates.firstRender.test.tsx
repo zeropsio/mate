@@ -3,7 +3,7 @@ import { seedHqNavigation, seedHqVerdict } from "@t3tools/client-runtime/data/fi
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -13,7 +13,7 @@ vi.mock("~/zerops/accountEnvironments", () => ({
   useTryMateAgain: () => () => undefined,
 }));
 vi.mock("~/state/presentation", async () => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   return { environmentPresentations: { presentationsAtom: Atom.make(new Map()) } };
 });
 vi.mock("~/components/zerops/ZeropsMateComingPage", () => ({

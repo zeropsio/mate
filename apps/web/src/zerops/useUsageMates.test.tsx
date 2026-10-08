@@ -7,7 +7,7 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

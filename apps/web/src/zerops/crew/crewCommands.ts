@@ -3,7 +3,7 @@ import { mateActionCommand, mateFeedAtom, readMateFeed } from "@t3tools/client-r
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { createRuntimeCommand } from "@t3tools/client-runtime/state/runtime";
 import { type EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { connectionAtomRuntime } from "~/connection/runtime";
 export const crewFilesAtom = Atom.family((environmentId: EnvironmentId) =>
   mateFeedAtom({ family: "mateCrewFiles", environmentId, input: {} }),

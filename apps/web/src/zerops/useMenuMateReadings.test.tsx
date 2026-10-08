@@ -3,7 +3,7 @@ import { MateAttention } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

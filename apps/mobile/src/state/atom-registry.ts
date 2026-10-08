@@ -1,5 +1,5 @@
 import { mateEngineReaderAtom } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import {
   disposeOnFoundationReplace,

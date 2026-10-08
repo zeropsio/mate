@@ -10,7 +10,7 @@ import {
   type BuildLogRegistry,
   type BuildLogSnapshot,
 } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import type { AccountData } from "../ZeropsAccountData";
 

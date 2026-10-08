@@ -24,7 +24,7 @@ import {
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
 import { projectServicesAtom } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import {
   mateRowsAtom,

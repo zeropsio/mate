@@ -1,7 +1,7 @@
 import * as NodeOS from "node:os";
 
 import * as Effect from "effect/Effect";
-import { HttpServer } from "effect/unstable/http";
+import { HttpServer } from "effect/http";
 
 import { ServerConfig } from "./config.ts";
 

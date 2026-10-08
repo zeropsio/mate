@@ -7,7 +7,7 @@ import { mateHealth } from "./projections/mateHealth.ts";
  * @module data/reads
  */
 import { hqMateIdentities, type HqMateIdentity } from "./projections/hqMateIdentity.ts";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";

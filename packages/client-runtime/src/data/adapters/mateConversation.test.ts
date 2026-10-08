@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Option from "effect/Option";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { OrchestrationShellSnapshot } from "@t3tools/contracts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { mateShell, conversationScope } from "../projections/mateConversation.ts";

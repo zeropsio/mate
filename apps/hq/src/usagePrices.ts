@@ -1,9 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Schema from "effect/Schema";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClient from "effect/http/HttpClient";
 import * as Duration from "effect/Duration";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import { usageDigest } from "@t3tools/shared/agentUsage";
 import { Leader } from "./leader.ts";
 const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));

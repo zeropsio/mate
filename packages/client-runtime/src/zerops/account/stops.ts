@@ -3,7 +3,7 @@
  * A drawn stop reads the navigation services; an opened one holds its process history; versions absent
  * from the active listing are read by id. Closing the account releases every demand.
  */
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
 import {

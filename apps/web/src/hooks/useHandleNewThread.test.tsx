@@ -37,7 +37,7 @@ vi.mock("../state/entities", () => ({
 }));
 
 vi.mock("../state/server", async (importOriginal) => {
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   return {
     ...(await importOriginal<typeof import("../state/server")>()),
     primaryServerSettingsAtom: Atom.make(DEFAULT_SERVER_SETTINGS),

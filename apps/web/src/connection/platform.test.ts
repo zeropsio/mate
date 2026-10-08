@@ -39,8 +39,8 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import * as Socket from "effect/unstable/socket/Socket";
-import { FetchHttpClient } from "effect/unstable/http";
+import * as Socket from "effect/socket/Socket";
+import { FetchHttpClient } from "effect/http";
 
 import type { AuthGateState } from "../environments/primary/auth";
 import {

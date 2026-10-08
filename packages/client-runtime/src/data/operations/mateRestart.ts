@@ -8,7 +8,7 @@
  * @module data/operations/mateRestart
  */
 import * as Effect from "effect/Effect";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";

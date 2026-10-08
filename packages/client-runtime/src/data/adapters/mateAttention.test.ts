@@ -5,7 +5,7 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";

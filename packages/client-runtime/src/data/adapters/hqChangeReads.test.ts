@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { changeReadOwner, changeReadScope } from "../families/hqChangeRead.ts";

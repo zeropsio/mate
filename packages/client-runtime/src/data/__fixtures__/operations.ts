@@ -2,7 +2,7 @@
  * One account's operations with Zerops as the only owner, for a Zerops kind's tests: the kind's
  * own executor answers, request ids count up from `r1`, and progress is read as a screen reads it.
  */
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import type { OperationIntent } from "../model.ts";
 import type { AccountInput } from "../reducer.ts";

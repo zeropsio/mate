@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { appAtomRegistry, holdRegistryUntil, resetAppAtomRegistry } from "./atomRegistry";

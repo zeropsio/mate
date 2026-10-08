@@ -9,7 +9,7 @@ import type { ZeropsOrganization } from "../../../zerops/api.ts";
  */
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
 import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";

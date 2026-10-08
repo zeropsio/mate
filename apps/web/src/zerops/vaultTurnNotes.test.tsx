@@ -1,7 +1,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { NOT_READ_VAULT, type VaultView } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
+import { AtomRegistry, type Atom } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { expect, it, vi } from "vite-plus/test";
@@ -15,7 +15,7 @@ vi.mock("./useZeropsEnvironmentProject", () => ({
 vi.mock("./ZeropsAccountData", () => ({ useDetailDemand: () => undefined }));
 vi.mock("@t3tools/client-runtime/data", async (original) => {
   const data = await original<typeof import("@t3tools/client-runtime/data")>();
-  const { Atom } = await import("effect/unstable/reactivity");
+  const { Atom } = await import("effect/reactivity");
   held.view = Atom.make(data.NOT_READ_VAULT);
   return { ...data, vaultAtom: () => held.view };
 });

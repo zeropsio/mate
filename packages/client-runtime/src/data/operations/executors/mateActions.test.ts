@@ -3,7 +3,7 @@ import { EnvironmentId, ThreadId, ZeropsAgentLoginError } from "@t3tools/contrac
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../../../connection/registry.ts";
 import { EnvironmentRpcUnavailableError } from "../../../rpc/client.ts";
 import { mateActions } from "../../projections/mateActions.ts";

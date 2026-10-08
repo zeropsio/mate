@@ -1,6 +1,6 @@
 import { historyScope, runningScope } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { describe, expect, it } from "vite-plus/test";
 

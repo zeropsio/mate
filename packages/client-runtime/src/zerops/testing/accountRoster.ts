@@ -4,7 +4,7 @@
  * the organization's services read and live. `into` delivers them to a store a test mounted already,
  * as their baselines landing after whatever it holds.
  */
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import { projectsScope } from "../../data/families/project.ts";
 import { servicesScope, type ServiceValue } from "../../data/families/service.ts";

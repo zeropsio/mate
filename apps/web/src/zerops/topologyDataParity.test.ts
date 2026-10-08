@@ -9,7 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { project } from "./__fixtures__/platformData";
 import { inventoryTopology } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 
 const owner = project();

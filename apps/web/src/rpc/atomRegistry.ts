@@ -1,5 +1,5 @@
 import { RegistryContext } from "@effect/atom-react";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import { createElement } from "react";
 

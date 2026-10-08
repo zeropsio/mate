@@ -1,7 +1,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { platformInventory } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { project } from "./__fixtures__/platformData";

@@ -5,7 +5,7 @@ import type {
   ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
 import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
-import { type Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { type Atom, type AtomRegistry } from "effect/reactivity";
 import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 
 import { batchedPerTask } from "./taskBatch";

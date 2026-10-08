@@ -20,7 +20,7 @@ import {
   type ServiceRef,
 } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { onAccountLifetimeClose } from "./accountLifetime";

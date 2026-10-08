@@ -8,7 +8,7 @@ import { seedHqVerdict } from "@t3tools/client-runtime/data/fixtures";
 import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { mountHqNavigation } from "./__fixtures__/hqNavigation";

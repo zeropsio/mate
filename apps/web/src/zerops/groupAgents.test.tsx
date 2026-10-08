@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { expect, it } from "vite-plus/test";

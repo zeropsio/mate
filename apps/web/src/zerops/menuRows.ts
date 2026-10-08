@@ -14,7 +14,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { placedMenuRows, placedNames } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { hqNavigationAtom, hqPlacementsAtom } from "../state/zerops";
 import { menuRows, menuSourcesSettled } from "./zeropsMenu.logic";

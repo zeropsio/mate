@@ -2,7 +2,7 @@ import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { appReleaseRows, creationHandoff, type AppReleaseRows } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection, useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";

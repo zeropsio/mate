@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import * as Statement from "effect/unstable/sql/Statement";
+import * as Statement from "effect/sql/Statement";
 import { overviewOf } from "../test/harness/overviews.ts";
 import {
   startCore,

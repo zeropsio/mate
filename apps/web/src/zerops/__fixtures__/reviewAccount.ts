@@ -11,7 +11,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { AccountData } from "../ZeropsAccountData";
 
 export function reviewAccount(

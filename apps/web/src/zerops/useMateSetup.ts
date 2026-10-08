@@ -8,7 +8,7 @@ import {
   NO_SETUP_PROGRESS,
   type SetupProgress,
 } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 import { useAccountDataOptional, useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { onAccountLifetimeClose } from "./accountLifetime";

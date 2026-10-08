@@ -10,7 +10,7 @@ import {
   type CreationStepRead,
 } from "@t3tools/client-runtime/data";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { create } from "zustand";
 

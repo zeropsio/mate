@@ -6,7 +6,7 @@ import type {
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import {
   agentAuthAction,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { GitCredential } from "@t3tools/shared/hqGit";
 import { HqError } from "./client.ts";
 import { makeAccountStore, readsOfState } from "../../data/store.ts";

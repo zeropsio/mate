@@ -23,7 +23,7 @@
  * @module acpSupport
  */
 import type { CursorSettings, GrokSettings, ProviderOptionSelection } from "@t3tools/contracts";
-import type * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import {
   applyCursorAcpModelSelection,

@@ -5,7 +5,7 @@
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it } from "vite-plus/test";

@@ -25,7 +25,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClient from "effect/http/HttpClient";
 
 import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";

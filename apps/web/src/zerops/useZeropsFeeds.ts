@@ -28,7 +28,7 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsLifecycle,
 } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { type ZeropsBrowserStreamState } from "@t3tools/client-runtime/zerops/browserStream";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";

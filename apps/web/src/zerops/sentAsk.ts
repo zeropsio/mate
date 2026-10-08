@@ -3,7 +3,7 @@ import { environmentThreadDetails } from "../state/threads";
 /** Surface binding for the account's turn receipts; no second copy of sent words. */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { makeSendTurnReceipts } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useContext, useMemo } from "react";
 import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { onAccountLifetimeClose } from "./accountLifetime";

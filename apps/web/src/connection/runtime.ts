@@ -12,7 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { runtimeContextLayer } from "../lib/runtime";

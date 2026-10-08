@@ -4,7 +4,7 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 

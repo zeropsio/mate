@@ -11,7 +11,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { testKey } from "../test/harness/deployKeys.ts";

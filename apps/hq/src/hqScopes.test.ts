@@ -12,7 +12,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import { Backup } from "./backup.ts";
 import { Changes, ChangeRefused } from "./changes.ts";
 import { DeployKeys } from "./deployKeys.ts";
@@ -28,7 +28,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 import { liveSocketsLayer, serveHqSocket } from "./stream.ts";
 
 const nav = { kind: "navigation" } as const;

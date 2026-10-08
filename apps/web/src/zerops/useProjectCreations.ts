@@ -11,7 +11,7 @@
 import { projectCreations } from "@t3tools/client-runtime/data";
 import { projectCreationOutcome, type ZeropsProjectCreation } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 
 import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";

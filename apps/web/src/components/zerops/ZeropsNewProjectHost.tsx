@@ -47,7 +47,7 @@ import {
   type LocationsRead,
 } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useContext, useEffect, useMemo, useState } from "react";
 
 import {

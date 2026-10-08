@@ -18,7 +18,7 @@
  *   through every read and every blink; the one clock that derives the listing again is an
  *   arrival pose's end (`arriving`), a face's, never a verdict.
  */
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import type { ProjectValue } from "../../data/families/project.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";

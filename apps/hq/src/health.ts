@@ -18,9 +18,9 @@
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as HttpRouter from "effect/unstable/http/HttpRouter";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as HttpRouter from "effect/http/HttpRouter";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { Backup } from "./backup.ts";
 import { DeployKeys } from "./deployKeys.ts";

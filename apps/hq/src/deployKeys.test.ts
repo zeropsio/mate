@@ -9,7 +9,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { OTHER_KEY_SECRET, TEST_KEY_SECRET, testKey } from "../test/harness/deployKeys.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";

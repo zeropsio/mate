@@ -15,7 +15,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { servicesAgents, type SampledRead } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ZeropsAgentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState } from "react";
 
 import { usualAgentOf } from "../components/zerops/ZeropsAgentSignIn.logic";

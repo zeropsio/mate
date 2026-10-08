@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";

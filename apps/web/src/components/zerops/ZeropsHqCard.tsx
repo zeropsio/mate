@@ -16,7 +16,7 @@ import { NOT_READ_PROCESSES, projectProcessesAtom } from "@t3tools/client-runtim
 import { HQ_SERVICE, hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 

@@ -28,7 +28,7 @@ import {
   type Operations,
 } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";

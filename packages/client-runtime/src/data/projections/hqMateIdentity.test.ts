@@ -1,5 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { placementsScope } from "../families/hqNavigation.ts";

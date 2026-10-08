@@ -31,7 +31,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";

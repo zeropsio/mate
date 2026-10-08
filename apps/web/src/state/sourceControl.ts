@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { workspaceQuery, workspaceCommand } from "./workspace";
 import { mateFeedAsyncAtom } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";

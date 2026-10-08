@@ -1,5 +1,5 @@
 // @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the sweep and the platform read it.
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

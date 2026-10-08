@@ -1,7 +1,7 @@
 /** Host-independent browser transport construction. Hosts supply targets and cookie policy. */
 import * as Layer from "effect/Layer";
-import { FetchHttpClient } from "effect/unstable/http";
-import * as Socket from "effect/unstable/socket/Socket";
+import { FetchHttpClient } from "effect/http";
+import * as Socket from "effect/socket/Socket";
 import { remoteHttpClientLayer } from "../../rpc/http.ts";
 import { makeDescriptorShare } from "../../zerops/descriptorShare.ts";
 import type { ExchangeClock } from "../../zerops/environments/exchange.ts";

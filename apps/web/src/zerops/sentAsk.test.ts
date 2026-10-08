@@ -1,4 +1,4 @@
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore, makeSendTurnReceipts } from "@t3tools/client-runtime/data";
 import { describe, expect, it, vi } from "vite-plus/test";
 

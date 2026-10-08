@@ -10,7 +10,7 @@
  * This door uses the verified platform inventory, so it also works before a Mate connection.
  */
 import { mateUpgradeRecovery, type MateUpgradeRecovery } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useRef, useState } from "react";
 import { normalizeOrigin } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";

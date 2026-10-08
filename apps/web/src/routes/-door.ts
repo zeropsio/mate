@@ -5,7 +5,7 @@
 import type { EnvironmentId, ServerAuthBootstrapMethod } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
-import { AsyncResult, type Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, type Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { AuthGateState } from "../environments/primary/auth";
 

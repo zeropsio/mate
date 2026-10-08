@@ -10,7 +10,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { NOT_READ_PROCESSES, projectProcessesAtom } from "@t3tools/client-runtime/data";
 import { HQ_SERVICE, hqUpdateState, type HqUpdateState } from "@t3tools/client-runtime/zerops/hq";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAccountOperations } from "~/zerops/accountOperations";

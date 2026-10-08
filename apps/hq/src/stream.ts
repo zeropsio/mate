@@ -19,7 +19,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 import { HqUsageReader } from "./usageReport.ts";
 import { AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/shared/agentUsage";
 import { HqScopes, type ScopeOutput } from "./hqScopes.ts";

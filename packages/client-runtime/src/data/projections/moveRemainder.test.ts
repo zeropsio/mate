@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { liveZerops, ORG, projectValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { projectsScope } from "../families/project.ts";

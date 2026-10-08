@@ -1,5 +1,5 @@
 /** Composite execution records progress and child outcomes through the account reducer. */
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import type { AccountStore } from "../../store.ts";
 import type { CreationPressResult } from "../creationPress.ts";
 import { operationResult } from "../../model.ts";

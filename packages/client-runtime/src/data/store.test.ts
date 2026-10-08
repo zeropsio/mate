@@ -1,4 +1,4 @@
-import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
+import { AtomRegistry, type Atom } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
