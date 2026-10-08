@@ -13,6 +13,7 @@ import {
   TerminalCwdNotFoundError,
   TerminalCwdStatError,
   TerminalError,
+  TerminalUpdateInProgressError,
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
@@ -32,6 +33,7 @@ import {
   type TerminalSummary,
   type TerminalWriteInput,
 } from "@t3tools/contracts";
+import { mateUpdateBootPending } from "../mateUpdateBoot.ts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
@@ -67,6 +69,7 @@ export {
   TerminalCwdNotFoundError,
   TerminalCwdStatError,
   TerminalError,
+  TerminalUpdateInProgressError,
   TerminalHistoryError,
   TerminalNotRunningError,
   TerminalResizeError,
@@ -134,6 +137,17 @@ export class TerminalManager extends Context.Service<
      * Reuses an existing session for the same thread/terminal id and restores
      * persisted history on first open.
      */
+    readonly updateDrain?:
+      | {
+          readonly begin: Effect.Effect<void>;
+          readonly cancel: Effect.Effect<void>;
+          readonly facts: Effect.Effect<{
+            readonly idle: boolean;
+            readonly blockers: ReadonlyArray<string>;
+          }>;
+          readonly quiesce: Effect.Effect<void>;
+        }
+      | undefined;
     readonly open: (
       input: TerminalOpenInput,
     ) => Effect.Effect<TerminalSessionSnapshot, TerminalError>;
@@ -2887,13 +2901,54 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       ),
     );
 
+  let updateFenced = mateUpdateBootPending();
+  let admissions = 0;
+  const guardUpdate = <A, E>(
+    input: { readonly threadId: string; readonly terminalId?: string },
+    action: Effect.Effect<A, E>,
+  ): Effect.Effect<A, E | TerminalUpdateInProgressError> =>
+    Effect.suspend<A, E | TerminalUpdateInProgressError, never>(() => {
+      if (updateFenced) return Effect.fail(new TerminalUpdateInProgressError({}));
+      admissions += 1;
+      return action.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            admissions -= 1;
+          }),
+        ),
+      );
+    });
+  const updateDrain = {
+    begin: Effect.sync(() => {
+      updateFenced = true;
+    }),
+    cancel: Effect.sync(() => {
+      updateFenced = false;
+    }),
+    facts: Effect.gen(function* () {
+      const state = yield* SynchronizedRef.get(managerStateRef);
+      const blockers = [...state.sessions.values()]
+        .filter((session) => session.process !== null || session.status === "starting")
+        .map((session) => `terminal:${session.threadId}/${session.terminalId}`);
+      if (admissions > 0) blockers.push("terminal admission in flight");
+      return { idle: blockers.length === 0, blockers };
+    }),
+    quiesce: Effect.gen(function* () {
+      const state = yield* SynchronizedRef.get(managerStateRef);
+      for (const threadId of new Set(
+        [...state.sessions.values()].map((session) => session.threadId),
+      ))
+        yield* closeIdle({ threadId });
+    }),
+  };
   return TerminalManager.of({
-    open,
-    attachStream,
+    updateDrain,
+    open: (input) => guardUpdate(input, open(input)),
+    attachStream: (input, listener) => guardUpdate(input, attachStream(input, listener)),
     write,
     resize,
     clear,
-    restart,
+    restart: (input) => guardUpdate(input, restart(input)),
     close,
     closeIdle,
     subscribe,

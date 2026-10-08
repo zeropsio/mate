@@ -1260,6 +1260,38 @@ it.layer(
     }),
   );
 
+  it.effect("an update waits for a running terminal and leaves its process alive", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager(5, {
+        subprocessInspector: () =>
+          Effect.succeed({ hasRunningSubprocess: true, childCommand: "build", processIds: [9001] }),
+      });
+      yield* manager.open(openInput());
+      const drain = manager.updateDrain;
+      assert(drain !== undefined);
+      yield* drain.begin;
+      yield* drain.quiesce;
+      expect((yield* drain.facts).idle).toBe(false);
+      expect(ptyAdapter.processes[0]!.killed).toBe(false);
+      yield* drain.cancel;
+    }),
+  );
+
+  it.effect("an update fences new terminals and cancellation reopens them", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter } = yield* createManager();
+      const drain = manager.updateDrain;
+      assert(drain !== undefined);
+      yield* drain.begin;
+      const refused = yield* manager.open(openInput()).pipe(Effect.result);
+      expect(refused._tag).toBe("Failure");
+      expect(ptyAdapter.spawnInputs).toHaveLength(0);
+      yield* drain.cancel;
+      yield* manager.open(openInput());
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+    }),
+  );
+
   it.effect("caps persisted history to configured line limit", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(3);
@@ -1315,7 +1347,7 @@ it.layer(
       expect(events.filter((event) => event.type === "output").map((event) => event.data)).toEqual(
         writes,
       );
-      const snapshot = events.filter((event) => event.type === "snapshot").at(-1)?.snapshot;
+      const snapshot = events.findLast((event) => event.type === "snapshot")?.snapshot;
       expect(snapshot?.history).toBe("aa😀\rEND");
       expect(snapshot?.sequence).toBe(reopened.sequence);
     }),
