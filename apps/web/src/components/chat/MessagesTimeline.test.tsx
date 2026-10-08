@@ -1869,6 +1869,27 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("You&#x27;ve hit your session limit");
   });
 
+  it("the server's current limit owns one named stage until a resume receipt", () => {
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        usagePause={{ resetsAt: "2026-09-27T10:00:00Z", autoResume: false }}
+        onUsageContinue={() => undefined}
+        onUsageAutoResumeChange={() => undefined}
+        timelineEntries={[
+          buildUserTimelineEntry("Keep going"),
+          assistant("limited", 30, "You've hit your session limit · resets 9:20pm (UTC)"),
+        ]}
+      />,
+    );
+    expect(markup.match(/data-conversation-pause=/g)).toHaveLength(1);
+    expect(markup).toContain("data-mate-stage-area");
+    expect(markup).toContain("This Mate hit the coding agent&#x27;s limit.");
+    expect(markup).toContain("Continue automatically");
+    expect(markup).not.toContain("is opening the conversation");
+  });
+
   it("draws a slash command as an event, never the person's bubble", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

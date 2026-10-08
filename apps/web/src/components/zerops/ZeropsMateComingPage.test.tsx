@@ -1,3 +1,4 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 // @vitest-environment happy-dom
 import { Atom } from "effect/reactivity";
 import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
@@ -20,7 +21,7 @@ import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { beginPress, forgetPress } from "~/zerops/matePress";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
 
-import { ComingBelow, comingSentenceOf, ZeropsMateComingPage } from "./ZeropsMateComingPage";
+import { ComingBelow, ZeropsMateComingPage } from "./ZeropsMateComingPage";
 import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
@@ -1149,7 +1150,10 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     const rendered = render(() => {
       finished += 1;
     });
-    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    expect(text(rendered)).toEqual(["Not registered."]);
+    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
     const button = rendered.root.findByType("button");
     expect(button.children).toEqual(["Finish setup"]);
     act(() => button.props.onClick());
@@ -1158,7 +1162,10 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
 
   it("still says why to someone who cannot finish it", () => {
     const rendered = render(undefined);
-    expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
+    expect(text(rendered)).toEqual(["Not registered."]);
+    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
+      "Its grant timed out.",
+    );
     expect(rendered.root.findAllByType("button")).toHaveLength(0);
   });
 });
@@ -1251,7 +1258,9 @@ describe("ComingBelow — a stop's reason, whole, under the steps", () => {
 
   it("reads it whole over Try again, with no hover", () => {
     const rendered = render({ kind: "failed", line: REASON, verb: "try-again" });
-    expect(notes(rendered)).toEqual([REASON]);
+    expect(rendered.root.findByType("details").findByType("pre").children.join("")).toContain(
+      REASON,
+    );
     expect(rendered.root.findAllByType("button").map((button) => button.children)).toEqual([
       ["Try again"],
     ]);
@@ -1518,10 +1527,25 @@ it.each([
   expect(section.children).not.toContain("500: Internal Server Error");
   const details = tree!.root.findByType("details");
   expect(details.props.open).not.toBe(true);
-  expect(details.findAllByType("pre").map((node) => node.children.join(""))).toEqual([
-    error.message,
-    "Original setup diagnostic",
-  ]);
+  const diagnostics = details.findByType("pre").children.join("");
+  expect(diagnostics).toContain(error.message);
+  expect(diagnostics).toContain("Original setup diagnostic");
+  app.setupFailure = undefined;
+  app.recovery = {
+    standing: { kind: "unknown" },
+    status: "ACTIVE",
+    process: {
+      id: "new-attempt",
+      projectId: PROJECT,
+      serviceStackIds: ["zcp"],
+      actionName: "stack.start",
+      status: "RUNNING",
+      created: "2026-10-08T12:00:00Z",
+    },
+  };
+  act(() => tree!.update(comingView(PROJECT)));
+  expect(said()).not.toContain(text);
+  expect(said()).not.toContain("Original setup diagnostic");
 });
 
 it("keeps a Finish setup refusal out of stage copy without a setup process", () => {
@@ -1561,7 +1585,7 @@ it("keeps a Remove refusal available in Details without a setup process or actio
         mate: { name: "Quinn", project: undefined },
         you: null,
         operationTrouble: {
-          text: "Zerops didn't accept removing the project.",
+          kind: "remove",
           details: "500: Internal Server Error",
         },
       }),
@@ -1570,6 +1594,37 @@ it("keeps a Remove refusal available in Details without a setup process or actio
   const details = rendered!.root.findByType("details");
   expect(details.props.open).not.toBe(true);
   expect(details.findByType("pre").children.join("")).toBe("500: Internal Server Error");
+  act(() => rendered!.unmount());
+});
+
+it("keeps an original creation refusal collapsed even before a setup process exists", () => {
+  let rendered: ReactTestRenderer;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: { kind: "failed", line: "500: Internal Server Error", verb: "remove" },
+        progress: {
+          steps: [],
+          active: null,
+          failed: null,
+          doneCount: 0,
+          total: 0,
+          complete: false,
+          press: [
+            { id: "created", label: "Created", state: "failed", why: "500: Internal Server Error" },
+          ],
+        },
+        nowMs: 0,
+        mate: { name: "Quinn", project: undefined },
+        you: null,
+      }),
+    );
+  });
+  const note = rendered!.root.findAll((node) => node.props["data-press-note"] !== undefined);
+  expect(note.map((node) => node.children.join(""))).not.toContain("500: Internal Server Error");
+  expect(rendered!.root.findByType("details").findByType("pre").children.join("")).toContain(
+    "500: Internal Server Error",
+  );
   act(() => rendered!.unmount());
 });
 

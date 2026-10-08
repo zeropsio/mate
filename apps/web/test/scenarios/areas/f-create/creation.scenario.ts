@@ -143,6 +143,11 @@ describe("F: creation through the hosted client", () => {
         c.failProject();
         yield* c.newProject;
         yield* c.submitProject;
+        yield* c.text("Details");
+        expect(
+          yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText)),
+        ).not.toContain("Project capacity exhausted");
+        yield* c.click("Details");
         yield* c.text("Project capacity exhausted");
         yield* c.click("Remove");
         yield* s.then.menu.row("Ada").appears();

@@ -1,3 +1,5 @@
+import { mateArrivalNotice } from "./mateNoticeVoice";
+import { MateRestartError } from "./mateRestartRefusal";
 import { act, useLayoutEffect } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -141,9 +143,28 @@ it.each([
     await act(async () => {
       rendered = create(<RestartProbe />);
     });
-    await expect(
-      restart({ key: "p1:s1", projectId: "p1", serviceId: "s1", status: "SERVICE_FAILED" }),
-    ).rejects.toMatchObject({ text });
+    const error = await restart({
+      key: "p1:s1",
+      projectId: "p1",
+      serviceId: "s1",
+      status: "SERVICE_FAILED",
+    }).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(MateRestartError);
+    if (!(error instanceof MateRestartError)) throw error;
+    expect(
+      mateArrivalNotice({
+        coming: { kind: "failed", line: "Setup stopped.", verb: "try-again" },
+        progress: undefined,
+        nowMs: 0,
+        attemptId: "failed",
+        refusal: {
+          kind: "retry",
+          attemptId: "failed",
+          details: error.message,
+          receipt: error.receipt,
+        },
+      }).secondary,
+    ).toBe(text);
     await act(async () => {
       rendered!.unmount();
     });

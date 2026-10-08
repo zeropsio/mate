@@ -1,3 +1,4 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
@@ -50,11 +51,7 @@ import {
   ZeropsAgentSignInDialogPopup,
   type SignInAgent,
 } from "~/components/zerops/ZeropsAgentSignIn";
-import {
-  ComingBelow,
-  comingSentenceOf,
-  type ArrivalProgress,
-} from "~/components/zerops/ZeropsMateComingPage";
+import { ComingBelow, type ArrivalProgress } from "~/components/zerops/ZeropsMateComingPage";
 import { MateLinkLineView, MateLinkProcessesView } from "~/components/zerops/MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "~/components/zerops/ZeropsMateEmptyState";
 import type { Spoken } from "~/components/zerops/MateLinkLine";
@@ -359,7 +356,14 @@ const STATES: ReadonlyArray<HarnessState> = [
     agentReady: true,
   },
   { id: "inventory-failed", label: "Inventory read failed", mate: WREN, phase: null },
-  { id: "limit", label: "Provider usage limit (production timeline)", mate: WREN, phase: null },
+  {
+    id: "creation-refused",
+    label: "Create/Add refused before a setup process",
+    mate: WREN,
+    phase: null,
+    coming: "not-created",
+  },
+  { id: "limit", label: "Provider usage limit (production stage)", mate: WREN, phase: null },
   ...[false, true].map((retryingStandUp) => ({
     id: retryingStandUp ? "stand-up-retrying" : "stand-up-failed",
     label: "Stand-up send failure",
@@ -713,6 +717,39 @@ const PROCESSES: ReadonlyArray<ArrivalService> = [
 ];
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
+  if (state.id === "creation-refused") {
+    const coming = { kind: "failed", line: "Could not be set up.", verb: "try-again" } as const;
+    const progress = {
+      steps: [],
+      active: null,
+      failed: null,
+      doneCount: 0,
+      total: 0,
+      complete: false,
+      press: [
+        {
+          id: "created",
+          label: "Created",
+          state: "failed",
+          why: "500: Internal Server Error",
+        } as const,
+      ],
+    };
+    return {
+      kind: "failed",
+      sentence: comingSentenceOf({ coming, progress, nowMs }),
+      below: (
+        <ComingBelow
+          coming={coming}
+          progress={progress}
+          nowMs={nowMs}
+          mate={WREN}
+          you={null}
+          onTryAgain={() => undefined}
+        />
+      ),
+    };
+  }
   if (state.coming === undefined) return null;
   if (state.id === "opening")
     return {
@@ -940,8 +977,9 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
             again={() => undefined}
           />
         ) : state.id === "limit" ? (
-          <div className="mx-auto mt-6 w-full max-w-3xl">
+          <div className="h-full">
             <PauseBlock
+              mate={WREN}
               row={{
                 kind: "pause",
                 id: "limit",

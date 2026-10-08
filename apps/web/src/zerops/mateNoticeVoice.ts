@@ -1,3 +1,128 @@
+import type { OperationProgress } from "@t3tools/client-runtime/data";
+import {
+  comingSentence,
+  KEEP_TAB_OPEN_LINE,
+  pressNote,
+  pressRuns,
+  type ArrivalSubstep,
+} from "./mateArrival";
+import { type MateComing } from "./mateComing";
+import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
+import { usageLimitWords } from "./noticeWords";
+
+const UNCERTAIN_RESTART =
+  "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
+const stoppedRestartWords = (nextAction: string | undefined, reason?: string) =>
+  `The Mate was stopped, but it was not started again here${reason === undefined ? "" : `: ${reason.replace(/\.$/, "")}`}. ${nextAction ?? "Start the Mate"}.`;
+
+/** What the person is told of a restart its owner did not take; `null` once Zerops took it. */
+export function restartRefusal(progress: OperationProgress): string | null {
+  switch (progress.stage) {
+    case "refused":
+      return progress.reason;
+    case "unsent":
+      return progress.reason ?? "Zerops did not take the restart. Try again.";
+    case "uncertain":
+      return UNCERTAIN_RESTART;
+    case "unresolved":
+      return stoppedRestartWords(progress.nextAction, progress.reason);
+    default:
+      return null;
+  }
+}
+
+export interface MateOperationRefusal {
+  readonly kind: "retry" | "finish" | "remove";
+  readonly details: string;
+  readonly receipt?: OperationProgress | undefined;
+  /** A retry answers this failed source attempt, not any later attempt. */
+  readonly attemptId?: string | undefined;
+}
+
+export interface MateArrivalNoticeInput {
+  readonly coming: MateComing | undefined;
+  readonly progress:
+    | {
+        readonly startedAt?: string | undefined;
+        readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
+      }
+    | undefined;
+  readonly nowMs: number | undefined;
+  readonly failureReason?: string | undefined;
+  readonly details?: string | undefined;
+  readonly attemptId?: string | undefined;
+  readonly refusal?: MateOperationRefusal | null | undefined;
+  readonly finish?: string | undefined;
+}
+
+/** Current source evidence chooses the words; refusals keep their diagnostics collapsed. */
+export function mateArrivalNotice(input: MateArrivalNoticeInput) {
+  const { coming, progress, nowMs } = input;
+  const note = pressNote(progress?.press);
+  const running = coming?.kind === "coming" && note?.kind !== "unfinished";
+  const refusal =
+    !running &&
+    (input.refusal?.kind !== "retry" ||
+      (input.attemptId !== undefined && input.refusal.attemptId === input.attemptId))
+      ? input.refusal
+      : null;
+  const receipt = refusal?.receipt;
+  const refusalText =
+    refusal == null
+      ? undefined
+      : receipt?.stage === "uncertain"
+        ? UNCERTAIN_RESTART
+        : receipt?.stage === "unresolved"
+          ? stoppedRestartWords(receipt.nextAction)
+          : refusal.kind === "retry"
+            ? "Zerops didn't accept the setup retry."
+            : refusal.kind === "remove"
+              ? "Zerops didn't accept removing the project."
+              : "Zerops couldn't finish setting up the Mate.";
+  const startedAt = Date.parse(progress?.startedAt ?? "");
+  const elapsed = nowMs === undefined || Number.isNaN(startedAt) ? undefined : nowMs - startedAt;
+  const secondary =
+    refusalText ??
+    (coming === undefined
+      ? undefined
+      : coming.kind === "failed"
+        ? (input.failureReason ??
+          (coming.verb === "go-to-projects"
+            ? coming.line
+            : note?.kind === "stopped"
+              ? NOT_SET_UP_LINE
+              : coming.line))
+        : (input.finish ??
+          (pressRuns(progress?.press) ? KEEP_TAB_OPEN_LINE : comingSentence(elapsed))));
+  const details = [
+    ...new Set(
+      [
+        refusal?.details,
+        input.details,
+        coming?.kind === "failed" ? coming.details : undefined,
+        ...(progress?.press
+          ?.filter(
+            (step) =>
+              step.why !== undefined && (step.state === "failed" || step.state === "unfinished"),
+          )
+          .map((step) => `${step.label}: ${step.why}`) ?? []),
+      ].filter((value): value is string => value !== undefined && value.length > 0),
+    ),
+  ].join("\n\n");
+  return {
+    secondary,
+    details: details || undefined,
+    note:
+      note?.kind === "unfinished"
+        ? `${progress?.press?.find((step) => step.state === "unfinished")?.label ?? "Setup isn't finished"}.`
+        : null,
+  };
+}
+
+/** The creation page and its design fixtures share the same phrase producer. */
+export const comingSentenceOf = (input: MateArrivalNoticeInput) =>
+  mateArrivalNotice(input).secondary;
+
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import { recoveryNotice } from "./mateRecovery.logic";
 import { restartLine, RESTART_LINES } from "./restartLine";
@@ -26,6 +151,7 @@ export type WebMateVoice =
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
   input: Omit<MateVoiceInput, "heldMs"> & {
+    readonly limit?: { readonly provider: string; readonly detail: string };
     readonly recovery?: MateRecovery;
     readonly restartLine?: number | undefined;
     readonly lastKnown?: string | undefined;
@@ -58,6 +184,11 @@ export function mateNoticeVoice(
     actions,
     processes,
   });
+  if (input.limit !== undefined)
+    return {
+      ...say(usageLimitWords(input.limit.provider, undefined, name), input.limit.detail),
+      severity: "attention",
+    };
   const notice =
     reachability?.kind === "ready"
       ? reachability.notice

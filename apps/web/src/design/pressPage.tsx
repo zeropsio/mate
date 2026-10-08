@@ -1,3 +1,4 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 import { makeAccountStore, creationPressStoreAtom } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 /**
@@ -30,11 +31,7 @@ import type {
 import { useMemo } from "react";
 import { create } from "zustand";
 
-import {
-  ComingBelow,
-  comingSentenceOf,
-  type ArrivalProgress,
-} from "~/components/zerops/ZeropsMateComingPage";
+import { ComingBelow, type ArrivalProgress } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { mateComing } from "~/zerops/mateComing";
