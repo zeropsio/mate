@@ -13,7 +13,18 @@ import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
 import { THREAD_SNAPSHOT_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
-import { EMPTY_ENVIRONMENT_THREAD_STATE } from "./threadState.ts";
+import { EMPTY_ENVIRONMENT_THREAD_STATE, type EnvironmentThreadState } from "./threadState.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import { engineRouteOf } from "../data/engineHost.ts";
+import * as Option from "effect/Option";
+
+/** What a V1-only reader shows for a Mate whose conversation runs on the engine. */
+export const NATIVE_ENGINE_THREAD_STATE: EnvironmentThreadState = {
+  ...EMPTY_ENVIRONMENT_THREAD_STATE,
+  error: Option.some(
+    "This Mate's conversation runs on its engine, which this app does not read yet. Update the app to keep talking to it.",
+  ),
+};
 
 import {
   openThreadReplay,
@@ -35,7 +46,24 @@ function threadStateChanges(
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+      Effect.map(EnvironmentSupervisor, (supervisor) =>
+        SubscriptionRef.changes(supervisor.prepared).pipe(
+          Stream.filter(Option.isSome),
+          Stream.map((prepared) => engineRouteOf(prepared.value).kind === "v1"),
+          Stream.changes,
+          // This reader speaks V1 only: a Mate whose conversation runs on the engine is read by an
+          // updated app, never through its parked V1 history.
+          Stream.switchMap((v1) =>
+            v1
+              ? Stream.unwrap(
+                  makeEnvironmentThreadState(threadId, resumeCache).pipe(
+                    Effect.map(SubscriptionRef.changes),
+                  ),
+                )
+              : Stream.succeed(NATIVE_ENGINE_THREAD_STATE),
+          ),
+        ),
+      ),
     ),
   );
 }
