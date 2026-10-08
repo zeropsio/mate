@@ -172,7 +172,7 @@ const journeys: ReadonlyArray<Journey> = [
       w.press({ _tag: "discard", taskId: w.task(1).id });
       w.settle("crew.lane.keep", "backend", { _tag: "kept" });
       const held = [w.task(1).state, w.task(2).state, w.pending("crew.lane.reset", "backend")];
-      w.press({ _tag: "taskEdit", taskId: w.task(2).id, dependsOn: [] }, OTHER);
+      w.edit(2, { dependsOn: [] }, OTHER);
       w.start("backend");
       return [held, w.task(2).state, w.lastTurnAs("backend")];
     },

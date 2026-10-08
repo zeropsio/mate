@@ -24,6 +24,7 @@ import type {
   CrewCard,
   CrewCommand,
   CrewRefusalReason,
+  CrewTaskState,
   CrewServed,
   EffectId,
   EffectOutcome,
@@ -38,6 +39,15 @@ import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
+
+/**
+ * The revision of a task a person edits from: its state and attempts as their board showed them
+ * (`CrewTask.state`, `CrewTask.attempts`). An edit is refused once the task moved since.
+ */
+export interface TaskSeen {
+  readonly state: CrewTaskState;
+  readonly attempts: number;
+}
 
 /** The door's answer for the logins a press reaches: admission's words when it refused one. */
 export interface DoorAnswer {
@@ -62,6 +72,8 @@ export type CrewInput =
       readonly door: DoorAnswer;
       /** The crew home as parsed now, for `apply`, `briefSave` and `jobSave`. */
       readonly home?: CrewDefinition;
+      /** For `taskEdit`: the task as the person's board showed it when they edited. */
+      readonly seen?: TaskSeen;
     }
   | {
       readonly _tag: "Tool";

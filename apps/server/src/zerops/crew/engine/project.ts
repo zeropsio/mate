@@ -30,7 +30,7 @@ import {
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 import * as DateTime from "effect/DateTime";
 
-import { QUESTION_TO_PERSON_MS, UNATTENDED_MS } from "./decide.ts";
+import { QUESTION_TO_PERSON_MS, UNATTENDED_MS, attemptsOf } from "./decide.ts";
 import {
   hostFrozen,
   isOpenTask,
@@ -147,7 +147,7 @@ const toTask = (state: CrewState, task: TaskRecord, view: CrewView): CrewTask =>
     brief: task.card.brief,
     doneWhen: task.card.doneWhen,
     note: task.card.note,
-    attempts: task.started ? task.counters.attempt : 0,
+    attempts: attemptsOf(task),
     reason: task.state === "rework" || task.state === "parked" ? (task.wait?.reason ?? null) : null,
     question: task.state === "blocked" ? (task.report?.question ?? null) : null,
     waitingOn: task.state === "waiting-on-you" ? (task.wait?.paths ?? []) : [],

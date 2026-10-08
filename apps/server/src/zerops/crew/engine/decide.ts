@@ -87,6 +87,7 @@ import {
   type CrewToolCall,
   type DeliverCommand,
   type LaneStatsValue,
+  type TaskSeen,
   type ToolReply,
 } from "./command.ts";
 import { stampCrewEvents, type CrewEventDraft, type TaskPatch } from "./events.ts";
@@ -322,7 +323,7 @@ export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number
 const handle = (b: Builder, input: CrewInput): void => {
   switch (input._tag) {
     case "Press":
-      return pressed(b, input.press, input.door.refusal, input.home);
+      return pressed(b, input.press, input.door.refusal, input.home, input.seen);
     case "Tool":
       return tool(b, input.handle, input.call);
     case "Observed":
@@ -519,6 +520,9 @@ const createTask = (
   b.taskIds.push(task.id);
   return task;
 };
+
+/** A task's attempts as the board shows them: none before its first start. */
+export const attemptsOf = (task: TaskRecord): number => (task.started ? task.counters.attempt : 0);
 
 const landed = (state: CrewState, id: string): boolean => state.tasks[id]?.state === "landed";
 
@@ -1333,6 +1337,7 @@ const pressed = (
   press: CrewCommand,
   refusal: string | null,
   home: CrewDefinition | undefined,
+  seen: TaskSeen | undefined,
 ): void => {
   const reach = crewCommandReach(press);
   if (refusal !== null && reach.kind !== "reads" && reach.kind !== "stops") {
@@ -1396,6 +1401,10 @@ const pressed = (
     case "taskEdit": {
       const task = b.task(press.taskId);
       if (task.state === "landed" || task.state === "discarded") {
+        throw wrongState(`#${task.number} is ${task.state}`);
+      }
+      // The person edits from the task they saw: one that moved since is theirs to look at again.
+      if (seen === undefined || seen.state !== task.state || seen.attempts !== attemptsOf(task)) {
         throw wrongState(`#${task.number} is ${task.state}`);
       }
       b.emit({

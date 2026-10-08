@@ -139,6 +139,24 @@ export class CrewWorld {
     );
   }
 
+  /** A task edited from the board as it stands now. */
+  edit(
+    number: number,
+    fields: Omit<Extract<CrewCommand, { _tag: "taskEdit" }>, "_tag" | "taskId">,
+    principal: Principal = PERSON,
+  ): CrewDecision {
+    const task = this.task(number);
+    return this.tell(
+      {
+        _tag: "Press",
+        press: { _tag: "taskEdit", taskId: task.id, ...fields },
+        door: { refusal: null },
+        seen: { state: task.state, attempts: task.started ? task.counters.attempt : 0 },
+      },
+      principal,
+    );
+  }
+
   /** A press the door refused, in admission's words. */
   refusedAtDoor(press: CrewCommand, words: string): CrewDecision {
     return this.tell({ _tag: "Press", press, door: { refusal: words } });
