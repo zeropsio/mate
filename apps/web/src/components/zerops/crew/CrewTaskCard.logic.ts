@@ -7,10 +7,13 @@
  * bookkeeping. The board, when it still holds that task, supplies its title
  * and done-when.
  *
+ * On the engine the card is typed (`note.card`): its task's id, title, words and done-when, so
+ * nothing is read from the words the agent got.
+ *
  * Pure: no clock, no I/O.
  */
 import { CREW_NEW_STINT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewStint, CrewTask, ThreadId } from "@t3tools/contracts";
+import type { CrewCard, CrewStint, CrewTask, ThreadId } from "@t3tools/contracts";
 
 export interface CrewTaskCardModel {
   readonly heading: string;
@@ -25,9 +28,10 @@ const CARD_LABEL = /\s·\s[^·]*$/u;
 const DONE_WHEN = /^done when:\s*/iu;
 
 export function crewTaskCardModel(
-  card: { readonly title: string; readonly text: string },
+  card: { readonly title: string; readonly text: string; readonly typed?: CrewCard },
   tasks: ReadonlyArray<CrewTask>,
 ): CrewTaskCardModel {
+  if (card.typed !== undefined) return typedCardModel(card.typed, tasks);
   const lines = card.text.split("\n");
   const doneWhenLine = lines.find((line) => DONE_WHEN.test(line.trim()));
   const text = lines
@@ -46,6 +50,19 @@ export function crewTaskCardModel(
   return {
     heading: task === undefined ? writtenTitle.trim() : task.title,
     text,
+    doneWhen: doneWhen === "" ? null : doneWhen,
+  };
+}
+
+/** The engine's typed card: its task as the board holds it, else the card's own facts. */
+function typedCardModel(card: CrewCard, tasks: ReadonlyArray<CrewTask>): CrewTaskCardModel {
+  const task =
+    card.taskId === null ? undefined : tasks.find((candidate) => candidate.id === card.taskId);
+  const doneWhen =
+    task === undefined || task.doneWhen === "" ? (card.doneWhen ?? "") : task.doneWhen;
+  return {
+    heading: task?.title ?? card.title,
+    text: card.why.trim(),
     doneWhen: doneWhen === "" ? null : doneWhen,
   };
 }

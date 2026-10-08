@@ -4,7 +4,7 @@ import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
-import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
+import { crewCardOf, isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
@@ -77,7 +77,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isCrewCard, isSlashCommand } from "@t3tools/shared/userAsk";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -5670,7 +5670,7 @@ export default function ChatView(props: ChatViewProps) {
             (entry) =>
               entry.kind === "message" &&
               entry.message.role === "user" &&
-              isCrewCard(entry.message.text),
+              crewCardOf(entry.message) !== null,
           )
         : undefined;
     return {

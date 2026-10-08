@@ -160,6 +160,7 @@ describe("userAskOf", () => {
     ["a slash command beside an image", { text: "/review", attachments: [image] }],
     ["the usage-limit resume prompt", { text: USAGE_LIMIT_RESUME_PROMPT }],
     ["a crew task card", { text: card }],
+    ["the engine's typed crew card", { text: "#12 Camera rig · from you", crewCard: {} }],
     ["the placeholder without attachments", { text: IMAGE_ONLY_BOOTSTRAP_PROMPT }],
     ["nothing", { text: "  ", attachments: [] }],
   ])("%s asks nothing", (_, message) => {

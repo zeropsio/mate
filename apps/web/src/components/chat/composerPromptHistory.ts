@@ -23,6 +23,8 @@ export interface ComposerPromptHistoryMessage {
   readonly id: string;
   readonly role: string;
   readonly text: string;
+  /** The engine's typed crew card: the crew wrote the message, so it is not history. */
+  readonly crewCard?: unknown;
 }
 
 export interface ComposerPromptHistoryEntry {
@@ -161,7 +163,7 @@ export function buildComposerPromptHistoryEntries(
 ): ComposerPromptHistoryEntry[] {
   const entries: ComposerPromptHistoryEntry[] = [];
   for (const message of messages) {
-    if (message.role !== "user") continue;
+    if (message.role !== "user" || message.crewCard !== undefined) continue;
     const prompt = recallableComposerPrompt(message.text);
     if (prompt.length === 0) continue;
     const previous = entries[entries.length - 1];
