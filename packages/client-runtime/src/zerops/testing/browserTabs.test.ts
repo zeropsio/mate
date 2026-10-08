@@ -1,4 +1,3 @@
-// @effect-diagnostics globalTimers:off -- cross-tab delivery is a later browser task; these tests wait one.
 import { describe, expect, it } from "@effect/vitest";
 
 import {
@@ -9,9 +8,6 @@ import {
   saveZeropsSelection,
 } from "../session.ts";
 import { makeHarnessBrowser, type BrowserSignal, type HarnessTab } from "./browserTabs.ts";
-
-/** Storage events and channel messages arrive as a later task, never inside the write. */
-const delivered = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 function received(tab: HarnessTab): BrowserSignal[] {
   const signals: BrowserSignal[] = [];
@@ -30,7 +26,7 @@ describe("harness browser", () => {
     a.localStorage.setItem("k", "1");
     a.localStorage.setItem("k", "2");
     expect(inB).toEqual([]);
-    await delivered();
+    await browser.delivered();
 
     expect(b.localStorage.getItem("k")).toBe("2");
     expect(inA).toEqual([]);
@@ -49,7 +45,7 @@ describe("harness browser", () => {
     a.localStorage.clear();
     a.localStorage.setItem("k", "1");
     a.localStorage.setItem("k", "1");
-    await delivered();
+    await browser.delivered();
 
     expect(inB).toEqual([{ type: "storage", key: "k", oldValue: null, newValue: "1" }]);
   });
@@ -59,11 +55,11 @@ describe("harness browser", () => {
     const a = browser.openTab();
     const b = browser.openTab();
     a.localStorage.setItem("k", "1");
-    await delivered();
+    await browser.delivered();
     const inB = received(b);
 
     a.localStorage.clear();
-    await delivered();
+    await browser.delivered();
 
     expect(b.localStorage.length).toBe(0);
     expect(inB).toEqual([{ type: "storage", key: null, oldValue: null, newValue: null }]);
@@ -133,7 +129,7 @@ describe("harness browser", () => {
       order.push("b");
       return "b";
     });
-    await delivered();
+    await browser.delivered();
     expect(order).toEqual(["a:mate:zerops-refresh"]);
     expect(browser.locksHeld()).toEqual(["mate:zerops-refresh"]);
 
@@ -155,7 +151,7 @@ describe("harness browser", () => {
           release = resolve;
         }),
     );
-    await delivered();
+    await browser.delivered();
 
     await expect(
       b.locks.request("mate:tags:p1", { ifAvailable: true }, async (lock) => lock),
@@ -183,7 +179,7 @@ describe("harness browser", () => {
 
     sender.postMessage("hello");
     expect(seen).toEqual([]);
-    await delivered();
+    await browser.delivered();
 
     expect(seen.sort()).toEqual(["otherTab:hello", "sameTab:hello"]);
   });
@@ -198,12 +194,12 @@ describe("harness browser", () => {
     const channel = new a.BroadcastChannel("mate:account");
     const seen: unknown[] = [];
     channel.addEventListener("message", (event) => seen.push(event.data));
-    await delivered();
+    await browser.delivered();
 
     a.reload();
     new b.BroadcastChannel("mate:account").postMessage("after");
     b.localStorage.setItem("k", "after");
-    await delivered();
+    await browser.delivered();
 
     expect(a.reloads).toBe(1);
     expect(browser.locksHeld()).toEqual([]);

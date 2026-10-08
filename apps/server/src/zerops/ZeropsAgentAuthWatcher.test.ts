@@ -4,11 +4,12 @@
 // Exercises watchWithFallback's own plain-Node behavior directly — see that
 // module's header comment for why it deliberately bypasses Effect's
 // FileSystem.watch.
+import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   type WatchFactory,
@@ -38,6 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   NodeFS.rmSync(root, { recursive: true, force: true });
 });
 
@@ -204,6 +206,7 @@ describe("watchWithFallback", () => {
   );
 
   it("polls without throwing when the fallback directory itself does not exist", async () => {
+    vi.useFakeTimers();
     const dir = NodePath.join(root, "missing-parent", "also-missing");
     const fallback = NodePath.join(root, "missing-parent");
     const warnings: Array<string> = [];
@@ -217,7 +220,7 @@ describe("watchWithFallback", () => {
       { logWarning: (message) => warnings.push(message) },
     );
     // No throw or crash; the degraded poll stays inert until the target changes.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.advanceTimersToNextTimerAsync();
     expect(fired).toBe(0);
     expect(warnings.some((message) => message.includes("polling"))).toBe(true);
     handle.dispose();
@@ -227,55 +230,74 @@ describe("watchWithFallback", () => {
   // does for the credential path) must ignore writes to SIBLING files in
   // the same directory — Claude's own `backups/`, `sessions/` writes were
   // re-triggering the credential check on every probe before this fix.
-  it("ignores writes to sibling files in the same directory", async () => {
+  it("ignores writes to sibling files in the same directory", () => {
     const target = NodePath.join(root, ".credentials.json");
-    const sibling = NodePath.join(root, "backups", "x.json");
     NodeFS.writeFileSync(target, "{}");
-    NodeFS.mkdirSync(NodePath.join(root, "backups"));
-    let fired = 0;
-    const handle = startWatcher(target, root, () => {
-      fired += 1;
+    let receive!: NodeFS.WatchListener<string>;
+    const watcher = Object.assign(new NodeEvents.EventEmitter(), {
+      close: vi.fn(),
+      ref() {
+        return watcher;
+      },
+      unref() {
+        return watcher;
+      },
     });
+    let fired = 0;
+    const handle = startWatcher(
+      target,
+      root,
+      () => {
+        fired += 1;
+      },
+      {
+        watch: (_path, listener) => {
+          receive = listener;
+          return watcher;
+        },
+      },
+    );
     try {
-      // Let watcher-startup noise settle first — on this platform, attaching
-      // right after other writes in the same directory can replay a stale
-      // event for the target's own name once the watch actually engages
-      // (the same FSEvents non-determinism this file's header comment and
-      // `waitForWithNudge` already call out). This test asserts a NEGATIVE
-      // (no fire for the sibling), so that startup noise would otherwise
-      // register as a false failure — resetting the counter after the
-      // settle window isolates the assertion to the sibling write alone.
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      fired = 0;
-
-      NodeFS.writeFileSync(sibling, "{}");
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // Delivery returns after the watcher's filename decision has run.
+      receive("change", "backups");
       expect(fired).toBe(0);
-
-      // Confirm the watcher is actually live — a real change to the target
-      // itself still fires, so a silent "nothing ever fires" bug wouldn't
-      // pass this test by accident.
-      NodeFS.writeFileSync(target, '{"changed":true}');
-      await waitForWithNudge(
-        () => fired > 0,
-        () => NodeFS.writeFileSync(target, '{"changed":true,"nudge":true}'),
-      );
-      expect(fired).toBeGreaterThan(0);
+      receive("change", ".credentials.json");
+      expect(fired).toBe(1);
     } finally {
       handle.dispose();
     }
   });
 
-  it("stops firing after dispose", async () => {
+  it("stops firing after dispose", () => {
     const target = NodePath.join(root, "auth.json");
     NodeFS.writeFileSync(target, "{}");
-    let fired = 0;
-    const handle = startWatcher(target, root, () => {
-      fired += 1;
+    let receive!: NodeFS.WatchListener<string>;
+    const watcher = Object.assign(new NodeEvents.EventEmitter(), {
+      close: vi.fn(),
+      ref() {
+        return watcher;
+      },
+      unref() {
+        return watcher;
+      },
     });
+    let fired = 0;
+    const handle = startWatcher(
+      target,
+      root,
+      () => {
+        fired += 1;
+      },
+      {
+        watch: (_path, listener) => {
+          receive = listener;
+          return watcher;
+        },
+      },
+    );
     handle.dispose();
-    NodeFS.writeFileSync(target, '{"changed":true}');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    receive("change", "auth.json");
+    expect(watcher.close).toHaveBeenCalledOnce();
     expect(fired).toBe(0);
   });
 });

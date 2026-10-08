@@ -1,6 +1,7 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -48,6 +49,7 @@ const startInstance = (
         allowed: ok,
       })),
       checked: Effect.succeed(true),
+      nextCheck: Effect.never,
       lastOk: Effect.undefined,
       inherit: () => Effect.void,
     });
@@ -60,6 +62,10 @@ const startInstance = (
     );
     return {
       leader: Context.get(context, Leader),
+      nextCycle: Context.get(context, Leader).nextAttempt.pipe(
+        Effect.timeout("5 seconds"),
+        Effect.orDie,
+      ),
       sql: Context.get(context, SqlClient.SqlClient),
       stop: Scope.close(scope, Exit.void),
     };
@@ -136,6 +142,10 @@ const startReading = (url: string, world: FakeWorld, projectId = "P1") =>
     );
     return {
       leader: Context.get(context, Leader),
+      nextCycle: Context.get(context, Leader).nextAttempt.pipe(
+        Effect.timeout("5 seconds"),
+        Effect.orDie,
+      ),
       official: Context.get(context, Official),
       sql: Context.get(context, SqlClient.SqlClient),
       stop: Scope.close(scope, Exit.void),
@@ -150,14 +160,29 @@ const statusWhere = (leader: Leader["Service"], matches: (status: LeaderStatus) 
     Effect.timeout(Duration.seconds(10)),
   );
 
-/** Every distinct state the leader reports over about half a second, read every 5 ms. */
-const statesSeen = (leader: Leader["Service"]) =>
-  Effect.forEach(Array.from({ length: 100 }), () =>
-    leader.status.pipe(
-      Effect.map((status) => status.state),
-      Effect.tap(() => Effect.sleep(Duration.millis(5))),
-    ),
-  ).pipe(Effect.map((states) => [...new Set(states)]));
+/** This database's contender reached the advisory lock and is waiting on its holder. */
+const blockedOnLock = (sql: SqlClient.SqlClient) =>
+  sql`SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event = 'advisory'`.pipe(
+    Effect.filterOrFail((rows) => rows.length > 0),
+    Effect.retry(Schedule.spaced(Duration.millis(10))),
+    Effect.timeout("5 seconds"),
+    Effect.orDie,
+    Effect.asVoid,
+  );
+
+/** Every published state through the next completed leader cycle. */
+const statesSeen = (core: Effect.Success<ReturnType<typeof startInstance>>) =>
+  Effect.gen(function* () {
+    const states: LeaderStatus["state"][] = [];
+    const collector = yield* Stream.runForEach(core.leader.changes, (status) =>
+      Effect.sync(() => {
+        states.push(status.state);
+      }),
+    ).pipe(Effect.forkChild({ startImmediately: true }));
+    yield* Effect.raceFirst(core.nextCycle, blockedOnLock(core.sql));
+    yield* Fiber.interrupt(collector);
+    return [...new Set(states)];
+  });
 
 describe("leaderLayer", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -194,8 +219,8 @@ describe("leaderLayer", () => {
         // Another instance waits behind the lock: nobody leads.
         const other = yield* startInstance(url);
         yield* statusWhere(other.leader, (status) => status.state === "standby");
-        assert.deepStrictEqual(yield* statesSeen(other.leader), ["standby"]);
-        assert.deepStrictEqual(yield* statesSeen(core.leader), ["failed"]);
+        assert.deepStrictEqual(yield* statesSeen(other), ["standby"]);
+        assert.deepStrictEqual(yield* statesSeen(core), ["failed"]);
         yield* other.stop;
         yield* core.stop;
       }),
@@ -210,7 +235,7 @@ describe("leaderLayer", () => {
           yield* statusWhere(old.leader, (status) => status.state === "active");
           const next = yield* startInstance(url);
           yield* statusWhere(next.leader, (status) => status.state === "standby");
-          yield* Effect.sleep(Duration.millis(500));
+          yield* blockedOnLock(next.sql);
           assert.deepStrictEqual(yield* next.leader.status, { state: "standby", epoch: null });
           assert.deepStrictEqual(yield* old.leader.status, { state: "active", epoch: 1 });
 
@@ -291,7 +316,7 @@ describe("leaderLayer", () => {
             { name: "9999_broken.sql", sql: "SELECT * FROM hq_missing;" },
           ]);
           yield* statusWhere(broken.leader, (status) => status.state === "failed");
-          assert.deepStrictEqual(yield* statesSeen(broken.leader), ["failed"]);
+          assert.deepStrictEqual(yield* statesSeen(broken), ["failed"]);
 
           const core = yield* startInstance(url);
           yield* statusWhere(core.leader, (status) => status.state === "active");
@@ -308,7 +333,7 @@ describe("leaderLayer", () => {
           const allowed = yield* Ref.make(false);
           const core = yield* startInstance(url, treeMigrations(), allowed);
           yield* statusWhere(core.leader, (status) => status.state === "standby");
-          assert.deepStrictEqual(yield* statesSeen(core.leader), ["standby"]);
+          assert.deepStrictEqual(yield* statesSeen(core), ["standby"]);
 
           yield* Ref.set(allowed, true);
           assert.deepStrictEqual(
@@ -422,8 +447,7 @@ describe("leaderLayer", () => {
             const status = yield* statusWhere(next.leader, (status) => status.state === "active");
             assert.deepStrictEqual(status, { state: "active", epoch: 2 });
           } else {
-            yield* Effect.sleep(Duration.seconds(1));
-            assert.deepStrictEqual(yield* statesSeen(next.leader), ["standby"]);
+            assert.deepStrictEqual(yield* statesSeen(next), ["standby"]);
           }
           assert.strictEqual((yield* next.official.status).allowed, leads);
           yield* next.stop;
@@ -436,6 +460,8 @@ describe("leaderLayer", () => {
         const core = yield* startInstance(url);
         yield* statusWhere(core.leader, (status) => status.state === "active");
         yield* core.leader.release;
+        const ended = yield* Effect.exit(core.leader.finished.pipe(Effect.timeout("5 seconds")));
+        assert.strictEqual(ended._tag, "Success", "the released contender must terminate");
         assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
         const rival = yield* PgConnection.make({ url: Redacted.make(url) });
         const taken = yield* rival.query(
@@ -443,7 +469,6 @@ describe("leaderLayer", () => {
         );
         assert.strictEqual(taken.rows[0]?.["taken"], true);
         yield* rival.query(`SELECT pg_advisory_unlock(${String(LOCK_KEY)})`);
-        yield* Effect.sleep(Duration.millis(500));
         assert.deepStrictEqual(yield* core.leader.status, { state: "standby", epoch: null });
         yield* core.stop;
       }),
@@ -454,12 +479,20 @@ describe("leaderLayer", () => {
         const url = yield* (yield* TempPostgres).createDatabase;
         const core = yield* startInstance(url);
         const seen: Array<LeaderStatus> = [];
+        const followed = yield* Deferred.make<void>();
         const following = yield* Effect.forkChild(
-          Stream.runForEach(core.leader.changes, (status) => Effect.sync(() => seen.push(status))),
+          Stream.runForEach(core.leader.changes, (status) =>
+            Effect.sync(() => {
+              seen.push(status);
+              if (status.state === "standby" && seen.some((state) => state.state === "active"))
+                Deferred.doneUnsafe(followed, Effect.void);
+            }),
+          ),
+          { startImmediately: true },
         );
         yield* statusWhere(core.leader, (status) => status.state === "active");
         yield* core.leader.release;
-        yield* Effect.sleep(Duration.millis(200));
+        yield* Deferred.await(followed).pipe(Effect.timeout("5 seconds"), Effect.orDie);
         yield* Fiber.interrupt(following);
         // The current status first, then each change once: never the same status twice in a row.
         assert.deepStrictEqual(seen.slice(-2), [

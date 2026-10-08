@@ -75,7 +75,7 @@ describe("a tab whose test ended while it opened", () => {
         return null;
       },
     }).catch((cause: unknown) => cause);
-    await settle(1);
+    await settle();
   });
 
   it("never opens into the next test", async () => {

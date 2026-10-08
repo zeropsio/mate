@@ -127,17 +127,20 @@ onAccountLifetimeOpen(() => {
  * has let the account go and no other tab of this origin holds it open. A neighbouring tab still
  * on the account uses those sessions, and its own close ends them. Without Web Locks, at once.
  */
-export function endWhenAccountLeft(end: () => void): void {
+export function endWhenAccountLeft(end: () => void): Promise<void> {
   const accountId = currentAccountId();
-  if (accountId !== null) endWhenLeft(accountId, end);
+  return accountId === null ? Promise.resolve() : endWhenLeft(accountId, end);
 }
 
 /** Runs `end` once this tab let `accountId` go and no tab of this origin holds it open. */
-function endWhenLeft(accountId: string, end: () => void): void {
+function endWhenLeft(accountId: string, end: () => void): Promise<void> {
   const locks = webLocks();
-  if (locks === undefined) return end();
+  if (locks === undefined) {
+    end();
+    return Promise.resolve();
+  }
   const own = hold?.accountId === accountId ? hold.released : Promise.resolve();
-  void own.then(() =>
+  return own.then(() =>
     locks.request(accountOpenLock(accountId), { ifAvailable: true }, (lock) => {
       if (lock !== null) end();
     }),
@@ -165,10 +168,10 @@ const mintedHere = new Set<string>();
  * where this tab minted it and no other tab of this origin holds the account open; otherwise
  * another tab may still use it, so it is set aside beside the new one and ends with the account.
  */
-export function keepMintedMateSession(
+export async function keepMintedMateSession(
   key: string,
   registration: BearerConnectionRegistration,
-): void {
+): Promise<void> {
   mintedHere.add(registration.credential.token);
   const displaced = keptSessions.keep(key, registration);
   const accountId = currentAccountId();
@@ -181,7 +184,7 @@ export function keepMintedMateSession(
   if (!mintedHere.has(token)) return setAside();
   const locks = webLocks();
   if (locks === undefined) return endKeptSession(displaced);
-  void locks.query().then(({ held = [] }) => {
+  return locks.query().then(({ held = [] }) => {
     const holders = held.filter((lock) => lock.name === accountOpenLock(accountId)).length;
     if (holders > 1) setAside();
     else endKeptSession(displaced);
@@ -199,10 +202,10 @@ function endKeptUnder(mateKey: string, hqKey: string): void {
  * A stored login the platform refused never opened its account here: that account's own kept
  * sessions end, once no tab of this origin holds the account open. No other account's are touched.
  */
-export function endKeptSessionsOf(accountId: string): void {
+export function endKeptSessionsOf(accountId: string): Promise<void> {
   const mateKey = accountStorageKeyOf(accountId, MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKeyOf(accountId, HQ_SESSIONS.storageKey);
-  endWhenLeft(accountId, () => endKeptUnder(mateKey, hqKey));
+  return endWhenLeft(accountId, () => endKeptUnder(mateKey, hqKey));
 }
 
 // However the account closes — signed out, replaced, its login refused while open — it ends every
@@ -212,6 +215,7 @@ onAccountLifetimeClose(() => {
   const mateKey = accountStorageKey(MATE_SESSIONS.storageKey);
   const hqKey = accountStorageKey(HQ_SESSIONS.storageKey);
   if (mateKey === null || hqKey === null) return;
-  endWhenAccountLeft(() => endKeptUnder(mateKey, hqKey));
+  const completed = endWhenAccountLeft(() => endKeptUnder(mateKey, hqKey));
   hold?.release();
+  return completed;
 });

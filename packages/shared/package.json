@@ -435,6 +435,14 @@
     "./agentUsage": {
       "types": "./src/agentUsage.ts",
       "import": "./src/agentUsage.ts"
+    },
+    "./testing/handledQueue": {
+      "types": "./src/testing/handledQueue.ts",
+      "import": "./src/testing/handledQueue.ts"
+    },
+    "./completionReceipt": {
+      "types": "./src/completionReceipt.ts",
+      "import": "./src/completionReceipt.ts"
     }
   },
   "scripts": {

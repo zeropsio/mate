@@ -43,16 +43,6 @@ const container = (projectId: string): Invalidation => ({
   target: `${projectId}:zcp`,
 });
 
-/**
- * The browser delivers a channel message as a later task: a task queued after the post runs after
- * that delivery.
- */
-const nextTask = Effect.promise(
-  () =>
-    // @effect-diagnostics-next-line globalTimers:off -- a real task boundary, behind the harness's delivery.
-    new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0)),
-);
-
 /** Lets the fibers a delivered message woke run up to their next timer. */
 const settle = Effect.gen(function* () {
   for (let turn = 0; turn < 5; turn += 1) yield* Effect.yieldNow;
@@ -208,7 +198,7 @@ describe("cross-tab invalidations (DESIGN §6.7)", () => {
         });
         // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
         new sender.BroadcastChannel("mate:account").postMessage(message);
-        yield* nextTask;
+        yield* Effect.promise(browser.delivered);
         yield* settle;
         yield* TestClock.adjust(250);
         expect(yield* drain).toEqual(delivered ? [tags("a")] : []);
@@ -235,7 +225,7 @@ describe("cross-tab invalidations (DESIGN §6.7)", () => {
         const sibling = yield* openTab(OPEN_LOGIN);
         const stranger = yield* openTab({ ...OPEN_LOGIN, loginGeneration: "generation-3" });
         yield* writer.crossTab.broadcast(tags("a"));
-        yield* nextTask;
+        yield* Effect.promise(browser.delivered);
         yield* settle;
         yield* TestClock.adjust(250);
         expect(yield* writer.drain).toEqual([tags("a")]);

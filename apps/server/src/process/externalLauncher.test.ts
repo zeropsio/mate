@@ -357,7 +357,11 @@ it.skipIf(process.platform !== "win32")(
     try {
       const recorderPath = NodePath.join(tempDir, "recorder.cmd");
       const outputPath = NodePath.join(tempDir, "argv.txt");
-      NodeFS.writeFileSync(recorderPath, `@echo off\r\n>"${outputPath}" echo(%*\r\n`);
+      const completedPath = NodePath.join(tempDir, "completed");
+      NodeFS.writeFileSync(
+        recorderPath,
+        `@echo off\r\n>"${outputPath}" echo(%*\r\n>"${completedPath}" echo done\r\n`,
+      );
 
       const target = "C:\\workspace with spaces\\media\\author's clip.mp4";
       const source = ExternalLauncher.buildFileExplorerRevealPowerShellSource(recorderPath, target);
@@ -383,10 +387,10 @@ it.skipIf(process.platform !== "win32")(
       // @effect-diagnostics-next-line globalDate:off
       const deadline = Date.now() + 20_000;
       // @effect-diagnostics-next-line globalDate:off
-      while (!NodeFS.existsSync(outputPath) && Date.now() < deadline) {
+      while (!NodeFS.existsSync(completedPath) && Date.now() < deadline) {
         await sleep(100);
       }
-      await sleep(200);
+      assert.isTrue(NodeFS.existsSync(completedPath), "the recorder finished before its deadline");
       const recorded = NodeFS.readFileSync(outputPath, "utf8").trim();
       assert.equal(recorded, `/select,"${target}"`);
     } finally {

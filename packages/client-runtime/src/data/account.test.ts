@@ -14,14 +14,25 @@ import { hqVerdict } from "./projections/hqVerdict.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
 
-/** The navigation runs on its own runtime: real time passes for it, so a test waits on the state it expects, not on a delay. */
-const until = (condition: () => boolean, what: string) =>
-  Effect.gen(function* () {
-    for (let waited = 0; !condition(); waited += 2) {
-      if (waited > 5_000) return yield* Effect.die(new Error(`timed out waiting for ${what}`));
-      yield* Effect.sleep(2);
-    }
-  });
+/** A receipt from the reducer, after it publishes the expected state. */
+const until = (
+  store: ReturnType<typeof makeAccountStore>,
+  condition: () => boolean,
+  what: string,
+) =>
+  Effect.callback<void>((resume) => {
+    const check = () => {
+      if (condition()) resume(Effect.void);
+    };
+    const stop = store.subscribe(check);
+    check();
+    return Effect.sync(stop);
+  }).pipe(
+    Effect.timeout("5 seconds"),
+    Effect.catchTags({
+      TimeoutError: () => Effect.die(new Error(`timed out waiting for ${what}`)),
+    }),
+  );
 
 describe("startZeropsNavigation", () => {
   it.live("observes the organization's running work until stopped, then lets its demand go", () =>
@@ -37,12 +48,14 @@ describe("startZeropsNavigation", () => {
         repairSession: Effect.void,
       });
       yield* until(
+        store,
         () => streamOf(store.state(), runningScope("org")).phase === "live",
         "the running scope to go live",
       );
 
       navigation.stop();
       yield* until(
+        store,
         () =>
           !streamOf(store.state(), linkKeys.zerops("org")).demanded &&
           !streamOf(store.state(), runningScope("org")).demanded,
@@ -82,6 +95,7 @@ describe("observeAccount", () => {
 
         account.show("org-a");
         yield* until(
+          store,
           () =>
             reads() >= 1 && streamOf(store.state(), historyScope("org-a", "p1")).phase === "live",
           "org-a's history to be read",
@@ -91,6 +105,7 @@ describe("observeAccount", () => {
 
         account.show("org-b");
         yield* until(
+          store,
           () =>
             reads() >= 2 &&
             !streamOf(store.state(), historyScope("org-a", "p1")).demanded &&
@@ -103,11 +118,13 @@ describe("observeAccount", () => {
 
         release();
         yield* until(
+          store,
           () => !streamOf(store.state(), historyScope("org-b", "p1")).demanded,
           "org-b's detail to be released",
         );
         account.show(null);
         yield* until(
+          store,
           () => !streamOf(store.state(), linkKeys.zerops("org-b")).demanded,
           "org-b's link to be let go",
         );
@@ -141,6 +158,7 @@ describe("observeAccount", () => {
       account.demandDetail({ family: "project", listing: "project", ownerId: "p2" });
       account.demandDetail({ family: "process", listing: "history", ownerId: "p1" });
       yield* until(
+        store,
         () =>
           reads("/project/p1") === 1 &&
           reads("/project/p2") === 1 &&
@@ -150,12 +168,19 @@ describe("observeAccount", () => {
         "the held details to be read",
       );
 
+      const generation = streamOf(store.state(), "zerops:org:project:p2").generation;
       account.renewHeld();
       yield* until(
-        () => reads("/project/p1") === 2 && reads("/project/p2") === 2,
+        store,
+        () =>
+          reads("/project/p1") === 2 &&
+          reads("/project/p2") === 2 &&
+          (["zerops:org:project:p1", "zerops:org:project:p2"] as const).every((scope) => {
+            const stream = streamOf(store.state(), scope);
+            return stream.phase === "live" && stream.generation > generation;
+          }),
         "the own rows to be renewed",
       );
-      yield* Effect.sleep(20);
       expect([reads("/project/p1"), reads("/project/p2"), reads(HISTORY_PATH)]).toEqual([2, 2, 1]);
       account.show(null);
     }),
@@ -201,6 +226,7 @@ describe("observeAccount", () => {
         },
       });
       yield* until(
+        store,
         () => streamOf(store.state(), historyScope("org", "p1")).phase === "live",
         "the open operation's history to go live",
       );
@@ -231,6 +257,7 @@ describe("observeAccount — closed with its account", () => {
       });
       account.show("org");
       yield* until(
+        store,
         () => streamOf(store.state(), linkKeys.zerops("org")).demanded,
         "the link to be demanded",
       );
@@ -256,8 +283,6 @@ describe("observeAccount — closed with its account", () => {
 });
 
 describe("an account's HQ", () => {
-  /** The HQ link runs on its own runtime: a moment of real time for it to act. */
-  const turns = Effect.sleep(20);
   const emptyZerops = () =>
     fixtureWire((request) =>
       Effect.succeed(request.body?.wsOutputType === "listStream" ? { items: [] } : {}),
@@ -274,16 +299,24 @@ describe("an account's HQ", () => {
       const hq = hqFixtureWire();
       // Named before its organization is shown: nothing opens until it is.
       account.showHq({ orgId: "org-a", wire: hq.wire });
-      yield* turns;
       expect(hq.opens()).toBe(0);
 
       account.show("org-a");
-      yield* turns;
+      yield* until(
+        store,
+        () =>
+          hq.opens() === 1 && streamOf(store.state(), hqAppsScope("org-a")).phase === "baselining",
+        "HQ registration",
+      );
       expect(hq.opens()).toBe(1);
       expect(streamOf(store.state(), hqAppsScope("org-a")).phase).toBe("baselining");
 
       account.show("org-b");
-      yield* turns;
+      yield* until(
+        store,
+        () => !streamOf(store.state(), linkKeys.hq("org-a")).demanded,
+        "HQ release",
+      );
       expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
       expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(false);
       account.stop();
@@ -302,13 +335,24 @@ describe("an account's HQ", () => {
       const second = hqFixtureWire();
       account.show("org-a");
       account.showHq({ orgId: "org-a", wire: first.wire });
-      yield* turns;
+      yield* until(
+        store,
+        () =>
+          first.opens() === 1 &&
+          streamOf(store.state(), hqAppsScope("org-a")).phase === "baselining",
+        "first HQ registration",
+      );
       account.showHq({ orgId: "org-a", wire: second.wire });
-      yield* turns;
       expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
       expect([first.opens(), second.opens()]).toEqual([1, 0]);
       yield* first.endSegment;
-      yield* turns;
+      yield* until(
+        store,
+        () =>
+          second.opens() === 1 &&
+          streamOf(store.state(), hqAppsScope("org-a")).phase === "baselining",
+        "rewired HQ registration",
+      );
       expect([first.opens(), second.opens()]).toEqual([1, 1]);
       account.stop();
     }),
@@ -354,9 +398,9 @@ describe("an account's HQ", () => {
         );
       account.show("org-a");
       account.showHq({ orgId: "org-a", ownerId: "old-project", wire: old.wire });
-      yield* turns;
+      yield* until(store, () => old.opens() === 1, "old HQ registration");
       yield* deliver(old, "old-core", 8, false);
-      yield* turns;
+      yield* until(store, () => current().editable, "old HQ policy");
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: false },
         editable: true,
@@ -365,17 +409,18 @@ describe("an account's HQ", () => {
       expect(current().editable).toBe(false);
       // A queued answer from the owner just removed must not restore an editable old value.
       yield* deliver(old, "old-core", 9, false);
-      yield* turns;
+      yield* old.closed;
+      yield* until(store, () => fresh.opens() === 1, "replacement HQ registration");
       expect([old.opens(), fresh.opens()]).toEqual([1, 1]);
       yield* deliver(fresh, "new-core", 0, true);
-      yield* turns;
+      yield* until(store, () => current().editable, "replacement HQ policy");
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: true },
         editable: true,
         words: "On",
       });
       yield* deliver(old, "old-core", 10, false);
-      yield* turns;
+      yield* old.closed;
       expect(current()).toMatchObject({
         policy: { kind: "known", enabled: true },
         editable: true,
@@ -396,15 +441,27 @@ describe("an account's HQ", () => {
       const hq = hqFixtureWire();
       account.show("org-a");
       account.showHq({ orgId: "org-a", wire: hq.wire });
-      yield* turns;
+      yield* until(
+        store,
+        () =>
+          hq.opens() === 1 && streamOf(store.state(), hqAppsScope("org-a")).phase === "baselining",
+        "HQ registration",
+      );
       // A remount of what names the HQ lets it go and names it again at once.
-      account.showHq(null);
+      const released = account.showHq(null);
       account.showHq({ orgId: "org-a", wire: hq.wire });
-      yield* turns;
+      yield* Effect.promise(() => Promise.resolve(released)).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.orDie,
+      );
       expect(hq.opens()).toBe(1);
       expect(streamOf(store.state(), hqAppsScope("org-a")).demanded).toBe(true);
       account.showHq(null);
-      yield* turns;
+      yield* until(
+        store,
+        () => !streamOf(store.state(), linkKeys.hq("org-a")).demanded,
+        "HQ release",
+      );
       expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
       account.stop();
     }),
@@ -472,6 +529,7 @@ describe("readDetail", () => {
         const answer = yield* Effect.promise(() => account.readDetail(AGENTS));
         expect(answer).toBe(read);
         yield* until(
+          store,
           () => streamOf(store.state(), "zerops:org:agents:s1").phase === phase,
           `the read let go, ${phase}`,
         );
@@ -494,6 +552,7 @@ describe("readDetail", () => {
         });
         account.show("org");
         yield* until(
+          store,
           () => streamOf(store.state(), linkKeys.zerops("org")).phase !== "connecting",
           "the link's first attempt to fail",
         );

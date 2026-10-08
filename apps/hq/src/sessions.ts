@@ -13,6 +13,8 @@ import * as NodeCrypto from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
@@ -28,6 +30,8 @@ export interface Principal {
 export class Sessions extends Context.Service<
   Sessions,
   {
+    /** Completed session reads, without session credentials. */
+    readonly checks: Stream.Stream<"answered" | "unreadable">;
     readonly issue: (
       principal: Principal,
       doorTokenId: string,
@@ -49,7 +53,9 @@ export const sessionsLayer: Layer.Layer<Sessions, never, Leader | SqlClient.SqlC
     Effect.gen(function* () {
       const leader = yield* Leader;
       const sql = yield* SqlClient.SqlClient;
+      const checks = yield* PubSub.unbounded<"answered" | "unreadable">();
       return Sessions.of({
+        checks: Stream.fromPubSub(checks),
         issue: (principal, doorTokenId) =>
           Effect.gen(function* () {
             const token = NodeCrypto.randomBytes(32).toString("base64url");
@@ -79,6 +85,8 @@ export const sessionsLayer: Layer.Layer<Sessions, never, Leader | SqlClient.SqlC
           sql<{ readonly user_id: string; readonly org_id: string }>`
             SELECT user_id, org_id FROM hq_session
             WHERE token_hash = ${hashOf(token)} AND revoked_at IS NULL AND expires_at > now()`.pipe(
+            Effect.tap(() => PubSub.publish(checks, "answered")),
+            Effect.tapError(() => PubSub.publish(checks, "unreadable")),
             Effect.map((rows) =>
               Option.map(Option.fromNullishOr(rows[0]), (row) => ({
                 userId: row.user_id,

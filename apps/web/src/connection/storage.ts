@@ -178,7 +178,7 @@ export const connectionStorageLayer = Layer.effectContext(
       // The credentials are captured before the Effect runtime is disposed; none can touch a
       // subsequent login's catalog. They end once no other tab holds the account open.
       const logouts = accountCloseLogouts(currentCatalog, Date.now());
-      endWhenAccountLeft(() => {
+      return endWhenAccountLeft(() => {
         for (const logout of logouts) endMateSession(logout);
       });
     });

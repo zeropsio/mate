@@ -9,6 +9,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -155,15 +156,19 @@ const lifetime = <A, E>(
 const drain = (worker: Worker) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    for (let round = 0; round < 400; round++) {
-      if (yield* worker.runOnce) continue;
+    let completed = 0;
+    while (true) {
+      if (yield* worker.runOnce) {
+        completed += 1;
+        continue;
+      }
       const [waiting] = yield* sql<{ readonly n: number }>`
         SELECT COUNT(*) AS n FROM engine_effect WHERE state IN ('pending', 'running', 'settling')
       `;
-      if ((waiting?.n ?? 0) === 0) return;
+      if ((waiting?.n ?? 0) === 0) return completed;
       yield* Effect.sleep(20);
     }
-  });
+  }).pipe(Effect.timeout("8 seconds"), Effect.orDie);
 
 const start = askImport(c, source);
 
@@ -727,19 +732,27 @@ describe("a client watching while the earlier record comes in", () => {
           Effect.gen(function* () {
             const wire = yield* makeEngineWire({ coalesce: 0 });
             const frames: Array<EngineConversationFrame> = [];
+            const subscribed = yield* Deferred.make<void>();
+            const synchronized = yield* Deferred.make<void>();
+            let initial = true;
             yield* Stream.runForEach(
               wire.subscribe(
                 { protocol: MATE_ENGINE_PROTOCOLS[0]!, conversationId: c },
                 { subject: "ana", environmentId: "env-1", epoch: 1 },
               ),
-              (frame) => Effect.sync(() => frames.push(frame)),
-            ).pipe(Effect.forkScoped);
-            yield* Effect.sleep(50);
+              (frame) =>
+                Effect.gen(function* () {
+                  frames.push(frame);
+                  if (frame.type === "synchronized") {
+                    yield* Deferred.succeed(initial ? subscribed : synchronized, undefined);
+                    initial = false;
+                  }
+                }),
+            ).pipe(Effect.forkScoped({ startImmediately: true }));
+            yield* Deferred.await(subscribed).pipe(Effect.timeout("5 seconds"), Effect.orDie);
             yield* start;
             yield* drain(worker);
-            for (let wait = 0; wait < 100 && frames.at(-1)?.type !== "synchronized"; wait++)
-              yield* Effect.sleep(20);
-            yield* Effect.sleep(100);
+            yield* Deferred.await(synchronized).pipe(Effect.timeout("5 seconds"), Effect.orDie);
             return frames;
           }),
         ).pipe(Effect.provide(LiveBusModule.layer)),
@@ -869,29 +882,30 @@ const STAGES: ReadonlyArray<CommitStage> = [
   "snapshot",
 ];
 
-/** The import's moves: the start, then the worker batch by batch. */
-const MOVES = 1 + 7;
-
-const crashes: ReadonlyArray<Crash> = Array.from({ length: MOVES }, (_, at) => at).flatMap(
-  (at): ReadonlyArray<Crash> => [
+/** The import's actual worker moves, plus the command that starts it. */
+const crashes = (moves: number): ReadonlyArray<Crash> =>
+  Array.from({ length: moves + 1 }, (_, at) => at).flatMap((at): ReadonlyArray<Crash> => [
     { at, how: "after" },
     ...(at > 0
       ? [{ at, how: "mid-effect" } as const, { at, how: "outcome-unrecorded" } as const]
       : []),
     ...STAGES.map((stage) => ({ at, how: "mid-commit", stage }) as const),
-  ],
-);
+  ]);
 
 describe("the import's crash table", () => {
   it.live("a restart at any of its step boundaries copies the record once, whole", () =>
     Effect.gen(function* () {
       const reference = comparable((yield* cached).held);
       const broken: Array<string> = [];
-      for (const crash of crashes) {
+      const measured = yield* seededDb("history-moves");
+      const moves = yield* lifetime(measured, ({ worker }) =>
+        start.pipe(Effect.andThen(drain(worker))),
+      );
+      for (const crash of crashes(moves)) {
         const file = yield* seededDb("history-crash");
         let armed = false;
         let commits = 0;
-        let acted = false;
+        const acted = yield* Deferred.make<void>();
         const label = `${crash.at} ${crash.at === 0 ? "ImportHistory" : "worker"} — ${crash.how}${crash.how === "mid-commit" ? `@${crash.stage}` : ""}`;
         yield* lifetime(
           file,
@@ -902,10 +916,7 @@ describe("the import's crash table", () => {
                 if (armed && crash.how === "mid-effect") {
                   // The handler's batch goes in, then the process dies before it returns.
                   yield* Effect.forkDetach(worker.runOnce);
-                  for (let spin = 0; spin < 200; spin++) {
-                    if (acted) break;
-                    yield* Effect.sleep(5);
-                  }
+                  yield* Deferred.await(acted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
                   return;
                 }
                 if (move === 0) yield* Effect.exit(start);
@@ -922,13 +933,14 @@ describe("the import's crash table", () => {
             tell: (tell) => (envelope) => {
               if (!armed) return tell(envelope);
               // The batch went in, then the process died before the handler returned.
-              if (crash.how === "mid-effect" && envelope.command._tag === "HistoryBatch")
+              if (
+                crash.how === "mid-effect" &&
+                (envelope.command._tag === "HistoryBatch" ||
+                  envelope.command._tag === "EffectSettled")
+              )
                 return Effect.andThen(
                   tell(envelope),
-                  Effect.suspend(() => {
-                    acted = true;
-                    return Effect.never;
-                  }),
+                  Deferred.succeed(acted, undefined).pipe(Effect.andThen(Effect.never)),
                 );
               if (crash.how === "outcome-unrecorded" && envelope.command._tag === "EffectSettled")
                 return Effect.die("process died before the outcome was recorded");

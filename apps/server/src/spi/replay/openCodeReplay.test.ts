@@ -1,6 +1,6 @@
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, expect, it } from "vite-plus/test";
 
-import { recordOpenCodeBaseline } from "./openCodeReplay.ts";
+import { recordOpenCodeBaseline, recordOpenCodeTurn } from "./openCodeReplay.ts";
 
 describe("recordOpenCodeBaseline", () => {
   it("records an OpenCode baseline (canned SSE deltas -> item.completed)", async () => {
@@ -25,3 +25,10 @@ describe("recordOpenCodeBaseline", () => {
     assert.equal(completed?.payload.detail, "Hello from OpenCode");
   }, 15_000);
 });
+
+// A connected stream without the turn's terminal event cannot produce a complete recording.
+it("rejects a recording whose provider never completes the turn", async () => {
+  await expect(recordOpenCodeTurn([{ type: "server.heartbeat", properties: {} }])).rejects.toThrow(
+    /timed out|Timeout/i,
+  );
+}, 15_000);

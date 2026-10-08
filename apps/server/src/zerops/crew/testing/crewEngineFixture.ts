@@ -35,10 +35,11 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import * as Queue from "effect/Queue";
+import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import * as Result from "effect/Result";
 import { CrewDeployPoll } from "../crewBoot.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
@@ -148,33 +149,6 @@ export interface SshHold {
   readonly reached: Effect.Effect<void>;
   readonly release: Effect.Effect<void>;
 }
-
-/** An event on the fake bus, and when the engine is done with it. */
-interface Published {
-  readonly event: SpiEvent;
-  readonly handled: Deferred.Deferred<void>;
-}
-
-/**
- * The bus the engine reads, one event a pull: the engine pulls again only when
- * its handler for the last event returned, so that pull marks it handled.
- */
-const publishedEvents = (queue: Queue.Queue<Published>) => {
-  let last: Published | undefined;
-  return Stream.fromEffectRepeat(
-    Effect.suspend(() => {
-      const done = last === undefined ? Effect.void : Deferred.succeed(last.handled, undefined);
-      last = undefined;
-      return done.pipe(
-        Effect.andThen(Queue.take(queue)),
-        Effect.map((published) => {
-          last = published;
-          return published.event;
-        }),
-      );
-    }),
-  );
-};
 
 export interface PendingHold {
   readonly matches: (script: string) => boolean;
@@ -386,7 +360,7 @@ export const admissionFake = (world: CrewFixtureWorld) =>
 
 const fakes = (
   world: CrewFixtureWorld,
-  events: Queue.Queue<Published>,
+  events: Effect.Success<ReturnType<typeof handledQueue<SpiEvent>>>,
   signIns: PubSub.PubSub<SignIn>,
 ) =>
   Layer.mergeAll(
@@ -428,7 +402,7 @@ const fakes = (
         ),
     }),
     admissionFake(world),
-    ProviderRuntimeEventBusTest.make(publishedEvents(events)),
+    ProviderRuntimeEventBusTest.make(events.events),
     ServerCommandReadiness.layer,
   );
 
@@ -529,7 +503,7 @@ export const makeFixtureWorld = Effect.gen(function* () {
   const workspace = NodeFS.realpathSync(
     NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
   );
-  const events = yield* Queue.unbounded<Published>();
+  const events = yield* handledQueue<SpiEvent>("120 seconds");
   const signIns = yield* PubSub.unbounded<SignIn>();
   const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
   const world: CrewWorld = {
@@ -556,12 +530,7 @@ export const makeFixtureWorld = Effect.gen(function* () {
     missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
     processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
     processReads: yield* Ref.make(0),
-    publish: (event) =>
-      Effect.gen(function* () {
-        const handled = yield* Deferred.make<void>();
-        yield* Queue.offer(events, { event, handled });
-        yield* Deferred.await(handled);
-      }),
+    publish: events.publish,
     holdSsh: (matches) =>
       Effect.gen(function* () {
         const hold: PendingHold = {
@@ -643,6 +612,26 @@ export const withCrewEngine = <E>(
   body: (world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>,
   options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
 ) => withCrewEngines([body], options);
+
+export const loginReconciled = <A, E, R>(trigger: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const engine = yield* CrewEngine;
+    const done = yield* engine.nextLoginReconciliation.pipe(
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* trigger;
+    yield* Fiber.join(done);
+  }).pipe(Effect.timeout("10 seconds"), Effect.orDie);
+
+/** All admitted finite engine work returned; callers admit their producers first. */
+export const drained = Effect.flatMap(CrewEngine, (engine) => engine.drain).pipe(
+  Effect.timeout("10 seconds"),
+  Effect.orDie,
+);
+export const booted = Effect.flatMap(CrewEngine, (engine) => engine.booted).pipe(
+  Effect.timeout("10 seconds"),
+  Effect.orDie,
+);
 
 /** Polls `check` until it holds, for work the engine runs in the background; dies when it never does. */
 export const eventually = <E, R>(

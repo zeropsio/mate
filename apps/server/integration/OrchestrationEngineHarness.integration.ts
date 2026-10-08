@@ -440,8 +440,7 @@ export const makeOrchestrationIntegrationHarness = (
     const receiptHistory = yield* Ref.make<ReadonlyArray<OrchestrationRuntimeReceipt>>([]);
     yield* Stream.runForEach(runtimeReceiptBus.streamEventsForTest, (receipt) =>
       Ref.update(receiptHistory, (history) => [...history, receipt]).pipe(Effect.asVoid),
-    ).pipe(Effect.forkIn(scope));
-    yield* Effect.sleep(10);
+    ).pipe(Effect.forkIn(scope, { startImmediately: true }));
 
     const waitForThread: OrchestrationIntegrationHarness["waitForThread"] = (
       threadId,

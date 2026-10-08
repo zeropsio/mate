@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -23,8 +24,11 @@ describe("withPermitWithin", () => {
   it.live("gives up when the lock stays taken past the wait, having run nothing", () =>
     Effect.gen(function* () {
       const lock = yield* Semaphore.make(1);
-      yield* lock.withPermits(1)(Effect.sleep("500 millis")).pipe(Effect.forkChild);
-      yield* Effect.sleep("10 millis");
+      const acquired = yield* Deferred.make<void>();
+      yield* lock
+        .withPermits(1)(Deferred.succeed(acquired, undefined).pipe(Effect.andThen(Effect.never)))
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(acquired).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       let ran = false;
       const done = yield* withPermitWithin(lock, "50 millis")(Effect.sync(() => (ran = true)));
       assert.deepStrictEqual([done, ran], [Option.none(), false]);

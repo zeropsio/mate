@@ -320,10 +320,7 @@ function admittingAdapter(): MateAdapter {
 }
 
 /** Lets the adapter's queue and every port's answer run. */
-const settle = () =>
-  act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+const settle = (adapter: MateAdapter) => act(() => adapter.settled());
 
 /** The route's target as the listing publishes it, its service in this status. */
 const target = (presence: Presence, service: string) => ({
@@ -412,31 +409,31 @@ describe("the route gate over the Mate adapter's machines", () => {
     driver.setVisible(true);
     driver.setTargets([active]);
     driver.setDemand("route", [KEY]);
-    await settle();
+    await settle(driver);
     driver.link(ENV_A, { phase: "connected" });
-    await settle();
+    await settle(driver);
     look();
 
     // zcp goes RESTARTING under a live socket, which then drops and keeps retrying for ~25 s.
     driver.setTargets([restarting]);
-    await settle();
+    await settle(driver);
     look();
     driver.link(ENV_A, { phase: "backoff", retryAtMs: nowMs + 2_000 });
-    await settle();
+    await settle(driver);
     look();
     for (let second = 0; second < 30; second += 5) {
       nowMs += 5_000;
       driver.link(ENV_A, { phase: "connecting" });
-      await settle();
+      await settle(driver);
       look();
       driver.link(ENV_A, { phase: "backoff", retryAtMs: nowMs + 4_000 });
-      await settle();
+      await settle(driver);
       look();
     }
 
     driver.setTargets([active]);
     driver.link(ENV_A, { phase: "connected" });
-    await settle();
+    await settle(driver);
     look();
 
     expect(mounts).toEqual([1]);
@@ -990,7 +987,7 @@ function descriptorRig(
       if (answer === undefined) throw new Error(`No exchange at ${origin} is in flight.`);
       pending.delete(origin);
       answer(reading);
-      await settle();
+      await settle(adapter);
     },
   };
 }
@@ -1044,7 +1041,7 @@ describe("the descriptor index", () => {
       },
       store,
     );
-    await settle();
+    await settle(rig.adapter);
 
     // Its descriptor never answers: HQ's word alone names the route's Mate.
     const seen = routeTo(ENV_A).read();
@@ -1057,7 +1054,7 @@ describe("the descriptor index", () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
     shell.organization = "needs-selection";
-    await settle();
+    await settle(rig.adapter);
     const made = EnvironmentId.make("env-made-up");
     const before = {
       real: selectRouteGate(routeTo(ENV_A).read().target),
@@ -1066,7 +1063,7 @@ describe("the descriptor index", () => {
 
     // A descriptor read for an explicit demand may subsequently name the route.
     rig.adapter.setDemand("screen", [one.key]);
-    await settle();
+    await settle(rig.adapter);
     await rig.answer(one.origin, answering(ENV_A, one.projectId));
 
     expect(before).toEqual({
@@ -1085,7 +1082,7 @@ describe("the descriptor index", () => {
     rig.adapter.setDemand("recent", [one.key]);
     const draft = scopeThreadRef(ENV_A, ThreadId.make("thread-1"));
     useComposerDraftStore.getState().setPrompt(draft, "keep me");
-    await settle();
+    await settle(rig.adapter);
     function Probe({ environmentId }: { readonly environmentId: EnvironmentId }) {
       const inputs = useRouteGateInputs(environmentId);
       return JSON.stringify({

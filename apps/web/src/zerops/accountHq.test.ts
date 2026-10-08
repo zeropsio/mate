@@ -13,7 +13,7 @@ import {
 import { hqAnchorName } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/reactivity";
 
-import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
+import { makeMemberAccount } from "./__fixtures__/sampledAccount";
 import {
   accountHqApi,
   nextHqStanding,
@@ -33,6 +33,16 @@ import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataCont
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+
+/** React has published the layer's answer, not merely admitted its request. */
+const reconciled = (assertion: () => void) =>
+  vi.waitFor(
+    async () => {
+      await act(async () => {});
+      assertion();
+    },
+    { timeout: 5_000 },
+  );
 
 describe("nextHqStanding", () => {
   const parts = { quarantined: [] };
@@ -277,10 +287,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
         ),
       );
     });
-    // The account's data layer runs on its own runtime: its first read lands a few turns later.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() => expect(seen.at(-1)?.status).toMatch(/^(ready|failed)$/));
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
 
@@ -327,10 +334,7 @@ describe("useAccountHq — the official HQ this page holds", () => {
         ),
       );
     });
-    // The account's data layer runs on its own runtime: its first read lands a few turns later.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() => expect(seen.some((hq) => hq !== null)).toBe(true));
     const first = seen.find((hq) => hq !== null);
     expect(first).toBeDefined();
     expect(seen.filter((hq) => hq !== null).every((hq) => hq === first)).toBe(true);
@@ -411,9 +415,9 @@ describe("useAccountHq — the official HQ this page holds", () => {
         .structure()
         .catch(() => undefined);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() =>
+      expect(hq.last().hq).toMatchObject({ address: "https://new.example.test" }),
+    );
     expect([hq.reads(), hq.last().hq]).toEqual([
       1,
       { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
@@ -451,9 +455,9 @@ describe("useAccountHq — the official HQ this page holds", () => {
         .structure()
         .catch(() => undefined);
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() =>
+      expect(hq.last().hq).toMatchObject({ address: "https://new.example.test" }),
+    );
     expect([hq.reads(), hq.last().hq]).toEqual([
       2,
       { kind: "official", projectId: "P_NEW", address: "https://new.example.test" },
@@ -468,9 +472,6 @@ describe("useAccountHq — the official HQ this page holds", () => {
       [anchor("P_HQ", "https://hq.example.test")],
       Date.now() - 11 * 60_000,
     );
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
     // Reconnecting the stream must not silently rediscover or change the official HQ.
     expect([hq.reads(), hq.last().hq]).toEqual([0, { kind: "official", ...HQ }]);
   });
@@ -544,23 +545,28 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
         ),
       );
     });
-    // The account's data layer runs on its own runtime: its first read lands a few turns later.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+    await reconciled(() => {
+      expect(account.reads()).toBe(1);
+      expect(seen.length).toBeGreaterThan(0);
     });
     return {
       last: () => seen.at(-1)!,
       answer: async (members: ReadonlyArray<ZeropsOrganizationMember>) => {
         await act(async () => {
           answer(members);
-          await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+        });
+        await reconciled(() => {
+          expect(registry.get(account.value.data.fact("organizationMembers", clientId)).kind).toBe(
+            "known",
+          );
+          expect(seen.at(-1)?.status).toBe("ready");
         });
       },
       refuse: async (cause: unknown) => {
         await act(async () => {
           refuse(cause);
-          await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
         });
+        await reconciled(() => expect(seen.at(-1)?.status).toBe("failed"));
       },
     };
   }
@@ -654,7 +660,6 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     const api = accountHqApi(noDoorClient(902), "org-kept-w", KEPT);
     await api.structure();
     const created = api.createApp("Acme");
-    await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
     expect(calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual([
       "GET /api/structure",
     ]);
@@ -684,9 +689,7 @@ describe("useAccountHq — the HQ whose session the account kept, verified behin
     const hq = await pending("org-kept-v");
     const calls = heard();
     await hq.answer([anchor("P_NEW", "https://new.example.test")]);
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() => expect(calls.some((call) => call.method === "DELETE")).toBe(true));
     expect(calls).toContainEqual({
       method: "DELETE",
       url: `${KEPT.address}/api/session`,
@@ -869,7 +872,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 
     closeAccountLifetime();
     // The close ends the account's sessions once no other tab holds it open.
-    await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+    await reconciled(() => expect(calls.at(-1)?.method).toBe("DELETE"));
 
     expect(calls.at(-1)).toEqual({
       method: "DELETE",
@@ -936,10 +939,7 @@ describe("useAccountHq — no official HQ, kept too", () => {
         ),
       );
     });
-    // The account's data layer runs on its own runtime: its first read lands a few turns later.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() => expect(seen.at(-1)?.status).toMatch(/^(ready|failed)$/));
     return { reads: () => reads, last: () => seen.at(-1)! };
   }
 
@@ -967,9 +967,9 @@ describe("useAccountHq — no official HQ, kept too", () => {
     await act(async () => {
       hq.last().reread();
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() =>
+      expect(hq.last().hq).toMatchObject({ kind: "official", projectId: "P_HQ" }),
+    );
     expect([hq.reads(), hq.last().hq]).toEqual([
       2,
       { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" },
@@ -986,9 +986,9 @@ describe("useAccountHq — no official HQ, kept too", () => {
     await act(async () => {
       hq.last().reread();
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-    });
+    await reconciled(() =>
+      expect(hq.last().hq).toMatchObject({ kind: "official", projectId: "P_HQ" }),
+    );
     const official = { kind: "official", projectId: "P_HQ", address: "https://hq.example.test" };
     expect([hq.reads(), hq.last().hq]).toEqual([2, official]);
     const next = await loaded("org-born", () => members);

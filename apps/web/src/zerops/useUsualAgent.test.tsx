@@ -5,7 +5,7 @@ import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { expect, it, vi } from "vite-plus/test";
 
-import { LAYER_TURNS_MS, makeSampledAccount } from "./__fixtures__/sampledAccount";
+import { makeSampledAccount } from "./__fixtures__/sampledAccount";
 import { useUsualAgent } from "./useUsualAgent";
 import { AccountDataContext } from "./ZeropsAccountData";
 
@@ -61,10 +61,7 @@ async function usual(
     );
   });
   const first = seen.at(-1);
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
-  });
-  return { first, last: seen.at(-1) };
+  return { first, last: () => seen.at(-1) };
 }
 
 it.each([
@@ -86,5 +83,7 @@ it.each([
 ] as const)("is $name", async ({ envs, expected }) => {
   const { first, last } = await usual(envs);
   expect(first?.settled).toBe(false);
-  expect(last).toEqual(expected);
+  await act(async () => {
+    await vi.waitFor(() => expect(last()).toEqual(expected));
+  });
 });

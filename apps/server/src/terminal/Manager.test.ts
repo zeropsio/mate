@@ -9,6 +9,8 @@ import {
   type TerminalRestartInput,
 } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1034,6 +1036,8 @@ it.layer(
   it.effect("does not invoke subprocess polling until a terminal session is running", () =>
     Effect.gen(function* () {
       let checks = 0;
+      const idle = yield* Deferred.make<void>();
+      const realClock = yield* Clock.Clock;
       const { manager } = yield* createManager(5, {
         subprocessInspector: () => {
           checks += 1;
@@ -1044,9 +1048,20 @@ it.layer(
           });
         },
         subprocessPollIntervalMs: 20,
-      });
+      }).pipe(
+        Effect.provideService(Clock.Clock, {
+          currentTimeMillisUnsafe: () => realClock.currentTimeMillisUnsafe(),
+          currentTimeMillis: realClock.currentTimeMillis,
+          currentTimeNanosUnsafe: () => realClock.currentTimeNanosUnsafe(),
+          currentTimeNanos: realClock.currentTimeNanos,
+          monotonicTimeNanosUnsafe: () => realClock.monotonicTimeNanosUnsafe(),
+          monotonicTimeNanos: realClock.monotonicTimeNanos,
+          sleep: (duration) =>
+            Deferred.succeed(idle, undefined).pipe(Effect.andThen(realClock.sleep(duration))),
+        }),
+      );
 
-      yield* Effect.sleep("80 millis");
+      yield* Deferred.await(idle).pipe(Effect.timeout("2 seconds"), Effect.orDie);
       assert.equal(checks, 0);
 
       yield* manager.open(openInput());
@@ -1717,7 +1732,11 @@ it.layer(
         ),
       );
       first.emitExit({ exitCode: 0, signal: 0 });
-      yield* Effect.sleep(Duration.millis(5));
+      yield* waitFor(
+        Effect.map(getEvents, (events) =>
+          events.some((event) => event.type === "exited" && event.threadId === "thread-1"),
+        ),
+      );
       second.emitExit({ exitCode: 0, signal: 0 });
 
       yield* waitFor(

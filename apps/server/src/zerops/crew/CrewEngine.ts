@@ -35,6 +35,9 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { CREW_OFF_SNAPSHOT } from "./crewSnapshot.ts";
 
 export interface CrewEngineService {
+  readonly booted: Effect.Effect<void>;
+  readonly drain: Effect.Effect<void>;
+  readonly nextLoginReconciliation: Effect.Effect<void>;
   /** The current snapshot at once, then one per change, coalesced. */
   readonly snapshot: Stream.Stream<CrewSnapshot>;
   readonly updateFacts?: Effect.Effect<UpdateIdleFacts>;
@@ -64,6 +67,9 @@ const unavailable = Effect.fail(new CrewCommandError({ reason: "unavailable", de
 
 /** Crew mode is off here: one snapshot saying so, and every request refused. */
 export const inertCrewEngine: CrewEngineService = {
+  booted: Effect.void,
+  drain: Effect.void,
+  nextLoginReconciliation: Effect.never,
   snapshot: Stream.make(CREW_OFF_SNAPSHOT),
   updateFacts: Effect.succeed({ idle: true, blockers: [] }),
   updateChanges: Stream.empty,

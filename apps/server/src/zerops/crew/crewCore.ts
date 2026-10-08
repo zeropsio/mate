@@ -541,6 +541,7 @@ export const makeCrewCore = Effect.gen(function* () {
   return {
     config,
     updateWork,
+    scope,
     store,
     shell,
     repositories,
@@ -763,4 +764,7 @@ export const dispatchPrincipal = (
 
 /** The feed again once a task nobody acts on has stood long enough to wait on the person. */
 export const feedWhenUnattended = (core: CrewCore) =>
-  core.background(Effect.sleep(Duration.millis(UNATTENDED_MS)).pipe(Effect.andThen(core.changed)));
+  Effect.forkIn(
+    Effect.sleep(Duration.millis(UNATTENDED_MS)).pipe(Effect.andThen(core.changed)),
+    core.scope,
+  ).pipe(Effect.asVoid);

@@ -1,10 +1,14 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
@@ -77,6 +81,7 @@ const makeHarness = (input: {
     const settings = yield* makeSettings(input.initial ?? {});
     const verifies = yield* Ref.make<ReadonlyArray<string>>([]);
     const reconciled = yield* Ref.make<ReadonlyArray<string>>([]);
+    const reconciliation = yield* Queue.unbounded<string>();
     const fakeWatch = makeFakeWatch();
     const signIns = yield* memorySignInStore(
       Object.fromEntries(
@@ -97,7 +102,11 @@ const makeHarness = (input: {
               : {}),
           }),
         ),
-      reconcile: (id, verified) => Ref.update(reconciled, (all) => [...all, `${id}:${verified}`]),
+      reconcile: (id, verified) =>
+        Ref.update(reconciled, (all) => [...all, `${id}:${verified}`]).pipe(
+          Effect.andThen(Queue.offer(reconciliation, `${id}:${verified}`)),
+          Effect.asVoid,
+        ),
       signIns,
       readSigners: signIns.load.pipe(
         Effect.map((records) =>
@@ -107,7 +116,17 @@ const makeHarness = (input: {
       watch: fakeWatch.watch,
       checkDebounce: Duration.millis(10),
     });
-    return { fs, homeDir, settings, verifies, reconciled, fakeWatch, logins, signIns };
+    return {
+      fs,
+      homeDir,
+      settings,
+      verifies,
+      reconciled,
+      reconciliation,
+      fakeWatch,
+      logins,
+      signIns,
+    };
   });
 
 /** Blocks this fiber for the next published list matching `predicate` (see `ZeropsAgentAuthIo.test.ts` on why it is not forked). */
@@ -201,10 +220,11 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
   it.effect("checks a login's own CLI when its credential appears, and names its own signer", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { fs, homeDir, verifies, reconciled, fakeWatch, logins } = yield* makeHarness({
-          // The default Claude login is Jan's; this one is Eva's.
-          signers: { "claude-code": "u-jan", "claudeAgent-work": "u-eva" },
-        });
+        const { fs, homeDir, verifies, reconciled, reconciliation, fakeWatch, logins } =
+          yield* makeHarness({
+            // The default Claude login is Jan's; this one is Eva's.
+            signers: { "claude-code": "u-jan", "claudeAgent-work": "u-eva" },
+          });
         const { id } = yield* logins.add(
           {
             agent: "claude-code",
@@ -222,7 +242,10 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         assert.strictEqual(signedIn[0]?.signedInBy, "u-eva");
         assert.includeMembers([...(yield* Ref.get(verifies))], [id]);
         // After the publish: the row flips first, the picker's re-probe follows.
-        yield* Effect.sleep(Duration.millis(20));
+        assert.strictEqual(
+          yield* Queue.take(reconciliation).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+          `${id}:authenticated`,
+        );
         assert.include([...(yield* Ref.get(reconciled))], `${id}:authenticated`);
       }),
     ),
@@ -336,11 +359,9 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
             restarted,
           ),
         });
-        yield* Effect.sleep(Duration.millis(5));
         assert.deepStrictEqual((yield* store.load)[id]?.by, "u-eva", "before the first check");
         const subscription = yield* restarted.subscribe;
         yield* listWhere(subscription, (rows) => rows[0]?.state === "authorized");
-        yield* Effect.sleep(Duration.millis(20));
         assert.deepStrictEqual((yield* store.load)[id]?.by, "u-eva", "after it");
       }),
     ),
@@ -359,6 +380,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           SESSION,
         );
         const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
+        const cleared = yield* Deferred.make<void>();
         yield* ZeropsAgentLoginModule.make({
           terminalManager: {} as Parameters<
             typeof ZeropsAgentLoginModule.make
@@ -366,7 +388,17 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           zeropsAgentAuth: { recheckNow: () => Effect.void },
           isZeropsEnvironment: true,
           homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
-          signIns: store,
+          signIns: {
+            ...store,
+            clear: (key) =>
+              store
+                .clear(key)
+                .pipe(
+                  Effect.tap(() =>
+                    key === id ? Deferred.succeed(cleared, undefined) : Effect.void,
+                  ),
+                ),
+          },
           credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
             { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
             logins,
@@ -374,7 +406,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           credentialGoneAfter: Duration.millis(10),
         });
         yield* logins.recheckNow(id);
-        yield* Effect.sleep(Duration.millis(50));
+        yield* Deferred.await(cleared).pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.isUndefined((yield* store.load)[id]);
       }),
     ),
@@ -385,6 +417,11 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
     Effect.scoped(
       Effect.gen(function* () {
         const { settings, verifies, logins, signIns } = yield* makeHarness({});
+        const checked = yield* Stream.runHead(logins.credentials).pipe(
+          Effect.timeout("5 seconds"),
+          Effect.orDie,
+          Effect.forkChild({ startImmediately: true }),
+        );
         const { id } = yield* logins.add(
           { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
           SESSION,
@@ -401,40 +438,8 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         );
         // The key never rides the feed.
         assert.notInclude(Object.values(row ?? {}).map(String), "sk-ant-1");
-        yield* Effect.sleep(Duration.millis(50));
+        assert.deepStrictEqual(Option.getOrThrow(yield* Fiber.join(checked)), [[id, true]]);
         assert.deepStrictEqual(yield* Ref.get(verifies), []);
-      }),
-    ),
-  );
-
-  // Its stored key is an API key login's credential: the credential watch never lets its signer
-  // go for want of a credential file it never has.
-  it.effect("keeps an API key login's signer while its key is stored", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { logins, signIns } = yield* makeHarness({});
-        yield* ZeropsAgentLoginModule.make({
-          terminalManager: {} as Parameters<
-            typeof ZeropsAgentLoginModule.make
-          >[0]["terminalManager"],
-          zeropsAgentAuth: { recheckNow: () => Effect.void },
-          isZeropsEnvironment: true,
-          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
-          signIns,
-          credentialsHeld: ZeropsAgentLoginModule.credentialsHeldOf(
-            { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
-            logins,
-          ),
-          credentialGoneAfter: Duration.millis(10),
-        });
-        const { id } = yield* logins.add(
-          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
-          SESSION,
-        );
-        yield* logins.recheckNow(id);
-        yield* Effect.sleep(Duration.millis(60));
-
-        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
       }),
     ),
   );
@@ -537,6 +542,63 @@ it.layer(NodeServices.layer)("extra login attempts stay ended", (it) => {
           rows.some((row) => row.id === id && row.verification?.status === "unknown"),
         );
         assert.deepEqual(yield* Ref.get(verifies), [id, id]);
+      }),
+    ),
+  );
+});
+
+it.layer(NodeServices.layer)("credential watcher", (it) => {
+  // Its stored key is an API key login's credential: the credential watch never lets its signer
+  // go for want of a credential file it never has.
+  it.effect("keeps an API key login's signer while its key is stored", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { logins, signIns } = yield* makeHarness({});
+        const credentials = yield* handledQueue<ReadonlyArray<readonly [string, boolean]>>();
+        const decisions = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
+        yield* ZeropsAgentLoginModule.credentialsHeldOf(
+          { latest: Effect.succeed({ available: false, agents: [] }), changes: Stream.empty },
+          logins,
+        ).pipe(
+          Stream.runForEach((rows) =>
+            TestClock.withLive(credentials.publish(rows)).pipe(
+              Effect.andThen(Queue.offer(decisions, rows)),
+            ),
+          ),
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* ZeropsAgentLoginModule.make({
+          terminalManager: {} as Parameters<
+            typeof ZeropsAgentLoginModule.make
+          >[0]["terminalManager"],
+          zeropsAgentAuth: { recheckNow: () => Effect.void },
+          isZeropsEnvironment: true,
+          homes: {} as Parameters<typeof ZeropsAgentLoginModule.make>[0]["homes"],
+          signIns,
+          credentialsHeld: credentials.events,
+          credentialGoneAfter: Duration.millis(10),
+        });
+        const { id } = yield* logins.add(
+          { agent: "claude-code", kind: "apiKey", label: "", apiKey: "sk-ant-1" },
+          SESSION,
+        );
+        const checked = yield* Stream.runHead(
+          Stream.fromQueue(decisions).pipe(
+            Stream.filter((rows) => rows.some(([key]) => key === id)),
+          ),
+        ).pipe(
+          Effect.timeout("5 seconds"),
+          TestClock.withLive,
+          Effect.orDie,
+          Effect.forkChild({ startImmediately: true }),
+        );
+        yield* logins.recheckNow(id);
+        // Run the login check's debounce, then wait until the credential consumer decided.
+        yield* TestClock.adjust(Duration.millis(10));
+        assert.deepStrictEqual(Option.getOrThrow(yield* Fiber.join(checked)), [[id, true]]);
+
+        yield* TestClock.adjust(Duration.millis(10));
+        assert.strictEqual((yield* signIns.load)[id]?.by, "u-eva");
       }),
     ),
   );

@@ -592,7 +592,6 @@ describe("persistableImageAttachments", () => {
         }),
     );
     reads.get("two.png")!("data:image/png;base64,Ag==");
-    await new Promise((resolve) => setTimeout(resolve, 0));
     reads.get("one.png")!("data:image/png;base64,AQ==");
 
     expect((await saving).map((attachment) => attachment.id)).toEqual(["one", "two"]);

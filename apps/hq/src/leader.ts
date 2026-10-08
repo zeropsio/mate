@@ -17,6 +17,7 @@
  *
  * @module leader
  */
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -63,6 +64,10 @@ export class Leader extends Context.Service<
   Leader,
   {
     readonly status: Effect.Effect<LeaderStatus>;
+    /** An eligibility decision or session ended; does not acknowledge a pending lock acquisition. */
+    readonly nextAttempt: Effect.Effect<void>;
+    /** The contender loop has terminated, including cancellation on release. */
+    readonly finished: Effect.Effect<void>;
     /** The status now, then each change of it: what runs only while this Core leads follows it. */
     readonly changes: Stream.Stream<LeaderStatus>;
     /**
@@ -234,6 +239,7 @@ export const leaderLayer = (
           .query(statement)
           .pipe(Effect.map((result) => Number(String(result.rows[0]?.["epoch"]))));
 
+      const attempts = completionReceipt();
       const session = Effect.gen(function* () {
         const connection = yield* PgConnection.make({
           url: options.databaseUrl,
@@ -244,6 +250,7 @@ export const leaderLayer = (
         });
         yield* SubscriptionRef.update(status, reached);
         yield* Effect.andThen(inheritRecorded, allowed).pipe(
+          Effect.tap((ok) => (ok ? Effect.void : attempts.complete)),
           Effect.repeat({ schedule: Schedule.spaced(heartbeat), until: (ok) => ok }),
         );
         yield* connection.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
@@ -298,9 +305,16 @@ export const leaderLayer = (
       );
 
       const loop = yield* Effect.forkScoped(
-        Effect.forever(Effect.andThen(session, Effect.sleep(retryAfter))),
+        Effect.forever(
+          Effect.andThen(
+            session.pipe(Effect.ensuring(attempts.complete)),
+            Effect.sleep(retryAfter),
+          ),
+        ),
       );
       return Leader.of({
+        nextAttempt: Effect.suspend(attempts.next),
+        finished: Fiber.await(loop).pipe(Effect.asVoid),
         status: Effect.map(SubscriptionRef.get(status), ({ state, epoch }) => ({ state, epoch })),
         changes: SubscriptionRef.changes(status).pipe(
           Stream.map(({ state, epoch }): LeaderStatus => ({ state, epoch })),

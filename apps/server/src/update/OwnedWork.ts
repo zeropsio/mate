@@ -20,6 +20,13 @@ export const makeOwnedWork = Effect.gen(function* () {
       ),
     );
   return {
+    drain: Effect.scoped(
+      Effect.gen(function* () {
+        const subscription = yield* subscribeUpdateChanges(changed);
+        if (active === 0) return;
+        yield* Stream.runDrain(subscription.changes.pipe(Stream.takeUntil(() => active === 0)));
+      }),
+    ),
     active: Effect.sync(() => active),
     changes: Stream.fromPubSub(changed),
     subscribeChanges: subscribeUpdateChanges(changed),

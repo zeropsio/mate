@@ -229,6 +229,7 @@ const makeAgentAuth = (scene: ShowcaseScene) =>
       changes: publisher.changes,
       subscribe: publisher.subscribe,
       recheckNow: () => publisher.publishCurrent.pipe(Effect.asVoid),
+      awaitCheck: () => Effect.void,
       // A fixture/showcase run never has a sign-out in flight to invalidate.
       invalidatePendingMark: () => Effect.void,
     } satisfies ZeropsAgentAuth.ZeropsAgentAuth["Service"];

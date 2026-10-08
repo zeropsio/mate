@@ -1057,6 +1057,14 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       });
 
     const service: CrewEngineService = {
+      // The front is served only once its boot (the import, the observer, the sweep) has run.
+      booted: Effect.void,
+      // Every effect the crew asked has settled.
+      drain: Effect.gen(function* () {
+        while (Object.keys((yield* state).effects).length > 0) yield* Effect.sleep("20 millis");
+      }),
+      // A sign-in reaches the crew as an input of its record; there is no pass of its own to wait on.
+      nextLoginReconciliation: Effect.never,
       snapshot: frames,
       updateFacts,
       updateChanges: Stream.fromPubSub(updateChanged),

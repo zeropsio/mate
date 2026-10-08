@@ -121,6 +121,7 @@ const leading = (url: string, secret: KeySecret | null, migrations?: ReadonlyArr
           Layer.succeed(Official, {
             status: Effect.succeed({ official: "ok" as const, allowed: true }),
             checked: Effect.succeed(true),
+            nextCheck: Effect.never,
             lastOk: Effect.undefined,
             inherit: () => Effect.void,
           }),

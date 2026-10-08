@@ -280,6 +280,11 @@ function keepSerially(input: Parameters<typeof keepOne>[0]): Promise<AgentPlace>
   return next;
 }
 
+/** Joins the copies already owned by the server, including sends whose wait expired. */
+export const drainUploads = Effect.promise(async () => {
+  while (keeping.size > 0) await Promise.all([...keeping.values()]);
+});
+
 async function placeOf(input: Parameters<typeof keepOne>[0]): Promise<AgentPlace> {
   const { attachment, storedPath } = input;
   if (!isSentFile(attachment)) return { path: storedPath };

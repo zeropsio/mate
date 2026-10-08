@@ -142,19 +142,37 @@ export function useAccountEnvironmentsSnapshot<T>(
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
 
+/** Account publications reach these atom readers through the same task boundary as runtime readers. */
+function useShownMateLinks() {
+  const registry = useContext(RegistryContext);
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const batched = batchedPerTask(listener);
+      const stop = registry.subscribe(shownMateLinksAtom, batched.notify);
+      return () => {
+        stop();
+        batched.cancel();
+      };
+    },
+    [registry],
+  );
+  const snapshot = useCallback(() => registry.get(shownMateLinksAtom), [registry]);
+  return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
 /** Every Mate target's environment machine (§4.4), as the account's store holds it. */
 export function useEnvironmentMachines(): ReadonlyMap<TargetKey, EnvironmentMachine> {
-  return useAtomValue(shownMateLinksAtom).machines;
+  return useShownMateLinks().machines;
 }
 
 /** Each Mate shown, as the account's store holds it: its machines, and whether it is read now. */
 export function useMateLinkValues(): ReadonlyMap<TargetKey, MateLinkValue> {
-  return useAtomValue(shownMateLinksAtom).targets;
+  return useShownMateLinks().targets;
 }
 
 /** The descriptor index over every present target (§4.8). */
 export function useDescriptorIndex(): DescriptorIndex {
-  const links = useAtomValue(shownMateLinksAtom);
+  const links = useShownMateLinks();
   return useMemo(() => indexDescriptors(links.machines, links.containers), [links]);
 }
 

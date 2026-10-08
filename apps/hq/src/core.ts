@@ -110,7 +110,9 @@ const services = (options: CoreOptions) => {
       officialLayer({
         projectId: options.hqProjectId,
         credential: options.credential,
-        ...(options.officialRecheck === undefined ? {} : { recheck: options.officialRecheck }),
+        ...(options.officialRecheck === undefined
+          ? {}
+          : { recheck: options.officialRecheck, recheckOk: options.officialRecheck }),
       }),
     ),
   );

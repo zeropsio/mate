@@ -158,6 +158,8 @@ const changeWhere = (
 ): Effect.Effect<ZeropsAgentAuthSnapshot> =>
   Stream.runHead(Stream.filter(subscription.changes, predicate)).pipe(
     Effect.map(Option.getOrThrow),
+    Effect.timeout("5 seconds"),
+    Effect.orDie,
   );
 
 const agentState = (
@@ -166,8 +168,37 @@ const agentState = (
 ): ZeropsAgentAuthSnapshot["agents"][number] | undefined =>
   snapshot.agents.find((agent) => agent.agentId === agentId);
 
-const claudeAuthResolved = (snapshot: ZeropsAgentAuthSnapshot): boolean =>
-  agentState(snapshot, "claude-code")?.providerAuth !== "unknown";
+const claudeAuthResolved = (snapshot: ZeropsAgentAuthSnapshot): boolean => {
+  const agent = agentState(snapshot, "claude-code");
+  return (
+    agent !== undefined &&
+    agent.providerAuth !== "unknown" &&
+    agent.verification?.generation !== undefined
+  );
+};
+
+/** The whole check completes after the verified snapshot and any reconciliation. */
+const checkedAgain = (
+  feed: ZeropsAgentAuth.ZeropsAgentAuth["Service"],
+  subscription: { readonly changes: Stream.Stream<ZeropsAgentAuthSnapshot> },
+  agentId: ZeropsAgentId,
+  trigger: () => void,
+) =>
+  Effect.gen(function* () {
+    const before = agentState(yield* feed.latest, agentId)?.verification?.generation ?? -1;
+    trigger();
+    const snapshot = yield* changeWhere(subscription, (snapshot) => {
+      const verified = agentState(snapshot, agentId)?.verification;
+      return (
+        verified !== undefined &&
+        verified.status !== "checking" &&
+        (verified.generation ?? -1) > before
+      );
+    });
+    const generation = agentState(snapshot, agentId)?.verification?.generation;
+    assert.isDefined(generation);
+    yield* feed.awaitCheck(agentId, generation!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+  });
 
 it.layer(NodeServices.layer, { excludeTestServices: true })(
   "ZeropsAgentAuth — non-Zerops mode",
@@ -455,8 +486,9 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // It still triggers its own coalesced provider check (a
             // SEPARATE call, past the first one's debounce window
             // altogether), but `markedOAuth` keeps it from spawning again.
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            yield* Effect.sleep("1600 millis");
+            yield* checkedAgain(feed, subscription, "claude-code", () =>
+              fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
+            );
 
             assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code"]);
             assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), [
@@ -664,7 +696,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             const subscription = yield* feed.subscribe;
             const codexAuth =
               (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
-                agentState(snapshot, "codex")?.providerAuth === status;
+                agentState(snapshot, "codex")?.verification?.status === status;
 
             yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
             fakeWatch.trigger(credWatchTarget(homeDir, "codex"));
@@ -784,7 +816,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             const target = credWatchTarget(homeDir, "codex");
             const codexAuth =
               (status: ServerProviderAuthStatus) => (snapshot: ZeropsAgentAuthSnapshot) =>
-                agentState(snapshot, "codex")?.providerAuth === status;
+                agentState(snapshot, "codex")?.verification?.status === status;
 
             yield* writeCredential(fs, path, homeDir, [".codex", "auth.json"]);
             fakeWatch.trigger(target);
@@ -792,8 +824,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             fakeWatch.trigger(target);
             yield* changeWhere(subscription, codexAuth("authenticated"));
             // The rewrite's check reads the same status: nothing to reconcile.
-            fakeWatch.trigger(target);
-            yield* Effect.sleep("1600 millis");
+            yield* checkedAgain(feed, subscription, "codex", () => fakeWatch.trigger(target));
 
             assert.deepEqual(yield* Ref.get(answers), []);
             assert.deepEqual(yield* Ref.get(reconciled), [
@@ -913,8 +944,9 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // provider still answers authenticated — mirrors a revoke
             // followed by a fresh re-login while the local file itself
             // never round-trips through absence.
-            fakeWatch.trigger(credWatchTarget(homeDir, "claude-code"));
-            yield* Effect.sleep("1600 millis");
+            yield* checkedAgain(feed, subscription, "claude-code", () =>
+              fakeWatch.trigger(credWatchTarget(homeDir, "claude-code")),
+            );
 
             assert.deepEqual(yield* Ref.get(fake.calls), ["claude-code", "claude-code"]);
           }),
@@ -985,7 +1017,6 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           });
 
           yield* feed.recheckNow("claude-code");
-          yield* Effect.sleep("100 millis");
           assert.deepEqual(yield* Ref.get(fake.calls), []);
           assert.deepEqual(yield* Ref.get(fakeProviderAuth.calls), []);
         }),
@@ -1019,8 +1050,10 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // it — the window during which a concurrent sign-out runs.
             const gate = yield* Deferred.make<void>();
             const probeCalls = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
+            const probeStarted = yield* Deferred.make<void>();
             const refreshProviderAuth = (agentId: ZeropsAgentId) =>
               Ref.update(probeCalls, (all) => [...all, agentId]).pipe(
+                Effect.andThen(Deferred.succeed(probeStarted, undefined)),
                 Effect.andThen(Deferred.await(gate)),
                 Effect.as({ status: "authenticated" as const, checkedAt: 0 }),
               );
@@ -1040,7 +1073,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // Past the credential watcher's 400ms debounce and the provider
             // check's own 1s coalesce window: the probe has started and is
             // now blocked on `gate`.
-            yield* Effect.sleep("1600 millis");
+            yield* Deferred.await(probeStarted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
             assert.deepEqual(yield* Ref.get(probeCalls), ["claude-code"]);
 
             // A sign-out runs concurrently, invalidating the check already
@@ -1048,9 +1081,6 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             // finally answers "authenticated".
             yield* feed.invalidatePendingMark("claude-code");
             yield* Deferred.succeed(gate, undefined);
-            yield* Effect.sleep("200 millis");
-
-            assert.deepEqual(yield* Ref.get(fake.calls), []);
             // A later env-store event may check auth, but must not spend the canceled credential event.
             const subscription = yield* feed.subscribe;
             yield* fs.writeFileString(envStorePath, '{"ZCP_AGENT_OAUTH_CLAUDE_CODE":"true"}');

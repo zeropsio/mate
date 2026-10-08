@@ -1,3 +1,4 @@
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 // @effect-diagnostics nodeBuiltinImport:off -- a set is a directory of files: pg_dump writes one, git the others, the system digests them.
 /**
  * HQ's backup (SPEC §3.2 `backup`, vysledky/hq-backup.md): a **set** is HQ's database and every
@@ -379,6 +380,8 @@ export class Backup extends Context.Service<
      */
     readonly take: Effect.Effect<Manifest, TakeError>;
     readonly status: Effect.Effect<BackupStatus>;
+    /** The next scheduled backup decision has completed, including a standby or not-due decision. */
+    readonly nextCheck: Effect.Effect<void>;
   }
 >()("@t3tools/hq/backup") {}
 
@@ -736,6 +739,7 @@ export const backupLayer = (
         one.withPermits(1),
       );
 
+      const checked = completionReceipt();
       if (options.every !== undefined) {
         const every = Duration.toMillis(options.every);
         // Due `every` after the newest staged set, which a deploy leaves on the volume; with none,
@@ -765,12 +769,15 @@ export const backupLayer = (
                   return;
                 }
                 yield* Ref.set(due, now + every);
-              }).pipe(Effect.catch((error) => Effect.logWarning("backup check failed", error))),
+              }).pipe(
+                Effect.catch((error) => Effect.logWarning("backup check failed", error)),
+                Effect.ensuring(checked.complete),
+              ),
             ),
           ),
         );
       }
 
-      return Backup.of({ take, status: Ref.get(status) });
+      return Backup.of({ take, status: Ref.get(status), nextCheck: Effect.suspend(checked.next) });
     }),
   );

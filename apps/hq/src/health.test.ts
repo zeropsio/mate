@@ -64,6 +64,8 @@ const getHealth = (
           Layer.succeed(Leader, {
             status: Effect.succeed(status),
             changes: Stream.make(status),
+            nextAttempt: Effect.never,
+            finished: Effect.void,
             write: () => Effect.die("no writes"),
             release: Effect.void,
             hold: () => Effect.die("no hold"),
@@ -72,16 +74,22 @@ const getHealth = (
           Layer.succeed(Official, {
             status: Effect.succeed({ official, allowed: official === "ok" }),
             checked: Effect.succeed(true),
+            nextCheck: Effect.never,
             lastOk: Effect.undefined,
             inherit: () => Effect.void,
           }),
-          Layer.succeed(Backup, { take: Effect.die("no sets"), status: Effect.succeed(backup) }),
+          Layer.succeed(Backup, {
+            nextCheck: Effect.never,
+            take: Effect.die("no sets"),
+            status: Effect.succeed(backup),
+          }),
           Layer.succeed(LoopWatch, { status: Effect.succeed(loop) }),
           Layer.succeed(Recomputes, { count: Effect.void, lastMinute: Effect.succeed(recomputes) }),
           Layer.effect(
             GitHost,
             Effect.map(Queue.unbounded<never>(), (pushes) =>
               GitHost.of({
+                nextAttempt: Effect.never,
                 git: Effect.die("no git"),
                 status: Effect.succeed(git),
                 opened: () => Effect.die("no git"),

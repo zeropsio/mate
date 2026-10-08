@@ -1291,9 +1291,17 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
   it.effect("lets Stop unblock a fully silent Grok prompt and accept a follow-up turn", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-stop-after-full-silence");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-prompt-admission-")),
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => NodeFSP.rm(tempDir, { recursive: true, force: true })),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockGrokWrapper({
           T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
         }),
       );
       const adapter = yield* makeTestAdapter(wrapperPath);
@@ -1314,7 +1322,7 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       });
 
       yield* Effect.gen(function* () {
-        yield* Effect.sleep("500 millis");
+        yield* waitForFileContent(requestLogPath, 80, '"method":"session/prompt"');
         yield* adapter.interruptTurn(threadId);
       }).pipe(Effect.forkChild({ startImmediately: true }));
 
@@ -1366,9 +1374,17 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
   it.effect("a Stop that interrupts its send ends the turn cancelled, and the next turn runs", () =>
     Effect.gen(function* () {
       const threadId = ThreadId.make("grok-send-interrupted");
+      const tempDir = yield* Effect.promise(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "grok-prompt-admission-")),
+      );
+      yield* Effect.addFinalizer(() =>
+        Effect.promise(() => NodeFSP.rm(tempDir, { recursive: true, force: true })),
+      );
+      const requestLogPath = NodePath.join(tempDir, "requests.ndjson");
       const wrapperPath = yield* Effect.promise(() =>
         makeMockGrokWrapper({
           T3_ACP_HANG_FIRST_PROMPT_FOREVER: "1",
+          T3_ACP_REQUEST_LOG_PATH: requestLogPath,
         }),
       );
       const adapter = yield* makeTestAdapter(wrapperPath);
@@ -1389,7 +1405,7 @@ it.layer(grokAdapterTestLayer)("GrokAdapterLive", (it) => {
       const sending = yield* adapter
         .sendTurn({ threadId, input: "hang forever", attachments: [] })
         .pipe(Effect.forkChild({ startImmediately: true }));
-      yield* Effect.sleep("500 millis");
+      yield* waitForFileContent(requestLogPath, 80, '"method":"session/prompt"');
       // The person's Stop reaches the send before the agent answers.
       yield* Fiber.interrupt(sending);
       yield* adapter.sendTurn({ threadId, input: "continue after stop", attachments: [] });

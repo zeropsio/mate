@@ -139,6 +139,7 @@ const mock = vi.hoisted(() => ({
   invalidated: [] as Array<unknown>,
   /** The tokens the account deleted, by id. */
   deletedTokens: [] as Array<string>,
+  retirementCompleted: vi.fn(),
   deleteTokenFailure: false,
   mateKeyFailure: false,
   deleteProject: vi.fn(),
@@ -383,6 +384,7 @@ vi.mock("./accountOperations", () => ({
       if (intent.kind === "delete-project") await mock.deleteProject(intent.projectId);
       if (intent.kind === "complete-mate-deletion")
         await mock.completeProjectDeletion(intent.projectId, intent.completion);
+      if (intent.kind === "complete-key-retirement") mock.retirementCompleted();
       if (intent.kind === "retire-mate-key") {
         mock.deletedTokens.push(intent.tokenId!);
         if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
@@ -563,6 +565,7 @@ beforeEach(() => {
   mock.assignMateOwner.mockReset();
   mock.invalidated = [];
   mock.deletedTokens = [];
+  mock.retirementCompleted.mockClear();
   mock.deleteTokenFailure = false;
   mock.mateKeyFailure = false;
   mock.keyReads = 0;
@@ -2007,8 +2010,8 @@ describe("useMateActions — Delete Mate takes its key with it", () => {
     });
     await act(async () => {
       mock.deleteDialog.current!.onConfirm();
-      await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
     expect(mock.deletedTokens).toEqual(retired);
   });
 });

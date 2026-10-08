@@ -13,7 +13,7 @@ import { AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { LAYER_TURNS_MS, makeMemberAccount } from "./__fixtures__/sampledAccount";
+import { makeMemberAccount } from "./__fixtures__/sampledAccount";
 import { AccountDataContext } from "./ZeropsAccountData";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
@@ -112,7 +112,7 @@ describe("useZeropsOrganizationMembersRead", () => {
       );
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, LAYER_TURNS_MS));
+      await vi.waitFor(() => expect(seen.at(-1)?.status).toBe("ready"));
     });
     expect(seen.at(-1)?.status).toBe("ready");
     expect(seen.at(-1)?.members).toHaveLength(1);

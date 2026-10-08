@@ -156,6 +156,8 @@ export interface MateMachines {
 }
 
 export interface MateAdapter {
+  /** The current queue has been reduced and published; held port answers are separate producers. */
+  readonly settled: () => Promise<void>;
   /** Every Mate target the listing or a kept session names now; one left out is no longer shown. */
   readonly setTargets: (targets: ReadonlyArray<MateTarget>) => void;
   /** A project being deleted takes no demand; its leases stand for when it fails. */
@@ -425,6 +427,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let publishedEnvironments: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
   let publishedContainers: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
   const queue: Array<() => void> = [];
+  const settlements = new Set<() => void>();
   let scheduled = false;
 
   const context = () => ({ now: clock.now(), random: clock.random });
@@ -1242,6 +1245,18 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   };
 
   return {
+    settled: () =>
+      new Promise<void>((resolve) => {
+        if (disposed) resolve();
+        else {
+          const done = () => {
+            settlements.delete(done);
+            resolve();
+          };
+          settlements.add(done);
+          enqueue(done);
+        }
+      }),
     setTargets: (targets) =>
       enqueue(() => {
         const listed = new Set(targets.map((target) => target.key));
@@ -1476,6 +1491,8 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      queue.length = 0;
+      for (const done of settlements) done();
       cancelMintTimer?.();
       cancelProbeWake?.();
       for (const entry of entries.values()) endOps(entry);

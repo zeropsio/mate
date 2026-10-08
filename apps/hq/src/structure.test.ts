@@ -636,7 +636,14 @@ describe("structure", () => {
               structure.attachProject("maker", shop.id, { projectId: "P_RACE1", kind: "stage" }),
             ),
           );
-          yield* Effect.sleep(Duration.millis(300));
+          yield* Effect.raceFirst(
+            Fiber.await(environment),
+            sql`SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+              AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_xact_lock%'`.pipe(
+              Effect.filterOrFail((rows) => rows.length > 0),
+              Effect.retry(Schedule.spaced("20 millis")),
+            ),
+          ).pipe(Effect.timeout("5 seconds"), Effect.orDie);
           yield* Deferred.succeed(release, undefined);
           yield* Fiber.join(holder);
           const raced = [yield* Fiber.join(mate), yield* Fiber.join(environment)];
@@ -1017,7 +1024,13 @@ describe("structure", () => {
             const move = yield* Effect.forkChild(
               outcome(structure.moveProject("maker", "P_OWNED", { appId: team.id, kind: "mate" })),
             );
-            yield* Effect.sleep("300 millis");
+            yield* sql`SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+              AND wait_event_type = 'Lock' AND query LIKE '%hq_app_project%'`.pipe(
+              Effect.filterOrFail((rows) => rows.length > 0),
+              Effect.retry(Schedule.spaced("20 millis")),
+              Effect.timeout("5 seconds"),
+              Effect.orDie,
+            );
             yield* Deferred.succeed(release, undefined);
             yield* Fiber.join(writer);
             assert.notStrictEqual(yield* Fiber.join(move), "ok");

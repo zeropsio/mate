@@ -21,12 +21,15 @@ describe("the drain", () => {
         Layer.succeed(Leader, {
           status: Effect.succeed({ state: "active" as const, epoch: 1 }),
           changes: Stream.empty,
+          nextAttempt: Effect.never,
+          finished: Effect.void,
           release: note("lead released"),
           hold: () => Effect.die("no hold"),
           held: Effect.succeed(null),
           write: () => Effect.die("no writes"),
         }),
         Layer.succeed(GitHost, {
+          nextAttempt: Effect.never,
           git: Effect.fail(new NotLeader({ reason: "standby" })),
           status: Effect.succeed({ git: "closed" as const, quarantined: [] }),
           opened: () => Effect.fail(new NotLeader({ reason: "standby" })),
