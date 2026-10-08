@@ -5,7 +5,7 @@ import type {
   ServerAuthDescriptor,
 } from "@t3tools/contracts";
 import { isRedirect } from "@tanstack/react-router";
-import { AsyncResult, Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { AuthGateState } from "../environments/primary/auth";

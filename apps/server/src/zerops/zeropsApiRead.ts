@@ -16,7 +16,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 /** The presented token is not a valid Zerops credential. */
 export class ZeropsInvalidTokenError extends Schema.TaggedError<ZeropsInvalidTokenError>()(

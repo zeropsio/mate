@@ -11,7 +11,7 @@ import {
   pictureScope,
 } from "@t3tools/client-runtime/data";
 import { parseAttachmentUrl } from "@t3tools/shared/hqChanges";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

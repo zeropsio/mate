@@ -1,6 +1,6 @@
 import { createEnvironmentProjectAtoms } from "@t3tools/client-runtime/state/projects";
 import { createProjectCommands } from "@t3tools/client-runtime/state/projects";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { workspaceHostAtom, workspaceQuery } from "./workspace";
 import {
   createAtomCommandScheduler,

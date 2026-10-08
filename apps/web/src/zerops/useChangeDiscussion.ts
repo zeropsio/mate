@@ -31,7 +31,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { HQ_NOT_OPEN } from "@t3tools/client-runtime/zerops/hq";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { useAccountOperations } from "./accountOperations";

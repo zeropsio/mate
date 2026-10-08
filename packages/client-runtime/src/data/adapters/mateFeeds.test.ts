@@ -17,7 +17,7 @@ import { mateFeedReadsAtom, readMateFeed } from "../mateFeedReads.ts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { type MateFeedKey } from "../families/mateFeeds.ts";
 import { mateFeed } from "../projections/mateFeeds.ts";
 import { readsOfState, makeAccountStore } from "../store.ts";

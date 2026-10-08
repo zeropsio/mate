@@ -19,9 +19,9 @@ import * as Config from "effect/Config";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { FetchHttpClient, HttpRouter } from "effect/unstable/http";
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
-import * as HttpApiScalar from "effect/unstable/httpapi/HttpApiScalar";
+import { FetchHttpClient, HttpRouter } from "effect/http";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
+import * as HttpApiScalar from "effect/http-api/HttpApiScalar";
 
 import { httpHeaderRedactionLayer } from "@t3tools/shared/httpObservability";
 import { RelayApi } from "@t3tools/contracts/relay";

@@ -5,7 +5,7 @@ import {
   type MateImageRead,
   type makeMateImages,
 } from "@t3tools/client-runtime/data";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
 
 export const MateImagesContext = createContext<{

@@ -18,8 +18,8 @@ import { ToolPresentation } from "./providerRuntime.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
-const engineId = <Brand extends string>(brand: Brand) =>
-  TrimmedNonEmptyString.pipe(Schema.brand(brand));
+const engineId = <Brand extends string>(brand: Parameters<typeof Schema.brand<Brand>>[0]) =>
+  TrimmedNonEmptyString.pipe(Schema.brand<Brand>(brand));
 
 export const ConversationId = engineId("EngineConversationId");
 export type ConversationId = typeof ConversationId.Type;

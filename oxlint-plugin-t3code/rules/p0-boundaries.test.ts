@@ -14,25 +14,25 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
   const auth = io("apps/web/src/environments/primary/auth.ts");
   auth.valid(
     "error classification can import an aliased error namespace",
-    `import { HttpClientError as Errors } from "effect/unstable/http"; export const classify = Errors.isHttpClientError;`,
+    `import { HttpClientError as Errors } from "effect/http"; export const classify = Errors.isHttpClientError;`,
   );
   auth.invalid(
     "an error import cannot hide an aliased HTTP transport",
-    `import { HttpClientError as Errors, FetchHttpClient as Transport } from "effect/unstable/http"; export const layer = Transport.layer;`,
+    `import { HttpClientError as Errors, FetchHttpClient as Transport } from "effect/http"; export const layer = Transport.layer;`,
   );
   auth.valid(
     "the error submodule is also classification only",
-    `import * as Errors from "effect/unstable/http/HttpClientError"; export const classify = Errors.isHttpClientError;`,
+    `import * as Errors from "effect/http/HttpClientError"; export const classify = Errors.isHttpClientError;`,
   );
 
   const tracing = io("apps/web/src/observability/clientTracing.ts");
   tracing.valid(
     "OTLP may disable recursive tracing through the tag",
-    `import { HttpClient as HTTP } from "effect/unstable/http"; export const layer = Layer.succeed(HTTP.TracerDisabledWhen, () => true);`,
+    `import { HttpClient as HTTP } from "effect/http"; export const layer = Layer.succeed(HTTP.TracerDisabledWhen, () => true);`,
   );
   tracing.invalid(
     "the tracing module cannot read source data with the HTTP client",
-    `import { HttpClient as HTTP } from "effect/unstable/http"; export const read = HTTP.get("/projects");`,
+    `import { HttpClient as HTTP } from "effect/http"; export const read = HTTP.get("/projects");`,
   );
   tracing.invalid(
     "the tracing module has no general fetch exemption",

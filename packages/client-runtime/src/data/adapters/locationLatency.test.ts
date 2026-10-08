@@ -1,4 +1,4 @@
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { regionRecommendation } from "../projections/regionRecommendation.ts";

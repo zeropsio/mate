@@ -27,7 +27,7 @@ import {
 } from "@t3tools/client-runtime/zerops/testing";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import {
   projectServicesAtom,
   servicesScope,

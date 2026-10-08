@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { mateBrowserFrameScope } from "../families/mateBrowserFrame.ts";
 import { streamOf } from "../reducer.ts";

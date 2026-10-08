@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";

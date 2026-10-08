@@ -9,7 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { hqFixtureWire, type HqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";

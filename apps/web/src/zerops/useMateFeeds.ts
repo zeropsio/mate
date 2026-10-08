@@ -12,7 +12,7 @@ import {
   type AccountStore,
 } from "@t3tools/client-runtime/data";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useContext, useEffect } from "react";
 import { randomUUID } from "~/lib/utils";
 import { connectionAtomRuntime } from "../connection/runtime";

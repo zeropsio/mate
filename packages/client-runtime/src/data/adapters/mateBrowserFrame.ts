@@ -1,4 +1,4 @@
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { createEnvironmentRpcCommand } from "../../state/runtime.ts";
 /** One demanded Mate browser relay. Source identity, never the mounted card, chooses a call slot. */
 import {

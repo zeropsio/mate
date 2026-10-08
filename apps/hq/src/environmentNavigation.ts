@@ -1,7 +1,7 @@
 /** Environment navigation facts, computed once and filtered only when delivered. */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import type * as SqlClient from "effect/sql/SqlClient";
 import type { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import { environmentBirths } from "./births.ts";

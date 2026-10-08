@@ -14,7 +14,7 @@ import {
   type VaultChange,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 

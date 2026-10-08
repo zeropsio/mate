@@ -2,7 +2,7 @@
 import { sameValue } from "../projections/equal.ts";
 import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import type {
   EnvironmentId,
   ProjectWriteFileInput,

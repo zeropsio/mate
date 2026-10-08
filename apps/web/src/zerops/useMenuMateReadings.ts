@@ -15,7 +15,7 @@ import {
   applyProjectCreationVerdict,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   hqMateOverviewAtom,
   hqMatePresenceAtom,

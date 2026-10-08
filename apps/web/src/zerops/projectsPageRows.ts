@@ -2,7 +2,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { accountReadsAtom, hqProjectPerson, projectSummary } from "@t3tools/client-runtime/data";
 import { groupFlow, hasMate, type ZeropsGroupTreeGroup } from "@t3tools/client-runtime/zerops";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { sameValue } from "~/lib/sameValue";
 import { environmentsWithSnapshotAtom } from "~/state/shell";

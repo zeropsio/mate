@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { HqChangeComment } from "@t3tools/shared/hqChanges";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { ORG } from "../__fixtures__/account.ts";
 import { discussionId, hqDiscussionScope } from "../families/hqDiscussion.ts";

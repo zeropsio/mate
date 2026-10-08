@@ -153,10 +153,10 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   webFile.invalid(
     "reports an HTTP client, a query library and a remote atom taken into the client",
     [
-      `import { FetchHttpClient } from "effect/unstable/http";`,
-      `import * as HttpClient from "effect/unstable/http/HttpClient";`,
+      `import { FetchHttpClient } from "effect/http";`,
+      `import * as HttpClient from "effect/http/HttpClient";`,
       `import { useQuery } from "@tanstack/react-query";`,
-      `import { AtomRpc } from "effect/unstable/reactivity";`,
+      `import { AtomRpc } from "effect/reactivity";`,
       `export const parts = [FetchHttpClient, HttpClient, useQuery, AtomRpc];`,
     ].join("\n"),
     undefined,
@@ -213,7 +213,7 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   );
   webFile.invalid(
     "reports Effect's socket module taken into the client",
-    `import * as Socket from "effect/unstable/socket/Socket"; export const s = Socket;`,
+    `import * as Socket from "effect/socket/Socket"; export const s = Socket;`,
   );
   webFile.invalid(
     "reports a remote command atom built in the client",
@@ -282,6 +282,6 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   }
   webFile.valid(
     "allows the HTTP client's types",
-    `import type { HttpClient } from "effect/unstable/http"; export type C = HttpClient.HttpClient;`,
+    `import type { HttpClient } from "effect/http"; export type C = HttpClient.HttpClient;`,
   );
 });

@@ -66,6 +66,15 @@ the git tree/blob OID it must have. CI recomputes the OIDs and fails on any diff
 import step regenerates the lock. Commit subjects (`import:`) stay a convention, not the
 enforcement. No history inspection, nothing rots on a squash or rename.
 
+One recorded transform, since 2026-10-07, ends at the next re-import: the zone is upstream
+`422248515` with Effect 4.0.1's import paths and upstream `194c73f3f`'s own 4.0.1 hunk in
+`effect-acp/src/protocol.ts` (`scripts/effect-401-codemod.ts --import-zone`). Effect 4.0.1 drops
+`effect/unstable/*`, and every upstream SHA already on 4.0.1 carries ACP schema v2, whose
+re-import measured 446 type errors in 36 ported files — a rewrite of our ACP drivers, not a port.
+The lock's `transform` keeps upstream's tree OIDs; the check restores HEAD with the transform's
+inverse and proves it is upstream's tree byte for byte, so any other edit still fails. A
+re-import's `--write` drops the transform.
+
 Alongside it, a zcp-style architecture test: ported code carries no `zerops` imports; owned
 product code reaches providers only through the SPI (§3.2); its list of violations is empty since
 SPI-1 (2026-08-29).

@@ -36,7 +36,7 @@ import {
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { makeBrowserHqApi, readAccountHqHealth } from "@t3tools/client-runtime/data";
 import { organizationMembers } from "@t3tools/client-runtime/data";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 

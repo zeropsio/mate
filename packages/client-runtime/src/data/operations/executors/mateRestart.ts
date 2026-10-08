@@ -7,7 +7,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import type { OperationReceipt } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";

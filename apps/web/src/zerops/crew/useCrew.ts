@@ -27,7 +27,7 @@ import {
   type ThreadStatusInput,
 } from "@t3tools/shared/threadStatus";
 import { hqMateOverviewAtom, hqMatePresenceAtom } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 

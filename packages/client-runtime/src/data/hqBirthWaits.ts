@@ -6,7 +6,7 @@
  *
  * @module data/hqBirthWaits
  */
-import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import type { Atom, AtomRegistry } from "effect/reactivity";
 
 import { ZeropsApiError } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";

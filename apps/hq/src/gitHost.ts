@@ -49,8 +49,8 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import type * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { JUDGED_PER_MAIN_MOVE, type MergeabilityKind } from "@t3tools/shared/hqChanges";
 

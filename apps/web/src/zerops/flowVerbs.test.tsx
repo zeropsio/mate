@@ -139,7 +139,7 @@ beforeEach(async () => {
     mergeChange: hq.merge,
   } as never);
   const { RegistryContext } = await import("@effect/atom-react");
-  const { AtomRegistry } = await import("effect/unstable/reactivity");
+  const { AtomRegistry } = await import("effect/reactivity");
   const registry = AtomRegistry.make();
   registryOfTest = registry;
   await act(async () => {

@@ -2,7 +2,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { workspaceQuery } from "../state/workspace";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 export const ZEROPS_WORKSPACE_ROOT = "/var/www";

@@ -10,7 +10,7 @@ import {
   projectProcesses,
   projectsProcesses,
 } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { projectAuthority, useZeropsInventory } from "../inventoryContext";

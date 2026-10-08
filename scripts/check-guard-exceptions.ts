@@ -18,13 +18,15 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { Command, Flag } from "effect/unstable/cli";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { Command, Flag } from "effect/cli";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
+
+import { rewriteImportPaths } from "./effect-401-codemod.ts";
 
 /**
  * The reviewed source roots scanned by every oxlint-side guard: the client sources, and HQ for the
@@ -171,7 +173,8 @@ export const ratchetAdditions = (
 ): ReadonlyArray<string> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
-    const identity = identityOf(entry);
+    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/* path.
+    const identity = identityOf({ ...entry, fingerprint: rewriteImportPaths(entry.fingerprint) });
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }
   const additions: Array<string> = [];

@@ -1,5 +1,5 @@
 import { RegistryContext } from "@effect/atom-react";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore } from "@t3tools/client-runtime/data";
 import { STREAM_POLICY } from "@t3tools/client-runtime/data";
 const account = vi.hoisted(() => ({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { HQ_BIRTH_START } from "../../zerops/hq/birth.ts";
 import { linkKeys, type OperationReceipt } from "../model.ts";

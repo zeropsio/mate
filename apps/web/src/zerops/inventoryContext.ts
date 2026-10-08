@@ -17,7 +17,7 @@ import { inventoryCandidates } from "@t3tools/client-runtime/data";
 import { useAccountData } from "./ZeropsAccountData";
 import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 
 export interface Inventory {

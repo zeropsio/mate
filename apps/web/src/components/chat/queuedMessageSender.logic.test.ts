@@ -10,7 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { makeAccountStore, makeSendTurnReceipts } from "@t3tools/client-runtime/data";
 import * as Cause from "effect/Cause";
-import { AsyncResult, AtomRegistry } from "effect/unstable/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {

@@ -1,6 +1,6 @@
 /** High-frequency terminal input retains its existing serial/latest session dispatch. */
 import { WS_METHODS } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import type { EnvironmentRegistry } from "../../../connection/registry.ts";
 import { createAtomCommandScheduler, createEnvironmentRpcCommand } from "../../../state/runtime.ts";
 export function makeTerminalInputCommands<R, E>(

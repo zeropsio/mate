@@ -48,6 +48,14 @@ describe("identity multiset ratchet", () => {
     check(
       `assert.deepEqual(ratchetAdditions([{ ...entry, fingerprint: "  fetch \\n" }], [entry, entry]), []);`,
     ));
+  // Effect 4.0.1 moved effect/unstable/<area> to effect/<area>: a branch whose baseline predates
+  // the move keeps the same exceptions, under their new import path.
+  it("a baseline import path from before Effect 4.0.1 is the same identity under its new path", () =>
+    check(`
+    const before = { ...entry, kind: "ImportDeclaration", fingerprint: ["effect", "unstable", "httpapi", "HttpApi"].join("/") };
+    assert.deepEqual(ratchetAdditions([{ ...before, fingerprint: "effect/http-api/HttpApi" }], [before]), []);
+    assert.equal(ratchetAdditions([{ ...before, fingerprint: "effect/http-api/HttpApi" }, { ...before, fingerprint: "effect/http-api/HttpApi" }], [before]).length, 1);
+  `));
   it("includes rule, path, kind and fingerprint in the comparison", () =>
     check(`
     for (const patch of [{ path: "apps/web/src/two.ts" }, { kind: "Identifier" }, { fingerprint: "request" }]) {

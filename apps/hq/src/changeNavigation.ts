@@ -2,7 +2,7 @@ import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** Raw organization computation. Read access is checked by the scope hub at delivery. */
 export interface ChangeNavigationSource {

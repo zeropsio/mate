@@ -22,7 +22,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   inventoryTopology,
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { linkKeys, type AccountState, type OperationRecord } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { operationEnd } from "./operationEnd.ts";
 import { detailScopeOf } from "../demand.ts";
 import type { StreamEvent } from "../streamMachine.ts";

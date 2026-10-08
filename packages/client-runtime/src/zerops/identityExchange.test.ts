@@ -11,7 +11,7 @@ import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
 import { ZeropsApiError } from "./api.ts";

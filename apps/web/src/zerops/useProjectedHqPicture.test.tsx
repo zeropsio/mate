@@ -1,6 +1,6 @@
 import { RegistryContext } from "@effect/atom-react";
 import { makeAccountStore, pictureId, pictureScope } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { createElement } from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vite-plus/test";

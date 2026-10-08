@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** The conversation's row holds its agent: the instance, driver, model and profile it belongs to. */
 export default Effect.gen(function* () {

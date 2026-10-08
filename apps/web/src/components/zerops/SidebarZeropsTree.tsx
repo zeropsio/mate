@@ -113,7 +113,7 @@ import {
   PlusIcon,
   SquareIcon,
 } from "lucide-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import {

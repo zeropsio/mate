@@ -5,7 +5,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { liveZerops, processValue } from "../__fixtures__/account.ts";
 import { runningScope } from "../families/process.ts";

@@ -1,7 +1,7 @@
 /** Retains action outcomes in the same account as workspace facts. */
 import { sameValue } from "../projections/equal.ts";
 import * as Effect from "effect/Effect";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { makeOperations } from "../operations/coordinator.ts";
 import {
   makeWorkspaceExecutor,

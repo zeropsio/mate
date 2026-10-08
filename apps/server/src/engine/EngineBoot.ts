@@ -21,7 +21,7 @@
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import type { BootId, ConversationId } from "@t3tools/contracts";
 
 import { makeEffectWorker, type EffectWorkerOptions } from "./outbox/EffectWorker.ts";

@@ -11,7 +11,7 @@ import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as Socket from "effect/unstable/socket/Socket";
+import * as Socket from "effect/socket/Socket";
 
 import { memoryStore } from "../test/harness/overviews.ts";
 import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/runningCore.ts";

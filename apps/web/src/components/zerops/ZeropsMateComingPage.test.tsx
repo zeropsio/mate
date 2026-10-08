@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";

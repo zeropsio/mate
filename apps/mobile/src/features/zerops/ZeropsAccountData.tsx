@@ -9,7 +9,7 @@ import {
   type AccountReads,
   type AccountStore,
 } from "@t3tools/client-runtime/data";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { MateImages } from "./MateImagesProvider";
 

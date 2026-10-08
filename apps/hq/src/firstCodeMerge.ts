@@ -7,8 +7,8 @@
  */
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import * as Effect from "effect/Effect";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import type * as SqlClient from "effect/sql/SqlClient";
+import type { SqlError } from "effect/sql/SqlError";
 
 /**
  * In the write that merges the change: the application's row locked, so merges of two of its

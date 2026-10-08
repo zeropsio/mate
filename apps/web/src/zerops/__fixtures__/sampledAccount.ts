@@ -8,7 +8,7 @@ import { makeAccountStore, observeAccount, type ZeropsWire } from "@t3tools/clie
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/reactivity";
 
 import type { AccountData } from "../ZeropsAccountData";
 

@@ -10,7 +10,7 @@
  * @module held
  */
 import * as Effect from "effect/Effect";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import type * as SqlClient from "effect/sql/SqlClient";
 
 export const heldOf = (sql: SqlClient.SqlClient, projectId: string) =>
   Effect.map(

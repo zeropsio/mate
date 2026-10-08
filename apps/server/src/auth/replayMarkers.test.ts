@@ -5,6 +5,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Path from "effect/Path";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -36,6 +37,45 @@ const REAL_SECRET_NAMES = [
 ];
 
 it.layer(NodeServices.layer)("replayMarkers", (it) => {
+  // Effect 4.0.1 flipped partition's tuple to [passes, fails]: read the old way, every marker
+  // pruned would be logged as a failure.
+  it.effect("a sweep that prunes every expired marker reports no failure", () =>
+    Effect.gen(function* () {
+      const secretStore = yield* ServerSecretStore.ServerSecretStore;
+      const { secretsDir } = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const now = DateTime.makeUnsafe("2026-01-01T00:00:00Z");
+      const expired = DateTime.toDateUtc(
+        DateTime.subtractDuration(now, Duration.sum(REPLAY_MARKER_MAX_AGE, Duration.seconds(1))),
+      );
+      for (const name of ["dpop-proof-old", "cloud-mint-jti-old"]) {
+        yield* secretStore.create(name, Uint8Array.from([1]));
+        yield* fileSystem.utimes(path.join(secretsDir, `${name}.bin`), expired, expired);
+      }
+      yield* TestClock.setTime(DateTime.toEpochMillis(now));
+      const messages: Array<string> = [];
+      const logger = Logger.make(({ message }) => {
+        messages.push(String(message));
+      });
+
+      yield* pruneExpiredReplayMarkers().pipe(
+        Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+      );
+
+      assert.deepStrictEqual(yield* fileSystem.readDirectory(secretsDir), []);
+      assert.isFalse(messages.some((message) => message.includes("Failed to prune")));
+    }).pipe(
+      Effect.provide(
+        ServerSecretStore.layer.pipe(
+          Layer.provideMerge(
+            ServerConfig.layerTest(process.cwd(), { prefix: "t3-replay-markers-test-" }),
+          ),
+        ),
+      ),
+    ),
+  );
+
   it.effect("prunes only replay markers older than the max age", () =>
     Effect.gen(function* () {
       const secretStore = yield* ServerSecretStore.ServerSecretStore;

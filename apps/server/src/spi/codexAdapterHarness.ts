@@ -23,7 +23,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { ServerConfig } from "../config.ts";
 import { makeCodexAdapter } from "../provider/Layers/CodexAdapter.ts";

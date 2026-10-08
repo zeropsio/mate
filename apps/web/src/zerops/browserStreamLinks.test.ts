@@ -1,5 +1,5 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { act, createElement, StrictMode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -14,7 +14,7 @@ import {
 
 const adapters = vi.hoisted(() => ({ start: vi.fn((_options: unknown) => ({ stop: vi.fn() })) }));
 vi.mock("@effect/atom-react", async () => {
-  const { AsyncResult } = await import("effect/unstable/reactivity");
+  const { AsyncResult } = await import("effect/reactivity");
   const resolved = AsyncResult.success({});
   return { useAtomValue: () => resolved };
 });

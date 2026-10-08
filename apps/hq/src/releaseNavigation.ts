@@ -7,7 +7,7 @@ import { nextPatch } from "@t3tools/shared/hqRelease";
 import type { HqNavigationReleaseOffer } from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type * as SqlClient from "effect/unstable/sql/SqlClient";
+import type * as SqlClient from "effect/sql/SqlClient";
 import { tierRuntimes } from "./tierRuntimes.ts";
 
 export type ReleaseCandidate = Omit<HqNavigationReleaseOffer, "gate" | "inFlight">;

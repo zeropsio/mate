@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /** A call's own record beside its item (what it was asked, what it wrote): read by its readers. */
 export default Effect.gen(function* () {

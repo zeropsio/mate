@@ -4,7 +4,7 @@
  */
 import { environmentSetup } from "@t3tools/client-runtime/data";
 import type { HalfMadeGroupEnvironment } from "@t3tools/client-runtime/zerops";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { useAccountOperations } from "./accountOperations";

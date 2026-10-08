@@ -13,7 +13,7 @@ import type {
   DataMentionEntry,
 } from "@t3tools/client-runtime/zerops/dataConsole";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useContext, useEffect } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { useEnvironmentProjectRef } from "./useZeropsFeeds";

@@ -9,8 +9,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
-import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
+import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
@@ -23,7 +23,7 @@ import {
   staticAndDevRouteLayer,
   browserApiCorsLayer,
   httpCompressionLayer,
-  untracedRequestsLayer,
+  withUntracedRequests,
 } from "./http.ts";
 import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
 import { fixPath } from "./os-jank.ts";
@@ -604,13 +604,20 @@ export const makeRoutesLayer = Layer.mergeAll(
   zeropsSetupRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
-  // Last, so no route layer can replace the server's one TracerDisabledWhen.
-  untracedRequestsLayer,
 ).pipe(
   Layer.provide(commandReadinessLayer),
   Layer.provide(browserApiCorsLayer),
   Layer.provide(httpCompressionLayer),
 );
+
+// HttpRouter.serve builds the routes in a private memo map, so the server's
+// one TracerDisabledWhen is provided to the served layer, never merged into
+// the routes.
+export const serveRoutes = (options: {
+  readonly routerConfig: typeof HTTP_ROUTER_CONFIG;
+  readonly disableLogger?: boolean;
+  readonly disableListenLog?: boolean;
+}) => HttpRouter.serve(makeRoutesLayer, options).pipe(withUntracedRequests);
 
 const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -734,7 +741,7 @@ const makeServerLayer = Layer.unwrap(
       ).pipe(Effect.asVoid),
     }).pipe(Layer.provideMerge(RuntimeDependenciesLive));
 
-    const routesLayer = HttpRouter.serve(makeRoutesLayer, {
+    const routesLayer = serveRoutes({
       disableLogger: !config.logWebSocketEvents,
       routerConfig: HTTP_ROUTER_CONFIG,
     }).pipe(Layer.tap(() => Deferred.succeed(routesReady, undefined).pipe(Effect.orDie)));

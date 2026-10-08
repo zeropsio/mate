@@ -146,7 +146,7 @@ import {
   type ProjectRename,
 } from "./projectRenames.logic";
 import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useProjection } from "./ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useRenameProjects } from "./useRenameProjects";

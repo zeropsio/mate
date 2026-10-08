@@ -10,7 +10,7 @@ import {
   type MateImageKey,
   type MateImageRead,
 } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const MateImagesContext = createContext<{

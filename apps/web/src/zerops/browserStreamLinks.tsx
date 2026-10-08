@@ -14,7 +14,7 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { onAccountLifetimeClose } from "./accountLifetime";

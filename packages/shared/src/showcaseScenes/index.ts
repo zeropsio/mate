@@ -1,5 +1,5 @@
 import { sha256 } from "@noble/hashes/sha2";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
@@ -122,5 +122,5 @@ function canonicalize(value: unknown): unknown {
 
 export function canonicalShowcaseSceneHash(scene: ShowcaseScene): string {
   const canonicalJson = JSON.stringify(canonicalize(encodeShowcaseScene(scene)));
-  return Encoding.encodeHex(sha256(new TextEncoder().encode(canonicalJson)));
+  return Hex.encode(sha256(new TextEncoder().encode(canonicalJson)));
 }

@@ -5,7 +5,7 @@ import type {
 } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { databaseCatalog } from "../projections/database.ts";
 import { makeDatabaseReads, type DatabaseReads } from "./database.ts";

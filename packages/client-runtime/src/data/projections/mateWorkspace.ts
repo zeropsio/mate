@@ -1,6 +1,6 @@
 /** Workspace surfaces consume retained owner answers and the read's coverage separately. */
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import {
   WORKSPACE_READS,
   workspaceId,

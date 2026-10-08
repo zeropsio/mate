@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Schema from "effect/Schema";
 import { UsageUtcDay, UsageIdentity, UsageFact, AGENT_USAGE_EXACT_DAYS } from "@t3tools/contracts";
 import { usageCanonical, usageDigest } from "@t3tools/shared/agentUsage";

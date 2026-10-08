@@ -3,7 +3,7 @@ import type { HqChange } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { Release } from "@t3tools/shared/hqRelease";
 import * as Effect from "effect/Effect";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 
 import { ORG } from "../__fixtures__/account.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";

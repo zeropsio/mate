@@ -1,5 +1,5 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "../zerops/accountLifetime";

@@ -35,7 +35,7 @@ import {
   type ProjectServices,
   type RunToEnd,
 } from "@t3tools/client-runtime/data";
-import type { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import type { Atom, AtomRegistry } from "effect/reactivity";
 import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";

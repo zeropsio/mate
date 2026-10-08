@@ -4,7 +4,7 @@ import { RegistryContext } from "@effect/atom-react";
 import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { Deployment, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 

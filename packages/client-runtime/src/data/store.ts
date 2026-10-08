@@ -9,7 +9,7 @@
  *
  * @module data/store
  */
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import {
   emptyAccount,

@@ -6,7 +6,7 @@ import {
 } from "@t3tools/client-runtime/state/vcs";
 import { mateVcs } from "@t3tools/client-runtime/data";
 /** Projection atoms over the account's workspace reads; atoms express demand, never retain answers. */
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 import type { AccountStore } from "@t3tools/client-runtime/data";
 import { workspaceReading } from "@t3tools/client-runtime/data";
 import type { makeWorkspaceReads } from "@t3tools/client-runtime/data";

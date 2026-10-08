@@ -14,7 +14,7 @@ import { appRecipeOf, type AppRecipe } from "@t3tools/client-runtime/zerops";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useEffect, useMemo, useRef } from "react";
 
 import { useAccountDataOptional, useAccountOrgId, useProjection } from "./ZeropsAccountData";

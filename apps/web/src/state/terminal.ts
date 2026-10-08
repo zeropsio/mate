@@ -6,7 +6,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { type EnvironmentId } from "@t3tools/contracts";
 import { createAtomCommandScheduler } from "@t3tools/client-runtime/state/runtime";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { connectionAtomRuntime } from "../connection/runtime";
 const scheduler = createAtomCommandScheduler();
 const concurrency = {

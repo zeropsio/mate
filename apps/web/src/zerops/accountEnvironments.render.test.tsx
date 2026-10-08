@@ -1,7 +1,7 @@
 import { RegistryContext } from "@effect/atom-react";
 import { accountReadsAtom, makeAccountStore, makeMateAdapter } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import { AtomRegistry } from "effect/reactivity";
 import { Profiler } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 

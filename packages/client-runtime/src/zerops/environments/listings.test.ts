@@ -1,4 +1,4 @@
-import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import type { OrganizationProjects } from "../../data/projections/projects.ts";

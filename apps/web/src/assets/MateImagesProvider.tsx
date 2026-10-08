@@ -4,7 +4,7 @@ import { ManagedRelay } from "@t3tools/client-runtime/relay";
 import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { MateImagesContext } from "./MateImages";

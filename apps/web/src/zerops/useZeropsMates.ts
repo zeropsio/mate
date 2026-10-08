@@ -4,7 +4,7 @@ import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
 import { sameValue } from "../lib/sameValue";

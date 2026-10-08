@@ -4,7 +4,7 @@ import { MateHealthNotice } from "./MateHealthNotice";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import {
   shownHqMateIdentitiesAtom,
   mateArrival,
