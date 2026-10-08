@@ -37,11 +37,16 @@ build and `T3CODE_MATE_ENGINE` picks one per Mate at boot (`v1`, the default, or
   re-sent blindly; a replay-safe effect is retried.
 - **Wake** — a run that no person pressed: armed with a due time and an owner, fired once, dropped
   when its guard fails.
+- **Owner** — who writes a stream of the log: a conversation, or a Mate's crew (`crew/main`). Each
+  kind has its own rules and state and the same machinery: one writer, the receipt, the outbox,
+  wakes, boot recovery. The crew reaches a conversation only by command (its delivery's effect id
+  is the command id, so the receipt dedupes a resend) and reads it only through its gapless log.
 
 ## Rules
 
-1. **One writer per conversation.** Commands, driver signals, effect outcomes and wakes enter one
-   actor, in order. One conversation never waits on another's driver.
+1. **One writer per owner.** Commands, driver signals, effect outcomes and wakes enter one actor,
+   in order. One conversation never waits on another's driver, and a crew's git work never holds a
+   conversation's effects.
 2. **One transaction per step.** The receipt, the events, the projections, the outbox rows and the
    wakes commit together or not at all. A repeated command returns its stored result and writes
    nothing.
@@ -49,9 +54,13 @@ build and `T3CODE_MATE_ENGINE` picks one per Mate at boot (`v1`, the default, or
    read runs; nothing else says running.
 4. **No effect without a record.** Every outside action is an outbox row first.
 5. **No timer decides an outcome.** A timer may make a wake due or mark a run unresponsive. Only
-   evidence ends a run, settles an effect or closes a request.
+   evidence ends a run, settles an effect or closes a request. A gauge (context use, rate limits)
+   stays live and is never an outcome; a run's end keeps only where it stood: its cost and the
+   last context reading.
 6. **Every run has a principal.** Only the signer starts a person's run; anyone who can open the
-   Mate may stop it. A wake names its principal and passes the same admission.
+   Mate may stop it. A wake names its principal and passes the same admission. A run whose
+   principal is the crew is the crew's to carry on: a restart or a usage limit ends it and the
+   engine arms no continuation; the crew reads the end and holds or delivers again.
 7. **The server orders and stamps.** Each conversation has one gapless sequence; client clocks are
    display only. Streamed text is never stored; boundaries are.
 8. **Clients render, they don't derive.** Runs, items, requests and the conversation row arrive
