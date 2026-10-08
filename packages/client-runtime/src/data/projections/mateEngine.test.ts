@@ -590,6 +590,22 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
   });
 
+  it("gives a thread shell that never had a session its row's: working, on its run", () => {
+    const overlaid = overlayEngineRow(
+      { ...shellThread, session: null },
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: 1, waitsOnHelpers: false },
+        activeRunId: run1 as never,
+      }),
+    );
+    expect(overlaid.session).toMatchObject({
+      threadId: "thread-ada",
+      status: "running",
+      activeTurnId: run1,
+      providerName: "claudeAgent",
+    });
+  });
+
   it("leaves a Mate's shell as it is until its rows arrive, then lays them over it", () => {
     const shellState = {
       snapshot: Option.some({

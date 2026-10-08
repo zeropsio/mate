@@ -725,14 +725,24 @@ export function overlayEngineRow(
           } as OrchestrationThreadShell["modelSelection"],
         }),
     latestTurn,
-    session:
-      thread.session === null
-        ? null
-        : {
-            ...thread.session,
-            status: working ? "running" : row.state.kind === "failed" ? "error" : "ready",
-            activeTurnId: (row.activeRunId ?? null) as OrchestrationSession["activeTurnId"],
-          },
+    // A conversation the engine started never had a V1 session: the row is its session.
+    session: {
+      ...(thread.session ?? {
+        threadId: thread.id,
+        providerName: (row.agent?.driver ?? null) as OrchestrationSession["providerName"],
+        ...(row.agent === null
+          ? {}
+          : {
+              providerInstanceId: row.agent
+                .instanceId as OrchestrationSession["providerInstanceId"],
+            }),
+        runtimeMode: thread.runtimeMode,
+        lastError: null,
+      }),
+      status: working ? "running" : row.state.kind === "failed" ? "error" : "ready",
+      activeTurnId: (row.activeRunId ?? null) as OrchestrationSession["activeTurnId"],
+      updatedAt: iso(row.at),
+    },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
     hasPendingUserInput:
       row.state.kind === "waiting" && (row.state.on === "question" || row.state.on === "vault"),
