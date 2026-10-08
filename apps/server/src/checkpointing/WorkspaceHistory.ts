@@ -439,7 +439,10 @@ export const make = Effect.gen(function* () {
           .pipe(
             Effect.catch((error) =>
               Effect.andThen(
-                Effect.sync(() => broken.set(runKey, message(error))),
+                // Only for a run still held: one released meanwhile has nobody to read it.
+                Effect.sync(() => {
+                  if (active.get(runKey) === entry) broken.set(runKey, message(error));
+                }),
                 logFailure(error),
               ),
             ),
