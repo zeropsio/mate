@@ -6,6 +6,10 @@
  * about — the account, the organization — without repeating it.
  */
 
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { useAutoUpdatePolicy } from "~/zerops/useAutoUpdatePolicy";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { Switch } from "../ui/switch";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -31,6 +35,9 @@ export function ZeropsSettings() {
     status,
     user,
   } = useZeropsSession();
+  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const { policy, again } = useAutoUpdatePolicy(admin);
+  const operations = useAccountOperations();
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const account = status === "signed-in" ? zeropsAccountDisplay(user) : null;
@@ -123,6 +130,67 @@ export function ZeropsSettings() {
                   ))}
                 </SelectPopup>
               </Select>
+            }
+          />
+        ) : null}
+        {activeOrganization ? (
+          <SettingsRow
+            {...searchableSetting("zerops-auto-update")}
+            title="Update Mates automatically"
+            description="Updates only when a Mate is idle; rolls back if the new version fails."
+            status={
+              <>
+                <span>{policy.words}</span>
+                {!admin ? <span> · Organization admins and the owner can change this.</span> : null}
+                {policy.error ? <span role="alert"> · {policy.error}</span> : null}
+              </>
+            }
+            control={
+              admin ? (
+                <div className="flex items-center gap-2">
+                  {policy.retryRead ? (
+                    <Button size="sm" variant="outline" onClick={again}>
+                      Retry read
+                    </Button>
+                  ) : null}
+                  {policy.recoverable ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        void operations.submit(
+                          {
+                            kind: "set-auto-update-policy",
+                            orgId: activeOrganization.id,
+                            enabled: !policy.enabled,
+                          },
+                          policy.requestId,
+                        );
+                      }}
+                    >
+                      Send new change: {policy.enabled ? "Off" : "On"}
+                    </Button>
+                  ) : null}
+                  {policy.enabled === null ? null : (
+                    <Switch
+                      aria-label="Update Mates automatically"
+                      checked={policy.enabled}
+                      disabled={!policy.editable}
+                      onCheckedChange={(enabled) => {
+                        if (!policy.editable) return;
+                        void operations.submit(
+                          { kind: "set-auto-update-policy", orgId: activeOrganization.id, enabled },
+                          policy.requestId,
+                        );
+                      }}
+                    />
+                  )}
+                </div>
+              ) : policy.retryRead ? (
+                <Button size="sm" variant="outline" onClick={again}>
+                  Retry read
+                </Button>
+              ) : null
             }
           />
         ) : null}

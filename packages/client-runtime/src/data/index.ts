@@ -353,6 +353,15 @@ export {
 export type { MateImageKey, MateImageReference } from "./families/mateImage.ts";
 export { makeMateImages, makeMateImageWire, classifyImageHttp } from "./adapters/mateImages.ts";
 
+export {
+  hqAutoUpdatePolicyFamily,
+  autoUpdatePolicyScope,
+  autoUpdatePolicyRequestId,
+} from "./families/hqAutoUpdatePolicy.ts";
+export {
+  autoUpdatePolicySettings,
+  type AutoUpdatePolicySettings,
+} from "./projections/hqAutoUpdatePolicy.ts";
 export { repositorySource } from "./projections/repositorySource.ts";
 export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
 

@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 export const HqAutoUpdatePolicy = Schema.Struct({
   orgId: Schema.String,
   enabled: Schema.Boolean,
+  epoch: Schema.optionalKey(Schema.String),
   revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 export type HqAutoUpdatePolicy = typeof HqAutoUpdatePolicy.Type;

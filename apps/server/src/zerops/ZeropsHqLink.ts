@@ -35,6 +35,7 @@ import type * as NodeNet from "node:net";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type {
+  ConversationRow,
   CrewSnapshot,
   MateAttention,
   MateHealth,
@@ -211,7 +212,7 @@ type SocketEvent =
 const ticketResponse = Schema.Struct({ ticket: Schema.String });
 
 /** An overview's sections, each sent whole when it changed. */
-const SECTIONS = ["identity", "main", "threads", "logins", "crew"] as const;
+const SECTIONS = ["identity", "main", "threads", "logins", "crew", "conversations"] as const;
 
 /**
  * The sections of `overview` whose JSON differs from what `sent` holds, which then holds them as
@@ -516,6 +517,10 @@ export interface OverviewSources {
   readonly update: Pick<ZeropsMateUpdate["Service"], "current" | "changes">;
   /** Every orchestration domain event. */
   readonly domainEvents: Stream.Stream<unknown>;
+  /** An engine Mate's own rows, sent beside the threads' shell fields; none on a V1 Mate. */
+  readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
+  /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
+  readonly engine?: { readonly protocol: number };
 }
 
 /**
@@ -546,6 +551,7 @@ export const mateOverviewFeed = (
           environmentId: sources.environmentId,
           serverVersion: sources.serverVersion,
           update: (yield* sources.update.current) ?? null,
+          ...(sources.engine === undefined ? {} : { engine: sources.engine }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -558,6 +564,9 @@ export const mateOverviewFeed = (
         auth: combineAgentAuth(snapshot, extras, logins),
         ...(sources.lastSigners === undefined ? {} : { lastSigners: yield* sources.lastSigners }),
         crew: yield* Ref.get(crew),
+        ...(sources.conversations === undefined
+          ? {}
+          : { conversations: yield* sources.conversations }),
       });
     }).pipe(Effect.option);
     return {
@@ -605,19 +614,25 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const fs = yield* FileSystem.FileSystem;
       // While the Mate engine owns the conversation, its conversations are the chats: V1's
       // projections (a thread left running at the flip among them) are never read.
-      const chats = chatsSource(yield* MateEngine, {
-        threads: Effect.gen(function* () {
-          const project = Option.getOrUndefined(
-            yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
-          );
-          return project === undefined
-            ? []
-            : (yield* projection.getShellSnapshot()).threads.filter(
-                (thread) => thread.projectId === project.id,
-              );
-        }),
-        domainEvents: engine.streamDomainEvents,
-      });
+      const attention = yield* ZeropsMateAttention;
+      const chats = chatsSource(
+        yield* MateEngine,
+        {
+          threads: Effect.gen(function* () {
+            const project = Option.getOrUndefined(
+              yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
+            );
+            return project === undefined
+              ? []
+              : (yield* projection.getShellSnapshot()).threads.filter(
+                  (thread) => thread.projectId === project.id,
+                );
+          }),
+          domainEvents: engine.streamDomainEvents,
+        },
+        // The revision an engine row carries: the attention's source, as the engine wire's.
+        Effect.map(attention.current, ({ source }) => source),
+      );
       const feed = yield* mateOverviewFeed({
         providers: { latest: providers.providers, changes: providers.changes },
         environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
@@ -630,6 +645,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
+        ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
+        ...(chats.engine === undefined ? {} : { engine: chats.engine }),
       });
       return yield* makeZeropsHqLink({
         readEnrollment: fs
@@ -642,8 +659,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         relayAccess: (yield* ZeropsProjectAccess).relayed,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
-        attention: (yield* ZeropsMateAttention).changes,
-        health: (yield* ZeropsMateAttention).healthChanges,
+        attention: attention.changes,
+        health: attention.healthChanges,
         usage,
         ...feed,
       });

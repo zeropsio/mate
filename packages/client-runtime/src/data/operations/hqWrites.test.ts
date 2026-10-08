@@ -474,3 +474,106 @@ describe("changing a Mate's face", () => {
     }),
   );
 });
+
+describe("organization automatic-update writes", () => {
+  it.effect("returns the committed policy in the receipt", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const policy = { orgId: ORG, enabled: false, revision: 3 };
+      const { operations } = operationsOf(store, { setAutoUpdatePolicy: async () => policy });
+      yield* operations.submit({ kind: "set-auto-update-policy", orgId: ORG, enabled: false });
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      expect(record(store)?.receipt?.acceptance).toEqual({ kind: "accepted", result: { policy } });
+    }),
+  );
+  it.effect(
+    "never repeats or adopts a lost policy answer from another admin's matching boolean",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          setAutoUpdatePolicy: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit({ kind: "set-auto-update-policy", orgId: ORG, enabled: false });
+        observePolicy(store, { orgId: ORG, enabled: false, revision: 4 });
+        yield* operations.retry("r1");
+        expect(progress(store)).toMatchObject({ stage: "uncertain" });
+        expect(sends).toBe(1);
+      }),
+  );
+  it.effect(
+    "a deliberate fresh policy change completes without resolving the earlier lost answer",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          setAutoUpdatePolicy: async (enabled) => {
+            if (++sends === 1) throw lost;
+            return { orgId: ORG, enabled, revision: 5 };
+          },
+        });
+        yield* operations.submit(
+          { kind: "set-auto-update-policy", orgId: ORG, enabled: false },
+          "r1",
+        );
+        observePolicy(store, { orgId: ORG, enabled: false, revision: 4 });
+        yield* operations.retry("r1");
+        yield* operations.submit(
+          { kind: "set-auto-update-policy", orgId: ORG, enabled: true },
+          "r2",
+        );
+        expect(progress(store).stage).toBe("uncertain");
+        expect(operationProgress.derive(readsOfState(store.state()), "r2")).toMatchObject({
+          stage: "done",
+          outcome: "succeeded",
+        });
+        expect(sends).toBe(2);
+      }),
+  );
+  it.effect("keeps HQ's refusal reason for a policy change", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations } = operationsOf(store, {
+        setAutoUpdatePolicy: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "forbidden",
+            message: "Only organization admins may change this policy.",
+          });
+        },
+      });
+      yield* operations.submit({ kind: "set-auto-update-policy", orgId: ORG, enabled: false });
+      expect(progress(store)).toEqual({
+        stage: "refused",
+        reason: "Only organization admins may change this policy.",
+      });
+    }),
+  );
+});
+
+function observePolicy(
+  store: ReturnType<typeof makeAccountStore>,
+  policy: { orgId: string; enabled: boolean; revision: number },
+) {
+  const scope = `hq:${policy.orgId}:auto-update-policy` as const;
+  store.dispatch({
+    kind: "rows",
+    scope,
+    generation: readsOfState(store.state()).stream(scope).generation,
+    method: "read",
+    via: "hq-stream",
+    rows: [
+      {
+        family: "hqAutoUpdatePolicy",
+        id: policy.orgId,
+        value: policy,
+        revision: { kind: "hq", incarnation: "core", revision: policy.revision },
+      },
+    ],
+  });
+}

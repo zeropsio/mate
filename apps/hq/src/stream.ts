@@ -4,6 +4,7 @@ import * as NodeCrypto from "node:crypto";
 import {
   HQ_STREAM_SEGMENT_CLOSE,
   HQ_NAVIGATION_PROTOCOL,
+  AUTO_UPDATE_POLICY_PROTOCOL,
   HQ_STREAM_REFUSED_CLOSE,
   HqStreamRequest,
 } from "@t3tools/shared/hqStream";
@@ -86,6 +87,7 @@ export const serveHqSocket = <R>(
                     ...message,
                     core: {
                       protocol: HQ_NAVIGATION_PROTOCOL,
+                      autoUpdatePolicy: AUTO_UPDATE_POLICY_PROTOCOL,
                       ...(usageReader.read === undefined
                         ? {}
                         : { agentUsage: AGENT_USAGE_REPORT_PROTOCOL }),

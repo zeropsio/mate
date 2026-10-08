@@ -13,8 +13,16 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
-import { memoryStore } from "../test/harness/overviews.ts";
-import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/runningCore.ts";
+import type { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import { memoryStore, overviewOf, row } from "../test/harness/overviews.ts";
+import {
+  enrollMate,
+  setUpMate,
+  startCore,
+  ticketFor,
+  untilHealth,
+} from "../test/harness/runningCore.ts";
+import { nextScopeValue, scopeReset } from "../test/harness/scopes.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes } from "./changes.ts";
 import { Leader, NotLeader } from "./leader.ts";
@@ -55,7 +63,7 @@ describe("a Mate's link", () => {
             frame.type === "state" &&
             (frame["autoUpdate"] as { readonly enabled?: boolean } | undefined)?.enabled === false,
         );
-        assert.deepStrictEqual(frame["autoUpdate"], { orgId: "ORG", enabled: false, revision: 1 });
+        assert.deepInclude(frame["autoUpdate"], { orgId: "ORG", enabled: false, revision: 1 });
       }),
     );
     it.effect(
@@ -65,10 +73,9 @@ describe("a Mate's link", () => {
           const { call, owner, link } = yield* linked;
           yield* call("PUT", "/api/auto-update", { session: owner, body: { enabled: false } });
           yield* link.send({ type: "auto-update-policy", requestId: "before-switch" });
-          assert.deepStrictEqual(yield* link.next("auto-update-policy"), {
-            requestId: "before-switch",
-            policy: { orgId: "ORG", enabled: false, revision: 1 },
-          });
+          const reply = yield* link.next("auto-update-policy");
+          assert.strictEqual(reply.requestId, "before-switch");
+          assert.deepInclude(reply.policy, { orgId: "ORG", enabled: false, revision: 1 });
         }),
     );
     it.effect("passes by a frame whose type it does not know and keeps the link", () =>
@@ -143,6 +150,46 @@ describe("a Mate's link", () => {
       }),
     );
 
+    // Cutover H1: an engine Mate sends its own rows beside the shell fields; a V1 Mate sends none.
+    it.effect(
+      "relays an older Mate's overview as before, and an engine Mate's rows as it sent them",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, link, socket } = yield* linked;
+          const reader = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+          const scope = { kind: "attention", projectId: "P_MATE" } as const;
+          yield* scopeReset(reader, scope);
+          const relayed = (sent: unknown) =>
+            nextScopeValue<HqAttentionScopeValue>(
+              reader,
+              scope,
+              "P_MATE",
+              (value) => JSON.stringify(value.overview) === JSON.stringify(sent),
+            );
+
+          const older = overviewOf();
+          yield* link.send({ type: "overview", full: true, overview: older });
+          assert.deepStrictEqual((yield* relayed(older)).overview, older);
+
+          const asking = { kind: "waiting", on: "question", words: "Which provider?" } as const;
+          const engine = overviewOf({
+            identity: { ...older.identity, engine: { protocol: 1 } },
+            conversations: [row("t1", asking, "Which provider?"), row("t2")],
+          });
+          yield* link.send({ type: "overview", full: true, overview: engine });
+          assert.deepStrictEqual((yield* relayed(engine)).overview, engine);
+
+          // A newer Mate's keys this HQ does not know are passed by, and the link stays.
+          const newer = overviewOf({ identity: { ...older.identity, serverVersion: "0.15.0" } });
+          yield* link.send({
+            type: "overview",
+            full: true,
+            overview: { ...newer, identity: { ...newer.identity, later: 2 }, later: [] },
+          });
+          assert.deepStrictEqual((yield* relayed(newer)).overview, newer);
+        }),
+    );
+
     it.effect("closes on an overview that does not decode", () =>
       Effect.gen(function* () {
         const { link } = yield* linked;
@@ -179,6 +226,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     Effect.map(makeMateOverviews(memoryStore().store), (overviews) =>
       Layer.mergeAll(
         Layer.succeed(AutoUpdatePolicy, {
+          observe: () => Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
           current: Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
           changes: Stream.make(0),
           read: () => Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),

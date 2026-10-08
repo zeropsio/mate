@@ -237,7 +237,7 @@
         },
         {
           "action": "Select a service, node, or run a query",
-          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
+          "reverse": "none: browsing is read-only in this slice \u2014 there is nothing to undo, only a different selection to make."
         }
       ],
       "docs": {
@@ -455,7 +455,7 @@
       "entryPoints": [
         {
           "kind": "overlay",
-          "value": "Review — every door to a change, the next release, a roll back or a crew task"
+          "value": "Review \u2014 every door to a change, the next release, a roll back or a crew task"
         }
       ],
       "clients": {
@@ -1480,6 +1480,10 @@
         {
           "kind": "settings-search",
           "value": "zerops-organizations"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-auto-update"
         }
       ],
       "clients": {
@@ -1492,7 +1496,7 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door"],
-      "contracts": ["@t3tools/client-runtime/zerops"],
+      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/shared/mateAutoUpdatePolicy"],
       "reverseStates": [
         {
           "action": "Sign out",
@@ -1501,13 +1505,26 @@
         {
           "action": "Open Zerops",
           "reverse": "none: This action navigates to the Zerops projects page and does not mutate account state."
+        },
+        {
+          "action": "Turn automatic updates on",
+          "reverse": "Turn automatic updates off"
+        },
+        {
+          "action": "Turn automatic updates off",
+          "reverse": "Turn automatic updates on"
         }
       ],
       "docs": {
         "none": "No docs/user page documents Zerops account settings yet."
       },
-      "tests": [],
-      "untested": "ZeropsSettings has no focused component test; the account, organization selector and settings-search entries were exercised in a real browser.",
+      "tests": [
+        "apps/web/src/components/settings/ZeropsSettings.test.tsx",
+        "apps/web/src/components/settings/settingsSearch.test.ts",
+        "packages/client-runtime/src/data/adapters/hqAutoUpdatePolicy.test.ts",
+        "packages/client-runtime/src/data/operations/hqWrites.test.ts",
+        "apps/hq/src/autoUpdate.test.ts"
+      ],
       "captures": []
     },
     {
@@ -1627,10 +1644,10 @@
         },
         {
           "action": "Stop",
-          "reverse": "Keep going…"
+          "reverse": "Keep going\u2026"
         },
         {
-          "action": "Keep going…",
+          "action": "Keep going\u2026",
           "reverse": "Stop"
         },
         {
@@ -1693,7 +1710,7 @@
         },
         {
           "kind": "inline",
-          "value": "Crew tab: the crew's ··· Change the goal and Add a crewmate, a row's ··· Change its job"
+          "value": "Crew tab: the crew's \u00b7\u00b7\u00b7 Change the goal and Add a crewmate, a row's \u00b7\u00b7\u00b7 Change its job"
         },
         {
           "kind": "inline",
@@ -1701,7 +1718,7 @@
         },
         {
           "kind": "overlay",
-          "value": "Crew tab: Let it work on its own…, Keep going…, and a plan's Start or Change while the crew doesn't work on its own"
+          "value": "Crew tab: Let it work on its own\u2026, Keep going\u2026, and a plan's Start or Change while the crew doesn't work on its own"
         }
       ],
       "clients": {

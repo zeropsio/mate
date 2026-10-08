@@ -14,7 +14,7 @@ import {
   type HqValue,
   type HqRemoval,
 } from "@t3tools/shared/hqStream";
-import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -30,6 +30,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { HqUsageReader, USAGE_REPORT_LIMITS } from "./usageReport.ts";
 import { usageOwner } from "./usageAccess.ts";
 import { ZeropsRefused, type ZeropsError } from "./zerops/api.ts";
+import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Changes } from "./changes.ts";
 import type { ChangeNavigationSource } from "./changeNavigation.ts";
 import { pruneIdleScopes } from "./scopeRetention.ts";
@@ -86,7 +88,10 @@ const validKey = (scope: HqScope, key: string) => {
       return key === "report";
     case "navigation":
       return (
-        key === "org" || key === "status" || /^(?:app|project|person|press):[^:]{1,128}$/u.test(key)
+        key === "org" ||
+        key === "status" ||
+        key === "auto-update-policy" ||
+        /^(?:app|project|person|press):[^:]{1,128}$/u.test(key)
       );
     case "app-detail":
       return [
@@ -149,6 +154,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
+      const autoUpdate = yield* AutoUpdatePolicy;
       const official = yield* Official;
       const sql = yield* SqlClient.SqlClient;
       const leader = yield* Leader;
@@ -205,7 +211,8 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         string,
         { userId: string; projectId: string; epoch: number; ids: Set<string> }
       >();
-      let source: StructureSource | undefined;
+      type NavigationSource = StructureSource & { readonly autoUpdatePolicy: HqAutoUpdatePolicy };
+      let source: NavigationSource | undefined;
       let environmentSource: EnvironmentSource | undefined;
       let changeSource: ChangeNavigationSource | undefined;
       let releaseSource: ReleaseNavigationSource | undefined;
@@ -244,7 +251,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           while (source === undefined || sourceFence.dirty()) {
             const started = sourceFence.capture();
             yield* recomputes.count;
-            source = yield* structure.navigation;
+            const navigation = yield* structure.navigation;
+            source = {
+              ...navigation,
+              autoUpdatePolicy: yield* autoUpdate.observe(navigation.facts.orgId),
+            };
             environmentSource = source.environmentSource;
             sourceFence.accept(started);
             sourceVersion += 1;
@@ -420,7 +431,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           standupRequestedBy: mate?.standupRequestedBy ?? null,
         });
       };
-      const load = (entry: Entry, current: StructureSource, projects?: ReadonlySet<string>) =>
+      const policyMember = (current: StructureSource, userId: string) =>
+        current.facts.members.some(
+          (member) => member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+        );
+      const load = (entry: Entry, current: NavigationSource, projects?: ReadonlySet<string>) =>
         Effect.gen(function* () {
           const view = viewFor(current, entry.userId);
           const scope = entry.scope;
@@ -452,6 +467,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           if (!exists)
             return yield* new ScopeReadRefused({ code: "scope_not_found", reason: "deleted" });
           const values: HqValue[] = [];
+          const policyRemovals: HqRemoval[] = [];
           if (scope.kind === "navigation") {
             const member = current.facts.members.find(
               (member) => member.kind === "person" && member.userId === entry.userId,
@@ -544,6 +560,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 value: { can: view.can, unheld: view.unheld, tools: view.tools ?? [], build },
               });
               values.push(yield* statusValue);
+              if (policyMember(current, entry.userId))
+                values.push({
+                  key: "auto-update-policy",
+                  value: current.autoUpdatePolicy,
+                });
+              else policyRemovals.push({ key: "auto-update-policy", reason: "no-access" });
               for (const record of view.lifecycle ?? [])
                 values.push({ key: `lifecycle:${record.requestId}`, value: record });
             }
@@ -716,7 +738,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
               );
               return removal === undefined ? [] : [removal];
             });
-          return { values, removals };
+          return { values, removals: [...removals, ...policyRemovals] };
         });
       const refreshUnlocked = (entry: Entry) =>
         Effect.gen(function* () {
@@ -1027,10 +1049,11 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           Effect.provideService(Scope.Scope, hubScope),
         );
       type Signal =
-        | { kind: "structure" | "detail" | "roles" | "environment" | "usage" }
+        | { kind: "structure" | "detail" | "roles" | "environment" | "usage" | "auto-update" }
         | { kind: "attention" | "forget"; projectId: string };
       const pulls = yield* Effect.forEach(
         [
+          autoUpdate.changes.pipe(Stream.map((): Signal => ({ kind: "auto-update" }))),
           (usageReader.changes ?? Stream.empty).pipe(Stream.map((): Signal => ({ kind: "usage" }))),
           structure.changes.pipe(Stream.map((): Signal => ({ kind: "structure" }))),
           roles.views.pipe(
@@ -1089,6 +1112,32 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Effect.forever(
           Effect.flatMap(Queue.take(signals), (signal) => {
             pending.delete(json(signal));
+            if (signal.kind === "auto-update")
+              return Effect.gen(function* () {
+                // Navigation has already validated these membership facts. Broadcast never enters the HTTP authorization path.
+                if (source === undefined || sourceFence.dirty()) return;
+                const acceptedSource = source;
+                const version = sourceVersion;
+                const policy = yield* autoUpdate.observe(acceptedSource.facts.orgId);
+                if (sourceFence.dirty() || sourceVersion !== version) return;
+                source = { ...acceptedSource, autoUpdatePolicy: policy };
+                for (const entry of journals.values()) {
+                  if (entry.scope.kind !== "navigation" || entry.failure !== undefined) continue;
+                  const member = policyMember(acceptedSource, entry.userId);
+                  yield* entry.one.withPermits(1)(
+                    Effect.gen(function* () {
+                      if (sourceFence.dirty() || sourceVersion !== version) return;
+                      const message = member
+                        ? entry.journal.commit([{ key: "auto-update-policy", value: policy }])
+                        : entry.journal.commit(
+                            [],
+                            [{ key: "auto-update-policy", reason: "no-access" }],
+                          );
+                      if (message !== undefined) yield* send(entry, [message]);
+                    }),
+                  );
+                }
+              }).pipe(Effect.catch(navigationUnavailable("Automatic-update policy unavailable")));
             if (signal.kind === "usage")
               return Effect.gen(function* () {
                 for (const entry of journals.values())

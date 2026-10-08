@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off -- a policy epoch identifies the accepting Core instance.
+import * as NodeCrypto from "node:crypto";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -8,6 +10,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { Leader, type NotLeader } from "./leader.ts";
+import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import { can } from "./permissions.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { StructureRefused } from "./structure.ts";
@@ -16,6 +19,7 @@ import type { ZeropsError } from "./zerops/api.ts";
 export class AutoUpdatePolicy extends Context.Service<
   AutoUpdatePolicy,
   {
+    readonly observe: (orgId: string) => Effect.Effect<HqAutoUpdatePolicy, SqlError>;
     readonly current: Effect.Effect<HqAutoUpdatePolicy, SqlError | ZeropsError>;
     /** Initial tick and a tick after each committed policy change. */
     readonly changes: Stream.Stream<number>;
@@ -35,11 +39,12 @@ export const autoUpdatePolicyLayer = Layer.effect(
     const sql = yield* SqlClient.SqlClient;
     const roles = yield* Roles;
     const leader = yield* Leader;
+    const epoch = NodeCrypto.randomUUID();
     const ticks = yield* SubscriptionRef.make(0);
     const readOrg = Effect.fnUntraced(function* (orgId: string) {
       const rows = yield* sql<{ readonly enabled: boolean; readonly revision: number }>`
         SELECT enabled, revision FROM hq_auto_update_policy WHERE org_id = ${orgId}`;
-      return { orgId, enabled: rows[0]?.enabled ?? true, revision: rows[0]?.revision ?? 0 };
+      return { orgId, epoch, enabled: rows[0]?.enabled ?? true, revision: rows[0]?.revision ?? 0 };
     });
     // The org-wide switch uses the same authority as HQ's structure administration.
     const authorize = Effect.fnUntraced(function* (userId: string) {
@@ -51,9 +56,26 @@ export const autoUpdatePolicyLayer = Layer.effect(
       return view.orgId;
     });
     return AutoUpdatePolicy.of({
+      observe: readOrg,
       current: Effect.flatMap(roles.view, (view) => readOrg(view.orgId)),
       changes: SubscriptionRef.changes(ticks),
-      read: (userId) => confirmingRefusal(Effect.flatMap(authorize(userId), readOrg)),
+      read: (userId) =>
+        confirmingRefusal(
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            if (
+              !view.members.some(
+                (member) =>
+                  member.userId === userId && member.status === ZEROPS_ACTIVE_MEMBER_STATUS,
+              )
+            )
+              return yield* new StructureRefused({
+                code: "forbidden",
+                reason: "not_active_member",
+              });
+            return yield* readOrg(view.orgId);
+          }),
+        ),
       set: (userId, enabled) =>
         confirmingRefusal(
           Effect.gen(function* () {
@@ -69,7 +91,7 @@ export const autoUpdatePolicyLayer = Layer.effect(
             updated_by = EXCLUDED.updated_by
           RETURNING enabled, revision`);
             yield* SubscriptionRef.update(ticks, (n) => n + 1);
-            return { orgId, enabled: rows[0]!.enabled, revision: rows[0]!.revision };
+            return { orgId, epoch, enabled: rows[0]!.enabled, revision: rows[0]!.revision };
           }),
         ),
     });

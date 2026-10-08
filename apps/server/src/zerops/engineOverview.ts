@@ -12,11 +12,13 @@
 import {
   ConversationId,
   DEFAULT_MODEL,
+  MATE_ENGINE_PROTOCOLS,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
   TurnId,
+  type ConversationRow,
   type OrchestrationLatestTurn,
   type OrchestrationSession,
   type OrchestrationThreadShell,
@@ -29,6 +31,7 @@ import * as Stream from "effect/Stream";
 
 import {
   brokeOffLine,
+  conversationRowOf,
   type ConversationView,
   type MateEngineService,
   type ViewRun,
@@ -203,17 +206,39 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
 export interface ChatsSource<E> {
   readonly threads: Effect.Effect<ReadonlyArray<OrchestrationThreadShell>, E>;
   readonly domainEvents: Stream.Stream<unknown>;
+  /** The engine's own rows of the person's conversations; none while V1 owns them. */
+  readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, E>;
+  /** The engine the rows are of, by the protocol they speak; none while V1 owns them. */
+  readonly engine?: { readonly protocol: number };
 }
+
+/** The Mate's environment and this start's epoch: the revision every engine row carries. */
+export type RowRevision = { readonly environmentId: string; readonly epoch: number };
 
 /**
  * The Mate's chats: the engine's conversations, and their commits, while the engine owns the
- * conversation; V1's otherwise, exactly as before.
+ * conversation — as the façade's V1 shells and as the engine's own rows at `revision`; V1's
+ * otherwise, exactly as before.
  */
-export const chatsSource = <E>(engine: MateEngineService, v1: ChatsSource<E>): ChatsSource<E> =>
+export const chatsSource = <E>(
+  engine: MateEngineService,
+  v1: ChatsSource<E>,
+  revision: Effect.Effect<RowRevision>,
+): ChatsSource<E> =>
   engine.live
     ? {
         threads: Effect.map(engine.conversations, (list) => list.views.map(engineShellOf)),
         domainEvents: engine.changes,
+        // The person's conversations, as the shells' list reads them: a crewmate's speaks through
+        // the crew, an archived one is gone.
+        conversations: Effect.gen(function* () {
+          const { environmentId, epoch } = yield* revision;
+          const { views } = yield* engine.conversations;
+          return views
+            .filter((view) => !view.archived && view.agent?.profile.kind !== "crewmate")
+            .map((view) => conversationRowOf(view, { environmentId, epoch }));
+        }),
+        engine: { protocol: Math.max(...MATE_ENGINE_PROTOCOLS) },
       }
     : v1;
 

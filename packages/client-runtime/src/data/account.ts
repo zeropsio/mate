@@ -166,9 +166,11 @@ export function startMateHealth(options: {
   };
 }
 
-/** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet. */
+/** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet.
+ * ownerId identifies the accepting project and address; a new owner replaces its observation.
+ */
 export type ShownHq =
-  | { readonly orgId: string; readonly wire: HqWire }
+  | { readonly orgId: string; readonly wire: HqWire; readonly ownerId?: string }
   | { readonly orgId: string; readonly verdict: Exclude<HqVerdict, "official"> };
 
 /** The account's observation, as an app holds it: the organization shown, and the details held. */
@@ -260,7 +262,12 @@ export function observeAccount(options: {
       ],
     });
   };
-  let hq: { readonly orgId: string; readonly wire: HqWire; readonly link: RunningHq } | null = null;
+  let hq: {
+    readonly orgId: string;
+    readonly wire: HqWire;
+    readonly ownerId?: string;
+    readonly link: RunningHq;
+  } | null = null;
   // Every accepted operation holds the detail its handle is observed in until it settles: a
   // standing demand at its owner, whichever organization is shown, from the first shown on until
   // the observation stops — and again if it is shown after that.
@@ -299,7 +306,7 @@ export function observeAccount(options: {
       wantedHq !== null && "wire" in wantedHq && wantedHq.orgId === shown?.orgId && !closed
         ? wantedHq
         : null;
-    if (hq !== null && next !== null && hq.orgId === next.orgId) {
+    if (hq !== null && next !== null && hq.orgId === next.orgId && hq.ownerId === next.ownerId) {
       // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
       if (hq.wire !== next.wire) {
         hq.link.rewire(next.wire);

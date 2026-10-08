@@ -53,7 +53,9 @@ export type HqWrites = Pick<
   | "keepDeployToken"
 > &
   FlowWrites &
-  Partial<Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate">>;
+  Partial<
+    Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
+  >;
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -222,6 +224,26 @@ export function makeHqExecutor(ports: {
 
   const creationWrite = (requestId: string, api: HqWrites, intent: HqWriteIntent) => {
     switch (intent.kind) {
+      case "set-auto-update-policy":
+        return Effect.map(
+          write(async () => {
+            if (api.setAutoUpdatePolicy === undefined)
+              throw new HqError({
+                kind: "refused",
+                code: "unsupported",
+                message: "Update HQ to change automatic updates.",
+              });
+            const policy = await api.setAutoUpdatePolicy(intent.enabled);
+            if (policy.orgId !== intent.orgId || policy.enabled !== intent.enabled)
+              throw new HqError({
+                kind: "uncertain",
+                code: "unreadable",
+                message: "HQ did not confirm this organization's policy change.",
+              });
+            return policy;
+          }),
+          (policy) => answered(requestId, intent.orgId, { policy }),
+        );
       case "update-mate-face":
         return Effect.as(
           write(() => {

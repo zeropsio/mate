@@ -197,6 +197,8 @@ export const ZEROPS_CLIENT_VERBS = [
 
 /** The HQ client's remote verbs (`HqApi`, `client-runtime/src/zerops/hq/client.ts`). */
 export const HQ_CLIENT_VERBS = [
+  "autoUpdatePolicy",
+  "setAutoUpdatePolicy",
   "structure",
   "openScopeSocket",
   "lifecycleWrite",

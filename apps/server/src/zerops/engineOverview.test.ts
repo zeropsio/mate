@@ -226,6 +226,7 @@ describe("HQ's overview of a Mate on the engine", () => {
             threads: Effect.succeed([v1Running]),
             domainEvents: Stream.empty,
           },
+          Effect.succeed(source),
         );
         const threads = yield* chats.threads;
         const overview = overviewOf(threads);
@@ -288,9 +289,28 @@ describe("HQ's overview of a Mate on the engine", () => {
     );
   });
 
+  it.effect(
+    "in mate mode the chats carry the engine's own rows at the Mate's revision, and its protocol",
+    () =>
+      Effect.gen(function* () {
+        const archived = { ...view(), conversationId: ConversationId.make("gone"), archived: true };
+        const chats = chatsSource(
+          liveEngine([view({ activeRun: run(1) }), archived]),
+          { threads: Effect.succeed([]), domainEvents: Stream.empty },
+          Effect.succeed(source),
+        );
+        const rows = chats.conversations === undefined ? [] : yield* chats.conversations;
+        assert.deepStrictEqual(
+          rows.map((row) => [row.conversationId, row.state.kind, row.revision]),
+          [[c, "working", { environmentId: "env-1", epoch: 3, seq: 9 }]],
+        );
+        assert.deepStrictEqual(chats.engine, { protocol: 1 });
+      }),
+  );
+
   it("with the switch off, the chats are V1's, exactly as before", () => {
     const v1 = { threads: Effect.succeed([]), domainEvents: Stream.empty };
-    assert.strictEqual(chatsSource(inertMateEngine, v1), v1);
+    assert.strictEqual(chatsSource(inertMateEngine, v1, Effect.succeed(source)), v1);
   });
 });
 

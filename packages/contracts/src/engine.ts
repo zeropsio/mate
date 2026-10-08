@@ -669,7 +669,8 @@ export const ConversationRowState = forwardCompatibleUnion({
     }),
     Schema.Struct({
       kind: Schema.Literal("waiting"),
-      on: Schema.Literals(["approval", "question", "vault", "plan"]),
+      /** What it waits on; one a later engine adds reads as `unknown`, never a refusal. */
+      on: forwardCompatibleLiterals(["approval", "question", "vault", "plan"]),
       words: Schema.NullOr(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("paused"), resetsAt: Schema.NullOr(Millis) }),

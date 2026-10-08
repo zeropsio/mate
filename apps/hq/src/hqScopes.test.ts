@@ -13,6 +13,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 import { Backup } from "./backup.ts";
 import { Changes, ChangeRefused } from "./changes.ts";
 import { DeployKeys } from "./deployKeys.ts";
@@ -25,7 +26,12 @@ import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
 import { Roles, type OrgView } from "./roles.ts";
-import { Structure, type StructureRead, type StructureSource } from "./structure.ts";
+import {
+  Structure,
+  StructureRefused,
+  type StructureRead,
+  type StructureSource,
+} from "./structure.ts";
 import { memoryStore, overviewOf, mainAt } from "../test/harness/overviews.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 import * as Socket from "effect/socket/Socket";
@@ -71,6 +77,9 @@ const menuChange = {
 } as const;
 const fixture = Effect.gen(function* () {
   let org = facts;
+  let policyReads = 0;
+  let policy = { orgId: "ORG", enabled: true, revision: 0 };
+  const policyChanges = yield* PubSub.unbounded<number>();
   let compareFailure: "forbidden" | "unavailable" | undefined;
   const compareCalls: Array<ReadonlyArray<unknown>> = [];
   let sourceRefused = false;
@@ -287,6 +296,24 @@ const fixture = Effect.gen(function* () {
     },
   });
   const services = Layer.mergeAll(
+    Layer.succeed(AutoUpdatePolicy, {
+      current: Effect.sync(() => policy),
+      observe: () => Effect.sync(() => policy),
+      changes: Stream.fromPubSub(policyChanges),
+      read: (userId) =>
+        Effect.gen(function* () {
+          policyReads++;
+          if (!org.members.some((member) => member.userId === userId && member.status === "ACTIVE"))
+            return yield* new StructureRefused({ code: "forbidden", reason: "not_active_member" });
+          return policy;
+        }),
+      set: (_userId, enabled) =>
+        Effect.gen(function* () {
+          policy = { ...policy, enabled, revision: policy.revision + 1 };
+          yield* PubSub.publish(policyChanges, policy.revision);
+          return policy;
+        }),
+    }),
     Layer.succeed(Structure, {
       environments: Effect.sync(() => {
         environmentReads += 1;
@@ -441,6 +468,24 @@ const fixture = Effect.gen(function* () {
       return { ...client, queue, take, subscribe };
     });
   return {
+    policyReads: () => policyReads,
+    revokeMember: (userId: string, remove: boolean) =>
+      Effect.gen(function* () {
+        org = {
+          ...org,
+          members: remove
+            ? org.members.filter((member) => member.userId !== userId)
+            : org.members.map((member) =>
+                member.userId === userId ? { ...member, status: "SUSPENDED" } : member,
+              ),
+        };
+        yield* PubSub.publish(structureChanged, 1);
+      }),
+    changePolicy: (enabled: boolean) =>
+      Effect.gen(function* () {
+        policy = { ...policy, enabled, revision: policy.revision + 1 };
+        yield* PubSub.publish(policyChanges, policy.revision);
+      }),
     compareCalls,
     compareFailure: (failure: typeof compareFailure) => {
       compareFailure = failure;
@@ -589,6 +634,107 @@ const resetOf = (message: ScopeOutput) => {
 };
 
 describe("revisioned HQ values", () => {
+  it.effect(
+    "streams the current automatic-update policy and another admin's change to every member",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const reader = yield* f.connect("reader");
+        yield* reader.subscribe([{ scope: nav }]);
+        const first = resetOf(yield* reader.take);
+        assert.deepStrictEqual(
+          first.values.find((value) => value.key === "auto-update-policy")?.value,
+          { orgId: "ORG", enabled: true, revision: 0 },
+        );
+        yield* reader.take; // scope-ready
+        yield* f.changePolicy(false);
+        const change = resetOf(yield* reader.take);
+        assert.deepStrictEqual(change.values, [
+          { key: "auto-update-policy", value: { orgId: "ORG", enabled: false, revision: 1 } },
+        ]);
+        assert.strictEqual(change.incarnation, first.incarnation);
+        assert.strictEqual(change.revision, first.revision + 1);
+        yield* reader.request({ type: "unsubscribe", scopes: [nav] });
+        yield* f.changePolicy(true);
+        yield* reader.subscribe([
+          { scope: nav, cursor: { incarnation: change.incarnation, revision: change.revision } },
+        ]);
+        // Subscribe may resume before the already-published change is consumed; its delta follows.
+        let answer = yield* reader.take;
+        if (answer.type === "scope-ready") answer = yield* reader.take;
+        const resumed = resetOf(answer);
+        assert.deepStrictEqual(
+          resumed.values.find((value) => value.key === "auto-update-policy")?.value,
+          { orgId: "ORG", enabled: true, revision: 2 },
+        );
+      }),
+  );
+  for (const remove of [false, true])
+    it.effect(
+      `a ${remove ? "removed" : "suspended"} member loses policy evidence and cannot read later changes`,
+      () =>
+        Effect.gen(function* () {
+          const f = yield* fixture;
+          const reader = yield* f.connect("reader");
+          yield* reader.subscribe([{ scope: nav }]);
+          assert.isTrue(
+            resetOf(yield* reader.take).values.some((value) => value.key === "auto-update-policy"),
+          );
+          yield* reader.take;
+          yield* f.revokeMember("reader", remove);
+          let revoked = resetOf(yield* reader.take);
+          while (!revoked.removals.some((removal) => removal.key === "auto-update-policy"))
+            revoked = resetOf(yield* reader.take);
+          assert.deepStrictEqual(
+            revoked.removals.find((removal) => removal.key === "auto-update-policy"),
+            { key: "auto-update-policy", reason: "no-access" },
+          );
+          assert.isFalse(revoked.values.some((value) => value.key === "auto-update-policy"));
+          yield* f.changePolicy(false);
+          yield* reader.request({ type: "unsubscribe", scopes: [nav] });
+          yield* reader.subscribe([{ scope: nav }]);
+          let message = yield* reader.take;
+          while (message.type !== "scope-ready") {
+            assert.isFalse(
+              resetOf(message).values.some((value) => value.key === "auto-update-policy"),
+            );
+            message = yield* reader.take;
+          }
+          const reconnect = yield* f.connect("reader", "retained-session");
+          yield* reconnect.subscribe([{ scope: nav }]);
+          const baseline = resetOf(yield* reconnect.take);
+          assert.isFalse(baseline.values.some((value) => value.key === "auto-update-policy"));
+          assert.include(json(baseline.removals), "auto-update-policy");
+        }),
+    );
+  it.effect(
+    "policy broadcasts use validated navigation membership without calling recipient readers",
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const retained = yield* f.connect("reader");
+        yield* retained.subscribe([{ scope: nav }]);
+        yield* retained.take;
+        yield* retained.take;
+        yield* f.revokeMember("reader", false);
+        let removed = resetOf(yield* retained.take);
+        while (!removed.removals.some((removal) => removal.key === "auto-update-policy"))
+          removed = resetOf(yield* retained.take);
+        // This journal follows the retained one, so its delivery is the broadcast's barrier.
+        const owner = yield* f.connect("owner");
+        yield* owner.subscribe([{ scope: nav }]);
+        yield* owner.take;
+        yield* owner.take;
+        const before = f.policyReads();
+        yield* f.changePolicy(false);
+        const change = resetOf(yield* owner.take);
+        assert.deepInclude(
+          change.values.find((value) => value.key === "auto-update-policy")?.value,
+          { enabled: false },
+        );
+        assert.strictEqual(f.policyReads(), before);
+      }),
+  );
   it.effect("a cold navigation delivery budgets one role read before and one after loading", () =>
     Effect.scoped(
       Effect.gen(function* () {
