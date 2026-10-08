@@ -27,6 +27,7 @@ import {
   type CrewFiles,
   type CrewSnapshot,
   type OrchestrationCommand,
+  type SpiEvent,
   ProviderInstanceId,
   ThreadId,
   type OrchestrationThreadShell,
@@ -220,6 +221,8 @@ export interface CrewWorld {
   // A crewmate's agent, in its conversation; each step returns once the crew has taken it in.
   readonly turnStarts: (chat: CrewChat) => Effect.Effect<void>;
   readonly turnEnds: (chat: CrewChat, end?: CrewTurnEnd) => Effect.Effect<void>;
+  /** The provider delivers the conversation's latest turn end again, as after a reconnect. */
+  readonly turnEndRedelivered: (chat: CrewChat) => Effect.Effect<void>;
   /** The agent's answer in its turn. */
   readonly says: (chat: CrewChat, text: string) => Effect.Effect<void>;
   /** The agent's conversation compacted its context. */
@@ -447,6 +450,8 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     Effect.flatMap(engine, (service) =>
       service.snapshot.pipe(Stream.filter(check), Stream.runHead, Effect.map(Option.getOrThrow)),
     );
+  /** Each conversation's latest turn end, to deliver again. */
+  const lastEnds = new Map<CrewChat, SpiEvent>();
   const policy = run(Effect.flatMap(ThreadToolPolicyRegistry, (registry) => registry.current));
   return {
     name: "v1",
@@ -459,14 +464,19 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     readFiles: Effect.flatMap(engine, (service) => service.readFiles),
     serverReady: run(Effect.flatMap(ServerCommandReadiness, (ready) => ready.complete)),
     turnStarts: (chat) => fakes.publish(spiEvent("turn.started", chat, {})),
-    turnEnds: (chat, end = {}) =>
-      fakes.publish(
-        spiEvent("turn.completed", chat, {
-          state: end.state ?? "completed",
-          ...(end.reason === undefined ? {} : { terminalReason: end.reason }),
-          ...(end.sessionCostUsd === undefined ? {} : { totalCostUsd: end.sessionCostUsd }),
-        } as never),
-      ),
+    turnEnds: (chat, end = {}) => {
+      const event = spiEvent("turn.completed", chat, {
+        state: end.state ?? "completed",
+        ...(end.reason === undefined ? {} : { terminalReason: end.reason }),
+        ...(end.sessionCostUsd === undefined ? {} : { totalCostUsd: end.sessionCostUsd }),
+      } as never);
+      lastEnds.set(chat, event);
+      return fakes.publish(event);
+    },
+    turnEndRedelivered: (chat) => {
+      const event = lastEnds.get(chat);
+      return event === undefined ? Effect.die(`no turn of ${chat} ended`) : fakes.publish(event);
+    },
     says: (chat, text) =>
       fakes
         .publish(spiEvent("content.delta", chat, { streamKind: "assistant_text", delta: text }))
@@ -497,9 +507,16 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     deployState: (processes) => Ref.set(fakes.processes, processes),
     usage: (usedPercent) =>
       fakes.publish(
-        spiEvent("account.rate-limits.updated", "a-person-thread", {
-          limits: { windows: [{ id: "session", kind: "session", label: "Session", usedPercent }] },
-        } as never),
+        spiEvent(
+          "account.rate-limits.updated",
+          "a-person-thread",
+          {
+            limits: {
+              windows: [{ id: "session", kind: "session", label: "Session", usedPercent }],
+            },
+          },
+          { providerInstanceId: ProviderInstanceId.make("claudeAgent") },
+        ),
       ),
     signedIn: (login) =>
       typeof login === "string"
