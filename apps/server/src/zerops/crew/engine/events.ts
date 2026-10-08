@@ -28,6 +28,7 @@ import type { RotationReason } from "../rotationDecision.ts";
 import type {
   AttentionRecord,
   ClaimRecord,
+  CrewTiming,
   DeliveryRecord,
   HostRecord,
   LeadRecord,
@@ -114,7 +115,9 @@ export type CrewDomainEventDraft =
   /** A row became due with the clock (a question, an unattended task): the snapshot moves. */
   | { readonly _tag: "Due"; readonly key: string }
   /** A crewmate's memory changed; the memory projection applies `op`. */
-  | { readonly _tag: "MemoryChanged"; readonly handle: string; readonly op: unknown };
+  | { readonly _tag: "MemoryChanged"; readonly handle: string; readonly op: unknown }
+  /** The wiring set the crew's timing. */
+  | { readonly _tag: "CrewConfigured"; readonly timing: CrewTiming };
 
 export type CrewEventDraft = CrewEngineEventDraft | CrewDomainEventDraft;
 
@@ -163,6 +166,7 @@ const CREW_EVENT_TAGS: ReadonlySet<string> = new Set<CrewEventTag>([
   "ErrorNoted",
   "Due",
   "MemoryChanged",
+  "CrewConfigured",
 ]);
 
 /** A stored event this build knows; one from a newer build only moves the head (`evolve`). */

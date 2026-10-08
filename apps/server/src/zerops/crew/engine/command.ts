@@ -39,6 +39,7 @@ import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
+import type { CrewTiming } from "./state.ts";
 
 /**
  * The revision of a task a person edits from: its state and attempts as their board showed them
@@ -98,7 +99,9 @@ export type CrewInput =
       readonly effectId: EffectId;
       readonly outcome: EffectOutcome;
     }
-  | { readonly _tag: "Recovered"; readonly bootId: BootId };
+  | { readonly _tag: "Recovered"; readonly bootId: BootId }
+  /** The wiring's timing for the crew (tests shorten it). */
+  | { readonly _tag: "Configure"; readonly timing: CrewTiming };
 
 export interface CrewEnvelope {
   readonly commandId: CommandId;
@@ -132,6 +135,7 @@ export const CREW_EFFECT_KINDS = {
   "crew.deploy.poll": "host",
   "crew.recover": "host",
   "crew.sweep": "git",
+  "crew.host.freeze": "host",
 } as const;
 export type CrewEffectKind = keyof typeof CREW_EFFECT_KINDS;
 
@@ -296,7 +300,9 @@ export type CrewEffectPayload =
       readonly host: string;
       /** Its open task passed its check: the copy's edits are never committed. */
       readonly checked: boolean;
-    };
+    }
+  /** A redeploy began: the host's copies freeze until it ends, so no write lands under it. */
+  | { readonly kind: "crew.host.freeze"; readonly host: string };
 
 /* ------------------------------------------------------------ settled values */
 
@@ -378,7 +384,12 @@ export interface CrewEffectValues {
   readonly "crew.app.run": { readonly state: "running" | "stopped" };
   readonly "crew.app.stop": { readonly state: "running" | "stopped" };
   readonly "crew.deploy.poll": { readonly phase: "running" | "ended" | "unreadable" };
-  readonly "crew.recover": { readonly lost: ReadonlyArray<string> };
+  readonly "crew.recover": {
+    readonly lost: ReadonlyArray<string>;
+    /** What the recovery found gone, in the crew's words: a landing, a branch, saved work. */
+    readonly losses?: ReadonlyArray<string>;
+  };
+  readonly "crew.host.freeze": unknown;
   readonly "crew.sweep": {
     readonly swept: boolean;
     readonly stats?: LaneStatsValue;

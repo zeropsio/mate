@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import { CrewWorld, home, newTask, writer } from "./crewDecideFixture.ts";
-import { DEPLOY_POLL_FIRST_MS, THAW_OFFER_MS } from "./decide.ts";
+import { DEFAULT_CREW_TIMING } from "./state.ts";
 
 interface Journey {
   readonly sentence: string;
@@ -45,6 +45,9 @@ const journeys: ReadonlyArray<Journey> = [
     journey: (w) => {
       w.apply(home(writer("backend")));
       w.tell({ _tag: "Deploy", host: "appdev", phase: "started" }, { kind: "engine" });
+      // A restart cut the redeploy off: its end is read at boot, then again, backing off.
+      w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
       const waits: Array<number> = [];
       for (let poll = 0; poll < 3; poll += 1) {
         const wake = w.armed("deploy-poll")[0]!;
@@ -53,15 +56,20 @@ const journeys: ReadonlyArray<Journey> = [
         w.fire("deploy-poll", "appdev");
         w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
       }
-      w.advance(THAW_OFFER_MS);
-      w.fire("thaw-offer", "appdev");
+      w.advance(DEFAULT_CREW_TIMING.thawOfferMs);
+      w.fire("deploy-poll", "appdev");
+      w.settle("crew.deploy.poll", "appdev", { phase: "unreadable" });
       const offered = w.state.attention.map((row) => row.id);
       w.press({ _tag: "thawHost", host: "appdev" });
       w.settle("crew.recover", "appdev", { lost: [] });
       return [waits, offered, w.state.hosts.appdev?.frozenSince, w.state.attention];
     },
     expected: [
-      [DEPLOY_POLL_FIRST_MS, DEPLOY_POLL_FIRST_MS * 2, DEPLOY_POLL_FIRST_MS * 4],
+      [
+        DEFAULT_CREW_TIMING.deployPollFirstMs,
+        DEFAULT_CREW_TIMING.deployPollFirstMs * 2,
+        DEFAULT_CREW_TIMING.deployPollFirstMs * 4,
+      ],
       ["deploy-unreadable:appdev"],
       null,
       [],

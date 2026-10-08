@@ -14,8 +14,8 @@
  * refusals hold, redo, retry or park it (`crewLanding`); a discard of a copy that is gone still
  * discards (`crewTasks`); a copy's creation fails in its setup's words (`crewApply`).
  *
- * The decider asks for no host freeze and no boot inspection; those handlers stay registered
- * under their own kinds for the wiring to queue.
+ * The decider asks for no boot inspection; that handler stays registered under its own kind for
+ * the wiring to queue.
  *
  * @module crew/engine/CrewEffectBridge
  */
@@ -184,7 +184,23 @@ const bridged = <K extends CrewEffectKind, P, V>(
   };
 };
 
-/** Every kind the crew asks for, on the crew's git and app handlers; and the two it never asks. */
+/** What a recovery found gone, in the crew's words: landings, branches, saved work. */
+const lossesOf = (value: RecoverValue): ReadonlyArray<string> => {
+  switch (value._tag) {
+    case "lost":
+      return [
+        ...value.landings.map((landing) => `landing of ${landing.title}`),
+        ...value.branches.map((handle) => `crew/${handle}`),
+        ...value.wip.map((lane) => `crew/${lane.handle} work since ${lane.since}`),
+      ];
+    case "landings-lost":
+      return value.landings.map((landing) => `landing of ${landing.title}`);
+    default:
+      return [];
+  }
+};
+
+/** Every kind the crew asks for, on the crew's git and app handlers; and the one it never asks. */
 export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
   const own = new Map((yield* makeCrewEffectHandlers).map((handler) => [handler.kind, handler]));
   const handlerOf = (kind: string): EffectHandler => {
@@ -593,13 +609,14 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
           })),
           landings: asked.landings,
         }),
-      // Whatever the recovery came to, a copy not on the service now stays missing.
-      verdict: (_value, asked) =>
+      // Whatever the recovery came to, a copy not on the service now stays missing; what it
+      // found gone is named, as V1 named it.
+      verdict: (value, asked) =>
         Effect.map(
           Effect.filter(asked.handles, (handle) =>
             Effect.map(readLane(shell, asked.host, handle), (copy) => !copy.present),
           ),
-          (lost) => ({ lost }),
+          (lost) => ({ lost, losses: lossesOf(value) }),
         ),
     },
   );

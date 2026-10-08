@@ -122,7 +122,8 @@ const journeys: ReadonlyArray<Journey> = [
       restarted(w);
       return [w.state.run?.state, w.turns("reviewer"), w.lastTurnAs("reviewer")];
     },
-    expected: ["finished", ["task", "continue"], PERSON],
+    // Carried on by the crew for the person it ran for, outside their session (V1's admission).
+    expected: ["finished", ["task", "continue"], { kind: "crew", startedBy: "user-1" }],
   },
   {
     sentence: "a task card a restart cut off before it went out is sent, not a Continue",

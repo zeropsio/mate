@@ -193,6 +193,8 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
       return { ...state, attention: state.attention.filter((row) => row.id !== event.id) };
     case "ErrorNoted":
       return { ...state, lastError: event.text };
+    case "CrewConfigured":
+      return { ...state, timing: event.timing };
     case "Due":
     case "MemoryChanged":
       return state;

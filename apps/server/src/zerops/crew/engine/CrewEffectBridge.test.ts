@@ -708,7 +708,11 @@ const rows: ReadonlyArray<Row> = [
         return { back, copy, gone };
       }),
     ),
-    expected: () => ({ back: { lost: [] }, copy: true, gone: { lost: ["backend"] } }),
+    expected: () => ({
+      back: { lost: [], losses: [] },
+      copy: true,
+      gone: { lost: ["backend"], losses: ["crew/backend"] },
+    }),
   },
   {
     sentence: "a recovery that finds a landing gone brings nothing back and reads its copies lost",
@@ -724,7 +728,7 @@ const rows: ReadonlyArray<Row> = [
         });
       }),
     ),
-    expected: () => ({ lost: ["backend"] }),
+    expected: () => ({ lost: ["backend"], losses: ["landing of A landing your tree lost"] }),
   },
   {
     sentence: "work a restart left in a copy is saved, and the decider reads its files",
@@ -936,7 +940,7 @@ describe("the crew's effects on the git core", () => {
             crew: Object.keys(CREW_EFFECT_KINDS).every((kind) => kinds.includes(kind)),
             besides: kinds.filter((kind) => !(kind in CREW_EFFECT_KINDS)).toSorted(),
           },
-          { unique: true, crew: true, besides: ["crew.host.freeze", "crew.inspect"] },
+          { unique: true, crew: true, besides: ["crew.inspect"] },
         );
       }).pipe(Effect.provide(ports({ envelopes: [], platform: undefined }))),
     ),

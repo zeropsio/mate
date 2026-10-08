@@ -122,7 +122,9 @@ import {
   turnOf,
   usagePercentOf,
   type ActiveRun,
+  DEFAULT_CREW_TIMING,
   type CrewState,
+  type CrewTiming,
   type DeliveryPurpose,
   type DeliveryRecord,
   type LeadWake,
@@ -143,11 +145,6 @@ export const QUESTION_TO_PERSON_MS = 15 * 60_000;
 export const UNATTENDED_MS = 5 * 60_000;
 /** How long a Show-on-dev request waits for the person's answer. */
 export const CLAIM_REQUEST_TIMEOUT_MS = 10 * 60_000;
-/** A redeploy's reads: the first, the longest wait, and when the person is offered the thaw. */
-export const DEPLOY_POLL_FIRST_MS = 15_000;
-export const DEPLOY_POLL_MAX_MS = 5 * 60_000;
-export const THAW_OFFER_MS = 30 * 60_000;
-
 const HOUR_MS = 3_600_000;
 
 /** Why a turn a run's pause stopped goes on when the run does. */
@@ -156,7 +153,8 @@ export const RUN_PAUSED = "The run was paused, which stopped your last turn; it 
 export const STOPPED_MIDWAY =
   "Your task stopped mid-way, with no turn of yours running; the run carries it on now.";
 /** Why a turn a restart cut off goes on. */
-export const RESTART_CUT = "A server restart cut your last turn off; it goes on now.";
+/** A died turn's carry-on, in V1's words: its agent continues in the copy it left. */
+export const RESTART_CUT = "Continue where you stopped. Your edits remain in your copy.";
 /** Why a task goes on in a new session after its context overflowed. */
 export const NEW_SESSION = "Your conversation outgrew its context, so a new session goes on now.";
 /** What a press is told about a landing while the copy shows on dev. */
@@ -350,6 +348,11 @@ const handle = (b: Builder, input: CrewInput): void => {
       return settled(b, input.effectId, input.outcome);
     case "Recovered":
       return recovered(b);
+    case "Configure":
+      if (JSON.stringify(b.state.timing) !== JSON.stringify(input.timing)) {
+        b.emit({ _tag: "CrewConfigured", timing: input.timing });
+      }
+      return;
   }
 };
 
@@ -884,6 +887,8 @@ const carryOn = (b: Builder, member: MemberRecord, task: TaskRecord): void => {
 const advanceMember = (b: Builder, handle: string): void => {
   const member = b.state.members[handle];
   if (member === undefined || !isFree(b.state, handle)) return;
+  // A copy a redeploy may still replace is left alone until it ends.
+  if (hostFrozen(b.state, member.host)) return;
   if (member.rotateWhenFree !== null) {
     rotateSession(b, member, member.rotateWhenFree, crewAs(b.state.run?.startedBy ?? ""));
   }
@@ -1602,8 +1607,10 @@ const pressed = (
       return;
     }
     case "thawHost": {
-      const host = b.state.hosts[press.host];
-      if (host?.frozenSince == null) throw wrongState(`${press.host} is not redeploying`);
+      // Only a host whose redeploy could not be read for long is thawed on the person's word.
+      if (!b.state.attention.some((row) => row.id === `deploy-unreadable:${press.host}`)) {
+        throw wrongState(`${press.host} is not waiting to be thawed.`);
+      }
       recover(b, press.host);
       return;
     }
@@ -2712,7 +2719,13 @@ const runEnded = (
       b.emit({
         _tag: "CrewmateUpdated",
         handle: member.handle,
-        set: { carryOn: { why: RESTART_CUT, as: active?.principal ?? null } },
+        // Carried on by the engine for whoever it ran for, outside their session (V1's).
+        set: {
+          carryOn: {
+            why: RESTART_CUT,
+            as: active === null ? null : crewAs(userOf(active.principal)),
+          },
+        },
       });
     }
   }
@@ -2821,6 +2834,16 @@ const deploy = (b: Builder, host: string, phase: "started" | "ended"): void => {
     b.emit({ _tag: "HostUpdated", host, set: { frozenSince: b.now, polls: 0 } });
     for (const member of writers) {
       if (member.active === null) continue;
+      // Its turn goes on once the copies are back, for whoever it ran for.
+      if (member.active.taskId !== null) {
+        b.emit({
+          _tag: "CrewmateUpdated",
+          handle: member.handle,
+          set: {
+            carryOn: { why: redeployWords(host), as: crewAs(userOf(member.active.principal)) },
+          },
+        });
+      }
       deliver(
         b,
         member,
@@ -2833,12 +2856,32 @@ const deploy = (b: Builder, host: string, phase: "started" | "ended"): void => {
         },
       );
     }
-    b.arm("deploy-poll", host, b.now + DEPLOY_POLL_FIRST_MS, { kind: "engine" });
-    b.arm("thaw-offer", host, b.now + THAW_OFFER_MS, { kind: "engine" });
+    // The copies freeze in git too: no turn's save, merge or landing writes under the deploy.
+    b.effect({ kind: "crew.host.freeze", host }, host, { host });
     return;
   }
   if (record?.frozenSince == null) return;
   recover(b, host);
+};
+
+/** Why a turn a redeploy stopped goes on once its copy is back. */
+const redeployWords = (host: string): string =>
+  `A redeploy of ${host} stopped your last turn; it goes on now that your copy is back.`;
+
+/** The words a host frozen after a restart stands in while its redeploy runs or cannot be read. */
+const frozenWords = (host: string, phase: "running" | "unreadable"): string =>
+  phase === "running"
+    ? `${host} is still redeploying; its crew copies stay frozen until the deploy ends.`
+    : `Mate could not read whether ${host}'s deploy still runs; its crew copies stay frozen, and Mate tries again.`;
+
+const timingOf = (state: CrewState): CrewTiming => state.timing ?? DEFAULT_CREW_TIMING;
+
+/** A frozen host's redeploy is read again: at boot at once, then backing off. */
+const pollDeploy = (b: Builder, host: string): void => {
+  const pending = Object.values(b.state.effects).some(
+    (effect) => effect.kind === "crew.deploy.poll" && effect.host === host,
+  );
+  if (!pending) b.effect({ kind: "crew.deploy.poll", host }, host, { host });
 };
 
 const recover = (b: Builder, host: string): void => {
@@ -2869,9 +2912,27 @@ const recover = (b: Builder, host: string): void => {
   );
 };
 
-const thaw = (b: Builder, host: string, lost: ReadonlyArray<string>): void => {
-  b.emit({ _tag: "HostUpdated", host, set: { frozenSince: null, polls: 0 } });
-  b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
+const thaw = (
+  b: Builder,
+  host: string,
+  lost: ReadonlyArray<string>,
+  losses: ReadonlyArray<string> = [],
+): void => {
+  b.emit({ _tag: "HostUpdated", host, set: { frozenSince: null, polls: 0, unknownSince: null } });
+  if (b.state.attention.some((row) => row.id === `deploy-unreadable:${host}`)) {
+    b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
+  }
+  if (losses.length > 0) {
+    b.emit({
+      _tag: "ErrorNoted",
+      text: `${host} came back from its deploy without crew work: ${losses.join(", ")}`,
+    });
+  } else if (
+    b.state.lastError === frozenWords(host, "running") ||
+    b.state.lastError === frozenWords(host, "unreadable")
+  ) {
+    b.emit({ _tag: "ErrorNoted", text: null });
+  }
   for (const handle of lost) {
     const member = b.state.members[handle];
     if (member?.lane == null) continue;
@@ -2883,6 +2944,23 @@ const thaw = (b: Builder, host: string, lost: ReadonlyArray<string>): void => {
   }
   for (const member of membersInOrder(b.state)) {
     if (member.host !== host) continue;
+    // What the redeploy or a restart left in the copy is saved first, as at boot.
+    if (
+      member.kind === "writer" &&
+      member.lane?.state === "ready" &&
+      !lost.includes(member.handle)
+    ) {
+      b.effect(
+        {
+          kind: "crew.sweep",
+          handle: member.handle,
+          host,
+          checked: CHECKED_STATES.has(openTaskOf(b.state, member.handle)?.state ?? "queued"),
+        },
+        member.handle,
+        { handle: member.handle },
+      );
+    }
     const open = openTaskOf(b.state, member.handle);
     if (open?.state === "merging" && !open.checkpointing) mergeIn(b, open);
   }
@@ -2907,11 +2985,17 @@ const loginsChanged = (b: Builder, logins: ReadonlyArray<string>): void => {
 
 const recovered = (b: Builder): void => {
   renewLeadWakes(b);
+  // A redeploy the restart cut off may still run: its host stays frozen until a read says it ended.
+  for (const [host, record] of Object.entries(b.state.hosts)) {
+    if (record.frozenSince != null) pollDeploy(b, host);
+  }
   for (const member of membersInOrder(b.state)) {
     if (
       member.kind === "writer" &&
       member.lane?.state === "ready" &&
-      !copyBusy(b.state, member.handle)
+      !copyBusy(b.state, member.handle) &&
+      // A frozen host's copies are swept once its redeploy ends.
+      !hostFrozen(b.state, member.host)
     ) {
       const open = openTaskOf(b.state, member.handle);
       b.effect(
@@ -2950,9 +3034,7 @@ const wakeFired = (b: Builder, wakeId: WakeId): void => {
       return;
     }
     case "deploy-poll":
-      if (b.state.hosts[key]?.frozenSince != null) {
-        b.effect({ kind: "crew.deploy.poll", host: key }, key, { host: key });
-      }
+      if (b.state.hosts[key]?.frozenSince != null) pollDeploy(b, key);
       return;
     case "thaw-offer":
       if (b.state.hosts[key]?.frozenSince != null) {
@@ -3283,18 +3365,43 @@ const settled = (
       if (record?.frozenSince == null) return;
       const phase = valueOf("crew.deploy.poll", value).phase;
       if (phase === "ended") return recover(b, host);
+      const timing = timingOf(b.state);
       const polls = record.polls + 1;
-      b.emit({ _tag: "HostUpdated", host, set: { polls } });
+      const unknownSince = phase === "unreadable" ? (record.unknownSince ?? b.now) : null;
+      b.emit({ _tag: "HostUpdated", host, set: { polls, unknownSince } });
+      const words = frozenWords(host, phase);
+      if (b.state.lastError !== words) b.emit({ _tag: "ErrorNoted", text: words });
+      // Unreadable for long enough, the person is offered to say it ended.
+      const offer = unknownSince !== null && b.now - unknownSince >= timing.thawOfferMs;
+      const offered = b.state.attention.some((row) => row.id === `deploy-unreadable:${host}`);
+      if (offer && !offered) {
+        b.emit({
+          _tag: "AttentionRaised",
+          row: {
+            id: `deploy-unreadable:${host}`,
+            handle: null,
+            taskId: null,
+            text: `${host}'s redeploy could not be read`,
+            at: b.now,
+          },
+        });
+      } else if (!offer && offered) {
+        b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
+      }
       b.arm(
         "deploy-poll",
         host,
-        b.now + Math.min(DEPLOY_POLL_MAX_MS, DEPLOY_POLL_FIRST_MS * 2 ** polls),
+        b.now + Math.min(timing.deployPollMaxMs, timing.deployPollFirstMs * 2 ** (polls - 1)),
         { kind: "engine" },
       );
       return;
     }
-    case "crew.recover":
-      return thaw(b, pending.host!, valueOf("crew.recover", value).lost);
+    case "crew.recover": {
+      const recovered = valueOf("crew.recover", value);
+      return thaw(b, pending.host!, recovered.lost, recovered.losses ?? []);
+    }
+    case "crew.host.freeze":
+      return;
     case "crew.sweep": {
       const swept = valueOf("crew.sweep", value);
       if (member === undefined) return;
