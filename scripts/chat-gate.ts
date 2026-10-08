@@ -183,7 +183,6 @@ export function selectLaneChatStages(
   related: ReadonlyArray<string>,
   root = NodePath.resolve(import.meta.dirname, ".."),
 ): ChatGateStage[] {
-  if (!related.length) return [];
   const seams: Record<string, ReadonlyArray<string>> = {
     A: paths.filter((path) =>
       /^(?:apps\/server\/src\/(?:provider|spi)\/|packages\/(?:effect-acp|effect-codex-app-server)\/)/u.test(
@@ -196,15 +195,32 @@ export function selectLaneChatStages(
     C: paths,
     "C-engine": paths,
   };
-  const selected = filterChatGateFiles(
-    root,
-    chatGateStages.filter((stage) => stage.id !== "types" && seams[stage.id]?.length),
-    related,
-  );
-  return selected.map((stage) => ({
+  const selected = related.length
+    ? filterChatGateFiles(
+        root,
+        chatGateStages.filter((stage) => stage.id !== "types" && seams[stage.id]?.length),
+        related,
+      )
+    : [];
+  const stages: ChatGateStage[] = selected.map((stage) => ({
     ...stage,
     reason: `related files: ${chatGateTestFiles(root, [stage]).join(", ")}; changed: ${seams[stage.id]!.join(", ")}`,
   }));
+  const contracts = paths.filter(
+    (path) =>
+      path.startsWith("packages/contracts/src/") &&
+      !/\.test\./u.test(path) &&
+      !path.endsWith(".md"),
+  );
+  if (contracts.length || selected.some((stage) => stage.id === "C" || stage.id === "C-engine")) {
+    stages.push({
+      ...chatGateStages.find((stage) => stage.id === "types")!,
+      reason: contracts.length
+        ? `changed wire contract: ${contracts.join(", ")}`
+        : "typecheck consumers of the selected client wire journeys",
+    });
+  }
+  return stages;
 }
 
 /** File ownership comes from the commands that will actually run. */

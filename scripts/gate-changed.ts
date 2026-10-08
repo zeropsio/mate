@@ -60,8 +60,8 @@ export function meaningfulChanges(root: string, base: string, paths: ReadonlyArr
   return { paths: meaningful, previous };
 }
 
-/** Static import reachability includes the old imports/exports of renamed and deleted modules.
- * Browser-built React code has no declared edge to a journey; do not manufacture one by area.
+/** Follow imports plus the execution inputs declared by the scenario and golden harnesses.
+ * The shared browser bundle is a dependency; absent journey-level coverage cannot narrow it.
  */
 export function relatedFiles(
   root: string,
@@ -135,11 +135,100 @@ export function relatedFiles(
       target && resolveFile(NodePath.posix.join(NodePath.posix.dirname(manifest.path), target));
     return [manifest.path, ...(resolved ? [resolved] : [])];
   };
+  const filesBelow = (directory: string): string[] => {
+    const current = NodeFS.existsSync(NodePath.join(root, directory))
+      ? NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap(
+          (entry) => {
+            const path = `${directory}/${entry.name}`;
+            return entry.isDirectory() ? filesBelow(path) : entry.isFile() ? [path] : [];
+          },
+        )
+      : [];
+    return [
+      ...new Set([
+        ...current,
+        ...[...previous.keys()].filter((path) => path.startsWith(`${directory}/`)),
+      ]),
+    ];
+  };
+  const record = (value: unknown): Record<string, unknown> | undefined =>
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const field = (node: Record<string, unknown>, name: string): unknown => {
+    if (!Array.isArray(node.properties)) return undefined;
+    for (const property of node.properties) {
+      const item = record(property);
+      const key = record(item?.key);
+      if ((key?.name ?? key?.value) === name) return item?.value;
+    }
+    return undefined;
+  };
+  const strings = (value: unknown): string[] => {
+    const node = record(value);
+    if (typeof node?.value === "string") return [node.value];
+    if (Array.isArray(node?.elements)) return node.elements.flatMap(strings);
+    throw new Error("Scenario execution dependencies need literal globalSetup/include paths");
+  };
+  const config = "apps/web/test/scenarios/vitest.config.ts";
+  const setupDeclarations: { include: string[] | undefined; files: string[] }[] = [];
+  for (const source of [
+    previous.get(config),
+    NodeFS.existsSync(NodePath.join(root, config))
+      ? NodeFS.readFileSync(NodePath.join(root, config), "utf8")
+      : undefined,
+  ]) {
+    if (source === undefined) continue;
+    const parsed = parseSync(config, source);
+    if (parsed.errors.length) throw new Error(`${config}: ${parsed.errors[0]!.message}`);
+    const visit = (value: unknown): void => {
+      if (Array.isArray(value)) {
+        for (const child of value) visit(child);
+        return;
+      }
+      const node = record(value);
+      if (!node) return;
+      const setups = field(node, "globalSetup");
+      if (setups !== undefined) {
+        const include = field(node, "include");
+        setupDeclarations.push({
+          include: include === undefined ? undefined : strings(include),
+          files: strings(setups).map((path) =>
+            NodePath.posix.normalize(NodePath.posix.join("apps/web", path)),
+          ),
+        });
+      }
+      for (const child of Object.values(node)) visit(child);
+    };
+    visit(parsed.program);
+  }
+  const executionInputs = (file: string): string[] => {
+    if (file === "apps/web/test/scenarios/harness/build.ts") {
+      // build.ts runs Vite in apps/web; its router plugin generates the route tree from routes.
+      return [
+        "apps/web/index.html",
+        "apps/web/vite.config.ts",
+        "apps/web/package.json",
+        "apps/web/tsconfig.json",
+        "tsconfig.base.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        ...filesBelow("apps/web/src/routes").filter(
+          (path) => sourceFile.test(path) && !/\.test\./u.test(path),
+        ),
+      ];
+    }
+    if (file === "apps/server/src/spi/replay/goldens.test.ts") {
+      // loadFixture and goldenCheck read recordings, metadata and expected JSON from this root.
+      return filesBelow("apps/server/src/spi/fixtures");
+    }
+    return [];
+  };
   const edges = new Map<string, string[]>();
   const imports = (file: string): string[] => {
     const cached = edges.get(file);
     if (cached) return cached;
-    const dependencies: string[] = [];
+    const dependencies = executionInputs(file);
     const sources = [
       previous.get(file),
       NodeFS.existsSync(NodePath.join(root, file))
@@ -147,7 +236,17 @@ export function relatedFiles(
         : undefined,
     ];
     for (const source of new Set(sources)) {
-      if (source === undefined || !sourceFile.test(file)) continue;
+      if (source === undefined) continue;
+      if (file === "apps/web/index.html") {
+        for (const match of source.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gu)) {
+          const path = match[1]!;
+          const resolved = path.startsWith("/")
+            ? resolveFile(`apps/web${path}`)
+            : resolveFile(NodePath.posix.join("apps/web", path));
+          if (resolved) dependencies.push(resolved);
+        }
+      }
+      if (!sourceFile.test(file)) continue;
       const parsed = parseSync(file, source);
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
       const visit = (value: unknown): void => {
@@ -182,7 +281,18 @@ export function relatedFiles(
       const pending = [
         test,
         ...(test.startsWith("apps/web/test/scenarios/")
-          ? ["apps/web/test/scenarios/vitest.config.ts"]
+          ? [
+              config,
+              ...setupDeclarations
+                .filter(
+                  (setup) =>
+                    !setup.include ||
+                    setup.include.some((pattern) =>
+                      NodePath.matchesGlob(NodePath.posix.relative("apps/web", test), pattern),
+                    ),
+                )
+                .flatMap((setup) => setup.files),
+            ]
           : []),
       ];
       const visited = new Set<string>();
@@ -369,7 +479,10 @@ if (import.meta.main) {
     );
   }
   console.log(
-    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${meaningful.paths.length ? "static imports (including old imports for removals)" : "documentation/comments only"}`,
+    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${meaningful.paths.length ? "imports and declared harness execution inputs (including old inputs for removals)" : "documentation/comments only"}`,
+  );
+  const typecheckCommands = chatStages.flatMap((stage) =>
+    stage.commands.filter((command) => command.args.includes("tsc")),
   );
   const packages = touchedPackages(meaningful.paths, workspacePackages(root));
   const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
@@ -397,11 +510,16 @@ if (import.meta.main) {
         "scripts/chat-gate.ts",
         "--stages",
         chatStages.map((stage) => stage.id).join(","),
-        "--files",
-        JSON.stringify(ownedFiles),
+        ...(ownedFiles.length ? ["--files", JSON.stringify(ownedFiles)] : []),
       ],
     });
-  for (const pkg of packages.filter((pkg) => pkg.typecheck))
+  for (const pkg of packages.filter(
+    (pkg) =>
+      pkg.typecheck &&
+      !typecheckCommands.some(
+        (command) => command.cwd === pkg.directory && !command.args.includes("-p"),
+      ),
+  ))
     steps.push({
       name: `typecheck ${pkg.name}`,
       command: "vp",

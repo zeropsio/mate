@@ -4,7 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
-import { expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import {
   scenarioFiles,
   validateSelectedFiles,
@@ -321,117 +321,143 @@ it.each([{ args: [] }, { args: ["--list"] }])(
   },
 );
 
-// Exercise printed commands through exact imports, with unrelated siblings in every area.
+// A real repository snapshot retains the bundle/harness boundary; expectations never create imports.
+let repositoryFixture: string;
+const sourceRoot = NodePath.resolve(import.meta.dirname, "..");
+const fixtureGit = (...args: string[]) => {
+  const result = NodeChildProcess.spawnSync("git", args, {
+    cwd: repositoryFixture,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return result.stdout.trim();
+};
+beforeAll(() => {
+  repositoryFixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-real-"));
+  const archivePath = NodePath.join(repositoryFixture, "source.tar");
+  const archive = NodeChildProcess.spawnSync(
+    "git",
+    [
+      "archive",
+      "--output",
+      archivePath,
+      "HEAD",
+      "apps/web/src",
+      "apps/web/test",
+      "apps/web/index.html",
+      "apps/web/vite.config.ts",
+      "apps/web/tsconfig.json",
+      "apps/web/package.json",
+      "apps/server/src",
+      "apps/server/package.json",
+      "apps/hq/src",
+      "apps/hq/test",
+      "apps/hq/package.json",
+      "packages",
+      "scripts",
+      "infra/relay/package.json",
+      "apps/mobile/package.json",
+      "apps/desktop/package.json",
+      "package.json",
+      "tsconfig.base.json",
+      "pnpm-lock.yaml",
+    ],
+    { cwd: sourceRoot },
+  );
+  if (archive.status !== 0) throw new Error(String(archive.stderr));
+  const extracted = NodeChildProcess.spawnSync("tar", [
+    "-xf",
+    archivePath,
+    "-C",
+    repositoryFixture,
+  ]);
+  if (extracted.status !== 0) throw new Error(String(extracted.stderr));
+  NodeFS.rmSync(archivePath);
+  for (const file of ["gate-changed.ts", "chat-gate.ts"])
+    NodeFS.copyFileSync(
+      NodePath.join(import.meta.dirname, file),
+      NodePath.join(repositoryFixture, "scripts", file),
+    );
+  NodeFS.symlinkSync(
+    NodePath.join(import.meta.dirname, "node_modules"),
+    NodePath.join(repositoryFixture, "scripts/node_modules"),
+  );
+  fixtureGit("init", "-q");
+  fixtureGit("config", "user.name", "Gate fixture");
+  fixtureGit("config", "user.email", "gate@example.test");
+  fixtureGit("add", ".");
+  fixtureGit("commit", "-qm", "real repository fixture");
+}, 30_000);
+afterAll(() => {
+  if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
+});
+
 it.each([
-  { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A", area: "" },
-  { path: "apps/server/src/engine/domain/decide.ts", stages: "E", area: "" },
-  { path: "packages/contracts/src/engine.ts", stages: "C,C-engine,E", area: "c-mate" },
-  { path: "packages/contracts/src/engineCall.ts", stages: "C,C-engine,E", area: "c-mate" },
-  { path: "apps/server/src/engine/wire/EngineWire.ts", stages: "C,C-engine,E", area: "c-mate" },
-  { path: "apps/web/src/components/chat/RunChat.tsx", stages: "C,C-engine", area: "c-mate" },
-  { path: "packages/client-runtime/src/data/runtime.ts", stages: "C,C-engine", area: "c-mate" },
-  { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", stages: "", area: "d-change" },
-  { path: "apps/server/src/engine/pump/toCore.test.ts", stages: "", area: "" },
+  { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A" },
+  { path: "apps/server/src/engine/domain/decide.ts", stages: "E" },
+  { path: "packages/contracts/src/engine.ts", stages: "C,C-engine,E,types" },
+  { path: "packages/contracts/src/engineCall.ts", stages: "C,C-engine,E,types" },
+  { path: "apps/server/src/engine/wire/EngineWire.ts", stages: "E" },
+  { path: "apps/web/src/components/chat/RunChat.tsx", stages: "C,C-engine,types" },
   {
-    path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx",
-    stages: "C,C-engine",
-    area: "c-mate",
+    path: "packages/client-runtime/src/data/projections/agentAdmission.ts",
+    stages: "C,C-engine,types",
   },
-  {
-    path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
-    stages: "C,C-engine",
-    area: "c-mate",
-  },
-  { path: "apps/web/package.json", stages: "", area: "" },
-  { path: "apps/web/tsconfig.json", stages: "", area: "" },
-])("a lane validates only affected obligations for $path", ({ path, stages, area }) => {
-  areaFixture([], (root) => {
-    const git = (...args: string[]) => {
-      const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
-      if (result.status !== 0) throw new Error(result.stderr);
-    };
-    NodeFS.mkdirSync(NodePath.join(root, "scripts"));
-    NodeFS.mkdirSync(NodePath.join(root, "packages"));
-    NodeFS.mkdirSync(NodePath.join(root, "infra"));
-    NodeFS.symlinkSync(
-      NodePath.join(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/node_modules"),
-    );
-    for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
-      NodeFS.copyFileSync(
-        NodePath.join(import.meta.dirname, name),
-        NodePath.join(root, "scripts", name),
-      );
-    for (const directory of ["scripts", "apps/server", "apps/web"]) {
-      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
-      NodeFS.copyFileSync(
-        NodePath.resolve(import.meta.dirname, "..", directory, "package.json"),
-        NodePath.join(root, directory, "package.json"),
-      );
-    }
-    const c = "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts";
-    const inventory = chatGateTestFiles(
-      NodePath.resolve(import.meta.dirname, ".."),
-      chatGateStages.filter((stage) => stage.id === "A" || stage.id === "E"),
-    );
-    for (const file of [...inventory, c]) {
-      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, file)), { recursive: true });
-      const imported = stages.split(",").some((id) =>
-        chatGateTestFiles(
-          NodePath.resolve(import.meta.dirname, ".."),
-          chatGateStages.filter((stage) => stage.id === id),
-        ).includes(file),
-      );
-      NodeFS.writeFileSync(
-        NodePath.join(root, file),
-        imported
-          ? `import ${JSON.stringify(NodePath.relative(NodePath.dirname(file), path))};`
-          : "export {};",
-      );
-    }
-    if (area === "d-change")
-      NodeFS.writeFileSync(
-        NodePath.join(root, "apps/web/test/scenarios/areas/d-change/journey.scenario.ts"),
-        'import "./dsl.ts";',
-      );
-    NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, path)), { recursive: true });
-    if (!path.endsWith(".json"))
-      NodeFS.writeFileSync(NodePath.join(root, path), "export const changed = 1;\n");
-    else if (!NodeFS.existsSync(NodePath.join(root, path)))
-      NodeFS.writeFileSync(NodePath.join(root, path), "{}");
-    git("init", "-q");
-    git("config", "user.name", "Gate fixture");
-    git("config", "user.email", "gate@example.test");
-    git("add", ".");
-    git("commit", "-qm", "fixture");
+  { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", stages: "" },
+  { path: "apps/server/src/engine/pump/toCore.test.ts", stages: "" },
+  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", stages: "C,C-engine,types" },
+  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", stages: "C,C-engine,types" },
+  { path: "apps/web/package.json", stages: "C,C-engine,types" },
+  { path: "apps/web/tsconfig.json", stages: "C,C-engine,types" },
+])("a lane validates only affected obligations for $path", ({ path, stages }) => {
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
     NodeFS.writeFileSync(
-      NodePath.join(root, path),
-      path.endsWith(".json") ? '{"changed": true}' : "export const changed = 2;\n",
+      file,
+      path.endsWith(".json")
+        ? original.replace(/\}\s*$/u, ', "laneGateFixture": true\n}\n')
+        : original + "\nexport const laneGateFixture = true;\n",
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
       ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: root, encoding: "utf8" },
+      { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
-    if (stages) expect(result.stdout).toContain(`scripts/chat-gate.ts --stages ${stages} --files`);
+    if (stages) expect(result.stdout).toContain(`scripts/chat-gate.ts --stages ${stages}`);
     else expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
-    expect(result.stdout).toContain(`Scenario files: ${area ? 1 : 0};`);
-    expect(result.stdout).not.toContain("--exclude test/scenarios/fakes/");
-    expect(result.stdout).not.toContain(
-      "--exclude test/scenarios/areas/b-menu/journey.scenario.ts",
-    );
+    if (stages.includes("C")) {
+      expect(result.stdout).toContain(
+        '"apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"',
+      );
+      expect(result.stdout).toContain('"apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"');
+      expect(result.stdout).not.toContain("test/scenarios/areas/c-mate --");
+      expect(result.stdout).toContain("changed:");
+    }
     if (stages.includes("A"))
       expect(result.stdout).toContain("--exclude src/spi/replay/goldens.test.ts");
     if (stages.includes("E"))
-      expect(result.stdout).toContain("--exclude src/engine/outbox/crash.test.ts");
-    if (area === "d-change")
       expect(result.stdout).toContain(
-        "related scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/journey.scenario.ts",
+        path.endsWith("/wire/EngineWire.ts")
+          ? "--exclude src/engine/history/historyImport.test.ts"
+          : "--exclude src/engine/outbox/crash.test.ts",
       );
+    if (stages.includes("types")) {
+      expect(result.stdout).not.toContain("typecheck @t3tools/contracts:");
+      expect(result.stdout).not.toContain("typecheck @t3tools/web:");
+    }
+    if (path.endsWith("/d-change/dsl.ts")) {
+      expect(result.stdout).toContain("test/scenarios/areas/d-change/review.scenario.ts");
+      expect(result.stdout).not.toContain(
+        '"apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"',
+      );
+    }
     expect(result.stdout).toContain("Selection A:");
     expect(result.stdout).toContain("Selection C-engine:");
-  });
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
 });
 
 it("the engine wire's single journey leaves other C journeys with their scenario owner", () => {
@@ -552,4 +578,29 @@ it("the related file graph follows reexports, cycles, lazy imports, aliases and 
       relatedFiles(root, ["docs/runtime.json", ".plans/owner.ts"], [related, unrelated], previous),
     ).toEqual([]);
   });
+});
+
+it.each([
+  {
+    path: "apps/web/src/components/ChatView.tsx",
+    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+  },
+  {
+    path: "packages/client-runtime/src/data/projections/agentAdmission.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+  },
+  {
+    path: "apps/web/test/scenarios/harness/build.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+  },
+  {
+    path: "apps/server/src/spi/fixtures/claude/plain-text-turn.expected.json",
+    consumer: "apps/server/src/spi/replay/goldens.test.ts",
+  },
+])("execution dependency $path retains its real consumer $consumer", ({ path, consumer }) => {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const candidates = [consumer, "apps/web/test/scenarios/fakes/c-mate/chat.test.ts"];
+  const selected = relatedFiles(root, [path], candidates);
+  expect(selected).toContain(consumer);
+  expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
 });

@@ -146,21 +146,21 @@ it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", ids: ["A"] },
   { path: "apps/server/src/spi/replay/goldens.test.ts", ids: ["A"] },
   { path: "apps/server/src/engine/outbox/crash.ts", ids: ["E"] },
-  { path: "packages/contracts/src/engine.ts", ids: ["C", "C-engine", "E"] },
-  { path: "packages/contracts/src/engineCall.ts", ids: ["C", "C-engine", "E"] },
-  { path: "packages/contracts/src/engineWire.ts", ids: ["C", "C-engine", "E"] },
-  { path: "apps/server/src/engine/wire/EngineWire.ts", ids: ["C", "C-engine", "E"] },
-  { path: "apps/server/src/wsServer.ts", ids: ["C", "C-engine"] },
-  { path: "apps/web/src/components/chat/runCard.logic.ts", ids: ["C", "C-engine"] },
-  { path: "apps/web/src/components/chat/MessagesTimeline.tsx", ids: ["C", "C-engine"] },
-  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", ids: ["C", "C-engine"] },
-  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", ids: ["C", "C-engine"] },
+  { path: "packages/contracts/src/engine.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "packages/contracts/src/engineCall.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "packages/contracts/src/engineWire.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "apps/server/src/engine/wire/EngineWire.ts", ids: ["C", "C-engine", "E", "types"] },
+  { path: "apps/server/src/wsServer.ts", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/chat/runCard.logic.ts", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/chat/MessagesTimeline.tsx", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", ids: ["C", "C-engine", "types"] },
   {
     path: "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
-    ids: ["C", "C-engine"],
+    ids: ["C", "C-engine", "types"],
   },
-  { path: "apps/web/package.json", ids: ["C", "C-engine"] },
-  { path: "apps/web/tsconfig.json", ids: ["C", "C-engine"] },
+  { path: "apps/web/package.json", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/tsconfig.json", ids: ["C", "C-engine", "types"] },
   { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", ids: [] },
   { path: "apps/server/src/engine/pump/toCore.test.ts", ids: [] },
   { path: "packages/client-runtime/src/data/projections/mateHealth.test.ts", ids: [] },
@@ -168,7 +168,7 @@ it.each([
   { path: "apps/mobile/src/chat.tsx", ids: [] },
   {
     path: "packages/client-runtime/src/zerops/timelineFollow.ts",
-    ids: ["C", "C-engine"],
+    ids: ["C", "C-engine", "types"],
   },
 ])("a lane selects the affected contract layers for $path", ({ path, ids }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
@@ -323,4 +323,17 @@ it.each([
   );
   expect(result.status).not.toBe(0);
   expect(result.stdout).toBe("");
+});
+
+it("a contract-only edit retains wire consumer typechecks even without a selected journey", () => {
+  const stages = selectLaneChatStages(["packages/contracts/src/engineWire.ts"], []);
+  const commands = stages.find((stage) => stage.id === "types")?.commands;
+  expect(commands?.map((command) => command.cwd)).toEqual([
+    "apps/server",
+    "packages/contracts",
+    "packages/client-runtime",
+    "apps/web",
+    ".",
+  ]);
+  expect(commands?.at(-1)?.args).toContain("apps/web/test/scenarios/areas/c-mate/tsconfig.json");
 });
