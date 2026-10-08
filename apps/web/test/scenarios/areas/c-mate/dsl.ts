@@ -239,6 +239,18 @@ export function mateChat(
           await button!.focus();
           await page.keyboard.press("Enter");
         }),
+      /** The newest visible control named `name` (a later run's card over an earlier one's). */
+      activateLast: (name: string) =>
+        Effect.promise(async () => {
+          await page.waitForSelector(`::-p-aria([name="${name}"][role="button"])`, {
+            visible: true,
+            timeout: 8000,
+          });
+          const buttons = await page.$$(`::-p-aria([name="${name}"][role="button"])`);
+          const button = buttons.at(-1)!;
+          await button.focus();
+          await page.keyboard.press("Enter");
+        }),
       pasteFile: (name: string, content: string) =>
         Effect.promise(async () => {
           await (await page.locator(composer).setTimeout(8000).waitHandle()).focus();
@@ -419,26 +431,32 @@ export function mateChat(
       once: (value: string) =>
         Effect.gen(function* () {
           yield* text(value);
-          expect(
-            yield* Effect.promise(() =>
-              page.evaluate((value) => {
-                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                let count = 0;
-                while (walker.nextNode()) {
-                  const node = walker.currentNode;
-                  if (
-                    node.textContent === value &&
-                    node.parentElement?.getBoundingClientRect().height &&
-                    !node.parentElement.closest(
-                      '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"]',
-                    )
-                  )
-                    count++;
-                }
-                return count;
-              }, value),
-            ),
-          ).toBe(1);
+          // How often the conversation shows `value`; `drawn`: only whether it shows it at all.
+          const shown = (value: string, drawn: boolean) => {
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            let count = 0;
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              if (
+                node.textContent === value &&
+                node.parentElement?.getBoundingClientRect().height &&
+                !node.parentElement.closest(
+                  '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"]',
+                )
+              )
+                count++;
+            }
+            return drawn ? count > 0 : count;
+          };
+          // The words may still be in the composer before the conversation draws them: wait until
+          // the conversation shows them, then count.
+          yield* Effect.promise(() =>
+            page
+              .waitForFunction(shown, { timeout: 8000 }, value, true)
+              .then(() => undefined)
+              .catch(() => undefined),
+          );
+          expect(yield* Effect.promise(() => page.evaluate(shown, value, false))).toBe(1);
         }),
       headerName: (name: string) =>
         Effect.promise(async () => {

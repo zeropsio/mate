@@ -95,6 +95,12 @@ const jsonlCases: ReadonlyArray<GoldenCase> = [
     record: () => replayCodex(loadFixture(NodePath.join(fixturesRoot, "codex"), "helper-wait")),
     timeoutMs: 20_000,
   },
+  {
+    driver: "codex",
+    name: "async-question",
+    record: () => replayCodex(loadFixture(NodePath.join(fixturesRoot, "codex"), "async-question")),
+    timeoutMs: 20_000,
+  },
 ];
 
 // Cursor/Grok/Antigravity/OpenCode: no static wire capture exists to replay

@@ -1,9 +1,9 @@
 /**
- * What a person does to an engine conversation — send, stop, answer, steer — as operations the
+ * What a person does to an engine conversation — send, stop, answer, dismiss, steer — as operations the
  * Mate owns. The operation's request id is the engine's command id: the engine keeps one receipt
  * per command, so a lost answer is asked of it by that id and a repeat is applied once. A send,
- * an answer and a steer settle when the engine accepts them (delivery is then the item's own
- * fact); a stop settles when its run's record ends.
+ * an answer, a dismissal and a steer settle when the engine accepts them (delivery is then the
+ * item's own fact); a stop settles when its run's record ends.
  *
  * @module data/operations/mateEngine
  */
@@ -38,6 +38,8 @@ declare module "../model.ts" {
       readonly requestId: string;
       readonly summary: string;
     };
+    /** A question closed unanswered. */
+    readonly "mate-engine-dismiss": EngineOperationTarget & { readonly requestId: string };
     readonly "mate-engine-steer": EngineOperationTarget & {
       readonly runId: string;
       readonly text: string;
@@ -48,6 +50,7 @@ declare module "../model.ts" {
     readonly "mate-engine-send": EngineAcceptance;
     readonly "mate-engine-stop": EngineAcceptance;
     readonly "mate-engine-answer": EngineAcceptance;
+    readonly "mate-engine-dismiss": EngineAcceptance;
     readonly "mate-engine-steer": EngineAcceptance;
     readonly "mate-engine-switch-model": EngineAcceptance;
   }
@@ -83,16 +86,28 @@ export const mateEngineSteer: OperationKind<"mate-engine-steer"> = {
   reflected: itemHeld,
 };
 
+/** Whether the request an answer or a dismissal closes is held closed now. */
+const requestClosed = (
+  read: ProjectionReads,
+  intent: EngineOperationTarget & { readonly requestId: string },
+) => {
+  const request = read.fact(
+    "mateEngineRequest",
+    engineFactId(intent.environmentId, intent.requestId),
+  );
+  return request.kind === "known" && request.value.state !== "open";
+};
+
 export const mateEngineAnswer: OperationKind<"mate-engine-answer"> = {
   kind: "mate-engine-answer",
   executor: "mate",
-  reflected: (read, intent) => {
-    const request = read.fact(
-      "mateEngineRequest",
-      engineFactId(intent.environmentId, intent.requestId),
-    );
-    return request.kind === "known" && request.value.state !== "open";
-  },
+  reflected: requestClosed,
+};
+
+export const mateEngineDismiss: OperationKind<"mate-engine-dismiss"> = {
+  kind: "mate-engine-dismiss",
+  executor: "mate",
+  reflected: requestClosed,
 };
 
 const stoppedRun = (
@@ -155,6 +170,7 @@ export const MATE_ENGINE_KINDS = [
   mateEngineSend,
   mateEngineStop,
   mateEngineAnswer,
+  mateEngineDismiss,
   mateEngineSteer,
   mateEngineSwitchModel,
 ] as const;

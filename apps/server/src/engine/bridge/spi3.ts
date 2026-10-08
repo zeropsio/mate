@@ -196,6 +196,8 @@ export type RequestAsk =
       readonly questions: ReadonlyArray<UserInputQuestion>;
       /** Whether a typed answer is taken; `"unknown"` when the driver did not say. */
       readonly freeText: boolean | Unknown;
+      /** Asked by message (Codex's async question): the agent does not wait on its answer. */
+      readonly dismissible?: true;
     };
 
 export type RequestCloseHow =

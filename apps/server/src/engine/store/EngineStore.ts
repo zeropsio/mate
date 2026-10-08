@@ -231,7 +231,15 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       case "RequestAnswered":
         return sql`
           UPDATE engine_request SET state = 'answered', rev = ${event.seq},
-            answer_json = ${JSON.stringify({ by: event.by, at: event.at, summary: event.summary })}
+            answer_json = ${JSON.stringify({
+              by: event.by,
+              at: event.at,
+              summary: event.summary,
+              ...(event.answers === undefined ? {} : { answers: event.answers }),
+              ...(event.attachmentsByQuestionId === undefined
+                ? {}
+                : { attachmentsByQuestionId: event.attachmentsByQuestionId }),
+            })}
           WHERE request_id = ${event.requestId}
         `.pipe(Effect.asVoid);
       case "RequestReopened":

@@ -285,7 +285,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     dismissUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:dismiss-user-input",
       execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
-        viaEngine(registry, environmentId, engineDismissUserInput(), dismissThreadUserInput(input)),
+        viaEngine(
+          registry,
+          environmentId,
+          engineDismissUserInput(environmentId, input),
+          dismissThreadUserInput(input),
+        ),
       scheduler,
       concurrency,
     }),

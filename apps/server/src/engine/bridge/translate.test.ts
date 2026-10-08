@@ -186,6 +186,23 @@ const goldenCases: ReadonlyArray<GoldenCase> = [
       "h1.i1 tool collab_agent_tool_call completed",
     ],
   },
+  {
+    driver: "codex",
+    dir: "codex",
+    name: "async-question",
+    mark: "recorded",
+    title: "a question it asks by message outlives its turn: nothing closes it",
+    lines: [
+      "session s1 opened",
+      "h1 opened by engine",
+      "h1 accepted: opened",
+      "h1.i1 text running",
+      "s1.r1 asks: question in h1",
+      "context usage",
+      "h1.i1 text completed",
+      "h1 ended completed — agent",
+    ],
+  },
   ...(["cursor", "grok", "antigravity"] as const).map((driver): GoldenCase => ({
     driver,
     dir: driver,
@@ -1181,6 +1198,32 @@ describe("the fold's rules", () => {
         ? opened.ask.kind === "question" && opened.ask.freeText
         : undefined,
       false,
+    );
+  });
+
+  it("codex [scripted]: a question it asks by message can be dismissed; one it waits on cannot", () => {
+    const w = wire("codex");
+    const { signals } = run("codex", THREAD, [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.event("user-input.requested", {
+        turnId: "X1",
+        requestId: "codex-async:t:q-1",
+        payload: { responseMode: "message", questions: [] },
+      }),
+      w.event("user-input.requested", {
+        turnId: "X1",
+        requestId: "q-2",
+        payload: { questions: [] },
+      }),
+    ]);
+    assert.deepStrictEqual(
+      signals.flatMap((signal) =>
+        signal.type === "request.opened" && signal.ask.kind === "question"
+          ? [signal.ask.dismissible === true]
+          : [],
+      ),
+      [true, false],
     );
   });
 

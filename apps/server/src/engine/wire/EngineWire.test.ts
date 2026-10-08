@@ -5,7 +5,9 @@ import * as SqlClient from "effect/sql/SqlClient";
 import {
   CommandId,
   MATE_ENGINE_PROTOCOLS,
+  RequestId,
   runId,
+  type ChatImageAttachment,
   type EngineConversationFrame,
   type EngineCursor,
   type EngineRowsFrame,
@@ -24,6 +26,13 @@ import {
 
 const ana: WireCaller = { subject: "ana", environmentId: "env-1", epoch: 4 };
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+const preview = {
+  type: "image",
+  id: "img-q",
+  name: "question-preview.png",
+  mimeType: "image/png",
+  sizeBytes: 2048,
+} as unknown as ChatImageAttachment;
 
 const world = Effect.gen(function* () {
   const w = yield* makeEngineWorld({ driver: "claudeAgent" });
@@ -523,6 +532,108 @@ describe("a client's calls to an engine conversation", () => {
         const wire = yield* wireOf(w);
         const result = yield* send(wire, "   ");
         assert.strictEqual(result._tag, "Rejected");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "an answer's pictures reach the agent with its words, and the question's record keeps both",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* send(wire, "Look at the preview");
+          yield* w.settle;
+          const asked = yield* w.agent((agent, thread) => agent.ask(thread, "question"));
+          const [request] = yield* w.requests;
+          const given = {
+            answers: { target: "Inspect the preview shown here" },
+            attachmentsByQuestionId: { target: [preview] },
+          };
+          const result = yield* wire.answer(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("answer-1"),
+              requestId: RequestId.make(request!.request_id),
+              answer: { kind: "input", ...given },
+              summary: "Answered",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          yield* w.settle;
+          assert.include(w.provider.calls, `answer ${asked} with target: question-preview.png`);
+          const [snapshot] = yield* watch(w, wire);
+          assert.strictEqual(snapshot?.type, "snapshot");
+          if (snapshot?.type !== "snapshot") return;
+          assert.deepInclude(snapshot.requests[0]?.answer, given);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a dismissal closes a question asked by message unanswered; the agent is not told",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* send(wire, "Look at the preview");
+          yield* w.settle;
+          yield* w.agent((agent, thread) => agent.ask(thread, "message-question"));
+          const [request] = yield* w.requests;
+          const calls = w.provider.calls.length;
+          const dismiss = (commandId: string) =>
+            wire.dismiss(
+              {
+                protocol,
+                conversationId: mate,
+                commandId: CommandId.make(commandId),
+                requestId: RequestId.make(request!.request_id),
+              },
+              ana,
+            );
+          assert.strictEqual((yield* dismiss("dismiss-1"))._tag, "Accepted");
+          yield* w.settle;
+          assert.strictEqual((yield* w.requests)[0]?.state, "dismissed");
+          assert.strictEqual(w.provider.calls.length, calls, "nothing reached the agent");
+          const again = yield* dismiss("dismiss-2");
+          assert.deepStrictEqual(again, {
+            _tag: "Rejected",
+            rejection: { reason: "unknown-request" },
+          } as typeof again);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a question the agent waits on is refused a dismissal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* send(wire, "Look at the preview");
+        yield* w.settle;
+        yield* w.agent((agent, thread) => agent.ask(thread, "question"));
+        const [request] = yield* w.requests;
+        const result = yield* wire.dismiss(
+          {
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make("dismiss-1"),
+            requestId: RequestId.make(request!.request_id),
+          },
+          ana,
+        );
+        assert.deepStrictEqual(result, {
+          _tag: "Rejected",
+          rejection: { reason: "not-dismissible" },
+        } as typeof result);
+        assert.strictEqual((yield* w.requests)[0]?.state, "open");
         yield* w.shutdown;
       }),
     ),

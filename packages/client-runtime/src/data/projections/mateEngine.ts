@@ -466,7 +466,12 @@ function requestActivities(
             `${request.id}#asked`,
             "user-input.requested",
             "User input requested",
-            { requestId: request.id, questions: ask.questions },
+            {
+              requestId: request.id,
+              questions: ask.questions,
+              // A question its agent does not wait on is one V1 asks by message: dismissible.
+              ...(ask.dismissible ? { responseMode: "message" } : {}),
+            },
             card,
             request.at,
             request.seq,
@@ -474,15 +479,50 @@ function requestActivities(
         : null;
   if (asked === null) return [];
   if (request.state === "open" && request.answerable) return [asked];
+  const answer = request.answer;
+  const answered =
+    answer?.answers === undefined
+      ? {}
+      : {
+          answers: answer.answers,
+          ...(answer.attachmentsByQuestionId === undefined
+            ? {}
+            : { attachmentsByQuestionId: answer.attachmentsByQuestionId }),
+        };
+  const resolved = activity(
+    `${request.id}#resolved`,
+    ask.kind === "approval" ? "approval.resolved" : "user-input.resolved",
+    answer?.summary ?? "Resolved",
+    { requestId: request.id, ...answered },
+    card,
+    answer?.at ?? request.at,
+    request.rev,
+  );
+  const pictures = Object.values(answer?.attachmentsByQuestionId ?? {}).flat();
+  if (ask.kind !== "question" || answer?.answers === undefined || pictures.length === 0)
+    return [asked, resolved];
+  // The answer's pictures, as V1 records an answer that carries them.
   return [
     asked,
+    resolved,
     activity(
-      `${request.id}#resolved`,
-      ask.kind === "approval" ? "approval.resolved" : "user-input.resolved",
-      request.answer?.summary ?? "Resolved",
-      { requestId: request.id },
+      `${request.id}#answer-pictures`,
+      "user-input.answer-submitted",
+      "Question answer submitted",
+      {
+        requestId: request.id,
+        answers: answer.answers,
+        questionTextById: Object.fromEntries(
+          ask.questions.flatMap((question) => {
+            const { id, question: text } = (question ?? {}) as { id?: unknown; question?: unknown };
+            return typeof id === "string" && typeof text === "string" ? [[id, text]] : [];
+          }),
+        ),
+        attachmentsByQuestionId: answer.attachmentsByQuestionId,
+        detail: pictures.map((picture) => picture.name).join("\n"),
+      },
       card,
-      request.answer?.at ?? request.at,
+      answer.at,
       request.rev,
     ),
   ];

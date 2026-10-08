@@ -404,7 +404,7 @@ const closedState = (how: RequestCloseHow): Exclude<RequestState, "open"> => {
 const engineAsk = (ask: SpiRequestAsk): RequestAsk =>
   ask.kind === "approval"
     ? { kind: "approval", requestKind: ask.requestType, detail: ask.detail ?? "" }
-    : { kind: "question", questions: [...ask.questions], dismissible: true };
+    : { kind: "question", questions: [...ask.questions], dismissible: ask.dismissible === true };
 
 /** A call's kind in the record, from the driver's tool kind. */
 const STEPS: Record<string, string> = {

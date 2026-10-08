@@ -14,13 +14,20 @@ import {
 export class EngineChatWire implements ChatWire {
   readonly name = "engine";
   readonly engine: MateEngineFake;
-  /** Which of this area's asks each request is. */
-  private readonly asks = new Map<string, ChatAsk>();
+  /** Which of this area's asks each request is, and the id the journey gave it. */
+  private readonly asks = new Map<string, { readonly ask: ChatAsk; readonly named: string }>();
+  /** The engine's run for each run the journey started with `run`: the journey ends it. */
+  private readonly journeyRuns = new Map<string, string>();
   constructor(mate: MateFake) {
     this.engine = new MateEngineFake(mate);
-    // The fixture's agent acknowledges an answer and ends the run it waited in.
+    // The fixture's agent acknowledges an answer and ends the run it waited in, unless the
+    // journey runs that run itself: then the journey ends it, as on V1.
     this.engine.onAnswer.push((request) =>
-      this.engine.note(request.runId, RESPONSE_RECEIVED, { kind: "completed" }),
+      this.engine.note(
+        request.runId,
+        RESPONSE_RECEIVED,
+        [...this.journeyRuns.values()].includes(request.runId) ? undefined : { kind: "completed" },
+      ),
     );
   }
 
@@ -40,26 +47,49 @@ export class EngineChatWire implements ChatWire {
       requestKind: "command",
       detail: "vp run build",
     });
-    this.asks.set(id, "approval");
+    this.asks.set(id, { ask: "approval", named: "approval-build" });
   }
 
-  question() {
-    const id = this.engine.ask({
-      kind: "question",
-      questions: [TARGET_QUESTION],
-      dismissible: true,
-    });
-    this.asks.set(id, "question");
+  /** A question its agent waits on, as V1's TARGET_QUESTION is: answered, never dismissed. */
+  question(requestId = "question-target", turnId: string | null = null) {
+    const run = turnId === null ? undefined : this.journeyRuns.get(turnId);
+    const id = this.engine.ask(
+      { kind: "question", questions: [TARGET_QUESTION], dismissible: false },
+      run === undefined ? {} : { runId: run },
+    );
+    this.asks.set(id, { ask: "question", named: requestId });
+  }
+
+  /** The journey's runs are the engine's own runs, under the engine's ids. */
+  run(turnId: string, state: "running" | "completed" | "error" | "interrupted") {
+    const run = this.journeyRuns.get(turnId);
+    if (state !== "running") {
+      if (run !== undefined) this.engine.settleRun(run, state);
+      return;
+    }
+    if (run === undefined) this.journeyRuns.set(turnId, this.engine.startRun());
   }
 
   intents() {
     return this.engine.applied.flatMap(({ op, payload }): ChatIntent[] => {
       if (op === "send") return [{ kind: "turn", text: String(payload.text) }];
       if (op !== "answer") return [];
-      const ask = this.asks.get(String(payload.requestId)) ?? "other";
+      const asked = this.asks.get(String(payload.requestId));
+      const ask = asked?.ask ?? "other";
       const answer = payload.answer as EngineAnswer;
       if (answer.kind === "approval") return [{ kind: "decision", ask, decision: answer.decision }];
-      if (answer.kind === "input") return [{ kind: "answer", ask, answers: answer.answers }];
+      if (answer.kind === "input")
+        return [
+          {
+            kind: "answer",
+            ask,
+            requestId: asked?.named ?? String(payload.requestId),
+            answers: answer.answers,
+            ...(answer.attachmentsByQuestionId === undefined
+              ? {}
+              : { attachmentsByQuestionId: answer.attachmentsByQuestionId }),
+          },
+        ];
       return [];
     });
   }

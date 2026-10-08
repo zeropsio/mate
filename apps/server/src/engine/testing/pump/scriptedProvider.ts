@@ -256,7 +256,14 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }) as never,
       respondToUserInput: (input) =>
         Effect.gen(function* () {
-          calls.push(`answer ${input.requestId}`);
+          const pictures = Object.entries(input.attachmentsByQuestionId ?? {}).flatMap(
+            ([question, attached]) => attached.map((file) => `${question}: ${file.name}`),
+          );
+          calls.push(
+            pictures.length === 0
+              ? `answer ${input.requestId}`
+              : `answer ${input.requestId} with ${pictures.join(", ")}`,
+          );
           const session = yield* sessionOf(input.threadId);
           if (!session.requests.delete(input.requestId)) {
             return yield* Effect.fail(
@@ -419,12 +426,12 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               return;
           }
         }),
-      /** The agent asks: an approval or a question. Returns the driver's request id. */
-      ask: (thread: string, kind: "approval" | "question") =>
+      /** The agent asks: an approval or a question (one asked by message, too). Returns its id. */
+      ask: (thread: string, kind: "approval" | "question" | "message-question") =>
         Effect.gen(function* () {
           const session = live(thread);
           const requestId = `req-${++requests}`;
-          session.requests.set(requestId, kind);
+          session.requests.set(requestId, kind === "approval" ? "approval" : "question");
           if (kind === "approval") {
             yield* emit("request.opened", thread, {
               turnId: session.open,
@@ -432,10 +439,26 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               payload: { requestType: "command_execution_approval", detail: "rm -rf dist" },
             });
           } else {
+            // A question asked by message (Codex's async one): the agent does not wait on it.
             yield* emit("user-input.requested", thread, {
               turnId: session.open,
               requestId,
-              payload: { questions: [] },
+              payload:
+                kind === "message-question"
+                  ? {
+                      responseMode: "message",
+                      questions: [
+                        {
+                          id: "0",
+                          header: "Question",
+                          question: "Which package manager?",
+                          options: [],
+                          allowCustomAnswer: true,
+                          multiSelect: false,
+                        },
+                      ],
+                    }
+                  : { questions: [] },
             });
           }
           return requestId;

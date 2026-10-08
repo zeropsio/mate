@@ -38,6 +38,24 @@ it.each([
   expect(selectsChatGate([path])).toBe(false);
 });
 
+it("the gate runs the chat journeys against both wires a Mate can speak", () => {
+  const projects = chatGateStages.flatMap((stage) =>
+    stage.commands.flatMap((command) => {
+      const at = command.args.indexOf("--project");
+      const areas = command.args.find((arg) => arg.startsWith("test/scenarios/areas"));
+      return at === -1 ? [] : [[stage.name, command.args[at + 1], areas]];
+    }),
+  );
+  expect(projects).toEqual([
+    ["B: client wire journeys (C)", "scenarios", "test/scenarios/areas/c-mate"],
+    [
+      "B: client wire journeys on the engine (C)",
+      "scenarios-engine",
+      "test/scenarios/areas/c-mate",
+    ],
+  ]);
+});
+
 it("the gate proves the Mate engine on the proof harness's fixed seeds and the running engine", () => {
   const stage = chatGateStages.find((candidate) => candidate.name === "E: engine proof");
   const files = stage?.commands.flatMap((command) =>

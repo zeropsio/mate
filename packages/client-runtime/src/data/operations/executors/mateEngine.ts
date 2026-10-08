@@ -1,5 +1,5 @@
 /**
- * The engine conversation's one write boundary: send, stop, answer and steer, each recorded before
+ * The engine conversation's one write boundary: send, stop, answer, dismiss and steer, each recorded before
  * it leaves under the engine command id it carries. The engine's receipt is the answer; a call
  * that never left stays unsent (Send again re-sends under the same id); a lost answer is asked of
  * the engine by that id — its stored receipt settles it, its absence lets the same id go once
@@ -10,6 +10,7 @@
  */
 import {
   EngineWireError,
+  EnvironmentAuthorizationError,
   MATE_ENGINE_PROTOCOLS,
   WS_METHODS,
   type CommandResult,
@@ -86,6 +87,12 @@ export interface EngineCallWire {
           readonly summary: string;
         }
       | {
+          readonly kind: "dismiss";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly requestId: string;
+        }
+      | {
           readonly kind: "steer";
           readonly conversationId: string;
           readonly commandId: string;
@@ -147,6 +154,14 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               summary: command.summary,
             }),
           );
+        case "dismiss":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineDismiss, {
+              ...base,
+              requestId: command.requestId as never,
+            }),
+          );
         case "steer":
           return registry.run(
             id,
@@ -178,6 +193,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
 const isUnavailable = Schema.is(EnvironmentRpcUnavailableError);
 const isUnregistered = Schema.is(EnvironmentNotRegisteredError);
 const isWireError = Schema.is(EngineWireError);
+const isUnauthorized = Schema.is(EnvironmentAuthorizationError);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** A refusal's words for a person, by the engine's reason. */
@@ -185,6 +201,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   archived: "This conversation is archived.",
   "unknown-request": "That question is no longer open.",
   "not-answerable": "That question can no longer be answered.",
+  "not-dismissible": "The agent waits on this question: it needs an answer, or stop the work.",
   "run-not-running": "Nothing is running to stop.",
   "stop-already-asked": "Stop was already asked.",
   "steer-unsupported": "This agent cannot take a message while it works.",
@@ -283,6 +300,11 @@ export function makeMateEngineOperations(options: {
             reason: result.unserved.message,
             code: result.unserved.reason === "protocol" ? "update" : "not-on-engine",
           };
+    return refuse(requestId, refusal.reason, refusal.code);
+  };
+
+  /** A refusal is the operation's answer: nothing was applied, nothing is asked again. */
+  const refuse = (requestId: string, reason: string, code: string) => {
     store.dispatch({
       kind: "operation-receipt",
       receipt: {
@@ -291,17 +313,11 @@ export function makeMateEngineOperations(options: {
         executor: "mate",
         affected: [],
         handles: [],
-        acceptance: { kind: "refused", reason: refusal.reason, code: refusal.code },
+        acceptance: { kind: "refused", reason, code },
         outcome: { kind: "pending" },
       },
     });
-    return Effect.fail(
-      new EngineOperationFailed({
-        outcome: "refused",
-        message: refusal.reason,
-        code: refusal.code,
-      }),
-    );
+    return Effect.fail(new EngineOperationFailed({ outcome: "refused", message: reason, code }));
   };
 
   const attempt = (
@@ -315,6 +331,9 @@ export function makeMateEngineOperations(options: {
       if (closed) return yield* Effect.fail(closedFailure());
       if (Exit.isSuccess(answer)) return yield* settle(requestId, intent, answer.value);
       const error = Cause.findErrorOption(answer.cause);
+      // The Mate refused the caller before the engine saw the call: a refusal, never a doubt.
+      if (Option.isSome(error) && isUnauthorized(error.value))
+        return yield* refuse(requestId, error.value.message, "authorization");
       if (
         Option.isSome(error) &&
         (isUnavailable(error.value) || isUnregistered(error.value) || isWireError(error.value))
@@ -437,6 +456,21 @@ export function makeMateEngineOperations(options: {
           requestId: target.requestId,
           answer: target.answer,
           summary: target.summary,
+        }),
+      ),
+    dismiss: (target: EngineOperationTarget & { readonly requestId: string }) =>
+      execute(
+        {
+          kind: "mate-engine-dismiss",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          requestId: target.requestId,
+        },
+        (commandId) => ({
+          kind: "dismiss",
+          conversationId: target.conversationId,
+          commandId,
+          requestId: target.requestId,
         }),
       ),
     steer: (target: EngineOperationTarget & { readonly runId: string; readonly text: string }) =>

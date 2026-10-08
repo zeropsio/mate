@@ -13,7 +13,11 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
-import { ChatImageAttachment } from "./orchestration.ts";
+import {
+  ChatImageAttachment,
+  ProviderUserInputAnswers,
+  UserInputAttachments,
+} from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -492,7 +496,17 @@ export const Request = Schema.Struct({
   state: StoredRequestState,
   /** False once the session that owned the callback is gone. */
   answerable: Schema.Boolean,
-  answer: Schema.optionalKey(Schema.Struct({ by: Principal, at: Millis, summary: Schema.String })),
+  answer: Schema.optionalKey(
+    Schema.Struct({
+      by: Principal,
+      at: Millis,
+      summary: Schema.String,
+      /** A question's answer as the person gave it, by question id. Never a vault value. */
+      answers: Schema.optionalKey(ProviderUserInputAnswers),
+      /** The pictures attached to each question's answer, by reference. */
+      attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+    }),
+  ),
   principal: Principal,
 });
 export type Request = typeof Request.Type;
@@ -715,7 +729,16 @@ export const RequestAnswered = event("RequestAnswered", {
   requestId: RequestId,
   by: Principal,
   summary: Schema.String,
-  effectId: EffectId,
+  /** The respond call that takes the answer; absent when a message carries it (`bySend`). */
+  effectId: Schema.optionalKey(EffectId),
+  /**
+   * The run whose person's message carries the answer, for a question asked by message: the
+   * request is answered once that message reaches the agent, and opens again if it never does.
+   */
+  bySend: Schema.optionalKey(RunId),
+  /** A question's answer, by question id, and the pictures attached to each: what the record shows. */
+  answers: Schema.optionalKey(ProviderUserInputAnswers),
+  attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
 });
 /** An answer the provider failed to take: the request is open again for the person. */
 export const RequestReopened = event("RequestReopened", {
@@ -861,6 +884,8 @@ const rejectionReasons = [
   "stop-already-asked",
   "unknown-request",
   "not-answerable",
+  /** A request its agent waits on: only an answer or a Stop ends it. */
+  "not-dismissible",
   "steer-unsupported",
   "stale-session",
   "unknown-effect",

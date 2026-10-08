@@ -186,38 +186,61 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
-  it.effect("an answer carrying pictures is refused in words, never sent without them", () =>
+  it.effect("an answer carrying pictures goes to the engine with them, never without them", () =>
     Effect.gen(function* () {
       const r = rig(1);
-      const failure = yield* Effect.flip(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineRespondToUserInput(ENV, {
-              threadId: "thread-ada",
-              requestId: "thread-ada/r/2/q/1",
-              answers: { target: "Inspect the preview" },
-              attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
-            } as never),
-            r.v1,
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineRespondToUserInput(ENV, {
+            threadId: "thread-ada",
+            requestId: "thread-ada/r/2/q/1",
+            answers: { target: "Inspect the preview" },
+            attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
+          } as never),
+          r.v1,
         ),
       );
-      expect(failure.message).toMatch(/pictures/);
-      expect(r.calls).toEqual([]);
+      expect(r.calls[0]).toMatchObject({
+        kind: "answer",
+        requestId: "thread-ada/r/2/q/1",
+        answer: {
+          kind: "input",
+          answers: { target: "Inspect the preview" },
+          attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
+        },
+      });
+      expect(r.v1Calls).toEqual([]);
     }),
   );
 
-  it.effect("dismissing a question on the engine is refused in words, never sent over V1", () =>
-    Effect.gen(function* () {
-      const r = rig(1);
-      const failure = yield* Effect.flip(
-        r.run(viaEngine(r.registry, ENV, engineDismissUserInput(), r.v1)),
-      );
-      expect(failure.message).toMatch(/Answer the question/);
-      expect(r.v1Calls).toEqual([]);
-    }),
+  it.effect(
+    "dismissing a question on the engine goes as the engine's dismissal, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineDismissUserInput(ENV, {
+              threadId: "thread-ada",
+              requestId: "thread-ada/r/2/q/1",
+            } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "dismiss",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            requestId: "thread-ada/r/2/q/1",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect("a first message's title is never sent to an engine Mate, nor over V1", () =>
