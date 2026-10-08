@@ -29,7 +29,9 @@ const until = (
     return Effect.sync(stop);
   }).pipe(
     Effect.timeout("5 seconds"),
-    Effect.catchTag("TimeoutError", () => Effect.die(new Error(`timed out waiting for ${what}`))),
+    Effect.catchTags({
+      TimeoutError: () => Effect.die(new Error(`timed out waiting for ${what}`)),
+    }),
   );
 
 describe("startZeropsNavigation", () => {
