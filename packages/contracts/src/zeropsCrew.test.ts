@@ -11,6 +11,8 @@ import {
   crewReachLogins,
   CrewSeam,
   CrewSnapshot,
+  CrewTaskPage,
+  CrewTaskPageInput,
   type CrewCommandReach,
   type CrewLoginRoster,
 } from "./zeropsCrew.ts";
@@ -24,6 +26,8 @@ const decodeFiles = Schema.decodeUnknownSync(CrewFiles);
 const decodeResult = Schema.decodeUnknownSync(CrewCommandResult);
 const decodeError = Schema.decodeUnknownSync(CrewCommandError);
 const decodeSeam = Schema.decodeUnknownSync(CrewSeam);
+const decodeTaskPage = Schema.decodeUnknownSync(CrewTaskPage);
+const decodeTaskPageInput = Schema.decodeUnknownSync(CrewTaskPageInput);
 
 const appliedSnapshot = {
   status: "applied",
@@ -258,6 +262,69 @@ describe("CrewSnapshot from an older server", () => {
     expect(decoded.board.tasks[0]?.landedAt).toBeNull();
     expect(decoded.devHosts).toEqual([]);
     expect(decoded.hosts[0]?.claim.grantWaiting).toBe(false);
+    expect(decoded).not.toHaveProperty("revision");
+    expect(decoded.crewmates[0]).not.toHaveProperty("conversationId");
+    expect(decoded.crewmates[0]).not.toHaveProperty("sessions");
+  });
+});
+
+/** An engine Mate's snapshot: the crew owner's revision, each crewmate in one conversation. */
+const engineSnapshot = {
+  ...appliedSnapshot,
+  revision: { epoch: 1_759_900_000_000, seq: 41 },
+  crewmates: appliedSnapshot.crewmates.map((crewmate) => ({
+    ...crewmate,
+    currentThreadId: "crew-game-backend-1",
+    conversationId: "crew-game-backend-1",
+    sessions: { count: 3, lastReason: "context" },
+    stints: [],
+  })),
+};
+
+describe("CrewSnapshot from an engine Mate", () => {
+  it("carries the crew's revision and each crewmate's conversation and sessions", () => {
+    expect(decodeFrame(engineSnapshot)).toEqual(engineSnapshot);
+    expect(encodeSnapshot(decodeSnapshot(engineSnapshot))).toEqual(engineSnapshot);
+  });
+
+  it("reads a session reason from a newer server as unknown, never dropping the frame", () => {
+    const [crewmate] = engineSnapshot.crewmates;
+    const newer = {
+      ...engineSnapshot,
+      crewmates: [{ ...crewmate, sessions: { count: 4, lastReason: "moon" } }],
+    };
+    expect(decodeFrame(newer)).toMatchObject({
+      crewmates: [{ sessions: { count: 4, lastReason: "unknown" } }],
+    });
+  });
+});
+
+describe("crew.taskPage", () => {
+  const [task] = appliedSnapshot.board.tasks;
+  const landed = {
+    ...task!,
+    state: "landed",
+    landedCommit: "0a84078f2fd5652d10c3c820786c944d057386e3",
+    landedAt: "2026-09-27T09:00:00.000Z",
+  };
+
+  it("asks for a crewmate's finished work past the board, from a cursor or from the start", () => {
+    const table = [
+      { handle: "backend", before: null },
+      { handle: "backend", before: "task-9", limit: 20 },
+    ];
+    for (const input of table) expect(decodeTaskPageInput(input)).toEqual(input);
+  });
+
+  it("decodes a page of finished work, with the cursor to the next", () => {
+    const page = { tasks: [landed], next: "task-11" };
+    expect(decodeTaskPage(page)).toEqual(page);
+    expect(decodeTaskPage({ tasks: [], next: null })).toEqual({ tasks: [], next: null });
+  });
+
+  it("drops a task this build cannot read and keeps the rest of the page", () => {
+    const page = { tasks: [{ ...landed, state: "teleported" }, landed], next: null };
+    expect(decodeTaskPage(page)).toEqual({ tasks: [landed], next: null });
   });
 });
 
