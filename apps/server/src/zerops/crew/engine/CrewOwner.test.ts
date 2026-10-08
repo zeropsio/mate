@@ -16,7 +16,8 @@ import { Conversations } from "../../../engine/Conversations.ts";
 import { engineLayer, tempDb } from "../../../engine/testing/world.ts";
 import type { CrewOwnerCommand } from "./CrewOwner.ts";
 import { crewDomain, crewRefusalOf } from "./CrewOwner.ts";
-import { home, reader } from "./crewDecideFixture.ts";
+import { CrewWorld, home, reader } from "./crewDecideFixture.ts";
+import { membersInOrder } from "./state.ts";
 
 const KAREL: Principal = { kind: "person", subject: "zerops:karel" };
 
@@ -99,6 +100,50 @@ describe("the crew owner on the engine", () => {
         );
         assert.isTrue(Exit.isFailure(exit));
         assert.include(String(exit), "wake-not-armed");
+      }),
+    ),
+  );
+
+  it.effect("a crewmate's memory a flip imported is written whole", () =>
+    withEngine(
+      Effect.gen(function* () {
+        const v1 = new CrewWorld();
+        v1.apply(home(reader("scout")));
+        const entry = {
+          id: "m-1",
+          kind: "fact" as const,
+          topic: "ports",
+          text: "The API listens on 3000.",
+          paths: ["src/server.ts"],
+          verifiedAt: null,
+          fromAssignment: null,
+          updatedAt: "2026-10-08T10:00:00.000Z",
+        };
+        yield* ask(
+          {
+            _tag: "ImportV1",
+            crew: {
+              definition: v1.state.applied!.definition,
+              briefVersion: 1,
+              members: membersInOrder(v1.state),
+              tasks: [],
+              run: null,
+              claims: {},
+              hosts: {},
+              memory: { scout: { op: "imported", entries: [entry] } },
+              interrupted: [],
+            },
+          },
+          { kind: "engine" },
+        );
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ handle: string; entry_id: string; text: string }>`
+          SELECT handle, entry_id, text FROM engine_crew_memory
+        `;
+        assert.deepStrictEqual(
+          rows.map((row) => [row.handle, row.entry_id, row.text]),
+          [["scout", "m-1", "The API listens on 3000."]],
+        );
       }),
     ),
   );

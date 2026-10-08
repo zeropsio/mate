@@ -31,6 +31,7 @@ import {
 
 import type { EngineInput, Domain, OwnerDecision, OwnerEvent } from "../../../engine/owners.ts";
 import type { CrewMemoryChange } from "../CrewMemory.ts";
+import type { ImportedMemory } from "./importV1Crew.ts";
 import type { CrewInput, CrewStep, ToolReply } from "./command.ts";
 import { decideCrew } from "./decide.ts";
 import { isKnownCrewEvent, type CrewEvent, type CrewEventDraft } from "./events.ts";
@@ -204,6 +205,9 @@ const isMemoryChange = (op: unknown): op is CrewMemoryChange =>
   "kind" in op &&
   (op.kind === "put" || op.kind === "delete" || op.kind === "none");
 
+const isImportedMemory = (op: unknown): op is ImportedMemory =>
+  typeof op === "object" && op !== null && "op" in op && op.op === "imported" && "entries" in op;
+
 const projectCrew = (event: CrewEvent, state: CrewState) => {
   const owner = state.ownerId;
   switch (event._tag) {
@@ -249,6 +253,14 @@ const projectCrew = (event: CrewEvent, state: CrewState) => {
             detail: state.run?.reasonDetail ?? null,
           });
     case "MemoryChanged":
+      if (isImportedMemory(event.op)) {
+        // A flip's import: V1's entries written whole, each as a put.
+        return Effect.forEach(
+          event.op.entries,
+          (entry) => memoryChange(owner, event.handle, { kind: "put", entry }),
+          { discard: true },
+        );
+      }
       return isMemoryChange(event.op) ? memoryChange(owner, event.handle, event.op) : Effect.void;
     default:
       return Effect.void;
