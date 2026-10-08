@@ -1285,11 +1285,14 @@ const followClock = (b: Builder): void => {
   }
 };
 
-/** A run's cap reaches the crew's sessions: an idle one rotates now, a working one at its end. */
+/**
+ * A run's cap reaches the crew's sessions: one with no turn rotates now (its copy's work aside: a
+ * session is not its copy), a working one at its turn's end.
+ */
 const rotateForBudget = (b: Builder): void => {
   for (const member of membersInOrder(b.state)) {
     if (member.session.running === null) continue;
-    if (isFree(b.state, member.handle)) {
+    if (!isWorking(b.state, member.handle)) {
       rotateSession(b, member, "budget", b.envelope.principal);
     } else {
       b.emit({ _tag: "CrewmateUpdated", handle: member.handle, set: { rotateWhenFree: "budget" } });
