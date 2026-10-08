@@ -151,6 +151,7 @@ export type MateDiagnosticEvent =
       readonly environmentId: string;
       readonly threadId: string;
       readonly stage:
+        | "prepare"
         | "request"
         | "headers"
         | "body"

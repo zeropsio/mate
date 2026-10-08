@@ -61,18 +61,20 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
     threadId: input.threadId,
     source: "http" as const,
   };
-  mateDiagnostics.record({ ...fields, stage: "request" });
   let decodeStarted = started;
   const httpClient = yield* HttpClient.HttpClient;
   const measuredClient = mateDiagnostics.enabled
     ? HttpClient.transformResponse(httpClient, (responseEffect) =>
         Effect.gen(function* () {
+          const requested = performance.now();
+          mateDiagnostics.record({ ...fields, stage: "prepare", durationMs: requested - started });
+          mateDiagnostics.record({ ...fields, stage: "request" });
           const response = yield* responseEffect;
           const received = performance.now();
           mateDiagnostics.record({
             ...fields,
             stage: "headers",
-            durationMs: received - started,
+            durationMs: received - requested,
             ...(response.headers["server-timing"] === undefined
               ? {}
               : { serverTiming: response.headers["server-timing"] }),
