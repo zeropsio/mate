@@ -4,7 +4,12 @@ import { resolveVariable } from "../utils.ts";
 
 const RULE = "no-legacy-notice-policy";
 const ledger = loadExceptionLedger(RULE);
-const retired = new Set(["zeropsAgentSignInRequired", "spentLoginStatusStale"]);
+const branchPolicy = new Set([
+  "branchMismatchKey",
+  "isBranchMismatchDismissedForSession",
+  "dismissBranchMismatchForSession",
+]);
+const retired = new Set(["zeropsAgentSignInRequired", "spentLoginStatusStale", ...branchPolicy]);
 /** Only the existing arrival consumers keep their any-agent question in this slice. */
 function isArrivalCall(path: string, node: ESTree.CallExpression): boolean {
   let child: ESTree.Node = node;
@@ -55,11 +60,11 @@ function isArrivalCall(path: string, node: ESTree.CallExpression): boolean {
   return false;
 }
 
-/** Slice 1 only: freeze the two replaced hosted admission policies, including local aliases. */
+/** Migrated notice policies stay with their declared owners, including calls through aliases. */
 export default defineRule({
   meta: {
     type: "problem",
-    docs: { description: "Hosted admission is derived by the admission projection." },
+    docs: { description: "Notice policy is derived by its domain owner." },
   },
   create(context) {
     const filename = context.filename.replaceAll("\\", "/");
@@ -111,6 +116,8 @@ export default defineRule({
         const name = nameOf(node.callee);
         if (
           name === undefined ||
+          (repoPath === "apps/web/src/components/BranchToolbar.logic.ts" &&
+            branchPolicy.has(name)) ||
           (name === "zeropsAgentSignInRequired" && isArrivalCall(path, node))
         )
           return;
@@ -126,7 +133,7 @@ export default defineRule({
             kind: entry.kind,
             fingerprint: name,
             ledgered,
-            summary: "Read scoped admission instead of deriving another sign-in policy.",
+            summary: "Read the domain owner instead of deriving another notice policy.",
           }),
         });
       },

@@ -86,3 +86,24 @@ it.effect(
       }
     }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+for (const policy of [
+  "branchMismatchKey",
+  "isBranchMismatchDismissedForSession",
+  "dismissBranchMismatchForSession",
+]) {
+  admissionChat.invalid(
+    `branch advice callers cannot restore ${policy}`,
+    `import { ${policy} as legacy } from "./BranchToolbar.logic"; const alias = legacy; export const notice = alias(evidence);`,
+  );
+  chat.invalid(
+    `branch advice cannot relocate ${policy}`,
+    `import * as branch from "./BranchToolbar.logic"; const { ${policy}: legacy } = branch; export const notice = legacy(evidence);`,
+  );
+  createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+    filename: "apps/web/src/components/BranchToolbar.logic.ts",
+  }).valid(
+    `the branch owner retains ${policy}`,
+    `import { ${policy} as legacy } from "./existing"; export const advice = legacy(evidence);`,
+  );
+}

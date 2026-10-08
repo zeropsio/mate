@@ -1,3 +1,4 @@
+import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import type { EnvironmentId, VcsRef, ProjectId, WorktreeSubmodules } from "@t3tools/contracts";
 import { resolveThreadEnvModeForCapability } from "@t3tools/shared/threadEnvMode";
 import * as Schema from "effect/Schema";
@@ -304,4 +305,71 @@ export function shouldIncludeBranchPickerItem(input: {
     sanitizedQuery !== normalizedQuery &&
     lowerItemValue.includes(sanitizedQuery)
   );
+}
+
+export function branchMismatchKey(
+  threadId: string | null,
+  mismatch: { threadBranch: string; currentBranch: string } | null,
+): string | null {
+  if (!threadId || !mismatch) {
+    return null;
+  }
+  return `${threadId}:${mismatch.threadBranch}:${mismatch.currentBranch}`;
+}
+
+// The mismatch banner only matters when the user is about to send: passive
+// reading of an old thread carries no risk (the branch picker tint already
+// covers ambient awareness). Draft content is the intent signal — composer
+// focus is useless here because ChatView autofocuses the composer on every
+// thread open. `wasShownForCurrentMismatch` keeps the banner mounted once
+// revealed so it doesn't flicker away when the draft is cleared.
+export function shouldShowBranchMismatchBanner(input: {
+  hasMismatch: boolean;
+  isDismissed: boolean;
+  composerHasContent: boolean;
+  wasShownForCurrentMismatch: boolean;
+}): boolean {
+  if (!input.hasMismatch || input.isDismissed) {
+    return false;
+  }
+  return input.composerHasContent || input.wasShownForCurrentMismatch;
+}
+
+// Session-scoped (module-level so it survives ChatView remounts, e.g. route
+// changes). Account closure clears these in-memory advice preferences.
+const sessionDismissedBranchMismatchKeys = new Set<string>();
+
+export function dismissBranchMismatchForSession(key: string): void {
+  sessionDismissedBranchMismatchKeys.add(key);
+}
+
+export function isBranchMismatchDismissedForSession(key: string | null): boolean {
+  return key !== null && sessionDismissedBranchMismatchKeys.has(key);
+}
+
+onAccountLifetimeClose(() => sessionDismissedBranchMismatchKeys.clear());
+
+export function deriveBranchAdvice(input: {
+  threadKey: string | null;
+  mismatch: ReturnType<typeof resolveLocalCheckoutBranchMismatch>;
+  composerHasContent: boolean;
+  revealedKey: string | null;
+}) {
+  const key = branchMismatchKey(input.threadKey, input.mismatch);
+  const visible = shouldShowBranchMismatchBanner({
+    hasMismatch: input.mismatch !== null,
+    isDismissed: isBranchMismatchDismissedForSession(key),
+    composerHasContent: input.composerHasContent,
+    wasShownForCurrentMismatch: key !== null && input.revealedKey === key,
+  });
+  return {
+    key,
+    visible,
+    revealedKey: visible ? key : input.revealedKey === key ? input.revealedKey : null,
+  };
+}
+
+export function acknowledgeBranchAdvice(input: Parameters<typeof deriveBranchAdvice>[0]) {
+  const advice = deriveBranchAdvice(input);
+  if (advice.key !== null && advice.visible) dismissBranchMismatchForSession(advice.key);
 }

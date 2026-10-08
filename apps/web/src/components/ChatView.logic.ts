@@ -797,61 +797,6 @@ export function buildExpiredTerminalContextToastCopy(
   };
 }
 
-export function branchMismatchKey(
-  threadId: string | null,
-  mismatch: { threadBranch: string; currentBranch: string } | null,
-): string | null {
-  if (!threadId || !mismatch) {
-    return null;
-  }
-  return `${threadId}:${mismatch.threadBranch}:${mismatch.currentBranch}`;
-}
-
-// The mismatch banner only matters when the user is about to send: passive
-// reading of an old thread carries no risk (the branch picker tint already
-// covers ambient awareness). Draft content is the intent signal — composer
-// focus is useless here because ChatView autofocuses the composer on every
-// thread open. `wasShownForCurrentMismatch` keeps the banner mounted once
-// revealed so it doesn't flicker away when the draft is cleared.
-export function shouldShowBranchMismatchBanner(input: {
-  hasMismatch: boolean;
-  isDismissed: boolean;
-  composerHasContent: boolean;
-  wasShownForCurrentMismatch: boolean;
-}): boolean {
-  if (!input.hasMismatch || input.isDismissed) {
-    return false;
-  }
-  return input.composerHasContent || input.wasShownForCurrentMismatch;
-}
-
-// The composer's floating banner stack (resume-with-less-context, the merge
-// offer, …) renders from a zero-height anchor and is absolutely positioned
-// above the composer, so it never enlarges the composer overlay element's own
-// measured box — a ResizeObserver on that element alone under-reports the
-// overlay's true footprint whenever a banner is showing. Both the timeline's
-// bottom content inset and the "scroll to end" pill's offset must reserve the
-// combined height, or the list scrolls text in behind/beside the banner and
-// the pill lands mid-banner instead of above the whole stack.
-export function resolveComposerOverlayHeight(input: {
-  composerHeight: number;
-  bannerStackHeight: number;
-}): number {
-  return input.composerHeight + input.bannerStackHeight;
-}
-
-// Session-scoped (module-level so it survives ChatView remounts, e.g. route
-// changes). Durable cross-device dismissal is planned as a server-side ack.
-const sessionDismissedBranchMismatchKeys = new Set<string>();
-
-export function dismissBranchMismatchForSession(key: string): void {
-  sessionDismissedBranchMismatchKeys.add(key);
-}
-
-export function isBranchMismatchDismissedForSession(key: string | null): boolean {
-  return key !== null && sessionDismissedBranchMismatchKeys.has(key);
-}
-
 // Git status for a checkout arrives after the composer paints, and the branch
 // strip mounts on the assumption that a project is a Git repo. Without a
 // memory, a non-Git project would mount the strip and drop it on every visit.

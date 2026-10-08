@@ -1,3 +1,4 @@
+import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
@@ -437,7 +438,6 @@ import {
 } from "./chat/draftHeroTransition";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  branchMismatchKey,
   waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
@@ -448,15 +448,12 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   projectScriptKeybindingWrites,
-  dismissBranchMismatchForSession,
   hasEnvironmentReconnectWarningGraceElapsed,
   latestTurnStartFailureId,
   scheduleEnvironmentReconnectWarning,
   hasServerAcknowledgedLocalDispatch,
-  isBranchMismatchDismissedForSession,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
-  shouldShowBranchMismatchBanner,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
@@ -472,7 +469,6 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
-  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   composerOpenFocus,
@@ -1645,23 +1641,11 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerElementHeight, setComposerElementHeight] = useState(0);
-  // The banner stack (resume-with-less-context, the merge offer, …) floats
-  // from a zero-height anchor above the composer, so it never enlarges the
-  // composer overlay element's own measured box — it needs its own observer.
-  const [composerBannerStackElement, setComposerBannerStackElement] =
-    useState<HTMLDivElement | null>(null);
-  const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
   // What the composer covers of the list, as each conversation last had it
   // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
   const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
-  const composerOverlayHeight = resolveComposerOverlayHeight({
-    composerHeight: composerElementHeight,
-    // Masked at read time rather than reset from the observer effect below:
-    // the stack unmounts (ref goes null) the instant the last banner is
-    // dismissed, before a resize would ever fire to report 0.
-    bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
-  });
+  const composerOverlayHeight = composerElementHeight;
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
   const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
@@ -1703,25 +1687,6 @@ export default function ChatView(props: ChatViewProps) {
     observer.observe(composerOverlayElement);
     return () => observer.disconnect();
   }, [composerOverlayElement]);
-
-  useLayoutEffect(() => {
-    if (!composerBannerStackElement) return;
-
-    const updateHeight = () => {
-      const nextHeight = Math.ceil(composerBannerStackElement.getBoundingClientRect().height);
-      if (nextHeight <= 0) return;
-      setComposerBannerStackHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
-      );
-    };
-
-    updateHeight();
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(composerBannerStackElement);
-    return () => observer.disconnect();
-  }, [composerBannerStackElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
@@ -5163,33 +5128,13 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadRef, unsnoozeThreadMutation]);
   const [isRestoringThreadBranch, setIsRestoringThreadBranch] = useState(false);
   const [branchRestoreConfirmOpen, setBranchRestoreConfirmOpen] = useState(false);
-  // Once revealed for a given mismatch, the banner stays mounted until the
-  // mismatch changes or resolves, so clearing the draft doesn't flicker it.
-  const [revealedBranchMismatchKey, setRevealedBranchMismatchKey] = useState<string | null>(null);
-  // Dismissal lives in a module-level set (survives remounts); this tick just
-  // forces a re-render so the banner leaves immediately.
-  const [, setBranchMismatchDismissTick] = useState(0);
-  const activeBranchMismatchKey = branchMismatchKey(
-    activeThread?.id ?? null,
-    localCheckoutBranchMismatch,
-  );
-  const showBranchMismatchBanner = shouldShowBranchMismatchBanner({
-    hasMismatch: localCheckoutBranchMismatch !== null,
-    isDismissed: isBranchMismatchDismissedForSession(activeBranchMismatchKey),
+  const branchAdvice = useBranchAdvice({
+    threadKey: activeThread ? routeThreadKey : null,
+    mismatch: localCheckoutBranchMismatch,
     composerHasContent: composerHasUnsentContent,
-    wasShownForCurrentMismatch:
-      revealedBranchMismatchKey !== null && revealedBranchMismatchKey === activeBranchMismatchKey,
   });
-  useEffect(() => {
-    setRevealedBranchMismatchKey((revealed) => {
-      if (showBranchMismatchBanner) {
-        return activeBranchMismatchKey;
-      }
-      // Hysteresis is scoped to an uninterrupted mismatch: reset when the
-      // mismatch resolves or changes so a recurrence re-gates on intent.
-      return revealed !== null && revealed !== activeBranchMismatchKey ? null : revealed;
-    });
-  }, [activeBranchMismatchKey, showBranchMismatchBanner]);
+  const activeBranchMismatchKey = branchAdvice.key;
+  const showBranchMismatchBanner = branchAdvice.visible;
   const handleSwitchCheckoutToThread = useCallback(async () => {
     if (
       !activeProjectCwd ||
@@ -5827,15 +5772,13 @@ export default function ChatView(props: ChatViewProps) {
           </Button>
         ),
         dismissLabel: "Dismiss branch change notice",
-        onDismiss: () => {
-          dismissBranchMismatchForSession(activeBranchMismatchKey);
-          setBranchMismatchDismissTick((tick) => tick + 1);
-        },
+        onDismiss: branchAdvice.dismiss,
       },
       ...parkedThreadItems,
     ];
   }, [
     activeBranchMismatchKey,
+    branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,
     feedbackBannerItems,
@@ -8777,37 +8720,24 @@ export default function ChatView(props: ChatViewProps) {
                 <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
-                      {/* The banners float from a zero-height anchor, so the
-                          headline keeps their measured height clear above them. */}
                       <div
                         className="pb-4"
-                        style={{
-                          ...(forceExpandedMobileComposer
+                        style={
+                          forceExpandedMobileComposer
                             ? { viewTransitionName: MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME }
-                            : {}),
-                          ...(composerBannerStackElement
-                            ? { marginBottom: composerBannerStackHeight }
-                            : {}),
-                        }}
+                            : undefined
+                        }
                       >
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
-                      <ComposerBannerStack
-                        className="relative z-0"
-                        items={composerBannerItems}
-                        stackRef={setComposerBannerStackElement}
-                      />
+                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
                   ) : (
                     <>
-                      <ComposerBannerStack
-                        className="relative z-0"
-                        items={composerBannerItems}
-                        stackRef={setComposerBannerStackElement}
-                      />
+                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}
                       {activeCrewmate?.crewmate.kind === "lead" &&

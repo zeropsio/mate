@@ -86,6 +86,7 @@ describe("createEndFollow", () => {
   const atItsEnd = (client = 400) => {
     const scroll = list({ top: 1000 - client, height: 1000, client });
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => scroll.element as unknown as HTMLElement,
       follows: () => scroll.state.follows,
     });
@@ -104,6 +105,7 @@ describe("createEndFollow", () => {
   it("a browser layout correction during row measurement does not release end-follow", () => {
     const scroll = list({ top: 2944, height: 3779, client: 835 });
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => scroll.element as unknown as HTMLElement,
       follows: () => scroll.state.follows,
     });
@@ -134,6 +136,7 @@ describe("createEndFollow", () => {
     for (const fractionalGap of [0.5, 0.75, 1]) {
       const scroll = list({ top: 2944, height: 3779, client: 835 });
       const follow = createEndFollow({
+        placeEnd: vi.fn(),
         viewport: () => scroll.element as unknown as HTMLElement,
         follows: () => scroll.state.follows,
       });
@@ -162,6 +165,7 @@ describe("createEndFollow", () => {
   it("focus navigation into growing history stays where the reader landed", () => {
     const scroll = list({ top: 4500, height: 6000, client: 835 });
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => scroll.element as unknown as HTMLElement,
       follows: () => scroll.state.follows,
     });
@@ -248,6 +252,7 @@ describe("createEndFollow", () => {
     const scroll = list({ top: 1480, height: 1900, client: 400 });
     scroll.state.follows = false;
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => scroll.element as unknown as HTMLElement,
       follows: () => scroll.state.follows,
     });
@@ -280,6 +285,7 @@ describe("createEndFollow", () => {
       },
     };
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => element as unknown as HTMLElement,
       follows: () => true,
     });
@@ -357,6 +363,7 @@ describe("createEndFollow", () => {
     const second = list({ top: 0, height: 500, client: 400 });
     let current = first;
     const follow = createEndFollow({
+      placeEnd: vi.fn(),
       viewport: () => current.element as unknown as HTMLElement,
       follows: () => true,
     });

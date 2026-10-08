@@ -2402,6 +2402,192 @@ describe("MessagesTimeline — placing its rows", () => {
       await act(() => renderer?.unmount());
     }
   });
+
+  const checkNoticeFollowing = async (following: boolean, growth = 20) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 800,
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      ownerDocument: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    };
+    const list = {
+      current: {
+        getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: following }),
+        getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(() => {
+          viewport.scrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+        }),
+      } as unknown as LegendListRef,
+    };
+    const render = (inset: number) => (
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={list}
+        liveFollowEnabled={following}
+        routeThreadKey={`environment-local:notice-follow-${following}`}
+        contentInsetEndAdjustment={inset}
+        timelineEntries={[buildUserTimelineEntry("Keep going.")]}
+      />
+    );
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(render(120));
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad());
+      await settleFrames(4);
+      if (!following) viewport.scrollTop = 500;
+      viewport.scrollHeight = 2000 + growth;
+      await act(() => renderer!.update(render(120 + growth)));
+      if (growth === 300) expect(viewport.scrollTop).toBe(1500);
+      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(following ? 1200 + growth : 500);
+      if (!following) expect(list.current.scrollToEnd).not.toHaveBeenCalled();
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  };
+  it("holds the followed line immediately through a large notice resize", () =>
+    checkNoticeFollowing(true, 300));
+  it("keeps the live edge visible when the composer overlay grows", () =>
+    checkNoticeFollowing(true));
+  it("leaves the scroll position alone while the user reads history", () =>
+    checkNoticeFollowing(false));
+
+  it.each([
+    "arrival",
+    "removal",
+    "delayed measurement",
+    "missing anchor",
+    "user scroll",
+    "navigation",
+    "thread navigation",
+    "keyboard navigation",
+  ])("keeps the reading line through notice %s", async (scenario) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { KeptTimelineContext } = await import("./keptTimelineContext");
+    const { rememberTimelinePosition } = await import("./timelineScrollAnchoring");
+    const threadKey = `environment-local:notice-${scenario}`;
+    rememberTimelinePosition(threadKey, {
+      rowId: "entry-1",
+      offsetWithinRow: 30,
+      rowHeight: 200,
+      cardTopId: null,
+      previousRowId: null,
+      atEnd: false,
+    });
+    const listeners = new Map<string, () => void>();
+    const viewport = {
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type),
+      ownerDocument: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    };
+    let rowTop = 900;
+    let measuredData: unknown[] = [];
+    let present = true;
+    let shown = true;
+    let renderer: ReactTestRenderer | undefined;
+    const row = {
+      getBoundingClientRect: () => ({ top: rowTop - viewport.scrollTop, height: 200 }),
+    };
+    const list = {
+      current: {
+        getScrollableNode: () => viewport,
+        getState: () => ({
+          data: measuredData,
+          scroll: viewport.scrollTop,
+          scrollLength: 800,
+          positionAtIndex: () => rowTop,
+          sizeAtIndex: () => 200,
+          indexByKey: () => (present ? 0 : undefined),
+          elementAtIndex: () => (present ? row : undefined),
+          isWithinMaintainScrollAtEndThreshold: false,
+        }),
+        scrollToEnd: vi.fn(),
+      } as unknown as LegendListRef,
+    };
+    const cancel = { current: null as (() => void) | null };
+    const render = (inset: number) => (
+      <KeptTimelineContext.Provider value={{ shown }}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={list}
+          routeThreadKey={threadKey}
+          liveFollowEnabled={false}
+          contentInsetEndAdjustment={inset}
+          cancelPositionRestoreRef={cancel}
+          timelineEntries={[
+            { ...buildUserTimelineEntry("Where were we?"), id: present ? "entry-1" : "entry-2" },
+          ]}
+        />
+      </KeptTimelineContext.Provider>
+    );
+    try {
+      await act(() => {
+        renderer = create(render(scenario === "removal" ? 200 : 120));
+      });
+      measuredData = renderer!.root.findByType(LegendList).props.data;
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(930);
+      await act(() => renderer!.root.findByType(LegendList).props.onScroll());
+      await act(() => renderer!.update(render(scenario === "removal" ? 120 : 200)));
+      await settleFrames(4);
+      if (scenario === "user scroll") await act(() => listeners.get("wheel")?.());
+      if (scenario === "navigation") await act(() => cancel.current?.());
+      if (scenario === "keyboard navigation") await act(() => listeners.get("click")?.());
+      if (scenario === "thread navigation") {
+        shown = false;
+        await act(() => renderer!.update(render(200)));
+      }
+      if (scenario === "missing anchor") {
+        present = false;
+        await act(() => renderer!.update(render(200)));
+        measuredData = renderer!.root.findByType(LegendList).props.data;
+      }
+      // The virtualizer finishes a layout later than the notice's render.
+      rowTop = 1060;
+      viewport.scrollTop =
+        scenario === "user scroll" ||
+        scenario === "navigation" ||
+        scenario === "thread navigation" ||
+        scenario === "keyboard navigation"
+          ? 500
+          : 770;
+      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(
+        scenario === "user scroll" ||
+          scenario === "navigation" ||
+          scenario === "thread navigation" ||
+          scenario === "keyboard navigation"
+          ? 500
+          : scenario === "missing anchor"
+            ? 930
+            : 1090,
+      );
+      if (scenario === "thread navigation") {
+        shown = true;
+        await act(() => renderer!.update(render(200)));
+        await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+        await settleFrames(4);
+        expect(viewport.scrollTop).toBe(500);
+      }
+      expect(list.current.scrollToEnd).not.toHaveBeenCalled();
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
 });
 
 describe("KeptTimelines — a conversation seen a moment ago", () => {

@@ -73,6 +73,43 @@ describe("ComposerBannerStack", () => {
     expect(markup).toContain('aria-label="Keep full history"');
   });
 
+  it("keeps additional notices reachable by an explicit control and preserves focus through arrivals", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    try {
+      await act(() =>
+        root.render(<ComposerBannerStack items={[banner("front"), banner("second")]} />),
+      );
+      const toggle = Array.from(host.querySelectorAll("button")).find(
+        (button) => button.textContent === "1 more notice",
+      );
+      expect(toggle).toBeDefined();
+      const details = host.querySelector<HTMLDivElement>(
+        "[data-composer-banner-stack-expanded-items]",
+      );
+      expect(details?.hidden).toBe(true);
+      toggle!.focus();
+      await act(() => toggle!.click());
+      expect(toggle!.getAttribute("aria-expanded")).toBe("true");
+      expect(details?.hidden).toBe(false);
+      await act(() =>
+        root.render(
+          <ComposerBannerStack items={[banner("front"), banner("second"), banner("third")]} />,
+        ),
+      );
+      expect(document.activeElement).toBe(toggle);
+      expect(details?.textContent).toContain("third notice");
+      await act(() => toggle!.click());
+      expect(details?.hidden).toBe(true);
+      expect(toggle!.textContent).toBe("2 more notices");
+    } finally {
+      await act(() => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("runs the action offered beside its notice", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.body.appendChild(document.createElement("div"));
