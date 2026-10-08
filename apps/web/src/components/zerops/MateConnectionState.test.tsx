@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { NO_RESTARTS, readRestartRecovery } from "@t3tools/client-runtime/data";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -231,6 +232,15 @@ it("a failed restart keeps raw diagnostics collapsed below its named state and a
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  const process = {
+    id: "restart",
+    projectId: "p",
+    serviceStackIds: ["s"],
+    created: "2026-10-07",
+    actionName: "stack.restart",
+    status: "FAILED",
+    failReason: "500: Internal Server Error",
+  };
   const voice = mateNoticeVoice({
     reachability: null,
     mateName: "Eddy",
@@ -240,15 +250,8 @@ it("a failed restart keeps raw diagnostics collapsed below its named state and a
     recovery: {
       standing: { kind: "unknown" },
       status: "ACTION_FAILED",
-      process: {
-        id: "restart",
-        projectId: "p",
-        serviceStackIds: ["s"],
-        created: "2026-10-07",
-        actionName: "stack.restart",
-        status: "FAILED",
-        failReason: "500: Internal Server Error",
-      },
+      process,
+      lifecycle: readRestartRecovery(NO_RESTARTS, process, "ACTION_FAILED"),
     },
   });
   if (voice.surface === "none") throw new Error("Missing failure notice");

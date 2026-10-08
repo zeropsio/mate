@@ -366,7 +366,7 @@ export function detailLines(
     operation.links.length +
     openLink +
     (operation.explanation === undefined ? 0 : 1) +
-    (operation.restartProcess === undefined ? 0 : 1) +
+    (operation.restartReading === undefined ? 0 : 1) +
     (operation.version === undefined ? 0 : 1) +
     (operation.screenshot === undefined ? 0 : 1) +
     (operation.browserRead === undefined ? 0 : 1)

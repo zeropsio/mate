@@ -178,6 +178,7 @@ function fixture(responseMode: "lost" | "refused" | "accepted" = "lost") {
   return {
     mount,
     calls,
+    store,
     get: () => ({ answer: answer!, operation: operation! }),
     flush: () => {
       while (tasks.length) tasks.shift()!();
@@ -229,9 +230,52 @@ it("an accepted retry missing from history retains the new process identity and 
     await f.get().answer.onRestartRetry!();
   });
   expect(f.get().operation.phase).toBe("uncertain");
-  expect(f.get().operation.restartProcess).toMatchObject({ id: "new-process", status: "UNKNOWN" });
+  expect(f.get().operation.restartReading?.process).toMatchObject({
+    id: "new-process",
+    status: "UNKNOWN",
+  });
   expect(f.get().operation.closing).toBe(
     "Zerops accepted the restart. Its outcome is unconfirmed.",
   );
   expect(f.get().answer.restartRetryDisabled).toBe(true);
+});
+
+it("a definitively unsent restart resends the original request rather than submitting a new identity", async () => {
+  const f = fixture();
+  f.mount();
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  const requestId = f.calls[0]!.slice(5);
+  act(() => f.store.dispatch({ kind: "operation-unsent", requestId }));
+  expect(f.get().answer.restartRetryLabel).toBe("Try again");
+  expect(f.get().answer.restartRetryDisabled).toBe(false);
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  expect(f.calls).toEqual([`send:${requestId}`, `ask:${requestId}`]);
+});
+
+it("an unresolved restart stays disabled and a retained callback cannot create another write", async () => {
+  const f = fixture("accepted");
+  f.mount();
+  const firstPress = f.get().answer.onRestartRetry!;
+  await act(async () => {
+    await firstPress();
+  });
+  const requestId = f.calls[0]!.slice(5);
+  act(() =>
+    f.store.dispatch({
+      kind: "operation-exhausted",
+      requestId,
+      unobservable: { nextActor: "you", nextAction: "Check the process in Zerops." },
+    }),
+  );
+  expect(f.get().answer.restartRetryLabel).toBe("Restart unconfirmed");
+  expect(f.get().answer.restartRetryDisabled).toBe(true);
+  await act(async () => {
+    await firstPress();
+    await f.get().answer.onRestartRetry!();
+  });
+  expect(f.calls).toEqual([`send:${requestId}`]);
 });

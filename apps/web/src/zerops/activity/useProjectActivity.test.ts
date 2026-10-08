@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { projectActivitySnapshotOf } from "./useProjectActivity";
 
 const READ = {
+  retained: [],
   processes: [],
   running: [],
   live: true,

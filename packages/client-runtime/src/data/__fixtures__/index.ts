@@ -12,3 +12,4 @@ export {
   type EngineRecords,
 } from "./engineThread.ts";
 export { callItem, engineRun, personItem, noteItem, workItem } from "./mateEngine.ts";
+export { liveZerops, ORG } from "./account.ts";

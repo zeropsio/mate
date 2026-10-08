@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
 import { recoveryNotice } from "@t3tools/client-runtime/data";
+import {
+  mateRecovery,
+  makeAccountStore,
+  readsOfState,
+  runningScope,
+  NO_RESTARTS,
+  readRestartRecovery,
+  type MateRecovery,
+} from "@t3tools/client-runtime/data";
+import { liveZerops, ORG } from "@t3tools/client-runtime/data/fixtures";
+import { AtomRegistry } from "effect/reactivity";
 
 describe("Mate recovery evidence", () => {
   it.each([
@@ -11,7 +22,7 @@ describe("Mate recovery evidence", () => {
     { kind: "deleted" as const, text: "Wren's project was deleted", tone: "default" },
   ])("names $kind without guessing its alternative", ({ kind, text, tone }) => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         { standing: { kind, name: "Wren" }, status: undefined, process: undefined },
         "Wren",
       ),
@@ -19,7 +30,7 @@ describe("Mate recovery evidence", () => {
   });
   it("does not call an intentional stop a failed restart", () => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         { standing: { kind: "unknown" }, status: "STOPPED", process: undefined },
         "Wren",
       ),
@@ -31,7 +42,7 @@ describe("Mate recovery evidence", () => {
   });
   it("names a failed restart and keeps its process cause", () => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         {
           standing: { kind: "unknown" },
           status: "ACTION_FAILED",
@@ -55,7 +66,7 @@ describe("Mate recovery evidence", () => {
   });
   it("an unexplained failed container does not invent a restart", () => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         { standing: { kind: "unknown" }, status: "ACTION_FAILED", process: undefined },
         "Wren",
       ),
@@ -63,7 +74,7 @@ describe("Mate recovery evidence", () => {
   });
   it("a running service does not show an old failed restart", () => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         {
           standing: { kind: "unknown" },
           status: "ACTIVE",
@@ -84,7 +95,7 @@ describe("Mate recovery evidence", () => {
 
 it("a new start supersedes a prior failure even before the service status catches up", () => {
   expect(
-    recoveryNotice(
+    noticeFromLiveEvidence(
       {
         standing: { kind: "unknown" },
         status: "ACTION_FAILED",
@@ -103,7 +114,7 @@ it("a new start supersedes a prior failure even before the service status catche
 });
 it("full-disk telemetry reports its sample without inventing a failed turn", () => {
   expect(
-    recoveryNotice(
+    noticeFromLiveEvidence(
       { standing: { kind: "unknown" }, status: "ACTIVE", process: undefined, diskFull: true },
       "Wren",
     ),
@@ -117,7 +128,7 @@ it("full-disk telemetry reports its sample without inventing a failed turn", () 
 it.each(["500: Internal Server Error", "unclassified platform failure"])(
   "keeps %s under Details and names the Mate",
   (failReason) => {
-    const notice = recoveryNotice(
+    const notice = noticeFromLiveEvidence(
       {
         standing: { kind: "deleted", name: "Radotin - Eddy" },
         status: undefined,
@@ -126,7 +137,7 @@ it.each(["500: Internal Server Error", "unclassified platform failure"])(
       "Eddy",
     );
     expect(notice?.headline).toBe("Eddy's project was deleted.");
-    const failed = recoveryNotice(
+    const failed = noticeFromLiveEvidence(
       {
         standing: { kind: "unknown" },
         status: "ACTION_FAILED",
@@ -160,7 +171,7 @@ it.each([
   "the final start of a failed-container restart retains its actionable cause (%s)",
   (failReason, cause) => {
     expect(
-      recoveryNotice(
+      noticeFromLiveEvidence(
         {
           standing: { kind: "unknown" },
           status: "ACTION_FAILED",
@@ -177,5 +188,88 @@ it.each([
         "Wren",
       )?.text,
     ).toBe(`Wren couldn't start. ${cause}`);
+  },
+);
+
+const noticeFromLiveEvidence = (read: MateRecovery, name: string) =>
+  recoveryNotice(
+    {
+      ...read,
+      lifecycle: readRestartRecovery(
+        { ...NO_RESTARTS, running: read.process === undefined ? [] : [read.process.id] },
+        read.process,
+        read.status,
+      ),
+    },
+    name,
+  );
+
+// Decision: one derivation per state; consumers never recompute it.
+it.each(["lost observation", "lost membership"] as const)(
+  "a retained running restart without live membership cannot announce active recovery or offer another write (%s)",
+  (lost) => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({
+      services: [{ id: "s", projectId: "p", status: "ACTION_FAILED" }],
+      running: [
+        {
+          id: "r",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          actionName: "stack.restart",
+          status: "RUNNING",
+          created: "2026-10-08",
+        },
+      ],
+    }).forEach(store.dispatch);
+    if (lost === "lost observation")
+      store.dispatch({
+        kind: "stream",
+        key: `zerops:${ORG}`,
+        now: 0,
+        event: { kind: "demand", demanded: false },
+      });
+    else
+      store.dispatch({
+        kind: "membership",
+        scope: runningScope(ORG),
+        generation: 1,
+        delta: { add: [], remove: ["r"] },
+      });
+    const read = mateRecovery.derive(readsOfState(store.state()), {
+      orgId: ORG,
+      projectId: "p",
+      serviceId: "s",
+    });
+    expect(recoveryNotice(read, "Wren")).toMatchObject({
+      headline: "Wren's container failed.",
+      actions: ["open-in-zerops"],
+    });
+  },
+);
+
+it.each(["stack.deploy", "stack.create", "stack.stop"])(
+  "a failed container keeps its recovery actions when its latest lifecycle is %s",
+  (actionName) => {
+    expect(
+      noticeFromLiveEvidence(
+        {
+          standing: { kind: "unknown" },
+          status: "ACTION_FAILED",
+          process: {
+            id: "process",
+            actionName,
+            status: "RUNNING",
+            projectId: "p",
+            serviceStackIds: ["s"],
+            created: "2026-10-08",
+          },
+        },
+        "Wren",
+      ),
+    ).toMatchObject({
+      headline: "Wren's container failed.",
+      actions: ["restart", "open-in-zerops"],
+    });
   },
 );

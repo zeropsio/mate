@@ -152,6 +152,6 @@ export function useRunningBuildDemand(
   const follows =
     (running?.kind === "deploy" &&
       (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0)) ||
-    (running?.kind === "manage" && running.restartProcess !== undefined);
+    (running?.kind === "manage" && running.restartReading !== undefined);
   useProjectActivityDemand(follows ? projectId : null);
 }

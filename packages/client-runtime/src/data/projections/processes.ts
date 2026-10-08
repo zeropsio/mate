@@ -81,6 +81,8 @@ function historyRead(stream: StreamState): HistoryRead {
 }
 
 export interface ProjectProcesses {
+  /** Known rows before active-list filtering; missing membership proves no terminal outcome. */
+  readonly retained: ReadonlyArray<ProcessValue> | undefined;
   /** Every process held of the project, newest first; `undefined` before the first read. */
   readonly processes: ReadonlyArray<ProcessValue> | undefined;
   /** Those that run now, as the organization's running work lists them, newest first. */
@@ -115,10 +117,12 @@ export const projectProcesses: Projection<ProjectKey, ProjectProcesses> = {
     // One whose row still says it runs, though the running scope let it go — its end happened
     // while nobody watched — is no process anyone can follow: it is left out, its end invented by
     // nobody.
-    const held = valuesOf(read.index("project", projectId)).filter(
+    const retained = valuesOf(read.index("project", projectId));
+    const held = retained.filter(
       (process) => !runsStill(process.status) || running.has(process.id),
     );
     return {
+      retained: complete || retained.length > 0 ? retained : undefined,
       processes: complete || held.length > 0 ? held : undefined,
       running: valuesOf(running),
       ...fresh,

@@ -674,6 +674,7 @@ describe("subdomainEnableIn", () => {
   }): ProjectProcesses => {
     const processes = [...input.running, ...input.history].map(enable);
     return {
+      retained: input.runningRead ? processes : undefined,
       processes: input.runningRead ? processes : undefined,
       running: input.running.map(enable),
       live: true,

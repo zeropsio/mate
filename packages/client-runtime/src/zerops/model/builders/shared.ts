@@ -33,7 +33,6 @@ import type {
   ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsOperationStepState,
-  ZeropsOperation,
   ZeropsOperationVersion,
   ZeropsEnvChange,
   ZeropsReadResult,
@@ -72,7 +71,6 @@ export interface BuiltCardFields {
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;
   readonly processIds?: ReadonlyArray<string>;
-  readonly restartProcess?: NonNullable<ZeropsOperation["restartProcess"]>;
   readonly restartReading?: RestartReading;
   readonly appVersionIds?: ReadonlyArray<string>;
   readonly explanation?: ZeropsOperationExplanation;

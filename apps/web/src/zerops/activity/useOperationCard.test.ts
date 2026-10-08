@@ -1,3 +1,4 @@
+import { NO_RESTARTS, readRestart, restartReadout } from "@t3tools/client-runtime/data";
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { EnvironmentId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -75,7 +76,6 @@ import {
   observationTargetFor,
   pipelineServiceFor,
   useOperationCard,
-  restartCardReadout,
 } from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
@@ -1011,7 +1011,7 @@ it("a restart card retains its failed process after a ready service reload witho
     finished: "2026-10-08T10:15:00Z",
     failReason: "serviceStack private platform error",
   };
-  expect(restartCardReadout(process, "Eddy", NOW)).toEqual({
+  expect(restartReadout(readRestart(NO_RESTARTS, process), "Eddy", NOW)).toMatchObject({
     text: "Zerops couldn't restart Eddy after 15 min — platform error.",
     status: "Failed",
     duration: "15m",
@@ -1022,26 +1022,27 @@ it("a restart card retains its failed process after a ready service reload witho
         kind: "manage",
         phase: "failed",
         processIds: ["private"],
-        restartProcess: process,
+        restartReading: readRestart(NO_RESTARTS, process),
       }),
     )?.exact,
-  ).toEqual({ processIds: ["private"] });
+  ).toMatchObject({ processIds: ["private"] });
 });
 it("a long restart card counts its own process without manufacturing failure", () => {
   expect(
-    restartCardReadout(
-      {
-        id: "r",
-        projectId: "p",
-        serviceStackIds: ["other-service"],
-        actionName: "stack.restart",
-        status: "RUNNING",
-        created: "2026-10-08T10:00:00Z",
-      },
+    restartReadout(
+      readRestart(
+        { ...NO_RESTARTS, running: ["r"] },
+        {
+          id: "r",
+          actionName: "stack.restart",
+          status: "RUNNING",
+          created: "2026-10-08T10:00:00Z",
+        },
+      ),
       "Eddy",
       Date.parse("2026-10-08T10:15:00Z"),
     ),
-  ).toEqual({
+  ).toMatchObject({
     text: "Eddy is restarting — 15 min elapsed.",
     status: "Restarting",
     duration: "15m",

@@ -12,7 +12,6 @@ import { randomUUID } from "~/lib/utils";
  */
 import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
 
-export { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type {
@@ -38,14 +37,8 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
-import {
-  projectRestarts,
-  readRestart,
-  type RestartReading,
-  type OperationProgress,
-  restartWay,
-} from "@t3tools/client-runtime/data";
-import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
+import { projectRestarts, readRestart, restartWay } from "@t3tools/client-runtime/data";
+import { AccountOperationsContext } from "../accountOperations";
 import { useAccountDataOptional } from "../ZeropsAccountData";
 import { toastManager } from "~/components/ui/toast";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
@@ -107,7 +100,7 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   const running = operation.phase === "running";
   if (
     !running &&
-    ((operation.kind !== "deploy" && operation.restartProcess === undefined) || !named)
+    ((operation.kind !== "deploy" && operation.restartReading === undefined) || !named)
   ) {
     return null;
   }
@@ -446,15 +439,11 @@ export function useOperationCard(
     operations === null ||
     orgId === null ||
     topology === undefined ||
-    reading.phase === "done" ||
-    reading.phase === "running"
+    reading.retry === undefined
       ? {}
       : {
-          ...restartRetryWords(
-            reading.requestId ?? null,
-            reading.progress ?? { stage: "unknown" },
-            reading.phase,
-          ),
+          restartRetryLabel: reading.retry.label,
+          restartRetryDisabled: reading.retry.action === null,
           onRestartRetry: async () => {
             const current = readRestart(
               registry.get(
@@ -466,18 +455,20 @@ export function useOperationCard(
               { ...reading.process, id: reading.sourceProcessId },
             );
             try {
-              await requestRestartRetry(
-                operations,
-                {
-                  kind: "mate-restart",
-                  orgId,
-                  projectId: topology.project.id,
-                  serviceId: restartService.serviceId,
-                  way: restartWay(restartService.status),
-                  sourceProcessId: reading.sourceProcessId,
-                },
-                current,
-              );
+              const action = current.retry?.action;
+              if (action?.kind === "retry") await operations.askAgain(action.requestId);
+              else if (action?.kind === "submit")
+                await operations.submit(
+                  {
+                    kind: "mate-restart",
+                    orgId,
+                    projectId: topology.project.id,
+                    serviceId: restartService.serviceId,
+                    way: restartWay(restartService.status),
+                    sourceProcessId: reading.sourceProcessId,
+                  },
+                  randomUUID(),
+                );
             } catch {
               toastManager.add({
                 type: "error",
@@ -534,53 +525,4 @@ export function useOperationCard(
     subject: service ?? operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
-}
-
-/** An uncertain account operation is reconciled by its original identity, never repeated. */
-export async function requestRestartRetry(
-  operations: Pick<AccountOperations, "askAgain" | "submit">,
-  intent: Extract<Parameters<AccountOperations["submit"]>[0], { kind: "mate-restart" }>,
-  reading: RestartReading,
-): Promise<void> {
-  if (reading.requestId !== undefined) {
-    const progress = reading.progress;
-    if (progress?.stage === "done" && progress.outcome === "succeeded") return;
-    if (progress === undefined || !["done", "refused"].includes(progress.stage)) {
-      await operations.askAgain(reading.requestId);
-      return;
-    }
-  } else if (reading.phase !== "failed") return;
-  await operations.submit(intent, randomUUID());
-}
-
-export function restartRetryWords(
-  requestId: string | null,
-  progress: OperationProgress,
-  phase: RestartReading["phase"] = "failed",
-) {
-  if (requestId === null && phase !== "failed")
-    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
-  if (
-    requestId === null ||
-    progress.stage === "refused" ||
-    progress.stage === "unsent" ||
-    (progress.stage === "done" && progress.outcome !== "succeeded")
-  )
-    return { restartRetryLabel: "Try again", restartRetryDisabled: false };
-  if (progress.stage === "unresolved")
-    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
-  if (progress.stage === "uncertain")
-    return {
-      restartRetryLabel: "Check restart",
-      restartRetryDisabled: progress.next === "asking-owner",
-    };
-  return {
-    restartRetryLabel:
-      progress.stage === "done"
-        ? "Restarted"
-        : progress.stage === "accepted" || progress.stage === "reflected"
-          ? "Restart requested"
-          : "Asking Zerops…",
-    restartRetryDisabled: true,
-  };
 }

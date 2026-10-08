@@ -1,5 +1,5 @@
 import { Button } from "~/components/ui/button";
-import { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import { restartReadout } from "@t3tools/client-runtime/data";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
@@ -712,23 +712,19 @@ export function ZeropsOperationCard(props: {
   } = props;
   const [retryBusy, setRetryBusy] = useState(false);
   const operation = props.operation;
-  const restartProcess = operation.restartProcess;
   const isRunning = isRunningPhase(operation);
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
-  const restartReadout =
-    restartProcess === undefined ||
-    operation.restartReading?.phase === "uncertain" ||
-    operation.restartReading?.progress?.stage === "refused" ||
-    operation.restartReading?.progress?.stage === "unsent"
+  const restartWords =
+    operation.restartReading === undefined
       ? undefined
-      : restartCardReadout(restartProcess, operation.subject, now);
+      : restartReadout(operation.restartReading, operation.subject, now);
   const tone = operationTone(operation);
   const deploy = readsPipeline(operation)
     ? deployHeader(operation, observed?.pipeline, now)
     : undefined;
   const durationText =
-    restartReadout?.duration ??
+    restartWords?.duration ??
     (deploy === undefined ? headerDurationText(operation, now) : deploy.durationText);
   const subject = operationSubject(operation, subjectHost);
   const header = headless ? null : (
@@ -758,7 +754,7 @@ export function ZeropsOperationCard(props: {
   // Under its line (headless), the line says how it went: the closing would
   // say it again, and a bare "Failed." carries nothing — why stays, in its
   // explanation.
-  const closing = restartReadout?.text ?? (headless ? undefined : drawnClosing(operation));
+  const closing = restartWords?.cardText ?? (headless ? undefined : drawnClosing(operation));
   const hasResultRow =
     closing !== undefined ||
     version !== undefined ||

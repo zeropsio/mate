@@ -2,6 +2,7 @@
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { Projection } from "../store.ts";
 import { usageOwnerOf, usageScope } from "../families/usage.ts";
+import { projectRestarts, readRestartRecovery, type RestartRecovery } from "./restart.ts";
 import { sameValue } from "./equal.ts";
 import { projectProcesses, type ProjectKey } from "./processes.ts";
 import { projectStanding, type ProjectStanding } from "./projects.ts";
@@ -11,6 +12,7 @@ export interface MateRecovery {
   readonly status: string | undefined;
   readonly process: ActivityProcess | undefined;
   readonly diskFull?: boolean;
+  readonly lifecycle?: RestartRecovery | undefined;
 }
 export const mateRecovery: Projection<
   ProjectKey & { readonly serviceId: string | undefined },
@@ -23,15 +25,16 @@ export const mateRecovery: Projection<
     if (standing.kind === "denied" || standing.kind === "deleted")
       return { standing, status: undefined, process: undefined };
     const service = key.serviceId === undefined ? undefined : read.fact("service", key.serviceId);
-    const processes = projectProcesses.derive(read, key).processes;
-    const process = processes?.find(
-      (process) =>
-        key.serviceId !== undefined &&
-        process.serviceStackIds.includes(key.serviceId) &&
-        ["stack.restart", "stack.start", "stack.stop", "stack.deploy", "stack.create"].includes(
-          process.actionName,
-        ),
-    );
+    const process = projectProcesses
+      .derive(read, key)
+      .retained?.find(
+        (process) =>
+          key.serviceId !== undefined &&
+          process.serviceStackIds.includes(key.serviceId) &&
+          ["stack.restart", "stack.start", "stack.stop", "stack.deploy", "stack.create"].includes(
+            process.actionName,
+          ),
+      );
     const usage = usageScope(key.orgId, usageOwnerOf(key.orgId, key.projectId));
     const diskFull = read.members(usage).ids.some((id) => {
       const fact = read.fact("usage", id);
@@ -39,14 +42,16 @@ export const mateRecovery: Projection<
       const disk = fact.value.diskGBytes;
       return disk !== null && disk.limit > 0 && disk.used >= disk.limit;
     });
+    const status =
+      standing.kind === "listed" && standing.project.status === "STOPPED"
+        ? "STOPPED"
+        : service?.kind === "known"
+          ? service.value.status
+          : undefined;
     return {
       standing,
-      status:
-        standing.kind === "listed" && standing.project.status === "STOPPED"
-          ? "STOPPED"
-          : service?.kind === "known"
-            ? service.value.status
-            : undefined,
+      status,
+      lifecycle: readRestartRecovery(projectRestarts.derive(read, key), process, status),
       process,
       diskFull,
     };

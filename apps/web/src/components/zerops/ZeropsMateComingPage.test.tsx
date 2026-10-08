@@ -1,3 +1,4 @@
+import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 // @vitest-environment happy-dom
 import { Atom } from "effect/reactivity";
@@ -431,7 +432,11 @@ const buttons = () =>
 
 beforeEach(() => {
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
-  app.recovery = { standing: { kind: "unknown" }, status: undefined, process: undefined };
+  app.recovery = liveRecovery({
+    standing: { kind: "unknown" },
+    status: undefined,
+    process: undefined,
+  });
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   // The composer standing in takes the focus a frame after it arrives.
@@ -773,11 +778,11 @@ describe("the header in a Mate's own view", () => {
     "does not identify a Mate by a retained platform label after %s",
     (kind) => {
       app.listing = listingOf([]);
-      app.recovery = {
+      app.recovery = liveRecovery({
         standing: { kind, name: "Radotin - Eddy" },
         status: undefined,
         process: undefined,
-      };
+      });
       openView();
       expect(said()).not.toContain("Radotin - Eddy");
       expect(said()).toContain("The Mate");
@@ -828,11 +833,11 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     (kind) => {
       app.listing = listingOf([]);
       app.creations = [{ ...QUINN_MADE, name: "Radotin", botName: "Eddy" }];
-      app.recovery = {
+      app.recovery = liveRecovery({
         standing: { kind, name: "Radotin - Eddy" },
         status: undefined,
         process: undefined,
-      };
+      });
       openView();
       expect(said()).toContain("Eddy");
       expect(said()).not.toContain("Radotin - Eddy");
@@ -1696,7 +1701,7 @@ it.each([
   expect(diagnostics).toContain(error.message);
   expect(diagnostics).toContain("Original setup diagnostic");
   app.setupFailure = undefined;
-  app.recovery = {
+  app.recovery = liveRecovery({
     standing: { kind: "unknown" },
     status: "ACTIVE",
     process: {
@@ -1707,7 +1712,7 @@ it.each([
       status: "RUNNING",
       created: "2026-10-08T12:00:00Z",
     },
-  };
+  });
   act(() => tree!.update(comingView(PROJECT)));
   expect(said()).not.toContain(text);
   expect(said()).not.toContain("Original setup diagnostic");
@@ -1886,3 +1891,15 @@ it("a ready machine does not renew arrival while the listing still provisions it
   expect(said()).not.toContain("Quinn is coming up");
   expect(said()).not.toContain("Coming up. A few minutes.");
 });
+function liveRecovery(read: MateRecovery): MateRecovery {
+  if (read.standing.kind === "denied" || read.standing.kind === "deleted")
+    return { ...read, lifecycle: undefined };
+  return {
+    ...read,
+    lifecycle: readRestartRecovery(
+      { ...NO_RESTARTS, running: read.process === undefined ? [] : [read.process.id] },
+      read.process,
+      read.status,
+    ),
+  };
+}

@@ -151,6 +151,7 @@ describe("mateListingsAtom: a container ACTIVE before its address landed", () =>
 
   /** The project's processes as the account's store holds them: running ones and the history. */
   const activityOf = (enableStatus: string | null, read = true): ProjectProcesses => ({
+    retained: !read ? undefined : enableStatus === null ? [] : [enable(enableStatus)],
     processes: !read ? undefined : enableStatus === null ? [] : [enable(enableStatus)],
     running: enableStatus === "RUNNING" ? [enable(enableStatus)] : [],
     live: true,
