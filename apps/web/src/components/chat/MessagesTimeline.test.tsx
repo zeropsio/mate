@@ -2082,7 +2082,7 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 
-  it("keeps the opening stage waiting until the list reports its rows ready, however long that takes", async () => {
+  it("keeps already read rows hidden until placement without inventing a waiting pose", async () => {
     let now = 0;
     const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
     const renderer = await mount({ timelineEntries: [buildUserTimelineEntry("Not placed yet.")] });
@@ -2092,19 +2092,17 @@ describe("MessagesTimeline — placing its rows", () => {
       expect(outOfSight(renderer)).toBe(true);
       expect(
         renderer.root.findAll((node) => node.props["data-conversation-opening"] === "waiting"),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     } finally {
       clock.mockRestore();
       await act(() => renderer.unmount());
     }
   });
 
-  // Handed over from its Mate's own view, its Mate stays at
-  // work in the pane while the rows are placed out of sight: a face on screen
-  // the whole way, never an empty pane.
+  // Held rows still need measured placement, but that does not make their source pending again.
   it.each([
-    { case: "handed over from its Mate's own view", handedOver: true, face: true },
-    { case: "opened from another conversation", handedOver: false, face: true },
+    { case: "handed over from its Mate's own view", handedOver: true, face: false },
+    { case: "opened from another conversation", handedOver: false, face: false },
   ])("while its rows are placed, $case: its Mate at work $face", async ({ handedOver, face }) => {
     const { LegendList } = await import("@legendapp/list/react");
     const key = `environment-local:thread-handed-${String(handedOver)}`;

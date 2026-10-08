@@ -273,6 +273,31 @@ vi.mock("~/zerops/activity/useProjectActivity", () => ({
 vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
 }));
+// The DOM-owned wake/travel is covered by ConversationOpeningStage.test.tsx; this renderer
+// verifies the page keeps requesting the same waiting surface until its route can render.
+vi.mock("../chat/ConversationOpeningStage", () => ({
+  ConversationOpeningStage: ({
+    name,
+    children,
+    notice,
+  }: {
+    name: string | undefined;
+    children?: ReactNode;
+    notice?: ReactNode;
+  }) =>
+    h(
+      "div",
+      { "data-conversation-opening": "waiting" },
+      children ??
+        h(
+          "section",
+          { "data-kind": "reaching", "data-mate-face-state": "sleep" },
+          `${name || "The Mate"} is opening the conversation.`,
+          "Picking up where you left off.",
+          notice,
+        ),
+    ),
+}));
 vi.mock("./ZeropsMateEmptyState", () => ({
   MateConnectionState: ({
     headline,
@@ -984,7 +1009,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("reaching");
   });
 
-  it("hands over once, its header turning into the conversation's with its words", async () => {
+  it("hands a newly stood-up Mate over as soon as its destination can render, without an animation timer", async () => {
     // The header's actions as the conversation draws them, standing in until it takes the route.
     const headerActions = () =>
       tree?.root
@@ -1005,7 +1030,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(headerActions()).toHaveLength(1);
     expect(app.navigate).not.toHaveBeenCalled();
-    await act(async () => vi.advanceTimersByTime(1_000));
+    await act(async () => undefined);
     expect(app.navigate).toHaveBeenCalledOnce();
   });
 });

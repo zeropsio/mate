@@ -38,6 +38,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   Fragment,
   useEffect,
+  useCallback,
   useLayoutEffect,
   useId,
   useMemo,
@@ -45,6 +46,7 @@ import {
   useState,
   type CSSProperties,
   type ReactNode,
+  type ReactElement,
   type RefObject,
 } from "react";
 
@@ -77,7 +79,7 @@ import { restartLine } from "~/zerops/restartLine";
 
 import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
-import { MateFace } from "./primitives";
+import { MateFace, type MateFaceProps } from "./primitives";
 import { ZeropsAgentSignIn } from "./ZeropsAgentSignIn";
 
 export function ZeropsMateEmptyState({
@@ -94,6 +96,8 @@ export function ZeropsMateEmptyState({
   const state = useMateEmptyState({ environmentId, mate, threadRef });
   return (
     <MateEmptyStateView
+      // An empty conversation has already handed its one Mate face to the header.
+      faceSlot={null}
       bottomInset={bottomInset}
       addedBy={state.addedBy}
       agentReady={state.agentReady}
@@ -330,8 +334,10 @@ export function MateEmptyStateView({
   runtimes,
   focusOnArrival = false,
   bottomInset = 0,
+  faceSlot,
   notice,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   /** Null while the directory has not named the Mate: its places held, empty. */
   readonly mate: DrawnMate | null;
   readonly phase: MateStandUpPhase | null;
@@ -418,6 +424,7 @@ export function MateEmptyStateView({
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <ArrivalComposition
+      faceSlot={faceSlot}
       notice={notice}
       bottomInset={bottomInset}
       clauses={clauses}
@@ -437,6 +444,8 @@ export function MateEmptyStateView({
     />
   );
 }
+
+export type MateFaceSlot = ReactNode | ((face: ReactElement<MateFaceProps>) => ReactNode);
 
 /**
  * Every opening state's one composition: the face centred on top, the headline, the line under it
@@ -458,7 +467,9 @@ function ArrivalComposition({
   tracks = true,
   bottomInset = 0,
   notice,
+  faceSlot,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   readonly kind: ArrivalKind;
   /** Null while the directory has not named the Mate: its face's place held, empty. */
   readonly mate: DrawnMate | null;
@@ -494,6 +505,30 @@ function ArrivalComposition({
     () => undefined,
     standUpDoneCue,
   );
+  const onRestartCycle = useCallback(
+    () => setRestart((current) => ({ ...current, cycle: current.cycle + 1 })),
+    [],
+  );
+  const face = useMemo(
+    () =>
+      mate === null ? null : (
+        <MateFace
+          className={MATE_EMPTY_FACE_CLASS}
+          greets="detail"
+          onRestartCycle={onRestartCycle}
+          cues={stoodUp === undefined ? undefined : [stoodUp]}
+          paces={pacing}
+          restarting={restarting}
+          shape={mate.shape}
+          size="lg"
+          state={state}
+          style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
+          tint={mate.tint}
+          tracks={tracks}
+        />
+      ),
+    [mate, onRestartCycle, stoodUp, pacing, restarting, state, pace, tracks],
+  );
   return (
     <div
       className="flex h-full min-h-0 w-full min-w-0 flex-col items-center overflow-y-auto px-5 py-6 sm:px-6"
@@ -509,25 +544,20 @@ function ArrivalComposition({
       >
         {/* Until the directory names the Mate, its face's place is held, empty: no guessed face. */}
         {mate === null ? (
-          <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
+          faceSlot !== undefined && typeof faceSlot !== "function" ? (
+            faceSlot
+          ) : (
+            <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
+          )
         ) : (
           <div ref={setFaceElement}>
-            <MateFace
-              className={MATE_EMPTY_FACE_CLASS}
-              greets="detail"
-              onRestartCycle={() =>
-                setRestart((current) => ({ ...current, cycle: current.cycle + 1 }))
-              }
-              cues={stoodUp === undefined ? undefined : [stoodUp]}
-              paces={pacing}
-              restarting={restarting}
-              shape={mate.shape}
-              size="lg"
-              state={state}
-              style={{ "--mate-face-pace": `${pace}px` } as CSSProperties}
-              tint={mate.tint}
-              tracks={tracks}
-            />
+            {typeof faceSlot === "function"
+              ? face === null
+                ? null
+                : faceSlot(face)
+              : faceSlot === undefined
+                ? face
+                : faceSlot}
           </div>
         )}
         <ArrivalSwap
@@ -676,7 +706,9 @@ export function MateConnectionState({
   actions,
   notice,
   severity = "info",
+  faceSlot,
 }: {
+  readonly faceSlot?: MateFaceSlot;
   readonly severity?: "info" | "attention" | "danger" | undefined;
   readonly mate: DrawnMate | null;
   readonly face: MateMarkState;
@@ -688,6 +720,7 @@ export function MateConnectionState({
   return (
     <ArrivalComposition
       notice={notice}
+      faceSlot={faceSlot}
       clauses={[headline]}
       kind="reaching"
       mate={mate}

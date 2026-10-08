@@ -1521,7 +1521,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
             data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
-            // The placed rows take the opening stage's place in the readiness frame.
+            // Placement proves readiness; the opening stage owns the conversation's entrance.
             data-timeline-arrives="at-once"
             data-timeline-thread={routeThreadKey}
           >
@@ -1601,9 +1601,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   return (
     <>
-      {content}
+      <div className="h-full min-h-0" data-conversation-content="">
+        {content}
+      </div>
       {kept?.shown === false || activePause !== undefined ? null : (
-        <ConversationOpeningStage ready={standing} name={openingName} mate={mate ?? null} />
+        <ConversationOpeningStage
+          ready={standing}
+          readPending={onItsWay}
+          name={openingName}
+          mate={mate ?? null}
+          threadKey={routeThreadKey}
+        />
       )}
     </>
   );

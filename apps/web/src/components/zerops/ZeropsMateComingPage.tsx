@@ -182,9 +182,6 @@ const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
 /** The slate face a Mate wears where nobody picked one. */
 const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
 
-/** The hand-over's own length: the stage's words and slot handing over (`ArrivalSwap`), then the route. */
-const HAND_OVER_MS = 280;
-
 const NO_SETUP_FAILURE = Atom.make<ActivityProcess | undefined>(undefined);
 
 const EMPTY_SHELL_STATUS =
@@ -352,6 +349,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       return {
         ...(candidate === undefined ? {} : zeropsMateIdentityOf(candidate, tints)),
         ...identity,
+        projectId,
         connected: candidate?.group === "connected",
       };
     if (candidate !== undefined) {
@@ -367,6 +365,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
       name: creation?.botName ?? press?.placement?.displayName ?? "",
+      projectId,
       tint: face.tint,
       shape: face.shape,
       project: creation?.name ?? press?.placement?.groupName,
@@ -420,10 +419,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   });
   const up = arrivalDecision === "conversation";
 
-  // The hand-over: a new Mate's words turn in place, then the conversation takes the route with
-  // that frame; any other Mate's conversation takes it at once. What the door that opened it asked
-  // to be told of the conversation is told first (`mateOpening`). Once begun it runs to its end,
-  // whatever is read meanwhile.
+  // Preload the destination immediately. The shared opening stage keeps its face across the route;
+  // only the destination's placement readiness starts the wake and hand-off.
   const [handing, setHanding] = useState(false);
   if (up && !handing) setHanding(true);
   const handingOver = useMateHandOver((state) => state.handingOver);
@@ -452,11 +449,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       takeMateConversation(projectId)?.(threadRef);
       void navigate(destination);
     };
-    const timer = cameUp ? setTimeout(() => void handOver(), HAND_OVER_MS) : null;
-    if (!cameUp) void handOver();
+    void handOver();
     return () => {
       current = false;
-      if (timer !== null) clearTimeout(timer);
     };
   }, [cameUp, environmentId, handing, handingOver, navigate, projectId, router, threadRef]);
 
@@ -912,20 +907,22 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           notice={<MateHealthNotice projectId={projectId} name={named.name} />}
         />
       ) : view === null ? null : (
-        <MateEmptyStateView
-          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
-          coming={view}
-          // Handed over to from the creation's view, whose headline held the focus.
-          focusOnArrival={made !== undefined}
-          mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
-          phase={handingArrival ? empty.phase : phaseAhead}
-          standUpFailure={empty.standUpFailure}
-          signIn={handingArrival ? empty.signIn : null}
-          runtimes={empty.runtimes}
-          signInRequired={empty.signInRequired}
-          agentReady={empty.agentReady}
-          unknown={handingArrival ? empty.unknown : null}
-        />
+        <ConversationOpeningStage ready={false} name={named.name} mate={named}>
+          <MateEmptyStateView
+            notice={<MateHealthNotice projectId={projectId} name={named.name} />}
+            coming={view}
+            // Handed over to from the creation's view, whose headline held the focus.
+            focusOnArrival={made !== undefined}
+            mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
+            phase={handingArrival ? empty.phase : phaseAhead}
+            standUpFailure={empty.standUpFailure}
+            signIn={handingArrival ? empty.signIn : null}
+            runtimes={empty.runtimes}
+            signInRequired={empty.signInRequired}
+            agentReady={empty.agentReady}
+            unknown={handingArrival ? empty.unknown : null}
+          />
+        </ConversationOpeningStage>
       )}
     </MateComingFrame>
   );

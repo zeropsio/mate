@@ -52,6 +52,7 @@ import {
 } from "./keptTimelines.logic";
 import { useWarmTimeline, type WarmTimelineProps } from "./useWarmTimeline";
 import { rememberedTimelineInset } from "./timelineInsets";
+import { ConversationOpeningLayer } from "./ConversationOpeningStage";
 import { MessagesTimeline } from "./MessagesTimeline";
 import { forgetRunFolds } from "./runCard.logic";
 
@@ -85,11 +86,9 @@ export function KeptTimelines({
   insetMeasured = true,
   insetRemembered = true,
   Reader = WarmTimelineReader,
-  onReady,
 }: {
   /** The open conversation's key. */
   readonly open: string;
-  readonly onReady?: ((key: string, ready: boolean) => void) | undefined;
   /** The open conversation's list, its `listRef` the pane's own. */
   readonly timeline: TimelineProps;
   readonly crewTimeline: CrewTimeline | null;
@@ -129,10 +128,9 @@ export function KeptTimelines({
         setStanding((held) =>
           held.key === key && held.standing === now ? held : { key, standing: now },
         );
-        onReady?.(key, now);
       },
     }),
-    [onReady],
+    [],
   );
   const warming = warmingTimeline({
     asked: warm !== null && alive(warm) ? warm : null,
@@ -319,30 +317,32 @@ const TimelineSlot = memo(function TimelineSlot({
         ? null
         : { ...outOfSight(timeline), ...warmed };
   return (
-    <div
-      aria-hidden={shown ? undefined : true}
-      className={shown ? "contents" : "pointer-events-none invisible absolute inset-0"}
-      data-kept-timeline={shown ? undefined : ""}
-      inert={!shown}
-      style={skipped ? SKIPPED : undefined}
-    >
-      {props === null ? null : (
-        <KeptTimelineContext key="list" value={kept}>
-          <CrewTimelineContext value={crewTimeline}>
-            <MessagesTimeline {...props} listRef={listRef} />
-          </CrewTimelineContext>
-        </KeptTimelineContext>
-      )}
-      {!opened ? (
-        <Reader
-          key="reader"
-          hold={mode === "hidden" && !readsLive}
-          onRead={setWarmed}
-          openEnvironmentId={timeline.activeThreadEnvironmentId}
-          threadKey={threadKey}
-        />
-      ) : null}
-    </div>
+    <ConversationOpeningLayer>
+      <div
+        aria-hidden={shown ? undefined : true}
+        className={shown ? "contents" : "pointer-events-none invisible absolute inset-0"}
+        data-kept-timeline={shown ? undefined : ""}
+        inert={!shown}
+        style={skipped ? SKIPPED : undefined}
+      >
+        {props === null ? null : (
+          <KeptTimelineContext key="list" value={kept}>
+            <CrewTimelineContext value={crewTimeline}>
+              <MessagesTimeline {...props} listRef={listRef} />
+            </CrewTimelineContext>
+          </KeptTimelineContext>
+        )}
+        {!opened ? (
+          <Reader
+            key="reader"
+            hold={mode === "hidden" && !readsLive}
+            onRead={setWarmed}
+            openEnvironmentId={timeline.activeThreadEnvironmentId}
+            threadKey={threadKey}
+          />
+        ) : null}
+      </div>
+    </ConversationOpeningLayer>
   );
 });
 

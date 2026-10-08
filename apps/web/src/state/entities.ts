@@ -19,6 +19,7 @@ import type {
 } from "@t3tools/contracts";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
+import { identity } from "effect/Function";
 import { useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentProjects } from "./projects";
@@ -158,9 +159,18 @@ export function useThreadShell(ref: ScopedThreadRef | null): EnvironmentThreadSh
   );
 }
 
-export function useThreadDetail(ref: ScopedThreadRef | null): EnvironmentThread | null {
-  return useAtomValue(
+export function useThreadDetail(ref: ScopedThreadRef | null): EnvironmentThread | null;
+export function useThreadDetail<A>(
+  ref: ScopedThreadRef | null,
+  select: (detail: EnvironmentThread | null) => A,
+): A;
+export function useThreadDetail<A>(
+  ref: ScopedThreadRef | null,
+  select?: (detail: EnvironmentThread | null) => A,
+): A | EnvironmentThread | null {
+  return useAtomValue<EnvironmentThread | null, A | EnvironmentThread | null>(
     ref === null ? EMPTY_THREAD_DETAIL_ATOM : environmentThreadDetails.detailAtom(ref),
+    select ?? identity,
   );
 }
 

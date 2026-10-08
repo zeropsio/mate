@@ -1,4 +1,4 @@
-import { ConversationReadiness } from "./conversationReadiness";
+import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -9,7 +9,6 @@ import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
 import {
-  use,
   useLayoutEffect,
   useMemo,
   useState,
@@ -228,16 +227,19 @@ function MatePill({
   const arrived = useArrival(subject !== null);
   // The header's face is reused from one Mate to the next: it greets no change of pose, only the
   // events its line names (`useMateHeaderCues`).
-  const face = (
-    <MateFace
-      className="size-6"
-      cues={mate.cues}
-      restarting={mate.restarting}
-      shape={mate.shape}
-      size="sm"
-      state={mate.face}
-      tint={mate.tint}
-    />
+  const face = useMemo(
+    () => (
+      <MateFace
+        className="size-6"
+        cues={mate.cues}
+        restarting={mate.restarting}
+        shape={mate.shape}
+        size="sm"
+        state={mate.face}
+        tint={mate.tint}
+      />
+    ),
+    [mate.cues, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
@@ -264,7 +266,7 @@ function MatePill({
       }}
       type="button"
     >
-      {face}
+      <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
       {name}
       {subject === null ? null : (
         // Arriving after the line stands, it fades in where it stays: the
@@ -731,7 +733,6 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
-  const conversationReady = use(ConversationReadiness);
   const moments = useMateHeaderCues({
     environmentId,
     currentThreadId,
@@ -812,8 +813,7 @@ export function ConversationStrip({
       }
       mate={{
         ...shownMate,
-        face: conversationReady ? shownMate.face : "sleep",
-        // The face state follows readiness; its arrival greets navigation to this Mate.
+        // The avatar keeps its factual conversation state and navigation cues.
         cues: moments.cues,
         restarting: moments.restarting,
       }}
