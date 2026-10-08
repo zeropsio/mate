@@ -788,6 +788,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
                       questions.every((question) => question.allowCustomAnswer === false)
                     ? false
                     : "unknown",
+            ...(event.payload.responseMode === "message" ? { dismissible: true as const } : {}),
           },
         });
         return;

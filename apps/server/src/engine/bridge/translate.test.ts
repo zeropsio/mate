@@ -1184,6 +1184,32 @@ describe("the fold's rules", () => {
     );
   });
 
+  it("codex [scripted]: a question it asks by message can be dismissed; one it waits on cannot", () => {
+    const w = wire("codex");
+    const { signals } = run("codex", THREAD, [
+      ...w.open(),
+      ...w.begin(H1, "X1"),
+      w.event("user-input.requested", {
+        turnId: "X1",
+        requestId: "codex-async:t:q-1",
+        payload: { responseMode: "message", questions: [] },
+      }),
+      w.event("user-input.requested", {
+        turnId: "X1",
+        requestId: "q-2",
+        payload: { questions: [] },
+      }),
+    ]);
+    assert.deepStrictEqual(
+      signals.flatMap((signal) =>
+        signal.type === "request.opened" && signal.ask.kind === "question"
+          ? [signal.ask.dismissible === true]
+          : [],
+      ),
+      [true, false],
+    );
+  });
+
   it("a compaction is the host's when it asked, the agent's own where reported, unknown on ACP", () => {
     const compacted = (driver: BridgeDriver, asked: boolean) => {
       const w = wire(driver);
