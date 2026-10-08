@@ -1,7 +1,6 @@
 import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
-import { ConversationReadiness } from "./conversationReadiness";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
