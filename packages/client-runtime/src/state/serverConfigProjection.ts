@@ -59,6 +59,21 @@ export function applyServerConfigProjection(
         latestEvent: event,
         source: "live",
       }));
+    case "mateUpdate":
+      return Option.map(current, (projection) => {
+        const { update: _previous, ...environment } = projection.config.environment;
+        return {
+          config: {
+            ...projection.config,
+            environment: {
+              ...environment,
+              ...(event.payload.update === null ? {} : { update: event.payload.update }),
+            },
+          },
+          latestEvent: event,
+          source: "live",
+        };
+      });
     case "settingsUpdated":
       return Option.map(current, (projection) => ({
         config: {

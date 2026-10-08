@@ -1,17 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import {
-  USAGE_CONTRACT_VERSION,
-  type EnvironmentId,
-  type UsageProviderKind,
-} from "@t3tools/contracts";
-import { CheckIcon, InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { type EnvironmentId, type UsageProviderKind } from "@t3tools/contracts";
+import { InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import {
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
-  type MergedUsage,
   type ModelTotals,
 } from "@t3tools/shared/usageMerge";
 
@@ -24,14 +19,14 @@ import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useProviderUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useAgentUsage } from "../../state/usage";
+import { usageNativeCosts } from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type {
   UsageEnvironmentIdentities,
   UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
-import { useUsageMates } from "../../zerops/useUsageMates";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -41,7 +36,6 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
-  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
@@ -60,17 +54,15 @@ import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Avatar } from "../zerops/primitives/Avatar";
 import {
-  isUsageScopeEmpty,
   usageDimensions,
-  usageScopeIncludes,
   type UsageDimension,
   type UsageDimensions,
   type UsageScope,
 } from "./usageDimensions";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
-import { usagePageState } from "./usagePage.logic";
+import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
+import { UsageCoverage } from "./UsageCoverage";
 import { UsageLimitsSection } from "./UsageLimits";
-import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import {
   METRIC_OPTIONS,
@@ -78,7 +70,7 @@ import {
   resolveUsageShortcut,
   type UsageMetric,
 } from "./usageShortcuts";
-import { modelShare, sortModelsByTokens, usageTotals, type UsageTotal } from "./usageBreakdown";
+import { modelShare, sortModelsByTokens, type UsageTotal } from "./usageBreakdown";
 import { UsageModelDialog } from "./UsageModelDialog";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 import {
@@ -103,18 +95,6 @@ const DIMENSION_OPTIONS = [
   { value: "mate", label: "Mate" },
 ] as const satisfies readonly { value: UsageDimension; label: string }[];
 const ALL = "all";
-
-/** "Mate · project" as the left menu reads it, else the environment's own label. */
-function environmentName(
-  identities: UsageEnvironmentIdentities,
-  environment: { readonly environmentId: EnvironmentId; readonly label: string },
-): string {
-  const identity = identities.get(environment.environmentId);
-  if (identity === undefined) return environment.label;
-  return identity.projectName === null
-    ? identity.mateName
-    : `${identity.mateName} · ${identity.projectName}`;
-}
 
 function scopeOwner(
   identities: UsageEnvironmentIdentities,
@@ -156,35 +136,50 @@ export function UsagePage({
   }));
   const metric = preferences.metric;
   const showingLimits = metric === "limits";
+  const [provenance, setProvenance] = useState<"live-responses" | "legacy-scanner">(
+    "live-responses",
+  );
   const [breakdownChoice, setBreakdown] = useState<UsageBreakdown | "auto">("auto");
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
-  const { identities, owners, listed, baseline, projects } = useUsageEnvironmentIdentities();
-  const { person: scopePerson, project: scopeProject, mate: scopeMate } = scope;
-  const include = useMemo(() => {
-    const current = { person: scopePerson, project: scopeProject, mate: scopeMate };
-    return isUsageScopeEmpty(current)
-      ? undefined
-      : (environmentId: EnvironmentId) => usageScopeIncludes(current, identities, environmentId);
-  }, [identities, scopeMate, scopePerson, scopeProject]);
-  const permitted = useMemo(() => new Set(identities.keys()), [identities]);
-  const { merged, overall, environments, isPending, isPartial, refresh } = useProviderUsage(
-    window,
-    include,
-    permitted,
+  const identityRead = useUsageEnvironmentIdentities();
+  const { listed, baseline, projects } = identityRead;
+  const permitted = useMemo(
+    () => new Set(identityRead.identities.keys()),
+    [identityRead.identities],
   );
-  const connected = useMemo(
-    () => new Set(environments.map((environment) => environment.environmentId)),
-    [environments],
-  );
-  const mates = useUsageMates(connected, listed);
-  const missingMates = mates.filter((mate) => mate.state === "missing");
-  const dimensionMetric = metric === "tokens" ? "tokens" : "cost";
-  const labels = useMemo(
+  const {
+    merged,
+    overall,
+    read,
+    report,
+    overallReport,
+    detailPending,
+    detailUnavailable,
+    stale,
+    refresh,
+  } = useAgentUsage(window, scope, !showingLimits, provenance);
+  const { identities, labels } = useMemo(
     () =>
-      new Map(environments.map((environment) => [environment.environmentId, environment.label])),
-    [environments],
+      createUsageIdentityIndex({
+        report,
+        registered: identityRead.identities,
+        people: identityRead.people,
+        projects,
+      }),
+    [identityRead.identities, identityRead.people, report, projects],
   );
+  const overallIndex = useMemo(
+    () =>
+      createUsageIdentityIndex({
+        report: overallReport,
+        registered: identityRead.identities,
+        people: identityRead.people,
+        projects,
+      }),
+    [identityRead.identities, identityRead.people, overallReport, projects],
+  );
+  const dimensionMetric = metric === "tokens" ? "tokens" : "cost";
   const dimensions = useMemo(
     () =>
       usageDimensions({
@@ -201,16 +196,11 @@ export function UsagePage({
     () =>
       usageDimensions({
         byEnvironment: overall.byEnvironment,
-        identities,
-        labels,
+        identities: overallIndex.identities,
+        labels: overallIndex.labels,
         metric: dimensionMetric,
       }),
-    [dimensionMetric, identities, labels, overall.byEnvironment],
-  );
-  const nameOf = useCallback(
-    (environment: { readonly environmentId: EnvironmentId; readonly label: string }) =>
-      environmentName(identities, environment),
-    [identities],
+    [dimensionMetric, overallIndex, overall.byEnvironment],
   );
   const breakdownOptions: readonly { value: UsageBreakdown; label: string }[] = [
     ...DIMENSION_OPTIONS.filter((option) => dimensions.visible[option.value]),
@@ -233,64 +223,12 @@ export function UsagePage({
     reportFailure: false,
   });
 
-  const scopedEnvironments = environments.filter(
-    (environment) => include === undefined || include(environment.environmentId),
-  );
-  const usable = scopedEnvironments.filter(
-    (environment) =>
-      environment.summary !== null &&
-      environment.summary.contractVersion === USAGE_CONTRACT_VERSION &&
-      !(
-        environment.summary.sources.length > 0 &&
-        environment.summary.sources.every((source) => source.status === "failed")
-      ),
-  );
-  const answered = usable.length;
-  const scopedMates = mates.filter((mate) => {
-    if (isUsageScopeEmpty(scope)) return true;
-    const environmentId = mate.environmentId;
-    // Unread membership cannot establish a scoped zero.
-    return (
-      environmentId === undefined ||
-      !identities.has(environmentId) ||
-      usageScopeIncludes(scope, identities, environmentId)
-    );
-  });
-  const state = usagePageState({
-    baseline,
-    owners,
-    scope,
-    projects,
-    listed,
-    scopeKnown:
-      (scopeProject === undefined || projects.has(scopeProject)) &&
-      (scopePerson === undefined || scopeOwner(identities, scopePerson) !== null) &&
-      (scopeMate === undefined || identities.has(scopeMate)),
-    answered,
-    records: merged.records,
-    pending:
-      scopedEnvironments.filter(
-        (environment) => environment.summary === null && environment.error === null,
-      ).length + scopedMates.filter((mate) => mate.state === "connecting").length,
-    unavailable:
-      scopedEnvironments.filter(
-        (environment) =>
-          environment.error !== null ||
-          (environment.summary !== null && !usable.includes(environment)),
-      ).length +
-      scopedMates.filter((mate) => mate.state === "missing").length +
-      usable.filter((environment) =>
-        environment.summary?.sources.some(
-          (source) =>
-            source.status === "partial" ||
-            source.status === "failed" ||
-            source.malformedRecords > 0,
-        ),
-      ).length,
-  });
-  const settling = state.kind === "reading" || (state.kind === "partial" && merged.records === 0);
-  const noTotals = state.kind === "unavailable" || state.kind === "invalid";
-  const sessionsLabel = `${formatCount(merged.sessions)} ${merged.sessions === 1 ? "session" : "sessions"}`;
+  const nativeCosts = usageNativeCosts(report);
+  const state = usagePageState({ read, scope, projects });
+  const settling = state.kind === "reading";
+  const noTotals =
+    state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";
+  const sessionsLabel = `${formatCount(merged.records)} ${provenance === "legacy-scanner" ? "records" : merged.records === 1 ? "turn" : "turns"}`;
 
   const days = useMemo(
     () => enumerateDays(window.sinceDay, window.untilDay),
@@ -409,7 +347,7 @@ export function UsagePage({
               scope={scope}
               identities={identities}
               projects={projects}
-              dimensions={overallDimensions}
+              dimensions={dimensions}
               labels={labels}
               onScopeChange={onScopeChange}
             />
@@ -420,7 +358,7 @@ export function UsagePage({
         {showingLimits ? null : (
           <UsageScopeFilters
             scope={scope}
-            identities={identities}
+            identities={overallIndex.identities}
             projects={projects}
             dimensions={overallDimensions}
             onScopeChange={onScopeChange}
@@ -455,7 +393,12 @@ export function UsagePage({
         >
           {WINDOW_OPTIONS.map((option) => (
             <ShortcutHint key={option.days} shortcut={shortcutOf(option)}>
-              <Toggle value={String(option.days)}>{option.label}</Toggle>
+              <Toggle
+                value={String(option.days)}
+                disabled={provenance === "legacy-scanner" && option.days === 1}
+              >
+                {option.label}
+              </Toggle>
             </ShortcutHint>
           ))}
         </ToggleGroup>
@@ -510,7 +453,11 @@ export function UsagePage({
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {WINDOW_OPTIONS.map((option) => (
-              <SelectItem key={option.days} value={String(option.days)}>
+              <SelectItem
+                key={option.days}
+                value={String(option.days)}
+                disabled={provenance === "legacy-scanner" && option.days === 1}
+              >
                 {option.label}
               </SelectItem>
             ))}
@@ -535,29 +482,34 @@ export function UsagePage({
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
-            {missingMates.length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Not connected, so not counted: {missingMates.map((mate) => mate.name).join(", ")}.
+            {showingLimits ? null : (
+              <ToggleGroup
+                aria-label="Usage history"
+                variant="segmented"
+                value={[provenance]}
+                onValueChange={(values) => {
+                  const next = values[0];
+                  if (next !== "live-responses" && next !== "legacy-scanner") return;
+                  if (next === "legacy-scanner" && windowDays === 1) selectWindow(7);
+                  setProvenance(next);
+                }}
+              >
+                <Toggle value="live-responses">Mate turns</Toggle>
+                <Toggle value="legacy-scanner">Earlier history</Toggle>
+              </ToggleGroup>
+            )}
+            {!showingLimits && provenance === "legacy-scanner" ? (
+              <p role="status" className="text-xs text-muted-foreground">
+                Earlier history uses the previous collection method and may include activity outside
+                Mate. It is separate from recorded Mate turns and cannot establish exact
+                consumption.
               </p>
             ) : null}
             <p className="text-xs text-muted-foreground">
               {showingLimits
                 ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
-                : "Agent API-equivalent usage estimate from transcript snapshots; not subscription payments or Zerops resource charges. Attribution uses the current Mate owner."}
+                : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
             </p>
-            {!showingLimits ? (
-              <div className="flex justify-end">
-                <UsagePriceOverrides usage={environments} />
-              </div>
-            ) : null}
-            {!showingLimits ? (
-              <UsageCoverageNotice
-                environments={scopedEnvironments}
-                nameOf={nameOf}
-                duplicateSources={merged.duplicateSources}
-                contractMismatches={merged.contractMismatches}
-              />
-            ) : null}
             {showingLimits ? (
               baseline === "unavailable" ? (
                 <p className="text-sm text-muted-foreground">
@@ -567,17 +519,14 @@ export function UsagePage({
               ) : (
                 <UsageLimitsSection
                   now={limitsNow}
-                  identities={identities}
+                  identities={identityRead.identities}
                   environmentIds={permitted}
-                  unavailableNames={missingMates.map((mate) => mate.name)}
+                  unavailableNames={[]}
                   listed={listed && baseline === "resolved"}
                 />
               )
             ) : settling ? (
               <>
-                {(isPending || isPartial) && environments.length > 1 ? (
-                  <UsageDeviceStrip environments={environments} nameOf={nameOf} />
-                ) : null}
                 <p role="status" className="text-sm text-muted-foreground">
                   {state.message ??
                     "No activity has been confirmed yet; Usage coverage is incomplete."}
@@ -588,19 +537,19 @@ export function UsagePage({
               <p className="text-sm text-muted-foreground">{state.message}</p>
             ) : (
               <>
-                {state.kind === "partial" ? (
+                {report?.coverageMore || report?.groupsMore ? (
                   <p role="status" className="text-xs text-muted-foreground">
-                    Partial snapshot: {answered} of{" "}
-                    {Math.max(scopedMates.length, scopedEnvironments.length)} scoped Mates answered;{" "}
-                    {state.kind === "partial" && !listed
-                      ? "discovery is incomplete"
-                      : "some sources are pending or unavailable"}
-                    .
+                    This report contains more sources or groups than can be shown.
                   </p>
                 ) : null}
-                {scopedEnvironments.some((environment) => environment.isStale) ? (
+                {read.kind === "read" && read.updateRequired ? (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Update HQ to read current Mate usage. The retained report is last-known.
+                  </p>
+                ) : null}
+                {stale ? (
                   <p className="text-xs text-muted-foreground">
-                    Retained snapshot from disconnected Mates; refresh after reconnecting.
+                    Last-known HQ report; reconnect or refresh HQ access.
                   </p>
                 ) : null}
 
@@ -618,7 +567,7 @@ export function UsagePage({
                         {sessionsLabel}
                         {metric === "cost" && (
                           <>
-                            {" · API-equivalent estimate"}
+                            {" · API-equivalent estimate for priced usage"}
                             {merged.costQuality.unpricedShare > 0 && (
                               <>
                                 {" "}
@@ -632,8 +581,8 @@ export function UsagePage({
                                   </PopoverTrigger>
                                   <PopoverPopup side="top" tooltipStyle>
                                     API-equivalent estimate excludes{" "}
-                                    {formatPercent(merged.costQuality.unpricedShare)} unpriced
-                                    records.
+                                    {formatPercent(merged.costQuality.unpricedShare)} unpriced model
+                                    entries.
                                   </PopoverPopup>
                                 </Popover>
                               </>
@@ -650,12 +599,11 @@ export function UsagePage({
 
                     {activeProviders.map((provider) => {
                       const totals = merged.providers.find((entry) => entry.provider === provider);
+                      if (totals === undefined) return null;
                       const share =
                         metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
                       const providerSessions = totals?.sessions ?? 0;
-                      const sessionLabel = `${formatCount(providerSessions)} ${
-                        providerSessions === 1 ? "session" : "sessions"
-                      }`;
+                      const sessionLabel = `${formatCount(providerSessions)} ${provenance === "legacy-scanner" ? "records" : providerSessions === 1 ? "turn" : "turns"}`;
                       return (
                         <div key={provider} className="flex flex-col gap-1">
                           <div className="flex items-baseline justify-between gap-4">
@@ -679,14 +627,16 @@ export function UsagePage({
                             </span>
                             <span className="shrink-0 text-sm font-medium text-foreground tabular-nums">
                               {metric === "cost"
-                                ? formatUsd(totals?.costUsd ?? 0)
+                                ? totals?.costKnown === false
+                                  ? "Unpriced"
+                                  : formatUsd(totals?.costUsd ?? 0)
                                 : formatTokens(totals?.totalTokens ?? 0)}
                             </span>
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {metric === "cost"
-                              ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
-                              : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
+                              ? `${totals.costKnown === false ? "Unpriced" : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
+                              : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsd(totals?.costUsd ?? 0)}`}
                           </span>
                         </div>
                       );
@@ -696,32 +646,83 @@ export function UsagePage({
                   <div className="flex min-w-0 flex-col gap-3">
                     <h2 className="text-sm font-medium text-foreground">
                       {isPast24Hours ? "Hourly" : "Daily"}{" "}
-                      {metric === "tokens" ? "processed tokens" : "cost"}
+                      {metric === "tokens" ? "processed tokens" : "priced cost"}
                     </h2>
-                    <UsageProviderChart
-                      providers={activeProviders}
-                      days={days}
-                      daily={merged.daily}
-                      hours={hours}
-                      hourly={merged.hourly}
-                      metric={metric}
-                      referenceTime={window.untilTime}
-                      resolution={isPast24Hours ? "hour" : "day"}
-                      timeZone={window.timeZone}
+                    {metric === "cost" && merged.costQuality.unpricedShare === 1 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Recorded tokens have no usable prices.
+                      </p>
+                    ) : (
+                      <UsageProviderChart
+                        providers={activeProviders}
+                        days={days}
+                        daily={merged.daily}
+                        hours={hours}
+                        hourly={merged.hourly}
+                        metric={metric}
+                        referenceTime={window.untilTime}
+                        resolution={isPast24Hours ? "hour" : "day"}
+                        timeZone={window.timeZone}
+                      />
+                    )}
+                  </div>
+                </section>
+
+                {nativeCosts.length === 0 ? null : (
+                  <section className="flex flex-col gap-2">
+                    <h2 className="text-sm font-medium text-foreground">Provider-reported costs</h2>
+                    {nativeCosts.map((cost) => (
+                      <p key={cost.key} className="text-sm tabular-nums">
+                        {cost.value}
+                      </p>
+                    ))}
+                  </section>
+                )}
+                <section className="flex flex-col gap-2">
+                  <h2 className="text-sm font-medium text-foreground">Totals</h2>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
+                    <Metric label="Processed tokens" value={formatTokens(merged.totalTokens)} />
+                    <Metric
+                      label="Cached input"
+                      value={
+                        report?.totals.unknownComponents !== "0"
+                          ? "Unknown"
+                          : formatTokens(merged.cachedInputTokens)
+                      }
+                    />
+                    <Metric
+                      label="Uncached input"
+                      value={
+                        report?.totals.unknownComponents !== "0"
+                          ? "Unknown"
+                          : formatTokens(merged.uncachedInputTokens)
+                      }
+                    />
+                    <Metric
+                      label="Output"
+                      value={
+                        report?.totals.unknownComponents !== "0"
+                          ? "Unknown"
+                          : formatTokens(merged.outputTokens)
+                      }
+                    />
+                    <Metric
+                      label="Cache write"
+                      value={
+                        report?.totals.unknownComponents !== "0"
+                          ? "Unknown"
+                          : formatTokens(merged.cacheCreationTokens)
+                      }
                     />
                   </div>
                 </section>
 
-                <section className="flex flex-col gap-2">
-                  <h2 className="text-sm font-medium text-foreground">Totals</h2>
-                  <div className={USAGE_TOTALS_GRID}>
-                    {usageTotals(merged, dimensionMetric).map((total) => (
-                      <Metric key={total.label} {...total} />
-                    ))}
-                  </div>
-                </section>
-
                 <section className="flex flex-col gap-3">
+                  {detailPending ? (
+                    <p role="status">Reading recorded usage breakdown…</p>
+                  ) : detailUnavailable ? (
+                    <p role="status">Usage breakdown is unavailable. Retry HQ access.</p>
+                  ) : null}
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
                     <ToggleGroup
@@ -741,6 +742,11 @@ export function UsagePage({
                     </ToggleGroup>
                   </div>
 
+                  {breakdown === "model" && provenance === "live-responses" ? (
+                    <p className="text-xs text-muted-foreground">
+                      A turn can use several models. Each model row shows its own consumption.
+                    </p>
+                  ) : null}
                   {breakdown === "person" || breakdown === "project" || breakdown === "mate" ? (
                     <UsageDimensionTable
                       dimension={breakdown}
@@ -760,7 +766,7 @@ export function UsagePage({
                       <thead>
                         <tr className="border-b border-border text-left text-xs text-muted-foreground">
                           <th className="py-2 font-normal">Model</th>
-                          <th className="py-2 text-right font-normal">Cost</th>
+                          <th className="py-2 text-right font-normal">Priced cost</th>
                           <th className="py-2 text-right font-normal">Share</th>
                           <th className="py-2 text-right font-normal">Tokens</th>
                         </tr>
@@ -769,9 +775,11 @@ export function UsagePage({
                         {breakdownModels.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-6 text-center text-muted-foreground">
-                              {state.kind === "partial"
-                                ? "No activity in the answered sources yet."
-                                : "No activity in this window."}
+                              {detailPending
+                                ? "Reading model usage…"
+                                : detailUnavailable
+                                  ? "Model usage unavailable. Retry HQ access."
+                                  : "No recorded model data."}
                             </td>
                           </tr>
                         ) : (
@@ -830,7 +838,7 @@ export function UsagePage({
                               {PROVIDER_PRESENTATION[provider].label}
                             </th>
                           ))}
-                          <th className="py-2 text-right font-normal">Total</th>
+                          <th className="py-2 text-right font-normal">Priced cost</th>
                           <th className="py-2 text-right font-normal">Tokens</th>
                         </tr>
                       </thead>
@@ -841,9 +849,11 @@ export function UsagePage({
                               colSpan={activeProviders.length + 3}
                               className="py-6 text-center text-muted-foreground"
                             >
-                              {state.kind === "partial"
-                                ? "No activity in the answered sources yet."
-                                : "No activity in this window."}
+                              {detailPending
+                                ? "Reading model usage…"
+                                : detailUnavailable
+                                  ? "Model usage unavailable. Retry HQ access."
+                                  : "No recorded model data."}
                             </td>
                           </tr>
                         ) : (
@@ -862,11 +872,17 @@ export function UsagePage({
                                   key={provider}
                                   className="py-2 text-right text-muted-foreground tabular-nums"
                                 >
-                                  {formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                                  {period.byProvider.get(provider) === undefined
+                                    ? "No data"
+                                    : period.byProvider.get(provider)?.costKnown === false
+                                      ? "Unpriced"
+                                      : formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
-                                {formatUsd(period.costUsd)}
+                                {period.costKnown === false
+                                  ? "Unpriced"
+                                  : formatUsd(period.costUsd)}
                               </td>
                               <td className="py-2 text-right text-muted-foreground tabular-nums">
                                 {formatTokens(period.totalTokens)}
@@ -880,13 +896,18 @@ export function UsagePage({
                 </section>
               </>
             )}
+            {!showingLimits && !settling && report !== null ? (
+              <UsageCoverage report={report} labels={labels} now={Date.now()} />
+            ) : null}
           </WorkspacePageContainer>
         </ScrollArea>
       </div>
       {openModel === null ? null : (
         <UsageModelDialog
           model={openModel}
-          environments={scopedEnvironments}
+          input={window}
+          scope={scope}
+          provenance={provenance}
           metric={dimensionMetric}
           chartWindow={{
             days,
@@ -927,150 +948,16 @@ const USAGE_TOTAL_LABELS = [
   "Estimated cache savings",
 ] as const;
 
-function Metric({ label, value, detail }: UsageTotal) {
+function Metric({
+  label,
+  value,
+  detail,
+}: Omit<UsageTotal, "detail"> & { readonly detail?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
       <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>
-    </div>
-  );
-}
-
-/**
- * Labels sampled read times and incomplete scan, pricing and environment coverage.
- */
-function UsageCoverageNotice({
-  environments,
-  nameOf,
-  duplicateSources,
-  contractMismatches,
-}: {
-  readonly environments: readonly EnvironmentUsageStatus[];
-  readonly nameOf: (environment: EnvironmentUsageStatus) => string;
-  readonly duplicateSources: readonly string[];
-  readonly contractMismatches: MergedUsage["contractMismatches"];
-}) {
-  const degraded = environments.filter(
-    (environment) =>
-      environment.summary !== null &&
-      (environment.summary.sources.some(
-        (source) =>
-          source.status === "partial" || source.status === "failed" || source.malformedRecords > 0,
-      ) ||
-        environment.summary.pricing.status !== "fresh"),
-  );
-  const failed = environments.filter((environment) => environment.error !== null);
-  const mismatchByEnvironment = new Map(
-    contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
-  );
-  const incompatible = environments.flatMap((environment) => {
-    const mismatch = mismatchByEnvironment.get(environment.environmentId);
-    return mismatch === undefined ? [] : [{ environment, mismatch }];
-  });
-  if (
-    environments.every((environment) => environment.summary === null) &&
-    failed.length === 0 &&
-    incompatible.length === 0 &&
-    duplicateSources.length === 0
-  ) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-col gap-1 border border-border px-3 py-2 text-xs text-muted-foreground">
-      {degraded.map((environment) => (
-        <span key={`scan:${environment.environmentId}`}>
-          {nameOf(environment)}: transcript scan or pricing coverage is incomplete (pricing{" "}
-          {environment.summary?.pricing.status}).
-        </span>
-      ))}
-      {failed.map((environment) => (
-        <span key={environment.environmentId}>{nameOf(environment)} could not report usage.</span>
-      ))}
-      {environments
-        .filter((environment) => environment.summary !== null)
-        .map((environment) => (
-          <span key={`read:${environment.environmentId}`}>
-            {nameOf(environment)} snapshot read at {environment.summary?.readAt}.
-          </span>
-        ))}
-      {incompatible.map(({ environment, mismatch }) => (
-        <span key={environment.environmentId}>
-          {formatUsageContractMismatch(nameOf(environment), mismatch)}
-        </span>
-      ))}
-      {duplicateSources.length > 0 ? (
-        <span>
-          Counted once across environments sharing a transcript directory:{" "}
-          {duplicateSources.join(", ")}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Per-device progress while the page waits for every environment to answer.
- * Only rendered with two or more devices; a lone device has nothing to
- * enumerate.
- */
-function UsageDeviceStrip({
-  environments,
-  nameOf,
-}: {
-  readonly environments: readonly EnvironmentUsageStatus[];
-  readonly nameOf: (environment: EnvironmentUsageStatus) => string;
-}) {
-  const scanning = environments.filter(
-    (environment) => environment.summary === null && environment.error === null,
-  );
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border border-border px-3 py-2 text-xs">
-      {environments.map((environment) => {
-        if (environment.summary !== null && !environment.isStale) {
-          return (
-            <span
-              key={environment.environmentId}
-              className="flex items-center gap-1 text-foreground"
-            >
-              <CheckIcon className="size-3 text-emerald-600 dark:text-emerald-300/90" aria-hidden />
-              {nameOf(environment)}
-            </span>
-          );
-        }
-        if (environment.isStale) {
-          return (
-            <span key={environment.environmentId} className="text-muted-foreground">
-              {nameOf(environment)} · last reported
-            </span>
-          );
-        }
-        if (environment.error !== null) {
-          return (
-            <span
-              key={environment.environmentId}
-              className="flex items-center gap-1 text-destructive"
-            >
-              <XIcon className="size-3" aria-hidden />
-              {nameOf(environment)}
-            </span>
-          );
-        }
-        return (
-          <span
-            key={environment.environmentId}
-            className="animate-status-pulse text-muted-foreground"
-          >
-            {nameOf(environment)}…
-          </span>
-        );
-      })}
-      <span className="ms-auto text-muted-foreground">
-        {scanning.length === 1
-          ? "1 device still scanning"
-          : `${scanning.length} devices still scanning`}
-      </span>
     </div>
   );
 }

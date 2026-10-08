@@ -1,3 +1,6 @@
+import { v1UpdateDrainLayer } from "./update/V1UpdateDrain.ts";
+import { providerUpdateSafetyLayer } from "./spi/ProviderUpdateSafety.ts";
+import { rpcUpdateAdmissionLayer } from "./RpcUpdateAdmission.ts";
 import {
   EnvironmentHttpApi,
   ProviderDriverKind,
@@ -31,6 +34,7 @@ import { websocketRpcRouteLayer } from "./ws.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
+import { mateUpdateRouteLayer } from "./zerops/mateUpdateHttp.ts";
 import { ZeropsLayerLive } from "./zerops/zeropsFeedsLayer.ts";
 import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
 import * as ThreadFileWrites from "./zerops/ThreadFileWrites.ts";
@@ -130,7 +134,6 @@ import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts
 import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinary.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import {
   clearPersistedServerRuntimeState,
@@ -196,8 +199,6 @@ const BackgroundLayerLive = BackgroundPolicy.layer.pipe(
   Layer.provide(HostPowerMonitorLayerLive),
   Layer.provideMerge(ServerSettingsLayerLive),
 );
-
-const UsageLayerLive = UsageService.layer.pipe(Layer.provide(ServerSettingsLayerLive));
 
 const ResourceDiagnosticsLayerLive = Layer.mergeAll(
   ResourceTelemetryLayerLive,
@@ -544,7 +545,6 @@ const RuntimeBaseDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),
-  Layer.provideMerge(UsageLayerLive),
   Layer.provideMerge(TraceDiagnostics.layer),
   Layer.provideMerge(ExternalLauncher.layer),
   Layer.provideMerge(RemoteOpenTargets.layer),
@@ -577,6 +577,7 @@ const RuntimeDependenciesLive = Layer.mergeAll(
   // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
   ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
 ).pipe(
+  Layer.provideMerge(Layer.mergeAll(v1UpdateDrainLayer, providerUpdateSafetyLayer)),
   Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
   Layer.provideMerge(RuntimeBaseDependenciesLive),
 );
@@ -602,6 +603,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   assetRouteLayer,
   attachmentUploadRouteLayer,
   zeropsSetupRouteLayer,
+  mateUpdateRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,
 ).pipe(
@@ -770,6 +772,7 @@ const makeServerLayer = Layer.unwrap(
           ThreadToolPolicyRegistry.layer,
           ClaudeThreadExtensionRegistry.layer,
           ServerCommandReadiness.layer,
+          rpcUpdateAdmissionLayer,
         ),
       ),
       // Inside a Zerops container every git spawn above this line is rewritten

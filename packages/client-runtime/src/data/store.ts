@@ -73,6 +73,8 @@ export interface AccountStore {
   readonly state: () => AccountState;
   /** Hears every reduction, after its keys are published: for the runtime's own holds, not for UI. */
   readonly subscribe: (listener: () => void) => () => void;
+  /** Releases resources owned by this account, independently of mounted readers. */
+  readonly onClose: (listener: () => void) => () => void;
   /**
    * Ends the store with its account: from now on nothing is reduced or published, so the
    * account's registry may be disposed while late input (an interrupted link's last events, a
@@ -161,6 +163,7 @@ export const readsOfState = (state: AccountState): ProjectionReads =>
 export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountStore {
   let state = emptyAccount;
   const listeners = new Set<() => void>();
+  const finalizers = new Set<() => void>();
   const cells = new Map<ReadKey, Atom.Writable<unknown>>();
   const cell = <T>(key: ReadKey): Atom.Writable<T> => {
     let atom = cells.get(key);
@@ -215,8 +218,19 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
+    onClose: (listener) => {
+      if (closed) {
+        listener();
+        return () => {};
+      }
+      finalizers.add(listener);
+      return () => void finalizers.delete(listener);
+    },
     close: () => {
+      if (closed) return;
       closed = true;
+      for (const finalizer of finalizers) finalizer();
+      finalizers.clear();
       listeners.clear();
     },
   };

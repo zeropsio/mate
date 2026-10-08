@@ -36,6 +36,29 @@ const PRODUCERS = 50;
 const PER_PRODUCER = 4;
 
 describe("Conversations", () => {
+  it.layer(engine)("update admission", (it) => {
+    it.effect("a refused send records no message or run and cancellation accepts it once", () =>
+      Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const admission = conversations.updateAdmission;
+        assert.ok(admission);
+        const c = ConversationId.make("update-fence");
+        const input = envelope(send("kept draft"), { conversation: c });
+        yield* admission.begin;
+        const rejected = yield* Effect.flip(conversations.ask(input));
+        expect(rejected).toMatchObject({
+          _tag: "CommandRejected",
+          rejection: { detail: expect.stringContaining("Update ready") },
+        });
+        const state = yield* conversations.state(c);
+        expect(state.headSeq).toBe(0);
+        expect(state.runs).toEqual({});
+        yield* admission.cancel;
+        const accepted = yield* conversations.ask(input);
+        expect(accepted.runId).toBe(r(1, c));
+      }),
+    );
+  });
   it.layer(engine)("the registry", (it) => {
     it.effect("keeps every producer's order under 50 concurrent producers", () =>
       Effect.gen(function* () {

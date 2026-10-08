@@ -114,6 +114,8 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
               throw new Error("Scenario clock timer loop exceeded 10,000 callbacks");
             const [id, timer] = next;
             if (!coalesce) await setNow(timer.at);
+            // A clock acknowledgement can cancel or replace the selected callback.
+            if (timers.get(id) !== timer) continue;
             timers.delete(id);
             if (timer.interval !== undefined)
               timers.set(id, { ...timer, at: now + timer.interval });
@@ -132,6 +134,7 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
           }
           const [id, timer] = next;
           await setNow(timer.at);
+          if (timers.get(id) !== timer) return true;
           timers.delete(id);
           if (timer.interval !== undefined) timers.set(id, { ...timer, at: now + timer.interval });
           timer.callback();

@@ -9,11 +9,13 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
 import type * as Scope from "effect/Scope";
+import type { SubscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 
 export interface ProviderAuthController {
   /** Equal keys mean these instances share credentials on this environment. */
   readonly credentialBinding?: { readonly owner: "provider" | "t3"; readonly key: string };
   readonly isChangingCredentials?: Effect.Effect<boolean>;
+  readonly subscribeUpdateChanges?: SubscribeUpdateChanges;
   readonly invalidate?: Effect.Effect<void>;
   readonly refreshMethods?: Effect.Effect<void>;
   readonly withAccess?: <A, E, R>(

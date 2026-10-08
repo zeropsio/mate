@@ -1,12 +1,13 @@
 /** Keyed row activity; list consumers compose the same readers without owning list-key caches. */
 import {
   accountReadsAtom,
+  mateLimitAtom,
   hqMateOverviewAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
@@ -15,6 +16,7 @@ import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { matesActivityOf } from "./mateActivity";
 import type { ZeropsAgentActivity } from "./agentActivity";
+import { threadAgentActivity } from "./agentActivity";
 
 const visitsAtom = Atom.make((get) => {
   get.addFinalizer(
@@ -57,6 +59,22 @@ export function sameActivity(
   const before = { ...a, at: "" };
   return shareEqual(before, { ...b, at: "" }) === before;
 }
+
+export const threadActivityAtom = Atom.family((key: string | null) =>
+  Atom.make((get) => {
+    const ref = key === null ? null : parseScopedThreadKey(key);
+    if (ref === null || key === null) return undefined;
+    const shell = get(environmentThreadShells.threadShellAtom(ref));
+    if (shell === null) return undefined;
+    const activity = threadAgentActivity(
+      shell,
+      get(visitOfThreadAtom(key)),
+      undefined,
+      get(mateLimitAtom(key)),
+    );
+    return activity;
+  }).pipe(Atom.withEquality(sameActivity)),
+);
 
 export const mateActivityAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
@@ -106,22 +124,8 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
       sockets: socket === null ? new Map() : new Map([[projectId, socket.id]]),
       standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),
       lastVisitedAtById: visits,
+      limits: new Map([...keys].map((key) => [key, get(mateLimitAtom(key))])),
     }).get(projectId);
-    // The wake only invalidates the projection. The source deadline and current clock decide
-    // whether this refusal still applies, including a tab that wakes after the deadline.
-    const resetsAt = activity?.pausedUntil;
-    if (resetsAt !== undefined && Date.parse(resetsAt) > Date.now()) {
-      // Browser timers use a signed 32-bit millisecond delay. A distant provider deadline
-      // can request another derivation at that bound; it cannot become an early reset.
-      const delay = Math.min(Date.parse(resetsAt) - Date.now(), 2 ** 31 - 1);
-      const timer = setTimeout(() => get.refreshSelf(), delay);
-      const wake = () => get.refreshSelf();
-      window.addEventListener("focus", wake);
-      get.addFinalizer(() => {
-        clearTimeout(timer);
-        window.removeEventListener("focus", wake);
-      });
-    }
     return activity;
   }).pipe(Atom.withEquality(sameActivity)),
 );
@@ -170,5 +174,20 @@ export const matesActivityAtom = Atom.make(
   Atom.withEquality(
     (a: ReadonlyMap<string, ZeropsAgentActivity>, b) =>
       a.size === b.size && [...a].every(([id, value]) => b.get(id) === value),
+  ),
+);
+
+/** Header and crew enumeration composes the same demanded conversation readers as the menu. */
+export const environmentActivitiesAtom = Atom.family((environmentId: EnvironmentId | null) =>
+  Atom.make(
+    (get) =>
+      new Map(
+        environmentId === null
+          ? []
+          : get(environmentThreadShells.environmentThreadRefsAtom(environmentId)).flatMap((ref) => {
+              const activity = get(threadActivityAtom(scopedThreadKey(ref)));
+              return activity === undefined ? [] : [[ref.threadId, activity] as const];
+            }),
+      ),
   ),
 );

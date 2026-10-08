@@ -66,12 +66,14 @@ export const repairZeropsSession = (client: ZeropsWireClient): Effect.Effect<voi
     },
   });
 
-const Typed = Schema.fromJsonString(Schema.Struct({ type: Schema.String }));
+const Typed = Schema.Struct({ type: Schema.String });
+const decodeJson = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Unknown));
 const decodeTyped = Schema.decodeUnknownOption(Typed);
-const PING = Schema.encodeSync(Typed)({ type: "ping" });
+const PING = Schema.encodeSync(Schema.fromJsonString(Typed))({ type: "ping" });
 
 /** A frame's `type`, or nothing for one that is not a typed JSON object. */
-const typeOf = (data: string): string | undefined => Option.getOrUndefined(decodeTyped(data))?.type;
+const typeOf = (data: unknown): string | undefined =>
+  Option.getOrUndefined(decodeTyped(data))?.type;
 
 /**
  * A failed request: its HTTP status where it had one, and how it classifies. The platform answers
@@ -145,7 +147,7 @@ export function makeZeropsWire(options: {
         try: (signal) => client.exchangeWebSocketToken(signal),
         catch: zeropsFault,
       });
-      const frames = yield* Queue.unbounded<string, StreamFault>();
+      const frames = yield* Queue.unbounded<unknown, StreamFault>();
       const greeted = yield* Deferred.make<void, StreamFault>();
       const pongs = yield* Queue.sliding<void>(1);
       const base = client.baseUrl.replace(/\/+$/, "").replace(/^http/i, "ws");
@@ -155,13 +157,14 @@ export function makeZeropsWire(options: {
         Queue.failCauseUnsafe(frames, Cause.fail(transient(message)));
       };
       socket.onmessage = ({ data }) => {
+        const frame = Option.getOrUndefined(decodeJson(data));
         if (!Deferred.isDoneUnsafe(greeted)) {
-          if (typeOf(data) === "SocketSuccess") Deferred.doneUnsafe(greeted, Effect.void);
+          if (typeOf(frame) === "SocketSuccess") Deferred.doneUnsafe(greeted, Effect.void);
           else broken("The receiver's greeting was not SocketSuccess.");
           return;
         }
-        if (typeOf(data) === "pong") Queue.offerUnsafe(pongs, undefined);
-        else Queue.offerUnsafe(frames, data);
+        if (typeOf(frame) === "pong") Queue.offerUnsafe(pongs, undefined);
+        else Queue.offerUnsafe(frames, frame);
       };
       socket.onclose = () => broken("The receiver's socket closed.");
       socket.onerror = () => broken("The receiver's socket failed.");

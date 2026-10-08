@@ -1,4 +1,6 @@
-import { ConversationReadiness } from "./conversationReadiness";
+import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
+import { useAtomValue } from "@effect/atom-react";
+import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -9,7 +11,6 @@ import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
 import {
-  use,
   useLayoutEffect,
   useMemo,
   useState,
@@ -228,16 +229,19 @@ function MatePill({
   const arrived = useArrival(subject !== null);
   // The header's face is reused from one Mate to the next: it greets no change of pose, only the
   // events its line names (`useMateHeaderCues`).
-  const face = (
-    <MateFace
-      className="size-6"
-      cues={mate.cues}
-      restarting={mate.restarting}
-      shape={mate.shape}
-      size="sm"
-      state={mate.face}
-      tint={mate.tint}
-    />
+  const face = useMemo(
+    () => (
+      <MateFace
+        className="size-6"
+        cues={mate.cues}
+        restarting={mate.restarting}
+        shape={mate.shape}
+        size="sm"
+        state={mate.face}
+        tint={mate.tint}
+      />
+    ),
+    [mate.cues, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
@@ -264,7 +268,7 @@ function MatePill({
       }}
       type="button"
     >
-      {face}
+      <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
       {name}
       {subject === null ? null : (
         // Arriving after the line stands, it fades in where it stays: the
@@ -731,13 +735,13 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
-  const conversationReady = use(ConversationReadiness);
   const moments = useMateHeaderCues({
     environmentId,
     currentThreadId,
     mate: mate ?? { connected: false },
     chats,
   });
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   if (mate === null) return null;
 
   const crew = lineCrew({
@@ -747,6 +751,7 @@ export function ConversationStrip({
     mateName: mate.name,
     connected: mate.connected,
     lastVisitedAtById,
+    activityByThread,
   });
 
   const open = (threadId: ThreadId) => {
@@ -792,11 +797,12 @@ export function ConversationStrip({
     crewChatOpen: crewChat !== null,
     subject,
     lastVisitedAtById,
+    activityByThread,
   });
   return (
     // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
     <ConversationStripView
-      chats={lineChats(chats, currentThreadId)}
+      chats={lineChats(chats, currentThreadId, activityByThread)}
       crew={crew}
       key={environmentId}
       renderCrewmateMenu={(crewmate) =>
@@ -812,8 +818,7 @@ export function ConversationStrip({
       }
       mate={{
         ...shownMate,
-        face: conversationReady ? shownMate.face : "sleep",
-        // The face state follows readiness; its arrival greets navigation to this Mate.
+        // The avatar keeps its factual conversation state and navigation cues.
         cues: moments.cues,
         restarting: moments.restarting,
       }}
@@ -828,9 +833,14 @@ export function ConversationStrip({
 /** Whether the Mate living in `environmentId` is at work in any of its chats (`mateWorks`). */
 export function useMateWorks(environmentId: EnvironmentId): boolean {
   const shells = useThreadShells();
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   return useMemo(
-    () => mateWorks(mateChats(shells.filter((thread) => thread.environmentId === environmentId))),
-    [environmentId, shells],
+    () =>
+      mateWorks(
+        mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
+        activityByThread,
+      ),
+    [environmentId, shells, activityByThread],
   );
 }
 
@@ -849,6 +859,7 @@ export function useAlsoWorkingBanner({
 }): ComposerBannerStackItem | null {
   const whoLivesHere = useZeropsMate(environmentId);
   const shells = useThreadShells();
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   const mateName = whoLivesHere.kind === "mate" ? whoLivesHere.mate.name : null;
   return useMemo(() => {
     if (mateName === null) return null;
@@ -857,6 +868,7 @@ export function useAlsoWorkingBanner({
       chats: mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
       currentThreadId,
       typing,
+      activityByThread,
     });
     if (line === null) return null;
     return {
@@ -865,5 +877,5 @@ export function useAlsoWorkingBanner({
       icon: <MessagesSquareIcon />,
       title: line,
     };
-  }, [currentThreadId, environmentId, mateName, shells, typing]);
+  }, [currentThreadId, environmentId, mateName, shells, typing, activityByThread]);
 }

@@ -37,6 +37,7 @@ import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsMembershipWatchModule from "./ZeropsMembershipWatch.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
@@ -126,6 +127,8 @@ const ZeropsMateAttentionLive = ZeropsMateAttentionModule.layer.pipe(Layer.provi
 
 /** The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. */
 const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
+  Layer.provide(MateEngineLive),
+  Layer.provide(mateAutoUpdatePolicyLayer),
   Layer.provideMerge(ZeropsCliModule.layer),
 );
 
@@ -140,6 +143,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
     return ZeropsHqLinkModule.layer(yield* CrewEngine);
   }),
 ).pipe(
+  Layer.provide(mateAutoUpdatePolicyLayer),
   Layer.provide(ZeropsCrewLive),
   Layer.provide(providerInstancesLayer),
   Layer.provide(ZeropsAgentLoginModule.layer),
@@ -213,6 +217,7 @@ const liveLayer = Layer.mergeAll(
   ZeropsMateAttentionLive,
   ZeropsBrowserStreamModule.layer,
   ZeropsMateUpdateLive,
+  mateAutoUpdatePolicyLayer,
   ZeropsDataConsoleModule.layer,
   ZeropsGitRemoteProbeModule.layer,
   // Not a feed: the loop that ends a session whose person's role changed. It
@@ -263,4 +268,4 @@ export const ZeropsLayerLive = Layer.unwrap(
     const config = yield* ServerConfig;
     return (yield* selectZeropsFeedsLayer(config.zeropsFixtures)).layer;
   }),
-);
+).pipe(Layer.provideMerge(mateAutoUpdatePolicyLayer));

@@ -2,7 +2,11 @@
  * The crew RPCs over the engine: inert where crew mode is off, live
  * otherwise, and a command always runs as the connecting session.
  */
-import { WS_METHODS } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  AuthOrchestrationOperateScope,
+  EnvironmentAuthorizationError,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -13,6 +17,7 @@ import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
+import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
 const observe = {
   observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
@@ -23,6 +28,39 @@ const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
 
 describe("registerCrewRpc", () => {
   const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...observe });
+
+  it.effect(
+    "during update, an accepted crew can pause or stop while new crew work is refused",
+    () =>
+      Effect.gen(function* () {
+        const admission = yield* makeRpcUpdateAdmission;
+        yield* admission.begin;
+        const handlers = registerCrewRpc({
+          crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },
+          subject: SUBJECT,
+          observeRpcStream: observe.observeRpcStream,
+          observeRpcEffect: (_method, effect, _attributes, continuation = false) =>
+            admission.run(
+              effect,
+              new EnvironmentAuthorizationError({
+                message: "Update waiting",
+                requiredScope: AuthOrchestrationOperateScope,
+              }),
+              continuation,
+            ),
+        });
+        expect(
+          yield* handlers[WS_METHODS.zeropsCrewCommand]({ _tag: "pause", runId: "run-1" }),
+        ).toEqual({ _tag: "done" });
+        expect(
+          yield* handlers[WS_METHODS.zeropsCrewCommand]({ _tag: "stop", runId: "run-1" }),
+        ).toEqual({ _tag: "done" });
+        const denied = yield* handlers[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" }).pipe(
+          Effect.flip,
+        );
+        expect(denied).toMatchObject({ _tag: "EnvironmentAuthorizationError" });
+      }).pipe(Effect.scoped),
+  );
 
   it.effect("inert: streams one snapshot saying crew mode is off", () =>
     Effect.gen(function* () {

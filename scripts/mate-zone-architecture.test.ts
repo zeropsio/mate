@@ -1513,6 +1513,7 @@ const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
   `${SPI_DIR}/openCodeThreadProfile.ts`,
   `${SPI_DIR}/mcpControl.ts`,
   `${SPI_DIR}/mcpToolTitle.ts`,
+  `${SPI_DIR}/responseUsage.ts`,
 ]);
 
 const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(function* (
@@ -1563,13 +1564,22 @@ const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(funct
 // dependency rules name. Never `provider/**`: a crewmate's thread is shaped
 // through the SPI files, not by importing a driver. Tests may reach further
 // (the database, the ssh shim, the membership watch's subject prefix).
+const UPDATE_NEUTRAL_SEAMS = [
+  "apps/server/src/update/AdmissionFence.ts",
+  "apps/server/src/update/MateUpdateDrain.ts",
+  "apps/server/src/update/NativeResume.ts",
+  "apps/server/src/update/OwnedWork.ts",
+  "apps/server/src/update/subscribeChanges.ts",
+] as const;
 const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/zerops/mateUpdateHttp.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
   "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
 ]);
 const CREW_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  ...UPDATE_NEUTRAL_SEAMS,
   "apps/server/src/config.ts",
   "apps/server/src/processRunner.ts",
   "apps/server/src/orchestration/Services/MessageAttachments.ts",
@@ -1639,6 +1649,8 @@ const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
 ]);
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engineSessionDirectory.ts",
+  "apps/server/src/zerops/mateUpdateHttp.ts",
+  "apps/server/src/zerops/ZeropsMateUpdate.ts",
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/ThreadFileWrites.ts",
@@ -1657,6 +1669,7 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   // picture V1's capture, the history import and a live call share.
   "apps/server/src/assets/ContentAssets.ts",
   "apps/server/src/assets/ConversationMedia.ts",
+  ...UPDATE_NEUTRAL_SEAMS,
   "apps/server/src/attachmentStore.ts",
   "apps/server/src/checkpointing/WorkspaceHistory.ts",
   "apps/server/src/config.ts",
@@ -1954,6 +1967,35 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           {
             file: "apps/server/src/zerops/zeropsFeedsLayer.ts",
             specifier: "../engine/store/EngineStore.ts",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "update wiring reaches public engine and crew services, while neutral seams do not admit V1",
+    () =>
+      Effect.gen(function* () {
+        const root = yield* makeRepoFixture({
+          "apps/server/src/zerops/mateUpdateHttp.ts":
+            'import { MateEngine } from "../engine/MateEngine.ts";\nimport { CrewEngine } from "./crew/CrewEngine.ts";\n',
+          "apps/server/src/zerops/ZeropsMateUpdate.ts":
+            'import { MateEngine } from "../engine/MateEngine.ts";\n',
+          "apps/server/src/engine/updateDrain.ts":
+            'import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";\nimport { V1UpdateDrain } from "../update/V1UpdateDrain.ts";\n',
+          "apps/server/src/zerops/crew/CrewEngine.ts":
+            'import type { MateUpdateDrain } from "../../update/MateUpdateDrain.ts";\nimport { V1UpdateDrain } from "../../update/V1UpdateDrain.ts";\n',
+        });
+        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(root), [
+          {
+            file: "apps/server/src/engine/updateDrain.ts",
+            specifier: "../update/V1UpdateDrain.ts",
+          },
+        ]);
+        assert.deepStrictEqual(yield* collectCrewBoundaryViolations(root), [
+          {
+            file: "apps/server/src/zerops/crew/CrewEngine.ts",
+            specifier: "../../update/V1UpdateDrain.ts",
           },
         ]);
       }).pipe(Effect.scoped),

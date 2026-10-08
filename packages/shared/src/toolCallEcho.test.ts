@@ -85,3 +85,64 @@ describe("isToolCallEcho — the update a provider sends with a call's completio
     );
   });
 });
+
+const capturedResult = (status: string, id: string, digest?: string) => ({
+  ...result(status),
+  data: {
+    ...result(status).data,
+    zerops: {
+      images: [
+        {
+          mimeType: "image/png",
+          asset: {
+            id,
+            ownerId: id,
+            threadId: "thread-1",
+            name: "tool-image",
+            provenance: "capture",
+            original:
+              digest === undefined
+                ? { status: "failed", code: "persistence-failed" }
+                : {
+                    status: "ready",
+                    digest,
+                    mimeType: "image/png",
+                    sizeBytes: 200,
+                    width: 20,
+                    height: 10,
+                  },
+          },
+        },
+      ],
+    },
+  },
+});
+
+it.each([
+  {
+    name: "the same retained image in two occurrences",
+    left: "a".repeat(64),
+    right: "a".repeat(64),
+    echo: true,
+  },
+  {
+    name: "different retained image bytes",
+    left: "a".repeat(64),
+    right: "b".repeat(64),
+    echo: false,
+  },
+  { name: "malformed digests do not prove identical pictures", left: "", right: "", echo: false },
+  {
+    name: "two failed captures do not prove identical pictures",
+    left: undefined,
+    right: undefined,
+    echo: false,
+  },
+])("$name", ({ left, right, echo }) => {
+  expect(
+    isToolCallEcho(
+      row("tool.updated", capturedResult("inProgress", "update-picture", left)),
+      row("tool.completed", capturedResult("completed", "completion-picture", right)),
+    ),
+  ).toBe(echo);
+});

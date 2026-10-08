@@ -25,6 +25,7 @@ import { MateCredentials } from "./mateCredentials.ts";
 import { makeMateOverviews, MateOverviews } from "./mateOverviews.ts";
 import { liveSocketsLayer } from "./stream.ts";
 import { Structure } from "./structure.ts";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 
 const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -44,6 +45,32 @@ const linked = Effect.gen(function* () {
 
 describe("a Mate's link", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("sends the organization hold to every authenticated Mate without a restart", () =>
+      Effect.gen(function* () {
+        const { call, owner, link } = yield* linked;
+        yield* call("PUT", "/api/auto-update", { session: owner, body: { enabled: false } });
+        const frame = yield* link.takeWhere(
+          "the held update policy",
+          (frame) =>
+            frame.type === "state" &&
+            (frame["autoUpdate"] as { readonly enabled?: boolean } | undefined)?.enabled === false,
+        );
+        assert.deepStrictEqual(frame["autoUpdate"], { orgId: "ORG", enabled: false, revision: 1 });
+      }),
+    );
+    it.effect(
+      "answers a Mate's policy verification with its request identity and the committed org policy",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, link } = yield* linked;
+          yield* call("PUT", "/api/auto-update", { session: owner, body: { enabled: false } });
+          yield* link.send({ type: "auto-update-policy", requestId: "before-switch" });
+          assert.deepStrictEqual(yield* link.next("auto-update-policy"), {
+            requestId: "before-switch",
+            policy: { orgId: "ORG", enabled: false, revision: 1 },
+          });
+        }),
+    );
     it.effect("passes by a frame whose type it does not know and keeps the link", () =>
       Effect.gen(function* () {
         const { call, owner, link } = yield* linked;
@@ -151,6 +178,12 @@ describe("serveMateLink: who ended a link, and with what code", () => {
   const services = Layer.unwrap(
     Effect.map(makeMateOverviews(memoryStore().store), (overviews) =>
       Layer.mergeAll(
+        Layer.succeed(AutoUpdatePolicy, {
+          current: Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
+          changes: Stream.make(0),
+          read: () => Effect.succeed({ orgId: "ORG", enabled: true, revision: 0 }),
+          set: () => Effect.die("no policy writes"),
+        }),
         liveSocketsLayer,
         Layer.succeed(MateOverviews, overviews),
         Layer.succeed(
@@ -261,7 +294,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     Effect.gen(function* () {
       const { state } = yield* statesOf(Effect.succeed(sender));
       const offered = yield* state((frame) => frame.usage !== undefined);
-      assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+      assert.deepStrictEqual(offered.usage, { capture: 2, report: 2, mateId: "M", orgId: "ORG" });
     }),
   );
 
@@ -274,7 +307,7 @@ describe("serveMateLink: who ended a link, and with what code", () => {
         yield* state((frame) => frame.usage === undefined);
         yield* Deferred.succeed(opening, sender);
         const offered = yield* state((frame) => frame.usage !== undefined);
-        assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+        assert.deepStrictEqual(offered.usage, { capture: 2, report: 2, mateId: "M", orgId: "ORG" });
       }),
   );
 

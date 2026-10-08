@@ -1,137 +1,88 @@
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import { EnvironmentId, UsageDay, type UsageSummary } from "@t3tools/contracts";
-import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
+import { UsageDay, EnvironmentId, type UsageSummaryInput } from "@t3tools/contracts";
+import { usageReportQuery, usageReportTotals } from "./usage.logic";
+import { recordedReport } from "../components/usage/usageTestFixtures";
+const window: UsageSummaryInput = {
+  sinceDay: UsageDay.make("2026-10-01"),
+  untilDay: UsageDay.make("2026-10-07"),
+  timeZone: "UTC",
+  resolution: "day",
+};
 
-import { createUsageWindowReadAtoms } from "./usage";
-
-const report = (summary: UsageSummary): Known<UsageSummary> => ({
-  state: "known",
-  value: summary,
-  asOf: { ordinal: 1, atMs: 1 },
-  coverage: "complete",
-  freshness: { kind: "settled" },
-});
-const OPEN = EnvironmentId.make("open-mate");
-const PARKED = EnvironmentId.make("parked-mate");
-const WINDOW = JSON.stringify({
-  input: {
-    sinceDay: UsageDay.make("2026-10-01"),
-    untilDay: UsageDay.make("2026-10-03"),
-    timeZone: "Europe/Prague",
-  },
-});
-
-const presentation = (label: string, phase: EnvironmentConnectionPhase) => ({
-  entry: { target: { label } },
-  connection: { phase },
-});
-
-describe("usage by window", () => {
-  it("asks only the Mates it holds a socket to", () => {
-    const asked: EnvironmentId[] = [];
-    const usageByWindow = createUsageWindowReadAtoms({
-      presentationsAtom: Atom.make(
-        new Map([
-          [OPEN, presentation("Fen", "connected")],
-          [PARKED, presentation("Ida", "available")],
-        ]),
-      ),
-      retainedUsageSummary: () => Atom.make({ state: "unread" as const, waitingFor: null }),
-      usageSummary: ({ environmentId }) => {
-        asked.push(environmentId);
-        return Atom.make({ state: "unread" as const, waitingFor: null });
-      },
-    });
-    const registry = AtomRegistry.make();
-
-    const statuses = registry.get(usageByWindow(WINDOW));
-
-    expect(statuses.map((status) => [status.environmentId, status.label])).toEqual([[OPEN, "Fen"]]);
-    expect(asked).toEqual([OPEN]);
-    registry.dispose();
-  });
-  it("keeps a disconnected Mate's last report visibly stale without waking it", () => {
-    const summary: UsageSummary = {
-      contractVersion: 1,
-      readAt: "2026-10-03T00:00:00.000Z",
-      timeZone: "UTC",
-      sinceDay: UsageDay.make("2026-10-01"),
-      untilDay: UsageDay.make("2026-10-03"),
-      buckets: [],
-      sources: [],
-      pricing: { status: "fresh", source: "litellm", fetchedAt: null, knownModels: 0 },
-      scanDurationMs: 0,
-    };
-    const lastReport: Known<UsageSummary> = {
-      state: "known",
-      value: summary,
-      asOf: { ordinal: 1, atMs: 1 },
-      coverage: "complete",
-      freshness: { kind: "settled" },
-    };
-    const usageByWindow = createUsageWindowReadAtoms({
-      presentationsAtom: Atom.make(new Map([[PARKED, presentation("Ida", "available")]])),
-      retainedUsageSummary: () => Atom.make(lastReport),
-      usageSummary: () => {
-        throw new Error("A parked Mate must not be woken.");
-      },
-    });
-    const registry = AtomRegistry.make();
-    expect(registry.get(usageByWindow(WINDOW))).toMatchObject([
-      { environmentId: PARKED, summary, isStale: true, isPending: false },
-    ]);
-    registry.dispose();
-  });
-});
-
-it("retains a known snapshot during reconnect and drops it after blocked access", () => {
-  const presentations = Atom.make(new Map([[OPEN, presentation("Fen", "connected")]]));
-  const summary = {
-    contractVersion: 1,
-    readAt: "2026-10-07T12:00:00Z",
-    timeZone: "UTC",
-    sinceDay: UsageDay.make("2026-10-01"),
-    untilDay: UsageDay.make("2026-10-03"),
-    buckets: [],
-    sources: [],
-    pricing: { status: "fresh" as const, source: "test", fetchedAt: null, knownModels: 0 },
-    scanDurationMs: 0,
-  };
-  const byWindow = createUsageWindowReadAtoms({
-    presentationsAtom: presentations,
-    retainedUsageSummary: () => Atom.make(report(summary)),
-    usageSummary: () => Atom.make(report(summary)),
-  });
-  const registry = AtomRegistry.make();
-  const atom = byWindow(WINDOW);
-  registry.mount(atom);
-  expect(registry.get(atom)[0]?.summary).toEqual(summary);
-  registry.set(presentations, new Map([[OPEN, presentation("Fen", "reconnecting")]]));
-  expect(registry.get(atom)[0]).toMatchObject({ summary, isStale: true });
-  registry.set(presentations, new Map([[OPEN, presentation("Fen", "error")]]));
-  expect(registry.get(atom)).toEqual([]);
-  registry.dispose();
-});
-
-it("excludes warm connections outside the declared organization", () => {
-  const asked: EnvironmentId[] = [];
-  const byWindow = createUsageWindowReadAtoms({
-    presentationsAtom: Atom.make(
-      new Map([
-        [OPEN, presentation("Fen", "connected")],
-        [PARKED, presentation("Other org", "connected")],
-      ]),
-    ),
-    retainedUsageSummary: () => Atom.make({ state: "unread" as const, waitingFor: null }),
-    usageSummary: ({ environmentId }) => {
-      asked.push(environmentId);
-      return Atom.make({ state: "unread" as const, waitingFor: null });
+describe("recorded consumption report selection", () => {
+  it.each([
+    {
+      name: "organization consumption comes from HQ",
+      scope: {},
+      match: { appId: null, mateId: null, ownerUserId: null },
     },
+    {
+      name: "project scope uses the stable HQ app identity",
+      scope: { project: "app-a" },
+      match: { appId: "app-a" },
+    },
+    {
+      name: "Mate scope uses the recorded Mate identity",
+      scope: { mate: EnvironmentId.make("mate-a") },
+      match: { mateId: "mate-a" },
+    },
+    {
+      name: "owner scope uses the current HQ owner",
+      scope: { person: "u-a" },
+      match: { ownerUserId: "u-a" },
+    },
+  ])("$name", ({ scope, match }) => expect(usageReportQuery(window, scope)).toMatchObject(match));
+  it("a rolling day requests the exact recorded window", () => {
+    expect(
+      usageReportQuery(
+        {
+          ...window,
+          resolution: "hour",
+          sinceTime: "2026-10-06T12:17:00.000Z",
+          untilTime: "2026-10-07T12:17:00.000Z",
+        },
+        {},
+      ),
+    ).toMatchObject({
+      mode: "exact",
+      since: "2026-10-06T12:17:00.000Z",
+      until: "2026-10-07T12:17:00.000Z",
+    });
   });
-  const registry = AtomRegistry.make();
-  registry.get(byWindow(JSON.stringify({ ...JSON.parse(WINDOW), permitted: [OPEN] })));
-  expect(asked).toEqual([OPEN]);
-  registry.dispose();
+  it("daily history requests complete UTC days including the last selected day", () =>
+    expect(usageReportQuery(window, {})).toMatchObject({
+      mode: "utc-days",
+      since: "2026-10-01T00:00:00.000Z",
+      until: "2026-10-08T00:00:00.000Z",
+    }));
+  it("HQ automatic pricing remains an estimate separate from native reported cost", () => {
+    expect(usageReportTotals(recordedReport())).toMatchObject({
+      costUsd: 7.83,
+      totalTokens: 1000,
+      records: 1,
+    });
+  });
+  it.each([
+    { priced: "2", unpriced: "0", pricedShare: 1, unpricedShare: 0 },
+    { priced: "1", unpriced: "1", pricedShare: 0.5, unpricedShare: 0.5 },
+    { priced: "0", unpriced: "2", pricedShare: 0, unpricedShare: 1 },
+  ])(
+    "one turn prices its $priced priced and $unpriced unpriced model entries independently",
+    ({ priced, unpriced, pricedShare, unpricedShare }) => {
+      const report = recordedReport();
+      expect(
+        usageReportTotals({
+          ...report,
+          pricing: {
+            ...report.pricing,
+            pricedModelEntries: priced,
+            unpricedModelEntries: unpriced,
+          },
+        }),
+      ).toMatchObject({
+        records: 1,
+        costQuality: { modelPricedShare: pricedShare, unpricedShare },
+      });
+    },
+  );
 });

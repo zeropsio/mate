@@ -345,6 +345,7 @@ export type { MateImageRead } from "./projections/mateImage.ts";
 export {
   mateImageId,
   mateImageScope,
+  mateImageReferenceId,
   mateImageSource,
   parseMateImageSource,
   demandedImageSize,
@@ -514,3 +515,15 @@ export {
   type EngineCardCounts,
   type EngineCardPaging,
 } from "./projections/mateEngine.ts";
+
+export {
+  projectMateLimit,
+  NO_MATE_LIMIT,
+  readUsageLimitNotice,
+  type MateLimit,
+  type MateLimitSource,
+  type UsageLimitNotice,
+} from "./projections/mateLimit.ts";
+export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";
+export { agentUsageOwner } from "./families/agentUsage.ts";
+export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";

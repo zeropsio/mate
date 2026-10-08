@@ -2995,6 +2995,12 @@ describe("a Mate's row says more without words", () => {
           usageLimited: true,
           errorLine: "Claude usage limit reached",
           pausedUntil: "2099-10-07T14:00:00Z",
+          limit: {
+            kind: "limited",
+            turnId: "turn-1",
+            provider: "Claude",
+            resetsAt: "2099-10-07T14:00:00Z",
+          },
         }),
     });
     expect(html).toContain(">Limit · until ");

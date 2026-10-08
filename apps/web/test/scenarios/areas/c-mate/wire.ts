@@ -58,6 +58,8 @@ export interface ChatWire {
   history(text: string, turnId?: string | null): void;
   /** The person asked `question` and the agent answered `answer`; that exchange is over. */
   exchange(question: string, answer: string): void;
+  /** The Mate's clock runs `ms` from the person's: what it records from now on says so. */
+  skewClock(ms: number): void;
   /** The agent waits on approval to run `vp run build`; a response gets RESPONSE_RECEIVED. */
   approval(): void;
   /** The agent asks TARGET_QUESTION as `requestId`, in run `turnId` when given; same reply. */

@@ -1,3 +1,4 @@
+import type { SubscribeUpdateChanges } from "../../update/subscribeChanges.ts";
 /**
  * CrewEngine — what the crew RPCs reach: the feed of snapshots, the crew
  * home's files, and every press as one command.
@@ -27,12 +28,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 
+import type { UpdateIdleFacts } from "../../update/MateUpdateDrain.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { CREW_OFF_SNAPSHOT } from "./crewSnapshot.ts";
 
 export interface CrewEngineService {
   /** The current snapshot at once, then one per change, coalesced. */
   readonly snapshot: Stream.Stream<CrewSnapshot>;
+  readonly updateFacts?: Effect.Effect<UpdateIdleFacts>;
+  readonly updateChanges?: Stream.Stream<void>;
+  readonly subscribeUpdateChanges?: SubscribeUpdateChanges;
   readonly readFiles: Effect.Effect<CrewFiles, CrewCommandError>;
   readonly writeFiles: (
     files: CrewFiles,
@@ -53,6 +58,9 @@ const unavailable = Effect.fail(new CrewCommandError({ reason: "unavailable", de
 /** Crew mode is off here: one snapshot saying so, and every request refused. */
 export const inertCrewEngine: CrewEngineService = {
   snapshot: Stream.make(CREW_OFF_SNAPSHOT),
+  updateFacts: Effect.succeed({ idle: true, blockers: [] }),
+  updateChanges: Stream.empty,
+  subscribeUpdateChanges: Effect.succeed({ changes: Stream.empty }),
   readFiles: unavailable,
   writeFiles: () => unavailable,
   command: () => unavailable,

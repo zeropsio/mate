@@ -95,6 +95,15 @@
  *   independent of any reset time. Claude emits it; the other adapters keep their
  *   terminal usage-limit errors. Codex also supplies the existing typed `blocked`
  *   reset on a refused turn when its snapshot names an exhausted window.
+ * - 2.10 (2026-10-08): `turn.usage.completed` records own completed native turn
+ *   identity, model lines and separately reported turn cost. Claude uses cumulative
+ *   final-result ledgers minus a live native baseline, including Task/sidechains.
+ *   Codex aggregates exact upstream response meters until the native turn completes.
+ *   Zero meters emit nothing; historical models never stand in as participants.
+ *   Invalid values remain unknown locally and never disable future facts. Native USD
+ *   floats round to decimal nanodollars; pricing basis changes preserve cumulative deltas.
+ *   The Claude replay goldens change from individual-response to final-turn facts;
+ *   the fresh live baseline replies are constructed, not captured provider evidence.
  *
  * @module providerRuntimeSpi
  */
@@ -108,7 +117,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.9";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.10";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

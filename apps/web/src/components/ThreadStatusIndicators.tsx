@@ -1,3 +1,5 @@
+import { useAtomValue } from "@effect/atom-react";
+import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import {
   scopeProjectRef,
   scopedThreadKey,
@@ -502,11 +504,17 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   );
   const pr = resolveThreadPr({ threadBranch: thread.branch, gitStatus: gitStatus.data });
   const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const limit = useAtomValue(
+    mateLimitAtom(scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))),
+  );
   const threadStatus = threadStatusPill(
-    resolveThreadStatus({
-      ...thread,
-      ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-    }),
+    resolveThreadStatus(
+      {
+        ...thread,
+        ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
+      },
+      limit.kind,
+    ),
   );
 
   if (!linkedPullRequest && !prStatus && !threadStatus) {

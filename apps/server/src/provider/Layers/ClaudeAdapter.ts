@@ -99,6 +99,7 @@ import {
   resolveClaudeThreadSetup,
 } from "../../spi/claudeThreadProfile.ts";
 import { claudeMcpControl, type ClaudeMcpQuery } from "../../spi/mcpControl.ts";
+import { makeClaudeTurnUsage } from "../../spi/responseUsage.ts";
 
 /** A session as the MCP tab's hook sees it. */
 const claudeMcpSession = (context: {
@@ -453,6 +454,7 @@ function rememberPendingTaskEntry(
 }
 
 interface ClaudeSessionContext {
+  readonly turnUsage: ReturnType<typeof makeClaudeTurnUsage>;
   session: ProviderSession;
   /** The last of what the CLI wrote to stderr: why its stream died, for the log. */
   readonly stderrTail: StderrTail;
@@ -534,6 +536,7 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage>, ClaudeMcpQuery {
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
   readonly applyFlagSettings: ClaudeSdkQuery["applyFlagSettings"];
+  readonly usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: ClaudeSdkQuery["usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET"];
   readonly close: () => void;
 }
 
@@ -4633,6 +4636,37 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ) {
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
+    const measured = yield* Effect.try({
+      try: () => {
+        if (message.type === "conversation_reset")
+          context.turnUsage.resetNativeLedger(message.new_conversation_id, message.session_id);
+        return context.turnUsage(message);
+      },
+      catch: (cause) =>
+        new ProviderAdapterProcessError({
+          provider: PROVIDER,
+          threadId: context.session.threadId,
+          detail: "Exact Claude usage accounting failed.",
+          cause,
+        }),
+    }).pipe(
+      Effect.catch((cause) => {
+        return emitRuntimeWarning(context, `${cause.detail} ${String(cause.cause)}`, message).pipe(
+          Effect.as([]),
+        );
+      }),
+    );
+    for (const payload of measured) {
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        ...stamp,
+        type: "turn.usage.completed",
+        provider: PROVIDER,
+        threadId: context.session.threadId,
+        providerRefs: {},
+        payload,
+      });
+    }
 
     // Wire-only command bookkeeping has no user-facing T3 lifecycle.
     if (sdkMessageType(message) === "command_lifecycle") {
@@ -4665,8 +4699,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // `conversation_reset` announces a CLI-side conversation id swap
       // (e.g. /clear); T3 keeps its own thread identity and resume cursor.
       case "prompt_suggestion":
-      case "conversation_reset":
         return;
+      case "conversation_reset": {
+        return;
+      }
       default: {
         // Exhaustiveness guard (see handleSystemMessage): new SDK top-level
         // message types fail typecheck here instead of warning at runtime.
@@ -5577,6 +5613,33 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             }),
         });
 
+        // The native print runtime restores resume/fork history before accepting controls.
+        // Read its live ledger before any Mate input; skipBehaviors prevents transcript scanning.
+        const usageBaseline = yield* Effect.tryPromise({
+          try: () =>
+            queryRuntime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+              skipBehaviors: true,
+            }),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: "Claude live usage baseline is unavailable.",
+              cause,
+            }),
+        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
+
+        const turnUsage = yield* Effect.try({
+          try: () => makeClaudeTurnUsage(usageBaseline),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: "Claude live usage baseline is invalid.",
+              cause,
+            }),
+        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
+
         const session: ProviderSession = {
           threadId,
           provider: PROVIDER,
@@ -5602,6 +5665,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         };
 
         const context: ClaudeSessionContext = {
+          turnUsage,
           session,
           stderrTail,
           startInput: input,

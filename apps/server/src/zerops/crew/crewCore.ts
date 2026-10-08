@@ -30,7 +30,6 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
@@ -41,6 +40,8 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../../config.ts";
+import { subscribeUpdateChanges } from "../../update/subscribeChanges.ts";
+import { makeOwnedWork } from "../../update/OwnedWork.ts";
 import {
   claimMessageAttachments,
   pendingUploadOf,
@@ -368,6 +369,7 @@ export const makeCrewCore = Effect.gen(function* () {
   const signals = yield* PubSub.unbounded<void>();
   const memory = makeMemory();
   const scope = yield* Effect.scope;
+  const updateWork = yield* makeOwnedWork;
   const numbering = yield* Semaphore.make(1);
   const stepping = yield* Semaphore.make(1);
   const opening = yield* Semaphore.make(1);
@@ -538,6 +540,7 @@ export const makeCrewCore = Effect.gen(function* () {
 
   return {
     config,
+    updateWork,
     store,
     shell,
     repositories,
@@ -581,7 +584,7 @@ export const makeCrewCore = Effect.gen(function* () {
             memory.lastError = failureWords(error);
           }).pipe(Effect.andThen(changed)),
         ),
-        Effect.forkIn(scope),
+        updateWork.fork,
         Effect.asVoid,
       ),
     /**
@@ -590,10 +593,11 @@ export const makeCrewCore = Effect.gen(function* () {
      * check it started, which finishes and shows on the next frame.
      */
     inEngine: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-      Effect.flatMap(Effect.forkIn(effect, scope), Fiber.join),
+      updateWork.join(effect),
     /** The engine is shutting down (its scope is closing): work in flight is left for the next boot. */
     shuttingDown: (): boolean => scope.state._tag === "Closed",
     signals: Stream.fromPubSub(signals),
+    subscribeSignals: subscribeUpdateChanges(signals),
     /** Serializes what takes a task's `#N`: two presses at once never share a number. */
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
     /** One task write at a time, so a write can check the state it read is still the stored one. */

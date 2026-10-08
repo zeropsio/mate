@@ -24,6 +24,7 @@ export interface EnvironmentUsage {
 }
 
 export interface ProviderTotals {
+  readonly costKnown?: boolean;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
   readonly totalTokens: number;
@@ -34,6 +35,7 @@ export interface ProviderTotals {
 }
 
 export interface ModelTotals {
+  readonly costKnown?: boolean;
   readonly model: string;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
@@ -59,22 +61,30 @@ export interface ModelTotals {
  * Clients must not present its `costUsd` as a real dollar figure.
  */
 export function isModelCostUnknown(model: ModelTotals): boolean {
-  return model.records > 0 && model.unpricedRecords >= model.records;
+  return model.costKnown === false || (model.records > 0 && model.unpricedRecords >= model.records);
 }
 
 export interface DailyTotals {
+  readonly costKnown?: boolean;
   readonly day: string;
   readonly costUsd: number;
   readonly totalTokens: number;
-  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean }
+  >;
 }
 
 export interface HourlyTotals {
+  readonly costKnown?: boolean;
   readonly day: string;
   readonly hourStart: string;
   readonly costUsd: number;
   readonly totalTokens: number;
-  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean }
+  >;
 }
 
 export interface CostQuality {
@@ -107,6 +117,7 @@ export interface SpeedCost {
 
 /** One environment's own share of the merge, after de-duplication. */
 export interface EnvironmentTotals {
+  readonly costKnown?: boolean;
   readonly environmentId: EnvironmentId;
   readonly costUsd: number;
   readonly totalTokens: number;
@@ -446,7 +457,10 @@ export function mergeUsage(
     {
       costUsd: number;
       totalTokens: number;
-      byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean }
+      >;
     }
   >();
   const hourlyAccumulator = new Map<
@@ -456,7 +470,10 @@ export function mergeUsage(
       hourStart: string;
       costUsd: number;
       totalTokens: number;
-      byProvider: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean }
+      >;
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
@@ -467,7 +484,10 @@ export function mergeUsage(
     records: number;
     unpricedRecords: number;
     sessions: number;
-    providers: Map<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+    providers: Map<
+      UsageProviderKind,
+      { costUsd: number; totalTokens: number; costKnown?: boolean }
+    >;
   }[] = [];
 
   for (const environment of current) {

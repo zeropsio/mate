@@ -585,6 +585,23 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       },
     },
     {
+      case: "a generic weekly refusal keeps the projected provider name",
+      input: activity({
+        kind: "failed",
+        face: "sleep",
+        usageLimited: true,
+        limitProvider: "Claude",
+        errorLine: "You've hit your weekly limit",
+        pausedUntil: "2026-10-10T00:00:00.000Z",
+      }),
+      state: "paused",
+      rowFace: "sleep",
+      dot: "attention",
+      strong: false,
+      slot: { kind: "paused", until: "2026-10-10T00:00:00.000Z" },
+      reply: { kind: "words", text: "The Mate hit the Claude limit.", tone: "muted" },
+    },
+    {
       case: "sent, its run not started yet",
       input: activity({ snippet: undefined, awaitingWords: true }),
       state: "idle",

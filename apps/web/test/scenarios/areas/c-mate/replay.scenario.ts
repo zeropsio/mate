@@ -181,7 +181,7 @@ describe("C: reading, replay and attention", () => {
           resetsAt: "2099-10-07T14:00:00.000Z",
           window: "5-hour",
           held: 2,
-          pausedAt: "2026-10-07T12:00:00.000Z",
+          pausedAt: wire.mate.thread.latestTurn!.startedAt!,
           autoResume: true,
         };
         wire.event("thread.usage-pause-set", {
@@ -190,7 +190,7 @@ describe("C: reading, replay and attention", () => {
         });
         wire.shell();
         yield* reportConversation(s.drivers, "Ada", { usagePause: wire.usagePause });
-        yield* chat.then.text("Ada hit the coding agent's limit.");
+        yield* chat.then.text("Ada hit the Codex limit.");
         yield* Effect.promise(async () => {
           const marker = await s.page.waitForSelector(
             '[data-zerops-mate-row="Ada"] [role="status"]',

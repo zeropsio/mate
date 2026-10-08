@@ -3,10 +3,11 @@ import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import { vi } from "vite-plus/test";
+import { usageOriginId, usageFactId } from "@t3tools/shared/agentUsage";
 import { UsageReport, type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
-import { USAGE_GENESIS_DIGEST, usageEntryDigest } from "@t3tools/shared/agentUsage";
 import { startCore, setUpMate, enrollMate, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const reportOf = Schema.decodeUnknownEffect(UsageReport);
 // External rates have their own accounting tests; socket/access tests use a stable unavailable policy.
 vi.mock("./usagePrices.ts", async (original) => ({
@@ -28,39 +29,37 @@ const query: UsageReportQuery = {
 };
 const fact: UsageFact = {
   originId: "origin",
-  factId: "request",
+  factId: usageFactId("native-thread", "request"),
   nativeId: "request",
-  aliases: [],
-  revision: "1",
   provider: "claude",
-  model: "fixture-model",
-  pricingBand: "standard",
-  components: {
-    uncachedInput: "100",
-    cachedInput: "0",
-    cacheCreation: "0",
-    output: "0",
-    reasoning: "0",
-    inclusiveTotal: "100",
-  },
+  models: [
+    {
+      model: "fixture-model",
+      components: {
+        uncachedInput: "100",
+        cachedInput: "0",
+        cacheCreation: "0",
+        output: "0",
+        reasoning: "0",
+        inclusiveTotal: "100",
+      },
+      nativeCost: null,
+    },
+  ],
   nativeCost: null,
   time: { kind: "instant", at: "2020-01-01T12:00:00.000Z", provenance: "native" },
   evidence: "native",
   meterVersion: "fixture-1",
-  state: "settled",
-  sessionId: null,
-  runId: null,
+  sessionId: "native-thread",
   parentId: null,
 };
-const batch = (sequence: string, previousDigest: string, value: UsageFact, channel: string) => {
-  const entry = { sequence, previousDigest, facts: [value], coverage: [] };
-  return {
-    type: "usage-batch",
-    ledgerId: "ledger",
-    channel,
-    entries: [{ ...entry, digest: usageEntryDigest(entry) }],
-  };
-};
+const batch = (batchId: string, value: UsageFact) => ({
+  type: "usage-facts",
+  protocol: 2,
+  batchId,
+  origins: [],
+  facts: [value],
+});
 describe("usage on the existing HQ sockets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -82,22 +81,24 @@ describe("usage on the existing HQ sockets", () => {
           const link = yield* core.socket(`/api/mate/link?ticket=${ticket}`);
           const state = yield* link.next("state");
           const usage = state.usage as { mateId: string; capture: number; report: number };
-          assert.strictEqual(usage.capture, 1);
+          assert.strictEqual(usage.capture, 2);
+          const originId = usageOriginId(
+            { orgId: "ORG", projectId: "P_MATE", mateId: usage.mateId },
+            "claude",
+          );
+          const completed = { ...fact, originId };
           yield* link.send({
-            type: "usage-hello",
-            protocol: 1,
-            ledgerId: "ledger",
-            highWater: "0",
-            highDigest: USAGE_GENESIS_DIGEST,
-            replayFloor: "1",
+            type: "usage-facts",
+            protocol: 2,
+            batchId: "register",
+            facts: [],
             origins: [
               {
-                originId: "origin",
+                originId,
                 orgId: "ORG",
                 projectId: "P_MATE",
                 mateId: usage.mateId,
                 provider: "claude",
-                writerId: "writer",
                 label: "Rig",
                 coverage: {
                   state: "partial",
@@ -108,12 +109,12 @@ describe("usage on the existing HQ sockets", () => {
               },
             ],
           });
-          const resume = yield* link.next("usage-resume");
-          assert.strictEqual(resume.cursor, "0");
-          const channel = String(resume.channel);
-          const sent = batch("1", USAGE_GENESIS_DIGEST, fact, channel);
+          assert.strictEqual((yield* link.next("usage-ack")).batchId, "register");
+          const sent = batch("first", completed);
           yield* link.send(sent);
-          assert.strictEqual((yield* link.next("usage-ack")).cursor, "1");
+          assert.deepStrictEqual((yield* link.next("usage-ack")).accepted, [
+            { originId, factId: fact.factId },
+          ]);
           const { ticket: viewerTicket } = (yield* core.call("POST", "/api/stream-ticket", {
             session,
           })).body as { ticket: string };
@@ -135,7 +136,7 @@ describe("usage on the existing HQ sockets", () => {
             if (message.type === "scope-ready") {
               ready++;
               capability =
-                capability || (message.core as { agentUsage?: number })?.agentUsage === 1;
+                capability || (message.core as { agentUsage?: number })?.agentUsage === 2;
             }
             if (message.type === "scope-reset" || message.type === "scope-values") {
               const scope = message.scope as { kind: string };
@@ -150,22 +151,33 @@ describe("usage on the existing HQ sockets", () => {
           assert.isTrue(found);
           assert.isTrue(capability);
           yield* link.send({
-            type: "usage-batch",
-            ledgerId: "ledger",
-            channel,
-            entries: [{ sequence: "2", digest: "damaged" }],
+            type: "usage-facts",
+            protocol: 2,
+            batchId: "damaged",
+            origins: [],
+            facts: [{}],
           });
           assert.strictEqual((yield* link.next("usage-error")).code, "usage_frame_invalid");
           yield* core.call("POST", "/api/mates/P_MATE/closed-off", { session });
           const after = yield* link.next("state");
           assert.isTrue((after.mate as { closedOff: boolean }).closedOff);
           const corrected = {
-            ...fact,
-            revision: "2",
-            components: { ...fact.components, uncachedInput: "250", inclusiveTotal: "250" },
+            ...completed,
+            factId: usageFactId("native-thread", "request-2"),
+            nativeId: "request-2",
+            models: [
+              {
+                ...fact.models[0]!,
+                components: {
+                  ...fact.models[0]!.components,
+                  uncachedInput: "150",
+                  inclusiveTotal: "150",
+                },
+              },
+            ],
           };
-          yield* link.send(batch("2", sent.entries[0]!.digest, corrected, channel));
-          assert.strictEqual((yield* link.next("usage-ack")).cursor, "2");
+          yield* link.send(batch("second", corrected));
+          assert.strictEqual((yield* link.next("usage-ack")).batchId, "second");
           let total = "100";
           let retainedCursor: { incarnation: string; revision: number } | undefined;
           while (total !== "250") {
@@ -210,7 +222,14 @@ describe("usage on the existing HQ sockets", () => {
               tier: "daily" as const,
               cursor: {
                 generation: firstPageReport.generation,
-                after: '["2020-01-01","origin","fixture-model","standard","fixture-1","1111"]',
+                after: json([
+                  "2020-01-01",
+                  originId,
+                  "fixture-model",
+                  "api-equivalent-baseline",
+                  "fixture-1",
+                  "1111",
+                ]),
               },
             },
           };

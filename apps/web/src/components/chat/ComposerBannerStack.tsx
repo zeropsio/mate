@@ -39,6 +39,7 @@ export interface ComposerBannerStackItem {
   // Ordering hint for stack assemblers: front this banner even though its
   // variant is calm (e.g. live update progress). The stack itself ignores it.
   readonly urgent?: boolean;
+  readonly layout?: "row" | "centered";
   readonly icon: ReactNode;
   readonly title: ReactNode;
   readonly description?: ReactNode;
@@ -212,6 +213,7 @@ function ComposerBannerStackAlert({
   return (
     <Alert
       variant={item.variant}
+      layout={item.layout ?? "row"}
       className={cn(
         attached
           ? "chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4"

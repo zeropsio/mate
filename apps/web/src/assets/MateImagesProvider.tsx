@@ -8,6 +8,7 @@ import { AsyncResult } from "effect/reactivity";
 import { useEffect, useMemo, type ReactNode } from "react";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { MateImagesContext } from "./MateImages";
+import { imagePresentationsOf } from "./imagePresentation";
 
 const wireAtom = connectionAtomRuntime.atom(
   Effect.gen(function* () {
@@ -17,7 +18,7 @@ const wireAtom = connectionAtomRuntime.atom(
     );
   }),
 );
-/** An account owns its demand and facts. A mounted presentation owns its Blob URL. */
+/** An account owns image facts, byte demand and decoded browser resources. */
 export function MateImages({
   store,
   children,
@@ -26,11 +27,18 @@ export function MateImages({
   readonly children: ReactNode;
 }) {
   const wire = Option.getOrNull(AsyncResult.value(useAtomValue(wireAtom)));
+  const presentations = useMemo(() => imagePresentationsOf(store), [store]);
   const images = useMemo(
-    () => (wire === null ? null : makeMateImages({ store, wire, reuseRetained: true })),
-    [store, wire],
+    () =>
+      wire === null
+        ? null
+        : makeMateImages({ store, wire, reuseRetained: true, onWithhold: presentations.release }),
+    [store, wire, presentations],
   );
   useEffect(() => () => images?.stop(), [images]);
-  const value = useMemo(() => (images === null ? null : { store, images }), [images, store]);
+  const value = useMemo(
+    () => (images === null ? null : { store, images, presentations }),
+    [images, store, presentations],
+  );
   return <MateImagesContext value={value}>{children}</MateImagesContext>;
 }

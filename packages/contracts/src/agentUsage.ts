@@ -3,8 +3,8 @@
 import * as Schema from "effect/Schema";
 import { UsageProviderKind } from "./usage.ts";
 
-export const AGENT_USAGE_CAPTURE_PROTOCOL = 1;
-export const AGENT_USAGE_REPORT_PROTOCOL = 1;
+export const AGENT_USAGE_CAPTURE_PROTOCOL = 2;
+export const AGENT_USAGE_REPORT_PROTOCOL = 2;
 export const AGENT_USAGE_EXACT_DAYS = 30;
 export const AGENT_USAGE_BATCH_MAX = 100;
 export const AGENT_USAGE_BATCH_BYTES = 48 * 1024;
@@ -55,57 +55,49 @@ export const UsageComponents = Schema.Struct({
   }),
 );
 export type UsageComponents = typeof UsageComponents.Type;
-export const UsageTime = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("instant"), at: Instant, provenance: UsageIdentity }),
-  Schema.Struct({
-    kind: Schema.Literal("interval"),
-    since: Instant,
-    until: Instant,
-    provenance: UsageIdentity,
-  }).check(
-    Schema.makeFilter((time) =>
-      Date.parse(time.since) < Date.parse(time.until) ? undefined : "Empty interval",
-    ),
-  ),
-  Schema.Struct({ kind: Schema.Literal("undated") }),
-]);
+export const UsageTime = Schema.Struct({
+  kind: Schema.Literal("instant"),
+  at: Instant,
+  provenance: UsageIdentity,
+});
 export const UsageNativeCost = Schema.Struct({
   amount: UsageQuantity,
   scale: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 18 })),
   currency: UsageIdentity,
   basis: UsageIdentity,
 });
+export type UsageNativeCost = typeof UsageNativeCost.Type;
+export const UsageModelLine = Schema.Struct({
+  model: Schema.NullOr(UsageIdentity),
+  components: UsageComponents,
+  nativeCost: Schema.NullOr(UsageNativeCost),
+});
+export type UsageModelLine = typeof UsageModelLine.Type;
 export const UsageFact = Schema.Struct({
   originId: UsageIdentity,
   factId: UsageIdentity,
-  /** Stable provider-domain identity; retained aliases must resolve to this identity. */
+  /** Native completed turn identity within the provider thread. */
   nativeId: UsageIdentity,
-  aliases: Schema.Array(UsageIdentity).check(Schema.isMaxLength(16)),
-  /** Comparable only within this registered source writer lineage. */
-  revision: UsageQuantity,
   provider: UsageProviderKind,
-  model: Schema.NullOr(UsageIdentity),
-  pricingBand: UsageIdentity,
-  components: UsageComponents,
+  models: Schema.Array(UsageModelLine).check(
+    Schema.isMaxLength(AGENT_USAGE_BATCH_MAX),
+    Schema.makeFilter((models) =>
+      new Set(models.map((line) => line.model)).size === models.length
+        ? undefined
+        : "Repeated model in one turn",
+    ),
+  ),
+  /** Separately reported turn charge; never added to per-model charges. */
   nativeCost: Schema.NullOr(UsageNativeCost),
   time: UsageTime,
   evidence: UsageIdentity,
   meterVersion: UsageIdentity,
-  state: Schema.Literals(["provisional", "settled", "retracted"]),
-  sessionId: Schema.NullOr(UsageIdentity),
-  runId: Schema.NullOr(UsageIdentity),
+  sessionId: UsageIdentity,
   parentId: Schema.NullOr(UsageIdentity),
 });
 export type UsageFact = typeof UsageFact.Type;
 export const UsageCoverage = Schema.Struct({
-  state: Schema.Literals([
-    "unknown",
-    "backfilling",
-    "recovering",
-    "partial",
-    "complete",
-    "unsupported",
-  ]),
+  state: Schema.Literals(["unknown", "partial", "complete", "unsupported"]),
   since: Schema.NullOr(Instant),
   through: Schema.NullOr(Instant),
   gaps: Schema.Array(UsageIdentity).check(Schema.isMaxLength(32)),
@@ -118,23 +110,12 @@ export const UsageOrigin = Schema.Struct({
   /** Registration lifetime, distinct from a process boot or a ledger database. */
   mateId: UsageIdentity,
   provider: UsageProviderKind,
-  writerId: UsageIdentity,
   label: UsageIdentity,
   coverage: UsageCoverage,
 });
 export type UsageOrigin = typeof UsageOrigin.Type;
-export const UsageJournalEntry = Schema.Struct({
-  sequence: UsageQuantity,
-  previousDigest: UsageDigest,
-  digest: UsageDigest,
-  /** A coarse retraction and detailed replacements must share one entry. */
-  facts: Schema.Array(UsageFact).check(Schema.isMaxLength(AGENT_USAGE_BATCH_MAX)),
-  coverage: Schema.Array(Schema.Struct({ originId: UsageIdentity, value: UsageCoverage })).check(
-    Schema.isMaxLength(64),
-  ),
-});
-export type UsageJournalEntry = typeof UsageJournalEntry.Type;
 export const UsageReportQuery = Schema.Struct({
+  provenance: Schema.optionalKey(Schema.Literals(["live-responses", "legacy-scanner"])),
   since: Schema.NullOr(Instant),
   until: Instant,
   mode: Schema.Literals(["exact", "utc-days"]),
@@ -154,7 +135,18 @@ export const UsageReportQuery = Schema.Struct({
   ownerUserId: Schema.NullOr(UsageIdentity),
   provider: Schema.NullOr(UsageProviderKind),
   model: Schema.NullOr(UsageIdentity),
-  groupBy: Schema.Literals(["month", "year", "model", "mate", "project", "app", "owner"]),
+  groupBy: Schema.Literals([
+    "hour",
+    "day",
+    "month",
+    "year",
+    "provider",
+    "model",
+    "mate",
+    "project",
+    "app",
+    "owner",
+  ]),
 }).check(
   Schema.makeFilter((query) => {
     if (query.since !== null && Date.parse(query.since) >= Date.parse(query.until))
@@ -198,7 +190,6 @@ export const UsageStatistics = Schema.Struct({
   reasoning: UsageQuantity,
   records: UsageQuantity,
   unknownComponents: UsageQuantity,
-  provisional: UsageQuantity,
 });
 export type UsageStatistics = typeof UsageStatistics.Type;
 export const UsageDailyDetail = Schema.Struct({
@@ -213,6 +204,7 @@ export const UsageDailyDetail = Schema.Struct({
 });
 export type UsageDailyDetail = typeof UsageDailyDetail.Type;
 export const UsageReport = Schema.Struct({
+  provenance: Schema.Literals(["live-responses", "legacy-scanner"]),
   query: UsageReportQuery,
   generation: UsageReportGeneration,
   exactSince: Schema.NullOr(Instant),
@@ -220,7 +212,8 @@ export const UsageReport = Schema.Struct({
   state: Schema.Literals(["unknown", "partial", "complete", "unsupported-exact-boundary"]),
   coverage: Schema.Array(
     Schema.Struct({
-      originId: UsageIdentity,
+      /** Absent when an authorized Mate has not reported a usage origin. */
+      originId: Schema.optionalKey(UsageIdentity),
       value: UsageCoverage,
       deleted: Schema.Boolean,
       projectId: Schema.optionalKey(UsageIdentity),
@@ -232,27 +225,7 @@ export const UsageReport = Schema.Struct({
     }),
   ).check(Schema.isMaxLength(200)),
   coverageMore: Schema.Boolean,
-  captureGaps: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        projectId: UsageIdentity,
-        mateId: UsageIdentity,
-        appId: Schema.NullOr(UsageIdentity),
-        ownerUserId: Schema.NullOr(UsageIdentity),
-        label: UsageIdentity,
-        reason: Schema.Literal("unregistered"),
-      }),
-    ).check(Schema.isMaxLength(200)),
-  ),
-  captureGapsMore: Schema.optionalKey(Schema.Boolean),
-  retention: Schema.optionalKey(
-    Schema.Struct({
-      targetDays: Schema.Literal(AGENT_USAGE_EXACT_DAYS),
-      protectedRevision: Schema.NullOr(UsageQuantity),
-      protectedSet: Schema.NullOr(UsageIdentity),
-      pinned: Schema.Boolean,
-    }),
-  ),
+  recordedSince: Schema.optionalKey(Schema.NullOr(Instant)),
   nativeCosts: Schema.optionalKey(Schema.Record(Schema.String, UsageQuantity)),
   totals: UsageStatistics,
   pricing: Schema.Struct({
@@ -260,13 +233,18 @@ export const UsageReport = Schema.Struct({
     revision: UsageIdentity,
     /** Integer USD nanos; null means no usable rates, never a fully priced zero. */
     costUsdNanos: Schema.NullOr(UsageQuantity),
-    pricedRecords: UsageQuantity,
-    unpricedRecords: UsageQuantity,
+    pricedModelEntries: UsageQuantity,
+    unpricedModelEntries: UsageQuantity,
   }),
   groups: Schema.Array(
     Schema.Struct({
       key: Schema.String,
+      period: Schema.optionalKey(UsageIdentity),
+      provider: Schema.optionalKey(UsageProviderKind),
+      model: Schema.optionalKey(Schema.NullOr(UsageIdentity)),
+      /** Model groups count participating turns; these counts overlap across models. */
       totals: UsageStatistics,
+      nativeCosts: Schema.optionalKey(Schema.Record(Schema.String, UsageQuantity)),
       costUsdNanos: Schema.NullOr(UsageQuantity),
     }),
   ).check(Schema.isMaxLength(200)),

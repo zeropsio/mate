@@ -11,6 +11,7 @@
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 export interface MateStatusResult {
   readonly installed: string;
@@ -19,6 +20,7 @@ export interface MateStatusResult {
   readonly updateAvailable: boolean;
   readonly checkedAt: string;
   readonly error?: string | undefined;
+  readonly updater?: ExecutionEnvironmentUpdate["automatic"] | undefined;
 }
 
 const RawMateStatusResult = Schema.Struct({
@@ -28,6 +30,7 @@ const RawMateStatusResult = Schema.Struct({
   updateAvailable: Schema.Boolean,
   checkedAt: Schema.String,
   error: Schema.optional(Schema.String),
+  updater: ExecutionEnvironmentUpdate.fields.automatic,
 });
 
 const decodeMateStatusResult = Schema.decodeUnknownOption(RawMateStatusResult);
@@ -56,6 +59,7 @@ export interface MateUpdateResult {
   readonly from?: string | undefined;
   readonly to?: string | undefined;
   readonly restarted: boolean;
+  readonly started?: boolean | undefined;
   readonly error?: string | undefined;
 }
 
@@ -64,6 +68,7 @@ const RawMateUpdateResult = Schema.Struct({
   from: Schema.optional(Schema.String),
   to: Schema.optional(Schema.String),
   restarted: Schema.Boolean,
+  started: Schema.optionalKey(Schema.Boolean),
   error: Schema.optional(Schema.String),
 });
 

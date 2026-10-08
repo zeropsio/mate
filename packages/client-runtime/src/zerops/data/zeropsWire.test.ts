@@ -1,10 +1,18 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { AtomRegistry } from "effect/reactivity";
+import { vi } from "vite-plus/test";
+
+import { zeropsNavigationLink } from "../../data/adapters/zerops.ts";
+import { projectServices } from "../../data/projections/services.ts";
+import { makeAccountStore, readsOfState } from "../../data/store.ts";
+import { superviseLink } from "../../data/supervisor.ts";
 
 import { ZeropsApiError } from "../api.ts";
 import type { PlatformWatchSocket } from "./platformSocket.ts";
@@ -12,7 +20,9 @@ import { makeZeropsWire, repairZeropsSession, type ZeropsWireClient } from "./ze
 
 const Frame = Schema.fromJsonString(Schema.Unknown);
 const encodeFrame = Schema.encodeSync(Frame);
-const decodeFrame = Schema.decodeSync(Frame);
+const decodeRegistration = Schema.decodeUnknownSync(
+  Schema.Struct({ wsOutputType: Schema.String, subscriptionName: Schema.String }),
+);
 
 class FakeSocket implements PlatformWatchSocket {
   readonly sent: string[] = [];
@@ -73,11 +83,92 @@ describe("the Zerops wire", () => {
           yield* Effect.yieldNow;
           sockets[0]?.receive({ type: "search", subscriptionName: "s1", data: { update: [] } });
           const frames = yield* Fiber.join(reading);
-          expect(frames.map((frame) => decodeFrame(frame))).toEqual([
+          expect(frames).toEqual([
             { type: "search", subscriptionName: "s1", data: { update: [] } },
           ]);
         }),
       ),
+  );
+
+  it.effect("parses a large service frame once from the socket through account admission", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const expectedServices = Array.from({ length: 319 }, (_, index) => ({
+          id: `service-${index}`,
+          clientId: "org",
+          projectId: "p1",
+          name: `Service ${String(index).padStart(3, "0")}`,
+          status: "ACTIVE",
+        }));
+        let updates = "";
+        const { wire, sockets } = harness({
+          requestData: async ({ path, body }) => {
+            const registration = decodeRegistration(body);
+            if (path === "/service-stack/search" && registration.wsOutputType === "updateStream")
+              updates = registration.subscriptionName;
+            return {
+              items:
+                path === "/project/search" && registration.wsOutputType === "listStream"
+                  ? [{ id: "p1", clientId: "org", name: "Project", status: "ACTIVE", _version: 1 }]
+                  : [],
+            };
+          },
+        });
+        const registry = AtomRegistry.make();
+        const store = makeAccountStore(registry);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            store.close();
+            registry.dispose();
+          }),
+        );
+        const ready = yield* Deferred.make<void>();
+        const admitted = yield* Deferred.make<void>();
+        const stop = store.subscribe(() => {
+          const services = projectServices.derive(readsOfState(store.state()), {
+            orgId: "org",
+            projectId: "p1",
+          });
+          if (services.live && services.services !== undefined)
+            Deferred.doneUnsafe(ready, Effect.void);
+          if (services.services?.length === expectedServices.length)
+            Deferred.doneUnsafe(admitted, Effect.void);
+        });
+        yield* Effect.addFinalizer(() => Effect.sync(stop));
+        let nextId = 0;
+        const link = zeropsNavigationLink({
+          orgId: "org",
+          wire,
+          store,
+          makeId: () => `sub-${++nextId}`,
+        });
+        const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+        const running = yield* Effect.forkChild(supervisor.run);
+        yield* Deferred.await(ready);
+        expect(updates).not.toBe("");
+        const encoded = encodeFrame({
+          type: "search",
+          subscriptionName: updates,
+          data: {
+            update: expectedServices.map((service) => ({
+              ...service,
+              _version: 2,
+              buildConfig: "unused".repeat(256),
+            })),
+          },
+        });
+        const parses = vi.spyOn(JSON, "parse");
+        yield* Effect.addFinalizer(() => Effect.sync(() => parses.mockRestore()));
+        sockets[0]!.onmessage!({ data: encoded });
+        yield* Deferred.await(admitted);
+        expect(parses).toHaveBeenCalledTimes(1);
+        expect(
+          projectServices.derive(readsOfState(store.state()), { orgId: "org", projectId: "p1" })
+            .services,
+        ).toEqual(expectedServices);
+        yield* Fiber.interrupt(running);
+      }),
+    ),
   );
 
   it.effect.each([

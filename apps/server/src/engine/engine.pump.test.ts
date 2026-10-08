@@ -585,7 +585,7 @@ describe("the running engine", () => {
     ),
   );
 
-  it.effect("a known reset resumes 30 s after it", () =>
+  it.effect("a known reset holds work until that exact instant", () =>
     scene(
       Effect.gen(function* () {
         const w = yield* world("claudeAgent");
@@ -596,9 +596,9 @@ describe("the running engine", () => {
         );
         const limited = yield* w.run(r(1));
         assert.deepStrictEqual(limited?.end, { kind: "usage-limit", resetsAt });
-        yield* w.advance(resetsAt + 29_000 - (yield* Clock.currentTimeMillis));
+        yield* w.advance(resetsAt - 1 - (yield* Clock.currentTimeMillis));
         assert.isUndefined(yield* w.run(r(2)));
-        yield* w.advance(1_000);
+        yield* w.advance(1);
         const resumed = yield* w.run(r(2));
         assert.deepStrictEqual(
           [resumed?.trigger.cause, resumed?.joins, resumed?.state],

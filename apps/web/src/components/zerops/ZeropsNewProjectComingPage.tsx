@@ -1,3 +1,4 @@
+import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
 /**
  * A New project's first Mate before the platform has made its project (`/mate/new/$birthId`):
  * where Create lands, at once (the owner, 2026-09-30: "you should go to the mate detail and the
@@ -32,7 +33,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import {
   ComingBelow,
-  comingSentenceOf,
   type ArrivalProgress,
   MateComingFrame,
   MateComingHeader,

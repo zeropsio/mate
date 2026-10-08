@@ -1,6 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { SessionId, type TurnHandle } from "@t3tools/contracts";
 
@@ -12,6 +15,52 @@ const S1 = SessionId.make("mate/s/1.1");
 const H1 = "mate/r/1" as TurnHandle;
 
 describe("SessionHost", () => {
+  it.effect.each(["deferred interrupt", "unasked session close"] as const)(
+    "%s blocks updating until the native call settles",
+    (operation) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const started = yield* Deferred.make<void>();
+          const finish = yield* Deferred.make<void>();
+          const changes = yield* PubSub.unbounded<void>();
+          const subscription = yield* PubSub.subscribe(changes);
+          const nativeCall = Deferred.succeed(started, void 0).pipe(
+            Effect.andThen(Deferred.await(finish)),
+          );
+          const { host } = yield* makeHostHarness({
+            interruptTurn: nativeCall,
+            stopSession: nativeCall,
+            changed: Effect.asVoid(PubSub.publish(changes, void 0)),
+          });
+          if (operation === "deferred interrupt") {
+            yield* host.begin(S1);
+            yield* host.record({ kind: "start", session: S1, from: "fresh" });
+            yield* host.record({ kind: "started" });
+            yield* host.openGate(S1);
+            yield* Effect.asVoid(host.beginSend(H1, "new"));
+            yield* host.interruptOrDefer(H1);
+            yield* host.record({ kind: "sent", turn: H1, nativeTurn: "T1" });
+          } else {
+            yield* host.offer(hostEvent("session.started"));
+          }
+          yield* host.settled;
+          yield* Deferred.await(started);
+          assert.ok(host.updateBlockers);
+          assert.include(yield* host.updateBlockers, "live provider call");
+          assert.isFalse(yield* host.idle);
+          yield* Deferred.succeed(finish, void 0);
+          yield* Stream.fromSubscription(subscription).pipe(
+            Stream.mapEffect(() => host.updateBlockers!),
+            Stream.filter((blockers) => !blockers.includes("live provider call")),
+            Stream.take(1),
+            Stream.runDrain,
+          );
+          assert.notInclude(yield* host.updateBlockers, "live provider call");
+          if (operation === "unasked session close") assert.isTrue(yield* host.idle);
+        }),
+      ),
+  );
+
   it.effect("a send's evidence reaches it even when the driver answered before it waited", () =>
     Effect.scoped(
       Effect.gen(function* () {

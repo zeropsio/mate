@@ -12,6 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -29,6 +30,7 @@ import {
   validateAntigravityCallbackUrl,
 } from "./antigravityCallback.ts";
 import type { ProviderAuthController } from "./Services/ProviderAuthService.ts";
+import { subscribeUpdateChanges } from "../update/subscribeChanges.ts";
 
 const AUTH_TIMEOUT_MS = 300_000;
 const FORWARDING_FAILED_MESSAGE = "Could not deliver the sign-in response. Start sign-in again.";
@@ -153,6 +155,10 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
   const processes = new Set<OwnedProcess>();
   let activeFlow: AuthFlow | undefined;
   let operation: "idle" | "auth" | "logout" | "cancel" | "closed" = "idle";
+  let pendingProcesses = 0;
+  let pendingForwarding = 0;
+  const updateChanges = yield* PubSub.unbounded<void>();
+  const updateChanged = Effect.asVoid(PubSub.publish(updateChanges, void 0));
 
   const setupError = (name: string, detail: string) =>
     new ProviderSetupError({ instanceId: options.instanceId, operation: name, detail });
@@ -192,6 +198,8 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
               );
             }
             processes.add(owned);
+            pendingProcesses++;
+            yield* updateChanged;
             yield* Scope.addFinalizer(
               scope,
               Effect.sync(() => {
@@ -210,7 +218,8 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
           Effect.ensuring(
             Effect.sync(() => {
               owned.startup = undefined;
-            }),
+              pendingProcesses--;
+            }).pipe(Effect.andThen(updateChanged)),
           ),
         );
       }),
@@ -234,6 +243,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
               : "Connected to Antigravity."
             : safeAuthFailure(result.cause, usesBrowser),
         });
+        yield* updateChanged;
       }),
     );
 
@@ -302,6 +312,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
             if (activeFlow !== flow) return false;
             activeFlow = undefined;
             operation = "cancel";
+            yield* updateChanged;
             flow.pending = undefined;
             yield* publishFlow(flow, {
               ...flow.state,
@@ -319,7 +330,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
         yield* lock.withPermits(1)(
           Effect.sync(() => {
             if (operation === "cancel") operation = "idle";
-          }),
+          }).pipe(Effect.andThen(updateChanged)),
         );
       }),
     );
@@ -338,6 +349,10 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
     });
 
   const controller: ProviderAuthController = {
+    isChangingCredentials: Effect.sync(
+      () => operation !== "idle" || pendingProcesses > 0 || pendingForwarding > 0,
+    ),
+    subscribeUpdateChanges: subscribeUpdateChanges(updateChanges),
     start: (ownerSessionId, stopSessions = Effect.void) =>
       lock.withPermits(1)(
         Effect.uninterruptible(
@@ -373,6 +388,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
             };
             activeFlow = flow;
             operation = "auth";
+            yield* updateChanged;
             yield* publishFlow(flow, state);
             flow.fiber = yield* runSignIn(flow, stopSessions).pipe(
               Effect.interruptible,
@@ -410,6 +426,8 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
           // sent the callback may disconnect before Google answers, and the
           // flow must still settle instead of sitting at "verifying" until
           // the deadline.
+          pendingForwarding++;
+          yield* updateChanged;
           const forwarding = yield* (
             options.forwardCallback?.(callback) ??
             forwardAntigravityCallback(options.instanceId, callback)
@@ -420,12 +438,17 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
                 Effect.forkIn(instanceScope),
               ),
             ),
+            Effect.ensuring(
+              Effect.sync(() => {
+                pendingForwarding--;
+              }).pipe(Effect.andThen(updateChanged)),
+            ),
             Effect.interruptible,
             Effect.forkIn(instanceScope),
           );
           flow.forwarding = forwarding;
           return { flow, forwarding };
-        }),
+        }).pipe(Effect.uninterruptible),
       );
       const forwarded = yield* Fiber.await(pending.forwarding);
       if (Exit.isFailure(forwarded)) {
@@ -447,6 +470,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
                 return yield* setupError("logout", "Antigravity setup is already stopping.");
               }
               operation = "logout";
+              yield* updateChanged;
               const currentFlow = activeFlow;
               activeFlow = undefined;
               if (currentFlow) {
@@ -501,6 +525,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
                     : "Antigravity sign-out failed. Try again.",
                 },
               });
+              yield* updateChanged;
             }),
           );
           if (Exit.isFailure(result)) {
@@ -526,6 +551,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
       operation = "closed";
+      yield* updateChanged;
       const flow = activeFlow;
       activeFlow = undefined;
       if (flow) {
@@ -534,6 +560,7 @@ export const makeAntigravityAuth = Effect.fn("makeAntigravityAuth")(function* <
         if (flow.fiber) yield* Fiber.interrupt(flow.fiber);
       }
       yield* stopOwnedProcesses;
+      yield* updateChanged;
       yield* Deferred.succeed(closed, undefined);
     }),
   );

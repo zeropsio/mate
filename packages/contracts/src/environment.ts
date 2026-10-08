@@ -194,9 +194,28 @@ export type ExecutionEnvironmentZerops = typeof ExecutionEnvironmentZerops.Type;
  */
 export const ExecutionEnvironmentUpdate = Schema.Struct({
   installed: TrimmedNonEmptyString,
-  latest: TrimmedNonEmptyString,
+  /** Empty when zcp has no manifest evidence; availability is unknown. */
+  latest: Schema.String,
   available: Schema.Boolean,
   checkedAt: TrimmedNonEmptyString,
+  automatic: Schema.optionalKey(
+    Schema.Struct({
+      protocol: Schema.Literal(1),
+      rollbackCompatible: Schema.Boolean,
+      phase: Schema.Literals([
+        "idle",
+        "staging",
+        "draining",
+        "switching",
+        "verifying",
+        "updated",
+        "postponed",
+        "failed",
+      ]),
+      runningVersion: TrimmedNonEmptyString,
+      failedVersion: Schema.optionalKey(TrimmedNonEmptyString),
+    }),
+  ),
 });
 export type ExecutionEnvironmentUpdate = typeof ExecutionEnvironmentUpdate.Type;
 

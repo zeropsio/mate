@@ -744,7 +744,7 @@ export function runCardShows(
 }
 
 /** The runs of each conversation the person watched or opened, by the conversation's key. */
-const runFolds = new Map<string, Map<string, Exclude<RunFold, "folded">>>();
+const runFolds = new Map<string, Map<string, RunFold>>();
 const runFoldListeners = new Set<() => void>();
 
 function runFoldsChanged(): void {
@@ -761,19 +761,45 @@ export function subscribeRunFolds(listener: () => void): () => void {
  * How a run stands in a conversation: folded unless it runs, folds this
  * moment, stayed open while the person read it, or they opened it.
  */
-export function runFoldOf(conversation: string, run: string): RunFold {
-  return runFolds.get(conversation)?.get(run) ?? "folded";
+export function runFoldOf(conversation: string, run: string, unseen: RunFold = "folded"): RunFold {
+  return runFolds.get(conversation)?.get(run) ?? unseen;
 }
 
 /** Marks how a run stands in a conversation. */
 export function setRunFold(conversation: string, run: string, fold: RunFold): void {
   if (runFoldOf(conversation, run) === fold) return;
-  const runs = runFolds.get(conversation) ?? new Map<string, Exclude<RunFold, "folded">>();
-  if (fold === "folded") runs.delete(run);
-  else runs.set(run, fold);
-  if (runs.size === 0) runFolds.delete(conversation);
-  else runFolds.set(conversation, runs);
+  const runs = runFolds.get(conversation) ?? new Map<string, RunFold>();
+  // Explicitly hiding live work must survive its default changing on completion.
+  runs.set(run, fold);
+  runFolds.set(conversation, runs);
   runFoldsChanged();
+}
+
+/** The live runs a person hid, by the conversation's key: their choice outlives the run. */
+const hiddenLive = new Map<string, Set<string>>();
+
+/** The person shows or hides a live run's work: what it is drawn as now, and when a run goes on in it. */
+export function chooseLiveRunFold(
+  conversation: string,
+  run: string,
+  fold: "watched" | "folded",
+): void {
+  const hidden = hiddenLive.get(conversation) ?? new Set<string>();
+  if (fold === "folded") hidden.add(run);
+  else hidden.delete(run);
+  if (hidden.size === 0) hiddenLive.delete(conversation);
+  else hiddenLive.set(conversation, hidden);
+  setRunFold(conversation, run, fold);
+}
+
+/**
+ * How a card stands as a run goes on in it: watched, unless the person hid
+ * it while it ran. A fold of its own as it settled is not their choice, so a
+ * run that joins the card (an engine card draws each run that joins it) is
+ * watched again.
+ */
+export function liveRunFold(conversation: string, run: string): "watched" | "folded" {
+  return hiddenLive.get(conversation)?.has(run) === true ? "folded" : "watched";
 }
 
 /**
@@ -781,7 +807,8 @@ export function setRunFold(conversation: string, run: string, fold: RunFold): vo
  * back it is folded from the first frame and nothing moves.
  */
 export function forgetRunFolds(conversation: string): void {
-  if (!runFolds.delete(conversation)) return;
+  const hid = hiddenLive.delete(conversation);
+  if (!runFolds.delete(conversation) && !hid) return;
   runFoldsChanged();
 }
 

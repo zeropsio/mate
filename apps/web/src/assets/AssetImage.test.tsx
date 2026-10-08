@@ -76,6 +76,50 @@ it("measures the drawn image itself and keeps authorized pixels in its reserved 
   act(() => renderer.unmount());
 });
 
+it("hiding and moving a decoded picture keeps its rendition until it has a drawn size again", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal("window", { devicePixelRatio: 1 });
+  let measure!: () => void;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(callback: () => void) {
+        measure = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const source = mateImageSource({
+    environmentId: EnvironmentId.make("mate"),
+    resource: { _tag: "media-file", threadId: ThreadId.make("thread"), path: "mate-asset:picture" },
+  });
+  let box = { width: 120, height: 80 };
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(<AssetImage src={source} alt="The moving picture" />, {
+      createNodeMock: () => ({
+        getBoundingClientRect: () => box,
+        parentElement: { getBoundingClientRect: () => box },
+      }),
+    });
+  });
+  const held = image.keys.at(-1);
+  for (const hidden of [
+    { width: 0, height: 0 },
+    { width: 120, height: 0 },
+    { width: 120, height: 80 },
+  ]) {
+    box = hidden;
+    act(measure);
+    expect(image.keys.at(-1)).toEqual(held);
+  }
+  box = { width: 240, height: 160 };
+  act(measure);
+  expect(image.keys.at(-1)).toMatchObject({ rendition: box });
+  act(() => renderer.unmount());
+});
+
 it("a reserved picture hides browser fallback until decoding finishes", async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   let decoded!: () => void;

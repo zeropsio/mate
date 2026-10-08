@@ -166,7 +166,7 @@ function useGaze(face: React.RefObject<HTMLSpanElement | null>, tracks: boolean)
  * The moment the face plays now, and how many have started: the facts its caller hands it, then
  * the change of pose it watched (`greets`). Only while it is on screen and its state is read
  * (`known`) — never on a first paint, a remount or a re-render, never from a stand-in, never
- * with reduced motion. A moment is never cut short: the next waits for its end.
+ * with reduced motion. While observed, the next moment waits for the current one to end.
  */
 function useMoment(input: {
   readonly state: MateMarkState;
@@ -183,8 +183,8 @@ function useMoment(input: {
     player: startMoments(cues, known && !prefersStill()),
   }));
   const still = prefersStill();
-  if (still && seen.player.playing !== undefined) {
-    // Reduced motion turned on mid-moment: its animation is gone, and so is the moment.
+  if ((still || !known) && seen.player.playing !== undefined) {
+    // Motion disabled or a stand-in takes the pose: the observed moment no longer owns it.
     setSeen({ ...seen, player: { ...seen.player, playing: undefined, next: undefined } });
   } else if (seen.state !== state || seen.known !== known || seen.cueKeys !== cueKeys) {
     const change =

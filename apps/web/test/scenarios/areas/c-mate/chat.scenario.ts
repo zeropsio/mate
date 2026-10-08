@@ -150,6 +150,52 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
+    // Catches a row above the sent message changing as the Mate's record replaces the person's (a
+    // day divider the Mate's clock moves) and the list leaving its end for its top.
+    it.effect(
+      "a message the Mate's clock puts on another day keeps a long conversation at its end",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          for (const round of [1, 2, 3])
+            chat
+              .fixture()
+              .exchange(
+                `How did deploy ${round} go?`,
+                "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                  30,
+                ),
+              );
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          chat.fixture().skewClock(-3 * 24 * 60 * 60 * 1000);
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          const fromEnd = () =>
+            Effect.promise(() =>
+              s.page.evaluate(async () => {
+                const readings: number[] = [];
+                for (let frame = 0; frame < 120; frame += 1) {
+                  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                  const scroll = document.querySelector<HTMLElement>(".timeline-legend-list");
+                  if (scroll !== null)
+                    readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
+                }
+                return readings;
+              }),
+            );
+          const before = yield* fromEnd();
+          expect(Math.max(...before.slice(-10))).toBeLessThanOrEqual(2);
+          yield* chat.when.send("Keep me at the end, whatever day the Mate says it is");
+          const after = yield* fromEnd();
+          expect(Math.max(...after)).toBeLessThan(400);
+          expect(after.at(-1)).toBeLessThanOrEqual(2);
+          yield* chat.then.once("Keep me at the end, whatever day the Mate says it is");
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Catches "Send now" starting a run of its own behind the running one (the engine's did) instead of steering it.
     it.effect("Send now puts a waiting message into the running turn", () =>
       Effect.gen(function* () {

@@ -13,7 +13,7 @@ only each other.
 
 ## 1. The boundary
 
-The SPI surface is `ProviderRuntimeEventV2` (49 `type`-discriminated members,
+The SPI surface is `ProviderRuntimeEventV2` (the `type`-discriminated event union,
 `packages/contracts/src/providerRuntime.ts`, upstream's file — never moved/renamed so a port never
 re-applies a move) plus the `streamEvents` port, re-declared with a version and changelog in the
 one owned file `packages/contracts/src/providerRuntimeSpi.ts`. Owned code never reads the raw port
@@ -40,7 +40,9 @@ translation of a profile into thread and turn params and an approval gate), and 
 (the MCP tab's one driver hook, `ProviderAdapterShape.mcp`, built from Claude's, Codex's and OpenCode's
 native MCP calls; `mcpLive.ts` routes it across the instances from outside), and
 `apps/server/src/spi/mcpToolTitle.ts` (the whole-name rule an ACP call's title names an MCP tool by,
-shared by the ACP gate and the tool-call reader; it imports nothing). They are the only `spi/`
+shared by the ACP gate and the tool-call reader; it imports nothing), and
+`apps/server/src/spi/responseUsage.ts` (normalizes only completed native response meters, with no
+provider or owned-service imports). They are the only `spi/`
 files `provider/**` may import, and they import only each other and packages (effect, contracts, the
 Claude Agent SDK, the Codex app-server schema) — any other spi file reaches `provider/**`, so one hop
 through it would make the two directories import each other.
@@ -147,7 +149,7 @@ must not dispatch before it.
 
 ## 2. Version + changelog
 
-`PROVIDER_RUNTIME_SPI_VERSION` is `"2.9"` (`providerRuntimeSpi.ts`). Bump it, and add a
+`PROVIDER_RUNTIME_SPI_VERSION` is `"2.10"` (`providerRuntimeSpi.ts`). Bump it, and add a
 changelog entry in that file's doc comment, whenever a change to `ProviderRuntimeEventV2` or the
 `toolCall` enrichment changes what owned code may depend on — a new member, a renamed field, a
 narrowed payload shape. 2.2 (S8b) added an optional `images`/`imagesDropped` on `SpiToolCall.result`,
@@ -167,12 +169,51 @@ it was written in — and an optional `unreturned` on the completion a turn's en
 never returned; the live run card and the menu row's live step read a batch as one model response
 by it. Claude emits both, the other drivers do not. 2.7 adds an optional `presentation` to an
 item's lifecycle payload — an MCP tool's own title and its server, by name and icon — which Claude
-reads from Claude Code's `tool_use_meta`; the other drivers do not yet. 2.8 adds `stopped` to an item's `status`: a
+reads from Claude Code's `tool_use_meta`; the other drivers do not yet.
+2.8 adds `stopped` to an item's `status`: a
 call cancelled before it ran to an answer, told apart from one that failed or was declined; Claude
 emits it from its own `non_execution_kind`, the other drivers do not yet. 2.9 adds optional
 `refused` to `account.rate-limits.updated`: explicit refusal/recovery for a parked turn independent of a
 reset time. Claude emits it; terminal usage-limit errors remain the other adapters' path. Codex
 also emits the existing typed `blocked` reset when its refused turn has an exhausted window.
+2.10 adds `turn.usage.completed`: immutable own-turn consumption, native thread/turn identity,
+model lines and a separately reported turn cost. Claude takes a live `get_usage` ledger baseline
+before Mate supplies input (`skipBehaviors: true` skips the provider's optional transcript scan).
+The native print runtime restores resumed/forked history before accepting this control. Final
+results supply cumulative `modelUsage`, which includes Task/sidechains and query-pipeline calls;
+Mate subtracts the baseline/previous result and keys the fact by `session_id` plus result `uuid`.
+Individual message meters and main-only `result.usage` are not added. A native
+result with no positive reported token or cost increment creates no usage fact. Historical
+models never stand in as participants on a zero result. A native
+`conversation_reset` supplies an explicit reset receipt: the native reset empties model counters
+and USD before the next result. Mate adopts that known-zero ledger, retires the old native
+session, and reads the next native session identity from its result (the conversation marker
+is a separate identity). Replayed reset receipts do not reset accounting twice. An
+invalid or missing category becomes unknown only for that category, and its next cumulative
+interval stays unknown rather than bridging the gap. Later trustworthy intervals recover.
+Changed receipt identities reject that receipt with a warning, without stopping later accounting.
+Native USD amounts are rounded in decimal to integer nanodollars (scale 9); costs with invalid
+values remain unknown while token accounting continues. Same-currency cumulative cost deltas
+retain the current provider-reported basis, including a basis change.
+Codex fresh `thread/start` opts into the installed native protocol's `experimentalRawEvents`
+through the raw request SPI; its generated public start schema omits that internal option.
+The app-server inherits the raw flag when attaching children and buffers their earlier events.
+Mate routes raw usage and native completions before child UI registration, deduplicates exact
+response IDs inside each native thread/turn, and emits one aggregate at own turn completion.
+No context/lifetime counter participates. The raw meter supplies no model, so that model is null.
+Raw response usage is optional: an absent meter creates no fact and does not stop later
+reported parent or child usage from being recorded.
+Invalid token categories become unknown independently; known categories survive. Zero meters
+create no usage fact, and rejected duplicate receipts do not disable a session's accounting.
+Codex 0.160.1's native `ThreadResumeParams` has no raw opt-in, and its resume listener defaults
+raw off. Resumed chat continues with an explicit usage-unavailable warning and creates no guessed
+facts. Provider child creation broadcast lag is a native delivery limitation; no end-to-end
+fresh-child capture is yet available to verify this internal path.
+The real Claude plain-text recording proves 21,460 main-model plus 909 auxiliary-model tokens
+in one result; it contains no Task run. The real Codex multi-agent capture contains only counters
+and emits no exact facts. Positive parent/child aggregation tests use constructed schema-native
+raw frames; they are not recorded subagent completion evidence.
+
 The bus
 carries its build-time version (`bus.version`,
 `ProviderRuntimeEventBus.ts:39-43`) as a hook for a future adapter-version gate at startup — that
@@ -188,6 +229,7 @@ Verified by grepping `zerops/**` and `orchestration/**` for each event's `type` 
 - `turn.started`/`turn.completed` (incl. the `state: "interrupted"` variant) — `orchestration/Layers/CheckpointReactor.ts:1021,1058,1108`, `.../ProviderRuntimeIngestion.ts:1751-1872,2302,2443`, `.../ProjectionPipeline.ts:1536,1580,1594`.
 - `runtime.error` — `zeropsTurnAuthFailure.ts:37`, `orchestration/Layers/ProviderRuntimeIngestion.ts:533,539,2384`.
 - `thread.state.changed` — `.../ProviderRuntimeIngestion.ts:850`.
+- `turn.usage.completed` — the local usage outbox; each fact retains native turn/thread identity and model lines.
 - `account.rate-limits.updated` (its `blocked`), `task.completed` (outside a turn) and `turn.completed` (`state: "completed"`) — `orchestration/usagePause.ts`, read by `orchestration/Layers/ThreadUsagePauseReactor.ts`.
 
 ## 4. Delivery guarantee

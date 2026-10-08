@@ -7,6 +7,7 @@ import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
 import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
+import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
   ChatAttachment as ContractChatAttachment,
@@ -261,7 +262,6 @@ import {
   DownloadIcon,
   GitBranchIcon,
   HistoryIcon,
-  LockIcon,
   Minimize2Icon,
   PaperclipIcon,
   RefreshCwIcon,
@@ -381,7 +381,6 @@ import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { ConversationReadiness } from "./chat/conversationReadiness";
 import { MessagesTimeline, type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
@@ -418,7 +417,7 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
+import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
 import { useLiveJobs } from "./chat/useLiveJobs";
 import {
@@ -1426,15 +1425,6 @@ export default function ChatView(props: ChatViewProps) {
     [environmentId, threadId],
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
-  const [conversationReady, setConversationReady] = useState<{
-    key: string;
-    ready: boolean;
-  } | null>(null);
-  const onConversationReady = useCallback((key: string, ready: boolean) => {
-    setConversationReady((previous) =>
-      previous?.key === key && previous.ready === ready ? previous : { key, ready },
-    );
-  }, []);
   const updateProjectScriptSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
@@ -2005,10 +1995,20 @@ export default function ChatView(props: ChatViewProps) {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
+  const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
+  const limit = useAtomValue(
+    mateLimitAtom(
+      activeThreadShell === null
+        ? ""
+        : scopedThreadKey(scopeThreadRef(activeThreadShell.environmentId, activeThreadShell.id)),
+    ),
+  );
+  const usageRefused = limit.kind !== "none";
   const activeLatestTurn = activeThread?.latestTurn ?? null;
-  const activeRunningTurnId =
-    (activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null) ??
-    (activeLatestTurn?.state === "running" ? activeLatestTurn.turnId : null);
+  const activeRunningTurnId = usageRefused
+    ? null
+    : ((activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null) ??
+      (activeLatestTurn?.state === "running" ? activeLatestTurn.turnId : null));
   // Reading a finished thread clears the sidebar's Done badge. The visit is
   // stamped at the turn's completion time — not now/updatedAt — so it clears
   // exactly the completion the user is looking at: a wake or completion that
@@ -2494,6 +2494,7 @@ export default function ChatView(props: ChatViewProps) {
         id: `health:${environmentId}`,
         variant: healthCopy.severity === "critical" ? "error" : "warning",
         icon: null,
+        layout: "centered",
         title: healthCopy.title,
         description: healthCopy.description,
       });
@@ -2923,7 +2924,7 @@ export default function ChatView(props: ChatViewProps) {
     compactRequestIsActive &&
     !compactionSettled;
   const isWorking =
-    phase === "running" ||
+    (phase === "running" && !usageRefused) ||
     phase === "connecting" ||
     isSendBusy ||
     isConnecting ||
@@ -5002,7 +5003,6 @@ export default function ChatView(props: ChatViewProps) {
   // Settled state of the open thread, resolved exactly like the sidebar
   // partition (same shell, same capability gate, same PR auto-settle input)
   // so the banner and the sidebar row never disagree.
-  const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
   const activeComposerTasksProgress =
     activeLatestTurn !== null && !latestTurnSettled
       ? (activeThreadShell?.planProgress ?? null)
@@ -5528,10 +5528,11 @@ export default function ChatView(props: ChatViewProps) {
       return {
         id: `agent-login:${zeropsOwnedAgent.agentId}`,
         variant: "warning",
-        icon: <LockIcon />,
+        icon: null,
+        layout: "centered",
         title: expired,
         actions: (
-          <Button size="xs" onClick={openAgentAuthDialog}>
+          <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
             Sign in
           </Button>
         ),
@@ -5543,10 +5544,11 @@ export default function ChatView(props: ChatViewProps) {
     return {
       id: `agent-ownership:${zeropsOwnedAgent.agentId}:${zeropsAgentOwnership}`,
       variant: "warning",
-      icon: <LockIcon />,
+      icon: null,
+      layout: "centered",
       title: notice,
       actions: (
-        <Button size="xs" onClick={openAgentAuthDialog}>
+        <Button size="compact" variant="pill" onClick={openAgentAuthDialog}>
           {AGENT_OWNERSHIP_RECOVERY_LABEL}
         </Button>
       ),
@@ -5773,9 +5775,7 @@ export default function ChatView(props: ChatViewProps) {
         backgroundLiveness: activeBackgroundLiveness,
         liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
-        pause: activeThreadShell?.usagePause
-          ? { resetsAt: activeThreadShell.usagePause.resetsAt }
-          : latestUsagePause(displayedTimeline.entries),
+        pause: limit.kind === "limited" ? { resetsAt: limit.resetsAt } : null,
         standupsDone,
       }),
     [
@@ -5789,7 +5789,7 @@ export default function ChatView(props: ChatViewProps) {
       activePlan,
       backgroundTasks,
       activeBackgroundLiveness,
-      activeThreadShell?.usagePause,
+      limit,
     ],
   );
   const setUsageAutoResume = useAtomCommand(threadEnvironment.setUsageAutoResume, {
@@ -8585,41 +8585,37 @@ export default function ChatView(props: ChatViewProps) {
           className="relative bg-background"
         >
           {!rightPanelOpen ? panelLayoutControls : null}
-          <ConversationReadiness
-            value={conversationReady?.key === routeThreadKey && conversationReady.ready}
-          >
-            <ChatHeader
-              activeThreadEnvironmentId={activeThread.environmentId}
-              activeThreadId={activeThread.id}
-              {...(routeKind === "draft" && draftId ? { draftId } : {})}
-              activeThreadTitle={activeThread.title}
-              isServerThread={isServerThread}
-              changeRequest={activeThreadChangeRequest}
-              activeProjectName={activeProjectDisplayName}
-              activeProjectCwd={activeProject?.workspaceRoot ?? null}
-              activeProjectFaviconPath={activeProject?.faviconPath ?? null}
-              openInCwd={gitCwd}
-              activeProjectScripts={activeProjectScripts}
-              preferredScriptId={
-                activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
-              }
-              keybindings={keybindings}
-              availableEditors={availableEditors}
-              rightPanelOpen={rightPanelOpen}
-              gitCwd={gitCwd}
-              onNewThreadInProject={handleNewThreadInActiveProject}
-              onStartFresh={startFreshConversation}
-              onEditCrewmateJob={editCrewmateJob}
-              onEditBrief={editCrewGoal}
-              {...(activeDraftLogicalProjectKey
-                ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
-                : {})}
-              onRunProjectScript={runProjectScript}
-              onAddProjectScript={saveProjectScript}
-              onUpdateProjectScript={updateProjectScript}
-              onDeleteProjectScript={deleteProjectScript}
-            />
-          </ConversationReadiness>
+          <ChatHeader
+            activeThreadEnvironmentId={activeThread.environmentId}
+            activeThreadId={activeThread.id}
+            {...(routeKind === "draft" && draftId ? { draftId } : {})}
+            activeThreadTitle={activeThread.title}
+            isServerThread={isServerThread}
+            changeRequest={activeThreadChangeRequest}
+            activeProjectName={activeProjectDisplayName}
+            activeProjectCwd={activeProject?.workspaceRoot ?? null}
+            activeProjectFaviconPath={activeProject?.faviconPath ?? null}
+            openInCwd={gitCwd}
+            activeProjectScripts={activeProjectScripts}
+            preferredScriptId={
+              activeProject ? (lastInvokedScriptByProjectId[activeProject.id] ?? null) : null
+            }
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            rightPanelOpen={rightPanelOpen}
+            gitCwd={gitCwd}
+            onNewThreadInProject={handleNewThreadInActiveProject}
+            onStartFresh={startFreshConversation}
+            onEditCrewmateJob={editCrewmateJob}
+            onEditBrief={editCrewGoal}
+            {...(activeDraftLogicalProjectKey
+              ? { onOpenProjectSettings: handleOpenDraftProjectSettings }
+              : {})}
+            onRunProjectScript={runProjectScript}
+            onAddProjectScript={saveProjectScript}
+            onUpdateProjectScript={updateProjectScript}
+            onDeleteProjectScript={deleteProjectScript}
+          />
         </WorkspacePageHeader>
         <ZeropsLifecycleStrip
           agentAuthNeedsAttention={zeropsChrome.agentSignInRequired}
@@ -8696,7 +8692,6 @@ export default function ChatView(props: ChatViewProps) {
                   moment ago is kept, hidden, and shows its rows in place;
                   another's come in as they are placed. */}
               <KeptTimelines
-                onReady={onConversationReady}
                 open={routeThreadKey}
                 warm={warmTimelineAsk}
                 insetMeasured={timelineInsetMeasured}
@@ -8757,9 +8752,13 @@ export default function ChatView(props: ChatViewProps) {
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
+                  limit,
                   onUsageAutoResumeChange,
                   onUsageContinue:
-                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                    isWorking ||
+                    isSendBusy ||
+                    queueBlockedByPendingRequest ||
+                    zeropsShownReadOnly !== null
                       ? null
                       : () => {
                           if (activeThreadKey === null) return;

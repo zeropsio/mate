@@ -1,3 +1,4 @@
+import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
@@ -16,6 +17,16 @@ const activity = (patch: Partial<ZeropsAgentActivity>): ZeropsAgentActivity => (
   unread: false,
   pausedUntil: undefined,
   ...patch,
+  limit: projectMateLimit(
+    {
+      latestTurn: null,
+      session: {
+        lastError: patch.errorLine ?? (patch.usageLimited ? "Claude usage limit reached" : null),
+        usageLimitResetAt: patch.pausedUntil,
+      },
+    },
+    Date.now(),
+  ),
 });
 describe("Mate status across menu and conversation", () => {
   it.each([

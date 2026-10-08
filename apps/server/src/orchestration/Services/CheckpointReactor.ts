@@ -6,6 +6,7 @@
  *
  * @module CheckpointReactor
  */
+import type { ReactorDrainBoundary } from "../../update/ReactorDrainBoundary.ts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
@@ -14,6 +15,8 @@ import type * as Scope from "effect/Scope";
  * CheckpointReactorShape - Service API for checkpoint reactor lifecycle.
  */
 export interface CheckpointReactorShape {
+  readonly updateBoundary?: ReactorDrainBoundary;
+  readonly updateBlockers?: Effect.Effect<ReadonlyArray<string>>;
   /**
    * Start the checkpoint reactor.
    *

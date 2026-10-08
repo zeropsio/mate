@@ -2,7 +2,7 @@ import { usageLimitWords } from "../../zerops/noticeWords";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { CircleAlertIcon, CircleHelpIcon, LogInIcon, PauseIcon } from "lucide-react";
 import type { MateStatus } from "../../zerops/mateStatus.logic";
-import { formatDayAwareTimestamp } from "../../timestampFormat";
+import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 
@@ -38,7 +38,7 @@ export function MateStatusMarker({
           status.provider ?? "coding agent",
           status.until === undefined
             ? undefined
-            : formatDayAwareTimestamp(status.until, timestampFormat),
+            : formatUpcomingTimestamp(status.until, timestampFormat),
           mateName,
         )
       : `${mateName}: ${label}`;
@@ -62,7 +62,7 @@ export function MateStatusMarker({
           {label}
           {status.until === undefined
             ? null
-            : ` · until ${formatDayAwareTimestamp(status.until, timestampFormat)}`}
+            : ` · until ${formatUpcomingTimestamp(status.until, timestampFormat)}`}
         </span>
       </TooltipTrigger>
       <TooltipPopup>{cause}</TooltipPopup>

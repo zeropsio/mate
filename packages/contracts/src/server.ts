@@ -1,6 +1,10 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { ExecutionEnvironmentDescriptor, ServerSelfUpdateMethod } from "./environment.ts";
+import {
+  ExecutionEnvironmentDescriptor,
+  ExecutionEnvironmentUpdate,
+  ServerSelfUpdateMethod,
+} from "./environment.ts";
 import { ServerAuthDescriptor } from "./auth.ts";
 import {
   ForwardCompatibleArray,
@@ -627,7 +631,14 @@ export const ServerConfigStreamUsageLimitSourcesUpdatedEvent = Schema.Struct({
 export type ServerConfigStreamUsageLimitSourcesUpdatedEvent =
   typeof ServerConfigStreamUsageLimitSourcesUpdatedEvent.Type;
 
+export const ServerConfigStreamMateUpdateEvent = Schema.Struct({
+  version: Schema.Literal(1),
+  type: Schema.Literal("mateUpdate"),
+  payload: Schema.Struct({ update: Schema.NullOr(ExecutionEnvironmentUpdate) }),
+});
+
 export const ServerConfigStreamEvent = Schema.Union([
+  ServerConfigStreamMateUpdateEvent,
   ServerConfigStreamSnapshotEvent,
   ServerConfigStreamKeybindingsUpdatedEvent,
   ServerConfigStreamProviderStatusesEvent,

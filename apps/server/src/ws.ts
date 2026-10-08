@@ -1,3 +1,4 @@
+import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
@@ -161,7 +162,6 @@ import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
@@ -610,6 +610,9 @@ const makeWsRpcLayer = (
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsMateAttention = yield* ZeropsMateAttention;
       const mateEngine = yield* MateEngine;
+      const updateAdmission = Option.getOrUndefined(
+        yield* Effect.serviceOption(RpcUpdateAdmission),
+      );
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
@@ -623,7 +626,6 @@ const makeWsRpcLayer = (
           ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
           : run(threadFileWrites);
       const crew = yield* CrewEngine;
-      const usage = yield* UsageService.UsageService;
       const relayClient = yield* RelayClient.RelayClient;
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
         new EnvironmentAuthorizationError({
@@ -648,10 +650,40 @@ const makeWsRpcLayer = (
         method: string,
         effect: Effect.Effect<A, E, R>,
         traceAttributes?: Readonly<Record<string, unknown>>,
+        updateContinuation = false,
       ) =>
         instrumentRpcEffect(
           method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
+          authorizeEffect(
+            requiredScopeForRpcMethod(method),
+            updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
+              ? effect
+              : updateAdmission.run(
+                  effect,
+                  new EnvironmentAuthorizationError({
+                    message:
+                      "Update ready; waiting for your work to finish. Try again after the update.",
+                    requiredScope: requiredScopeForRpcMethod(method),
+                  }),
+                  updateContinuation ||
+                    [
+                      WS_METHODS.providerInstallCancel,
+                      WS_METHODS.projectCloneCancel,
+                      WS_METHODS.providerAuthSubscribe,
+                      ORCHESTRATION_WS_METHODS.dispatchCommand,
+                      WS_METHODS.engineAnswer,
+                      WS_METHODS.engineDismiss,
+                      WS_METHODS.engineStop,
+                      WS_METHODS.terminalWrite,
+                      WS_METHODS.terminalClose,
+                      WS_METHODS.providerAuthComplete,
+                      WS_METHODS.providerAuthRespond,
+                      WS_METHODS.providerAuthCancel,
+                      WS_METHODS.zeropsAgentLoginCancel,
+                      WS_METHODS.zeropsAgentLoginSubmitCode,
+                    ].some((candidate) => candidate === method),
+                ),
+          ),
           traceAttributes,
         );
       const observeRpcStream = <A, E, R>(
@@ -672,10 +704,40 @@ const makeWsRpcLayer = (
           EffectContext
         >,
         traceAttributes?: Readonly<Record<string, unknown>>,
+        updateContinuation = false,
       ) =>
         instrumentRpcStreamEffect(
           method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
+          authorizeEffect(
+            requiredScopeForRpcMethod(method),
+            updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
+              ? effect
+              : updateAdmission.run(
+                  effect,
+                  new EnvironmentAuthorizationError({
+                    message:
+                      "Update ready; waiting for your work to finish. Try again after the update.",
+                    requiredScope: requiredScopeForRpcMethod(method),
+                  }),
+                  updateContinuation ||
+                    [
+                      WS_METHODS.providerInstallCancel,
+                      WS_METHODS.projectCloneCancel,
+                      WS_METHODS.providerAuthSubscribe,
+                      ORCHESTRATION_WS_METHODS.dispatchCommand,
+                      WS_METHODS.engineAnswer,
+                      WS_METHODS.engineDismiss,
+                      WS_METHODS.engineStop,
+                      WS_METHODS.terminalWrite,
+                      WS_METHODS.terminalClose,
+                      WS_METHODS.providerAuthComplete,
+                      WS_METHODS.providerAuthRespond,
+                      WS_METHODS.providerAuthCancel,
+                      WS_METHODS.zeropsAgentLoginCancel,
+                      WS_METHODS.zeropsAgentLoginSubmitCode,
+                    ].some((candidate) => candidate === method),
+                ),
+          ),
           traceAttributes,
         );
       const toDispatchCommandError = (cause: unknown, fallbackMessage: string) =>
@@ -2221,10 +2283,6 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
-        [WS_METHODS.serverGetUsageSummary]: (input) =>
-          observeRpcEffect(WS_METHODS.serverGetUsageSummary, usage.readSummary(input), {
-            "rpc.aggregate": "server",
-          }),
         [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
           observeRpcEffect(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry, {
             "rpc.aggregate": "server",
@@ -2973,11 +3031,24 @@ const makeWsRpcLayer = (
                 })),
               );
 
+              const mateUpdates =
+                input.mateUpdate === true
+                  ? zeropsMateUpdate.changes.pipe(
+                      Stream.map((update) => ({
+                        version: 1 as const,
+                        type: "mateUpdate" as const,
+                        payload: { update: update ?? null },
+                      })),
+                    )
+                  : Stream.empty;
               const liveUpdates = Stream.merge(
-                keybindingsUpdates,
+                mateUpdates,
                 Stream.merge(
-                  providerStatuses,
-                  Stream.merge(settingsUpdates, usageLimitSourceUpdates),
+                  keybindingsUpdates,
+                  Stream.merge(
+                    providerStatuses,
+                    Stream.merge(settingsUpdates, usageLimitSourceUpdates),
+                  ),
                 ),
               );
 

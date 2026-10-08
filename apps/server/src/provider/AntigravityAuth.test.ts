@@ -58,6 +58,7 @@ const makeHarness = Effect.fn("makeAuthTestHarness")(function* (
     readonly supportsLogout?: boolean;
     readonly beforeInitialize?: Effect.Effect<void>;
     readonly forwardCallback?: Effect.Effect<void, ProviderSetupError>;
+    readonly beforeClose?: Effect.Effect<void>;
   } = {},
 ) {
   const authenticated = yield* Deferred.make<void, AcpErrors.AcpError>();
@@ -78,6 +79,7 @@ const makeHarness = Effect.fn("makeAuthTestHarness")(function* (
         yield* Effect.addFinalizer(() =>
           Effect.gen(function* () {
             events.push("process-close");
+            yield* options.beforeClose ?? Effect.void;
             yield* Deferred.succeed(closed, undefined);
           }),
         );
@@ -143,6 +145,115 @@ const makeHarness = Effect.fn("makeAuthTestHarness")(function* (
 });
 
 it.layer(NodeServices.layer)("AntigravityAuth", (it) => {
+  it.effect("successful native sign-in still waits for owned callback delivery", () =>
+    Effect.gen(function* () {
+      const deliver = yield* Deferred.make<void>();
+      const harness = yield* makeHarness({ forwardCallback: Deferred.await(deliver) });
+      const changing = harness.auth.controller.isChangingCredentials;
+      const subscribe = harness.auth.controller.subscribeUpdateChanges;
+      assert.ok(changing);
+      assert.ok(subscribe);
+      const subscription = yield* subscribe;
+      const state = yield* harness.auth.controller.start(owner);
+      yield* phase(harness.auth, "waiting");
+      const request = yield* harness.auth.controller
+        .complete(owner, { flowId: state.flowId!, callbackUrl })
+        .pipe(Effect.forkScoped);
+      yield* phase(harness.auth, "verifying");
+      yield* Deferred.succeed(harness.authenticated, void 0);
+      yield* Deferred.succeed(harness.discovered, void 0);
+      yield* phase(harness.auth, "succeeded");
+      assert.isTrue(yield* changing);
+      yield* Deferred.succeed(deliver, void 0);
+      yield* Fiber.join(request);
+      yield* subscription.changes.pipe(
+        Stream.mapEffect(() => changing),
+        Stream.filter((busy) => !busy),
+        Stream.take(1),
+        Stream.runDrain,
+      );
+      assert.isFalse(yield* changing);
+    }),
+  );
+
+  it.effect("owned native startup blocks updating until its caller receives completion", () =>
+    Effect.gen(function* () {
+      const entered = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
+      const harness = yield* makeHarness();
+      const changing = harness.auth.controller.isChangingCredentials;
+      const subscribe = harness.auth.controller.subscribeUpdateChanges;
+      assert.ok(changing);
+      assert.ok(subscribe);
+      const subscription = yield* subscribe;
+      const startup = yield* harness.auth
+        .withProcess(
+          Effect.void,
+          Deferred.succeed(entered, void 0).pipe(Effect.andThen(Deferred.await(finish))),
+        )
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(entered);
+      assert.isTrue(yield* changing);
+      yield* Deferred.succeed(finish, void 0);
+      yield* Fiber.join(startup);
+      yield* subscription.changes.pipe(
+        Stream.mapEffect(() => changing),
+        Stream.filter((busy) => !busy),
+        Stream.take(1),
+        Stream.runDrain,
+      );
+      assert.isFalse(yield* changing);
+    }),
+  );
+
+  it.effect.each(["success", "failure", "cancel", "logout"] as const)(
+    "%s blocks updating through native cleanup and wakes after settlement",
+    (outcome) =>
+      Effect.gen(function* () {
+        const closing = yield* Deferred.make<void>();
+        const close = yield* Deferred.make<void>();
+        const harness = yield* makeHarness({
+          beforeClose: Deferred.succeed(closing, void 0).pipe(
+            Effect.andThen(Deferred.await(close)),
+          ),
+        });
+        const changing = harness.auth.controller.isChangingCredentials;
+        const subscribe = harness.auth.controller.subscribeUpdateChanges;
+        assert.ok(changing);
+        assert.ok(subscribe);
+        const subscription = yield* subscribe;
+        assert.isFalse(yield* changing);
+        if (outcome === "logout") {
+          yield* harness.auth.controller.logout(Effect.void).pipe(Effect.forkScoped);
+        } else {
+          const state = yield* harness.auth.controller.start(owner);
+          yield* phase(harness.auth, "waiting");
+          assert.isTrue(yield* changing);
+          if (outcome === "cancel") {
+            yield* harness.auth.controller.cancel(owner, state.flowId!).pipe(Effect.forkScoped);
+          } else if (outcome === "failure") {
+            yield* Deferred.fail(
+              harness.authenticated,
+              AcpErrors.AcpRequestError.internalError("failed"),
+            );
+          } else {
+            yield* Deferred.succeed(harness.authenticated, void 0);
+            yield* Deferred.succeed(harness.discovered, void 0);
+          }
+        }
+        yield* Deferred.await(closing);
+        assert.isTrue(yield* changing);
+        yield* Deferred.succeed(close, void 0);
+        yield* subscription.changes.pipe(
+          Stream.mapEffect(() => changing),
+          Stream.filter((busy) => !busy),
+          Stream.take(1),
+          Stream.runDrain,
+        );
+        assert.isFalse(yield* changing);
+      }),
+  );
+
   it.effect("accepts the same authorization URL from stderr and stdout", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

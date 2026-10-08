@@ -4,6 +4,7 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { updateAvailabilityScope } from "../families/mateUpdate.ts";
 import { updateServer } from "../operations/mateUpdate.ts";
+import { mateOfEnvironment } from "./mateLinks.ts";
 import { operationProgress } from "./operation.ts";
 
 export type MateUpdateState =
@@ -24,7 +25,16 @@ export const mateUpdate: Projection<string, MateUpdateRead> = {
     const availability = read.fact("mateUpdateAvailability", environmentId);
     const checkStream = read.stream(updateAvailabilityScope(environmentId));
     const request = read.fact("mateUpdateRequest", environmentId);
-    const checked = availability.kind === "known" ? availability.value : undefined;
+    const mate = mateOfEnvironment.derive(read, environmentId);
+    const source = mate?.container.reading?.reading;
+    const automatic =
+      mate?.watched === true && source?.kind === "ready" ? source.descriptor.update : undefined;
+    const checked =
+      automatic?.automatic === undefined
+        ? availability.kind === "known"
+          ? availability.value
+          : undefined
+        : automatic;
     if (request.kind === "known" && request.value.requestId !== null) {
       const record = read.operation(request.value.requestId);
       if (record?.intent.kind === "mate-update") {
@@ -80,7 +90,8 @@ export const mateUpdate: Projection<string, MateUpdateRead> = {
     return {
       checked,
       state:
-        checked !== undefined && checked?.available !== true
+        checked !== undefined &&
+        (checked === null || (checked.latest !== "" && checked.available !== true))
           ? { phase: "already-current" }
           : { phase: "idle" },
     };

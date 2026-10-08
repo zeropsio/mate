@@ -53,6 +53,23 @@ export class RecordingClaudeQuery implements AsyncIterable<SDKMessage> {
     this.queue.push(message);
   }
 
+  readonly usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET = async (_opts?: {
+    skipBehaviors?: boolean;
+  }) => ({
+    session: {
+      total_cost_usd: 0,
+      total_api_duration_ms: 0,
+      total_duration_ms: 0,
+      total_lines_added: 0,
+      total_lines_removed: 0,
+      model_usage: {},
+    },
+    subscription_type: null,
+    rate_limits_available: false,
+    rate_limits: null,
+    behaviors: null,
+  });
+
   readonly setModel = async (model?: string): Promise<void> => {
     this.setModelCalls.push(model);
   };

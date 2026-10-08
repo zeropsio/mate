@@ -9,9 +9,9 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { WifiOffIcon } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
+import { MateStateDetails } from "../zerops/MateStateDetails";
 import { Button } from "../ui/button";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 
@@ -32,14 +32,15 @@ export function environmentConnectionBannerItem(input: {
   return {
     id: `environment-unavailable:${input.environmentId}`,
     variant: input.connection.phase === "error" ? "error" : "default",
-    icon: <WifiOffIcon />,
+    icon: null,
+    layout: "centered",
     title: copy.title,
     ...(copy.description === null ? {} : { description: copy.description }),
     ...(copy.action === null
       ? {}
       : {
           actions: (
-            <Button size="xs" onClick={input.onRetry}>
+            <Button size="compact" variant="pill" onClick={input.onRetry}>
               {copy.action}
             </Button>
           ),
@@ -85,7 +86,8 @@ export function mateVoiceBannerItem(input: {
         : voice.severity === "attention"
           ? "warning"
           : "default",
-    icon: <WifiOffIcon />,
+    icon: null,
+    layout: "centered",
     title: voice.headline ?? voice.text,
     ...(voice.secondary === undefined
       ? {}
@@ -94,7 +96,14 @@ export function mateVoiceBannerItem(input: {
             voice.restarting === true && voice.restartLines !== undefined ? (
               <RestartWords key={input.environmentId} lines={voice.restartLines} />
             ) : (
-              voice.secondary
+              <>
+                {voice.secondary}
+                {voice.details ? (
+                  <MateStateDetails>
+                    <p className="whitespace-pre-wrap break-words">{voice.details}</p>
+                  </MateStateDetails>
+                ) : null}
+              </>
             ),
         }),
     ...(askAgain !== null ||
@@ -106,8 +115,9 @@ export function mateVoiceBannerItem(input: {
             <>
               {containerAction === null || input.onContainerAction === undefined ? null : (
                 <Button
+                  variant="pill"
                   disabled={input.busy}
-                  size="xs"
+                  size="compact"
                   onClick={() => input.onContainerAction?.(containerAction)}
                 >
                   {input.busy
@@ -118,21 +128,21 @@ export function mateVoiceBannerItem(input: {
                 </Button>
               )}
               {askAgain === null ? null : (
-                <Button size="xs" onClick={input.onRetry}>
+                <Button size="compact" variant="pill" onClick={input.onRetry}>
                   {askAgain}
                 </Button>
               )}
               {openInZerops ? (
                 <Button
                   render={<a href={input.projectUrl} target="_blank" rel="noreferrer" />}
-                  size="xs"
-                  variant="outline"
+                  size="compact"
+                  variant="pill"
                 >
                   Open in Zerops
                 </Button>
               ) : null}
               {toProjects ? (
-                <Button render={input.projects} size="xs" variant="outline">
+                <Button render={input.projects} size="compact" variant="pill">
                   Go to projects
                 </Button>
               ) : null}

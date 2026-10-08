@@ -1,30 +1,33 @@
 # Review usage
 
-The Usage page combines Codex, Claude Code, and Grok Build activity from your connected
-environments. It reads the providers' local session history and shows API-equivalent token cost,
-processed tokens, estimated cache savings, provider shares, and model breakdowns. These are agent
-API-equivalent estimates, not subscription payments or Zerops resource charges.
+Usage records consumption reported by agents running through Mate.
+Commands run independently in a container terminal and zcp activity are outside Mate usage.
+Completed provider turns supply usage for each model they used, reported token categories, and
+native cost when available. One turn can use several models, including models used by subagents;
+it still counts as one turn in the headline total. Model participation counts overlap and must not
+be added to obtain a turn count. Missing provider evidence remains unknown; the page never invents
+earlier consumption.
 
-Totals are transcript snapshots. Answers appear progressively with partial or unavailable coverage;
-a reconnect retains the last authorized snapshot. An unread scope is never shown as zero activity.
-**Owner** groups history by each Mate’s current owner, so reassignment moves its historical total.
-Unknown owners stay separate from explicitly unassigned Mates. Project filters use stable HQ app
-IDs (`?app=<id>`); old `?project=<name>` bookmarks show an error and require selecting a project.
+Claude's final result reports cumulative usage by model, including subagent consumption. Mate
+records the increase since the preceding native baseline as one completed turn, so parent and
+subagent totals are counted once. Usage from resumed Codex threads is unavailable; new Codex
+threads and their subagents report usage from completed native responses. This gap is explicit on
+the report. Partial totals are the recorded subset of consumption and must not be read as complete
+usage.
+
+HQ retains exact turn facts for 30 days and daily history indefinitely, including deleted Mates.
+Web and desktop read these reports without connecting to every Mate. An HQ outage retains the
+permitted report labelled last-known. Automatic model pricing produces an API-equivalent estimate;
+models without usable prices say **Unpriced**. This estimate is separate from native reported costs,
+subscription payments, and Zerops resource charges. A reported turn cost is separate from
+per-model costs; the report never adds those costs together or allocates a turn cost to models.
+
+**Owner** uses the Mate's current HQ owner and project filters use stable HQ app IDs (`?app=<id>`).
+Old `?project=<name>` bookmarks require choosing a project. Earlier history collected by the
+previous method remains separately labelled and is never added to the completed-turn totals.
 
 Open **Usage** from the command palette, or press `mod+u` on web and desktop when the terminal is
 not focused. Customize `usage.open` in **Settings → Keybindings**.
-
-Grok Build totals come from persisted session updates. Interactive turns that never wrote a
-completed-turn record will not appear.
-
-Usage includes each configured account's history, including disabled accounts. Custom homes follow
-the account's home setting or its `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, or `GROK_HOME` environment
-variable. Use absolute paths or `~/` paths in the account's environment settings; relative
-environment paths depend on each project's working directory and cannot be reliably discovered
-by Usage. Accounts sharing a history directory count once.
-
-When your app and server support different providers, usage totals may cover only the providers
-your app understands. Update the app to include newly supported providers.
 
 The **Limits** view shows how much of each subscription window you have used on Codex and Claude
 Code. Limits are account-wide and shared across projects and Mates; project and owner filters do not
@@ -43,6 +46,14 @@ current model's limits without leaving the conversation. The result opens above 
 closes when you dismiss it or send your next message. It uses the same snapshot as the **Limits**
 view, so it does not run the agent or refresh anything. The command is offered only for providers
 that appear on the **Limits** view.
+
+When a provider refuses a turn at its usage limit, the Mate shows that provider's name and its
+reported reset time. **Continue** before a known reset explains why the work is still held. At the
+reset, the Limit marker disappears; the dated refusal and **Continue** remain until another
+attempt is acknowledged. An unknown reset stays unknown. A Mate that cannot be reached shows the
+refusal as **Last known**, with the source time. Refused Claude admissions do not count as usage.
+A conversation stays with the provider that started it; archive it and start fresh to use another
+provider on the same Mate.
 
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. Limits cannot be reported for external OpenCode servers because their
@@ -69,17 +80,6 @@ provider settings.
 Hub accounts on Codex show banked reset credits; choose **Use a reset credit** on the account
 row to redeem one through the hub. No hub plugin is required.
 
-Use **Past 24h** for an hourly chart covering the exact rolling 24-hour period. The **7 days**,
-**30 days**, and **90 days** ranges use daily resolution. Cost and token toggles update both the
-headline and chart, and refreshing rescans every connected environment.
-
-## Set custom model prices
-
-On web or desktop, open **Usage → Model prices** to add, edit, or remove a model's estimated
-price. Choose the environment whose history you want to price, then enter the exact model ID and
-USD rates per million input and output tokens. You can enter any model ID, including models
-without public pricing.
-
-Cache read and cache write rates are optional and use the input rate when blank. Enter `0` for
-tokens that are free. Saved prices replace automatic pricing for all of that environment's
-history and are shared with clients connected to it. Removing a price restores automatic pricing.
+Use **Past 24h** for the exact rolling 24-hour period. The **7 days**, **30 days**, and **90 days**
+ranges use complete UTC days. Refreshing usage asks HQ for its recorded report; refreshing Limits
+checks providers on the Mates already opened by this client.
