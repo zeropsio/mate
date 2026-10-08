@@ -225,3 +225,65 @@ it("a stand-up message that failed plays no success dance", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it("a failed restart keeps raw diagnostics collapsed below its named state and actions", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const voice = mateNoticeVoice({
+    reachability: null,
+    mateName: "Eddy",
+    conversationShown: false,
+    nowMs: 0,
+    lastKnown: "Eddy was last working on the build.",
+    recovery: {
+      standing: { kind: "unknown" },
+      status: "ACTION_FAILED",
+      process: {
+        id: "restart",
+        projectId: "p",
+        serviceStackIds: ["s"],
+        created: "2026-10-07",
+        actionName: "stack.restart",
+        status: "FAILED",
+        failReason: "500: Internal Server Error",
+      },
+    },
+  });
+  if (voice.surface === "none") throw new Error("Missing failure notice");
+  try {
+    await act(() =>
+      root.render(
+        <MateConnectionState
+          mate={null}
+          face="sleep"
+          headline={voice.headline ?? ""}
+          secondary={voice.secondary ?? ""}
+          actions={
+            <MateLinkLineView
+              voice={{ ...voice, text: null }}
+              processes={null}
+              projects={<a href="#projects" />}
+              projectUrl="https://app.zerops.io/project/p"
+              onTryNow={undefined}
+            />
+          }
+        />,
+      ),
+    );
+    expect(host.querySelector("h1")?.textContent).toBe("Eddy couldn't restart.");
+    expect(host.querySelector("[data-arrival-sentence]")?.textContent).toBe(
+      "Zerops returned an error while restarting. Eddy was last working on the build.",
+    );
+    expect(host.querySelector("details")?.open).toBe(false);
+    expect(host.querySelector("summary")?.textContent).toBe("Details");
+    expect(host.querySelector("details")?.textContent).toContain("500: Internal Server Error");
+    expect(host.textContent).toContain("Go to projects");
+    expect(host.textContent).toContain("Open in Zerops");
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  }
+});

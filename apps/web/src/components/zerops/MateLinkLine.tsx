@@ -118,6 +118,7 @@ export function MateLinkLineView({
         busy={busy}
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
+        details={voice.details}
         projects={projects}
         projectUrl={projectUrl}
       />
@@ -134,6 +135,7 @@ export function MateLinkLineView({
  */
 export function MateOpeningLine({
   phrase,
+  details,
   projectUrl,
   onTryNow,
   projects,
@@ -143,6 +145,7 @@ export function MateOpeningLine({
   readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
   readonly busy?: boolean | undefined;
   readonly phrase: RouteGatePhrase;
+  readonly details?: string | undefined;
   /** Its project in Zerops, for "Open in Zerops". */
   readonly projectUrl: string | undefined;
   /** Retries its link; absent while nothing names its target. */
@@ -209,6 +212,11 @@ export function MateOpeningLine({
             </Button>
           ) : null}
         </div>
+      ) : null}
+      {details ? (
+        <MateStateDetails>
+          <p className="mt-3 whitespace-pre-wrap break-words text-left">{details}</p>
+        </MateStateDetails>
       ) : null}
     </div>
   );

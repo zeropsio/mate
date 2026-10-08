@@ -17,6 +17,7 @@ export type WebMateVoice =
       /** The source is still opening the conversation; its waiting pose follows readiness. */
       readonly opening?: true;
       readonly secondary?: string;
+      readonly details?: string;
       /** Its container is restarting: its face plays the restart for as long as it lasts. */
       readonly restarting?: true;
       readonly restartLines?: ReadonlyArray<string>;
@@ -81,8 +82,9 @@ export function mateNoticeVoice(
     return {
       surface,
       text: input.lastKnown === undefined ? recovery.text : `${recovery.text} ${input.lastKnown}`,
-      headline: recovery.text,
-      secondary: [recoveringRestart ? restartLine(name, 0) : "", input.lastKnown]
+      headline: recovery.headline,
+      ...(recovery.details === undefined ? {} : { details: recovery.details }),
+      secondary: [recoveringRestart ? restartLine(name, 0) : recovery.secondary, input.lastKnown]
         .filter(Boolean)
         .join(" "),
       ...(recoveringRestart

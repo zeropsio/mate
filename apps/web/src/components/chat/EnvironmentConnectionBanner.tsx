@@ -95,7 +95,15 @@ export function mateVoiceBannerItem(input: {
             voice.restarting === true && voice.restartLines !== undefined ? (
               <RestartWords key={input.environmentId} lines={voice.restartLines} />
             ) : (
-              voice.secondary
+              <>
+                {voice.secondary}
+                {voice.details ? (
+                  <details>
+                    <summary className="cursor-pointer">Details</summary>
+                    <p className="whitespace-pre-wrap break-words">{voice.details}</p>
+                  </details>
+                ) : null}
+              </>
             ),
         }),
     ...(askAgain !== null ||

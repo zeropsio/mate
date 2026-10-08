@@ -344,9 +344,7 @@ describe("ZeropsMateEmptyState", () => {
     feedState.agentAuth = known(SIGNED_IN_BY_ADA);
     const html = render({ ...ASKED, project: "Acme Docs Portal" });
 
-    expect(html).toContain(
-      '<span class="inline-block">Fen is standing up development on Acme Docs Portal.</span>',
-    );
+    expect(html).toContain("Fen is standing up development on Acme Docs Portal.");
   });
 });
 

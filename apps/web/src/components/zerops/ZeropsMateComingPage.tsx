@@ -790,13 +790,17 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                 severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: "sleep",
                 headline: projectUnavailable
-                  ? recoveryNotice(recovery, named.name)?.text
+                  ? recoveryNotice(recovery, named.name)?.headline
                   : page.reachability === null
                     ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
                     : linkVoice.surface === "none"
                       ? undefined
                       : (linkVoice.headline ?? linkVoice.text ?? undefined),
-                sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                sentence: projectUnavailable
+                  ? recoveryNotice(recovery, named.name)?.secondary
+                  : linkVoice.surface === "none"
+                    ? undefined
+                    : linkVoice.secondary,
                 below: (
                   <MateOpeningLine
                     onTryNow={tryNow}
@@ -808,6 +812,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                       text: null,
                     }}
                     projectUrl={projectUnavailable ? undefined : mate.projectUrl}
+                    details={
+                      projectUnavailable || linkVoice.surface === "none"
+                        ? undefined
+                        : linkVoice.details
+                    }
                   />
                 ),
               }
@@ -821,6 +830,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     : (linkVoice.headline ?? linkVoice.text ?? undefined),
                 sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
                 restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
+                restartLines: linkVoice.surface === "none" ? undefined : linkVoice.restartLines,
                 below: (
                   <MateLinkLine
                     mateServiceId={mate.serviceId}

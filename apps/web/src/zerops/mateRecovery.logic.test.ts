@@ -64,7 +64,7 @@ describe("Mate recovery evidence", () => {
         "Wren",
       ),
     ).toMatchObject({
-      text: expect.stringContaining("Wren could not restart. Its startup command failed."),
+      text: expect.stringContaining("Wren couldn't restart. Its startup command failed."),
       actions: ["restart", "open-in-zerops"],
       tone: "error",
     });
@@ -128,3 +128,40 @@ it("full-disk telemetry reports its sample without inventing a failed turn", () 
     tone: "warning",
   });
 });
+
+// The named Mate is the subject; platform labels and diagnostics never become its headline.
+it.each(["500: Internal Server Error", "unclassified platform failure"])(
+  "keeps %s under Details and names the Mate",
+  (failReason) => {
+    const notice = recoveryNotice(
+      {
+        standing: { kind: "deleted", name: "Radotin - Eddy" },
+        status: undefined,
+        process: undefined,
+      },
+      "Eddy",
+    );
+    expect(notice?.headline).toBe("Eddy's project was deleted.");
+    const failed = recoveryNotice(
+      {
+        standing: { kind: "unknown" },
+        status: "ACTION_FAILED",
+        process: {
+          id: "restart",
+          actionName: "stack.restart",
+          status: "FAILED",
+          created: "2026-10-07",
+          projectId: "p",
+          serviceStackIds: ["s"],
+          failReason,
+        },
+      },
+      "Eddy",
+    );
+    expect(failed?.headline).toBe("Eddy couldn't restart.");
+    expect(failed?.secondary).not.toContain(failReason);
+    expect(failed?.details).toBe(failReason);
+    if (failReason.startsWith("500"))
+      expect(failed?.secondary).toBe("Zerops returned an error while restarting.");
+  },
+);

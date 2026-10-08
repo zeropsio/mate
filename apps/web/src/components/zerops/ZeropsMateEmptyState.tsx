@@ -264,6 +264,7 @@ export interface MateEmptyComing {
   readonly headline?: string | undefined;
   /** Its container is restarting: its face plays the restart while it lasts. */
   readonly restarting?: boolean | undefined;
+  readonly restartLines?: ReadonlyArray<string> | undefined;
   readonly kind: MateViewKind;
   readonly below: ReactNode;
   /** The sentence under the headline: how long is left, or why it stopped. */
@@ -425,6 +426,7 @@ export function MateEmptyStateView({
       mate={named}
       pressed={pressed}
       restarting={coming?.restarting === true}
+      restartLines={coming?.restartLines}
       sentence={sentence}
       severity={coming?.severity}
       slot={slot}
@@ -446,6 +448,7 @@ function ArrivalComposition({
   mate,
   state,
   restarting,
+  restartLines,
   clauses,
   sentence,
   slot,
@@ -461,6 +464,7 @@ function ArrivalComposition({
   readonly mate: DrawnMate | null;
   readonly state: MateMarkState;
   readonly restarting: boolean;
+  readonly restartLines?: ReadonlyArray<string> | undefined;
   readonly severity: MateEmptyComing["severity"];
   readonly clauses: ReadonlyArray<string>;
   readonly sentence: string;
@@ -482,7 +486,8 @@ function ArrivalComposition({
   const [restart, setRestart] = useState({ active: restarting, cycle: 0 });
   if (restart.active !== restarting) setRestart({ active: restarting, cycle: 0 });
   const spokenSentence = restarting
-    ? restartLine(mate?.name ?? "The Mate", restart.cycle)
+    ? (restartLines?.[restart.cycle % restartLines.length] ??
+      restartLine(mate?.name ?? "The Mate", restart.cycle))
     : sentence;
   const stoodUp = useChangeCue<string>(
     slot.id === "stand-up-failed" ? slot.id : kind,
@@ -544,7 +549,9 @@ function ArrivalComposition({
               {clauses.map((clause, at) => (
                 <Fragment key={clause}>
                   {at === 0 ? null : " "}
-                  <span className="inline-block">{clause}</span>
+                  <span className="inline-block max-w-full">
+                    {clause}
+                  </span>
                 </Fragment>
               ))}
             </span>
@@ -566,7 +573,7 @@ function ArrivalComposition({
         )}
         {notice}
         <ArrivalSwap
-          className={cn("w-full max-w-126", slot.node !== null && "mt-7")}
+          className={cn("w-full max-w-126 text-center", slot.node !== null && "mt-7")}
           data-arrival-slot={slot.id}
           id={slot.id}
           kind="slot"
