@@ -12,7 +12,6 @@ import { makeZeropsWire, repairZeropsSession, type ZeropsWireClient } from "./ze
 
 const Frame = Schema.fromJsonString(Schema.Unknown);
 const encodeFrame = Schema.encodeSync(Frame);
-const decodeFrame = Schema.decodeSync(Frame);
 
 class FakeSocket implements PlatformWatchSocket {
   readonly sent: string[] = [];
@@ -73,7 +72,7 @@ describe("the Zerops wire", () => {
           yield* Effect.yieldNow;
           sockets[0]?.receive({ type: "search", subscriptionName: "s1", data: { update: [] } });
           const frames = yield* Fiber.join(reading);
-          expect(frames.map((frame) => decodeFrame(frame))).toEqual([
+          expect(frames).toEqual([
             { type: "search", subscriptionName: "s1", data: { update: [] } },
           ]);
         }),

@@ -61,8 +61,8 @@ interface QuerySubscription {
 /** One open receiver: its frames, and requests made on its behalf. */
 export interface ZeropsLink {
   readonly receiverId: string;
-  /** Every frame from open on, as sent; fails with the classified fault when the socket breaks. */
-  readonly frames: Stream.Stream<string, StreamFault>;
+  /** Every JSON-decoded frame from open on; fails with the classified fault when the socket breaks. */
+  readonly frames: Stream.Stream<unknown, StreamFault>;
   readonly post: (
     path: string,
     body: Readonly<Record<string, unknown>>,
@@ -118,7 +118,7 @@ const ListAnswer = Schema.Struct({
 /** A member's identity alone: a row too damaged to read still names its id. */
 const Identified = Schema.Struct({ id: Schema.String });
 
-const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(Frame));
+const decodeFrame = Schema.decodeUnknownOption(Frame);
 const decodeMembership = Schema.decodeUnknownOption(MembershipData);
 const decodeUpdates = Schema.decodeUnknownOption(UpdateData);
 const decodeList = Schema.decodeUnknownOption(ListAnswer);
@@ -447,9 +447,9 @@ export function zeropsNavigationLink(options: {
           }),
         );
       };
-      const onFrame = (encoded: string): Effect.Effect<void> =>
+      const onFrame = (decoded: unknown): Effect.Effect<void> =>
         Effect.suspend(() => {
-          const frame = Option.getOrUndefined(decodeFrame(encoded));
+          const frame = Option.getOrUndefined(decodeFrame(decoded));
           if (frame === undefined || frame.type !== "search") return Effect.void;
           const query = queries.get(frame.subscriptionName ?? "");
           if (query !== undefined) return onQueryFrame(query, frame.data);
