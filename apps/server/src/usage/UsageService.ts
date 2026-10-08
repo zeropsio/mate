@@ -19,7 +19,6 @@ import {
   CodexSettings,
   type ProviderInstanceConfig,
   USAGE_CONTRACT_VERSION,
-  ProviderInstanceId,
   type ServerSettings as ServerSettingsValue,
   type UsageProviderKind,
   type UsageSource,
@@ -46,14 +45,11 @@ import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { ServerConfig } from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import {
-  antigravityProfileDirectory,
-  codexHomeLayout,
-  providerInstanceEnvironment,
-} from "../spi/driverHomes.ts";
+import { codexHomeLayout, providerInstanceEnvironment } from "../spi/driverHomes.ts";
 import { readOpenCodeUsage } from "./opencodeUsageReader.ts";
 import { readAntigravityUsage } from "./antigravityUsageReader.ts";
 import { readCursorAccountUsage } from "./cursorUsageReader.ts";
+import { resolveUsageStoreRoots } from "./usageStoreRoots.ts";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
@@ -554,27 +550,16 @@ export const make = Effect.gen(function* () {
     }
 
     const home = NodeOS.homedir();
-    const envRoots = Effect.fnUntraced(function* (key: string, defaults: readonly string[]) {
-      const roots = hostEnvironment[key]
-        ?.split(",")
-        .map((value) => value.trim())
-        .filter(Boolean);
-      const canonical = new Set<string>();
-      for (const root of roots?.length ? roots : defaults) {
-        const resolved = path.resolve(expandHomePath(root));
-        canonical.add(
-          yield* fileSystem.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved)),
-        );
-      }
-      return [...canonical];
-    });
-    const dataHome = hostEnvironment["XDG_DATA_HOME"]?.trim();
-    for (const dir of yield* envRoots("OPENCODE_DATA_DIR", [
-      path.join(
-        dataHome && path.isAbsolute(dataHome) ? dataHome : path.join(home, ".local", "share"),
-        "opencode",
-      ),
-    ])) {
+    const stores = yield* resolveUsageStoreRoots({
+      hostEnvironment,
+      home,
+      stateDir: config.stateDir,
+      providerInstances: settings.providerInstances,
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+    );
+    for (const dir of stores.opencode) {
       const result = yield* Effect.promise(() => readOpenCodeUsage(dir, windowStartMs));
       scanned.push({
         provider: "opencode",
@@ -585,34 +570,9 @@ export const make = Effect.gen(function* () {
         ...(result.error ? { message: "Some OpenCode history could not be read." } : {}),
       });
     }
-    const antigravityRoots = yield* envRoots("ANTIGRAVITY_DATA_DIR", [
-      ...["antigravity", "antigravity-cli", "antigravity-ide", "antigravity-backup"].map((name) =>
-        path.join(home, ".gemini", name),
-      ),
-      path.join(home, ".config", "antigravity"),
-    ]);
-    for (const [instanceId, instance] of Object.entries(settings.providerInstances)) {
-      if (instance.driver === "antigravity") {
-        const profile = antigravityProfileDirectory(
-          config.stateDir,
-          ProviderInstanceId.make(instanceId),
-        );
-        antigravityRoots.push(path.join(profile, "antigravity-acp"));
-      }
-    }
-    const antigravityDirs = new Set<string>();
-    for (const root of antigravityRoots) {
-      const resolvedRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
-      const nested = path.join(resolvedRoot, "conversations");
-      const dir = (yield* fileSystem
-        .exists(nested)
-        .pipe(Effect.catchCause(() => Effect.succeed(false))))
-        ? nested
-        : resolvedRoot;
-      antigravityDirs.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
-    }
+    const antigravityDirs = stores.antigravity;
     const antigravity = yield* Effect.promise(() =>
-      readAntigravityUsage([...antigravityDirs], windowStartMs),
+      readAntigravityUsage(antigravityDirs, windowStartMs),
     );
     for (const dir of antigravityDirs) {
       const exists = yield* fileSystem

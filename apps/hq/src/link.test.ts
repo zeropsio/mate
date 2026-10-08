@@ -2,10 +2,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MATE_LINK_FRAME_MAX, linkFrameBytes } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/unstable/socket/Socket";
@@ -14,7 +17,8 @@ import { memoryStore } from "../test/harness/overviews.ts";
 import { enrollMate, setUpMate, startCore, untilHealth } from "../test/harness/runningCore.ts";
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 import { Changes } from "./changes.ts";
-import { Leader } from "./leader.ts";
+import { Leader, NotLeader } from "./leader.ts";
+import { UsageLane, type UsageLedgerService } from "./usageLedger.ts";
 import { MateAccess } from "./mateAccess.ts";
 import { serveMateLink } from "./link.ts";
 import { MateCredentials } from "./mateCredentials.ts";
@@ -46,9 +50,13 @@ describe("a Mate's link", () => {
         // A newer Mate's word for something this HQ does not know.
         yield* link.send({ type: "usage", windows: [] });
         yield* call("POST", "/api/mates/P_MATE/closed-off", { session: owner });
-        const { mate } = (yield* link.next("state")) as {
-          readonly mate: { readonly closedOff: boolean };
-        };
+        // A state re-sent as the capture lane opens may come first.
+        const { mate } = (yield* link.takeWhere(
+          "the closed-off state",
+          (message) =>
+            message.type === "state" &&
+            (message["mate"] as { readonly closedOff?: boolean }).closedOff === true,
+        )) as unknown as { readonly mate: { readonly closedOff: boolean } };
         assert.isTrue(mate.closedOff);
       }),
     );
@@ -180,6 +188,104 @@ describe("serveMateLink: who ended a link, and with what code", () => {
       yield* send(1006);
       assert.deepStrictEqual(yield* Fiber.join(serving), { by: "client", code: 1006 });
     }).pipe(Effect.provide(services)),
+  );
+
+  /** HQ's capture lane as a link reads it: `open` answers with `opened`. */
+  const usageLane = (opened: ReturnType<UsageLedgerService["open"]>) =>
+    Layer.succeed(UsageLane, {
+      ledger: {
+        open: () => opened,
+        receive: () => Effect.die("unused"),
+        changes: Stream.never,
+        notify: Effect.void,
+      },
+    });
+
+  /** A link to a Mate HQ holds a state for: every state frame it wrote, as JSON. */
+  const statesOf = (opened: ReturnType<UsageLedgerService["open"]>) =>
+    Effect.gen(function* () {
+      const written: string[] = [];
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Effect.never, upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (frame: unknown) =>
+            Effect.sync(() => {
+              written.push(String(frame));
+            }),
+          writeAll: () => Effect.void,
+        }),
+      });
+      const serving = yield* Effect.forkChild(serveMateLink(socket, "P_MATE", "cred", {}));
+      const states = () =>
+        written
+          .map((frame) => JSON.parse(frame) as { type: string; usage?: unknown })
+          .filter((frame) => frame.type === "state");
+      /** The first state `matches` accepts, waited for. */
+      const state = (matches: (frame: { usage?: unknown }) => boolean) =>
+        Effect.suspend(() => {
+          const found = states().find(matches);
+          return found === undefined ? Effect.fail("no such state") : Effect.succeed(found);
+        }).pipe(Effect.retry(Schedule.spaced(Duration.millis(10))), Effect.timeout("5 seconds"));
+      return { serving, state };
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          services,
+          Layer.succeed(
+            Structure,
+            Structure.of({
+              mateState: () => Effect.succeed(Option.some({ projectId: "P_MATE" })),
+              mateChanges: Stream.make("P_MATE"),
+            } as unknown as Structure["Service"]),
+          ),
+          Layer.succeed(
+            Changes,
+            Changes.of({
+              changes: Stream.never,
+              mateChanges: () => Effect.succeed({}),
+            } as unknown as Changes["Service"]),
+          ),
+          usageLane(opened),
+        ),
+      ),
+    );
+  const sender = {
+    projectId: "P_MATE",
+    credential: "cred",
+    channel: "C",
+    mateId: "M",
+    orgId: "ORG",
+  };
+
+  it.live("a link offers capture with the org HQ holds the Mate in", () =>
+    Effect.gen(function* () {
+      const { state } = yield* statesOf(Effect.succeed(sender));
+      const offered = yield* state((frame) => frame.usage !== undefined);
+      assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+    }),
+  );
+
+  it.live(
+    "a link sends the Mate's state without waiting for a slow capture lane, then offers capture",
+    () =>
+      Effect.gen(function* () {
+        const opening = yield* Deferred.make<typeof sender>();
+        const { state } = yield* statesOf(Deferred.await(opening));
+        yield* state((frame) => frame.usage === undefined);
+        yield* Deferred.succeed(opening, sender);
+        const offered = yield* state((frame) => frame.usage !== undefined);
+        assert.deepStrictEqual(offered.usage, { capture: 1, report: 1, mateId: "M", orgId: "ORG" });
+      }),
+  );
+
+  // Answer (3): "a socket whose accept failed" is the link's accept, never its usage lane.
+  it.live("a link whose capture lane cannot open stays up without capture", () =>
+    Effect.gen(function* () {
+      const { serving, state } = yield* statesOf(Effect.fail(new NotLeader({ reason: "standby" })));
+      yield* state((frame) => frame.usage === undefined);
+      yield* Effect.sleep("200 millis");
+      assert.isUndefined(serving.pollUnsafe());
+    }),
   );
 
   it.effect("HQ, with the code it closed with", () =>

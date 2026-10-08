@@ -9,7 +9,7 @@ import * as Stream from "effect/Stream";
 import * as Redacted from "effect/Redacted";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
-import { type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
+import { type UsageCoverage, type UsageFact, type UsageReportQuery } from "@t3tools/contracts";
 import {
   USAGE_GENESIS_DIGEST,
   usageEntryDigest,
@@ -20,6 +20,7 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { tempDir } from "../test/harness/tempDir.ts";
 import { activeCoreLayer } from "../test/harness/activeCore.ts";
 import { Leader } from "./leader.ts";
+import { ZeropsUnavailable } from "./zerops/api.ts";
 import { makeUsageLedger } from "./usageLedger.ts";
 import { zeroUsage, contributionOf } from "./usageAccounting.ts";
 import { usageCheckpoint, protectUsageCut, pruneUsageDetail } from "./usageRetention.ts";
@@ -141,9 +142,12 @@ const setup = Effect.gen(function* () {
   yield* ledger.receive(sender, hello);
   let seq = 0;
   let digest = USAGE_GENESIS_DIGEST;
-  const batch = (facts: ReadonlyArray<UsageFact>) => {
+  const batch = (
+    facts: ReadonlyArray<UsageFact>,
+    coverage: ReadonlyArray<{ originId: string; value: UsageCoverage }> = [],
+  ) => {
     seq++;
-    const body = { sequence: String(seq), previousDigest: digest, facts, coverage: [] };
+    const body = { sequence: String(seq), previousDigest: digest, facts, coverage };
     digest = usageEntryDigest(body);
     return {
       type: "usage-batch" as const,
@@ -303,13 +307,13 @@ describe("HQ usage ledger boundaries", () => {
         ),
     );
     it.effect(
-      "gaps, corrupt prefix, conflicting fact revisions and replaced channels commit nothing",
+      "gaps, corrupt prefix, unregistered origins and replaced channels commit nothing",
       () =>
         database(
           Effect.gen(function* () {
             const { sql, ledger, sender, batch, total } = yield* setup;
             yield* ledger.receive(sender, batch([fact("a", "100")]));
-            const bad = batch([fact("b", "10"), fact("a", "200")]);
+            const bad = batch([fact("b", "10"), { ...fact("c", "200"), originId: "elsewhere" }]);
             const failure = yield* Effect.result(ledger.receive(sender, bad));
             assert.isTrue(failure._tag === "Failure");
             assert.strictEqual(yield* total, "100");
@@ -847,12 +851,84 @@ describe("HQ usage ledger boundaries", () => {
           assert.strictEqual(all.totals.tokens, "100");
           assert.strictEqual(all.coverage[0]!.label, "Rig");
           const conflicting = { ...fact("another", "50"), aliases: ["detail", "coarse"] };
-          assert.isTrue(
-            (yield* Effect.result(ledger.receive(sender, batch([conflicting]))))._tag === "Failure",
+          // Refused alone, as a gap: the lane goes on.
+          assert.strictEqual(
+            (yield* ledger.receive(sender, batch([conflicting]))).type,
+            "usage-ack",
           );
           assert.strictEqual(yield* total, "100");
         }),
       ),
+    );
+    it.effect(
+      "same ids with different content are a permanent conflict, kept as a gap while the rest of the lane flows; an identical repeat is acknowledged",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql, ledger, sender, batch, total } = yield* setup;
+            const first = batch([fact("a", "100")]);
+            yield* ledger.receive(sender, first);
+            const repeated = yield* ledger.receive(sender, first);
+            assert.strictEqual(repeated.type, "usage-ack");
+            const reused = { ...fact("b", "50"), factId: "a" };
+            const changed = fact("a", "999");
+            const answer = yield* ledger.receive(sender, batch([reused, changed, fact("c", "30")]));
+            assert.strictEqual(answer.type, "usage-ack");
+            assert.strictEqual(yield* total, "130");
+            // A later coverage from the Mate keeps HQ's record of what it refused.
+            yield* ledger.receive(
+              sender,
+              batch(
+                [],
+                [
+                  {
+                    originId: "origin",
+                    value: { state: "partial", since: null, through: null, gaps: ["mate-gap"] },
+                  },
+                ],
+              ),
+            );
+            const [origin] = yield* sql<{
+              readonly gaps: ReadonlyArray<string>;
+            }>`SELECT coverage->'gaps' AS gaps FROM hq_usage_origin WHERE origin_id='origin'`;
+            assert.includeMembers(
+              [...origin!.gaps],
+              ["refused:fact_identity_conflict", "refused:fact_revision_conflict"],
+            );
+          }),
+        ),
+    );
+    it.effect("a native record that gains an identity replaces its fact by a higher revision", () =>
+      database(
+        Effect.gen(function* () {
+          const { ledger, sender, batch, total } = yield* setup;
+          yield* ledger.receive(sender, batch([fact("x", "10")]));
+          const answer = yield* ledger.receive(
+            sender,
+            batch([{ ...fact("x", "15", "2"), aliases: ["y"] }]),
+          );
+          assert.strictEqual(answer.type, "usage-ack");
+          assert.strictEqual(yield* total, "15");
+        }),
+      ),
+    );
+    it.effect(
+      "a Mate is offered capture with HQ's last known org while Zerops is slow or down",
+      () =>
+        database(
+          Effect.gen(function* () {
+            // `setup` registered a producer under ORG; a fresh process finds it there.
+            const { sql, leader } = yield* setup;
+            const down = Effect.fail(new ZeropsUnavailable({ operation: "org", message: "down" }));
+            const fresh = yield* makeUsageLedger(sql, leader, down);
+            assert.strictEqual((yield* fresh.open("P", "test-credential")).orgId, "ORG");
+            const slow = yield* makeUsageLedger(sql, leader, Effect.never);
+            const opened = yield* slow
+              .open("P", "test-credential")
+              .pipe(Effect.timeoutOption("2 seconds"));
+            assert.strictEqual(opened._tag === "Some" ? opened.value.orgId : "", "ORG");
+          }),
+        ),
     );
     it.effect("39,000 real-schema facts keep summary and keyset detail bounded", () =>
       database(

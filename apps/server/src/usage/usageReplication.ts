@@ -1,9 +1,30 @@
 /** One negotiated accounting lane per socket. ACKs from a replaced channel cannot prune evidence. */
 import type { UsageLinkDown, UsageLinkUp } from "@t3tools/shared/agentUsage";
 import { USAGE_GENESIS_DIGEST } from "@t3tools/shared/agentUsage";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Semaphore from "effect/Semaphore";
 import { UsageLedgerError, type UsageLedger } from "./UsageLedger.ts";
+
+/** An unavailable HQ is asked again after 5 s, doubling to 5 min; an answer resets it. */
+export const USAGE_RETRY_FIRST_MS = 5_000;
+export const USAGE_RETRY_MAX_MS = 300_000;
+
+/**
+ * Refusals a new ledger recovers from: HQ restored past this one or holds its origins under another
+ * lineage (a lost or restored `usage.sqlite`), or the two disagree on the journal's prefix.
+ */
+const RENEWING_CODES: ReadonlySet<string> = new Set([
+  "ledger_rollback_conflict",
+  "origin_lineage_conflict",
+  "ledger_binding_conflict",
+  "origin_binding",
+  "prefix_conflict",
+  "prefix-conflict",
+  "ledger-rollback",
+  "unproved-replay-prefix",
+]);
+export const renewsLedger = (code: string) => RENEWING_CODES.has(code);
 
 export const makeUsageReplication = (ledger: UsageLedger) => {
   const lock = Semaphore.makeUnsafe(1);
@@ -15,6 +36,8 @@ export const makeUsageReplication = (ledger: UsageLedger) => {
   let pages: Extract<UsageLinkUp, { type: "usage-snapshot" }>[] | undefined;
   let page = 0;
   let advertisement: Extract<UsageLinkUp, { type: "usage-hello" }> | undefined;
+  let backoff = 0;
+  let retryAt: number | undefined;
   const conflict = (code: string) => new UsageLedgerError({ code });
   const announced = (frame: Extract<UsageLinkUp, { type: "usage-batch" | "usage-snapshot" }>) => {
     const known = new Set(advertisement?.origins.map((origin) => origin.originId));
@@ -26,6 +49,11 @@ export const makeUsageReplication = (ledger: UsageLedger) => {
   };
   const next = Effect.gen(function* () {
     if (stopped) return undefined;
+    if (retryAt !== undefined) {
+      if ((yield* Clock.currentTimeMillis) < retryAt) return undefined;
+      retryAt = undefined;
+      return yield* hello;
+    }
     if (!channel) return advertisement;
     if (flight) return flight.frame;
     if (pages) {
@@ -57,8 +85,17 @@ export const makeUsageReplication = (ledger: UsageLedger) => {
   const receive = Effect.fnUntraced(function* (message: UsageLinkDown) {
     if (stopped || message.ledgerId !== ledgerId) return undefined;
     if (message.type === "usage-error") {
-      if (message.disposition === "transient") return yield* hello;
+      if (message.disposition === "transient") {
+        backoff = backoff === 0 ? USAGE_RETRY_FIRST_MS : Math.min(backoff * 2, USAGE_RETRY_MAX_MS);
+        retryAt = (yield* Clock.currentTimeMillis) + backoff;
+        channel = undefined;
+        flight = undefined;
+        pages = undefined;
+        return undefined;
+      }
       stopped = true;
+      // A newer socket took the lane over; its own hello reopens it on the new channel.
+      if (message.disposition === "fenced") return undefined;
       return yield* conflict(message.code);
     }
     if (message.type === "usage-resume") {
@@ -67,6 +104,7 @@ export const makeUsageReplication = (ledger: UsageLedger) => {
         return yield* conflict("prefix-conflict");
       if (message.cursor === "0" && message.digest !== USAGE_GENESIS_DIGEST)
         return yield* conflict("prefix-conflict");
+      backoff = 0;
       channel = message.channel;
       cursor = message.cursor;
       flight = undefined;

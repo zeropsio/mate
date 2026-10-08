@@ -7,13 +7,15 @@ import {
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type UsageOrigin,
-  type OrchestrationEvent,
+  type ProviderRuntimeEvent,
   AGENT_USAGE_CAPTURE_PROTOCOL,
 } from "@t3tools/contracts";
 import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { usageDigest } from "@t3tools/shared/agentUsage";
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -24,11 +26,24 @@ import { ServerConfig } from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { expandHomePath } from "../pathExpansion.ts";
 import { codexHomeLayout, providerInstanceEnvironment } from "../spi/driverHomes.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
-import { makeUsageLedger, unknownCoverage, type UsageBinding } from "./UsageLedger.ts";
-import { captureSource, watchCaptureSource, type CaptureSource } from "./usageCapture.ts";
-import { makeUsageReplication } from "./usageReplication.ts";
+import {
+  makeUsageLedger,
+  unknownCoverage,
+  UsageLedgerError,
+  type UsageBinding,
+} from "./UsageLedger.ts";
+import {
+  captureSource,
+  watchDirectory,
+  type CaptureSource,
+  type WatchDirectory,
+} from "./usageCapture.ts";
+import { captureDatabaseSource, type DatabaseSource } from "./usageDatabaseCapture.ts";
+import { makeUsageReplication, renewsLedger } from "./usageReplication.ts";
+import { resolveUsageStoreRoots } from "./usageStoreRoots.ts";
+import { DEFAULT_WATCH_RETRY, makeSourceWatches, type WatchRetry } from "./usageWatches.ts";
 
+const isLedgerError = Schema.is(UsageLedgerError);
 export interface UsageLane {
   readonly ping: Effect.Effect<void>;
   readonly state: (message: Extract<MateLinkDown, { type: "state" }>) => Effect.Effect<void>;
@@ -40,30 +55,43 @@ export interface UsageLink {
     send: (frame: MateLinkUp) => Effect.Effect<void>,
   ) => Effect.Effect<UsageLane, never, Scope.Scope>;
 }
-const orgBody = Schema.Struct({ clientId: Schema.String });
-const decodeOrg = Schema.decodeUnknownOption(orgBody);
-const validateOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeClaudeSettings = Schema.decodeOption(ClaudeSettings);
 const decodeCodexSettings = Schema.decodeOption(CodexSettings);
 
+/** Drivers whose history is a database rather than a transcript. */
+const DATABASE_DRIVERS: Record<string, DatabaseSource["provider"]> = {
+  opencode: "opencode",
+  antigravity: "antigravity",
+};
+
+/** What capture reads of a provider runtime event: either conversation engine emits these. */
+export type UsageRuntimeEvent = Pick<ProviderRuntimeEvent, "type">;
+export interface UsageLinkOptions {
+  readonly watch?: WatchDirectory;
+  readonly retry?: WatchRetry;
+  /** How soon a ledger that could not be read at HQ's offer is asked again. */
+  readonly beginRetry?: WatchRetry;
+}
+
 export const makeUsageLink = Effect.fnUntraced(function* (
-  runEvents: Stream.Stream<OrchestrationEvent>,
+  runtimeEvents: Stream.Stream<UsageRuntimeEvent>,
+  options: UsageLinkOptions = {},
 ) {
   const ledger = yield* makeUsageLedger;
+  const beginRetry = options.beginRetry ?? { baseMs: 5_000, maxMs: 300_000 };
   const config = yield* ServerConfig;
   const settings = yield* ServerSettingsService;
-  const orgRead = yield* ZeropsOrgRead;
   const path = yield* Path.Path;
   const host = yield* HostProcessEnvironment;
+  const fileSystem = yield* FileSystem.FileSystem;
   let binding: UsageBinding | undefined;
   const dirty = yield* Queue.sliding<void>(1);
   let wake: (() => void) | undefined;
-  const watchers = new Map<string, () => void>();
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      for (const close of watchers.values()) close();
-    }),
-  );
+  const watches = yield* makeSourceWatches({
+    watch: options.watch ?? watchDirectory,
+    nudge: () => Queue.offerUnsafe(dirty, undefined),
+    retry: options.retry ?? DEFAULT_WATCH_RETRY,
+  });
   const scan = Effect.gen(function* () {
     if (!binding) return;
     const current = yield* settings.getSettings;
@@ -85,6 +113,7 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         });
     }
     const seen = new Set<string>();
+    const databases = new Set<DatabaseSource["provider"]>();
     for (const instance of configured) {
       const environment = providerInstanceEnvironment(instance.environment, host);
       let source: CaptureSource | undefined;
@@ -107,13 +136,16 @@ export const makeUsageLink = Effect.fnUntraced(function* (
           ).pipe(Effect.provideService(Path.Path, path));
           source = { provider: "codex", directory: path.join(layout.sharedHomePath, "sessions") };
         }
+      } else if (instance.driver === "grok") {
+        const home = expandHomePath(
+          environment.GROK_HOME?.trim() || path.join(NodeOS.homedir(), ".grok"),
+        );
+        source = { provider: "grok", directory: path.resolve(home, "sessions") };
+      } else if (DATABASE_DRIVERS[instance.driver]) {
+        databases.add(DATABASE_DRIVERS[instance.driver]!);
       } else {
-        const unsupported: Record<string, UsageOrigin["provider"]> = {
-          grok: "grok",
-          cursor: "cursor",
-          opencode: "opencode",
-          antigravity: "antigravity",
-        };
+        // Cursor's only usage source is an account-wide API, not this Mate's history.
+        const unsupported: Record<string, UsageOrigin["provider"]> = { cursor: "cursor" };
         const provider = unsupported[String(instance.driver)];
         if (provider) {
           const origin = yield* ledger.bind(
@@ -131,21 +163,36 @@ export const makeUsageLink = Effect.fnUntraced(function* (
       seen.add(source.directory);
       sources.push(source);
     }
+    const meta = yield* ledger.metadata;
+    const floor = meta.startedAt === undefined ? undefined : Date.parse(meta.startedAt);
+    const baseline = meta.baselined === false;
     for (const source of sources) {
-      yield* captureSource(ledger, binding, source).pipe(
-        Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")),
-      );
-      if (!watchers.has(source.directory)) {
-        const watching = yield* Effect.try(() =>
-          watchCaptureSource(source, () => Queue.offerUnsafe(dirty, undefined)),
-        ).pipe(Effect.option);
-        if (Option.isSome(watching)) {
-          watchers.set(source.directory, watching.value);
-          // Close the scan/watch race by reconciling once after the watcher is attached.
-          Queue.offerUnsafe(dirty, undefined);
-        }
-      }
+      yield* captureSource(ledger, binding, source, {
+        ...(floor === undefined ? {} : { floor }),
+        baseline,
+        ledgerId: meta.ledgerId,
+      }).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
+      yield* watches.ensure(source.directory);
     }
+    if (databases.size > 0) {
+      const stores = yield* resolveUsageStoreRoots({
+        hostEnvironment: host,
+        home: NodeOS.homedir(),
+        stateDir: config.stateDir,
+        providerInstances: current.providerInstances,
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      );
+      for (const provider of databases)
+        yield* captureDatabaseSource(
+          ledger,
+          binding,
+          { provider, roots: stores[provider] },
+          { ...(floor === undefined ? {} : { floor }), baseline, ledgerId: meta.ledgerId },
+        ).pipe(Effect.catchCause(() => Effect.logWarning("Usage source capture unavailable")));
+    }
+    if (baseline) yield* ledger.markBaselined(meta.ledgerId);
     wake?.();
   }).pipe(Effect.catchCause(() => Effect.logWarning("Usage ledger capture unavailable")));
   yield* Effect.forkScoped(Effect.forever(Queue.take(dirty).pipe(Effect.andThen(scan))));
@@ -153,34 +200,24 @@ export const makeUsageLink = Effect.fnUntraced(function* (
     Stream.runForEach(settings.streamChanges, () => Queue.offer(dirty, undefined)),
   );
   yield* Effect.forkScoped(
-    Stream.runForEach(runEvents, (event) =>
-      event.type === "thread.turn-start-requested" ||
-      event.type === "thread.turn-diff-completed" ||
-      event.type === "thread.session-set"
+    // A session start attaches watches for directories its first run creates; a finished turn is read.
+    Stream.runForEach(runtimeEvents, (event) =>
+      event.type === "session.started" || event.type === "turn.completed"
         ? Queue.offer(dirty, undefined)
         : Effect.void,
     ),
   );
-  const retained = yield* ledger.origins;
-  if (retained.length && config.zerops) {
-    const read = yield* orgRead.project(config.zerops);
-    const body =
-      read.kind === "answered" && read.status === 200 ? decodeOrg(read.body) : Option.none();
-    const origin = retained[0]!;
-    if (
-      Option.isSome(body) &&
-      origin.orgId === body.value.clientId &&
-      origin.projectId === config.zerops.projectId
-    ) {
-      binding = { orgId: origin.orgId, projectId: origin.projectId, mateId: origin.mateId };
-      Queue.offerUnsafe(dirty, undefined);
-    }
+  // A home bound in this project resumes capture before HQ answers; HQ refuses another org's origin.
+  const bound = (yield* ledger.metadata).binding;
+  if (bound && config.zerops && bound.projectId === config.zerops.projectId) {
+    binding = bound;
+    Queue.offerUnsafe(dirty, undefined);
   }
   let active: ReturnType<typeof makeUsageReplication> | undefined;
   return {
     open: (send) =>
       Effect.gen(function* () {
-        const replication = makeUsageReplication(ledger);
+        let replication = makeUsageReplication(ledger);
         const changed = yield* Queue.sliding<void>(1);
         let manifest = "";
         const advertise = ledger.hello.pipe(
@@ -191,21 +228,43 @@ export const makeUsageLink = Effect.fnUntraced(function* (
         );
         let negotiated = false;
         let halted = false;
+        let renewed = false;
+        let beginDelay = 0;
+        let beginRetryAt = 0;
         let lastState: Extract<MateLinkDown, { type: "state" }> | undefined;
+        const halt = Effect.sync(() => {
+          halted = true;
+          replication.stop();
+        }).pipe(
+          Effect.andThen(
+            Effect.logWarning(
+              "Usage replication lane stopped; overview and attention remain available",
+            ),
+          ),
+        );
+        /** A new ledger capturing from now replaces one HQ cannot accept; the gap stays unknown. */
+        const renew = (next: UsageBinding, reason: string) =>
+          Effect.gen(function* () {
+            replication.stop();
+            yield* ledger.restart(next);
+            binding = next;
+            replication = makeUsageReplication(ledger);
+            if (negotiated) active = replication;
+            Queue.offerUnsafe(dirty, undefined);
+            yield* Effect.logInfo("Usage capture started a new ledger").pipe(
+              Effect.annotateLogs({ reason }),
+            );
+          });
         const safely = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
-            Effect.catchCause(() =>
-              Effect.sync(() => {
-                halted = true;
-                replication.stop();
-              }).pipe(
-                Effect.andThen(
-                  Effect.logWarning(
-                    "Usage replication lane stopped; overview and attention remain available",
-                  ),
-                ),
-              ),
-            ),
+            Effect.catch((error) => {
+              // One renewal per link: a refusal of the new ledger waits for the next link.
+              if (renewed || !binding || !isLedgerError(error) || !renewsLedger(error.code))
+                return halt;
+              renewed = true;
+              return renew(binding, error.code).pipe(Effect.andThen(advertise));
+            }),
+            Effect.catchCause(() => halt),
             Effect.asVoid,
           );
         const transmit = (value: MateLinkUp | undefined) => (value ? send(value) : Effect.void);
@@ -230,26 +289,35 @@ export const makeUsageLink = Effect.fnUntraced(function* (
                 replication.stop();
                 return;
               }
-              const read = yield* orgRead.project(config.zerops);
-              if (read.kind !== "answered" || read.status !== 200) return;
-              const body = yield* validateOrg(read.body);
+              // HQ names the org; an older HQ that does not is waited out, never guessed from Zerops.
+              const orgId = message.usage.orgId;
+              if (orgId === undefined) return;
               const nextBinding = {
-                orgId: body.clientId,
+                orgId,
                 projectId: config.zerops.projectId,
                 mateId: message.usage.mateId,
               };
               // Frozen home binding refuses clone/transfer before any old-org facts leave this socket.
-              for (const origin of yield* ledger.origins) {
+              if ((yield* Clock.currentTimeMillis) < beginRetryAt) return;
+              // A Mate registered again (or moved) captures into a new ledger from now on; a ledger
+              // that cannot be read now (busy, damaged) keeps its journal and is asked again later.
+              const begun = yield* Effect.result(ledger.begin(nextBinding));
+              if (begun._tag === "Failure") {
                 if (
-                  origin.orgId !== nextBinding.orgId ||
-                  origin.projectId !== nextBinding.projectId ||
-                  origin.mateId !== nextBinding.mateId
+                  !isLedgerError(begun.failure) ||
+                  begun.failure.code !== "source-binding-conflict"
                 ) {
-                  halted = true;
-                  replication.stop();
+                  beginDelay =
+                    beginDelay === 0
+                      ? beginRetry.baseMs
+                      : Math.min(beginDelay * 2, beginRetry.maxMs);
+                  beginRetryAt = (yield* Clock.currentTimeMillis) + beginDelay;
+                  yield* Effect.logWarning("Usage ledger unavailable at HQ's offer; asking again");
                   return;
                 }
+                yield* renew(nextBinding, "binding-changed");
               }
+              beginDelay = 0;
               binding = nextBinding;
               active?.stop();
               active = replication;

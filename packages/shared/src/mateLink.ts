@@ -300,7 +300,13 @@ export const MateLinkDown = Schema.Union([
     type: Schema.Literal("state"),
     mate: MateState,
     usage: Schema.optionalKey(
-      Schema.Struct({ capture: Schema.Int, report: Schema.Int, mateId: TrimmedNonEmptyString }),
+      Schema.Struct({
+        capture: Schema.Int,
+        report: Schema.Int,
+        mateId: TrimmedNonEmptyString,
+        /** The org HQ holds the Mate in; a Mate captures nothing until HQ names it. */
+        orgId: Schema.optionalKey(TrimmedNonEmptyString),
+      }),
     ),
   }),
   Schema.Struct({

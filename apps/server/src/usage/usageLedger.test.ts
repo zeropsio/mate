@@ -2,10 +2,12 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { UsageFact } from "@t3tools/contracts";
 import {
   USAGE_GENESIS_DIGEST,
+  usageDigest,
   usageEntryDigest,
   usageSnapshotDigest,
   type UsageLinkUp,
@@ -334,6 +336,89 @@ describe("durable Mate usage boundary", () => {
       ),
   );
 
+  it.effect("a baseline finished for a replaced ledger never marks the new one baselined", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        yield* ledger.begin(binding);
+        const old = (yield* ledger.metadata).ledgerId;
+        yield* ledger.restart({ ...binding, mateId: "mate-2" });
+        yield* ledger.markBaselined(old);
+        assert.isFalse((yield* ledger.metadata).baselined);
+        yield* ledger.markBaselined((yield* ledger.metadata).ledgerId);
+        assert.isTrue((yield* ledger.metadata).baselined);
+      }),
+    ),
+  );
+  it.effect("a new ledger never takes an origin under the registration it replaced", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        yield* ledger.begin(binding);
+        yield* ledger.restart({ ...binding, mateId: "mate-2" });
+        const stale = yield* ledger.bind("source", binding, "claude").pipe(Effect.flip);
+        assert.equal(
+          stale._tag === "UsageLedgerError" ? stale.code : stale._tag,
+          "source-binding-conflict",
+        );
+        assert.lengthOf(yield* ledger.origins, 0);
+      }),
+    ),
+  );
+  it.effect("an unavailable HQ is asked again after a growing delay, never at once", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        const lane = makeUsageReplication(ledger);
+        const hello = yield* lane.hello;
+        const unavailable = {
+          type: "usage-error" as const,
+          ledgerId: hello.ledgerId,
+          code: "usage_ingest_unavailable",
+          disposition: "transient" as const,
+        };
+        assert.isUndefined(yield* lane.receive(unavailable));
+        assert.isUndefined(yield* lane.next);
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+        assert.isUndefined(yield* lane.receive(unavailable));
+        yield* TestClock.adjust("5 seconds");
+        assert.isUndefined(yield* lane.next);
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+        const hq = new Hq();
+        yield* lane.receive(hq.resume(hello, "open"));
+        assert.isUndefined(yield* lane.receive(unavailable));
+        yield* TestClock.adjust("5 seconds");
+        assert.equal((yield* lane.next)?.type, "usage-hello");
+      }),
+    ),
+  );
+
+  it.effect("a fenced lane stops quietly and the next link's lane carries the journal on", () =>
+    withLedger((ledger) =>
+      Effect.gen(function* () {
+        const origin = yield* ledger.bind("source", binding, "claude");
+        yield* ledger.capture(fact(origin.originId, "a", "120"), "file", 1);
+        const hq = new Hq();
+        const fenced = makeUsageReplication(ledger);
+        const hello = yield* fenced.hello;
+        yield* fenced.receive(hq.resume(hello, "old"));
+        const answer = yield* fenced.receive({
+          type: "usage-error",
+          ledgerId: hello.ledgerId,
+          code: "channel_replaced",
+          disposition: "fenced",
+        });
+        assert.isUndefined(answer);
+        assert.isUndefined(yield* fenced.next);
+        const lane = makeUsageReplication(ledger);
+        const reopened = yield* lane.hello;
+        hq.apply((yield* lane.receive(hq.resume(reopened, "new")))!);
+        yield* lane.receive(hq.ack(reopened.ledgerId, "new"));
+        assert.equal(hq.total(), 120n);
+        assert.equal((yield* ledger.metadata).ack, Number(hq.cursor));
+      }),
+    ),
+  );
+
   it.effect(
     "a stale-channel ACK cannot compact; capture and source checkpoint roll back together",
     () =>
@@ -397,6 +482,83 @@ describe("Claude/Codex meters", () => {
     assert.equal(first.components.uncachedInput, "100");
     assert.equal(first.components.cachedInput, "20");
     assert.isNull(first.components.cacheCreation);
+  });
+  it("reads Claude reasoning from thinking tokens and leaves it unknown when they are absent", () => {
+    const line = (usage: unknown) =>
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "s",
+        message: { id: "m", model: "claude", usage },
+      });
+    const thinking = meterLine(
+      "claude",
+      line({
+        input_tokens: 2,
+        output_tokens: 442,
+        output_tokens_details: { thinking_tokens: 285 },
+      }),
+      initialMeterState(),
+    ).fact!;
+    assert.equal(thinking.components.reasoning, "285");
+    const silent = meterLine(
+      "claude",
+      line({ input_tokens: 2, output_tokens: 442 }),
+      initialMeterState(),
+    ).fact!;
+    assert.isNull(silent.components.reasoning);
+  });
+  it("a Codex cache write is counted when its meter reports one and is a structural zero otherwise", () => {
+    const counter = (usage: Record<string, number>) =>
+      codexLine("event_msg", { type: "token_count", info: { total_token_usage: usage } });
+    const written = initialMeterState();
+    meterLine("codex", codexLine("session_meta", { id: "w" }), written);
+    const write = meterLine(
+      "codex",
+      counter({
+        input_tokens: 300,
+        cached_input_tokens: 100,
+        cache_write_input_tokens: 50,
+        output_tokens: 10,
+        total_tokens: 310,
+      }),
+      written,
+    ).fact!;
+    assert.equal(write.components.cacheCreation, "50");
+    assert.equal(write.components.uncachedInput, "150");
+    const plain = initialMeterState();
+    meterLine("codex", codexLine("session_meta", { id: "p" }), plain);
+    const none = meterLine(
+      "codex",
+      counter({
+        input_tokens: 300,
+        cached_input_tokens: 100,
+        output_tokens: 10,
+        total_tokens: 310,
+      }),
+      plain,
+    ).fact!;
+    assert.equal(none.components.cacheCreation, "0");
+    assert.equal(none.components.uncachedInput, "200");
+  });
+  it("files a Claude sub-agent's requests under its own session, nested in its parent's", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      sessionId: "s",
+      agentId: "agent-1",
+      isSidechain: true,
+      timestamp: "2026-10-07T12:00:00.000Z",
+      message: { id: "m", model: "claude", usage: { input_tokens: 1, output_tokens: 1 } },
+    });
+    const fact = meterLine("claude", line, initialMeterState()).fact!;
+    assert.equal(fact.sessionId, usageDigest(["claude", "agent-1"]));
+    assert.equal(fact.parentId, usageDigest(["claude", "s"]));
+    const main = meterLine(
+      "claude",
+      line.replace(/"agentId":"agent-1","isSidechain":true,/u, ""),
+      initialMeterState(),
+    ).fact!;
+    assert.equal(main.sessionId, usageDigest(["claude", "s"]));
+    assert.isNull(main.parentId);
   });
   it("preserves proved fast/cache duration bands and refuses inconsistent creation totals", () => {
     const line = (usage: unknown) =>
@@ -487,23 +649,109 @@ describe("Claude/Codex meters", () => {
         }),
       ),
   );
-  it("excludes fork overlap and invalid cache subsets; keeps mixed-model counter allocation unknown", () => {
-    const fork = initialMeterState();
-    meterLine("codex", codexLine("session_meta", { id: "fork", forked_from_id: "parent" }), fork);
-    assert.isUndefined(meterLine("codex", cumulative(120), fork).fact);
-    const child = initialMeterState();
-    assert.equal(
-      meterLine(
-        "codex",
-        codexLine("session_meta", {
-          id: "child",
-          source: { subagent: { parent_thread_id: "parent" } },
-        }),
-        child,
-      ).gap,
-      "codex-child-overlap-unproved",
+  it("a Codex session resumed after capture began never sends the total it had before", () => {
+    const floor = Date.parse("2026-10-07T12:00:00.000Z");
+    const state = initialMeterState();
+    meterLine(
+      "codex",
+      codexLine("session_meta", { id: "s" }, "2026-10-01T10:00:00.000Z"),
+      state,
+      floor,
     );
-    assert.isUndefined(meterLine("codex", cumulative(120), child).fact);
+    meterLine("codex", codexLine("turn_context", { model: "a" }), state, floor);
+    const before = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1000,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1000,
+          },
+        },
+      },
+      "2026-10-01T10:05:00.000Z",
+    );
+    assert.isUndefined(meterLine("codex", before, state, floor).fact);
+    const after = meterLine("codex", cumulative(1300), state, floor).fact!;
+    assert.equal(after.components.inclusiveTotal, "300");
+    assert.equal(after.components.uncachedInput, "300");
+    assert.deepEqual(after.time, {
+      kind: "interval",
+      since: "2026-10-01T10:05:00.000Z",
+      until: "2026-10-07T12:00:00.000Z",
+      provenance: "provider-counter-range",
+    });
+  });
+  it("counts a Codex fork's and child's own usage under their parent session, never the history they copied", () => {
+    const fork = initialMeterState();
+    meterLine(
+      "codex",
+      codexLine(
+        "session_meta",
+        { id: "fork", forked_from_id: "parent" },
+        "2026-10-07T12:00:00.000Z",
+      ),
+      fork,
+    );
+    // The parent's history is copied in at the fork instant, then the ancestors' metas.
+    meterLine(
+      "codex",
+      codexLine("session_meta", { id: "parent" }, "2026-10-07T12:00:00.010Z"),
+      fork,
+    );
+    const copied = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1000,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1000,
+          },
+        },
+      },
+      "2026-10-07T12:00:00.020Z",
+    );
+    assert.isUndefined(meterLine("codex", copied, fork).fact);
+    const own = codexLine(
+      "event_msg",
+      {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: 1300,
+            cached_input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 1300,
+          },
+        },
+      },
+      "2026-10-07T12:00:30.000Z",
+    );
+    const forked = meterLine("codex", own, fork).fact!;
+    assert.equal(forked.components.inclusiveTotal, "300");
+    assert.equal(forked.sessionId, usageDigest(["codex", "fork"]));
+    assert.equal(forked.parentId, usageDigest(["codex", "parent"]));
+    const child = initialMeterState();
+    meterLine(
+      "codex",
+      codexLine(
+        "session_meta",
+        { id: "child", source: { subagent: { thread_spawn: { parent_thread_id: "parent" } } } },
+        "2026-10-07T11:59:00.000Z",
+      ),
+      child,
+    );
+    const spawned = meterLine("codex", cumulative(120), child).fact!;
+    assert.equal(spawned.components.inclusiveTotal, "120");
+    assert.equal(spawned.parentId, usageDigest(["codex", "parent"]));
+  });
+  it("refuses invalid cache subsets; keeps mixed-model counter allocation unknown", () => {
     const early = initialMeterState();
     meterLine("codex", codexLine("session_meta", { id: "early" }), early);
     meterLine("codex", codexLine("turn_context", { model: "a" }), early);

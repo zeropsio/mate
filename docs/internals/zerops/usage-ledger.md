@@ -1,8 +1,11 @@
 # HQ recorded agent usage
 
 Capture protocol 1 and report protocol 1 are independent additive capabilities. HQ advertises
-capture and the HQ-issued Mate registration lifetime (`usage.mateId`) on the existing link's
-`state` frame, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
+capture, the HQ-issued Mate registration lifetime (`usage.mateId`) and its org (`usage.orgId`) on
+the existing link's `state` frame, re-sent on every new link. The lane opens beside the link (the
+first state waits for it at most 250 ms, then is re-sent once it opens) with the last known org,
+never a fresh Zerops read; a lane that cannot open leaves that link without capture, the next link
+retries it, and `agentUsage: 1` beside the navigation protocol in `scope-ready.core`.
 An answered older declaration without the field means unsupported; an unanswered declaration
 means unknown. Clients must negotiate before sending the `agentUsage` scope. Old overview,
 attention and opened-Mate Limits remain independent. Mobile reporting is deferred.
@@ -28,7 +31,8 @@ Unknown frames remain tolerated. A malformed usage lane never destroys overview/
 
 Every socket receives a fresh process-bound opaque sender fence. Admission and each write lock
 the execution project and check the still-live credential in the leader transaction. Replacement
-or revocation serializes with commit. A new socket can fence an old sender; a high-water or digest
+or revocation serializes with commit. A new socket can fence an old sender, answered with the
+`fenced` disposition (`channel_replaced`, `hello_required`), never `refused`; a high-water or digest
 conflict refuses the lane rather than electing a divergent clone. Hello returns HQ's actual cursor,
 even after restoration. Gap/replay errors never advance it. Interrupted pinned manifests must resume with the same page identity or use `usage-snapshot-abandon`; accepted contributions survive abandonment. Snapshot pages use idempotent upserts
 and explicit tombstones, not deletion by absence; progress, page count, fact count and pinned
@@ -43,7 +47,10 @@ records last application placement. Recreating that project cannot attach the ol
 
 One leader-fenced transaction replaces the receipt and subtracts its old contribution before
 adding the new one. Same revision/content is a no-op; older revisions cannot replace newer
-facts; same revision/different content refuses the lane. Retraction leaves a permanent zero
+facts. Same revision/different content, a fact id another native identity holds, aliases of two
+records or an uncountable contribution are refused for good, that fact alone: it stays a
+`refused:<code>` gap in its origin's coverage (kept over the Mate's later coverage), the rest of the
+entry commits and the lane flows; a conflict is never `transient`. Retraction leaves a permanent zero
 contribution receipt. Late facts, redating, model changes and corrections still work after
 raw expiry. Arithmetic overflow, negative cells and damaged evidence fail instead of clamping.
 
