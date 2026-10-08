@@ -12,6 +12,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { liveZerops, ORG } from "@t3tools/client-runtime/data/fixtures";
 import { AtomRegistry } from "effect/reactivity";
+import { mateNoticeVoice } from "./mateNoticeVoice";
 
 describe("Mate recovery evidence", () => {
   it.each([
@@ -242,6 +243,19 @@ it.each(["lost observation", "lost membership"] as const)(
       projectId: "p",
       serviceId: "s",
     });
+    const voice = mateNoticeVoice({
+      mateName: "Wren",
+      conversationShown: true,
+      nowMs: 0,
+      reachability: { kind: "ready", notice: null },
+      recovery: read,
+    });
+    expect(voice).toMatchObject({
+      headline: "Wren's container failed.",
+      face: "sleep",
+      actions: ["open-in-zerops"],
+    });
+    expect(voice).not.toHaveProperty("restarting");
     expect(recoveryNotice(read, "Wren")).toMatchObject({
       headline: "Wren's container failed.",
       actions: ["open-in-zerops"],

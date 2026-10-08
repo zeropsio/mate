@@ -19,7 +19,7 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { AccountDataContext, type AccountData } from "../ZeropsAccountData";
 import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
 import { useOperationCard, type OperationCardRegions } from "./useOperationCard";
-import { recoveryNotice } from "../mateRecovery.logic";
+import { recoveryNotice } from "@t3tools/client-runtime/data";
 
 const source = {
   id: "source",
