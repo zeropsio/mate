@@ -296,6 +296,11 @@ export type SignalBody =
       readonly request: RequestKey;
       readonly turn?: TurnHandle;
       readonly ask: RequestAsk;
+      /**
+       * The agent's text item that asked it (Codex's async question is a message): the question
+       * takes that item's place, so no empty words are left.
+       */
+      readonly item?: ItemKey;
     }
   | { readonly type: "request.closed"; readonly request: RequestKey; readonly how: RequestCloseHow }
   // usage

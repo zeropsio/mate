@@ -31,7 +31,7 @@ export function coreLine(signal: ProviderSignal): string {
     case "item-closed":
       return `${signal.key} ${signal.kind.slice(5)}: ${bodyLine(signal.body)}${signal.afterEnd ? ", after end" : ""}`;
     case "request-opened":
-      return `${signal.key} asks ${signal.ask.kind}${signal.turn === undefined ? "" : ` in ${signal.turn}`}`;
+      return `${signal.key} asks ${signal.ask.kind}${signal.turn === undefined ? "" : ` in ${signal.turn}`}${signal.item === undefined ? "" : `, by ${signal.item}`}`;
     case "request-closed":
       return `${signal.key} ${signal.state}`;
     case "work-upserted":

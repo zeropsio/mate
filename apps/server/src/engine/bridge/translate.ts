@@ -784,10 +784,16 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           event.payload.responseMode === "message",
         );
         const questions = event.payload.questions;
+        // Asked by message: the question is the agent message the driver opened as text.
+        const asking =
+          event.payload.responseMode === "message" && event.itemId !== undefined
+            ? owner.items.get(String(event.itemId))
+            : undefined;
         emit(owner, {
           type: "request.opened",
           request: request.key,
           ...(request.turn === undefined ? {} : { turn: request.turn.handle }),
+          ...(asking?.body.kind === "text" ? { item: asking.key } : {}),
           ask: {
             kind: "question",
             questions,

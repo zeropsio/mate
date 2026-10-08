@@ -12,6 +12,7 @@ import {
   type ChatImageAttachment,
   type EffectOutcome,
   type EngineEventTag,
+  type ItemBody,
   type KnownEngineEvent,
   type Principal,
   type RejectionReason,
@@ -1289,12 +1290,103 @@ describe("decide: a question asked by message is answered by a message", () => {
         sendId: "c6",
       },
     });
-    expect(scene.events.find((e) => e._tag === "RequestAnswered")).toMatchObject({
-      requestId: requestId(r(1), 1),
-      bySend: r(2),
-      answers: { "0": "pnpm", "1": "api" },
+    const recorded = scene.events.find((e) => e._tag === "RequestAnswered");
+    expect(recorded).toMatchObject({ requestId: requestId(r(1), 1), bySend: r(2) });
+    expect(recorded).not.toHaveProperty("effectId");
+    // The person's message shows the answer: the question's record does not show it again.
+    expect(recorded).not.toHaveProperty("answers");
+    expect(recorded).not.toHaveProperty("attachmentsByQuestionId");
+  });
+
+  const steered = (scene: Scene) => {
+    const item = scene.events.find((e) => e._tag === "ItemOpened" && e.runId === r(1));
+    if (item?._tag !== "ItemOpened") throw new Error("no steered message");
+    return { item: item.itemId, effect: effectId(item.itemId, "provider.steer", 1) };
+  };
+  const whileAsking: ReadonlyArray<Step> = [...proofRunning, asked()];
+
+  it("while the turn that asked still runs, the answer goes into that turn as the person's message, with its pictures", () => {
+    const scene = play([...whileAsking, answered]);
+    expect(scene.events.some((e) => e._tag === "RunQueued")).toBe(false);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(1),
+      body: {
+        kind: "person",
+        text: [
+          "Which package manager?\npnpm",
+          "What should it be named?\napi\nAttached file: question-preview.png (img-q)",
+        ].join("\n\n"),
+        attachments: [preview],
+        delivery: { state: "steered" },
+      },
     });
-    expect(scene.events.find((e) => e._tag === "RequestAnswered")).not.toHaveProperty("effectId");
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.steer", runId: r(1), payload: { attachments: [preview] } },
+    ]);
+    const recorded = scene.events.find((e) => e._tag === "RequestAnswered");
+    expect(recorded).toMatchObject({ effectId: steered(scene).effect });
+    expect(recorded).not.toHaveProperty("bySend");
+    expect(recorded).not.toHaveProperty("answers");
+  });
+
+  it("is answered once the agent took it into its turn, never before", () => {
+    const scene = play([...whileAsking, answered]);
+    expect(closes(playAll([...whileAsking, answered]).log)).toEqual([]);
+    const { log, state } = playAll([
+      ...whileAsking,
+      answered,
+      settled(steered(scene).item, "provider.steer", { kind: "ok", value: { as: "steered" } }),
+    ]);
+    expect(closes(log)).toEqual(["closed answered"]);
+    expect(state.requests).toEqual({});
+    expect(state.answering).toEqual({});
+  });
+
+  it.each([
+    ["the agent did not take it into its turn", "failed"],
+    ["a restart cut it", "cut"],
+  ] as const)("opens the question again when %s", (_name, how) => {
+    const scene = play([...whileAsking, answered]);
+    const { item, effect } = steered(scene);
+    const { log, state } = playAll([
+      ...whileAsking,
+      answered,
+      how === "failed"
+        ? settled(item, "provider.steer", { kind: "failed", reason: "refused" })
+        : recovered([effect]),
+    ]);
+    expect(closes(log)).toEqual(["reopened"]);
+    expect(state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
+  });
+
+  it("the message that asked it becomes the question's place, leaving no empty words", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      signal({
+        kind: "item-opened",
+        turn: T(1),
+        key: "h1.i1",
+        by: { kind: "mate" },
+        body: note("h1.i1"),
+      }),
+      signal({
+        kind: "request-opened",
+        turn: T(1),
+        key: "codex-async:q1",
+        item: "h1.i1",
+        ask: {
+          kind: "question",
+          questions: [{ id: "0", question: "Which one?" }],
+          dismissible: true,
+        },
+      }),
+    ]);
+    const asking = log.find((e) => e._tag === "ItemOpened" && e.by.kind === "mate");
+    expect(log.at(-1)).toMatchObject({
+      _tag: "ItemClosed",
+      itemId: asking?._tag === "ItemOpened" ? asking.itemId : "",
+      body: { kind: "request", requestId: requestId(r(1), 1) },
+    });
   });
 
   it("is answered once the message reaches the agent, never before", () => {
@@ -1338,15 +1430,34 @@ describe("decide: a question asked by message is answered by a message", () => {
     expect(closes(log)).toEqual(["closed answered"]);
   });
 
-  it("codex/async-question [recorded]: the question the trace asks is answered by the person's message", () => {
+  it("codex/async-question [recorded]: the answer goes into the turn that waits on it, which ends with the agent's reply", () => {
     const events = readGolden("codex", "async-question");
     const translator = makeTranslator({ driver: "codex", threadId: String(events[0]!.threadId) });
     const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
-    const traced = commandLogAround("codex", events)
-      .flatMap((input) => translator.step(input))
-      .flatMap((driverSignal) => toCore.step(driverSignal, T0).signals);
-    const turn = traced.find((one) => one.kind === "turn-started");
-    const traceTurn = [
+    const inputs = commandLogAround("codex", events);
+    // Codex takes the answer into the running turn: its user message is the second one.
+    const injected = inputs.findIndex(
+      (input, index) =>
+        input.kind === "event" &&
+        input.event.type === "item.started" &&
+        inputs
+          .slice(0, index)
+          .some(
+            (before) =>
+              before.kind === "event" &&
+              before.event.type === "item.started" &&
+              (before.event.payload as { itemType?: string }).itemType === "user_message",
+          ) &&
+        (input.event.payload as { itemType?: string }).itemType === "user_message",
+    );
+    const native = events.find((event) => event.type === "turn.started")?.turnId;
+    const core = (part: ReadonlyArray<(typeof inputs)[number]>) =>
+      part
+        .flatMap((input) => translator.step(input))
+        .flatMap((driverSignal) => toCore.step(driverSignal, T0).signals);
+    const asking = core(inputs.slice(0, injected));
+    const turn = asking.find((one) => one.kind === "turn-started");
+    const traceTurn: ReadonlyArray<Step> = [
       send("go"),
       prepared(1),
       opened(1),
@@ -1354,27 +1465,44 @@ describe("decide: a question asked by message is answered by a message", () => {
         kind: "ok",
         value: { turn: turn?.kind === "turn-started" ? turn.turn : null, providerTurnId: "x" },
       }),
-      { _tag: "ProviderSignals", sessionId: s1, signals: traced } as Command,
+      { _tag: "ProviderSignals", sessionId: s1, signals: asking } as Command,
     ];
     const asked = playAll(traceTurn);
-    expect(asked.state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
-    expect(Object.values(asked.state.requests)).toMatchObject([
-      { dismissible: true, answerable: true, questions: [{ id: "0" }] },
-    ]);
+    expect(asked.state.runs[r(1)]?.state).toBe("running");
     const answering: Command = {
       _tag: "Answer",
       requestId: requestId(r(1), 1),
-      answer: { answers: { "0": "pnpm" } },
+      answer: { answers: { "0": "Red" } },
       summary: "Answered",
     };
-    const { log } = playAll([...traceTurn, answering, prepared(2), sentTurn(2)]);
-    expect(log.find((e) => e._tag === "ItemOpened" && e.runId === r(2))).toMatchObject({
-      body: { kind: "person", text: "Which package manager?\npnpm" },
-    });
+    const steer = steered(play([...traceTurn, answering]));
+    const replied = core([
+      { kind: "send", turn: steer.item as string as TurnHandle, mode: "steer" },
+      { kind: "sent", turn: steer.item as string as TurnHandle, nativeTurn: String(native) },
+      ...inputs.slice(injected),
+    ]);
+    const { log, state } = playAll([
+      ...traceTurn,
+      answering,
+      settled(steer.item, "provider.steer", { kind: "ok", value: { as: "steered" } }),
+      { _tag: "ProviderSignals", sessionId: s1, signals: replied } as Command,
+    ]);
+    expect(log.some((e) => e._tag === "RunQueued" && e.runId !== r(1))).toBe(false);
     expect(log.some((e) => e._tag === "EffectRequested" && e.kind === "provider.respond")).toBe(
       false,
     );
     expect(closes(log)).toEqual(["closed answered"]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "completed" });
+    // No empty words: the message that asked is the question's place, the reply is a note.
+    const bodies = new Map<string, ItemBody>();
+    for (const e of log)
+      if (e._tag === "ItemOpened" || e._tag === "ItemUpdated" || e._tag === "ItemClosed")
+        bodies.set(e.itemId, e.body);
+    expect(
+      [...bodies.values()].map((body) =>
+        body.kind === "note" ? `note ${body.text}` : body.kind === "person" ? "person" : body.kind,
+      ),
+    ).toEqual(["person", "request", "person", "note Red"]);
   });
 
   it("refuses an answer that leaves a question unanswered", () => {
