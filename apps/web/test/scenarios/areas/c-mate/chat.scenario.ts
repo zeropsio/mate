@@ -177,8 +177,9 @@ describe("C: opening a Mate and chat", () => {
               answers: { target: "Inspect the preview shown here" },
               attachmentsByQuestionId: { target: [{ name: "question-preview.png" }] },
             });
-            chat.fixture().run("question-custom-run", "completed");
+            // Counted in the live run, before it settles and folds its work away.
             yield* chat.then.once("Inspect the preview shown here");
+            chat.fixture().run("question-custom-run", "completed");
             yield* chat.when.activateLast("Show work");
             yield* chat.when.press("Open question-preview.png");
             yield* chat.then.text("question-preview.png");

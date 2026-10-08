@@ -146,10 +146,10 @@ export class MateEngineFake {
   }
 
   /**
-   * The agent asks, in the run named when it is still on, else in a run it starts itself (joining
+   * The agent asks, in the run given when it is still on, else in a run it starts itself (joining
    * the last); the run waits on the request.
    */
-  ask(ask: RequestAsk, at: { readonly requestId?: string; readonly runId?: string } = {}): string {
+  ask(ask: RequestAsk, at: { readonly runId?: string } = {}): string {
     return this.commit((change) => {
       const named = at.runId === undefined ? undefined : this.runs.get(at.runId);
       const run =
@@ -159,10 +159,9 @@ export class MateEngineFake {
               change,
               { kind: "wake", cause: "self", wakeId: null },
               [...this.runs.values()].at(-1)?.id ?? null,
-              at.runId,
             );
       const ordinal = [...this.requests.values()].filter((r) => r.runId === run).length + 1;
-      const id = at.requestId ?? `${run}/q/${ordinal}`;
+      const id = `${run}/q/${ordinal}`;
       const seq = this.next();
       this.requests.set(
         id,
@@ -189,21 +188,22 @@ export class MateEngineFake {
     });
   }
 
-  /** The agent works in run `id` (started by itself), or that run ends as `state` says. */
-  run(id: string, state: "running" | "completed" | "error" | "interrupted") {
-    this.commit((change) => {
-      const held = this.runs.get(id);
-      if (state === "running") {
-        if (held === undefined)
-          this.openRun(
-            change,
-            { kind: "wake", cause: "self", wakeId: null },
-            [...this.runs.values()].at(-1)?.id ?? null,
-            id,
-          );
-        return;
-      }
-      if (held === undefined || held.state === "ended") return;
+  /** The agent starts a run of its own, joining the last: its engine id. */
+  startRun(): string {
+    return this.commit((change) =>
+      this.openRun(
+        change,
+        { kind: "wake", cause: "self", wakeId: null },
+        [...this.runs.values()].at(-1)?.id ?? null,
+      ),
+    );
+  }
+
+  /** Run `id` ends as the agent's turn did. */
+  settleRun(id: string, state: "completed" | "error" | "interrupted") {
+    const held = this.runs.get(id);
+    if (held === undefined || held.state === "ended") return;
+    this.commit((change) =>
       this.endRun(
         change,
         id,
@@ -212,8 +212,8 @@ export class MateEngineFake {
           : state === "error"
             ? { kind: "failed", reason: "The agent failed.", next: null }
             : { kind: "stopped", by: { kind: "person", subject: "owner" } },
-      );
-    });
+      ),
+    );
   }
 
   /** The agent's words in `run`; its answer, ending the run when told. */
@@ -262,10 +262,9 @@ export class MateEngineFake {
     change: Changed,
     trigger: { kind: "person" } | { kind: "wake"; cause: string; wakeId: null },
     joins: string | null = null,
-    named?: string,
   ): string {
     const ordinal = this.runs.size + 1;
-    const id = named ?? `${this.conversationId}/r/${ordinal}`;
+    const id = `${this.conversationId}/r/${ordinal}`;
     const seq = this.next();
     this.runs.set(
       id,

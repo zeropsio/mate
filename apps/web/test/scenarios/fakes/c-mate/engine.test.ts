@@ -191,6 +191,7 @@ it("applies an answer with the pictures attached to each question, and its recor
     r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
     r.chat.run("question-custom-run", "running");
     r.chat.question("question-custom", "question-custom-run");
+    const [asked] = r.wire.engine.requests.values();
     const given = {
       answers: { target: "Inspect the preview shown here" },
       attachmentsByQuestionId: { target: [preview] },
@@ -198,13 +199,13 @@ it("applies an answer with the pictures attached to each question, and its recor
     const exit = await r.call("a", WS_METHODS.engineAnswer, {
       ...conversation,
       commandId: "answer-1",
-      requestId: "question-custom",
+      requestId: asked!.id,
       answer: { kind: "input", ...given },
       summary: "Answered",
     });
     expect(decodeCall(exit.value)).toMatchObject({
       _tag: "Accepted",
-      requestId: "question-custom",
+      requestId: asked!.id,
     });
     expect(await r.chat.waitForAnswer("question-custom")).toMatchObject({
       requestId: "question-custom",
@@ -222,8 +223,9 @@ it("applies an answer with the pictures attached to each question, and its recor
     const answered = r
       .stream("c")
       .flatMap((frame) => (frame.type === "changes" ? frame.requests : []))
-      .findLast((request) => request.id === "question-custom");
-    expect(answered).toMatchObject({ runId: "question-custom-run", answer: given });
+      .findLast((request) => request.id === asked!.id);
+    expect(answered).toMatchObject({ runId: asked!.runId, answer: given });
+    expect(r.wire.engine.runs.get(asked!.runId)?.state).toBe("running");
   } finally {
     await r.close();
   }
@@ -259,11 +261,12 @@ it("refuses an answer for want of authority in the area's words, applying nothin
   const r = await connect();
   try {
     r.chat.question("question-custom");
+    const [asked] = r.wire.engine.requests.values();
     r.chat.responseRefusal = "Your answer was refused. Sign in and retry.";
     const exit = await r.call("a", WS_METHODS.engineAnswer, {
       ...conversation,
       commandId: "answer-1",
-      requestId: "question-custom",
+      requestId: asked!.id,
       answer: { kind: "input", answers: { target: "stage" } },
       summary: "Answered",
     });
