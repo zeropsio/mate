@@ -3198,6 +3198,49 @@ describe("quiet timeline: nested agents", () => {
     },
   );
 
+  // An engine Mate ends work its session lost as "lost": it never reported, so it stopped.
+  it("reads a helper whose session lost it as stopped, never completed", () => {
+    const thread = makeThread({
+      id: ThreadId.make("engine-lost"),
+      projectId: ProjectId.make("project-1"),
+      title: "Engine helper",
+      activities: [
+        makeActivity({
+          id: EventId.make("lost-start"),
+          kind: "task.started",
+          summary: "Read the schema",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          payload: {
+            taskId: "w1",
+            taskType: "local_agent",
+            agentKind: "agent",
+            title: "Read the schema",
+          },
+        }),
+        makeActivity({
+          id: EventId.make("lost-end"),
+          kind: "task.completed",
+          summary: "Read the schema",
+          createdAt: "2026-04-01T00:00:02.000Z",
+          payload: {
+            taskId: "w1",
+            taskType: "local_agent",
+            agentKind: "agent",
+            title: "Read the schema",
+            status: "lost",
+          },
+        }),
+      ],
+    });
+    const rows = buildThreadFeed(thread).flatMap((entry) =>
+      entry.type === "activity-group" ? entry.activities : [],
+    );
+    expect(rows[0]).toMatchObject({
+      lifecycleStatus: "stopped",
+      summary: "Ran 1 subagent · 1 stopped",
+    });
+  });
+
   it("folds bypassed Claude workflow members into the coordinator's batch and settles them with it", () => {
     const turnId = TurnId.make("turn-workflow");
     const at = (seconds: number) => `2026-04-01T00:00:${String(seconds).padStart(2, "0")}.000Z`;
