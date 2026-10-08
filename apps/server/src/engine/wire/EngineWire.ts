@@ -792,9 +792,10 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       const principal: Principal = { kind: "person", subject: caller.subject };
       return conversations.ask({ commandId, conversationId, principal, command: body }).pipe(
         Effect.map((accepted): EngineCallResult => accepted),
-        Effect.catchTag("CommandRejected", (rejected) =>
-          Effect.succeed<EngineCallResult>({ _tag: "Rejected", rejection: rejected.rejection }),
-        ),
+        Effect.catchTags({
+          CommandRejected: (rejected) =>
+            Effect.succeed<EngineCallResult>({ _tag: "Rejected", rejection: rejected.rejection }),
+        }),
         Effect.catch(wireError(UNTAKEN)),
       );
     };
@@ -824,9 +825,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           return yield* decodeResult(stored).pipe(Effect.catch(wireError(UNREADABLE)));
         const claimed = yield* claims.claim(conversationId, pictures).pipe(
           Effect.map((held) => ({ held }) as const),
-          Effect.catchTag("PicturesRefused", (refused) =>
-            Effect.succeed({ refused: refused.message } as const),
-          ),
+          Effect.catchTags({
+            PicturesRefused: (refused) => Effect.succeed({ refused: refused.message } as const),
+          }),
         );
         if ("refused" in claimed)
           return {

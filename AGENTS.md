@@ -181,7 +181,8 @@ Full glossary with file links: `docs/internals/glossary.md`.
 ## Where code lives
 
 - `apps/server` — WebSocket, orchestration, providers, checkpointing. Read
-  `.repos/effect-smol/LLMS.md` before writing Effect code.
+  [Effect services](docs/internals/effect-services.md) before adding server code, and
+  `.repos/effect-smol/LLMS.md` for the Effect library itself.
 - `apps/web` — the React/Vite client; `apps/desktop` wraps it and `apps/mobile` is React Native.
 - `packages/contracts` — Effect Schema contracts and small derived helpers; no heavy runtime logic.
 - `packages/shared` — shared runtime utilities, subpath exports, no barrel.
@@ -192,6 +193,9 @@ Full glossary with file links: `docs/internals/glossary.md`.
 ## Taste
 
 - Complexity belongs at the adapter boundary. Keep orchestration pure and UI dumb.
+- Server features are services; transports stay thin. A `ws.ts` RPC handler, HTTP route, or CLI
+  command decodes input, calls one service method, and maps errors. See
+  [Effect services](docs/internals/effect-services.md).
 - `apps/web/src/components/ui` exports own their look. Pick a `variant` or `size`; do not restyle one
   with `className`. If none fits and the look is a generic concept, add a variant to the component;
   a look that belongs to one feature stays in that feature's own component, not in

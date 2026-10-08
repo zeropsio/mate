@@ -19,15 +19,14 @@ import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
 import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
-const observe = {
-  observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
-  observeRpcStream: <A, E, R>(_method: string, stream: Stream.Stream<A, E, R>) => stream,
+const passThrough = {
+  admit: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
 };
 
 const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
 
 describe("registerCrewRpc", () => {
-  const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...observe });
+  const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...passThrough });
 
   it.effect(
     "during update, an accepted crew can pause or stop while new crew work is refused",
@@ -38,8 +37,7 @@ describe("registerCrewRpc", () => {
         const handlers = registerCrewRpc({
           crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },
           subject: SUBJECT,
-          observeRpcStream: observe.observeRpcStream,
-          observeRpcEffect: (_method, effect, _attributes, continuation = false) =>
+          admit: (_method, effect, continuation = false) =>
             admission.run(
               effect,
               new EnvironmentAuthorizationError({
@@ -83,7 +81,11 @@ describe("registerCrewRpc", () => {
   it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
-        const handlers = registerCrewRpc({ crew: yield* CrewEngine, subject: SUBJECT, ...observe });
+        const handlers = registerCrewRpc({
+          crew: yield* CrewEngine,
+          subject: SUBJECT,
+          ...passThrough,
+        });
         const latest = handlers[WS_METHODS.subscribeZeropsCrew]({}).pipe(
           Stream.take(1),
           Stream.runHead,

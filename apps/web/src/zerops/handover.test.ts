@@ -143,15 +143,16 @@ describe("startZeropsHandover names where this tab lives", () => {
     { origin: "https://zcp-2333-8080.prg1.zerops.app", path: "/mate" },
     { origin: "http://localhost:5733", path: "" },
   ] as const;
-  for (const row of rows) {
-    it(`${row.origin}${row.path}`, () => {
+  it.each(Array.from(rows, (row) => ({ title: `${row.origin}${row.path}`, row })))(
+    "$title",
+    ({ row }) => {
       const url = new URL(startZeropsHandover({ store: fakeStore(), ...row }));
       expect(url.searchParams.get("origin")).toBe(row.origin);
       expect(url.searchParams.get("path")).toBe(row.path);
       // The Zerops app finds the project by origin; no hint is sent.
       expect(url.searchParams.get("project")).toBeNull();
-    });
-  }
+    },
+  );
 
   // The platform returns to the origin it is given; a port beside it is never read.
   it("names a dev server by its origin alone, never by a port", () => {

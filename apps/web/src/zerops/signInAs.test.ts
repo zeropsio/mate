@@ -114,19 +114,17 @@ describe("signInAs", () => {
       { name: "no MATE_TEST_ACCOUNTS", env: {} },
       { name: "MATE_TEST_ACCOUNTS that is not JSON", env: { MATE_TEST_ACCOUNTS: "person-secret" } },
     ];
-    for (const row of rows) {
-      it(row.name, async () => {
-        const { rest } = platform();
-        const failure = signInAs(devPage(), person.email, {
-          env: row.env,
-          fetch: rest.fetch,
-          apiBaseUrl: API,
-        });
-        await expect(failure).rejects.toThrow(/MATE_TEST_ACCOUNTS/);
-        await expect(failure).rejects.toThrow(person.email);
-        await expect(failure).rejects.not.toThrow(/person-secret/);
-        expect(rest.requests()).toEqual([]);
+    it.each(Array.from(rows, (row) => ({ title: row.name, row })))("$title", async ({ row }) => {
+      const { rest } = platform();
+      const failure = signInAs(devPage(), person.email, {
+        env: row.env,
+        fetch: rest.fetch,
+        apiBaseUrl: API,
       });
-    }
+      await expect(failure).rejects.toThrow(/MATE_TEST_ACCOUNTS/);
+      await expect(failure).rejects.toThrow(person.email);
+      await expect(failure).rejects.not.toThrow(/person-secret/);
+      expect(rest.requests()).toEqual([]);
+    });
   });
 });

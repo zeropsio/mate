@@ -1055,7 +1055,8 @@ describe("a helper's own work", () => {
       expect: ([agent]) => expect(agent?.progress).toBe("Running List the open ports"),
     },
   ];
-  for (const { name, rows, expect: check } of cases) {
-    it(name, () => check(fold(rows())));
-  }
+  it.each(Array.from(cases, ({ name, rows, expect: check }) => ({ title: name, rows, check })))(
+    "$title",
+    ({ rows, check }) => check(fold(rows())),
+  );
 });

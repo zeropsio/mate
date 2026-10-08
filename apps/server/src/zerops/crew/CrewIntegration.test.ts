@@ -152,35 +152,33 @@ describe("CrewIntegration", () => {
     },
   ];
 
-  for (const tree of TREES) {
-    it.effect(tree.name, () =>
-      withCrew((root) =>
-        Effect.gen(function* () {
-          const integration = yield* CrewIntegration.CrewIntegration;
-          const workspace = yield* CrewWorkspace.CrewWorkspace;
-          yield* workspace.create(BACKEND);
-          const lane = `${root}/.crew/backend`;
-          write(lane, "README.md", "lane\n");
-          write(lane, "src/score.ts", "export const score = 1;\n");
-          yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
-          tree.arrange(root);
-          const outcome = yield* integration.land(TASK);
-          assert.deepStrictEqual(
-            {
-              outcome: outcome._tag === "refused" ? outcome.refusal : outcome._tag,
-              after: tree.after(root),
-              anchors: git(root, ["for-each-ref", "refs/t3/crew/landing/"]),
-            },
-            {
-              outcome: tree.refusal ?? tree.expected,
-              after: tree.afterExpected,
-              anchors: "",
-            },
-          );
-        }),
-      ),
-    );
-  }
+  it.effect.each(Array.from(TREES, (tree) => ({ title: tree.name, tree })))("$title", ({ tree }) =>
+    withCrew((root) =>
+      Effect.gen(function* () {
+        const integration = yield* CrewIntegration.CrewIntegration;
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        const lane = `${root}/.crew/backend`;
+        write(lane, "README.md", "lane\n");
+        write(lane, "src/score.ts", "export const score = 1;\n");
+        yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        tree.arrange(root);
+        const outcome = yield* integration.land(TASK);
+        assert.deepStrictEqual(
+          {
+            outcome: outcome._tag === "refused" ? outcome.refusal : outcome._tag,
+            after: tree.after(root),
+            anchors: git(root, ["for-each-ref", "refs/t3/crew/landing/"]),
+          },
+          {
+            outcome: tree.refusal ?? tree.expected,
+            after: tree.afterExpected,
+            anchors: "",
+          },
+        );
+      }),
+    ),
+  );
 
   it.effect(
     "lands nothing from a lane with nothing of its own: level with your tree, behind it, or back to it",
@@ -340,24 +338,27 @@ describe("CrewIntegration", () => {
       ),
   );
 
-  for (const fastForwarded of [false, true]) {
-    it.effect(`inspecting a landing leaves its anchor intact (landed: ${fastForwarded})`, () =>
-      withCrew((root) =>
-        Effect.gen(function* () {
-          const integration = yield* CrewIntegration.CrewIntegration;
-          yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
-          const squash = squashAndAnchor(root);
-          if (fastForwarded) git(root, ["merge", "--ff-only", "-q", squash]);
-          const head = git(root, ["rev-parse", "HEAD"]);
-          const anchors = git(root, ["for-each-ref", "refs/t3/crew/landing/"]);
-          const result = yield* integration.landingEvidence(TEST_HOST, TASK.assignment);
-          assert.strictEqual(result, fastForwarded ? squash : null);
-          assert.strictEqual(git(root, ["for-each-ref", "refs/t3/crew/landing/"]), anchors);
-          assert.strictEqual(git(root, ["rev-parse", "HEAD"]), head);
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from([false, true], (fastForwarded) => ({
+      title: `inspecting a landing leaves its anchor intact (landed: ${fastForwarded})`,
+      fastForwarded,
+    })),
+  )("$title", ({ fastForwarded }) =>
+    withCrew((root) =>
+      Effect.gen(function* () {
+        const integration = yield* CrewIntegration.CrewIntegration;
+        yield* laneWork(root, "src/score.ts", "export const score = 1;\n");
+        const squash = squashAndAnchor(root);
+        if (fastForwarded) git(root, ["merge", "--ff-only", "-q", squash]);
+        const head = git(root, ["rev-parse", "HEAD"]);
+        const anchors = git(root, ["for-each-ref", "refs/t3/crew/landing/"]);
+        const result = yield* integration.landingEvidence(TEST_HOST, TASK.assignment);
+        assert.strictEqual(result, fastForwarded ? squash : null);
+        assert.strictEqual(git(root, ["for-each-ref", "refs/t3/crew/landing/"]), anchors);
+        assert.strictEqual(git(root, ["rev-parse", "HEAD"]), head);
+      }),
+    ),
+  );
 
   it.effect("parks a lane whose turn moved a ref nobody explains", () =>
     withCrew((root) =>

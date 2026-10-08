@@ -642,21 +642,21 @@ const expectFindingCount = (harness: typeof data, source: string, expected: numb
 // Each review regression counts diagnostics independently, so RED is an assertion, not parsing failure.
 it.layer(NodeServices.layer)("technical review regressions", (it) => {
   const expectCount = expectFindingCount;
-  for (const filename of [
-    "apps/web/src/components/Fixture.tsx",
-    "apps/web/src/zerops/useFixture.ts",
-  ]) {
-    it.effect(`projection boundary stays enforced in ${filename}`, () =>
-      expectCount(
-        createOxlintRuleHarness(RULE, { filename }),
-        `
+  it.effect.each(
+    Array.from(
+      ["apps/web/src/components/Fixture.tsx", "apps/web/src/zerops/useFixture.ts"],
+      (filename) => ({ title: `projection boundary stays enforced in ${filename}`, filename }),
+    ),
+  )("$title", ({ filename }) =>
+    expectCount(
+      createOxlintRuleHarness(RULE, { filename }),
+      `
       import { useProjection as read } from "~/zerops/ZeropsAccountData";
       export function rows() { return read(projection, key, fallback)?.rows ?? []; }
       `,
-        1,
-      ),
-    );
-  }
+      1,
+    ),
+  );
   it.effect("aliased projection receivers retain public fact provenance", () =>
     expectCount(
       data,
@@ -700,18 +700,21 @@ it.layer(NodeServices.layer)("technical review regressions", (it) => {
       0,
     ),
   );
-  for (const factory of ["readsOfState", "readsOf"]) {
-    it.effect(`${factory} factories preserve public fact provenance`, () =>
-      expectCount(
-        data,
-        `
+  it.effect.each(
+    Array.from(["readsOfState", "readsOf"], (factory) => ({
+      title: `${factory} factories preserve public fact provenance`,
+      factory,
+    })),
+  )("$title", ({ factory }) =>
+    expectCount(
+      data,
+      `
       import { ${factory} as reads } from "./store.ts";
       export function value(state) { const read = reads(state); const alias = read; const fact = alias.fact("database", "d"); return fact.kind === "known" ? fact.value : undefined; }
     `,
-        1,
-      ),
-    );
-  }
+      1,
+    ),
+  );
   it.effect("immutable Known aliases preserve existing enforcement", () =>
     expectCount(
       data,
@@ -840,18 +843,21 @@ it.layer(NodeServices.layer)("final orchestrator regressions", (it) => {
       1,
     ),
   );
-  for (const operator of ["!==", "!="]) {
-    it.effect(`${operator} null guards allow known optional query rows`, () =>
-      expectFindingCount(
-        webComponent,
-        `
+  it.effect.each(
+    Array.from(["!==", "!="], (operator) => ({
+      title: `${operator} null guards allow known optional query rows`,
+      operator,
+    })),
+  )("$title", ({ operator }) =>
+    expectFindingCount(
+      webComponent,
+      `
       import { useEnvironmentQuery } from "~/state/query";
       export function rows() { const read = useEnvironmentQuery(atom); return read.data ${operator} null ? { status: "known", rows: read.data.optionalRows ?? [] } : { status: "loading-or-failed" }; }
     `,
-        0,
-      ),
-    );
-  }
+      0,
+    ),
+  );
 });
 
 it.layer(NodeServices.layer)("automatic policy carries unknown and failure presentation", (it) => {

@@ -513,11 +513,15 @@ describe("pullRequestBlockedReason", () => {
     ["empty", "nothing to merge"],
   ];
 
-  for (const [mergeability, expected] of cases) {
-    it(`${mergeability}: ${expected ?? "nothing to add"}`, () => {
-      expect(pullRequestBlockedReason({ number: 4, mergeability })).toBe(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([mergeability, expected]) => ({
+      title: `${mergeability}: ${expected ?? "nothing to add"}`,
+      mergeability,
+      expected,
+    })),
+  )("$title", ({ mergeability, expected }) => {
+    expect(pullRequestBlockedReason({ number: 4, mergeability })).toBe(expected);
+  });
 
   it("tones each reason to itself", () => {
     expect(pullRequestBlocked({ number: 4, mergeability: "conflicting" })).toMatchObject({

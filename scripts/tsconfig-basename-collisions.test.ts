@@ -52,12 +52,15 @@ async function configCollisions(config: string): Promise<Array<Array<string>>> {
 }
 
 describe("TypeScript basename collisions", () => {
-  for (const extension of ["tsx", "mts", "cts"]) {
-    it(`reports .ts / .${extension} siblings`, () => {
-      const files = ["src/view.test.ts", `src/view.test.${extension}`];
-      expect(collisions(files)).toEqual([files]);
-    });
-  }
+  it.each(
+    Array.from(["tsx", "mts", "cts"], (extension) => ({
+      title: `reports .ts / .${extension} siblings`,
+      extension,
+    })),
+  )("$title", ({ extension }) => {
+    const files = ["src/view.test.ts", `src/view.test.${extension}`];
+    expect(collisions(files)).toEqual([files]);
+  });
 
   it("reports collisions between module extensions too", () => {
     expect(collisions(["src/view.mts", "src/view.cts"])).toEqual([

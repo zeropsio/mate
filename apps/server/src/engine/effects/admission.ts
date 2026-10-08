@@ -29,7 +29,7 @@ export const makeAdmit = Effect.map(
         })
         .pipe(
           Effect.as(null),
-          Effect.catchTag("RunRefused", (refusal) => Effect.succeed(refusal.message)),
+          Effect.catchTags({ RunRefused: (refusal) => Effect.succeed(refusal.message) }),
           // An admission that broke admits nothing: its words are the refusal's.
           Effect.catchCause((cause) =>
             Cause.hasInterrupts(cause)

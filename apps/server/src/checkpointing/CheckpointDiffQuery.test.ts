@@ -766,101 +766,110 @@ function makeHistoryQueryHarness(
 }
 
 describe("CheckpointDiffQuery recorded workspace history", () => {
-  for (const missing of ["history", "service"] as const) {
-    it.effect(`refuses legacy fallback when the requested run has no ${missing}`, () =>
-      Effect.gen(function* () {
-        const harness = makeHistoryQueryHarness("/var/www", { [missing]: false });
-        const results = yield* Effect.gen(function* () {
-          const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
-          const input = {
-            threadId: harness.threadId,
-            toTurnCount: 2,
-            runId: "run-2",
-            rootId: harness.root.rootId,
-          };
-          return yield* Effect.all([
-            query.getTurnDiff({ ...input, fromTurnCount: 1 }),
-            query.getFullThreadDiff(input),
-          ]);
-        }).pipe(Effect.provide(harness.layer));
-
-        expect(harness.reads).toEqual([]);
-        for (const result of results)
-          expect(result).toMatchObject({
-            diff: "",
-            coverage: "unknown",
-            roots: [{ rootId: harness.root.rootId, status: "identity-unresolved" }],
-          });
-      }),
-    );
-  }
-
-  for (const turnCount of [1, 2]) {
-    it.effect(`uses turn ${turnCount}'s own before and after manifest`, () =>
-      Effect.gen(function* () {
-        const harness = makeHistoryQueryHarness();
-        const history = harness.histories[turnCount - 1]!;
-        const result = yield* Effect.gen(function* () {
-          const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
-          return yield* query.getTurnDiff({
-            threadId: harness.threadId,
-            fromTurnCount: turnCount - 1,
-            toTurnCount: turnCount,
-            runId: history.runId,
-            rootId: harness.root.rootId,
-            ignoreWhitespace: false,
-          });
-        }).pipe(Effect.provide(harness.layer));
-
-        expect(harness.reads).toEqual([
-          { history, options: { rootId: harness.root.rootId, ignoreWhitespace: false } },
-        ]);
-        expect(result).toEqual({
+  it.effect.each(
+    Array.from(["history", "service"] as const, (missing) => ({
+      title: `refuses legacy fallback when the requested run has no ${missing}`,
+      missing,
+    })),
+  )("$title", ({ missing }) =>
+    Effect.gen(function* () {
+      const harness = makeHistoryQueryHarness("/var/www", { [missing]: false });
+      const results = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        const input = {
           threadId: harness.threadId,
-          fromTurnCount: turnCount - 1,
-          toTurnCount: turnCount,
-          diff: "historical source patch",
-          coverage: "complete",
-          roots: [
-            {
-              rootId: harness.root.rootId,
-              label: harness.root.label,
-              pathPrefix: harness.root.pathPrefix,
-              status: "available",
-            },
-          ],
-        });
-      }),
-    );
-  }
+          toTurnCount: 2,
+          runId: "run-2",
+          rootId: harness.root.rootId,
+        };
+        return yield* Effect.all([
+          query.getTurnDiff({ ...input, fromTurnCount: 1 }),
+          query.getFullThreadDiff(input),
+        ]);
+      }).pipe(Effect.provide(harness.layer));
 
-  for (const kind of ["turn", "full-thread"] as const) {
-    it.effect(`does not return a replacement run's patch for a stale ${kind} request`, () =>
-      Effect.gen(function* () {
-        const harness = makeHistoryQueryHarness();
-        const result = yield* Effect.gen(function* () {
-          const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
-          const input = {
-            threadId: harness.threadId,
-            toTurnCount: 2,
-            runId: "replaced-run",
-            rootId: harness.root.rootId,
-          };
-          return yield* kind === "turn"
-            ? query.getTurnDiff({ ...input, fromTurnCount: 1 })
-            : query.getFullThreadDiff(input);
-        }).pipe(Effect.provide(harness.layer));
-
-        expect(harness.reads).toEqual([]);
+      expect(harness.reads).toEqual([]);
+      for (const result of results)
         expect(result).toMatchObject({
           diff: "",
           coverage: "unknown",
           roots: [{ rootId: harness.root.rootId, status: "identity-unresolved" }],
         });
-        expect(result.roots?.[0]?.reason).toContain("Reload the conversation");
-      }),
-    );
-  }
+    }),
+  );
+
+  it.effect.each(
+    Array.from([1, 2], (turnCount) => ({
+      title: `uses turn ${turnCount}'s own before and after manifest`,
+      turnCount,
+    })),
+  )("$title", ({ turnCount }) =>
+    Effect.gen(function* () {
+      const harness = makeHistoryQueryHarness();
+      const history = harness.histories[turnCount - 1]!;
+      const result = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        return yield* query.getTurnDiff({
+          threadId: harness.threadId,
+          fromTurnCount: turnCount - 1,
+          toTurnCount: turnCount,
+          runId: history.runId,
+          rootId: harness.root.rootId,
+          ignoreWhitespace: false,
+        });
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(harness.reads).toEqual([
+        { history, options: { rootId: harness.root.rootId, ignoreWhitespace: false } },
+      ]);
+      expect(result).toEqual({
+        threadId: harness.threadId,
+        fromTurnCount: turnCount - 1,
+        toTurnCount: turnCount,
+        diff: "historical source patch",
+        coverage: "complete",
+        roots: [
+          {
+            rootId: harness.root.rootId,
+            label: harness.root.label,
+            pathPrefix: harness.root.pathPrefix,
+            status: "available",
+          },
+        ],
+      });
+    }),
+  );
+
+  it.effect.each(
+    Array.from(["turn", "full-thread"] as const, (kind) => ({
+      title: `does not return a replacement run's patch for a stale ${kind} request`,
+      kind,
+    })),
+  )("$title", ({ kind }) =>
+    Effect.gen(function* () {
+      const harness = makeHistoryQueryHarness();
+      const result = yield* Effect.gen(function* () {
+        const query = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+        const input = {
+          threadId: harness.threadId,
+          toTurnCount: 2,
+          runId: "replaced-run",
+          rootId: harness.root.rootId,
+        };
+        return yield* kind === "turn"
+          ? query.getTurnDiff({ ...input, fromTurnCount: 1 })
+          : query.getFullThreadDiff(input);
+      }).pipe(Effect.provide(harness.layer));
+
+      expect(harness.reads).toEqual([]);
+      expect(result).toMatchObject({
+        diff: "",
+        coverage: "unknown",
+        roots: [{ rootId: harness.root.rootId, status: "identity-unresolved" }],
+      });
+      expect(result.roots?.[0]?.reason).toContain("Reload the conversation");
+    }),
+  );
 
   it.effect(
     "reads historical service identity without a current workspace path or mount lookup",

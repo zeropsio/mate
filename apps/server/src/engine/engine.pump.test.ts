@@ -300,28 +300,29 @@ describe("the running engine", () => {
     grok: "stop-asked",
     antigravity: "stop-confirmed",
   };
-  for (const driver of DRIVERS) {
-    it.effect(
-      `a Stop ends the run on its turn's end, and the next message starts after it (${driver})`,
-      () =>
-        scene(
-          Effect.gen(function* () {
-            const w = yield* world(driver);
-            yield* send(w);
-            yield* w.agent((agent, thread) => agent.call(thread));
-            yield* stop(w);
-            yield* send(w, "next");
-            assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", STOP_SOURCES[driver]]);
-            const calls = w.provider.calls;
-            const stopped = calls.findIndex((call) => call.startsWith("interrupt"));
-            assert.isAbove(stopped, 0);
-            assert.isAbove(calls.indexOf(sendLine(w, "next")), stopped);
-            assert.strictEqual((yield* w.run(r(2)))?.state, "running");
-            yield* w.shutdown;
-          }),
-        ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a Stop ends the run on its turn's end, and the next message starts after it (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.call(thread));
+        yield* stop(w);
+        yield* send(w, "next");
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", STOP_SOURCES[driver]]);
+        const calls = w.provider.calls;
+        const stopped = calls.findIndex((call) => call.startsWith("interrupt"));
+        assert.isAbove(stopped, 0);
+        assert.isAbove(calls.indexOf(sendLine(w, "next")), stopped);
+        assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
   it.effect("a stopped turn's late end and late items stay in the stopped run's card", () =>
     scene(
@@ -354,21 +355,24 @@ describe("the running engine", () => {
       yield* w.agent((agent, thread) => agent.think(thread, "think-1", "deploy logs"));
     });
   const WORDS = { preview: "Checking the deploy logs", length: 24, streaming: false };
-  for (const driver of DRIVERS) {
-    it.effect(`a thought a Stop cuts keeps the words it had streamed (${driver})`, () =>
-      scene(
-        Effect.gen(function* () {
-          const w = yield* world(driver);
-          yield* send(w);
-          yield* thinking(w);
-          yield* stop(w);
-          yield* send(w, "next");
-          assert.deepInclude(yield* thoughtOf(w, 1), WORDS);
-          yield* w.shutdown;
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a thought a Stop cuts keeps the words it had streamed (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* thinking(w);
+        yield* stop(w);
+        yield* send(w, "next");
+        assert.deepInclude(yield* thoughtOf(w, 1), WORDS);
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
   it.effect("a thought a second Stop cuts with its session keeps the words it had streamed", () =>
     scene(
@@ -428,61 +432,58 @@ describe("the running engine", () => {
     grok: "agent",
     antigravity: "inferred-from-crash",
   };
-  for (const driver of DRIVERS) {
-    it.effect(
-      `a crash ends the run crashed, with the bridge's source; the next message resumes (${driver})`,
-      () =>
-        scene(
-          Effect.gen(function* () {
-            const w = yield* world(driver);
-            yield* send(w);
-            yield* w.agent((agent, thread) => agent.call(thread));
-            yield* w.agent((agent, thread) => agent.crash(thread));
-            assert.deepStrictEqual(yield* ending(w, 1), [
-              "ended",
-              "crashed",
-              CRASH_SOURCES[driver],
-            ]);
-            yield* send(w, "again");
-            assert.deepStrictEqual(w.provider.calls.slice(-2), [
-              `start ${w.thread}`,
-              sendLine(w, "again"),
-            ]);
-            assert.strictEqual((yield* w.run(r(2)))?.state, "running");
-            yield* w.shutdown;
-          }),
-        ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a crash ends the run crashed, with the bridge's source; the next message resumes (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.call(thread));
+        yield* w.agent((agent, thread) => agent.crash(thread));
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "crashed", CRASH_SOURCES[driver]]);
+        yield* send(w, "again");
+        assert.deepStrictEqual(w.provider.calls.slice(-2), [
+          `start ${w.thread}`,
+          sendLine(w, "again"),
+        ]);
+        assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
-  for (const driver of DRIVERS) {
-    it.effect(`a restart cuts the running run and a continuation joins it (${driver})`, () =>
-      scene(
-        Effect.gen(function* () {
-          const w = yield* world(driver);
-          yield* send(w);
-          yield* w.agent((agent, thread) => agent.call(thread));
-          yield* w.crash;
-          yield* w.boot;
-          const cut = yield* w.run(r(1));
-          assert.deepStrictEqual(
-            [cut?.end?.kind, cut?.source],
-            ["cut-by-restart", "inferred-from-restart"],
-          );
-          const continued = yield* w.run(r(2));
-          assert.deepStrictEqual(
-            [continued?.trigger.cause, continued?.joins, continued?.state],
-            ["restart-continuation", r(1), "running"],
-          );
-          assert.deepStrictEqual(w.provider.calls, [
-            `start ${w.thread}`,
-            sendLine(w, CONTINUE_TEXT),
-          ]);
-          yield* w.shutdown;
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a restart cuts the running run and a continuation joins it (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.call(thread));
+        yield* w.crash;
+        yield* w.boot;
+        const cut = yield* w.run(r(1));
+        assert.deepStrictEqual(
+          [cut?.end?.kind, cut?.source],
+          ["cut-by-restart", "inferred-from-restart"],
+        );
+        const continued = yield* w.run(r(2));
+        assert.deepStrictEqual(
+          [continued?.trigger.cause, continued?.joins, continued?.state],
+          ["restart-continuation", r(1), "running"],
+        );
+        assert.deepStrictEqual(w.provider.calls, [`start ${w.thread}`, sendLine(w, CONTINUE_TEXT)]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
   it.effect.each<readonly [string, ReadonlyArray<Command>, string]>([
     ["a newer person message", [{ _tag: "Send", text: "newer" }], "a newer person message"],
@@ -1056,67 +1057,69 @@ describe("the running engine", () => {
 
   // The settings a person picks reach every driver as V1 sends them: options and plan mode with
   // each message, the runtime mode when its session opens (V1: `ProviderCommandReactor`).
-  for (const driver of DRIVERS) {
-    it.effect(
-      `a message carries the conversation's model options and its interaction mode; a runtime mode change reopens the session with it (${driver})`,
-      () =>
-        scene(
-          Effect.gen(function* () {
-            const w = yield* world(driver);
-            const effort = [{ id: "effort", value: "high" }];
-            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: effort });
-            yield* w.tell({ _tag: "Send", text: "plan it", interactionMode: "plan" });
-            assert.deepInclude(w.provider.sends.at(-1), {
-              modelSelection: { instanceId: driver, model: "m1", options: effort },
-              interactionMode: "plan",
-            });
-            assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "full-access" });
-            yield* w.agent((agent, thread) => agent.finish(thread));
-            yield* w.tell({ _tag: "SetRuntimeMode", runtimeMode: "approval-required" });
-            yield* send(w, "next");
-            assert.deepStrictEqual(w.provider.calls.slice(-3), [
-              `stop ${w.thread}`,
-              `start ${w.thread}`,
-              sendLine(w, "next"),
-            ]);
-            assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
-            assert.notProperty(w.provider.sends.at(-1), "interactionMode");
-            yield* w.shutdown;
-          }),
-        ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a message carries the conversation's model options and its interaction mode; a runtime mode change reopens the session with it (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        const effort = [{ id: "effort", value: "high" }];
+        yield* w.tell({ _tag: "SwitchModel", model: "m1", options: effort });
+        yield* w.tell({ _tag: "Send", text: "plan it", interactionMode: "plan" });
+        assert.deepInclude(w.provider.sends.at(-1), {
+          modelSelection: { instanceId: driver, model: "m1", options: effort },
+          interactionMode: "plan",
+        });
+        assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "full-access" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.tell({ _tag: "SetRuntimeMode", runtimeMode: "approval-required" });
+        yield* send(w, "next");
+        assert.deepStrictEqual(w.provider.calls.slice(-3), [
+          `stop ${w.thread}`,
+          `start ${w.thread}`,
+          sendLine(w, "next"),
+        ]);
+        assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
+        assert.notProperty(w.provider.sends.at(-1), "interactionMode");
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
-  for (const driver of DRIVERS) {
-    it.effect(
-      `a model option goes with the next message where the driver reads it per turn, else in a new session (${driver})`,
-      () =>
-        scene(
-          Effect.gen(function* () {
-            const w = yield* world(driver);
-            yield* send(w, "first");
-            yield* w.agent((agent, thread) => agent.finish(thread));
-            const fast = [{ id: "fastMode", value: true }];
-            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: fast });
-            yield* send(w, "fast");
-            const starts = w.provider.calls.filter((call) => call.startsWith("start")).length;
-            assert.strictEqual(starts, driver === "claudeAgent" ? 2 : 1);
-            assert.deepInclude(w.provider.sends.at(-1), {
-              modelSelection: { instanceId: driver, model: "m1", options: fast },
-            });
-            yield* w.agent((agent, thread) => agent.finish(thread));
-            const effort = [{ id: "effort", value: "low" }];
-            yield* w.tell({ _tag: "SwitchModel", model: "m1", options: [...fast, ...effort] });
-            yield* send(w, "low effort");
-            assert.strictEqual(
-              w.provider.calls.filter((call) => call.startsWith("start")).length,
-              starts,
-            );
-            yield* w.shutdown;
-          }),
-        ),
-    );
-  }
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a model option goes with the next message where the driver reads it per turn, else in a new session (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w, "first");
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const fast = [{ id: "fastMode", value: true }];
+        yield* w.tell({ _tag: "SwitchModel", model: "m1", options: fast });
+        yield* send(w, "fast");
+        const starts = w.provider.calls.filter((call) => call.startsWith("start")).length;
+        assert.strictEqual(starts, driver === "claudeAgent" ? 2 : 1);
+        assert.deepInclude(w.provider.sends.at(-1), {
+          modelSelection: { instanceId: driver, model: "m1", options: fast },
+        });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const effort = [{ id: "effort", value: "low" }];
+        yield* w.tell({ _tag: "SwitchModel", model: "m1", options: [...fast, ...effort] });
+        yield* send(w, "low effort");
+        assert.strictEqual(
+          w.provider.calls.filter((call) => call.startsWith("start")).length,
+          starts,
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
 
   it.effect("a message's files reach the driver with it, by the id they were uploaded under", () =>
     scene(

@@ -4,7 +4,7 @@ import { HttpClient } from "effect/http";
 
 import { makePrimaryEnvironmentHttpLayer } from "./httpLayer";
 
-describe.sequential("primary environment HTTP layer", () => {
+describe("primary environment HTTP layer", { concurrent: false }, () => {
   afterEach(() => {
     Reflect.deleteProperty(globalThis, "window");
     vi.unstubAllGlobals();

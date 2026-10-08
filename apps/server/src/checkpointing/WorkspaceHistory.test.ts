@@ -240,35 +240,44 @@ describe("Workspace history", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
-  for (const [detail, status, reason] of [
-    [
-      "fatal: not a git repository",
-      "missing-objects",
-      "The service no longer contains the Git repository holding these snapshots.",
-    ],
-    [
-      "Snapshot refused: snapshot objects missing",
-      "missing-objects",
-      "The recorded Git snapshots are no longer present on this service.",
-    ],
-    [
-      "identity mismatch expected project/service",
-      "identity-unresolved",
-      "The connected service does not match the identity recorded for these snapshots.",
-    ],
-  ] as const)
-    it.effect(`explains ${detail} without leaking raw Git failures into the review`, () =>
-      Effect.gen(function* () {
-        const h = yield* harness();
-        yield* h.prepare();
-        const completed = yield* h.finish();
-        h.readErrors.set("/var/www/api", detail);
-        const result = yield* h.history.read(completed, { ignoreWhitespace: false });
-        expect(result.roots[0]).toMatchObject({ status, reason });
-        expect(result.roots[1]?.status).toBe("available");
-        expect(result.coverage).toBe("partial");
-      }).pipe(Effect.provide(testLayer)),
-    );
+  it.effect.each(
+    Array.from(
+      [
+        [
+          "fatal: not a git repository",
+          "missing-objects",
+          "The service no longer contains the Git repository holding these snapshots.",
+        ],
+        [
+          "Snapshot refused: snapshot objects missing",
+          "missing-objects",
+          "The recorded Git snapshots are no longer present on this service.",
+        ],
+        [
+          "identity mismatch expected project/service",
+          "identity-unresolved",
+          "The connected service does not match the identity recorded for these snapshots.",
+        ],
+      ] as const,
+      ([detail, status, reason]) => ({
+        title: `explains ${detail} without leaking raw Git failures into the review`,
+        detail,
+        status,
+        reason,
+      }),
+    ),
+  )("$title", ({ detail, status, reason }) =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      yield* h.prepare();
+      const completed = yield* h.finish();
+      h.readErrors.set("/var/www/api", detail);
+      const result = yield* h.history.read(completed, { ignoreWhitespace: false });
+      expect(result.roots[0]).toMatchObject({ status, reason });
+      expect(result.roots[1]?.status).toBe("available");
+      expect(result.coverage).toBe("partial");
+    }).pipe(Effect.provide(testLayer)),
+  );
 
   it.effect("a journal read failure cannot prevent terminal cleanup of a bound run", () =>
     Effect.gen(function* () {

@@ -171,11 +171,11 @@ describe("buildLogsFields", () => {
       },
     },
   ];
-  for (const { name, call: input, expected } of cases) {
-    it(name, () => {
-      expect(buildLogsFields(input)).toMatchObject(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, call: input, expected }) => ({ title: name, input, expected })),
+  )("$title", ({ input, expected }) => {
+    expect(buildLogsFields(input)).toMatchObject(expected);
+  });
 
   it("has no read result once the call settled without one, or failed", () => {
     expect(
@@ -278,11 +278,11 @@ describe("buildEventsFields", () => {
       },
     },
   ];
-  for (const { name, call: input, expected } of cases) {
-    it(name, () => {
-      expect(buildEventsFields(input)).toMatchObject(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, call: input, expected }) => ({ title: name, input, expected })),
+  )("$title", ({ input, expected }) => {
+    expect(buildEventsFields(input)).toMatchObject(expected);
+  });
 });
 
 describe("buildProcessFields", () => {
@@ -401,11 +401,11 @@ describe("buildProcessFields", () => {
       expected: { statusWord: "Done", steps: [{ id: "a", label: "Build", state: "done" }] },
     },
   ];
-  for (const { name, call: input, expected } of cases) {
-    it(name, () => {
-      expect(buildProcessFields(input)).toMatchObject(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, call: input, expected }) => ({ title: name, input, expected })),
+  )("$title", ({ input, expected }) => {
+    expect(buildProcessFields(input)).toMatchObject(expected);
+  });
 
   it("draws no closing line for a status check, which carries no message", () => {
     expect(
@@ -526,11 +526,11 @@ describe("buildDiscoverFields", () => {
       },
     },
   ];
-  for (const { name, call: input, expected } of cases) {
-    it(name, () => {
-      expect(buildDiscoverFields(input)).toMatchObject(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, call: input, expected }) => ({ title: name, input, expected })),
+  )("$title", ({ input, expected }) => {
+    expect(buildDiscoverFields(input)).toMatchObject(expected);
+  });
 
   it("draws no note for an adopted service", () => {
     const fields = buildDiscoverFields(

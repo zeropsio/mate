@@ -179,49 +179,48 @@ const cases: ReadonlyArray<{
 
 describe("GET /health", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const { leader, official, database, git, lockHeld, status } of cases) {
-      it.effect(
-        `answers ${String(status)} for ${leader.state}, ${official}, the database ${database}${
+    it.effect.each(
+      Array.from(cases, ({ leader, official, database, git, lockHeld, status }) => ({
+        title: `answers ${String(status)} for ${leader.state}, ${official}, the database ${database}${
           git === undefined ? "" : `, git ${git}`
         }${lockHeld ? ", another Core leading" : ""}`,
-        () =>
-          Effect.gen(function* () {
-            const postgres = yield* TempPostgres;
-            const url =
-              database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
-            if (lockHeld) {
-              const other = yield* PgConnection.make({ url: Redacted.make(url) });
-              yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
-            }
-            const gitNow = git ?? (leader.state === "active" ? "open" : "closed");
-            const response = yield* getHealth(
-              leader,
-              official,
-              url,
-              null,
-              { state: "off" },
-              QUIET,
-              0,
-              { git: gitNow, quarantined: [] },
-            );
-            assert.strictEqual(response.status, status);
-            // Every 503 HQ answers says when to try again.
-            assert.strictEqual(response.retryAfter, status === 503 ? "5" : undefined);
-            assert.deepStrictEqual(response.body, {
-              state: leader.state,
-              official,
-              db: database,
-              git: gitNow,
-              backup: { state: "off" },
-              keys: "ok",
-              loop: QUIET,
-              recomputes: 0,
-              epoch: leader.epoch,
-              build: "b1",
-            });
-          }),
-      );
-    }
+        leader,
+        official,
+        database,
+        git,
+        lockHeld,
+        status,
+      })),
+    )("$title", ({ leader, official, database, git, lockHeld, status }) =>
+      Effect.gen(function* () {
+        const postgres = yield* TempPostgres;
+        const url = database === "up" ? yield* postgres.createDatabase : yield* postgres.deadUrl;
+        if (lockHeld) {
+          const other = yield* PgConnection.make({ url: Redacted.make(url) });
+          yield* other.query(`SELECT pg_advisory_lock(${String(LOCK_KEY)})`);
+        }
+        const gitNow = git ?? (leader.state === "active" ? "open" : "closed");
+        const response = yield* getHealth(leader, official, url, null, { state: "off" }, QUIET, 0, {
+          git: gitNow,
+          quarantined: [],
+        });
+        assert.strictEqual(response.status, status);
+        // Every 503 HQ answers says when to try again.
+        assert.strictEqual(response.retryAfter, status === 503 ? "5" : undefined);
+        assert.deepStrictEqual(response.body, {
+          state: leader.state,
+          official,
+          db: database,
+          git: gitNow,
+          backup: { state: "off" },
+          keys: "ok",
+          loop: QUIET,
+          recomputes: 0,
+          epoch: leader.epoch,
+          build: "b1",
+        });
+      }),
+    );
 
     it.effect("ignores leadership locks in another database when deciding readiness", () =>
       Effect.gen(function* () {

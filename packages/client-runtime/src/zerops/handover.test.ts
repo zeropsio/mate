@@ -108,13 +108,11 @@ describe("readZeropsHandover", () => {
       },
     ];
 
-    for (const row of rows) {
-      it(row.name, () => {
-        const outcome = readZeropsHandover(row.fragment, row.expected);
-        expect(outcome).toEqual({ kind: "mismatched" });
-        expect(JSON.stringify(outcome)).not.toContain("rt-abc");
-      });
-    }
+    it.each(Array.from(rows, (row) => ({ title: row.name, row })))("$title", ({ row }) => {
+      const outcome = readZeropsHandover(row.fragment, row.expected);
+      expect(outcome).toEqual({ kind: "mismatched" });
+      expect(JSON.stringify(outcome)).not.toContain("rt-abc");
+    });
   });
 
   it("reports a refusal the user made, once the nonce proves it is ours", () => {
@@ -143,11 +141,12 @@ describe("readZeropsHandover", () => {
 
   describe("says nothing is here", () => {
     const rows = ["", "#", "#foo=bar", "#access_token=unrelated"];
-    for (const fragment of rows) {
-      it(JSON.stringify(fragment), () => {
+    it.each(Array.from(rows, (fragment) => ({ title: JSON.stringify(fragment), fragment })))(
+      "$title",
+      ({ fragment }) => {
         expect(readZeropsHandover(fragment, "nonce-1")).toEqual({ kind: "absent" });
-      });
-    }
+      },
+    );
   });
 
   it("pins the callback path both sides agree on", () => {
@@ -160,35 +159,33 @@ describe("buildZeropsAuthorizeUrl refuses a destination the platform would refus
   // verifies only the origin, so a path is held to a plain shape here: a
   // malformed one fails at the source rather than at app.zerops.io.
   describe("an origin that is not a bare http(s) origin", () => {
-    for (const origin of [
-      "",
-      "null",
-      "https://mate.zerops.io/",
-      "https://mate.zerops.io/x",
-      "file:///tmp",
-      "mate.zerops.io",
-    ]) {
-      it(JSON.stringify(origin), () => {
-        expect(() => buildZeropsAuthorizeUrl({ nonce: "n", origin, path: "" })).toThrow();
-      });
-    }
+    it.each(
+      Array.from(
+        [
+          "",
+          "null",
+          "https://mate.zerops.io/",
+          "https://mate.zerops.io/x",
+          "file:///tmp",
+          "mate.zerops.io",
+        ],
+        (origin) => ({ title: JSON.stringify(origin), origin }),
+      ),
+    )("$title", ({ origin }) => {
+      expect(() => buildZeropsAuthorizeUrl({ nonce: "n", origin, path: "" })).toThrow();
+    });
   });
 
   describe("a base path outside ^(/[A-Za-z0-9._-]+)*$", () => {
-    for (const path of [
-      "/",
-      "mate",
-      "/mate/",
-      "//evil.example",
-      "/ma te",
-      "/mate?x=1",
-      "/a/../b\\c",
-    ]) {
-      it(JSON.stringify(path), () => {
-        expect(() =>
-          buildZeropsAuthorizeUrl({ nonce: "n", origin: "https://mate.zerops.io", path }),
-        ).toThrow();
-      });
-    }
+    it.each(
+      Array.from(
+        ["/", "mate", "/mate/", "//evil.example", "/ma te", "/mate?x=1", "/a/../b\\c"],
+        (path) => ({ title: JSON.stringify(path), path }),
+      ),
+    )("$title", ({ path }) => {
+      expect(() =>
+        buildZeropsAuthorizeUrl({ nonce: "n", origin: "https://mate.zerops.io", path }),
+      ).toThrow();
+    });
   });
 });

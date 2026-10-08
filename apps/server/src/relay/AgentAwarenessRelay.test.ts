@@ -1,3 +1,4 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no generateKeyPairSync.
 import * as NodeCrypto from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
@@ -101,7 +102,7 @@ function makeMemorySecretStore() {
   };
 }
 
-describe.sequential("signRelayAgentActivityPublishProof", () => {
+describe("signRelayAgentActivityPublishProof", { concurrent: false }, () => {
   it("distinguishes pending link credentials from disabled publication", () => {
     expect(
       AgentAwarenessRelay.resolveAgentActivityPublishingStartupState({
@@ -1061,7 +1062,7 @@ describe.sequential("signRelayAgentActivityPublishProof", () => {
   );
 });
 
-describe.sequential("startup catch-up", () => {
+describe("startup catch-up", { concurrent: false }, () => {
   // An unlinked relay with publishing off. `link` writes the link secrets and
   // `enablePublishing` the opt-in. Counts link checks (relay URL reads) and
   // catch-up publishes (shell snapshot reads).

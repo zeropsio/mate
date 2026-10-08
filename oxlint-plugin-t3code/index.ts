@@ -12,6 +12,7 @@ import noLegacyNoticePolicy from "./rules/no-legacy-notice-policy.ts";
 import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
 import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
+import noTestInLoop from "./rules/no-test-in-loop.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
@@ -21,6 +22,7 @@ import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 import requireStaticClasses from "./rules/require-static-classes.ts";
 import noUnscopedHas from "./rules/no-unscoped-has.ts";
+import preferCatchTags from "./rules/prefer-catch-tags.ts";
 import requireSuppressionReason from "./rules/require-suppression-reason.ts";
 
 export default definePlugin({
@@ -40,6 +42,7 @@ export default definePlugin({
     "no-legacy-vocabulary": noLegacyVocabulary,
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
     "no-native-title-tooltip": noNativeTitleTooltip,
+    "no-test-in-loop": noTestInLoop,
     "no-platform-globals": noPlatformGlobals,
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
     "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
@@ -50,5 +53,6 @@ export default definePlugin({
     "require-static-classes": requireStaticClasses,
     "no-unscoped-has": noUnscopedHas,
     "require-suppression-reason": requireSuppressionReason,
+    "prefer-catch-tags": preferCatchTags,
   },
 });

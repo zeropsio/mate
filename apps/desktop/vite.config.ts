@@ -78,6 +78,8 @@ export default defineConfig({
     // The Windows lane runs workspace suites concurrently; filesystem-heavy
     // desktop integration tests can exceed Vitest's 5 second default there.
     testTimeout: 15_000,
+    // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 });

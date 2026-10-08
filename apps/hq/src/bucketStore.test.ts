@@ -63,16 +63,16 @@ describe("a request signed with AWS Signature Version 4", () => {
       signature: "ce9f7bd657c35a0d7a99355fe0ec1f0f5b757f5d4f3c253fa34dd17d2feac58b",
     },
   ];
-  for (const { name, request, signature } of cases) {
-    it(name, () => {
-      const date = request.amzDate.slice(0, 8);
-      assert.strictEqual(
-        signV4(request, EXAMPLE),
-        `AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/${date}/us-east-1/s3/aws4_request, ` +
-          `SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}`,
-      );
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, request, signature }) => ({ title: name, request, signature })),
+  )("$title", ({ request, signature }) => {
+    const date = request.amzDate.slice(0, 8);
+    assert.strictEqual(
+      signV4(request, EXAMPLE),
+      `AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/${date}/us-east-1/s3/aws4_request, ` +
+        `SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}`,
+    );
+  });
 });
 
 /**
@@ -240,8 +240,9 @@ describe("the bucket, from HQ's environment", () => {
       bucket: false,
     },
   ];
-  for (const { name, env, bucket } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, env, bucket }) => ({ title: name, env, bucket })))(
+    "$title",
+    ({ env, bucket }) => {
       const found = bucketFromEnv(env);
       assert.deepStrictEqual(
         found === null
@@ -260,6 +261,6 @@ describe("the bucket, from HQ's environment", () => {
             }
           : null,
       );
-    });
-  }
+    },
+  );
 });

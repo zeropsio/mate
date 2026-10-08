@@ -184,170 +184,188 @@ describe("verifyThrowawayCaller", () => {
 
   // Every way a credential can fail to be this Mate's throwaway, and the rule
   // each one breaks. A refusal is never an admission and never an outage.
-  for (const [name, overrides, rule] of [
-    [
-      "a personal token, which /user/info answers for but the token list does not",
-      { userInfo: { id: USER_ID }, tokenStatus: 404 },
-      "wrong_org",
-    ],
-    ["a token of another org", { tokenStatus: 403 }, "wrong_org"],
-    ["a /user/info that names nobody", { userInfo: {} }, "token_dead"],
-    ["a token /user/info refuses", { userInfoStatus: 403 }, "token_dead"],
-    [
-      "an integration token with ADMIN at the org",
-      { tokenRecord: { ...TOKEN_RECORD, roleCode: "ADMIN" } },
-      "has_rights",
-    ],
-    [
-      "an integration token with BASIC_USER at the org",
-      { tokenRecord: { ...TOKEN_RECORD, roleCode: "BASIC_USER" } },
-      "has_rights",
-    ],
-    [
-      "a token holding a project grant",
-      {
-        tokenRecord: { ...TOKEN_RECORD, projects: [{ projectId: PROJECT_ID, roleCode: "ADMIN" }] },
-      },
-      "has_rights",
-    ],
-    [
-      "a token carrying can-create-projects — the shape a Mate's delegation mints",
-      { tokenRecord: { ...TOKEN_RECORD, canCreateProjects: true } },
-      "has_rights",
-    ],
-    [
-      "a token that can view finances",
-      { tokenRecord: { ...TOKEN_RECORD, canViewFinances: true } },
-      "has_rights",
-    ],
-    [
-      "a token that can edit finances",
-      { tokenRecord: { ...TOKEN_RECORD, canEditFinances: true } },
-      "has_rights",
-    ],
-    [
-      "a throwaway named for another Mate",
-      { tokenRecord: { ...TOKEN_RECORD, name: "mate-door:some-other-project:a1b2c3" } },
-      "wrong_name",
-    ],
-    [
-      "a throwaway named for a Gitea sign-in",
-      { tokenRecord: { ...TOKEN_RECORD, name: "gitea-signin:git.example.com:a1b2c3" } },
-      "wrong_name",
-    ],
-    [
-      "a stale throwaway, by the API's clock",
-      {
-        tokenRecord: {
-          ...TOKEN_RECORD,
-          created: isoAt(API_NOW_MS - DOOR_MAX_AGE_MS - 1_000),
-        },
-      },
-      "stale",
-    ],
-    [
-      "a throwaway whose created stamp does not parse",
-      { tokenRecord: { ...TOKEN_RECORD, created: "the other day" } },
-      "stale",
-    ],
-    [
-      "a creator the (non-empty) member list does not know",
-      {
-        members: {
-          clientUserList: [
-            {
-              id: "cu-someone-else",
-              userId: "someone-else",
-              roleCode: "BASIC_USER",
-              status: "ACTIVE",
-              canCreateProjects: false,
+  it.effect.each(
+    Array.from(
+      [
+        [
+          "a personal token, which /user/info answers for but the token list does not",
+          { userInfo: { id: USER_ID }, tokenStatus: 404 },
+          "wrong_org",
+        ],
+        ["a token of another org", { tokenStatus: 403 }, "wrong_org"],
+        ["a /user/info that names nobody", { userInfo: {} }, "token_dead"],
+        ["a token /user/info refuses", { userInfoStatus: 403 }, "token_dead"],
+        [
+          "an integration token with ADMIN at the org",
+          { tokenRecord: { ...TOKEN_RECORD, roleCode: "ADMIN" } },
+          "has_rights",
+        ],
+        [
+          "an integration token with BASIC_USER at the org",
+          { tokenRecord: { ...TOKEN_RECORD, roleCode: "BASIC_USER" } },
+          "has_rights",
+        ],
+        [
+          "a token holding a project grant",
+          {
+            tokenRecord: {
+              ...TOKEN_RECORD,
+              projects: [{ projectId: PROJECT_ID, roleCode: "ADMIN" }],
             },
-          ],
-        },
-      },
-      "not_member",
-    ],
-    [
-      "a creator who is invited but not active",
-      {
-        members: {
-          clientUserList: [
-            {
-              id: CLIENT_USER_ID,
-              userId: USER_ID,
-              roleCode: "BASIC_USER",
-              status: "INVITED",
-              canCreateProjects: false,
+          },
+          "has_rights",
+        ],
+        [
+          "a token carrying can-create-projects — the shape a Mate's delegation mints",
+          { tokenRecord: { ...TOKEN_RECORD, canCreateProjects: true } },
+          "has_rights",
+        ],
+        [
+          "a token that can view finances",
+          { tokenRecord: { ...TOKEN_RECORD, canViewFinances: true } },
+          "has_rights",
+        ],
+        [
+          "a token that can edit finances",
+          { tokenRecord: { ...TOKEN_RECORD, canEditFinances: true } },
+          "has_rights",
+        ],
+        [
+          "a throwaway named for another Mate",
+          { tokenRecord: { ...TOKEN_RECORD, name: "mate-door:some-other-project:a1b2c3" } },
+          "wrong_name",
+        ],
+        [
+          "a throwaway named for a Gitea sign-in",
+          { tokenRecord: { ...TOKEN_RECORD, name: "gitea-signin:git.example.com:a1b2c3" } },
+          "wrong_name",
+        ],
+        [
+          "a stale throwaway, by the API's clock",
+          {
+            tokenRecord: {
+              ...TOKEN_RECORD,
+              created: isoAt(API_NOW_MS - DOOR_MAX_AGE_MS - 1_000),
             },
-          ],
-        },
-      },
-      "not_member",
-    ],
-    ["a token nobody made", { tokenRecord: { ...TOKEN_RECORD, createdByUser: "" } }, "not_member"],
-  ] as const) {
-    it.effect(`refuses ${name} (${rule})`, () => {
-      const { layer } = scene(overrides);
-      return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
-        Effect.tap((error) =>
-          Effect.sync(() => {
-            assert.strictEqual(error._tag, "ZeropsThrowawayRefusedError");
-            assert.strictEqual((error as { readonly rule?: string }).rule, rule);
-          }),
-        ),
-        Effect.provide(layer),
-      );
-    });
-  }
+          },
+          "stale",
+        ],
+        [
+          "a throwaway whose created stamp does not parse",
+          { tokenRecord: { ...TOKEN_RECORD, created: "the other day" } },
+          "stale",
+        ],
+        [
+          "a creator the (non-empty) member list does not know",
+          {
+            members: {
+              clientUserList: [
+                {
+                  id: "cu-someone-else",
+                  userId: "someone-else",
+                  roleCode: "BASIC_USER",
+                  status: "ACTIVE",
+                  canCreateProjects: false,
+                },
+              ],
+            },
+          },
+          "not_member",
+        ],
+        [
+          "a creator who is invited but not active",
+          {
+            members: {
+              clientUserList: [
+                {
+                  id: CLIENT_USER_ID,
+                  userId: USER_ID,
+                  roleCode: "BASIC_USER",
+                  status: "INVITED",
+                  canCreateProjects: false,
+                },
+              ],
+            },
+          },
+          "not_member",
+        ],
+        [
+          "a token nobody made",
+          { tokenRecord: { ...TOKEN_RECORD, createdByUser: "" } },
+          "not_member",
+        ],
+      ] as const,
+      ([name, overrides, rule]) => ({ title: `refuses ${name} (${rule})`, overrides, rule }),
+    ),
+  )("$title", ({ overrides, rule }) => {
+    const { layer } = scene(overrides);
+    return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
+      Effect.tap((error) =>
+        Effect.sync(() => {
+          assert.strictEqual(error._tag, "ZeropsThrowawayRefusedError");
+          assert.strictEqual((error as { readonly rule?: string }).rule, rule);
+        }),
+      ),
+      Effect.provide(layer),
+    );
+  });
 
-  for (const [orgRole, override, outcome] of [
-    ["OWNER", undefined, "open"],
-    ["ADMIN", undefined, "open"],
-    ["BASIC_USER", undefined, "open"],
-    ["READ_ONLY", undefined, "ZeropsReadOnlyError"],
-    ["NO_ACCESS", undefined, "ZeropsNotAMemberError"],
-    ["NO_ACCESS", "OWNER", "open"],
-    ["READ_ONLY", "BASIC_USER", "open"],
-    ["OWNER", "READ_ONLY", "ZeropsReadOnlyError"],
-    ["OWNER", "NO_ACCESS", "ZeropsNotAMemberError"],
-    // A role the platform grew and this build has never heard of shuts the
-    // door rather than opening it.
-    ["OWNER", "SUPERVISOR", "ZeropsNotAMemberError"],
-    ["SUPERVISOR", undefined, "ZeropsNotAMemberError"],
-  ] as const) {
-    it.effect(`${orgRole} with project override ${String(override)} → ${outcome}`, () => {
-      const { layer } = scene({
-        project: {
-          id: PROJECT_ID,
-          clientId: CLIENT_ID,
-          userRoles:
-            override === undefined ? [] : [{ clientUserId: CLIENT_USER_ID, roleCode: override }],
-        },
-        members: {
-          clientUserList: [
-            {
-              id: CLIENT_USER_ID,
-              userId: USER_ID,
-              roleCode: orgRole,
-              status: "ACTIVE",
-              canCreateProjects: false,
-            },
-          ],
-        },
-      });
-      const check = verifyThrowawayCaller({ environment, token: PRESENTED });
-      return Effect.gen(function* () {
-        if (outcome === "open") {
-          const caller = yield* check;
-          assert.strictEqual(caller.userId, USER_ID);
-          assert.strictEqual(caller.role, override ?? orgRole);
-        } else {
-          const error = yield* Effect.flip(check);
-          assert.strictEqual(error._tag, outcome);
-        }
-      }).pipe(Effect.provide(layer));
+  it.effect.each(
+    Array.from(
+      [
+        ["OWNER", undefined, "open"],
+        ["ADMIN", undefined, "open"],
+        ["BASIC_USER", undefined, "open"],
+        ["READ_ONLY", undefined, "ZeropsReadOnlyError"],
+        ["NO_ACCESS", undefined, "ZeropsNotAMemberError"],
+        ["NO_ACCESS", "OWNER", "open"],
+        ["READ_ONLY", "BASIC_USER", "open"],
+        ["OWNER", "READ_ONLY", "ZeropsReadOnlyError"],
+        ["OWNER", "NO_ACCESS", "ZeropsNotAMemberError"],
+        // A role the platform grew and this build has never heard of shuts the
+        // door rather than opening it.
+        ["OWNER", "SUPERVISOR", "ZeropsNotAMemberError"],
+        ["SUPERVISOR", undefined, "ZeropsNotAMemberError"],
+      ] as const,
+      ([orgRole, override, outcome]) => ({
+        title: `${orgRole} with project override ${String(override)} → ${outcome}`,
+        orgRole,
+        override,
+        outcome,
+      }),
+    ),
+  )("$title", ({ orgRole, override, outcome }) => {
+    const { layer } = scene({
+      project: {
+        id: PROJECT_ID,
+        clientId: CLIENT_ID,
+        userRoles:
+          override === undefined ? [] : [{ clientUserId: CLIENT_USER_ID, roleCode: override }],
+      },
+      members: {
+        clientUserList: [
+          {
+            id: CLIENT_USER_ID,
+            userId: USER_ID,
+            roleCode: orgRole,
+            status: "ACTIVE",
+            canCreateProjects: false,
+          },
+        ],
+      },
     });
-  }
+    const check = verifyThrowawayCaller({ environment, token: PRESENTED });
+    return Effect.gen(function* () {
+      if (outcome === "open") {
+        const caller = yield* check;
+        assert.strictEqual(caller.userId, USER_ID);
+        assert.strictEqual(caller.role, override ?? orgRole);
+      } else {
+        const error = yield* Effect.flip(check);
+        assert.strictEqual(error._tag, outcome);
+      }
+    }).pipe(Effect.provide(layer));
+  });
 
   it.effect("grants the same scopes to every role that opens the door", () => {
     // The role decides whether the door opens, never how far: there is no
@@ -374,24 +392,30 @@ describe("verifyThrowawayCaller", () => {
 
   // A read that fails is never an admission — and never a refusal either, or a
   // platform blip would look like a colleague being thrown out.
-  for (const [name, overrides] of [
-    ["the token record cannot be read", { tokenStatus: 500 }],
-    ["our own project cannot be read", { projectStatus: 500 }],
-    ["the caller's own read fails", { userInfoStatus: 500 }],
-    ["the API sends no Date header to judge the age by", { date: null }],
-    ["the token record is not an object", { tokenRecord: "a string" }],
-    ["the member list is neither a page nor an array", { members: { members: [] } }],
-  ] as const) {
-    it.effect(`answers unavailable, not admitted, when ${name}`, () => {
-      const { layer } = scene(overrides);
-      return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
-        Effect.tap((error) =>
-          Effect.sync(() => assert.strictEqual(error._tag, "ZeropsApiUnavailableError")),
-        ),
-        Effect.provide(layer),
-      );
-    });
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["the token record cannot be read", { tokenStatus: 500 }],
+        ["our own project cannot be read", { projectStatus: 500 }],
+        ["the caller's own read fails", { userInfoStatus: 500 }],
+        ["the API sends no Date header to judge the age by", { date: null }],
+        ["the token record is not an object", { tokenRecord: "a string" }],
+        ["the member list is neither a page nor an array", { members: { members: [] } }],
+      ] as const,
+      ([name, overrides]) => ({
+        title: `answers unavailable, not admitted, when ${name}`,
+        overrides,
+      }),
+    ),
+  )("$title", ({ overrides }) => {
+    const { layer } = scene(overrides);
+    return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
+      Effect.tap((error) =>
+        Effect.sync(() => assert.strictEqual(error._tag, "ZeropsApiUnavailableError")),
+      ),
+      Effect.provide(layer),
+    );
+  });
 
   it.effect(
     "one failed member read ends unavailable; a caller's new check reads once again",
@@ -595,42 +619,45 @@ describe("verifyThrowawayCaller", () => {
 
   // R6: HQ's relay, while it holds, lets in a creator it opens for, and the member list is not
   // read; whomever it lists or leaves out, this Mate's own read decides, with today's refusals.
-  for (const [name, relayed, admitted, readsList] of [
-    [
-      "lets in a creator HQ's relay opens for, reading no member list",
-      { userId: USER_ID, role: "OWNER", visibility: "open" },
-      { role: "OWNER" },
-      false,
-    ],
-    [
-      "asks its own read about a creator HQ's relay only lists",
-      { userId: USER_ID, role: "READ_ONLY", visibility: "listed" },
-      { role: "BASIC_USER" },
-      true,
-    ],
-    [
-      "asks its own read about a creator HQ's relay leaves out",
-      { userId: "another-person", role: "OWNER", visibility: "open" },
-      { role: "BASIC_USER" },
-      true,
-    ],
-  ] as const) {
-    it.effect(name, () => {
-      const { layer, seen } = scene();
-      return Effect.gen(function* () {
-        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
-          members: [relayed],
-          ageMs: 0,
-        });
-        const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
-        assert.deepStrictEqual({ role: caller.role }, admitted);
-        assert.strictEqual(
-          seen.some((request) => request.url.endsWith("/user/list")),
-          readsList,
-        );
-      }).pipe(Effect.provide(layer));
-    });
-  }
+  it.effect.each(
+    Array.from(
+      [
+        [
+          "lets in a creator HQ's relay opens for, reading no member list",
+          { userId: USER_ID, role: "OWNER", visibility: "open" },
+          { role: "OWNER" },
+          false,
+        ],
+        [
+          "asks its own read about a creator HQ's relay only lists",
+          { userId: USER_ID, role: "READ_ONLY", visibility: "listed" },
+          { role: "BASIC_USER" },
+          true,
+        ],
+        [
+          "asks its own read about a creator HQ's relay leaves out",
+          { userId: "another-person", role: "OWNER", visibility: "open" },
+          { role: "BASIC_USER" },
+          true,
+        ],
+      ] as const,
+      ([name, relayed, admitted, readsList]) => ({ title: name, relayed, admitted, readsList }),
+    ),
+  )("$title", ({ relayed, admitted, readsList }) => {
+    const { layer, seen } = scene();
+    return Effect.gen(function* () {
+      yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
+        members: [relayed],
+        ageMs: 0,
+      });
+      const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+      assert.deepStrictEqual({ role: caller.role }, admitted);
+      assert.strictEqual(
+        seen.some((request) => request.url.endsWith("/user/list")),
+        readsList,
+      );
+    }).pipe(Effect.provide(layer));
+  });
 
   it.effect("records the identity status of its own-project read", () => {
     const { layer } = scene();

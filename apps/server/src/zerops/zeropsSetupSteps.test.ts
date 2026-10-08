@@ -82,9 +82,10 @@ describe("parseZcpStatus", () => {
     ["no version", { runtimes: { state: "done" } }],
     ["a version this build does not know", { version: 2, runtimes: { state: "done" } }],
   ];
-  for (const [name, raw] of unreadable) {
-    it(`is undefined for ${name}`, () => assert.isUndefined(parseZcpStatus(raw)));
-  }
+  it.each(Array.from(unreadable, ([name, raw]) => ({ title: `is undefined for ${name}`, raw })))(
+    "$title",
+    ({ raw }) => assert.isUndefined(parseZcpStatus(raw)),
+  );
 
   it("keeps each stand-up service's step, state and process", () => {
     const parsed = parseZcpStatus(
@@ -113,13 +114,18 @@ describe("parseZcpStatus", () => {
     ["a PID that is no process", { pid: 0, start: "1" }, undefined],
     ["a PID that is not a number", { pid: "4242", start: "1" }, undefined],
   ];
-  for (const [name, process, expected] of processes) {
-    it(`keeps the stand-up's process — ${name}`, () =>
-      assert.deepStrictEqual(
-        parseZcpStatus(status({ standup: { state: "running", process } }))?.standup?.process,
-        expected,
-      ));
-  }
+  it.each(
+    Array.from(processes, ([name, process, expected]) => ({
+      title: `keeps the stand-up's process — ${name}`,
+      process,
+      expected,
+    })),
+  )("$title", ({ process, expected }) =>
+    assert.deepStrictEqual(
+      parseZcpStatus(status({ standup: { state: "running", process } }))?.standup?.process,
+      expected,
+    ),
+  );
 
   const callStarts: ReadonlyArray<[string, Record<string, unknown>, string]> = [
     [
@@ -129,14 +135,18 @@ describe("parseZcpStatus", () => {
     ],
     ["the section's own start from a zcp that stamps none", { startedAt: NOW }, NOW],
   ];
-  for (const [name, section, expected] of callStarts) {
-    it(`reads the call's start — ${name}`, () =>
-      assert.strictEqual(
-        parseZcpStatus(status({ standup: { state: "running", ...section } }))?.standup
-          ?.callStartedAt,
-        expected,
-      ));
-  }
+  it.each(
+    Array.from(callStarts, ([name, section, expected]) => ({
+      title: `reads the call's start — ${name}`,
+      section,
+      expected,
+    })),
+  )("$title", ({ section, expected }) =>
+    assert.strictEqual(
+      parseZcpStatus(status({ standup: { state: "running", ...section } }))?.standup?.callStartedAt,
+      expected,
+    ),
+  );
 });
 
 describe("sectionCall", () => {
@@ -164,10 +174,15 @@ describe("sectionCall", () => {
       ["no call of the server's wrote it", [call("turn-0", "2026-10-01T09:00:00.000Z")], undefined],
       ["no calls at all", [], undefined],
     ];
-  for (const [name, calls, turnId] of cases) {
-    it(`finds the call whose turn the section waits on — ${name}`, () =>
-      assert.strictEqual(sectionCall(sectionOf(SECTION), calls)?.turnId, turnId));
-  }
+  it.each(
+    Array.from(cases, ([name, calls, turnId]) => ({
+      title: `finds the call whose turn the section waits on — ${name}`,
+      calls,
+      turnId,
+    })),
+  )("$title", ({ calls, turnId }) =>
+    assert.strictEqual(sectionCall(sectionOf(SECTION), calls)?.turnId, turnId),
+  );
   it("is none without a section", () =>
     assert.isUndefined(sectionCall(undefined, [call("turn-1", SECTION)])));
 });
@@ -181,10 +196,13 @@ describe("procStartTime", () => {
     ["a line cut short", "4242 (zcp) S 1 2", undefined],
     ["no command", "", undefined],
   ];
-  for (const [name, line, expected] of reads) {
-    it(`reads /proc's start time — ${name}`, () =>
-      assert.strictEqual(procStartTime(line), expected));
-  }
+  it.each(
+    Array.from(reads, ([name, line, expected]) => ({
+      title: `reads /proc's start time — ${name}`,
+      line,
+      expected,
+    })),
+  )("$title", ({ line, expected }) => assert.strictEqual(procStartTime(line), expected));
 });
 
 describe("standUpSigners", () => {
@@ -256,9 +274,10 @@ describe("standUpDecision", () => {
       "spoken",
     ],
   ];
-  for (const [name, input, expected] of cases) {
-    it(name, () => assert.strictEqual(standUpDecision(input).kind, expected));
-  }
+  it.each(Array.from(cases, ([name, input, expected]) => ({ title: name, input, expected })))(
+    "$title",
+    ({ input, expected }) => assert.strictEqual(standUpDecision(input).kind, expected),
+  );
 
   it("starts on the agent the asker signed in, Claude first", () => {
     const decision = standUpDecision({
@@ -348,11 +367,12 @@ describe("setupDocument", () => {
       { id: "git", state: "failed", at: "", reason: "refused", code: "not_a_mate" },
     ],
   ];
-  for (const [name, git, step] of gitSteps) {
-    it(`git: ${name}`, () => {
+  it.each(Array.from(gitSteps, ([name, git, step]) => ({ title: `git: ${name}`, git, step })))(
+    "$title",
+    ({ git, step }) => {
       assert.deepStrictEqual(stepOf(setupDocument(facts({ git })), "git"), step);
-    });
-  }
+    },
+  );
 
   const runtimes: ReadonlyArray<[string, unknown, string, string]> = [
     ["no status file: an older zcp", undefined, "unknown", ""],
@@ -363,17 +383,22 @@ describe("setupDocument", () => {
     ["failed", { state: "failed", startedAt: BOOT, endedAt: NOW }, "failed", NOW],
     ["a state this build does not know", { state: "later" }, "unknown", ""],
   ];
-  for (const [name, section, state, at] of runtimes) {
-    it(`runtimes: ${name}`, () => {
-      const parsed =
-        section === undefined ? undefined : parseZcpStatus(status({ runtimes: section }));
-      assert.deepStrictEqual(stepOf(setupDocument(facts({ status: parsed })), "runtimes"), {
-        id: "runtimes",
-        state,
-        at,
-      });
+  it.each(
+    Array.from(runtimes, ([name, section, state, at]) => ({
+      title: `runtimes: ${name}`,
+      section,
+      state,
+      at,
+    })),
+  )("$title", ({ section, state, at }) => {
+    const parsed =
+      section === undefined ? undefined : parseZcpStatus(status({ runtimes: section }));
+    assert.deepStrictEqual(stepOf(setupDocument(facts({ status: parsed })), "runtimes"), {
+      id: "runtimes",
+      state,
+      at,
     });
-  }
+  });
 
   it("signin is done once its signer is recorded", () => {
     assert.strictEqual(stepOf(setupDocument(facts()), "signin")?.state, "waiting");
@@ -643,10 +668,15 @@ describe("setupDocument", () => {
       "done",
     ],
   ];
-  for (const [name, overrides, state] of standups) {
-    it(`standup: ${name}`, () =>
-      assert.strictEqual(stepOf(setupDocument(facts(overrides)), "standup")?.state, state));
-  }
+  it.each(
+    Array.from(standups, ([name, overrides, state]) => ({
+      title: `standup: ${name}`,
+      overrides,
+      state,
+    })),
+  )("$title", ({ overrides, state }) =>
+    assert.strictEqual(stepOf(setupDocument(facts(overrides)), "standup")?.state, state),
+  );
 
   // A stand-up that ended short says why: the client words it.
   const endings: ReadonlyArray<[string, Partial<SetupFacts>, SetupStep]> = [
@@ -682,10 +712,15 @@ describe("setupDocument", () => {
       { id: "standup", state: "failed", at: "", reason: "stage_not_built" },
     ],
   ];
-  for (const [name, overrides, step] of endings) {
-    it(`a stand-up that ended short says why — ${name}`, () =>
-      assert.deepStrictEqual(stepOf(setupDocument(facts(overrides)), "standup"), step));
-  }
+  it.each(
+    Array.from(endings, ([name, overrides, step]) => ({
+      title: `a stand-up that ended short says why — ${name}`,
+      overrides,
+      step,
+    })),
+  )("$title", ({ overrides, step }) =>
+    assert.deepStrictEqual(stepOf(setupDocument(facts(overrides)), "standup"), step),
+  );
 
   // A stand-up nothing started waits, and says why where the server knows: the client words it.
   const waits: ReadonlyArray<[string, StandUpWait | undefined, SetupStep]> = [
@@ -711,10 +746,15 @@ describe("setupDocument", () => {
     ],
     ["asked: the sign-in says the rest", undefined, { id: "standup", state: "waiting", at: "" }],
   ];
-  for (const [name, wait, step] of waits) {
-    it(`a stand-up waiting says why — ${name}`, () =>
-      assert.deepStrictEqual(stepOf(setupDocument(facts({ standUpWait: wait })), "standup"), step));
-  }
+  it.each(
+    Array.from(waits, ([name, wait, step]) => ({
+      title: `a stand-up waiting says why — ${name}`,
+      wait,
+      step,
+    })),
+  )("$title", ({ wait, step }) =>
+    assert.deepStrictEqual(stepOf(setupDocument(facts({ standUpWait: wait })), "standup"), step),
+  );
 
   it("a stand-up under way says no reason", () =>
     assert.deepStrictEqual(

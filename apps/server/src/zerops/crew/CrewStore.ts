@@ -1028,7 +1028,7 @@ export const make = Effect.gen(function* () {
           }),
         )
         .pipe(
-          Effect.catchTag("SqlError", (cause) => Effect.fail(sqlError("updateClaim")(cause))),
+          Effect.catchTags({ SqlError: (cause) => Effect.fail(sqlError("updateClaim")(cause)) }),
           Effect.tap(({ before, after }) =>
             Option.match(
               Option.orElse(after, () => before),
@@ -1121,7 +1121,7 @@ export const make = Effect.gen(function* () {
           ),
         )
         .pipe(
-          Effect.catchTag("SqlError", (cause) => Effect.fail(sqlError("updateLane")(cause))),
+          Effect.catchTags({ SqlError: (cause) => Effect.fail(sqlError("updateLane")(cause)) }),
           Effect.tap(() => publish({ crew, table: "lane" })),
         ),
     deleteLane: (crew, lane) =>
@@ -1162,7 +1162,7 @@ export const make = Effect.gen(function* () {
           ),
         )
         .pipe(
-          Effect.catchTag("SqlError", (cause) => Effect.fail(sqlError("updateStint")(cause))),
+          Effect.catchTags({ SqlError: (cause) => Effect.fail(sqlError("updateStint")(cause)) }),
           Effect.tap(() => publish({ crew, table: "stint" })),
         ),
     putAttempt: (row) =>

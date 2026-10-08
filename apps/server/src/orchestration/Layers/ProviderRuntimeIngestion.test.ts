@@ -4489,8 +4489,9 @@ describe("ProviderRuntimeIngestion", () => {
         records: [],
       },
     ];
-    for (const testCase of cases) {
-      it(testCase.name, async () => {
+    it.each(Array.from(cases, (testCase) => ({ title: testCase.name, testCase })))(
+      "$title",
+      async ({ testCase }) => {
         const harness = await createHarness();
         const threadId = asThreadId("thread-1");
         const turnId = asTurnId("turn-crash");
@@ -4592,8 +4593,8 @@ describe("ProviderRuntimeIngestion", () => {
             event.type === "thread.session-set" && event.payload.session.status === "error",
         );
         if (testCase.records.length > 0) expect(recorded).toBeLessThan(failed);
-      });
-    }
+      },
+    );
   });
 
   it("records runtime.error activities from the typed payload message", async () => {

@@ -58,17 +58,17 @@ describe("mapRemoteEnvironmentError", () => {
     });
   });
 
-  for (const reason of [
-    "zerops_project_membership_required",
-    "zerops_throwaway_required",
-  ] as const) {
-    it(`maps ${reason} to the generic permission failure`, () => {
-      expect(mapRemoteEnvironmentError(forbidden(reason))).toMatchObject({
-        _tag: "ConnectionBlockedError",
-        reason: "permission",
-      });
+  it.each(
+    Array.from(
+      ["zerops_project_membership_required", "zerops_throwaway_required"] as const,
+      (reason) => ({ title: `maps ${reason} to the generic permission failure`, reason }),
+    ),
+  )("$title", ({ reason }) => {
+    expect(mapRemoteEnvironmentError(forbidden(reason))).toMatchObject({
+      _tag: "ConnectionBlockedError",
+      reason: "permission",
     });
-  }
+  });
 
   // A refusal whose body this client cannot decode — an older or newer server's
   // reason — still carries its status, and the status says whose move it is.

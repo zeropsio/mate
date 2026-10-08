@@ -163,115 +163,114 @@ it.effect("an HQ report for another query cannot replace the authorized usage an
     yield* Fiber.interrupt(fiber);
   }),
 );
-for (const capability of [undefined, 1]) {
-  it.effect(
-    `HQ ${capability === undefined ? "without usage capability" : "report 1"} is not sent new usage scopes and names the required update`,
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const link = hqNavigationLink({ orgId: "org", wire: fixture.wire, store });
-        const release = link.demandDetail({ family: "agentUsage", ownerId: owner });
-        const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
-        const fiber = yield* Effect.forkChild(supervisor.run);
-        yield* settle;
-        const usageAsks = () =>
-          fixture.sent.flatMap(({ request }) =>
-            request.type === "subscribe"
-              ? request.scopes.filter((entry) => entry.scope.kind === "agentUsage")
-              : [],
-          );
-        expect(usageAsks()).toEqual([]);
-        yield* fixture.send({
-          type: "scope-ready",
-          scope: { kind: "navigation" },
-          incarnation: "hq",
-          revision: 1,
-          core: { protocol: 1, ...(capability === undefined ? {} : { agentUsage: capability }) },
-        });
-        yield* settle;
-        link.retryDetail({ family: "agentUsage", ownerId: owner });
-        yield* settle;
-        expect(usageAsks()).toEqual([]);
-        expect(
-          agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner }),
-        ).toMatchObject({ kind: "unavailable", reason: expect.stringContaining("Update HQ") });
-        yield* fixture.send({
-          type: "scope-ready",
-          scope: { kind: "navigation" },
-          incarnation: "hq",
-          revision: 2,
-          core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
-        });
-        yield* settle;
-        expect(usageAsks()).toHaveLength(1);
-        yield* fixture.send({
-          type: "scope-reset",
-          scope,
-          incarnation: "usage",
-          revision: 1,
-          values: [{ key: "report", value: report }],
-          removals: [],
-        });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
-        yield* settle;
-        expect(
-          agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner }),
-        ).toMatchObject({
-          kind: "read",
-          stale: false,
-          report: {
-            totals: { tokens: "100", records: "1" },
-            pricing: { unpricedModelEntries: "2" },
-            detail: report.detail,
-          },
-        });
-        link.retryDetail({ family: "agentUsage", ownerId: owner });
-        yield* settle;
-        expect(usageAsks()).toHaveLength(2);
-        yield* fixture.send({
-          type: "scope-ready",
-          scope: { kind: "navigation" },
-          incarnation: "hq",
-          revision: 3,
-          core: { protocol: 1 },
-        });
-        yield* settle;
-        expect(
-          agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner }),
-        ).toMatchObject({
-          kind: "read",
-          stale: true,
-          updateRequired: true,
-          report: { totals: { tokens: "100" } },
-        });
-        yield* fixture.send({
-          type: "scope-ready",
-          scope: { kind: "navigation" },
-          incarnation: "hq",
-          revision: 4,
-          core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
-        });
-        yield* settle;
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
-        yield* settle;
-        yield* fixture.endSegment;
-        yield* settle;
-        expect(fixture.opens()).toBe(2);
-        expect(
-          fixture.sent
-            .filter((sent) => sent.segment === 2)
-            .flatMap(({ request }) =>
-              request.type === "subscribe"
-                ? request.scopes.filter((entry) => entry.scope.kind === "agentUsage")
-                : [],
-            ),
-        ).toEqual([]);
-        expect(
-          agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner }),
-        ).toMatchObject({ kind: "read", stale: true });
-        release();
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-}
+it.effect.each(
+  Array.from([undefined, 1], (capability) => ({
+    title: `HQ ${capability === undefined ? "without usage capability" : "report 1"} is not sent new usage scopes and names the required update`,
+    capability,
+  })),
+)("$title", ({ capability }) =>
+  Effect.gen(function* () {
+    const store = makeAccountStore(AtomRegistry.make());
+    const fixture = hqFixtureWire();
+    const link = hqNavigationLink({ orgId: "org", wire: fixture.wire, store });
+    const release = link.demandDetail({ family: "agentUsage", ownerId: owner });
+    const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+    const fiber = yield* Effect.forkChild(supervisor.run);
+    yield* settle;
+    const usageAsks = () =>
+      fixture.sent.flatMap(({ request }) =>
+        request.type === "subscribe"
+          ? request.scopes.filter((entry) => entry.scope.kind === "agentUsage")
+          : [],
+      );
+    expect(usageAsks()).toEqual([]);
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "hq",
+      revision: 1,
+      core: { protocol: 1, ...(capability === undefined ? {} : { agentUsage: capability }) },
+    });
+    yield* settle;
+    link.retryDetail({ family: "agentUsage", ownerId: owner });
+    yield* settle;
+    expect(usageAsks()).toEqual([]);
+    expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
+      kind: "unavailable",
+      reason: expect.stringContaining("Update HQ"),
+    });
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "hq",
+      revision: 2,
+      core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
+    });
+    yield* settle;
+    expect(usageAsks()).toHaveLength(1);
+    yield* fixture.send({
+      type: "scope-reset",
+      scope,
+      incarnation: "usage",
+      revision: 1,
+      values: [{ key: "report", value: report }],
+      removals: [],
+    });
+    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* settle;
+    expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
+      kind: "read",
+      stale: false,
+      report: {
+        totals: { tokens: "100", records: "1" },
+        pricing: { unpricedModelEntries: "2" },
+        detail: report.detail,
+      },
+    });
+    link.retryDetail({ family: "agentUsage", ownerId: owner });
+    yield* settle;
+    expect(usageAsks()).toHaveLength(2);
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "hq",
+      revision: 3,
+      core: { protocol: 1 },
+    });
+    yield* settle;
+    expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
+      kind: "read",
+      stale: true,
+      updateRequired: true,
+      report: { totals: { tokens: "100" } },
+    });
+    yield* fixture.send({
+      type: "scope-ready",
+      scope: { kind: "navigation" },
+      incarnation: "hq",
+      revision: 4,
+      core: { protocol: 1, agentUsage: AGENT_USAGE_REPORT_PROTOCOL },
+    });
+    yield* settle;
+    yield* fixture.send({ type: "scope-ready", scope, incarnation: "usage", revision: 1 });
+    yield* settle;
+    yield* fixture.endSegment;
+    yield* settle;
+    expect(fixture.opens()).toBe(2);
+    expect(
+      fixture.sent
+        .filter((sent) => sent.segment === 2)
+        .flatMap(({ request }) =>
+          request.type === "subscribe"
+            ? request.scopes.filter((entry) => entry.scope.kind === "agentUsage")
+            : [],
+        ),
+    ).toEqual([]);
+    expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
+      kind: "read",
+      stale: true,
+    });
+    release();
+    yield* Fiber.interrupt(fiber);
+  }),
+);

@@ -6,7 +6,7 @@
     "dev": "node --watch src/server.ts",
     "start": "node src/server.ts",
     "migrate": "node scripts/migrate.ts",
-    "test": "vp test run",
+    "test": "vp test run --config ../../vite.config.ts --dir .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
     "drizzle-kit": "1.0.0-rc.5-ab785fc",
+    "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   }

@@ -107,16 +107,17 @@ describe("helperStepActivities", () => {
       ids: [],
     },
   ];
-  for (const { name, rows, ids } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, rows, ids }) => ({ title: name, rows, ids })))(
+    "$title",
+    ({ rows, ids }) => {
       const steps = helperStepActivities(rows, helper());
       expect(steps.map((step) => (step.payload as { toolCallId: string }).toolCallId)).toEqual(ids);
       for (const step of steps) {
         expect(step.payload).not.toHaveProperty("agentId");
         expect(step.turnId).toBe("helper:task-a");
       }
-    });
-  }
+    },
+  );
 });
 
 describe("helperRecord", () => {
@@ -169,11 +170,16 @@ describe("helperRecord", () => {
       expect: (record) => expect(record).toBeNull(),
     },
   ];
-  for (const { name, helper: subject, rows, expect: check } of cases) {
-    it(name, () =>
-      check(helperRecord({ helper: subject, activities: rows, nowMs: Date.parse(at(10)) })),
-    );
-  }
+  it.each(
+    Array.from(cases, ({ name, helper: subject, rows, expect: check }) => ({
+      title: name,
+      subject,
+      rows,
+      check,
+    })),
+  )("$title", ({ subject, rows, check }) =>
+    check(helperRecord({ helper: subject, activities: rows, nowMs: Date.parse(at(10)) })),
+  );
 });
 
 describe("helperNowWords", () => {
@@ -206,9 +212,9 @@ describe("helperNowWords", () => {
       words: null,
     },
   ];
-  for (const { name, helper: subject, words } of cases) {
-    it(name, () => expect(helperNowWords(subject)).toBe(words));
-  }
+  it.each(
+    Array.from(cases, ({ name, helper: subject, words }) => ({ title: name, subject, words })),
+  )("$title", ({ subject, words }) => expect(helperNowWords(subject)).toBe(words));
 });
 
 describe("helperReportLine", () => {

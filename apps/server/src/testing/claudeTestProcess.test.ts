@@ -18,75 +18,78 @@ import { claudeTestProcessSuite, countFixtureProcesses } from "./claudeTestProce
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
 const ownClaudeTestProcesses = claudeTestProcessSuite();
 
-for (const outcome of ["success", "failure", "timeout"] as const) {
-  it.effect(`leaves no fake provider or descendant after test ${outcome}`, () =>
-    Effect.gen(function* () {
-      if (yield* isHostWindows) return;
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "claude-process-owner-" });
-      const binaryPath = path.join(dir, "claude");
-      yield* fs.writeFileString(
-        binaryPath,
-        [
-          "#!/usr/bin/env node",
-          'import * as ChildProcess from "node:child_process";',
-          'import * as Readline from "node:readline";',
-          'process.on("SIGTERM", () => {});',
-          'if (process.argv.includes("--descendant")) {',
-          '  process.send("ready");',
-          "  process.disconnect();",
-          "  setInterval(() => {}, 1000);",
-          "} else {",
-          "  const child = ChildProcess.spawn(process.execPath, [process.argv[1], '--descendant'], {",
-          "    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],",
-          "  });",
-          "  const ready = new Promise(resolve => child.once('message', resolve));",
-          "  const lines = Readline.createInterface({ input: process.stdin });",
-          "  lines.on('line', async line => {",
-          "    const message = JSON.parse(line);",
-          "    if (message.request?.subtype !== 'initialize') return;",
-          "    await ready;",
-          "    process.stdout.write(JSON.stringify({",
-          "      type: 'control_response',",
-          "      response: { subtype: 'success', request_id: message.request_id,",
-          "        response: { commands: [], agents: [], models: [] } },",
-          "    }) + '\\n');",
-          "  });",
-          // Deliberately ignores EOF: teardown must own even an uncooperative fake.
-          "  setInterval(() => {}, 1000);",
-          "}",
-        ].join("\n"),
-      );
-      yield* fs.chmod(binaryPath, 0o755);
-      const before = countFixtureProcesses(binaryPath);
-      expect(before).toBe(0);
-      const initialized = yield* Deferred.make<void>();
-      const run = Effect.gen(function* () {
-        yield* ownClaudeTestProcesses(binaryPath);
-        const query = ClaudeSdk.query({
-          prompt: (async function* () {})(),
-          options: { pathToClaudeCodeExecutable: binaryPath },
-        });
-        yield* Effect.promise(() => query.initializationResult());
-        expect(countFixtureProcesses(binaryPath)).toBe(2);
-        yield* Deferred.succeed(initialized, undefined);
-        if (outcome === "failure") return yield* Effect.fail("fixture failure");
-        if (outcome === "timeout") return yield* Effect.never;
-      }).pipe(Effect.scoped);
-      if (outcome === "timeout") {
-        const fiber = yield* run.pipe(Effect.timeout("1 second"), Effect.exit, Effect.forkChild);
-        yield* Deferred.await(initialized);
-        yield* TestClock.adjust("1 second");
-        expect(Exit.isFailure(yield* Fiber.join(fiber))).toBe(true);
-      } else {
-        const result = yield* Effect.exit(run);
-        expect(Exit.isSuccess(result)).toBe(outcome === "success");
-      }
-      expect(countFixtureProcesses(binaryPath)).toBe(before);
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-}
+it.effect.each(
+  Array.from(["success", "failure", "timeout"] as const, (outcome) => ({
+    title: `leaves no fake provider or descendant after test ${outcome}`,
+    outcome,
+  })),
+)("$title", ({ outcome }) =>
+  Effect.gen(function* () {
+    if (yield* isHostWindows) return;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "claude-process-owner-" });
+    const binaryPath = path.join(dir, "claude");
+    yield* fs.writeFileString(
+      binaryPath,
+      [
+        "#!/usr/bin/env node",
+        'import * as ChildProcess from "node:child_process";',
+        'import * as Readline from "node:readline";',
+        'process.on("SIGTERM", () => {});',
+        'if (process.argv.includes("--descendant")) {',
+        '  process.send("ready");',
+        "  process.disconnect();",
+        "  setInterval(() => {}, 1000);",
+        "} else {",
+        "  const child = ChildProcess.spawn(process.execPath, [process.argv[1], '--descendant'], {",
+        "    stdio: ['ignore', 'inherit', 'inherit', 'ipc'],",
+        "  });",
+        "  const ready = new Promise(resolve => child.once('message', resolve));",
+        "  const lines = Readline.createInterface({ input: process.stdin });",
+        "  lines.on('line', async line => {",
+        "    const message = JSON.parse(line);",
+        "    if (message.request?.subtype !== 'initialize') return;",
+        "    await ready;",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'control_response',",
+        "      response: { subtype: 'success', request_id: message.request_id,",
+        "        response: { commands: [], agents: [], models: [] } },",
+        "    }) + '\\n');",
+        "  });",
+        // Deliberately ignores EOF: teardown must own even an uncooperative fake.
+        "  setInterval(() => {}, 1000);",
+        "}",
+      ].join("\n"),
+    );
+    yield* fs.chmod(binaryPath, 0o755);
+    const before = countFixtureProcesses(binaryPath);
+    expect(before).toBe(0);
+    const initialized = yield* Deferred.make<void>();
+    const run = Effect.gen(function* () {
+      yield* ownClaudeTestProcesses(binaryPath);
+      const query = ClaudeSdk.query({
+        prompt: (async function* () {})(),
+        options: { pathToClaudeCodeExecutable: binaryPath },
+      });
+      yield* Effect.promise(() => query.initializationResult());
+      expect(countFixtureProcesses(binaryPath)).toBe(2);
+      yield* Deferred.succeed(initialized, undefined);
+      if (outcome === "failure") return yield* Effect.fail("fixture failure");
+      if (outcome === "timeout") return yield* Effect.never;
+    }).pipe(Effect.scoped);
+    if (outcome === "timeout") {
+      const fiber = yield* run.pipe(Effect.timeout("1 second"), Effect.exit, Effect.forkChild);
+      yield* Deferred.await(initialized);
+      yield* TestClock.adjust("1 second");
+      expect(Exit.isFailure(yield* Fiber.join(fiber))).toBe(true);
+    } else {
+      const result = yield* Effect.exit(run);
+      expect(Exit.isSuccess(result)).toBe(outcome === "success");
+    }
+    expect(countFixtureProcesses(binaryPath)).toBe(before);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 it.live("the Claude readiness fake exits when its stdin closes", () =>
   Effect.gen(function* () {

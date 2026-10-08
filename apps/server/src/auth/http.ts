@@ -224,7 +224,7 @@ export const environmentAuthenticatedAuthLayer = Layer.effect(
           }),
           session.subject === "cloud-connect" ? traceAuthenticatedRelayRequest : identity,
         );
-      }).pipe(Effect.catchTag("EnvironmentAuthInvalidError", appendDpopChallengeOnUnauthorized));
+      }).pipe(Effect.catchTags({ EnvironmentAuthInvalidError: appendDpopChallengeOnUnauthorized }));
   }),
 );
 
@@ -371,9 +371,10 @@ export const authHttpApiLayer = HttpApiBuilder.group(
             );
             return { revoked };
           },
-          Effect.catchTag("ServerAuthForbiddenOperationError", () =>
-            failEnvironmentOperationForbidden("current_session_revoke_not_allowed"),
-          ),
+          Effect.catchTags({
+            ServerAuthForbiddenOperationError: () =>
+              failEnvironmentOperationForbidden("current_session_revoke_not_allowed"),
+          }),
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("client_session_revoke_failed", error),
           ),

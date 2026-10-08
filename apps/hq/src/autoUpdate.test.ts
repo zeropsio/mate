@@ -51,38 +51,44 @@ describe("HQ's organization auto-update switch", () => {
       }),
     );
 
-    for (const door of ["door-dev", "door-reader"] as const) {
-      it.effect(`lets ${door} read the organization policy without changing it`, () =>
-        Effect.gen(function* () {
-          const { call } = yield* startCore(true);
-          yield* untilHealth(call, "active");
-          const session = yield* sessionFor(call, door);
-          const result = yield* call("GET", "/api/auto-update", { session });
-          assert.strictEqual(result.status, 200);
-          assert.deepInclude(result.body, { orgId: "ORG", enabled: true, revision: 0 });
-        }),
-      );
-    }
+    it.effect.each(
+      Array.from(["door-dev", "door-reader"] as const, (door) => ({
+        title: `lets ${door} read the organization policy without changing it`,
+        door,
+      })),
+    )("$title", ({ door }) =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = yield* sessionFor(call, door);
+        const result = yield* call("GET", "/api/auto-update", { session });
+        assert.strictEqual(result.status, 200);
+        assert.deepInclude(result.body, { orgId: "ORG", enabled: true, revision: 0 });
+      }),
+    );
 
-    for (const door of [undefined, "door-dev", "door-reader"] as const) {
-      it.effect(`refuses an organization-wide change from ${door ?? "no identity"}`, () =>
-        Effect.gen(function* () {
-          const { call } = yield* startCore(true);
-          yield* untilHealth(call, "active");
-          const session = door === undefined ? undefined : yield* sessionFor(call, door);
-          const result = yield* call("PUT", "/api/auto-update", {
-            ...(session === undefined ? {} : { session }),
-            body: { enabled: false },
-          });
-          assert.strictEqual(result.status, door === undefined ? 401 : 403);
-          const owner = yield* sessionFor(call, "door-owner");
-          assert.deepInclude((yield* call("GET", "/api/auto-update", { session: owner })).body, {
-            orgId: "ORG",
-            enabled: true,
-            revision: 0,
-          });
-        }),
-      );
-    }
+    it.effect.each(
+      Array.from([undefined, "door-dev", "door-reader"] as const, (door) => ({
+        title: `refuses an organization-wide change from ${door ?? "no identity"}`,
+        door,
+      })),
+    )("$title", ({ door }) =>
+      Effect.gen(function* () {
+        const { call } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const session = door === undefined ? undefined : yield* sessionFor(call, door);
+        const result = yield* call("PUT", "/api/auto-update", {
+          ...(session === undefined ? {} : { session }),
+          body: { enabled: false },
+        });
+        assert.strictEqual(result.status, door === undefined ? 401 : 403);
+        const owner = yield* sessionFor(call, "door-owner");
+        assert.deepInclude((yield* call("GET", "/api/auto-update", { session: owner })).body, {
+          orgId: "ORG",
+          enabled: true,
+          revision: 0,
+        });
+      }),
+    );
   });
 });

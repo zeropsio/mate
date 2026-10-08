@@ -97,11 +97,15 @@ describe("checkDoorToken", () => {
       { kind: "unavailable", reason: "no_members" },
     ],
   ];
-  for (const [name, input, verdict] of cases) {
-    it(`${name}: ${verdict.kind}`, () => {
-      expect(checkDoorToken(input)).toEqual(verdict);
-    });
-  }
+  it.each(
+    Array.from(cases, ([name, input, verdict]) => ({
+      title: `${name}: ${verdict.kind}`,
+      input,
+      verdict,
+    })),
+  )("$title", ({ input, verdict }) => {
+    expect(checkDoorToken(input)).toEqual(verdict);
+  });
 
   it("allows exactly five minutes", () => {
     expect(DOOR_MAX_AGE_MS).toBe(300_000);

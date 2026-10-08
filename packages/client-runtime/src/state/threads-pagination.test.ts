@@ -306,31 +306,32 @@ const revertEvent = (sequence: number): OrchestrationThreadStreamItem => ({
 });
 
 describe("thread pagination state", () => {
-  for (const reasoningCapability of [false, true]) {
-    it.effect(
-      `negotiates reasoning for initial, older and socket reads: ${reasoningCapability}`,
-      () =>
-        Effect.gen(function* () {
-          const harness = yield* makeHarness({
-            reasoningCapability,
-            initialResponse: Option.some(WINDOWED_SNAPSHOT),
-          });
-          yield* harness.awaitState((value) => Option.isSome(value.page));
-          const input = yield* Ref.get(harness.lastSubscribeInput);
-          expect(input?.reasoningMessages).toBe(reasoningCapability ? true : undefined);
-          expect(yield* Ref.get(harness.loaderReasoning)).toEqual([reasoningCapability]);
-          expect(requestOlderThreadTurns(TARGET.environmentId, THREAD_ID)).toBe(true);
-          yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
-          yield* harness.awaitState((value) =>
-            Option.match(value.page, { onNone: () => false, onSome: (page) => !page.hasMore }),
-          );
-          expect(yield* Ref.get(harness.loaderReasoning)).toEqual([
-            reasoningCapability,
-            reasoningCapability,
-          ]);
-        }),
-    );
-  }
+  it.effect.each(
+    Array.from([false, true], (reasoningCapability) => ({
+      title: `negotiates reasoning for initial, older and socket reads: ${reasoningCapability}`,
+      reasoningCapability,
+    })),
+  )("$title", ({ reasoningCapability }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        reasoningCapability,
+        initialResponse: Option.some(WINDOWED_SNAPSHOT),
+      });
+      yield* harness.awaitState((value) => Option.isSome(value.page));
+      const input = yield* Ref.get(harness.lastSubscribeInput);
+      expect(input?.reasoningMessages).toBe(reasoningCapability ? true : undefined);
+      expect(yield* Ref.get(harness.loaderReasoning)).toEqual([reasoningCapability]);
+      expect(requestOlderThreadTurns(TARGET.environmentId, THREAD_ID)).toBe(true);
+      yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
+      yield* harness.awaitState((value) =>
+        Option.match(value.page, { onNone: () => false, onSome: (page) => !page.hasMore }),
+      );
+      expect(yield* Ref.get(harness.loaderReasoning)).toEqual([
+        reasoningCapability,
+        reasoningCapability,
+      ]);
+    }),
+  );
 
   it.effect("windows the initial load when the server advertises pagination", () =>
     Effect.gen(function* () {

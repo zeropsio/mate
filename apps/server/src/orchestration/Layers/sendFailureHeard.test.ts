@@ -622,45 +622,47 @@ const DRIVERS: ReadonlyArray<Driver> = [
 describe("every failed send is heard exactly once", () => {
   for (const driver of DRIVERS) {
     for (const failure of FAILURES) {
-      for (const lagMs of [0, 250]) {
-        it.live(
-          `${driver}: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
-          () =>
-            Effect.gen(function* () {
-              const { thread } = yield* makeRun(driver, scriptFor(driver, failure), lagMs);
-              const records = thread.activities.filter(
-                (activity) =>
-                  activity.kind === "runtime.error" ||
-                  activity.kind === "provider.turn.start.failed",
-              );
-              // Heard once: one record the person reads, from one writer.
-              expect(records.map((activity) => activity.kind)).toEqual([
-                failure === "start" || (failure === "attachment" && driver !== "cursor")
-                  ? "provider.turn.start.failed"
-                  : "runtime.error",
-              ]);
-              // And never left working: the turn, if any, is over, and the
-              // session says why.
-              expect(thread.latestTurn?.state ?? null).not.toBe("running");
-              expect(thread.session?.lastError ?? null).not.toBeNull();
-              if (failure === "usage-limit" && driver !== "cursor" && driver !== "antigravity") {
-                expect(
-                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
-                ).toBe("usage-limit");
-              }
-              if (failure === "crash") {
-                expect(
-                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
-                ).toBe("crash");
-              }
-              // A picture it could not read is said plainly, on every driver.
-              if (failure === "attachment") {
-                expect(thread.session?.lastError ?? "").toContain(PICTURE);
-              }
-            }).pipe(Effect.scoped),
-          20_000,
-        );
-      }
+      it.live.each(
+        Array.from([0, 250], (lagMs) => ({
+          title: `${driver}: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
+          lagMs,
+        })),
+      )(
+        "$title",
+        ({ lagMs }) =>
+          Effect.gen(function* () {
+            const { thread } = yield* makeRun(driver, scriptFor(driver, failure), lagMs);
+            const records = thread.activities.filter(
+              (activity) =>
+                activity.kind === "runtime.error" || activity.kind === "provider.turn.start.failed",
+            );
+            // Heard once: one record the person reads, from one writer.
+            expect(records.map((activity) => activity.kind)).toEqual([
+              failure === "start" || (failure === "attachment" && driver !== "cursor")
+                ? "provider.turn.start.failed"
+                : "runtime.error",
+            ]);
+            // And never left working: the turn, if any, is over, and the
+            // session says why.
+            expect(thread.latestTurn?.state ?? null).not.toBe("running");
+            expect(thread.session?.lastError ?? null).not.toBeNull();
+            if (failure === "usage-limit" && driver !== "cursor" && driver !== "antigravity") {
+              expect(
+                (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+              ).toBe("usage-limit");
+            }
+            if (failure === "crash") {
+              expect(
+                (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+              ).toBe("crash");
+            }
+            // A picture it could not read is said plainly, on every driver.
+            if (failure === "attachment") {
+              expect(thread.session?.lastError ?? "").toContain(PICTURE);
+            }
+          }).pipe(Effect.scoped),
+        20_000,
+      );
     }
   }
 });
@@ -668,32 +670,34 @@ describe("every failed send is heard exactly once", () => {
 describe("every failed follow-up into a running turn is heard exactly once", () => {
   for (const driver of DRIVERS) {
     for (const failure of ["crash", "ordinary", "usage-limit"] as const) {
-      for (const lagMs of [0, 250]) {
-        it.live(
-          `${driver}: the turn breaks as a follow-up steers into it: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
-          () =>
-            Effect.gen(function* () {
-              const script = steerScriptFor(driver, failure);
-              const { thread } = yield* makeRun(driver, script, lagMs);
-              if (!holdsTurn(driver) && script.later === undefined) return;
-              const records = thread.activities.filter(
-                (activity) =>
-                  activity.kind === "runtime.error" ||
-                  activity.kind === "provider.turn.start.failed",
-              );
-              // The running turn's break, once: never the follow-up's start too.
-              expect(records.map((activity) => activity.kind)).toEqual(["runtime.error"]);
-              expect(thread.latestTurn?.state ?? null).not.toBe("running");
-              expect(thread.session?.lastError ?? null).not.toBeNull();
-              if (failure === "crash") {
-                expect(
-                  (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
-                ).toBe("crash");
-              }
-            }).pipe(Effect.scoped),
-          20_000,
-        );
-      }
+      it.live.each(
+        Array.from([0, 250], (lagMs) => ({
+          title: `${driver}: the turn breaks as a follow-up steers into it: ${failure}${lagMs > 0 ? ", ingestion lagging" : ""}`,
+          lagMs,
+        })),
+      )(
+        "$title",
+        ({ lagMs }) =>
+          Effect.gen(function* () {
+            const script = steerScriptFor(driver, failure);
+            const { thread } = yield* makeRun(driver, script, lagMs);
+            if (!holdsTurn(driver) && script.later === undefined) return;
+            const records = thread.activities.filter(
+              (activity) =>
+                activity.kind === "runtime.error" || activity.kind === "provider.turn.start.failed",
+            );
+            // The running turn's break, once: never the follow-up's start too.
+            expect(records.map((activity) => activity.kind)).toEqual(["runtime.error"]);
+            expect(thread.latestTurn?.state ?? null).not.toBe("running");
+            expect(thread.session?.lastError ?? null).not.toBeNull();
+            if (failure === "crash") {
+              expect(
+                (records[0]?.payload as { readonly turnEnd?: unknown } | undefined)?.turnEnd,
+              ).toBe("crash");
+            }
+          }).pipe(Effect.scoped),
+        20_000,
+      );
     }
   }
 });
@@ -909,28 +913,31 @@ const failureRecords = (thread: {
 describe("a person's Stop ends the turn, never as a failure", () => {
   for (const driver of DRIVERS) {
     for (const moment of ["fresh", "steer", "failing"] as const) {
-      for (const lagMs of [0, 250]) {
-        it.live(
-          `${driver}: Stop ${moment === "fresh" ? "during a turn" : moment === "steer" ? "after a follow-up" : "as the turn fails"}${lagMs > 0 ? ", ingestion lagging" : ""}`,
-          () =>
-            Effect.gen(function* () {
-              const run = yield* makeStopRun(driver, moment, lagMs);
-              // Stopped: no red line, the turn reads stopped, nothing runs on.
-              expect(failureRecords(run.stopped)).toEqual([]);
-              expect(run.stopped.latestTurn?.turnId).toBe(run.stoppedTurn);
-              expect(run.stopped.latestTurn?.state).toBe("interrupted");
-              expect(run.stopped.session?.status).not.toBe("running");
-              expect(run.stopped.session?.lastError ?? null).toBeNull();
-              // The next message reaches the agent and its turn runs to its end.
-              expect(run.sendCalls).toBe(run.sentBeforeNext + 1);
-              expect(run.nextTurn).not.toBe(run.stoppedTurn);
-              expect(run.after.latestTurn?.turnId).toBe(run.nextTurn);
-              expect(run.after.latestTurn?.state).toBe("completed");
-              expect(failureRecords(run.after)).toEqual([]);
-            }).pipe(Effect.scoped),
-          20_000,
-        );
-      }
+      it.live.each(
+        Array.from([0, 250], (lagMs) => ({
+          title: `${driver}: Stop ${moment === "fresh" ? "during a turn" : moment === "steer" ? "after a follow-up" : "as the turn fails"}${lagMs > 0 ? ", ingestion lagging" : ""}`,
+          lagMs,
+        })),
+      )(
+        "$title",
+        ({ lagMs }) =>
+          Effect.gen(function* () {
+            const run = yield* makeStopRun(driver, moment, lagMs);
+            // Stopped: no red line, the turn reads stopped, nothing runs on.
+            expect(failureRecords(run.stopped)).toEqual([]);
+            expect(run.stopped.latestTurn?.turnId).toBe(run.stoppedTurn);
+            expect(run.stopped.latestTurn?.state).toBe("interrupted");
+            expect(run.stopped.session?.status).not.toBe("running");
+            expect(run.stopped.session?.lastError ?? null).toBeNull();
+            // The next message reaches the agent and its turn runs to its end.
+            expect(run.sendCalls).toBe(run.sentBeforeNext + 1);
+            expect(run.nextTurn).not.toBe(run.stoppedTurn);
+            expect(run.after.latestTurn?.turnId).toBe(run.nextTurn);
+            expect(run.after.latestTurn?.state).toBe("completed");
+            expect(failureRecords(run.after)).toEqual([]);
+          }).pipe(Effect.scoped),
+        20_000,
+      );
     }
   }
 });

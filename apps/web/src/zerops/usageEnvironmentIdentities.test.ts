@@ -322,22 +322,20 @@ describe("usageEnvironmentIdentities", () => {
     },
   ];
 
-  for (const entry of cases) {
-    it(entry.name, () => {
-      const identities = usageEnvironmentIdentities({
-        candidates: entry.candidates,
-        registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
-        owners: Object.fromEntries(
-          Object.entries(entry.owners ?? {}).map(([id, owner]) => [
-            id,
-            { owner, owned: owner !== null },
-          ]),
-        ),
-        viewerUserId: entry.viewerUserId ?? null,
-      });
-      expect([...identities]).toEqual(entry.expected);
+  it.each(Array.from(cases, (entry) => ({ title: entry.name, entry })))("$title", ({ entry }) => {
+    const identities = usageEnvironmentIdentities({
+      candidates: entry.candidates,
+      registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
+      owners: Object.fromEntries(
+        Object.entries(entry.owners ?? {}).map(([id, owner]) => [
+          id,
+          { owner, owned: owner !== null },
+        ]),
+      ),
+      viewerUserId: entry.viewerUserId ?? null,
     });
-  }
+    expect([...identities]).toEqual(entry.expected);
+  });
 });
 
 describe("usageOwnersStatus", () => {

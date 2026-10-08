@@ -380,18 +380,21 @@ describe("CrewEngine", () => {
     },
   ];
 
-  for (const { name, press } of pressesDuringTurnEnd) {
-    it.live(`${name} pressed while its crewmate's turn end is handled is refused at once`, () =>
-      withCrewEngine((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
-          const { atOnce } = yield* pressDuringTurnEnd(world, press);
-          refusedAsBusy(atOnce);
-        }),
-      ),
-    );
-  }
+  it.live.each(
+    Array.from(pressesDuringTurnEnd, ({ name, press }) => ({
+      title: `${name} pressed while its crewmate's turn end is handled is refused at once`,
+      press,
+    })),
+  )("$title", ({ press }) =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        const { atOnce } = yield* pressDuringTurnEnd(world, press);
+        refusedAsBusy(atOnce);
+      }),
+    ),
+  );
 
   /** `backend` reported done; its check after the turn end is held. */
   const holdTheCheck = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
@@ -510,23 +513,24 @@ describe("CrewEngine", () => {
     });
 
   const stuckStates: ReadonlyArray<"merging" | "checking"> = ["merging", "checking"];
-  for (const state of stuckStates) {
-    it.live(`a task left ${state} with nothing running on it can be discarded`, () =>
-      withCrewEngine((world) =>
-        Effect.gen(function* () {
-          const { taskId } = yield* turnEndedWorking(world);
-          // A redeploy held its merge, or its check errored: nothing runs on it now.
-          const store = yield* CrewStore;
-          const row = (yield* store.assignments(CREW_ID)).find(
-            (task) => task.assignment === taskId,
-          )!;
-          yield* store.putAssignment({ ...row, state });
-          yield* command({ _tag: "discard", taskId });
-          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
-        }),
-      ),
-    );
-  }
+  it.live.each(
+    Array.from(stuckStates, (state) => ({
+      title: `a task left ${state} with nothing running on it can be discarded`,
+      state,
+    })),
+  )("$title", ({ state }) =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        const { taskId } = yield* turnEndedWorking(world);
+        // A redeploy held its merge, or its check errored: nothing runs on it now.
+        const store = yield* CrewStore;
+        const row = (yield* store.assignments(CREW_ID)).find((task) => task.assignment === taskId)!;
+        yield* store.putAssignment({ ...row, state });
+        yield* command({ _tag: "discard", taskId });
+        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
+      }),
+    ),
+  );
 
   it.live("a message during a Land now's check goes through", () =>
     withCrewEngine((world) =>
@@ -1165,41 +1169,46 @@ describe("CrewEngine", () => {
     ]),
   );
 
-  for (const [state, processes, words] of [
-    [
-      "still runs",
-      [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
-      "still redeploying",
-    ],
-    ["cannot be read", "unreadable", "could not read"],
-  ] as const) {
-    it.live(
-      `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
-      () =>
-        withCrewEngines([
-          (world) =>
-            Effect.gen(function* () {
-              yield* applied(world);
-              yield* world.publish(deployEvent("item.started"));
-              yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-            }),
-          (world) =>
-            Effect.gen(function* () {
-              yield* Ref.set(world.processes, processes);
-              yield* (yield* ServerCommandReadiness).complete;
-              const held = yield* snapshotWhere(
-                (snapshot) => snapshot.lastError?.includes(words) === true,
-              );
-              assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
-              yield* Ref.set(world.processes, []);
-              const thawed = yield* snapshotWhere(
-                (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
-              );
-              assert.isNull(thawed.lastError);
-            }),
-        ]),
-    );
-  }
+  it.live.each(
+    Array.from(
+      [
+        [
+          "still runs",
+          [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
+          "still redeploying",
+        ],
+        ["cannot be read", "unreadable", "could not read"],
+      ] as const,
+      ([state, processes, words]) => ({
+        title: `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
+        processes,
+        words,
+      }),
+    ),
+  )("$title", ({ processes, words }) =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.processes, processes);
+          yield* (yield* ServerCommandReadiness).complete;
+          const held = yield* snapshotWhere(
+            (snapshot) => snapshot.lastError?.includes(words) === true,
+          );
+          assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
+          yield* Ref.set(world.processes, []);
+          const thawed = yield* snapshotWhere(
+            (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
+          );
+          assert.isNull(thawed.lastError);
+        }),
+    ]),
+  );
 
   it.live("a restart leaves a frozen host's interrupted work untouched until its deploy ends", () =>
     withCrewEngines([

@@ -402,38 +402,41 @@ const deleted = (): OrchestrationThreadStreamItem => ({
 });
 
 describe("EnvironmentThreads", () => {
-  for (const source of ["disk", "HTTP"] as const) {
-    it.effect(`does not rewrite an unchanged ${source} snapshot on navigation or warm return`, () =>
-      Effect.gen(function* () {
-        const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
-          snapshot: undefined,
-          owner: undefined,
-        };
-        const firstSaved = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const h = yield* makeHarness({
-              resumeCache,
-              ...(source === "disk"
-                ? { cached: BASE_THREAD }
-                : { httpSnapshot: Option.some({ snapshotSequence: 7, thread: BASE_THREAD }) }),
-            });
-            yield* awaitThreadState(h.observed, (value) => value.status === "live");
-            if (source === "HTTP") yield* TestClock.adjust("500 millis");
-            return h.savedThreads;
-          }),
-        );
-        expect(yield* Ref.get(firstSaved)).toHaveLength(source === "disk" ? 0 : 1);
-        const nextSaved = yield* Effect.scoped(
-          Effect.gen(function* () {
-            const h = yield* makeHarness({ resumeCache });
-            yield* awaitThreadState(h.observed, (value) => value.status === "live");
-            return h.savedThreads;
-          }),
-        );
-        expect(yield* Ref.get(nextSaved)).toEqual([]);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(["disk", "HTTP"] as const, (source) => ({
+      title: `does not rewrite an unchanged ${source} snapshot on navigation or warm return`,
+      source,
+    })),
+  )("$title", ({ source }) =>
+    Effect.gen(function* () {
+      const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
+        snapshot: undefined,
+        owner: undefined,
+      };
+      const firstSaved = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeHarness({
+            resumeCache,
+            ...(source === "disk"
+              ? { cached: BASE_THREAD }
+              : { httpSnapshot: Option.some({ snapshotSequence: 7, thread: BASE_THREAD }) }),
+          });
+          yield* awaitThreadState(h.observed, (value) => value.status === "live");
+          if (source === "HTTP") yield* TestClock.adjust("500 millis");
+          return h.savedThreads;
+        }),
+      );
+      expect(yield* Ref.get(firstSaved)).toHaveLength(source === "disk" ? 0 : 1);
+      const nextSaved = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeHarness({ resumeCache });
+          yield* awaitThreadState(h.observed, (value) => value.status === "live");
+          return h.savedThreads;
+        }),
+      );
+      expect(yield* Ref.get(nextSaved)).toEqual([]);
+    }),
+  );
 
   it.effect("retries a failed background cache write when the scope closes", () =>
     Effect.gen(function* () {

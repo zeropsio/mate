@@ -344,109 +344,119 @@ const restartProcess = {
   createdByUser: { fullName: "Ales Rechtorik" },
 };
 
-for (const row of [
-  {
-    label: "process with person",
-    processes: [restartProcess],
-    expected: { cause: "restarted" as const, at: processAt },
-  },
-  {
-    label: "process without person",
-    processes: [{ ...restartProcess, createdByUser: null }],
-    expected: { cause: "restarted" as const, at: processAt },
-  },
-  {
-    label: "read failed",
-    failed: true,
-    processes: [],
-    expected: { cause: "restarted" as const, at: bootAt },
-  },
-  {
-    label: "only actions that could interrupt this turn, newest first",
-    processes: [
-      { ...restartProcess, actionName: "stack.start", started: "2026-08-20T12:04:45.000Z" },
-      { ...restartProcess, started: bootAt },
-      { ...restartProcess, started: "2026-08-20T12:06:00.000Z" },
-      { ...restartProcess, serviceStackId: "other-service", started: "2026-08-20T12:04:50.000Z" },
-      { ...restartProcess, projectId: "other-project", started: "2026-08-20T12:04:50.000Z" },
-      { ...restartProcess, status: "RUNNING", started: "2026-08-20T12:04:50.000Z" },
-      { ...restartProcess, actionName: "stack.build", started: "2026-08-20T12:04:50.000Z" },
-      { ...restartProcess, started: updatedAt },
-      { ...restartProcess, started: "invalid" },
-      { ...restartProcess, started: "2026-08-20T12:03:00.000Z" },
-      restartProcess,
-    ],
-    expected: { cause: "restarted" as const, at: processAt },
-  },
-  {
-    label: "platform stop",
-    processes: [{ ...restartProcess, actionName: "stack.stop" }],
-    expected: { cause: "stopped" as const, at: processAt },
-  },
-  {
-    label: "platform deployment",
-    processes: [{ ...restartProcess, actionName: "stack.deploy" }],
-    expected: { cause: "redeployed" as const, at: processAt },
-  },
-  { label: "no process", processes: [], expected: { cause: "restarted" as const, at: bootAt } },
-  {
-    label: "container replaced without process",
-    processes: [],
-    containerStartedAt: processAt,
-    expected: { cause: "replaced" as const, at: processAt },
-  },
-]) {
-  it.effect(`explains an orphaned turn: ${row.label}, reading once for all threads`, () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse(bootAt));
-      const commands: OrchestrationCommand[] = [];
-      let reads = 0;
-      yield* runReconciliation({
-        threads: [
-          makeThread("orphan-one", "running", TurnId.make("one")),
-          makeThread("orphan-two", "running", TurnId.make("two")),
+it.effect.each(
+  Array.from(
+    [
+      {
+        label: "process with person",
+        processes: [restartProcess],
+        expected: { cause: "restarted" as const, at: processAt },
+      },
+      {
+        label: "process without person",
+        processes: [{ ...restartProcess, createdByUser: null }],
+        expected: { cause: "restarted" as const, at: processAt },
+      },
+      {
+        label: "read failed",
+        failed: true,
+        processes: [],
+        expected: { cause: "restarted" as const, at: bootAt },
+      },
+      {
+        label: "only actions that could interrupt this turn, newest first",
+        processes: [
+          { ...restartProcess, actionName: "stack.start", started: "2026-08-20T12:04:45.000Z" },
+          { ...restartProcess, started: bootAt },
+          { ...restartProcess, started: "2026-08-20T12:06:00.000Z" },
+          {
+            ...restartProcess,
+            serviceStackId: "other-service",
+            started: "2026-08-20T12:04:50.000Z",
+          },
+          { ...restartProcess, projectId: "other-project", started: "2026-08-20T12:04:50.000Z" },
+          { ...restartProcess, status: "RUNNING", started: "2026-08-20T12:04:50.000Z" },
+          { ...restartProcess, actionName: "stack.build", started: "2026-08-20T12:04:50.000Z" },
+          { ...restartProcess, started: updatedAt },
+          { ...restartProcess, started: "invalid" },
+          { ...restartProcess, started: "2026-08-20T12:03:00.000Z" },
+          restartProcess,
         ],
-        directory: {
-          getBinding: () => Effect.succeedNone,
-          upsert: () => Effect.void,
-          getProvider: () => Effect.die("unused"),
-          listThreadIds: () => Effect.die("unused"),
-          listBindings: () => Effect.die("unused"),
-        },
-        dispatch: (command) =>
-          Effect.sync(() => {
-            commands.push(command);
-            return { sequence: commands.length };
-          }),
-      }).pipe(
-        Effect.provideService(ZeropsRestartRead, {
-          read: Effect.suspend(() => {
-            reads++;
-            return row.failed
-              ? Effect.fail(unavailable("unreachable"))
-              : Effect.succeed({
-                  name: "Fen",
-                  processes: row.processes,
-                  containerStartedAt: row.containerStartedAt ?? null,
-                  serviceId: "zcp-own",
-                  projectId: "project-mate",
-                });
-          }),
-        }),
-      );
-      assert.equal(commands.length, 2);
-      for (const command of commands) {
-        assert.strictEqual(command.type, "thread.session.set");
-        if (command.type !== "thread.session.set") continue;
-        assert.strictEqual(command.session.status, "interrupted");
-        assert.strictEqual(command.session.lastError, null);
-        assert.deepStrictEqual(command.session.interruption?.restart, row.expected);
-        assert.strictEqual(command.session.interruption?.continuation, "manual");
-      }
-      assert.equal(reads, 1);
+        expected: { cause: "restarted" as const, at: processAt },
+      },
+      {
+        label: "platform stop",
+        processes: [{ ...restartProcess, actionName: "stack.stop" }],
+        expected: { cause: "stopped" as const, at: processAt },
+      },
+      {
+        label: "platform deployment",
+        processes: [{ ...restartProcess, actionName: "stack.deploy" }],
+        expected: { cause: "redeployed" as const, at: processAt },
+      },
+      { label: "no process", processes: [], expected: { cause: "restarted" as const, at: bootAt } },
+      {
+        label: "container replaced without process",
+        processes: [],
+        containerStartedAt: processAt,
+        expected: { cause: "replaced" as const, at: processAt },
+      },
+    ],
+    (row) => ({
+      title: `explains an orphaned turn: ${row.label}, reading once for all threads`,
+      row,
     }),
-  );
-}
+  ),
+)("$title", ({ row }) =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(Date.parse(bootAt));
+    const commands: OrchestrationCommand[] = [];
+    let reads = 0;
+    yield* runReconciliation({
+      threads: [
+        makeThread("orphan-one", "running", TurnId.make("one")),
+        makeThread("orphan-two", "running", TurnId.make("two")),
+      ],
+      directory: {
+        getBinding: () => Effect.succeedNone,
+        upsert: () => Effect.void,
+        getProvider: () => Effect.die("unused"),
+        listThreadIds: () => Effect.die("unused"),
+        listBindings: () => Effect.die("unused"),
+      },
+      dispatch: (command) =>
+        Effect.sync(() => {
+          commands.push(command);
+          return { sequence: commands.length };
+        }),
+    }).pipe(
+      Effect.provideService(ZeropsRestartRead, {
+        read: Effect.suspend(() => {
+          reads++;
+          return row.failed
+            ? Effect.fail(unavailable("unreachable"))
+            : Effect.succeed({
+                name: "Fen",
+                processes: row.processes,
+                containerStartedAt: row.containerStartedAt ?? null,
+                serviceId: "zcp-own",
+                projectId: "project-mate",
+              });
+        }),
+      }),
+    );
+    assert.equal(commands.length, 2);
+    for (const command of commands) {
+      assert.strictEqual(command.type, "thread.session.set");
+      if (command.type !== "thread.session.set") continue;
+      assert.strictEqual(command.session.status, "interrupted");
+      assert.strictEqual(command.session.lastError, null);
+      assert.deepStrictEqual(command.session.interruption?.restart, row.expected);
+      assert.strictEqual(command.session.interruption?.continuation, "manual");
+    }
+    assert.equal(reads, 1);
+  }),
+);
 
 it.effect(
   "an idle restart preserves a provider failure despite its retained active turn id",

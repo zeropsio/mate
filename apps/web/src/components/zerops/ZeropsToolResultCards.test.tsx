@@ -63,18 +63,21 @@ describe("ZeropsReadResultBody — the running shape is the final shape", () => 
       frame: 'data-zerops-read-body="process"',
     },
   ];
-  for (const { name, pending, settled, frame } of cases) {
-    it(`${name}: the same frame running and settled, placeholders only while running`, () => {
-      const running = render(pending);
-      const done = render(settled, [
-        { id: "a", label: "Build", state: "done", stateLabel: "Done" },
-      ]);
-      expect(running).toContain(frame);
-      expect(done).toContain(frame);
-      expect(count(running, "data-zerops-read-placeholder")).toBeGreaterThan(0);
-      expect(done).not.toContain("data-zerops-read-placeholder");
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, pending, settled, frame }) => ({
+      title: `${name}: the same frame running and settled, placeholders only while running`,
+      pending,
+      settled,
+      frame,
+    })),
+  )("$title", ({ pending, settled, frame }) => {
+    const running = render(pending);
+    const done = render(settled, [{ id: "a", label: "Build", state: "done", stateLabel: "Done" }]);
+    expect(running).toContain(frame);
+    expect(done).toContain(frame);
+    expect(count(running, "data-zerops-read-placeholder")).toBeGreaterThan(0);
+    expect(done).not.toContain("data-zerops-read-placeholder");
+  });
 });
 
 describe("ZeropsReadResultBody — logs", () => {

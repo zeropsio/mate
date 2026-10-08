@@ -92,11 +92,15 @@ describe("sidebarAccountDestinationOf", () => {
     ["/settingsish", null],
   ];
 
-  for (const [pathname, expected] of cases) {
-    it(`reads ${pathname} as ${expected ?? "no destination"}`, () => {
-      expect(sidebarAccountDestinationOf(pathname)).toBe(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([pathname, expected]) => ({
+      title: `reads ${pathname} as ${expected ?? "no destination"}`,
+      pathname,
+      expected,
+    })),
+  )("$title", ({ pathname, expected }) => {
+    expect(sidebarAccountDestinationOf(pathname)).toBe(expected);
+  });
 
   it("names a destination for every path it lights", () => {
     for (const destination of SIDEBAR_ACCOUNT_DESTINATIONS) {

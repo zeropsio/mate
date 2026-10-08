@@ -98,22 +98,25 @@ it.layer(NodeServices.layer)("active thread ordering", (it) => {
     }),
   );
 
-  for (const [label, overrides] of [
-    ["archived", { archivedAt: NOW }],
-    ["deleted", { deletedAt: NOW }],
-    ["pinned", { pinnedAt: NOW }],
-    ["settled", { settledOverride: "settled", settledAt: NOW }],
-  ] satisfies ReadonlyArray<readonly [string, Partial<OrchestrationThread>]>) {
-    it.effect(`rejects reordering a ${label} thread`, () =>
-      Effect.gen(function* () {
-        const error = yield* decideOrchestrationCommand({
-          command: reorderCommand,
-          readModel: makeReadModel(overrides),
-        }).pipe(Effect.flip);
-        expect(error._tag).toBe("OrchestrationCommandInvariantError");
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["archived", { archivedAt: NOW }],
+        ["deleted", { deletedAt: NOW }],
+        ["pinned", { pinnedAt: NOW }],
+        ["settled", { settledOverride: "settled", settledAt: NOW }],
+      ] satisfies ReadonlyArray<readonly [string, Partial<OrchestrationThread>]>,
+      ([label, overrides]) => ({ title: `rejects reordering a ${label} thread`, overrides }),
+    ),
+  )("$title", ({ overrides }) =>
+    Effect.gen(function* () {
+      const error = yield* decideOrchestrationCommand({
+        command: reorderCommand,
+        readModel: makeReadModel(overrides),
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("OrchestrationCommandInvariantError");
+    }),
+  );
 
   it.effect("reorders a running thread without affecting its session", () =>
     Effect.gen(function* () {

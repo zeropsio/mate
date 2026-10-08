@@ -79,37 +79,49 @@ describe("a release may update automatically only inside its proved rollback ran
       compatibleFrom: "0.15.0",
     });
   });
-  for (const [name, patch] of [
-    ["old Mate without the updater", { previousProtocol: undefined }],
-    ["unknown updater protocol", { previousProtocol: 2 }],
-    ["another release lineage", { ancestor: false }],
-    ["no previous stable release", { previousTag: "" }],
-    ["a prerelease previous version", { previousTag: "v0.15.0-beta.1" }],
-    ["a candidate older than last-good", { candidateVersion: "0.14.0" }],
-    ["changed runtime dependencies", { currentPackage: previousPackage.replace("4.0.1", "4.0.2") }],
-    ["unreadable old runtime declaration", { previousPackage: "broken" }],
-  ] as const) {
-    it(`requires confirmation for ${name}`, () => {
-      expect(rollbackCompatibility({ ...evidence, ...patch })).toEqual({
-        rollbackCompatible: false,
-      });
+  it.each(
+    Array.from(
+      [
+        ["old Mate without the updater", { previousProtocol: undefined }],
+        ["unknown updater protocol", { previousProtocol: 2 }],
+        ["another release lineage", { ancestor: false }],
+        ["no previous stable release", { previousTag: "" }],
+        ["a prerelease previous version", { previousTag: "v0.15.0-beta.1" }],
+        ["a candidate older than last-good", { candidateVersion: "0.14.0" }],
+        [
+          "changed runtime dependencies",
+          { currentPackage: previousPackage.replace("4.0.1", "4.0.2") },
+        ],
+        ["unreadable old runtime declaration", { previousPackage: "broken" }],
+      ] as const,
+      ([name, patch]) => ({ title: `requires confirmation for ${name}`, patch }),
+    ),
+  )("$title", ({ patch }) => {
+    expect(rollbackCompatibility({ ...evidence, ...patch })).toEqual({
+      rollbackCompatible: false,
     });
-  }
-  for (const changedPath of [
-    "apps/server/src/engine/store/migrations.ts",
-    "apps/server/src/engine/domain/events.ts",
-    "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
-    "apps/server/src/persistence/ProviderSessionRuntimeRepository.ts",
-    "apps/server/src/zerops/preferences.ts",
-    "apps/server/scripts/cli.ts",
-    "packages/contracts/src/engine.ts",
-    "packages/shared/src/nativeResume.ts",
-    "pnpm-lock.yaml",
-  ]) {
-    it(`requires confirmation when ${changedPath} changes the server's rollback surface`, () => {
-      expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-        rollbackCompatible: false,
-      });
+  });
+  it.each(
+    Array.from(
+      [
+        "apps/server/src/engine/store/migrations.ts",
+        "apps/server/src/engine/domain/events.ts",
+        "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+        "apps/server/src/persistence/ProviderSessionRuntimeRepository.ts",
+        "apps/server/src/zerops/preferences.ts",
+        "apps/server/scripts/cli.ts",
+        "packages/contracts/src/engine.ts",
+        "packages/shared/src/nativeResume.ts",
+        "pnpm-lock.yaml",
+      ],
+      (changedPath) => ({
+        title: `requires confirmation when ${changedPath} changes the server's rollback surface`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: false,
     });
-  }
+  });
 });

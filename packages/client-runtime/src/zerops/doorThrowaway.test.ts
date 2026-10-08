@@ -550,77 +550,86 @@ describe("throwaway hygiene", () => {
     expect(tab.rest.integrationTokens()[0]?.deletedWith).toBe(tab.session.accessToken);
   });
 
-  for (const row of [
-    { next: "another person", email: "user-2@example.test", password: "two", revoked: true },
-    { next: "the same person", email: "user-1@example.test", password: "one", revoked: true },
-    { next: "another person", email: "user-2@example.test", password: "two", revoked: false },
-  ] as const) {
-    it(`finalizer 401 after sign-out/sign-in never clears the new session and never runs under another principal (${row.next}, first session ${row.revoked ? "revoked" : "alive"})`, async () => {
-      vi.useFakeTimers();
-      const tab = signedInTab();
-      const orphaned: Array<unknown> = [];
-      let signedInAgain: ZeropsSession | undefined;
+  it.each(
+    Array.from(
+      [
+        { next: "another person", email: "user-2@example.test", password: "two", revoked: true },
+        { next: "the same person", email: "user-1@example.test", password: "one", revoked: true },
+        { next: "another person", email: "user-2@example.test", password: "two", revoked: false },
+      ] as const,
+      (row) => ({
+        title: `finalizer 401 after sign-out/sign-in never clears the new session and never runs under another principal (${row.next}, first session ${row.revoked ? "revoked" : "alive"})`,
+        row,
+      }),
+    ),
+  )("$title", async ({ row }) => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const orphaned: Array<unknown> = [];
+    let signedInAgain: ZeropsSession | undefined;
 
-      await connectThroughThrowaway({
-        platform: tab.throwaways(),
-        clientId: "org-1",
-        projectId: "p1",
-        nonce: "n1",
-        onOrphaned: (cause) => orphaned.push(cause),
-        // While the door answers, the person signs out and somebody signs in.
-        connect: async () => {
-          await tab.client.signOutLocally();
-          if (row.revoked) tab.rest.expireAccessToken(tab.session.accessToken);
-          signedInAgain = (await tab.client.login(row.email, row.password)).auth;
-          return "connected";
-        },
-      });
-      await settle();
-
-      const deletes = tab.rest.requests().filter(({ route }) => route.startsWith("DELETE "));
-      expect(deletes.map(({ token }) => token)).toEqual([tab.session.accessToken]);
-      expect(tab.client.session?.accessToken).toBe(signedInAgain?.accessToken);
-      expect(tab.sessionChanges.at(-1)?.accessToken).toBe(signedInAgain?.accessToken);
-      expect(tab.rest.refreshes()).toBe(0);
-      if (row.revoked) {
-        expect(orphaned).toHaveLength(1);
-        expect(tab.rest.orphanTokens()).toHaveLength(1);
-      } else {
-        expect(orphaned).toEqual([]);
-        expect(tab.rest.integrationTokens()[0]?.deletedWith).toBe(tab.session.accessToken);
-      }
+    await connectThroughThrowaway({
+      platform: tab.throwaways(),
+      clientId: "org-1",
+      projectId: "p1",
+      nonce: "n1",
+      onOrphaned: (cause) => orphaned.push(cause),
+      // While the door answers, the person signs out and somebody signs in.
+      connect: async () => {
+        await tab.client.signOutLocally();
+        if (row.revoked) tab.rest.expireAccessToken(tab.session.accessToken);
+        signedInAgain = (await tab.client.login(row.email, row.password)).auth;
+        return "connected";
+      },
     });
-  }
+    await settle();
+
+    const deletes = tab.rest.requests().filter(({ route }) => route.startsWith("DELETE "));
+    expect(deletes.map(({ token }) => token)).toEqual([tab.session.accessToken]);
+    expect(tab.client.session?.accessToken).toBe(signedInAgain?.accessToken);
+    expect(tab.sessionChanges.at(-1)?.accessToken).toBe(signedInAgain?.accessToken);
+    expect(tab.rest.refreshes()).toBe(0);
+    if (row.revoked) {
+      expect(orphaned).toHaveLength(1);
+      expect(tab.rest.orphanTokens()).toHaveLength(1);
+    } else {
+      expect(orphaned).toEqual([]);
+      expect(tab.rest.integrationTokens()[0]?.deletedWith).toBe(tab.session.accessToken);
+    }
+  });
 
   // CM-3: the organization's write flag would lock these members out, and
   // the door and HQ are what decide their roles.
-  for (const row of [
-    { member: "a BASIC_USER", roleCode: "BASIC_USER", override: null },
-    { member: "a READ_ONLY-with-override", roleCode: "READ_ONLY", override: "ADMIN" },
-  ] as const) {
-    it(`${row.member} member can mint`, async () => {
-      vi.useFakeTimers();
-      const tab = signedInTab(row.roleCode);
-      tab.rest.addProject({
-        id: "p1",
-        clientId: "org-1",
-        name: "One",
-        status: "ACTIVE",
-        ...(row.override === null
-          ? {}
-          : { userRoles: [{ clientUserId: "cu-user-1", roleCode: row.override }] }),
-      });
-      const platform = tab.throwaways();
-
-      const door = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
-      await platform.remove({ clientId: "org-1", tokenId: door.id });
-
-      expect(tab.mints().map(({ body }) => body)).toEqual([
-        expect.objectContaining({ name: "mate-door:p1:n1", roleCode: "NO_ACCESS", projects: [] }),
-      ]);
-      expect(tab.rest.orphanTokens()).toEqual([]);
+  it.each(
+    Array.from(
+      [
+        { member: "a BASIC_USER", roleCode: "BASIC_USER", override: null },
+        { member: "a READ_ONLY-with-override", roleCode: "READ_ONLY", override: "ADMIN" },
+      ] as const,
+      (row) => ({ title: `${row.member} member can mint`, row }),
+    ),
+  )("$title", async ({ row }) => {
+    vi.useFakeTimers();
+    const tab = signedInTab(row.roleCode);
+    tab.rest.addProject({
+      id: "p1",
+      clientId: "org-1",
+      name: "One",
+      status: "ACTIVE",
+      ...(row.override === null
+        ? {}
+        : { userRoles: [{ clientUserId: "cu-user-1", roleCode: row.override }] }),
     });
-  }
+    const platform = tab.throwaways();
+
+    const door = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
+    await platform.remove({ clientId: "org-1", tokenId: door.id });
+
+    expect(tab.mints().map(({ body }) => body)).toEqual([
+      expect.objectContaining({ name: "mate-door:p1:n1", roleCode: "NO_ACCESS", projects: [] }),
+    ]);
+    expect(tab.rest.orphanTokens()).toEqual([]);
+  });
 
   it("a background door mint past the bucket waits its gap; an asked-for one never waits", async () => {
     vi.useFakeTimers();

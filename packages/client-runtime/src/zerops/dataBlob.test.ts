@@ -40,11 +40,15 @@ describe("isPrintableUtf8", () => {
     ["invalid utf-8", bytes(0x00, 0xff, 0xfe), false],
   ];
 
-  for (const [name, input, expected] of cases) {
-    it(`${expected ? "accepts" : "rejects"} ${name}`, () => {
-      expect(isPrintableUtf8(input)).toBe(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([name, input, expected]) => ({
+      title: `${expected ? "accepts" : "rejects"} ${name}`,
+      input,
+      expected,
+    })),
+  )("$title", ({ input, expected }) => {
+    expect(isPrintableUtf8(input)).toBe(expected);
+  });
 });
 
 describe("humanizeTtl", () => {
@@ -57,11 +61,15 @@ describe("humanizeTtl", () => {
     [172_800, "2 d"],
   ];
 
-  for (const [seconds, expected] of cases) {
-    it(`renders ${seconds} seconds as ${expected}`, () => {
-      expect(humanizeTtl(seconds)).toBe(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([seconds, expected]) => ({
+      title: `renders ${seconds} seconds as ${expected}`,
+      seconds,
+      expected,
+    })),
+  )("$title", ({ seconds, expected }) => {
+    expect(humanizeTtl(seconds)).toBe(expected);
+  });
 });
 
 describe("hexDump", () => {
@@ -195,13 +203,16 @@ describe("classifyBlob", () => {
     "image/bmp",
     "image/avif",
   ];
-  for (const contentType of imageTypes) {
-    it(`classifies ${contentType} as an image`, () => {
-      expect(classifyBlob(blob({ contentType, data: base64(bytes(0x01)), size: 1 })).kind).toBe(
-        "image",
-      );
-    });
-  }
+  it.each(
+    Array.from(imageTypes, (contentType) => ({
+      title: `classifies ${contentType} as an image`,
+      contentType,
+    })),
+  )("$title", ({ contentType }) => {
+    expect(classifyBlob(blob({ contentType, data: base64(bytes(0x01)), size: 1 })).kind).toBe(
+      "image",
+    );
+  });
 
   it("never renders a truncated image", () => {
     const result = classifyBlob(

@@ -196,13 +196,14 @@ describe("planNextReopen", () => {
     },
   ];
 
-  for (const testCase of cases) {
-    it(testCase.name, () => {
+  it.each(Array.from(cases, (testCase) => ({ title: testCase.name, testCase })))(
+    "$title",
+    ({ testCase }) => {
       const plan = planNextReopen(testCase.entries, testCase.state);
       expect(plan.drop.map((item) => item.id)).toEqual(testCase.drop);
       expect(plan.restore?.id ?? null).toBe(testCase.restore);
-    });
-  }
+    },
+  );
 });
 
 describe("reopenClosedView", () => {

@@ -62,9 +62,10 @@ describe("standUpProgressOf", () => {
       section({ startedAt: "2026-10-01T09:40:00Z", callStartedAt: "2026-10-01T09:50:00Z" }),
     ],
   ];
-  for (const [name, status] of none) {
-    it(`is nothing for ${name}`, () => assert.isUndefined(standUpProgressOf(status, CALL_AT)));
-  }
+  it.each(Array.from(none, ([name, status]) => ({ title: `is nothing for ${name}`, status })))(
+    "$title",
+    ({ status }) => assert.isUndefined(standUpProgressOf(status, CALL_AT)),
+  );
 
   it("is the stage call's, going on with the section its first call left waiting", () => {
     const carried = section({

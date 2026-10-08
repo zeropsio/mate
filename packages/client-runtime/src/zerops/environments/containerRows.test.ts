@@ -115,11 +115,12 @@ const ROWS: ReadonlyArray<{
 ];
 
 describe("the container store in the rows' words", () => {
-  for (const row of ROWS) {
-    it(`${row.name} → ${row.health ?? "absent"}`, () => {
+  it.each(Array.from(ROWS, (row) => ({ title: `${row.name} → ${row.health ?? "absent"}`, row })))(
+    "$title",
+    ({ row }) => {
       expect(containerHealthOf(row.machine)).toBe(row.health);
-    });
-  }
+    },
+  );
 
   it("carries the server version a descriptor reported and the Mate flag as read", () => {
     const snapshot = containerSnapshotOf(

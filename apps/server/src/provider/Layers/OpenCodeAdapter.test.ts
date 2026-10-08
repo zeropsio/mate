@@ -1692,59 +1692,56 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
     }),
   );
 
-  for (const nativeStartsTurn of [true, false]) {
-    it.effect(
-      `reports a late native command failure after another steer (starts turn: ${nativeStartsTurn})`,
-      () =>
-        Effect.gen(function* () {
-          const adapter = yield* OpenCodeAdapter;
-          const threadId = asThreadId(`thread-command-late-error-${nativeStartsTurn}`);
-          const publish = makeOpenCodeEventQueue();
-          const completion = promiseWithResolvers<void>();
-          const modelSelection = createModelSelection(
-            ProviderInstanceId.make("opencode"),
-            "openai/gpt-5",
-          );
-          runtimeMock.state.commandImplementation = async (input) => {
-            publish({
-              type: "message.updated",
-              properties: {
-                sessionID: input.sessionID,
-                info: { id: input.messageID, role: "user" },
-              },
-            });
-            await completion.promise;
-          };
-          yield* adapter.startSession({
-            provider: ProviderDriverKind.make("opencode"),
-            threadId,
-            runtimeMode: "full-access",
-          });
-          if (!nativeStartsTurn)
-            yield* adapter.sendTurn({ threadId, input: "Start work", modelSelection });
-          const command = yield* adapter.sendTurn({ threadId, input: "/review", modelSelection });
-          yield* adapter.sendTurn({ threadId, input: "Focus on authentication", modelSelection });
-          const warningFiber = yield* adapter.streamEvents.pipe(
-            Stream.filter(
-              (event) => event.threadId === threadId && event.type === "runtime.warning",
-            ),
-            Stream.runHead,
-            Effect.forkChild,
-          );
-          completion.reject(new Error("command failed after admission"));
-          const warning = yield* Fiber.join(warningFiber);
-          NodeAssert.equal(warning._tag, "Some");
-          if (warning._tag === "Some" && warning.value.type === "runtime.warning") {
-            NodeAssert.equal(warning.value.payload.detail, "command failed after admission");
-          }
-          const session = (yield* adapter.listSessions()).find(
-            (entry) => entry.threadId === threadId,
-          );
-          NodeAssert.equal(session?.activeTurnId, command.turnId);
-          yield* adapter.stopSession(threadId);
-        }),
-    );
-  }
+  it.effect.each(
+    Array.from([true, false], (nativeStartsTurn) => ({
+      title: `reports a late native command failure after another steer (starts turn: ${nativeStartsTurn})`,
+      nativeStartsTurn,
+    })),
+  )("$title", ({ nativeStartsTurn }) =>
+    Effect.gen(function* () {
+      const adapter = yield* OpenCodeAdapter;
+      const threadId = asThreadId(`thread-command-late-error-${nativeStartsTurn}`);
+      const publish = makeOpenCodeEventQueue();
+      const completion = promiseWithResolvers<void>();
+      const modelSelection = createModelSelection(
+        ProviderInstanceId.make("opencode"),
+        "openai/gpt-5",
+      );
+      runtimeMock.state.commandImplementation = async (input) => {
+        publish({
+          type: "message.updated",
+          properties: {
+            sessionID: input.sessionID,
+            info: { id: input.messageID, role: "user" },
+          },
+        });
+        await completion.promise;
+      };
+      yield* adapter.startSession({
+        provider: ProviderDriverKind.make("opencode"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      if (!nativeStartsTurn)
+        yield* adapter.sendTurn({ threadId, input: "Start work", modelSelection });
+      const command = yield* adapter.sendTurn({ threadId, input: "/review", modelSelection });
+      yield* adapter.sendTurn({ threadId, input: "Focus on authentication", modelSelection });
+      const warningFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId && event.type === "runtime.warning"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      completion.reject(new Error("command failed after admission"));
+      const warning = yield* Fiber.join(warningFiber);
+      NodeAssert.equal(warning._tag, "Some");
+      if (warning._tag === "Some" && warning.value.type === "runtime.warning") {
+        NodeAssert.equal(warning.value.payload.detail, "command failed after admission");
+      }
+      const session = (yield* adapter.listSessions()).find((entry) => entry.threadId === threadId);
+      NodeAssert.equal(session?.activeTurnId, command.turnId);
+      yield* adapter.stopSession(threadId);
+    }),
+  );
 
   it.effect("surfaces native command rejection and leaves the session ready", () =>
     Effect.gen(function* () {

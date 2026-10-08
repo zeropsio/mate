@@ -104,9 +104,9 @@ export const make = Effect.fnUntraced(function* (input: {
   }).pipe(
     Effect.provideService(HttpClient.HttpClient, httpClient),
     Effect.timeout("5 seconds"),
-    Effect.catchTag("TimeoutError", () =>
-      Effect.fail(unavailable("The Zerops restart read timed out.")),
-    ),
+    Effect.catchTags({
+      TimeoutError: () => Effect.fail(unavailable("The Zerops restart read timed out.")),
+    }),
   );
   return ZeropsRestartRead.of({ read });
 });

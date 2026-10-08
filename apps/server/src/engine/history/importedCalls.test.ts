@@ -121,18 +121,18 @@ const DRIVERS: ReadonlyArray<BridgeDriver> = [
 ];
 
 describe("a call the history import brought over", () => {
-  for (const driver of DRIVERS)
-    it(
-      `${driver} [recorded]: a command, a read, an edit and a deploy read as the same calls made live`,
-      { timeout: 30_000 },
-      async () => {
-        const recording = await recordCallHeavy(driver);
-        const live = liveCalls(driver, recording);
-        const imported = importedCalls(recording);
-        assert.strictEqual(imported.length, live.length);
-        imported.forEach((call, n) => {
-          assert.deepStrictEqual(readsAs(call), readsAs(live[n]!), `${live[n]!.tool.name}`);
-        });
-      },
-    );
+  it.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `${driver} [recorded]: a command, a read, an edit and a deploy read as the same calls made live`,
+      driver,
+    })),
+  )("$title", { timeout: 30_000 }, async ({ driver }) => {
+    const recording = await recordCallHeavy(driver);
+    const live = liveCalls(driver, recording);
+    const imported = importedCalls(recording);
+    assert.strictEqual(imported.length, live.length);
+    imported.forEach((call, n) => {
+      assert.deepStrictEqual(readsAs(call), readsAs(live[n]!), `${live[n]!.tool.name}`);
+    });
+  });
 });

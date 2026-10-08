@@ -1,3 +1,4 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no createPublicKey.
 import * as NodeCrypto from "node:crypto";
 import {
   AuthRelayReadScope,
@@ -531,10 +532,9 @@ const cloudLinkProofHandler = Effect.fn("environment.cloud.linkProof")(
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not generate environment link proof."),
   ),
-  Effect.catchTag(
-    "PlatformError",
-    failEnvironmentCloudInternalError("Could not generate environment link proof."),
-  ),
+  Effect.catchTags({
+    PlatformError: failEnvironmentCloudInternalError("Could not generate environment link proof."),
+  }),
 );
 
 const applyCloudRelayConfig = Effect.fn("environment.cloud.applyRelayConfig")(function* (
@@ -595,10 +595,11 @@ const cloudRelayConfigHandler = Effect.fn("environment.cloud.relayConfig")(
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not persist environment relay configuration."),
   ),
-  Effect.catchTag(
-    "SchemaError",
-    failEnvironmentCloudInternalError("Could not persist environment relay configuration."),
-  ),
+  Effect.catchTags({
+    SchemaError: failEnvironmentCloudInternalError(
+      "Could not persist environment relay configuration.",
+    ),
+  }),
 );
 
 const relayClientRequest = <A>(
@@ -1002,10 +1003,9 @@ const cloudEnvironmentHealthHandler = Effect.fn("environment.cloud.health")(
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not answer cloud health request."),
   ),
-  Effect.catchTag(
-    "PlatformError",
-    failEnvironmentCloudInternalError("Could not answer cloud health request."),
-  ),
+  Effect.catchTags({
+    PlatformError: failEnvironmentCloudInternalError("Could not answer cloud health request."),
+  }),
 );
 
 const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")(
@@ -1123,10 +1123,11 @@ const cloudMintCredentialHandler = Effect.fn("environment.cloud.mintCredential")
     ServerSecretStore.isSecretStoreError,
     failEnvironmentCloudInternalError("Could not issue cloud connection credential."),
   ),
-  Effect.catchTag(
-    "PlatformError",
-    failEnvironmentCloudInternalError("Could not issue cloud connection credential."),
-  ),
+  Effect.catchTags({
+    PlatformError: failEnvironmentCloudInternalError(
+      "Could not issue cloud connection credential.",
+    ),
+  }),
 );
 
 export const connectHttpApiLayer = HttpApiBuilder.group(

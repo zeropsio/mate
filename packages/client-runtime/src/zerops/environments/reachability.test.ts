@@ -431,16 +431,17 @@ const TERMINAL = new Set<Reachability["kind"]>([
 ]);
 
 describe("selectReachability (DESIGN §4.4 table, over the container verdict)", () => {
-  for (const row of ROWS) {
-    it(`row ${row.row}: ${row.name}`, () => {
+  it.each(Array.from(ROWS, (row) => ({ title: `row ${row.row}: ${row.name}`, row })))(
+    "$title",
+    ({ row }) => {
       const verdict = selectReachability(row.machine, row.asked ?? ENV_A);
       expect(verdict).toEqual(row.verdict);
       expect(isTerminalReachability(verdict)).toBe(TERMINAL.has(verdict.kind));
       expect(environmentLinkable(verdict)).toBe(
         verdict.kind !== "gone" && verdict.kind !== "replaced",
       );
-    });
-  }
+    },
+  );
 
   it("a remembered Mate reads as a present one in every row, never as unknown or gone (A16)", () => {
     for (const row of ROWS.filter(({ machine: listed }) => listed.presence.kind === "present")) {

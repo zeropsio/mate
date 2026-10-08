@@ -263,30 +263,29 @@ const violations = (
 };
 
 describe("Known monotonicity (DESIGN §3.3 M1–M3, M5, M7) over enumerated event sequences", () => {
-  for (const scope of ["account", null] as const) {
-    it(
-      `holds for every sequence to depth ${DEPTH} (scope ${scope ?? "none"})`,
-      { timeout: EXHAUSTIVE_TIMEOUT_MS },
-      () => {
-        const root: ModelState = {
-          cell: newCell(scope),
-          nextOrdinal: 1,
-          openReads: [],
-          stated: null,
-          nowMs: 100_000,
-        };
-        const report = explore({
-          roots: [root],
-          depth: DEPTH,
-          events: eventsFrom,
-          step: (state, event) => ({ state: step(state, event) }),
-          key: keyOf,
-          check: (before, event, { state: after }) =>
-            violations(before.cell, event, after.cell, after.stated),
-        });
-        expect(report.violations.slice(0, 3)).toEqual([]);
-        expect(report.transitions).toBeGreaterThan(10_000);
-      },
-    );
-  }
+  it.each(
+    Array.from(["account", null] as const, (scope) => ({
+      title: `holds for every sequence to depth ${DEPTH} (scope ${scope ?? "none"})`,
+      scope,
+    })),
+  )("$title", { timeout: EXHAUSTIVE_TIMEOUT_MS }, ({ scope }) => {
+    const root: ModelState = {
+      cell: newCell(scope),
+      nextOrdinal: 1,
+      openReads: [],
+      stated: null,
+      nowMs: 100_000,
+    };
+    const report = explore({
+      roots: [root],
+      depth: DEPTH,
+      events: eventsFrom,
+      step: (state, event) => ({ state: step(state, event) }),
+      key: keyOf,
+      check: (before, event, { state: after }) =>
+        violations(before.cell, event, after.cell, after.stated),
+    });
+    expect(report.violations.slice(0, 3)).toEqual([]);
+    expect(report.transitions).toBeGreaterThan(10_000);
+  });
 });

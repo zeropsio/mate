@@ -291,16 +291,17 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
             }
             return planned;
           }).pipe(
-            Effect.catchTag("McpFileConflict", (conflict: McpFileConflict) =>
-              index + 1 < WRITE_ATTEMPTS
-                ? attempt(index + 1)
-                : Effect.fail(
-                    fail(
-                      input.operation,
-                      `${conflict.path} kept changing while Mate wrote it. Try again in a moment.`,
+            Effect.catchTags({
+              McpFileConflict: (conflict: McpFileConflict) =>
+                index + 1 < WRITE_ATTEMPTS
+                  ? attempt(index + 1)
+                  : Effect.fail(
+                      fail(
+                        input.operation,
+                        `${conflict.path} kept changing while Mate wrote it. Try again in a moment.`,
+                      ),
                     ),
-                  ),
-            ),
+            }),
           );
         const planned = yield* files.locked(paths.claudeConfigs, attempt(0));
         const took = planned.filter(

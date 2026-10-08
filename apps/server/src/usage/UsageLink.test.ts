@@ -73,98 +73,95 @@ const org = ZeropsOrgRead.of({
 });
 
 describe("Mate usage on the existing HQ link", () => {
-  for (const failures of [1, 3])
-    it.effect(
-      `after ${failures} SQLite rejection(s), the 100-token completion is captured before the later 130-token turn`,
-      () =>
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          const rejected = yield* Queue.unbounded<void>();
-          const withTransaction: typeof sql.withTransaction = (effect) =>
-            sql
-              .withTransaction(effect)
-              .pipe(Effect.tapError(() => Queue.offer(rejected, undefined)));
-          const faultObserved = new Proxy(sql, {
-            get: (target, property, receiver) =>
-              property === "withTransaction"
-                ? withTransaction
-                : Reflect.get(target, property, receiver),
-          });
-          const hub = yield* PubSub.unbounded<SpiEvent>();
-          const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
-          const link = yield* makeUsageLink.pipe(
-            Effect.provide(bus),
-            Effect.provideService(SqlClient.SqlClient, faultObserved),
-          );
-          yield* sql`CREATE TRIGGER reject_capture BEFORE INSERT ON usage_outbox BEGIN SELECT RAISE(ABORT, 'injected_capture_failure'); END`;
-          if (event.type !== "turn.usage.completed") throw new Error("Expected usage fixture");
-          const usage = event.payload;
-          const completion = (id: string, tokens: string) =>
-            decodeEvent({
-              ...event,
-              eventId: id,
-              payload: {
-                ...usage,
-                nativeTurnId: id,
-                models: [
-                  {
-                    ...usage.models[0],
-                    components: {
-                      ...usage.models[0]!.components,
-                      uncachedInput: tokens,
-                      output: "0",
-                      inclusiveTotal: tokens,
-                    },
-                  },
-                ],
+  it.effect.each(
+    Array.from([1, 3], (failures) => ({
+      title: `after ${failures} SQLite rejection(s), the 100-token completion is captured before the later 130-token turn`,
+      failures,
+    })),
+  )("$title", ({ failures }) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rejected = yield* Queue.unbounded<void>();
+      const withTransaction: typeof sql.withTransaction = (effect) =>
+        sql.withTransaction(effect).pipe(Effect.tapError(() => Queue.offer(rejected, undefined)));
+      const faultObserved = new Proxy(sql, {
+        get: (target, property, receiver) =>
+          property === "withTransaction"
+            ? withTransaction
+            : Reflect.get(target, property, receiver),
+      });
+      const hub = yield* PubSub.unbounded<SpiEvent>();
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+      const link = yield* makeUsageLink.pipe(
+        Effect.provide(bus),
+        Effect.provideService(SqlClient.SqlClient, faultObserved),
+      );
+      yield* sql`CREATE TRIGGER reject_capture BEFORE INSERT ON usage_outbox BEGIN SELECT RAISE(ABORT, 'injected_capture_failure'); END`;
+      if (event.type !== "turn.usage.completed") throw new Error("Expected usage fixture");
+      const usage = event.payload;
+      const completion = (id: string, tokens: string) =>
+        decodeEvent({
+          ...event,
+          eventId: id,
+          payload: {
+            ...usage,
+            nativeTurnId: id,
+            models: [
+              {
+                ...usage.models[0],
+                components: {
+                  ...usage.models[0]!.components,
+                  uncachedInput: tokens,
+                  output: "0",
+                  inclusiveTotal: tokens,
+                },
               },
-            });
-          yield* PubSub.publish(hub, completion("rejected-100", "100"));
-          yield* Queue.take(rejected);
-          yield* PubSub.publish(hub, completion("later-130", "130"));
-          for (let attempt = 1; attempt < failures; attempt++) {
-            yield* TestClock.adjust(`${2 ** (attempt - 1)} seconds`);
-            yield* Queue.take(rejected);
-          }
-          assert.deepEqual(yield* sql`SELECT identity FROM usage_outbox`, []);
-          yield* sql`DROP TRIGGER reject_capture`;
-          yield* TestClock.adjust(`${2 ** (failures - 1)} seconds`);
-          const sent = yield* Queue.unbounded<MateLinkUp>();
-          const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
-          yield* Effect.forkScoped(lane.run);
-          if (state.type !== "state") throw new Error("Expected state fixture");
-          yield* lane.state(state);
-          const first = yield* Queue.take(sent);
-          if (first.type !== "usage-facts") throw new Error("Expected immutable usage facts");
-          assert.equal(first.facts[0]!.nativeId, "rejected-100");
-          const facts = [...first.facts];
-          yield* lane.receive({
-            type: "usage-ack",
-            batchId: first.batchId,
-            accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
-          });
-          if (facts.length < 2) {
-            const next = yield* Queue.take(sent);
-            if (next.type !== "usage-facts") throw new Error("Expected later turn");
-            facts.push(...next.facts);
-          }
-          assert.deepEqual(
-            facts.map((fact) => fact.nativeId),
-            ["rejected-100", "later-130"],
-          );
-          assert.equal(
-            facts.reduce(
-              (sum, fact) => sum + BigInt(fact.models[0]!.components.inclusiveTotal!),
-              0n,
-            ),
-            230n,
-          );
-        }).pipe(
-          Effect.provide(Sqlite.layer({ filename: ":memory:" })),
-          Effect.provideService(ServerConfig, config),
-          Effect.provideService(ZeropsOrgRead, org),
-        ),
-    );
+            ],
+          },
+        });
+      yield* PubSub.publish(hub, completion("rejected-100", "100"));
+      yield* Queue.take(rejected);
+      yield* PubSub.publish(hub, completion("later-130", "130"));
+      for (let attempt = 1; attempt < failures; attempt++) {
+        yield* TestClock.adjust(`${2 ** (attempt - 1)} seconds`);
+        yield* Queue.take(rejected);
+      }
+      assert.deepEqual(yield* sql`SELECT identity FROM usage_outbox`, []);
+      yield* sql`DROP TRIGGER reject_capture`;
+      yield* TestClock.adjust(`${2 ** (failures - 1)} seconds`);
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      if (state.type !== "state") throw new Error("Expected state fixture");
+      yield* lane.state(state);
+      const first = yield* Queue.take(sent);
+      if (first.type !== "usage-facts") throw new Error("Expected immutable usage facts");
+      assert.equal(first.facts[0]!.nativeId, "rejected-100");
+      const facts = [...first.facts];
+      yield* lane.receive({
+        type: "usage-ack",
+        batchId: first.batchId,
+        accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+      });
+      if (facts.length < 2) {
+        const next = yield* Queue.take(sent);
+        if (next.type !== "usage-facts") throw new Error("Expected later turn");
+        facts.push(...next.facts);
+      }
+      assert.deepEqual(
+        facts.map((fact) => fact.nativeId),
+        ["rejected-100", "later-130"],
+      );
+      assert.equal(
+        facts.reduce((sum, fact) => sum + BigInt(fact.models[0]!.components.inclusiveTotal!), 0n),
+        230n,
+      );
+    }).pipe(
+      Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
+    ),
+  );
   it.effect("a rejected conflicting fact does not stop the later 130-token turn", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

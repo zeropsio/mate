@@ -24,60 +24,62 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
       [40_000, 90_000, 50_000],
     ],
   ];
-  for (const [name, timings, expected] of cases) {
-    it.effect(
-      `real Core schedules ${name} instead of rapid pings and role/structure rechecks`,
-      () =>
-        Effect.gen(function* () {
-          const native = yield* Clock.Clock;
-          const scheduled: number[] = [];
-          let changed = () => {};
-          const observed = new Proxy(native, {
-            get(target, key) {
-              if (key === "sleep")
-                return (duration: Duration.Duration) =>
-                  Effect.suspend(() => {
-                    scheduled.push(Duration.toMillis(duration));
-                    changed();
-                    return target.sleep(duration);
-                  });
-              return Reflect.get(target, key);
-            },
-          });
-          yield* Effect.gen(function* () {
-            const fake = new ZeropsFake(seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG"));
-            const api = yield* Effect.acquireRelease(
-              Effect.promise(() => serve(fake.handle, fake.socket)),
-              (api) => Effect.promise(api.close),
-            );
-            const core = yield* startScenarioCore(
-              { baseUrl: `${api.origin}/api/rest/public`, world: fake.world },
-              timings,
-            );
-            yield* untilHealth(core.call, "active");
-            const session = yield* sessionFor(core.call, "door-owner");
-            const ticket = yield* ticketFor(core.call, session);
-            const socket = yield* openScenarioNavigation(core.origin, ticket);
-            // Data delivery can precede starting the recheck timer. Wait for its scheduling receipt,
-            // never a wall-time delay or an assumption about delivery ordering.
-            yield* Effect.promise(() =>
-              deadline(
-                new Promise<void>((resolve) => {
-                  changed = () => {
-                    if (expected.every((ms) => scheduled.includes(ms))) resolve();
-                  };
-                  changed();
-                }),
-                "Core ping/reconcile/role-check timer scheduling",
-                5000,
-              ),
-            );
-            // Observe the clock boundary of running Core, not a copy of its configuration object.
-            for (const milliseconds of expected) expect(scheduled).toContain(milliseconds);
-            expect(scheduled).not.toContain(200);
-            expect(socket.readyState).toBe(WebSocket.OPEN);
-          }).pipe(Effect.provideService(Clock.Clock, observed));
-        }),
-    );
-  }
+  it.effect.each(
+    Array.from(cases, ([name, timings, expected]) => ({
+      title: `real Core schedules ${name} instead of rapid pings and role/structure rechecks`,
+      timings,
+      expected,
+    })),
+  )("$title", ({ timings, expected }) =>
+    Effect.gen(function* () {
+      const native = yield* Clock.Clock;
+      const scheduled: number[] = [];
+      let changed = () => {};
+      const observed = new Proxy(native, {
+        get(target, key) {
+          if (key === "sleep")
+            return (duration: Duration.Duration) =>
+              Effect.suspend(() => {
+                scheduled.push(Duration.toMillis(duration));
+                changed();
+                return target.sleep(duration);
+              });
+          return Reflect.get(target, key);
+        },
+      });
+      yield* Effect.gen(function* () {
+        const fake = new ZeropsFake(seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG"));
+        const api = yield* Effect.acquireRelease(
+          Effect.promise(() => serve(fake.handle, fake.socket)),
+          (api) => Effect.promise(api.close),
+        );
+        const core = yield* startScenarioCore(
+          { baseUrl: `${api.origin}/api/rest/public`, world: fake.world },
+          timings,
+        );
+        yield* untilHealth(core.call, "active");
+        const session = yield* sessionFor(core.call, "door-owner");
+        const ticket = yield* ticketFor(core.call, session);
+        const socket = yield* openScenarioNavigation(core.origin, ticket);
+        // Data delivery can precede starting the recheck timer. Wait for its scheduling receipt,
+        // never a wall-time delay or an assumption about delivery ordering.
+        yield* Effect.promise(() =>
+          deadline(
+            new Promise<void>((resolve) => {
+              changed = () => {
+                if (expected.every((ms) => scheduled.includes(ms))) resolve();
+              };
+              changed();
+            }),
+            "Core ping/reconcile/role-check timer scheduling",
+            5000,
+          ),
+        );
+        // Observe the clock boundary of running Core, not a copy of its configuration object.
+        for (const milliseconds of expected) expect(scheduled).toContain(milliseconds);
+        expect(scheduled).not.toContain(200);
+        expect(socket.readyState).toBe(WebSocket.OPEN);
+      }).pipe(Effect.provideService(Clock.Clock, observed));
+    }),
+  );
 });

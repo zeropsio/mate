@@ -170,8 +170,9 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
   },
 ];
 
-for (const dialogCase of cases) {
-  describe(dialogCase.name, () => {
+describe.each(Array.from(cases, (dialogCase) => ({ title: dialogCase.name, dialogCase })))(
+  "$title",
+  ({ dialogCase }) => {
     it("keeps the header and footer out of the scrollable panel", () => {
       const html = dialogCase.render();
 
@@ -186,5 +187,5 @@ for (const dialogCase of cases) {
       expect(panel).not.toContain('data-slot="dialog-header"');
       expect(panel).not.toContain('data-slot="dialog-footer"');
     });
-  });
-}
+  },
+);

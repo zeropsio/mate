@@ -68,33 +68,31 @@ describe("stageNodePty", () => {
     { name: "sources only", withPrebuild: false },
     { name: "sources plus the Linux prebuild", withPrebuild: true },
   ];
-  for (const c of cases) {
-    it(c.name, () => {
-      const nodePtyDir = NodePath.join(root, "node-pty");
-      fakeNodePty(nodePtyDir, [
-        "prebuilds/win32-x64",
-        "prebuilds/darwin-arm64",
-        "third_party/conpty",
-      ]);
-      let linuxPrebuildDir: string | undefined;
-      if (c.withPrebuild) {
-        linuxPrebuildDir = NodePath.join(root, "linux-x64");
-        NodeFS.mkdirSync(linuxPrebuildDir);
-        NodeFS.writeFileSync(NodePath.join(linuxPrebuildDir, "pty.node"), "ELF");
-      }
-      const dest = NodePath.join(root, "staged");
-      stageNodePty({ nodePtyDir, linuxPrebuildDir }, dest);
+  it.each(Array.from(cases, (c) => ({ title: c.name, c })))("$title", ({ c }) => {
+    const nodePtyDir = NodePath.join(root, "node-pty");
+    fakeNodePty(nodePtyDir, [
+      "prebuilds/win32-x64",
+      "prebuilds/darwin-arm64",
+      "third_party/conpty",
+    ]);
+    let linuxPrebuildDir: string | undefined;
+    if (c.withPrebuild) {
+      linuxPrebuildDir = NodePath.join(root, "linux-x64");
+      NodeFS.mkdirSync(linuxPrebuildDir);
+      NodeFS.writeFileSync(NodePath.join(linuxPrebuildDir, "pty.node"), "ELF");
+    }
+    const dest = NodePath.join(root, "staged");
+    stageNodePty({ nodePtyDir, linuxPrebuildDir }, dest);
 
-      for (const entry of NODE_PTY_BUNDLED_ENTRIES)
-        assert.isTrue(NodeFS.existsSync(NodePath.join(dest, entry)), entry);
-      assert.isFalse(NodeFS.existsSync(NodePath.join(dest, "prebuilds", "win32-x64")));
-      assert.isFalse(NodeFS.existsSync(NodePath.join(dest, "third_party")));
-      assert.strictEqual(
-        NodeFS.existsSync(NodePath.join(dest, "prebuilds", "linux-x64", "pty.node")),
-        c.withPrebuild,
-      );
-    });
-  }
+    for (const entry of NODE_PTY_BUNDLED_ENTRIES)
+      assert.isTrue(NodeFS.existsSync(NodePath.join(dest, entry)), entry);
+    assert.isFalse(NodeFS.existsSync(NodePath.join(dest, "prebuilds", "win32-x64")));
+    assert.isFalse(NodeFS.existsSync(NodePath.join(dest, "third_party")));
+    assert.strictEqual(
+      NodeFS.existsSync(NodePath.join(dest, "prebuilds", "linux-x64", "pty.node")),
+      c.withPrebuild,
+    );
+  });
 
   it("refuses a node-pty missing a kept entry", () => {
     const nodePtyDir = NodePath.join(root, "node-pty");

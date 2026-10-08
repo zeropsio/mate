@@ -161,9 +161,10 @@ export const verify = Effect.fn("ZeropsProjectBinding.verify")(function* (input:
   const project = yield* projectResponse.json.pipe(
     Effect.catchCause(() => Effect.fail(unavailable("The Zerops API returned a malformed body."))),
     Effect.flatMap((body) => decodeProject(body)),
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(unavailable("The Zerops project read was not in the expected shape.")),
-    ),
+    Effect.catchTags({
+      SchemaError: () =>
+        Effect.fail(unavailable("The Zerops project read was not in the expected shape.")),
+    }),
   );
 
   const endpointHost = originHost(input.endpointOrigin);
@@ -183,9 +184,10 @@ export const verify = Effect.fn("ZeropsProjectBinding.verify")(function* (input:
   const services = yield* servicesResponse.json.pipe(
     Effect.catchCause(() => Effect.fail(unavailable("The Zerops API returned a malformed body."))),
     Effect.flatMap((body) => decodeServiceStack(body)),
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(unavailable("The Zerops service-stack read was not in the expected shape.")),
-    ),
+    Effect.catchTags({
+      SchemaError: () =>
+        Effect.fail(unavailable("The Zerops service-stack read was not in the expected shape.")),
+    }),
   );
 
   const subdomainHost = project.zeropsSubdomainHost;

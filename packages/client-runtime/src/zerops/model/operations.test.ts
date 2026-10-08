@@ -1023,36 +1023,42 @@ describe("reduceZeropsOperations — read tools", () => {
     },
   ] as const;
 
-  for (const { toolName, kind, input, result } of cases) {
-    it(`${toolName} is a ${kind} card from its start, filled in place under one key`, () => {
-      const running = reduceFrom([
-        { id: "c1", createdAt: "2026-09-01T00:00:00.000Z", toolName, input, status: "inProgress" },
-      ]);
-      const done = reduceFrom([
-        {
-          id: "c1",
-          createdAt: "2026-09-01T00:00:00.000Z",
-          toolName,
-          input,
-          status: "completed",
-          resultText: JSON.stringify(result),
-        },
-      ]);
-      expect(running.genericCalls).toEqual([]);
-      expect(running.operations[0]).toMatchObject({
-        key: "op:c1",
-        kind,
-        phase: "running",
-        readResult: { kind, pending: true },
-      });
-      expect(done.operations[0]).toMatchObject({
-        key: "op:c1",
-        kind,
-        phase: "done",
-        readResult: { kind, pending: false },
-      });
+  it.each(
+    Array.from(cases, ({ toolName, kind, input, result }) => ({
+      title: `${toolName} is a ${kind} card from its start, filled in place under one key`,
+      toolName,
+      kind,
+      input,
+      result,
+    })),
+  )("$title", ({ toolName, kind, input, result }) => {
+    const running = reduceFrom([
+      { id: "c1", createdAt: "2026-09-01T00:00:00.000Z", toolName, input, status: "inProgress" },
+    ]);
+    const done = reduceFrom([
+      {
+        id: "c1",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        toolName,
+        input,
+        status: "completed",
+        resultText: JSON.stringify(result),
+      },
+    ]);
+    expect(running.genericCalls).toEqual([]);
+    expect(running.operations[0]).toMatchObject({
+      key: "op:c1",
+      kind,
+      phase: "running",
+      readResult: { kind, pending: true },
     });
-  }
+    expect(done.operations[0]).toMatchObject({
+      key: "op:c1",
+      kind,
+      phase: "done",
+      readResult: { kind, pending: false },
+    });
+  });
 
   it("keeps the kind of a read call that failed, drawn as the error card", () => {
     const { operations } = reduceFrom([

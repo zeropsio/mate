@@ -32,29 +32,37 @@ const project = (override?: string) => ({
 describe("resolveMateVisibility", () => {
   // The same table the door decides by. A row that says `listed` is a row the
   // person sees and the door refuses.
-  for (const [orgRole, override, expected] of [
-    ["OWNER", undefined, "open"],
-    ["ADMIN", undefined, "open"],
-    ["BASIC_USER", undefined, "open"],
-    ["READ_ONLY", undefined, "listed"],
-    ["NO_ACCESS", undefined, "hidden"],
-    // The creator of a Mate is its OWNER whatever the org says about them.
-    ["READ_ONLY", "OWNER", "open"],
-    ["NO_ACCESS", "BASIC_USER", "open"],
-    // An override lowers an org owner as readily as it raises a member.
-    ["OWNER", "READ_ONLY", "listed"],
-    ["OWNER", "NO_ACCESS", "hidden"],
-    // A role this build has never heard of shuts the door rather than opening it.
-    ["OWNER", "SUPERVISOR", "hidden"],
-    ["SUPERVISOR", undefined, "hidden"],
-    [undefined, undefined, "hidden"],
-  ] as const) {
-    it(`${String(orgRole)} with project override ${String(override)} → ${expected}`, () => {
-      expect(resolveMateVisibility({ project: project(override), viewer: viewer(orgRole) })).toBe(
+  it.each(
+    Array.from(
+      [
+        ["OWNER", undefined, "open"],
+        ["ADMIN", undefined, "open"],
+        ["BASIC_USER", undefined, "open"],
+        ["READ_ONLY", undefined, "listed"],
+        ["NO_ACCESS", undefined, "hidden"],
+        // The creator of a Mate is its OWNER whatever the org says about them.
+        ["READ_ONLY", "OWNER", "open"],
+        ["NO_ACCESS", "BASIC_USER", "open"],
+        // An override lowers an org owner as readily as it raises a member.
+        ["OWNER", "READ_ONLY", "listed"],
+        ["OWNER", "NO_ACCESS", "hidden"],
+        // A role this build has never heard of shuts the door rather than opening it.
+        ["OWNER", "SUPERVISOR", "hidden"],
+        ["SUPERVISOR", undefined, "hidden"],
+        [undefined, undefined, "hidden"],
+      ] as const,
+      ([orgRole, override, expected]) => ({
+        title: `${String(orgRole)} with project override ${String(override)} → ${expected}`,
+        orgRole,
+        override,
         expected,
-      );
-    });
-  }
+      }),
+    ),
+  )("$title", ({ orgRole, override, expected }) => {
+    expect(resolveMateVisibility({ project: project(override), viewer: viewer(orgRole) })).toBe(
+      expected,
+    );
+  });
 
   it("hides a project in another organization", () => {
     expect(
@@ -81,11 +89,14 @@ describe("mateOnlyOwnerOpensIt", () => {
   });
 
   // A wrong name would be worse than none, and so would a blank.
-  for (const name of [undefined, "", "   "]) {
-    it(`says the same thing without a name (${JSON.stringify(name)})`, () => {
-      expect(mateOnlyOwnerOpensIt(name)).toBe("Only its owner opens this Mate.");
-    });
-  }
+  it.each(
+    Array.from([undefined, "", "   "], (name) => ({
+      title: `says the same thing without a name (${JSON.stringify(name)})`,
+      name,
+    })),
+  )("$title", ({ name }) => {
+    expect(mateOnlyOwnerOpensIt(name)).toBe("Only its owner opens this Mate.");
+  });
 });
 
 describe("mateMemberName", () => {
@@ -187,26 +198,34 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
   // A verb a person cannot finish is not offered. Deleting the project, and renaming it — a Mate's
   // name is its project's (D3) — need effective OWNER or ADMIN there; handing a Mate over writes a
   // per-project role, which is an org owner's or admin's verb only.
-  for (const [orgRole, override, expected] of [
-    ["OWNER", undefined, { delete: true, rename: true, assign: true }],
-    ["ADMIN", undefined, { delete: true, rename: true, assign: true }],
-    // A plain member with a Mate of their own: theirs to delete (measured
-    // 2026-09-15) and to rename, never theirs to give away.
-    ["READ_ONLY", "OWNER", { delete: true, rename: true, assign: false }],
-    ["NO_ACCESS", "OWNER", { delete: true, rename: true, assign: false }],
-    // A member of the org with no standing on this project: they see it.
-    ["BASIC_USER", undefined, { delete: false, rename: false, assign: false }],
-    ["READ_ONLY", undefined, { delete: false, rename: false, assign: false }],
-    ["NO_ACCESS", undefined, { delete: false, rename: false, assign: false }],
-    // An override lowers an org owner here, but their org role still lets them
-    // hand the Mate to somebody — that is what makes a leaver's Mate
-    // recoverable at all.
-    ["OWNER", "READ_ONLY", { delete: false, rename: false, assign: true }],
-  ] as const) {
-    it(`${String(orgRole)} with project override ${String(override)}`, () => {
-      expect(verbs(orgRole, override)).toEqual(expected);
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        ["OWNER", undefined, { delete: true, rename: true, assign: true }],
+        ["ADMIN", undefined, { delete: true, rename: true, assign: true }],
+        // A plain member with a Mate of their own: theirs to delete (measured
+        // 2026-09-15) and to rename, never theirs to give away.
+        ["READ_ONLY", "OWNER", { delete: true, rename: true, assign: false }],
+        ["NO_ACCESS", "OWNER", { delete: true, rename: true, assign: false }],
+        // A member of the org with no standing on this project: they see it.
+        ["BASIC_USER", undefined, { delete: false, rename: false, assign: false }],
+        ["READ_ONLY", undefined, { delete: false, rename: false, assign: false }],
+        ["NO_ACCESS", undefined, { delete: false, rename: false, assign: false }],
+        // An override lowers an org owner here, but their org role still lets them
+        // hand the Mate to somebody — that is what makes a leaver's Mate
+        // recoverable at all.
+        ["OWNER", "READ_ONLY", { delete: false, rename: false, assign: true }],
+      ] as const,
+      ([orgRole, override, expected]) => ({
+        title: `${String(orgRole)} with project override ${String(override)}`,
+        orgRole,
+        override,
+        expected,
+      }),
+    ),
+  )("$title", ({ orgRole, override, expected }) => {
+    expect(verbs(orgRole, override)).toEqual(expected);
+  });
 
   it("offers nothing on a project in another organization", () => {
     expect(

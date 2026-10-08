@@ -206,34 +206,38 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
     },
   ];
 
-  for (const { name, decideTool, expected } of GATE_CASES) {
-    it.effect(`gates tool calls: ${name}`, () =>
-      Effect.gen(function* () {
-        const { adapter, sessions } = yield* withProfile({ ...PROFILE, decideTool });
-        yield* adapter.startSession(startInput());
-        const [preToolUse] = sessions[0]!.options.hooks?.PreToolUse?.[0]?.hooks ?? [];
-        const output = preToolUse!(
-          {
-            hook_event_name: "PreToolUse",
-            tool_name: "Bash",
-            tool_input: { command: "ls -la" },
-            tool_use_id: "toolu_1",
-            session_id: "session",
-            transcript_path: "/tmp/transcript.jsonl",
-            cwd: "/var/www/.crew/backend",
-          },
-          "toolu_1",
-          { signal: new AbortController().signal },
-        );
-        yield* TestClock.adjust("15 seconds");
-        const result = yield* Effect.promise(() => output);
-        assert.deepStrictEqual(
-          "hookSpecificOutput" in result ? result.hookSpecificOutput : undefined,
-          expected,
-        );
-      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
-    );
-  }
+  it.effect.each(
+    Array.from(GATE_CASES, ({ name, decideTool, expected }) => ({
+      title: `gates tool calls: ${name}`,
+      decideTool,
+      expected,
+    })),
+  )("$title", ({ decideTool, expected }) =>
+    Effect.gen(function* () {
+      const { adapter, sessions } = yield* withProfile({ ...PROFILE, decideTool });
+      yield* adapter.startSession(startInput());
+      const [preToolUse] = sessions[0]!.options.hooks?.PreToolUse?.[0]?.hooks ?? [];
+      const output = preToolUse!(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "ls -la" },
+          tool_use_id: "toolu_1",
+          session_id: "session",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/var/www/.crew/backend",
+        },
+        "toolu_1",
+        { signal: new AbortController().signal },
+      );
+      yield* TestClock.adjust("15 seconds");
+      const result = yield* Effect.promise(() => output);
+      assert.deepStrictEqual(
+        "hookSpecificOutput" in result ? result.hookSpecificOutput : undefined,
+        expected,
+      );
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
 
   // SessionStart hands the extension each (re)start of the CLI session and
   // returns its text as additional context; a fork resumes a transcript too.
@@ -276,43 +280,48 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
     { source: "clear", context: undefined, seen: "clear", expected: {} },
   ];
 
-  for (const { source, context, seen, expected } of SESSION_START_CASES) {
-    it.effect(`hands a ${source} session start to the extension`, () =>
-      Effect.gen(function* () {
-        const events: Array<unknown> = [];
-        const { adapter, sessions } = yield* withProfile(PROFILE, {
-          extension: {
-            ...EXTENSION,
-            onSessionStart: (event) =>
-              Effect.sync(() => events.push(event)).pipe(Effect.as(context)),
-          },
-        });
-        yield* adapter.startSession(startInput());
-        const [sessionStart] = sessions[0]!.options.hooks?.SessionStart?.[0]?.hooks ?? [];
-        const result = yield* Effect.promise(() =>
-          sessionStart!(
-            {
-              hook_event_name: "SessionStart",
-              source,
-              session_id: "session-1",
-              transcript_path: "/home/zerops/.claude/projects/x/session-1.jsonl",
-              cwd: "/var/www/.crew/backend",
-            },
-            undefined,
-            { signal: new AbortController().signal },
-          ),
-        );
-        assert.deepStrictEqual(result, expected);
-        assert.deepStrictEqual(events, [
+  it.effect.each(
+    Array.from(SESSION_START_CASES, ({ source, context, seen, expected }) => ({
+      title: `hands a ${source} session start to the extension`,
+      source,
+      context,
+      seen,
+      expected,
+    })),
+  )("$title", ({ source, context, seen, expected }) =>
+    Effect.gen(function* () {
+      const events: Array<unknown> = [];
+      const { adapter, sessions } = yield* withProfile(PROFILE, {
+        extension: {
+          ...EXTENSION,
+          onSessionStart: (event) => Effect.sync(() => events.push(event)).pipe(Effect.as(context)),
+        },
+      });
+      yield* adapter.startSession(startInput());
+      const [sessionStart] = sessions[0]!.options.hooks?.SessionStart?.[0]?.hooks ?? [];
+      const result = yield* Effect.promise(() =>
+        sessionStart!(
           {
-            source: seen,
-            sessionId: "session-1",
-            transcriptPath: "/home/zerops/.claude/projects/x/session-1.jsonl",
+            hook_event_name: "SessionStart",
+            source,
+            session_id: "session-1",
+            transcript_path: "/home/zerops/.claude/projects/x/session-1.jsonl",
+            cwd: "/var/www/.crew/backend",
           },
-        ]);
-      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
-    );
-  }
+          undefined,
+          { signal: new AbortController().signal },
+        ),
+      );
+      assert.deepStrictEqual(result, expected);
+      assert.deepStrictEqual(events, [
+        {
+          source: seen,
+          sessionId: "session-1",
+          transcriptPath: "/home/zerops/.claude/projects/x/session-1.jsonl",
+        },
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
 
   // The CLI runs its startup and resume SessionStart before the SDK has
   // registered any callback (CLI 2.1.283), so a process's start reaches the
@@ -446,54 +455,60 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
     },
   ];
 
-  for (const { name, resumed, calls, seen, outputs } of FIRST_PROMPT_CASES) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        const sources: Array<string> = [];
-        const { adapter, sessions } = yield* withProfile(PROFILE, {
-          extension: {
-            ...EXTENSION,
-            onSessionStart: (event) =>
-              Effect.sync(() => {
-                assert.deepStrictEqual(
-                  [event.sessionId, event.transcriptPath],
-                  ["session-1", TRANSCRIPT],
-                );
-                sources.push(event.source);
-                return `context for ${event.source}`;
-              }),
-          },
-        });
-        yield* adapter.startSession(
-          startInput(
-            resumed
-              ? {
-                  resumeCursor: {
-                    threadId: THREAD_ID,
-                    resume: "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
-                    turnCount: 1,
-                  },
-                }
-              : {},
+  it.effect.each(
+    Array.from(FIRST_PROMPT_CASES, ({ name, resumed, calls, seen, outputs }) => ({
+      title: name,
+      resumed,
+      calls,
+      seen,
+      outputs,
+    })),
+  )("$title", ({ resumed, calls, seen, outputs }) =>
+    Effect.gen(function* () {
+      const sources: Array<string> = [];
+      const { adapter, sessions } = yield* withProfile(PROFILE, {
+        extension: {
+          ...EXTENSION,
+          onSessionStart: (event) =>
+            Effect.sync(() => {
+              assert.deepStrictEqual(
+                [event.sessionId, event.transcriptPath],
+                ["session-1", TRANSCRIPT],
+              );
+              sources.push(event.source);
+              return `context for ${event.source}`;
+            }),
+        },
+      });
+      yield* adapter.startSession(
+        startInput(
+          resumed
+            ? {
+                resumeCursor: {
+                  threadId: THREAD_ID,
+                  resume: "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
+                  turnCount: 1,
+                },
+              }
+            : {},
+        ),
+      );
+      const hooks = sessions[0]!.options.hooks ?? {};
+      const results: Array<unknown> = [];
+      for (const [event, source] of calls) {
+        const [callback] = hooks[event]?.[0]?.hooks ?? [];
+        results.push(
+          yield* Effect.promise(() =>
+            callback!(hookInput(event, source) as never, undefined, {
+              signal: new AbortController().signal,
+            }),
           ),
         );
-        const hooks = sessions[0]!.options.hooks ?? {};
-        const results: Array<unknown> = [];
-        for (const [event, source] of calls) {
-          const [callback] = hooks[event]?.[0]?.hooks ?? [];
-          results.push(
-            yield* Effect.promise(() =>
-              callback!(hookInput(event, source) as never, undefined, {
-                signal: new AbortController().signal,
-              }),
-            ),
-          );
-        }
-        assert.deepStrictEqual(sources, seen);
-        assert.deepStrictEqual(results, outputs);
-      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
-    );
-  }
+      }
+      assert.deepStrictEqual(sources, seen);
+      assert.deepStrictEqual(results, outputs);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
 
   it.effect("runs the profile's model and effort over the thread's, on start and every turn", () =>
     Effect.gen(function* () {
@@ -687,17 +702,22 @@ describe("a profile's tools, served in-process as the crew MCP server", () => {
     },
   ];
 
-  for (const { name, method, params, reply } of CASES) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        const { request, notify } = yield* connectCrewServer;
-        notify("notifications/initialized");
-        assert.deepStrictEqual(yield* request(7, method, params), {
-          jsonrpc: "2.0",
-          id: 7,
-          ...reply,
-        });
-      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
-    );
-  }
+  it.effect.each(
+    Array.from(CASES, ({ name, method, params, reply }) => ({
+      title: name,
+      method,
+      params,
+      reply,
+    })),
+  )("$title", ({ method, params, reply }) =>
+    Effect.gen(function* () {
+      const { request, notify } = yield* connectCrewServer;
+      notify("notifications/initialized");
+      assert.deepStrictEqual(yield* request(7, method, params), {
+        jsonrpc: "2.0",
+        id: 7,
+        ...reply,
+      });
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
 });

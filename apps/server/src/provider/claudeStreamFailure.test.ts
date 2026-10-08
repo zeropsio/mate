@@ -155,17 +155,24 @@ describe("describeClaudeStreamFailure", () => {
     },
     { name: "nothing to go on", reason: "Claude Code stopped unexpectedly." },
   ];
-  for (const { name, error, stderr, defect, reason, next } of cases) {
-    it(name, () => {
-      const failure = describeClaudeStreamFailure({
-        error,
-        stderr: stderr ?? "",
-        ...(defect ? { defect } : {}),
-      });
-      expect(failure.reason).toBe(reason);
-      expect(failure.words).toBe(`${reason} ${next ?? NEXT}`);
+  it.each(
+    Array.from(cases, ({ name, error, stderr, defect, reason, next }) => ({
+      title: name,
+      error,
+      stderr,
+      defect,
+      reason,
+      next,
+    })),
+  )("$title", ({ error, stderr, defect, reason, next }) => {
+    const failure = describeClaudeStreamFailure({
+      error,
+      stderr: stderr ?? "",
+      ...(defect ? { defect } : {}),
     });
-  }
+    expect(failure.reason).toBe(reason);
+    expect(failure.words).toBe(`${reason} ${next ?? NEXT}`);
+  });
 
   it("logs the error's head, its code or signal, and its crash lines only", () => {
     const failure = describeClaudeStreamFailure({
@@ -250,12 +257,13 @@ describe("crashLines never lets a secret through", () => {
     `Bun v1.3.2 (b131639c) Linux x64 ${ANT}`,
     `RSS: 1.95GB | ${PASS}`,
   ];
-  for (const line of leaks) {
-    it(line.slice(0, 48), () => {
+  it.each(Array.from(leaks, (line) => ({ title: line.slice(0, 48), line })))(
+    "$title",
+    ({ line }) => {
       const kept = crashLines(`${line}\n`).join("\n");
       for (const secret of secrets) expect(kept).not.toContain(secret);
-    });
-  }
+    },
+  );
 
   it("keeps the lines that say what crashed", () => {
     expect(

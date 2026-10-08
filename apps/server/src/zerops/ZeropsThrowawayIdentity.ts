@@ -232,9 +232,10 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       );
   }
   const project = yield* decodeProject(own.body).pipe(
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(unavailable("This Mate's own project read carried no clientId.")),
-    ),
+    Effect.catchTags({
+      SchemaError: () =>
+        Effect.fail(unavailable("This Mate's own project read carried no clientId.")),
+    }),
   );
 
   // 1. Who the presented token is.
@@ -251,9 +252,10 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   }
   const userInfo = yield* readJson(userInfoResponse).pipe(
     Effect.flatMap((body) => decodeUserInfo(body)),
-    Effect.catchTag("SchemaError", () =>
-      Effect.fail(unavailable("The Zerops user read was not in the expected shape.")),
-    ),
+    Effect.catchTags({
+      SchemaError: () =>
+        Effect.fail(unavailable("The Zerops user read was not in the expected shape.")),
+    }),
   );
   const presentedId = userInfo.id ?? "";
   if (presentedId.length === 0) return yield* refused("token_dead");

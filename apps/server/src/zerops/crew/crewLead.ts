@@ -202,11 +202,12 @@ export const wakeLead = (
     yield* remember(core, { kind: "lead-woken", key: next.wake.key }, run.run);
     core.memory.leadWakes.set(lead.row.handle, next.wake);
     yield* leadTurn(core, lead, { kind: "crew", startedBy: run.startedBy }, next.card).pipe(
-      Effect.catchTag("CrewCommandError", (refusal) =>
-        refusal.reason === "not-allowed"
-          ? pauseRun(core, "refused", refusal.detail)
-          : Effect.fail(refusal),
-      ),
+      Effect.catchTags({
+        CrewCommandError: (refusal) =>
+          refusal.reason === "not-allowed"
+            ? pauseRun(core, "refused", refusal.detail)
+            : Effect.fail(refusal),
+      }),
     );
   });
 

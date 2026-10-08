@@ -194,33 +194,36 @@ it.layer(NodeServices.layer)("mintZeropsThrowawayPairingCredential", (it) => {
     }).pipe(Effect.provide(makeLayer(throwawayRoute("OWNER")))),
   );
 
-  for (const [orgRole, outcome] of [
-    ["OWNER", "open"],
-    ["ADMIN", "open"],
-    ["BASIC_USER", "open"],
-    ["READ_ONLY", "ZeropsReadOnlyError"],
-    ["NO_ACCESS", "ZeropsNotAMemberError"],
-  ] as const) {
-    it.effect(`a ${orgRole} caller: ${outcome}`, () =>
-      Effect.gen(function* () {
-        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-        const attempt = mintZeropsThrowawayPairingCredential({
-          environment,
-          token: DOOR_TOKEN,
-        });
-        if (outcome === "open") {
-          const issued = yield* attempt;
-          assert.strictEqual(issued.label, `Zerops ${orgRole}`);
-        } else {
-          const error = yield* Effect.flip(attempt);
-          assert.strictEqual(error._tag, outcome);
-          // A refusal issues nothing at all — not a narrower grant, nothing.
-          const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
-          assert.strictEqual(links.length, 0);
-        }
-      }).pipe(Effect.provide(makeLayer(throwawayRoute(orgRole)))),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["OWNER", "open"],
+        ["ADMIN", "open"],
+        ["BASIC_USER", "open"],
+        ["READ_ONLY", "ZeropsReadOnlyError"],
+        ["NO_ACCESS", "ZeropsNotAMemberError"],
+      ] as const,
+      ([orgRole, outcome]) => ({ title: `a ${orgRole} caller: ${outcome}`, orgRole, outcome }),
+    ),
+  )("$title", ({ orgRole, outcome }) =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const attempt = mintZeropsThrowawayPairingCredential({
+        environment,
+        token: DOOR_TOKEN,
+      });
+      if (outcome === "open") {
+        const issued = yield* attempt;
+        assert.strictEqual(issued.label, `Zerops ${orgRole}`);
+      } else {
+        const error = yield* Effect.flip(attempt);
+        assert.strictEqual(error._tag, outcome);
+        // A refusal issues nothing at all — not a narrower grant, nothing.
+        const links = yield* serverAuth.listPairingLinks({ excludeSubjects: [] });
+        assert.strictEqual(links.length, 0);
+      }
+    }).pipe(Effect.provide(makeLayer(throwawayRoute(orgRole)))),
+  );
 
   it.effect("refuses a credential that is not a throwaway, and leaves no grant behind", () =>
     Effect.gen(function* () {

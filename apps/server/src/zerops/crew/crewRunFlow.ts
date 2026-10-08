@@ -73,13 +73,14 @@ const runTurn = (
 ) =>
   continueTask(core, applied, member, task, dispatchPrincipal(applied, task), text).pipe(
     Effect.asVoid,
-    Effect.catchTag("CrewCommandError", (error) =>
-      error.reason === "not-allowed"
-        ? pauseRun(core, "refused", error.detail)
-        : error.reason === "wrong-state"
-          ? Effect.void
-          : Effect.fail(error),
-    ),
+    Effect.catchTags({
+      CrewCommandError: (error) =>
+        error.reason === "not-allowed"
+          ? pauseRun(core, "refused", error.detail)
+          : error.reason === "wrong-state"
+            ? Effect.void
+            : Effect.fail(error),
+    }),
   );
 
 /** What the run does with a free crewmate's open task. */
@@ -157,7 +158,7 @@ const allowShowOnDev = (core: CrewCore, applied: AppliedCrew, member: CrewMember
     }
     return yield* grantClaim(core, { kind: "crew", startedBy: run.startedBy }, host).pipe(
       Effect.as(true),
-      Effect.catchTag("CrewCommandError", () => Effect.succeed(false)),
+      Effect.catchTags({ CrewCommandError: () => Effect.succeed(false) }),
     );
   });
 
@@ -187,19 +188,20 @@ export const autoLand = (
     memory.autoLanding.add(task.assignment);
     return core.background(
       landing(core.crewmate(task.member)).pipe(
-        Effect.catchTag("CrewCommandError", (error) =>
-          Effect.gen(function* () {
-            const now = Option.getOrUndefined(
-              yield* Effect.option(requireTask(core, task.assignment)),
-            );
-            if (now?.state === "landed") return;
-            const words = failureWords(error);
-            memory.lastError = `#${task.number} waits to land: ${words}`;
-            if (memory.heldLandings.get(task.assignment) === words) return;
-            memory.heldLandings.set(task.assignment, words);
-            yield* landingHeld(core, task, words);
-          }),
-        ),
+        Effect.catchTags({
+          CrewCommandError: (error) =>
+            Effect.gen(function* () {
+              const now = Option.getOrUndefined(
+                yield* Effect.option(requireTask(core, task.assignment)),
+              );
+              if (now?.state === "landed") return;
+              const words = failureWords(error);
+              memory.lastError = `#${task.number} waits to land: ${words}`;
+              if (memory.heldLandings.get(task.assignment) === words) return;
+              memory.heldLandings.set(task.assignment, words);
+              yield* landingHeld(core, task, words);
+            }),
+        }),
         Effect.ensuring(Effect.sync(() => memory.autoLanding.delete(task.assignment))),
       ),
     );

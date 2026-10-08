@@ -1,4 +1,5 @@
-import * as NodeCrypto from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 import {
   CheckpointRef,
   type CheckpointCaptureSnapshot,
@@ -26,7 +27,7 @@ import { ZeropsRepositorySource, type ZeropsRepository } from "../zerops/ZeropsR
 import { ZeropsWorkspaceObserver, withRepository } from "../zerops/ZeropsWorkspaceObserver.ts";
 
 const now = Effect.map(DateTime.now, DateTime.formatIso);
-const hash = (value: string) => NodeCrypto.createHash("sha256").update(value).digest("hex");
+const hash = (value: string) => Hex.encode(sha256(new TextEncoder().encode(value)));
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const missing = (
   status: Exclude<CheckpointCaptureSnapshot["status"], "captured">,

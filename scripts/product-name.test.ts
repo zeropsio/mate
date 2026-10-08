@@ -99,11 +99,15 @@ describe("collectOldNameLiterals", () => {
     ["a vendor identifier", `const clientInfo = { name: "t3code_desktop" };`, 0],
     ["the product's own name", `const message = "Codex is disabled in settings.";`, 0],
   ];
-  for (const [name, source, expected] of cases) {
-    it(`${expected === 0 ? "ignores" : "reports"} ${name}`, () => {
-      assert.lengthOf(collectOldNameLiterals(source, "sample.tsx"), expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([name, source, expected]) => ({
+      title: `${expected === 0 ? "ignores" : "reports"} ${name}`,
+      source,
+      expected,
+    })),
+  )("$title", ({ source, expected }) => {
+    assert.lengthOf(collectOldNameLiterals(source, "sample.tsx"), expected);
+  });
 });
 
 it.effect("no server or shared-package literal names the product T3 Code", () =>

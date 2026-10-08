@@ -958,11 +958,12 @@ describe("filtersDirty", () => {
     },
   ];
 
-  for (const testCase of cases) {
-    it(testCase.name, () => {
+  it.each(Array.from(cases, (testCase) => ({ title: testCase.name, testCase })))(
+    "$title",
+    ({ testCase }) => {
       expect(filtersDirty(testCase.draft, testCase.applied)).toBe(testCase.dirty);
-    });
-  }
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
