@@ -26,6 +26,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as ServerConfig from "./config.ts";
+import { MateEngine, type MateEngineService } from "./engine/MateEngine.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -346,6 +347,42 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
     Effect.withSpan(`server.startup.${phase}`),
   );
 
+type ScopedRoot = { readonly start: () => Effect.Effect<void, never, Scope.Scope> };
+
+/**
+ * The conversation's roots, by the engine that owns it. V1's: its reactors
+ * and the session reaper in `reactorScope`, then its boot reconcile. The Mate
+ * engine's: its own start in the same scope, with V1 built but parked (no
+ * reactor, no reaper, no reconcile).
+ */
+export const startConversationRoots = <E, R>(input: {
+  readonly engine: Pick<MateEngineService, "live" | "start">;
+  readonly reactorScope: Scope.Scope;
+  readonly v1: {
+    readonly reactor: ScopedRoot;
+    readonly reaper: ScopedRoot;
+    readonly reconcile: Effect.Effect<void, E, R>;
+  };
+}): Effect.Effect<void, E, R> =>
+  input.engine.live
+    ? runStartupPhase("engine.start", input.engine.start().pipe(Scope.provide(input.reactorScope)))
+    : Effect.gen(function* () {
+        yield* runStartupPhase(
+          "reactors.start",
+          Effect.gen(function* () {
+            yield* input.v1.reactor.start().pipe(Scope.provide(input.reactorScope));
+            yield* input.v1.reaper.start().pipe(Scope.provide(input.reactorScope));
+          }),
+        );
+        yield* runStartupPhase("provider-sessions.reconcile", input.v1.reconcile);
+      });
+
+/** V1's auto-bootstrap (a project and its first thread) runs only while V1 owns the conversation. */
+export const runsV1AutoBootstrap = (
+  config: Pick<ServerConfig.ServerConfig["Service"], "autoBootstrapProjectFromCwd">,
+  engine: Pick<MateEngineService, "live">,
+): boolean => config.autoBootstrapProjectFromCwd && !engine.live;
+
 export const reconcileProviderSessions = Effect.gen(function* () {
   const bootAt = DateTime.formatIso(yield* DateTime.now);
   const crypto = yield* Crypto.Crypto;
@@ -458,6 +495,7 @@ export const make = (options?: StartupOptions) =>
     const keybindings = yield* Keybindings.Keybindings;
     const orchestrationReactor = yield* OrchestrationReactor.OrchestrationReactor;
     const providerSessionReaper = yield* ProviderSessionReaper.ProviderSessionReaper;
+    const mateEngine = yield* MateEngine;
     const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -505,21 +543,21 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
-      yield* runStartupPhase(
-        "reactors.start",
-        Effect.gen(function* () {
-          yield* orchestrationReactor.start().pipe(Scope.provide(reactorScope));
-          yield* providerSessionReaper.start().pipe(Scope.provide(reactorScope));
-        }),
-      );
-
-      yield* runStartupPhase("provider-sessions.reconcile", reconcileProviderSessions);
+      yield* startConversationRoots({
+        engine: mateEngine,
+        reactorScope,
+        v1: {
+          reactor: orchestrationReactor,
+          reaper: providerSessionReaper,
+          reconcile: reconcileProviderSessions,
+        },
+      });
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;
       yield* Effect.logDebug("startup phase: preparing welcome payload");
 
-      if (serverConfig.autoBootstrapProjectFromCwd) {
+      if (runsV1AutoBootstrap(serverConfig, mateEngine)) {
         yield* forkParked(
           runStartupPhase(
             "welcome.autobootstrap",

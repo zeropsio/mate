@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  ItemId,
   MessageId,
   ProviderInstanceId,
   ThreadId,
@@ -26,6 +27,9 @@ import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import { MateEngine } from "../engine/MateEngine.ts";
+import { RunAdmission } from "../engine/ports.ts";
+import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
 
 const serviceMapScene = loadShowcaseScene("web:service-map-live");
 const noZeropsScene = loadShowcaseScene("web:no-zerops");
@@ -101,18 +105,23 @@ const absoluteLoginStepScene: ShowcaseScene = {
  * registry it reads an instance's driver from. No scene here has a thread to
  * read or a configured instance to look up.
  */
-const fixtureHost = (zerops: ServerConfig.ServerConfig["Service"]["zerops"]) =>
+const fixtureHost = (
+  zerops: ServerConfig.ServerConfig["Service"]["zerops"],
+  mateEngine: ServerConfig.MateEngineMode = "v1",
+) =>
   Layer.mergeAll(
-    ServerConfig.layer({ zerops } as ServerConfig.ServerConfig["Service"]),
+    ServerConfig.layer({ zerops, mateEngine } as ServerConfig.ServerConfig["Service"]),
     Layer.mock(ProjectionSnapshotQuery)({}),
     ProviderRegistryTest.empty(),
     ProviderInstanceRegistryTest.empty(),
+    engineHostDoubles,
   );
 
 const fixtureLayer = (
   scene: ShowcaseScene,
   zerops: ServerConfig.ServerConfig["Service"]["zerops"] = undefined,
-) => makeFixtureZeropsLayer(scene).pipe(Layer.provide(fixtureHost(zerops)));
+  mateEngine: ServerConfig.MateEngineMode = "v1",
+) => makeFixtureZeropsLayer(scene).pipe(Layer.provide(fixtureHost(zerops, mateEngine)));
 
 const withFixtureFeeds = <A>(
   scene: ShowcaseScene,
@@ -361,4 +370,39 @@ it.effect("admits turns through the live gate, over a scene where nobody recorde
       ),
     ),
   ),
+);
+
+it.effect.each([
+  ["runs V1 when the switch says v1", "v1", false],
+  ["runs the Mate engine when the switch says mate", "mate", true],
+] as const)("a fixture scene %s, as a live Mate would", ([, mateEngine, live]) =>
+  Effect.gen(function* () {
+    assert.strictEqual((yield* MateEngine).live, live);
+  }).pipe(Effect.provide(fixtureLayer(serviceMapScene, undefined, mateEngine))),
+);
+
+it.effect(
+  "a fixture scene on the Mate engine admits runs through the same gate as V1's turns",
+  () =>
+    Effect.gen(function* () {
+      const refusal = yield* (yield* RunAdmission)
+        .admit({
+          instanceId: "claudeAgent",
+          principal: { kind: "person", subject: `${ZEROPS_SUBJECT_PREFIX}jan-user-id` },
+          trigger: { kind: "person", itemId: ItemId.make("mate/r/1/i/1") },
+        })
+        .pipe(Effect.flip);
+      assert.equal(
+        refusal.message,
+        "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.",
+      );
+    }).pipe(
+      Effect.provide(
+        fixtureLayer(
+          serviceMapScene,
+          resolveZeropsEnvironment({ projectId: "fixture-project", apiHost: undefined }),
+          "mate",
+        ),
+      ),
+    ),
 );

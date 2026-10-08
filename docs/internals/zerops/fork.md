@@ -48,7 +48,8 @@ Measured against the real upstream repo, 2026-08-28:
 - **Owned core** — the rest of `apps/server`, `apps/web` (outside the product sub-paths below),
   `packages/{contracts,client-runtime,shared,ssh}`, `apps/desktop`, `apps/mobile`
   - _Rule:_ Ours. Upstream changes here are optional cherry-picks chosen by triage (§6).
-- **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`,
+- **Owned product** — `apps/server/src/zerops/**`, `apps/server/src/engine/**` (the Mate
+  engine), `packages/contracts/src/engine*.ts`, `apps/web/src/zerops/**`,
   `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`,
   `apps/mobile/src/features/zerops/**`,
   `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`, `packages/hq-git/**`,
@@ -68,6 +69,13 @@ enforcement. No history inspection, nothing rots on a squash or rename.
 Alongside it, a zcp-style architecture test: ported code carries no `zerops` imports; owned
 product code reaches providers only through the SPI (§3.2); its list of violations is empty since
 SPI-1 (2026-08-29).
+
+- The Mate engine (`apps/server/src/engine/**`) is the SPI's one consumer: it reaches the drivers
+  through `ProviderService` and its bridge, and imports no other provider file. The rest of owned
+  product reaches conversations through the engine, not the drivers.
+- The engine imports nothing from `zerops/**` or V1's `orchestration/**` directly: Zerops reaches
+  it through `engine/ports.ts`. The rule is about direct imports — a neutral module the engine
+  uses (`checkpointing/WorkspaceHistory.ts`) may itself import `zerops/` modules.
 
 ### 3.2 The adapter SPI — the contract that makes porting safe
 

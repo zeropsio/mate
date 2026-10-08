@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { expect, it } from "vite-plus/test";
 import { checkSteps } from "./ci-local.ts";
-import { selectsChatGate } from "./chat-gate.ts";
+import { chatGateStages, selectsChatGate } from "./chat-gate.ts";
 
 it.each([
   "apps/server/src/provider/Layers/ClaudeAdapter.ts",
@@ -36,6 +36,19 @@ it.each([
   "apps/web/src/lib/terminalFocus.test.ts",
 ])("%s alone does not require the chat contract gate", (path) => {
   expect(selectsChatGate([path])).toBe(false);
+});
+
+it("the gate proves the Mate engine on the proof harness's fixed seeds and the running engine", () => {
+  const stage = chatGateStages.find((candidate) => candidate.name === "E: engine proof");
+  const files = stage?.commands.flatMap((command) =>
+    command.args.filter((arg) => arg.endsWith(".test.ts")),
+  );
+  expect(files).toEqual([
+    "src/engine/domain/decide.model.test.ts",
+    "src/engine/outbox/crash.test.ts",
+    "src/engine/engine.sim.test.ts",
+    "src/engine/engine.pump.test.ts",
+  ]);
 });
 
 it("CI runs the same named gate as local ports", () => {

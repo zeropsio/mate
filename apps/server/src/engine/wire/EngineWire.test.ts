@@ -1,0 +1,545 @@
+import { assert, describe, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import {
+  CommandId,
+  MATE_ENGINE_PROTOCOLS,
+  runId,
+  type EngineConversationFrame,
+  type EngineCursor,
+  type EngineRowsFrame,
+  type EngineSubscribeInput,
+} from "@t3tools/contracts";
+
+import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
+import {
+  APP_TOO_OLD,
+  NOT_ON_ENGINE,
+  makeEngineWire,
+  unservedWire,
+  type EngineWireOptions,
+  type WireCaller,
+} from "./EngineWire.ts";
+
+const ana: WireCaller = { subject: "ana", environmentId: "env-1", epoch: 4 };
+const protocol = MATE_ENGINE_PROTOCOLS[0]!;
+
+const world = Effect.gen(function* () {
+  const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+  yield* w.boot;
+  yield* w.tell({
+    _tag: "AssignAgent",
+    agent: {
+      instanceId: "claudeAgent",
+      driver: "claudeAgent",
+      model: "m1",
+      profile: { kind: "mate" },
+    },
+  });
+  return w;
+});
+
+const wireOf = (w: EngineWorld, options: EngineWireOptions = {}) =>
+  w.within(makeEngineWire({ coalesce: 0, ...options }));
+
+/** Every frame the subscription sends, as it sends them. */
+const watch = (
+  w: EngineWorld,
+  wire: Effect.Success<ReturnType<typeof wireOf>>,
+  input: Partial<EngineSubscribeInput> = {},
+  caller: WireCaller = ana,
+) =>
+  Effect.gen(function* () {
+    const frames: Array<EngineConversationFrame> = [];
+    yield* Stream.runForEach(
+      wire.subscribe({ protocol, conversationId: mate, ...input }, caller),
+      (frame) => Effect.sync(() => frames.push(frame)),
+    ).pipe(Effect.forkScoped);
+    yield* w.settle;
+    return frames;
+  });
+
+const kinds = (frames: ReadonlyArray<EngineConversationFrame>) => frames.map((frame) => frame.type);
+
+const cursorOf = (frames: ReadonlyArray<EngineConversationFrame>): EngineCursor => {
+  const origin = frames.find((frame) => frame.type === "snapshot");
+  const synced = frames.findLast((frame) => frame.type === "synchronized");
+  const changes = frames.findLast((frame) => frame.type === "changes");
+  if (origin?.type !== "snapshot" || synced?.type !== "synchronized") throw new Error("no cursor");
+  return {
+    epoch: synced.epoch,
+    origin: origin.origin,
+    seq: Math.max(synced.head, changes?.type === "changes" ? changes.to : 0),
+  };
+};
+
+const send = (
+  wire: Effect.Success<ReturnType<typeof wireOf>>,
+  text: string,
+  commandId = `send-${text}`,
+) => wire.send({ protocol, conversationId: mate, commandId: CommandId.make(commandId), text }, ana);
+
+describe("a client subscribed to an engine conversation", () => {
+  it.effect(
+    "gets the window snapshot, then synchronized, then each commit's changes in order",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* w.tell({ _tag: "Send", text: "Deploy the api" });
+          yield* w.agent((agent, thread) => agent.say(thread, "Deployed."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+
+          const frames = yield* watch(w, wire);
+          assert.deepStrictEqual(kinds(frames), ["snapshot", "synchronized"]);
+          const snapshot = frames[0]!;
+          if (snapshot.type !== "snapshot") return;
+          assert.strictEqual(snapshot.epoch, ana.epoch);
+          assert.strictEqual(snapshot.header.agent?.instanceId, "claudeAgent");
+          assert.deepStrictEqual(
+            snapshot.runs.map((run) => [run.id, run.state, run.summary.answerItemId !== null]),
+            [[runId(mate, 1), "ended", true]],
+          );
+          assert.deepStrictEqual(
+            snapshot.items.map((item) => [item.kind, "text" in item ? item.text : null]),
+            [
+              ["person", "Deploy the api"],
+              ["note", "Deployed."],
+            ],
+          );
+
+          yield* w.tell({ _tag: "Send", text: "And the worker" });
+          yield* w.agent((agent, thread) => agent.say(thread, "On it."));
+          const changes = frames.slice(2).filter((frame) => frame.type === "changes");
+          assert.isAbove(changes.length, 0);
+          let cursor = snapshot.head;
+          for (const frame of changes) {
+            if (frame.type !== "changes") continue;
+            assert.strictEqual(frame.from, cursor, "each change follows the last");
+            assert.isAtLeast(frame.to, frame.from);
+            cursor = frame.to;
+          }
+          // Records are upserted by id: the latest version of each is what the client holds.
+          const held = new Map(
+            changes
+              .flatMap((frame) => (frame.type === "changes" ? frame.items : []))
+              .map((item) => [item.id, item] as const),
+          );
+          assert.deepStrictEqual(
+            [...held.values()]
+              .filter((item) => item.kind === "person" || (item.kind === "note" && !item.streaming))
+              .map((item) => ("text" in item ? item.text : null)),
+            ["And the worker", "On it."],
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("resumes after a reconnect from its cursor with only what is newer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "First" });
+        yield* w.agent((agent, thread) => agent.say(thread, "One."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const before = yield* Effect.scoped(watch(w, wire));
+        const cursor = cursorOf(before);
+
+        yield* w.tell({ _tag: "Send", text: "Second" });
+        const after = yield* watch(w, wire, { after: cursor });
+        assert.deepStrictEqual(kinds(after), ["changes", "synchronized"]);
+        const resumed = after[0]!;
+        if (resumed.type !== "changes") return;
+        assert.strictEqual(resumed.from, cursor.seq);
+        assert.deepStrictEqual(
+          resumed.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["Second"],
+        );
+        assert.deepStrictEqual(
+          resumed.runs.map((run) => run.id),
+          [runId(mate, 2)],
+        );
+        assert.isDefined(resumed.header, "a resume carries the conversation's header");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("resumes across the Mate's restart: a newer epoch fetches nothing again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "First" });
+        const cursor = cursorOf(yield* Effect.scoped(watch(w, wire)));
+        const restarted = { ...ana, epoch: ana.epoch + 1 };
+        const after = yield* watch(w, wire, { after: cursor }, restarted);
+        assert.deepStrictEqual(kinds(after), ["changes", "synchronized"]);
+        const resumed = after[0]!;
+        if (resumed.type !== "changes") return;
+        assert.strictEqual(resumed.epoch, restarted.epoch);
+        assert.deepStrictEqual(resumed.items, []);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect.each([
+    {
+      name: "another sequence space (the engine's tables made again)",
+      reason: "origin" as const,
+      move: (cursor: EngineCursor) => ({ ...cursor, origin: "elsewhere" }),
+    },
+    {
+      name: "an epoch ahead of the Mate's (a restored state)",
+      reason: "epoch" as const,
+      move: (cursor: EngineCursor) => ({ ...cursor, epoch: cursor.epoch + 5 }),
+    },
+    {
+      name: "a sequence past the conversation's head",
+      reason: "ahead" as const,
+      move: (cursor: EngineCursor) => ({ ...cursor, seq: cursor.seq + 1_000 }),
+    },
+  ])("is reset to a fresh snapshot from a cursor of $name", ({ reason, move }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "First" });
+        const cursor = cursorOf(yield* Effect.scoped(watch(w, wire)));
+        const frames = yield* watch(w, wire, { after: move(cursor) });
+        assert.deepStrictEqual(kinds(frames), ["reset", "snapshot", "synchronized"]);
+        assert.deepStrictEqual(frames[0], { type: "reset", reason });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("is reset to a fresh snapshot when more changed than a resume carries", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w, { resumeRecords: 2 });
+        yield* w.tell({ _tag: "Send", text: "First" });
+        const cursor = cursorOf(yield* Effect.scoped(watch(w, wire)));
+        yield* w.agent((agent, thread) => agent.say(thread, "One."));
+        yield* w.agent((agent, thread) => agent.say(thread, "Two."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const frames = yield* watch(w, wire, { after: cursor });
+        assert.deepStrictEqual(kinds(frames), ["reset", "snapshot", "synchronized"]);
+        assert.deepStrictEqual(frames[0], { type: "reset", reason: "gap" });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("gets streamed text by its item, and the boundary record replaces it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Explain" });
+        const frames = yield* watch(w, wire);
+        yield* w.agent((agent, thread) => agent.stream(thread, "live-1", "Hel"));
+        yield* w.agent((agent, thread) => agent.stream(thread, "live-1", "lo"));
+        const live = frames.filter((frame) => frame.type.startsWith("live."));
+        const note = frames
+          .flatMap((frame) => (frame.type === "changes" ? frame.items : []))
+          .find((item) => item.kind === "note");
+        assert.isDefined(note, "the streaming item's record arrives first");
+        assert.deepStrictEqual(
+          live.map((frame) =>
+            frame.type === "live.open" || frame.type === "live.append"
+              ? [frame.itemId, frame.text]
+              : frame,
+          ),
+          [
+            [note!.id, "Hel"],
+            [note!.id, "lo"],
+          ],
+        );
+        const streamed = frames.length;
+
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const after = frames.slice(streamed);
+        const boundary = after.findIndex(
+          (frame) =>
+            frame.type === "changes" &&
+            frame.items.some(
+              (item) => item.id === note!.id && item.kind === "note" && !item.streaming,
+            ),
+        );
+        const settle = after.findIndex(
+          (frame) => frame.type === "live.settle" && frame.itemId === note!.id,
+        );
+        assert.isAtLeast(boundary, 0, "the boundary record arrives");
+        assert.isAbove(settle, boundary, "the streamed text is settled after its record");
+        const closed = after
+          .flatMap((frame) => (frame.type === "changes" ? frame.items : []))
+          .find((item) => item.id === note!.id);
+        assert.strictEqual(closed?.kind === "note" ? closed.text : null, "Hello");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("opens with the text streamed so far when it subscribes mid-stream", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Explain" });
+        yield* w.agent((agent, thread) => agent.stream(thread, "live-1", "Half a tho"));
+        const frames = yield* watch(w, wire);
+        const opened = frames.find((frame) => frame.type === "live.open");
+        assert.deepStrictEqual(
+          kinds(frames).slice(0, 2),
+          ["snapshot", "synchronized"],
+          "the record first",
+        );
+        assert.strictEqual(opened?.type === "live.open" ? opened.text : null, "Half a tho");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a client reading more of an engine conversation", () => {
+  it.effect("opens on the newest run groups and reads older ones whole on demand", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        for (const text of ["One", "Two", "Three"]) {
+          yield* w.tell({ _tag: "Send", text });
+          yield* w.agent((agent, thread) => agent.say(thread, `${text} done.`));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }
+        const [snapshot] = yield* Effect.scoped(watch(w, wire, { groups: 1 }));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(
+          snapshot.runs.map((run) => run.ordinal),
+          [3],
+        );
+        assert.deepStrictEqual(snapshot.window, { oldestOrdinal: 3, earlier: true });
+
+        const page = yield* wire.readEarlier({
+          protocol,
+          conversationId: mate,
+          beforeOrdinal: 3,
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        assert.deepStrictEqual(
+          page.runs.map((run) => run.ordinal),
+          [1, 2],
+        );
+        assert.deepStrictEqual(
+          page.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["One", "One done.", "Two", "Two done."],
+        );
+        assert.deepStrictEqual(page.window, { oldestOrdinal: 1, earlier: false });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("reads a run's items page by page, the newest first", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Go" });
+        for (const text of ["a", "b", "c"])
+          yield* w.agent((agent, thread) => agent.say(thread, text));
+        const read = (beforeSeq?: number) =>
+          wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            limit: 2,
+            ...(beforeSeq === undefined ? {} : { beforeSeq }),
+          });
+        const newest = yield* read();
+        if (newest._tag !== "Page") throw new Error(newest._tag);
+        assert.deepStrictEqual(
+          newest.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["b", "c"],
+        );
+        assert.isTrue(newest.more);
+        const older = yield* read(newest.items[0]!.seq);
+        if (older._tag !== "Page") throw new Error(older._tag);
+        assert.deepStrictEqual(
+          older.items.map((item) => ("text" in item ? item.text : item.kind)),
+          ["Go", "a"],
+        );
+        assert.isFalse(older.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("gets a long message cut to the wire's budget and reads it whole on demand", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const text = "Log line. ".repeat(3_000);
+        yield* send(wire, text);
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        const person = snapshot.items.find((item) => item.kind === "person");
+        assert.deepStrictEqual(person?.cut, { part: "text", total: text.length });
+        const whole = yield* wire.readDetail({
+          protocol,
+          conversationId: mate,
+          itemId: person!.id,
+          part: "text",
+        });
+        assert.deepStrictEqual(whole, {
+          _tag: "Detail",
+          text,
+          from: 0,
+          to: text.length,
+          total: text.length,
+        });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a client subscribed to a Mate's conversation rows", () => {
+  it.effect("gets each conversation's row with its agent, then the row again as it changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const frames: Array<EngineRowsFrame> = [];
+        yield* Stream.runForEach(wire.subscribeRows({ protocol }, ana), (frame) =>
+          Effect.sync(() => frames.push(frame)),
+        ).pipe(Effect.forkScoped);
+        yield* w.settle;
+        const [snapshot] = frames;
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(
+          snapshot.rows.map((row) => [row.conversationId, row.agent?.driver, row.revision.epoch]),
+          [[mate, "claudeAgent", ana.epoch]],
+        );
+        yield* w.tell({ _tag: "Send", text: "Ship it\nnow" });
+        const rows = frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : []));
+        assert.strictEqual(rows.at(-1)?.subject, "Ship it");
+        assert.isAbove(rows.at(-1)!.revision.seq, snapshot.rows[0]!.revision.seq);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a client's calls to an engine conversation", () => {
+  it.effect("a send is confirmed when the engine accepts it, as the person who sent it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const result = yield* send(wire, "Hello");
+        assert.strictEqual(result._tag, "Accepted");
+        if (result._tag !== "Accepted") return;
+        assert.strictEqual(result.runId, runId(mate, 1));
+        const principals = yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) =>
+              sql<{ readonly principal_json: string }>`SELECT principal_json FROM engine_run`,
+          ),
+        );
+        assert.deepStrictEqual(
+          principals.map((row) => JSON.parse(row.principal_json)),
+          [{ kind: "person", subject: "ana" }],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a repeated send with the same command id returns the stored result", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const first = yield* send(wire, "Hello", "client-op-1");
+        yield* w.settle;
+        const again = yield* send(wire, "Hello", "client-op-1");
+        assert.deepStrictEqual(again, first);
+        const persons = (yield* w.items(runId(mate, 1))).filter((item) => item.kind === "person");
+        assert.strictEqual(persons.length, 1, "the message is in the record once");
+        assert.strictEqual((yield* w.runs).length, 1);
+        const receipt = yield* wire.receipt({
+          protocol,
+          conversationId: mate,
+          commandId: CommandId.make("client-op-1"),
+        });
+        assert.deepStrictEqual(receipt, { _tag: "Found", result: first } as typeof receipt);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a refusal by the engine's rules is the call's answer, never a failure", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const result = yield* send(wire, "   ");
+        assert.strictEqual(result._tag, "Rejected");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a client speaking a protocol this Mate does not serve is routed to update", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const frames = yield* watch(w, wire, { protocol: 0 });
+        assert.deepStrictEqual(frames, [
+          {
+            type: "unserved",
+            reason: "protocol",
+            protocols: [...MATE_ENGINE_PROTOCOLS],
+            message: APP_TOO_OLD,
+          },
+        ]);
+        const sent = yield* wire.send(
+          { protocol: 0, conversationId: mate, commandId: CommandId.make("old"), text: "Hi" },
+          ana,
+        );
+        assert.strictEqual(sent._tag, "Unserved");
+        assert.deepStrictEqual(yield* w.runs, [], "nothing reached the engine");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("a Mate whose conversation is on V1", () => {
+  it.effect("does not serve the engine's wire: every method answers unserved", () =>
+    Effect.gen(function* () {
+      const frames = yield* Stream.runCollect(
+        unservedWire.subscribe({ protocol, conversationId: mate }, ana),
+      );
+      assert.deepStrictEqual(Array.from(frames), [
+        { type: "unserved", reason: "not-on-engine", protocols: [], message: NOT_ON_ENGINE },
+      ]);
+      const sent = yield* unservedWire.send(
+        { protocol, conversationId: mate, commandId: CommandId.make("c"), text: "Hi" },
+        ana,
+      );
+      assert.strictEqual(sent._tag, "Unserved");
+    }),
+  );
+});

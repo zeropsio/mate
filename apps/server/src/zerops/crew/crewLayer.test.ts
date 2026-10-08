@@ -18,6 +18,16 @@ describe("crewLayer", () => {
     ["a Zerops project with the switch on", config({ zerops: ZEROPS, zeropsCrew: true }), true],
     ["a Zerops project with the switch off", config({ zerops: ZEROPS, zeropsCrew: false }), false],
     ["no Zerops project, switch on", config({ zerops: undefined, zeropsCrew: true }), false],
+    [
+      "a Zerops project whose conversation runs on the Mate engine",
+      config({ zerops: ZEROPS, zeropsCrew: true, mateEngine: "mate" }),
+      false,
+    ],
+    [
+      "a Zerops project whose conversation runs on V1",
+      config({ zerops: ZEROPS, zeropsCrew: true, mateEngine: "v1" }),
+      true,
+    ],
   ])("runs crew mode live in %s: %s", (_, value, expected) => {
     assert.strictEqual(crewModeOn(value), expected);
   });

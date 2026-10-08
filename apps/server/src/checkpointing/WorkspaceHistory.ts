@@ -67,6 +67,12 @@ export interface WorkspaceDiff {
   readonly coverage: "complete" | "partial" | "unknown";
 }
 
+/** A service a run's capture could not snapshot, and why. */
+export interface CaptureGap {
+  readonly service: string;
+  readonly reason: string;
+}
+
 export class WorkspaceHistory extends Context.Service<
   WorkspaceHistory,
   {
@@ -82,6 +88,15 @@ export class WorkspaceHistory extends Context.Service<
        */
       liveTurn?: Effect.Effect<TurnId | undefined>;
     }) => Effect.Effect<void>;
+    /**
+     * The services a run's capture could not snapshot, and why (D7: the run records each as a
+     * gap): from the capture's journal, or the whole workspace when the capture itself broke.
+     * None for a run that captured everything, joined another, or was never prepared.
+     */
+    readonly gapsOf: (
+      threadId: ThreadId,
+      runId: string,
+    ) => Effect.Effect<ReadonlyArray<CaptureGap>>;
     readonly bindTurn: (threadId: ThreadId, turnId: TurnId) => Effect.Effect<void>;
     readonly markDispatched: (threadId: ThreadId, runId: string) => Effect.Effect<void>;
     /** The provider took this run's message into a turn (a new one, or one it steered). */
@@ -113,6 +128,8 @@ const LIVE_TURN_POLL = Duration.millis(250);
 export const make = Effect.gen(function* () {
   const store = yield* CheckpointStore;
   const journal = yield* WorkspaceCaptureJournal;
+  /** Why a run's capture broke as a whole, by its key, while the run is held (`forget`). */
+  const broken = new Map<string, string>();
   const source = yield* Effect.serviceOption(ZeropsRepositorySource);
   const observer = yield* Effect.serviceOption(ZeropsWorkspaceObserver);
   // Entries are coordination receipts, not the durable record. Restarted work is
@@ -133,6 +150,11 @@ export const make = Effect.gen(function* () {
       sentTurnId?: TurnId;
     }
   >();
+  /** A run leaves memory: what was held of it goes with it. */
+  const forget = (runKey: string) => {
+    active.delete(runKey);
+    broken.delete(runKey);
+  };
   const captureLock = yield* Semaphore.make(1);
   const key = (threadId: ThreadId, runId: string) => JSON.stringify([threadId, runId]);
   const logFailure = (error: unknown) =>
@@ -354,7 +376,7 @@ export const make = Effect.gen(function* () {
         if (joined) {
           yield* Deferred.succeed(preparing.done, undefined);
           yield* Deferred.succeed(preparing.prepared, undefined);
-          active.delete(runKey);
+          forget(runKey);
           return yield* join(joined);
         }
         // The previous run's end is this one's start, but a message never waits
@@ -415,7 +437,15 @@ export const make = Effect.gen(function* () {
             }),
           )
           .pipe(
-            Effect.catch(logFailure),
+            Effect.catch((error) =>
+              Effect.andThen(
+                // Only for a run still held: one released meanwhile has nobody to read it.
+                Effect.sync(() => {
+                  if (active.get(runKey) === entry) broken.set(runKey, message(error));
+                }),
+                logFailure(error),
+              ),
+            ),
             Effect.ensuring(
               Effect.gen(function* () {
                 entry.ready = true;
@@ -428,7 +458,7 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             yield* Deferred.succeed(entry.done, undefined);
             yield* Deferred.succeed(entry.prepared, undefined);
-            active.delete(runKey);
+            forget(runKey);
           }),
         ),
       );
@@ -482,7 +512,7 @@ export const make = Effect.gen(function* () {
         continue;
       yield* Deferred.succeed(r.done, undefined);
       yield* Deferred.succeed(r.prepared, undefined);
-      active.delete(runKey);
+      forget(runKey);
     }
   });
 
@@ -639,7 +669,7 @@ export const make = Effect.gen(function* () {
         )
           continue;
         yield* Deferred.succeed(entry.done, undefined);
-        active.delete(runKey);
+        forget(runKey);
       }
     },
   );
@@ -799,7 +829,25 @@ export const make = Effect.gen(function* () {
     Effect.catch(logFailure),
   );
 
+  const gapsOf: WorkspaceHistory["Service"]["gapsOf"] = (threadId, runId) =>
+    Effect.gen(function* () {
+      const whole = broken.get(key(threadId, runId));
+      if (whole !== undefined) return [{ service: "workspace", reason: whole }];
+      const saved = yield* journal.get(threadId, runId);
+      return (saved?.history.roots ?? []).flatMap(({ root, before }) =>
+        before.status === "captured"
+          ? []
+          : [
+              {
+                service: "host" in root && root.host !== undefined ? root.host : root.label,
+                reason: before.reason,
+              },
+            ],
+      );
+    }).pipe(Effect.orElseSucceed((): ReadonlyArray<CaptureGap> => []));
+
   return WorkspaceHistory.of({
+    gapsOf,
     prepare,
     bindTurn,
     markDispatched,

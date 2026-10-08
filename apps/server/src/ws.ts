@@ -92,6 +92,7 @@ import {
   normalizeDispatchCommand,
 } from "./orchestration/Normalizer.ts";
 import { makeFirstTurnEffort } from "./zerops/firstTurnEffort.ts";
+import { OrchestrationCommandInvariantError } from "./orchestration/Errors.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
@@ -155,6 +156,8 @@ import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import serverPackageJson from "../package.json" with { type: "json" };
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
+import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
+import { registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
@@ -463,10 +466,17 @@ const makeWsRpcLayer = (
       const dispatchFromClient: OrchestrationEngine.OrchestrationEngineShape["dispatch"] = (
         command,
       ) =>
-        orchestrationEngine.dispatch(
-          command,
-          hasClientOrigin ? { origin: clientOrigin } : undefined,
-        );
+        v1Parked
+          ? Effect.fail(
+              new OrchestrationCommandInvariantError({
+                commandType: command.type,
+                detail: ENGINE_MOVED,
+              }),
+            )
+          : orchestrationEngine.dispatch(
+              command,
+              hasClientOrigin ? { origin: clientOrigin } : undefined,
+            );
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
@@ -486,6 +496,9 @@ const makeWsRpcLayer = (
       const providerInstances = yield* ProviderInstanceRegistry;
       const providerInstallation = yield* makeProviderInstallation();
       const config = yield* ServerConfig.ServerConfig;
+      // The Mate engine owns the conversation: every door into V1 is closed, before admission.
+      const v1Parked = config.mateEngine === "mate";
+      const engineMoved = () => new OrchestrationDispatchCommandError({ message: ENGINE_MOVED });
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
@@ -596,6 +609,7 @@ const makeWsRpcLayer = (
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsMateAttention = yield* ZeropsMateAttention;
+      const mateEngine = yield* MateEngine;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
@@ -1221,6 +1235,7 @@ const makeWsRpcLayer = (
         normalizedCommand: OrchestrationCommand,
         store: OrchestrationCommand | undefined,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
+        if (v1Parked) return Effect.fail(engineMoved());
         const storeEffect =
           store === undefined
             ? Effect.void
@@ -1355,6 +1370,7 @@ const makeWsRpcLayer = (
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
+              if (v1Parked) return yield* engineMoved();
               yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);
               const normalizedCommand = yield* normalizeDispatchCommand(command);
               // Archive and settle both mean "done with this thread", so a
@@ -2237,6 +2253,13 @@ const makeWsRpcLayer = (
           observeRpcEffect,
           observeRpcStream,
         }),
+        ...registerEngineRpc({
+          engine: mateEngine,
+          source: Effect.map(zeropsMateAttention.current, (attention) => attention.source),
+          subject: currentSession.subject,
+          observeRpcEffect,
+          observeRpcStream,
+        }),
         [WS_METHODS.serverSignalProcess]: (input) =>
           observeRpcEffect(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input), {
             "rpc.aggregate": "server",
@@ -2321,41 +2344,45 @@ const makeWsRpcLayer = (
         [WS_METHODS.projectCloneStart]: (input) =>
           observeRpcEffect(
             WS_METHODS.projectCloneStart,
-            projectCloneTracker.start(input, {
-              createProject: (project) =>
-                Effect.gen(function* () {
-                  const normalizedCommand = yield* normalizeDispatchCommand({
-                    type: "project.create",
-                    commandId: yield* serverCommandId("project-clone-create"),
-                    projectId: project.projectId,
-                    title: project.title,
-                    workspaceRoot: project.workspaceRoot,
-                    createWorkspaceRootIfMissing: true,
-                    createdAt: project.createdAt,
-                  });
-                  yield* dispatchNormalizedCommand(normalizedCommand);
-                }).pipe(Effect.provideContext(normalizerContext)),
-              onCloned: (project) =>
-                // The project was created against an empty directory, so its
-                // cached identity is "not a repository" until this refresh.
-                // Re-emitting the project shell carries the new identity to
-                // every client without a round trip.
-                repositoryIdentityResolver.resolve(project.workspaceRoot, { refresh: true }).pipe(
-                  Effect.andThen(
+            v1Parked
+              ? Effect.fail(engineMoved())
+              : projectCloneTracker.start(input, {
+                  createProject: (project) =>
                     Effect.gen(function* () {
-                      const command = yield* normalizeDispatchCommand({
-                        type: "project.meta.update",
-                        commandId: yield* serverCommandId("project-clone-done"),
+                      const normalizedCommand = yield* normalizeDispatchCommand({
+                        type: "project.create",
+                        commandId: yield* serverCommandId("project-clone-create"),
                         projectId: project.projectId,
+                        title: project.title,
+                        workspaceRoot: project.workspaceRoot,
+                        createWorkspaceRootIfMissing: true,
+                        createdAt: project.createdAt,
                       });
-                      yield* dispatchNormalizedCommand(command);
-                    }),
-                  ),
-                  Effect.andThen(refreshGitStatus(project.workspaceRoot)),
-                  Effect.ignoreCause({ log: true }),
-                  Effect.provideContext(normalizerContext),
-                ),
-            }),
+                      yield* dispatchNormalizedCommand(normalizedCommand);
+                    }).pipe(Effect.provideContext(normalizerContext)),
+                  onCloned: (project) =>
+                    // The project was created against an empty directory, so its
+                    // cached identity is "not a repository" until this refresh.
+                    // Re-emitting the project shell carries the new identity to
+                    // every client without a round trip.
+                    repositoryIdentityResolver
+                      .resolve(project.workspaceRoot, { refresh: true })
+                      .pipe(
+                        Effect.andThen(
+                          Effect.gen(function* () {
+                            const command = yield* normalizeDispatchCommand({
+                              type: "project.meta.update",
+                              commandId: yield* serverCommandId("project-clone-done"),
+                              projectId: project.projectId,
+                            });
+                            yield* dispatchNormalizedCommand(command);
+                          }),
+                        ),
+                        Effect.andThen(refreshGitStatus(project.workspaceRoot)),
+                        Effect.ignoreCause({ log: true }),
+                        Effect.provideContext(normalizerContext),
+                      ),
+                }),
             { "rpc.aggregate": "source-control" },
           ),
         [WS_METHODS.projectCloneCancel]: (input) =>

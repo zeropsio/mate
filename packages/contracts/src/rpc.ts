@@ -18,6 +18,25 @@ import {
 
 import { ExternalLauncherError, LaunchEditorInput } from "./editor.ts";
 import {
+  EngineAnswerInput,
+  EngineCallResult,
+  EngineConversationFrame,
+  EngineDetail,
+  EnginePage,
+  EngineReadDetailInput,
+  EngineReadEarlierInput,
+  EngineReadRunInput,
+  EngineReceiptInput,
+  EngineReceiptResult,
+  EngineRowsFrame,
+  EngineSendInput,
+  EngineSteerInput,
+  EngineStopInput,
+  EngineSubscribeInput,
+  EngineSubscribeRowsInput,
+  EngineWireError,
+} from "./engineWire.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -366,6 +385,14 @@ export const WS_METHODS = {
   zeropsCrewCommand: "zerops.crew.command",
   threadsFileWrites: "threads.fileWrites",
   threadsWrittenFile: "threads.writtenFile",
+  engineReadEarlier: "engine.readEarlier",
+  engineReadRun: "engine.readRun",
+  engineReadDetail: "engine.readDetail",
+  engineReceipt: "engine.receipt",
+  engineSend: "engine.send",
+  engineStop: "engine.stop",
+  engineAnswer: "engine.answer",
+  engineSteer: "engine.steer",
 
   // Streaming subscriptions
   subscribeVcsStatus: "subscribeVcsStatus",
@@ -383,6 +410,8 @@ export const WS_METHODS = {
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
   subscribeZeropsCrew: "subscribeZeropsCrew",
+  subscribeEngineConversation: "subscribeEngineConversation",
+  subscribeEngineRows: "subscribeEngineRows",
 } as const;
 
 const WsServerUpsertKeybindingRpc = Rpc.make(WS_METHODS.serverUpsertKeybinding, {
@@ -1001,11 +1030,14 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
-/** One explicit retry of a failed stand-up send, authorized as the authenticated asker. */
+/**
+ * One explicit retry of a failed stand-up send, authorized as the authenticated asker. Refused
+ * (`OrchestrationDispatchCommandError`) while the Mate engine owns the conversation.
+ */
 const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
   payload: Schema.Struct({}),
   success: Schema.Boolean,
-  error: EnvironmentAuthorizationError,
+  error: Schema.Union([OrchestrationDispatchCommandError, EnvironmentAuthorizationError]),
 });
 
 const WsZeropsLifecycleGetRpc = Rpc.make(WS_METHODS.zeropsLifecycleGet, {
@@ -1234,6 +1266,75 @@ const WsZeropsCrewCommandRpc = Rpc.make(WS_METHODS.zeropsCrewCommand, {
   error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
 });
 
+// ── the Mate engine's conversation wire (engineWire.ts) ──────────────────────────────────────
+// Served in mate mode; a V1 Mate, or a protocol the server does not speak, answers `unserved`.
+
+/** A conversation: a window snapshot or a resume from a cursor, `synchronized`, then live. */
+const WsSubscribeEngineConversationRpc = Rpc.make(WS_METHODS.subscribeEngineConversation, {
+  payload: EngineSubscribeInput,
+  // Never fails to decode: unknown frames and records decode to their `unknown` members.
+  success: EngineConversationFrame,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+/** The Mate's conversation rows (the menu): a snapshot, then each row as it changes. */
+const WsSubscribeEngineRowsRpc = Rpc.make(WS_METHODS.subscribeEngineRows, {
+  payload: EngineSubscribeRowsInput,
+  success: EngineRowsFrame,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsEngineReadEarlierRpc = Rpc.make(WS_METHODS.engineReadEarlier, {
+  payload: EngineReadEarlierInput,
+  success: EnginePage,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineReadRunRpc = Rpc.make(WS_METHODS.engineReadRun, {
+  payload: EngineReadRunInput,
+  success: EnginePage,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineReadDetailRpc = Rpc.make(WS_METHODS.engineReadDetail, {
+  payload: EngineReadDetailInput,
+  success: EngineDetail,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+/** A call's stored receipt, by its command id: how a lost answer is resolved. */
+const WsEngineReceiptRpc = Rpc.make(WS_METHODS.engineReceipt, {
+  payload: EngineReceiptInput,
+  success: EngineReceiptResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineSendRpc = Rpc.make(WS_METHODS.engineSend, {
+  payload: EngineSendInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineStopRpc = Rpc.make(WS_METHODS.engineStop, {
+  payload: EngineStopInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineAnswerRpc = Rpc.make(WS_METHODS.engineAnswer, {
+  payload: EngineAnswerInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineSteerRpc = Rpc.make(WS_METHODS.engineSteer, {
+  payload: EngineSteerInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 export const WsRpcGroup = RpcGroup.make(
   WsExecRunRpc,
   WsServerProbeRpc,
@@ -1347,6 +1448,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsCrewFilesGetRpc,
   WsZeropsCrewFilesPutRpc,
   WsZeropsCrewCommandRpc,
+  WsSubscribeEngineConversationRpc,
+  WsSubscribeEngineRowsRpc,
+  WsEngineReadEarlierRpc,
+  WsEngineReadRunRpc,
+  WsEngineReadDetailRpc,
+  WsEngineReceiptRpc,
+  WsEngineSendRpc,
+  WsEngineStopRpc,
+  WsEngineAnswerRpc,
+  WsEngineSteerRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetWorkflowScriptRpc,
   WsOrchestrationGetTurnDiffRpc,

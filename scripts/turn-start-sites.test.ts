@@ -47,6 +47,42 @@ const CREW_TURN_BUILDERS: ReadonlyArray<string> = ["apps/server/src/zerops/crew/
 /** `.admit({ command, principal })`: a crew site passes a principal, never builds one inline. */
 const PRINCIPAL_ADMISSION_PATTERN = /\.admit\(\{\s*command,\s*principal\s*\}\)/u;
 
+/**
+ * The Mate engine's D6 (coexist.md §6). The engine admits a run through its
+ * `RunAdmission` port at the run's admitted transition, for every trigger, in
+ * one module; Zerops implements that port in one adapter, the only caller of
+ * `ZeropsTurnAdmission.admitRun`.
+ */
+const ENGINE_DIR = "apps/server/src/engine/";
+const RUN_ADMISSION_ADAPTERS: ReadonlyArray<string> = ["apps/server/src/zerops/engineAdapters.ts"];
+/** The engine module that asks `RunAdmission`: at most one, the run's workspace capture. */
+const ENGINE_RUN_ADMISSION_SITES: ReadonlyArray<string> = [
+  "apps/server/src/engine/effects/admission.ts",
+];
+
+const ADMIT_RUN_PATTERN = /\.admitRun\(/u;
+const RUN_ADMISSION_PATTERN = /\bRunAdmission\b/u;
+
+export interface RunAdmissionSite {
+  readonly file: string;
+  /** Calls D6's run door, `ZeropsTurnAdmission.admitRun`. */
+  readonly callsAdmitRun: boolean;
+  /** An engine module that asks the `RunAdmission` port. */
+  readonly asksRunAdmission: boolean;
+}
+
+export function classifyRunAdmissionSite(source: string, file: string): RunAdmissionSite {
+  return {
+    file,
+    callsAdmitRun: ADMIT_RUN_PATTERN.test(source),
+    asksRunAdmission:
+      file.startsWith(ENGINE_DIR) &&
+      file !== `${ENGINE_DIR}ports.ts` &&
+      RUN_ADMISSION_PATTERN.test(source) &&
+      ADMISSION_PATTERN.test(source),
+  };
+}
+
 export interface TurnStartSite {
   readonly file: string;
   readonly acceptsClientCommands: boolean;
@@ -108,6 +144,22 @@ const scanServer = Effect.gen(function* () {
       path.relative(repoRoot, file).split(path.sep).join("/"),
     );
     if (site.acceptsClientCommands || site.buildsTurns) sites.push(site);
+  }
+  return sites;
+});
+
+const scanRunAdmission = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const repoRoot = yield* path.fromFileUrl(repoRootUrl);
+  const sites: Array<RunAdmissionSite> = [];
+  for (const file of yield* collectSourceFiles(path.join(repoRoot, SERVER))) {
+    sites.push(
+      classifyRunAdmissionSite(
+        yield* fs.readFileString(file),
+        path.relative(repoRoot, file).split(path.sep).join("/"),
+      ),
+    );
   }
   return sites;
 });
@@ -224,6 +276,39 @@ it.layer(NodeServices.layer)("turn start sites (D6)", (it) => {
         Object.keys(UNADMITTED_TURN_BUILDERS).filter((file) => !builders.has(file)),
         [],
       );
+    }),
+  );
+  it.effect("counts an engine module that asks RunAdmission as the engine's admission site", () =>
+    Effect.sync(() => {
+      const source = [
+        "const admission = yield* RunAdmission;",
+        "yield* admission.admit({ instanceId, principal });",
+      ].join("\n");
+      assert.isTrue(
+        classifyRunAdmissionSite(source, "apps/server/src/engine/runAdmit.ts").asksRunAdmission,
+      );
+      assert.isFalse(
+        classifyRunAdmissionSite(source, "apps/server/src/zerops/elsewhere.ts").asksRunAdmission,
+      );
+    }),
+  );
+
+  it.effect("only the engine adapter calls admitRun, D6's door for the Mate engine", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(
+        (yield* scanRunAdmission).filter((site) => site.callsAdmitRun).map((site) => site.file),
+        [...RUN_ADMISSION_ADAPTERS],
+      );
+    }),
+  );
+
+  it.effect("the Mate engine admits its runs in one place", () =>
+    Effect.gen(function* () {
+      const sites = (yield* scanRunAdmission)
+        .filter((site) => site.asksRunAdmission)
+        .map((site) => site.file);
+      assert.isAtMost(ENGINE_RUN_ADMISSION_SITES.length, 1);
+      assert.deepStrictEqual(sites, [...ENGINE_RUN_ADMISSION_SITES]);
     }),
   );
 });

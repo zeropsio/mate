@@ -38,6 +38,7 @@ import * as ProviderSessionReaper from "../src/provider/Services/ProviderSession
 import * as RepositoryIdentityResolver from "../src/project/RepositoryIdentityResolver.ts";
 import * as ServerLifecycleEvents from "../src/serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "../src/serverRuntimeStartup.ts";
+import { engineLayerInert } from "../src/engine/layer.ts";
 import * as ServerSettings from "../src/serverSettings.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
@@ -246,6 +247,7 @@ it.effect(
       const startupLayer = ServerRuntimeStartup.layer.pipe(
         Layer.provideMerge(secondRuntime),
         Layer.provideMerge(startupDependencies),
+        Layer.provideMerge(engineLayerInert),
       );
 
       const result = yield* Effect.gen(function* () {

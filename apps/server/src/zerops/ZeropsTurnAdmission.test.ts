@@ -866,3 +866,91 @@ describe("ZeropsTurnAdmission.admitOperator", () => {
     );
   }
 });
+
+const runAdmitted = (
+  world: World,
+  instanceId: string,
+  principal: TurnPrincipal,
+): Effect.Effect<string | undefined> =>
+  admission(world).pipe(
+    Effect.flatMap((service) => service.admitRun({ instanceId, principal })),
+    Effect.match({ onFailure: (error) => error.message, onSuccess: () => undefined }),
+  );
+
+describe("ZeropsTurnAdmission.admitRun", () => {
+  for (const [name, world, instanceId, principal, expected] of [
+    ["admits the signer's own run", janSignedClaude, "claudeAgent", session(JAN), undefined],
+    [
+      "refuses a run on an agent another member signed in",
+      janSignedClaude,
+      "claudeAgent",
+      session(EVA),
+      SOMEONE_ELSE,
+    ],
+    [
+      "refuses a run on an agent nobody recorded a signer for",
+      { agents: [signedIn("claude-code")] },
+      "claudeAgent",
+      session(JAN),
+      UNRECORDED,
+    ],
+    [
+      "admits anybody on a token-authorized agent",
+      { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+      "codex",
+      session(EVA),
+      undefined,
+    ],
+    [
+      "refuses a run on another login a teammate signed in",
+      evaSignedWork,
+      "claudeAgent-work",
+      session(JAN),
+      LOGIN_SOMEONE_ELSE,
+    ],
+    [
+      "refuses a wake for somebody this project no longer opens for",
+      { ...janSignedClaude, access: { [JAN]: false } },
+      "claudeAgent",
+      { kind: "standup", startedBy: JAN },
+      NO_ACCESS,
+    ],
+    [
+      "refuses a wake whose person's access cannot be confirmed",
+      { ...janSignedClaude, access: {} },
+      "claudeAgent",
+      { kind: "crew", startedBy: JAN },
+      ACCESS_UNCONFIRMED,
+    ],
+    [
+      "admits a wake for the signer who still has access",
+      janSignedClaude,
+      "claudeAgent",
+      { kind: "standup", startedBy: JAN },
+      undefined,
+    ],
+    [
+      "lets everybody outside a Zerops environment",
+      { ...janSignedClaude, zerops: false },
+      "claudeAgent",
+      session(EVA),
+      undefined,
+    ],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, World, string, TurnPrincipal, string | undefined]
+  >) {
+    it.effect(name, () =>
+      Effect.gen(function* () {
+        assert.strictEqual(yield* runAdmitted(world, instanceId, principal), expected);
+      }),
+    );
+    it.effect(`refuses exactly as the command door does: ${name}`, () =>
+      Effect.gen(function* () {
+        assert.strictEqual(
+          yield* runAdmitted(world, instanceId, principal),
+          yield* admitted(world, turnStart(instanceId), principal),
+        );
+      }),
+    );
+  }
+});

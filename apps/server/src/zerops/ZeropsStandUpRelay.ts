@@ -9,6 +9,9 @@
  * as the call's progress: one `tool.progress` activity per call, under one
  * stable id, so it is updated in place and a reload shows where it got.
  *
+ * While the Mate engine owns the conversation, the progress goes live on the call's item in the
+ * engine's record (`MateEngine.callProgress`), never stored: the call's result is what it keeps.
+ *
  * Compatibility: no new event type and no new shell field. The activity rides
  * `thread.activity-appended`, which every client already takes, its progress
  * at the payload's top level (`zeropsStandUp`, beside `toolCallId`) where the
@@ -35,6 +38,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { MateEngine } from "../engine/MateEngine.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
@@ -140,6 +144,7 @@ export const make = Effect.gen(function* () {
   const bus = yield* ProviderRuntimeEventBus;
   const setup = yield* ZeropsSetup;
   const orchestration = yield* OrchestrationEngineService;
+  const engine = yield* MateEngine;
   const crypto = yield* Crypto.Crypto;
   const scope = yield* Effect.scope;
   /**
@@ -183,6 +188,13 @@ export const make = Effect.gen(function* () {
       if (yield* setup.standUpGone(status)) return true;
       const written = progressKey(progress);
       if (written === call.last) return false;
+      // On the engine the progress is live on the call's item, never stored: the call's
+      // own result is what the record keeps.
+      if (engine.live) {
+        yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, progress);
+        call.last = written;
+        return false;
+      }
       const at = DateTime.formatIso(yield* DateTime.now);
       yield* orchestration.dispatch({
         type: "thread.activity.append",
@@ -244,6 +256,8 @@ export const make = Effect.gen(function* () {
         yield* unfollow(event.threadId);
         // The call's end: what the file says of it last, once more.
         yield* relayOnce(event, followed);
+        // Its result is in the record now: what was live of it goes.
+        if (engine.live) yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, null);
       }
     });
 

@@ -12,15 +12,18 @@ import { assert, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "./config.ts";
+import { inertMateEngine } from "./engine/MateEngine.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
@@ -634,3 +637,47 @@ it.effect("auto-bootstrap outside a Zerops container never reads the provider re
     assert.equal(yield* Ref.get(registry.calls), 0);
   }).pipe(Effect.provide(TestClock.layer())),
 );
+
+const startedRoots = (live: boolean) =>
+  Effect.gen(function* () {
+    const started: Array<string> = [];
+    const root = (name: string) => ({
+      start: () => Effect.sync(() => void started.push(name)),
+    });
+    const scope = yield* Scope.make();
+    yield* ServerRuntimeStartup.startConversationRoots({
+      engine: { ...inertMateEngine, live, start: root("engine").start },
+      reactorScope: scope,
+      v1: {
+        reactor: root("V1 reactors"),
+        reaper: root("session reaper"),
+        reconcile: Effect.sync(() => void started.push("V1 boot reconcile")),
+      },
+    });
+    yield* Scope.close(scope, Exit.void);
+    return started;
+  });
+
+it.effect.each([
+  [
+    "V1 owns the conversation: its reactors, the reaper and its reconcile start as today",
+    false,
+    ["V1 reactors", "session reaper", "V1 boot reconcile"],
+  ],
+  ["the Mate engine owns it: only the engine starts, and V1 stays parked", true, ["engine"]],
+] as const)("at boot, %s", ([, live, expected]) =>
+  Effect.gen(function* () {
+    assert.deepStrictEqual(yield* startedRoots(live), [...expected]);
+  }),
+);
+
+it.each([
+  ["runs when V1 owns the conversation and the flag is on", true, false, true],
+  ["stays off when the flag is off", false, false, false],
+  ["stays off when the Mate engine owns the conversation", true, true, false],
+] as const)("the V1 auto-bootstrap %s", (_, autoBootstrapProjectFromCwd, live, expected) => {
+  assert.strictEqual(
+    ServerRuntimeStartup.runsV1AutoBootstrap({ autoBootstrapProjectFromCwd }, { live }),
+    expected,
+  );
+});

@@ -147,6 +147,55 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect.each([
+    ["runs V1 when the environment says nothing", {}, "v1", []],
+    ["runs V1 when the environment names V1", { T3CODE_MATE_ENGINE: "v1" }, "v1", []],
+    [
+      "runs the Mate engine when the environment names it",
+      { T3CODE_MATE_ENGINE: "mate" },
+      "mate",
+      [],
+    ],
+    ["reads the name loosely", { T3CODE_MATE_ENGINE: " Mate " }, "mate", []],
+    ["runs V1 when the variable is empty", { T3CODE_MATE_ENGINE: "" }, "v1", []],
+    [
+      "runs V1 and warns, never crashes, on a name it does not know",
+      { T3CODE_MATE_ENGINE: "v2" },
+      "v1",
+      ["Unknown T3CODE_MATE_ENGINE; running the V1 engine."],
+    ],
+  ] as const)("the engine switch %s", ([, env, expected, warnings]) =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const messages: Array<unknown> = [];
+      const logger = Logger.make<unknown, void>((options) => {
+        messages.push(options.message);
+      });
+      const resolved = yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(join(NodeOS.tmpdir(), "t3-cli-config-engine")),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env })),
+            NetService.layer,
+            Logger.layer([logger], { mergeWithExisting: false }),
+          ),
+        ),
+      );
+
+      const firstLines = messages.map((message) => (Array.isArray(message) ? message[0] : message));
+      expect(resolved.mateEngine).toBe(expected);
+      expect(firstLines.filter((line) => String(line).includes("T3CODE_MATE_ENGINE"))).toEqual(
+        warnings,
+      );
+    }),
+  );
+
   it.effect("reads Zerops fixtures from the environment without enabling the identity door", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;
@@ -372,6 +421,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
       assert.equal(resolved.stateDir, join(baseDir, "userdata"));
     }),
@@ -442,6 +492,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
       assert.equal(resolved.dbPath, join(baseDir, "userdata", "state.sqlite"));
     }),
@@ -513,6 +564,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
     }),
   );
@@ -594,6 +646,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
       assert.equal(join(baseDir, "userdata"), resolved.stateDir);
       assert.equal(resolved.desktopTelemetryFd, 4);
@@ -721,6 +774,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
     }),
   );
@@ -793,6 +847,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
     }),
   );
@@ -1028,6 +1083,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
+        mateEngine: "v1",
       });
     }),
   );

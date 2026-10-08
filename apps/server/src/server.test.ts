@@ -167,6 +167,8 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
+import { ENGINE_MOVED, type MateEngine } from "./engine/MateEngine.ts";
+import { engineLayerInert } from "./engine/layer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
@@ -241,6 +243,7 @@ import {
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 import { DEFAULT_SIGNAL_EXPORT, otlpSerializationLayer } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import { engineHostDoubles } from "./engine/testing/hostDoubles.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -563,7 +566,8 @@ const buildAppUnderTest = (options?: {
     | ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe
     | ZeropsProjectSignersModule.ZeropsProjectSigners
     | ZeropsTurnAdmissionModule.ZeropsTurnAdmission
-    | CrewEngine,
+    | CrewEngine
+    | MateEngine,
     never,
     | ServerConfig.ServerConfig
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
@@ -672,6 +676,7 @@ const buildAppUnderTest = (options?: {
       zerops: undefined,
       zeropsFixtures: undefined,
       zeropsCrew: false,
+      mateEngine: "v1",
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
@@ -1274,6 +1279,8 @@ const buildAppUnderTest = (options?: {
             // Crew mode off, as outside a Zerops project: the crew RPCs answer
             // `off` and refuse the rest.
             crewLayerInert,
+            // The Mate engine inert, whatever the switch says: its doors are V1's to close.
+            engineLayerInert,
             options?.layers?.zeropsSetup === undefined
               ? Layer.empty
               : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
@@ -2577,6 +2584,204 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 403);
       assert.equal(body.reason, "zerops_turn_refused");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation",
+    () =>
+      Effect.gen(function* () {
+        const dispatched: Array<string> = [];
+        yield* buildAppUnderTest({
+          config: { mateEngine: "mate" },
+          layers: {
+            orchestrationEngine: {
+              dispatch: (command) =>
+                Effect.sync(() => void dispatched.push(command.type)).pipe(
+                  Effect.as({ sequence: 1 }),
+                ),
+            },
+          },
+        });
+
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const refused = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-engine-moved"),
+              threadId: defaultThreadId,
+              message: {
+                messageId: MessageId.make("msg-engine-moved"),
+                role: "user",
+                text: "hello",
+                attachments: [],
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-10-07T10:00:00.000Z",
+            }).pipe(Effect.flip),
+          ),
+        );
+
+        assert.equal(refused.message, ENGINE_MOVED);
+        assert.deepEqual(dispatched, []);
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses to clone a project into V1 once the Mate engine owns the conversation", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-engine-clone-" });
+      const touched: Array<string> = [];
+      yield* buildAppUnderTest({
+        config: { mateEngine: "mate" },
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => void touched.push(command.type)).pipe(Effect.as({ sequence: 1 })),
+          },
+          sourceControlRepositoryService: {
+            prepareClone: (input) =>
+              Effect.sync(() => void touched.push("prepareClone")).pipe(
+                Effect.as({
+                  destinationPath: input.destinationPath,
+                  remoteUrl: input.remoteUrl ?? "",
+                  cloneUrl: input.remoteUrl ?? "",
+                  repository: null,
+                }),
+              ),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const refused = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.projectCloneStart]({
+            projectId: ProjectId.make("project-engine-clone"),
+            title: "t3code",
+            createdAt: "2026-10-07T10:00:00.000Z",
+            remoteUrl: "git@github.com:octocat/t3code.git",
+            destinationPath: path.join(parentDir, "t3code"),
+          }).pipe(Effect.flip),
+        ),
+      );
+
+      assert.equal(refused.message, ENGINE_MOVED);
+      assert.deepEqual(touched, []);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "a send refused because the Mate engine owns the conversation claims none of its uploads",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const config = yield* buildAppUnderTest({ config: { mateEngine: "mate" } });
+        const wsUrl = yield* getWsServerUrl("/ws");
+        const upload = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[WS_METHODS.attachmentsCreateUploadUrl]({
+              name: "screenshot.png",
+              mimeType: "image/png",
+              sizeBytes: 6,
+            }),
+          ),
+        );
+        const uploaded = yield* HttpClient.post(upload.relativeUrl, {
+          body: HttpBody.uint8Array(new Uint8Array([1, 2, 3, 4, 5, 6]), "image/png"),
+        });
+        assert.equal(uploaded.status, 204);
+
+        const response = yield* fetchEffect(
+          yield* getHttpServerUrl("/api/orchestration/dispatch"),
+          {
+            method: "POST",
+            headers: {
+              authorization: yield* getAuthenticatedAuthorizationHeader(),
+              "content-type": "application/json",
+            },
+            body: jsonRequestBody({
+              type: "thread.turn.start",
+              commandId: CommandId.make("cmd-http-engine-moved-upload"),
+              threadId: defaultThreadId,
+              message: {
+                messageId: MessageId.make("msg-http-engine-moved-upload"),
+                role: "user",
+                text: "hello",
+                attachments: [
+                  {
+                    type: "image",
+                    id: upload.attachmentId,
+                    name: "screenshot.png",
+                    mimeType: "image/png",
+                    sizeBytes: 6,
+                  },
+                ],
+              },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              createdAt: "2026-10-07T10:00:00.000Z",
+            }),
+          },
+        );
+
+        assert.equal(response.status, 403);
+        // Refused before the claim: no copy under a thread, only the pending upload the sweep
+        // collects, exactly as after any other failed send.
+        assert.deepEqual(yield* fileSystem.readDirectory(config.attachmentsDir), [
+          `${upload.attachmentId}.png`,
+        ]);
+        assert.isTrue(
+          yield* fileSystem.exists(path.join(config.attachmentsDir, `${upload.attachmentId}.png`)),
+        );
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses a V1 command over HTTP once the Mate engine owns the conversation", () =>
+    Effect.gen(function* () {
+      const dispatched: Array<string> = [];
+      yield* buildAppUnderTest({
+        config: { mateEngine: "mate" },
+        layers: {
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => void dispatched.push(command.type)).pipe(
+                Effect.as({ sequence: 1 }),
+              ),
+          },
+        },
+      });
+
+      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
+        method: "POST",
+        headers: {
+          authorization: yield* getAuthenticatedAuthorizationHeader(),
+          "content-type": "application/json",
+        },
+        body: jsonRequestBody({
+          type: "thread.turn.start",
+          commandId: CommandId.make("cmd-http-engine-moved"),
+          threadId: defaultThreadId,
+          message: {
+            messageId: MessageId.make("msg-http-engine-moved"),
+            role: "user",
+            text: "hello",
+            attachments: [],
+          },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: "2026-10-07T10:00:00.000Z",
+        }),
+      });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
+
+      assert.equal(response.status, 403);
+      assert.equal(body.reason, "engine_moved");
+      assert.deepEqual(dispatched, []);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -6318,7 +6523,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const scene = loadShowcaseScene("web:agent-auth-attention");
       yield* buildAppUnderTest({
         config: { zeropsFixtures: scene.id, zerops: undefined },
-        fixtureZeropsLayer: makeFixtureZeropsLayer(scene),
+        fixtureZeropsLayer: makeFixtureZeropsLayer(scene).pipe(Layer.provide(engineHostDoubles)),
       });
 
       const wsUrl = yield* getWsServerUrl("/ws");

@@ -49,6 +49,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import { environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
+import { engineLayerInert } from "./engine/layer.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
@@ -98,6 +99,7 @@ const makeCliTestServerConfig = (baseDir: string) =>
       zeropsFixtures: undefined,
       zerops: undefined,
       zeropsCrew: false,
+      mateEngine: "v1",
       noBrowser: true,
       startupPresentation: "browser",
       desktopBootstrapToken: undefined,
@@ -166,6 +168,37 @@ const makeProjectLookupFixture = Effect.fn("makeProjectLookupFixture")(function*
     assert.isFalse(NodeFS.existsSync(workspaceRoot));
   }
   return { baseDir, workspaceRoot, project };
+});
+
+it.layer(NodeServices.layer)("project CLI while the Mate engine owns the conversation", (it) => {
+  it.effect("refuses to add a project offline and writes nothing", () =>
+    Effect.gen(function* () {
+      const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-cli-project-engine-"));
+      const workspaceRoot = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-cli-project-engine-root-"),
+      );
+      const add = ["project", "add", workspaceRoot, "--base-dir", baseDir];
+      const error = yield* runCli(add).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            CliRuntimeLayer,
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({ env: { ...process.env, T3CODE_MATE_ENGINE: "mate" } }),
+            ),
+          ),
+        ),
+        Effect.flip,
+      );
+      assert.include(error.message, "Mate engine");
+
+      yield* runCliWithRuntime(add);
+      const snapshot = yield* readPersistedSnapshot(baseDir);
+      assert.deepEqual(
+        snapshot.projects.map((project) => project.workspaceRoot),
+        [workspaceRoot],
+      );
+    }),
+  );
 });
 
 it.layer(NodeServices.layer)("project lookup with unavailable workspaces", (it) => {
@@ -358,6 +391,7 @@ const withLiveProjectCliServer = <A, E, R>(baseDir: string, run: () => Effect.Ef
           ),
           // The project CLI sends project commands, never a turn: nothing to gate.
           Layer.provide(Layer.mock(ZeropsTurnAdmission)({ admit: () => Effect.void })),
+          Layer.provide(engineLayerInert),
           Layer.provide(Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) })),
         ),
       ),
