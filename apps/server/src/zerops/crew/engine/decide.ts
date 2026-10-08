@@ -360,7 +360,15 @@ const userOf = (principal: Principal): string =>
       ? principal.startedBy
       : "";
 
-const crewAs = (startedBy: string): Principal => ({ kind: "crew", startedBy });
+/** The engine acting for a person outside their session: named by their user id, never a subject. */
+const crewAs = (startedBy: string): Principal => ({
+  kind: "crew",
+  startedBy: startedBy.startsWith(ZEROPS_SUBJECT)
+    ? startedBy.slice(ZEROPS_SUBJECT.length)
+    : startedBy,
+});
+
+const ZEROPS_SUBJECT = "zerops:";
 
 /**
  * Whose a crew turn is that no press of this moment started: the running run's starter, or
@@ -2010,9 +2018,19 @@ const applyHome = (
     _tag: "CrewApplied",
     definition: home,
     briefVersion: save.versions.brief,
-    members: members.map((member) =>
-      save.pending.includes(member.handle) ? { ...member, apply: choice } : member,
-    ),
+    members: members.map((member) => {
+      const pending = save.pending.includes(member.handle) ? { ...member, apply: choice } : member;
+      // A new crewmate's conversation opens on the crew home as applied: it runs these versions.
+      return before[member.handle] === undefined && pending.session.running === null
+        ? {
+            ...pending,
+            session: {
+              ...pending.session,
+              running: { brief: save.versions.brief, job: pending.jobVersion },
+            },
+          }
+        : pending;
+    }),
     removed,
   });
   for (const member of membersInOrder(b.state)) {
