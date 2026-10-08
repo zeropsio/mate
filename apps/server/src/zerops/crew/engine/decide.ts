@@ -2531,28 +2531,29 @@ const crewmateEvent = (b: Builder, member: MemberRecord, event: KnownEngineEvent
         handle: member.handle,
         set: { active, lastEnd: null, lastNote: null },
       });
-      const task = active.taskId === null ? undefined : b.state.tasks[active.taskId];
-      if (active.purpose === "task" && task?.starting != null) {
-        step(
-          b,
-          task,
-          {
-            type: "dispatch",
-            facts: { dependenciesLanded: true, laneIdle: true, hostFrozen: false, admitted: true },
-          },
-          { starting: null, cantStart: null, midway: null },
-        );
-      } else if (task !== undefined && task.midway !== null) {
-        b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { midway: null } });
-      }
       return;
     }
+    case "EffectRequested":
+      // Its session opening or its send asked for: admission let the run through.
+      if (
+        (event.kind === "session.open" || event.kind === "provider.send") &&
+        event.runId !== null &&
+        member.active?.runId === event.runId
+      ) {
+        passedAdmission(b, member.handle);
+      }
+      return;
     case "RunStarted":
-      if (member.active?.runId === event.runId && !member.active.reached) {
+      if (member.active?.runId === event.runId) passedAdmission(b, member.handle);
+      if (
+        b.state.members[member.handle]?.active?.runId === event.runId &&
+        !b.state.members[member.handle]!.active!.reached
+      ) {
+        const current = b.state.members[member.handle]!.active!;
         b.emit({
           _tag: "CrewmateUpdated",
           handle: member.handle,
-          set: { active: { ...member.active, reached: true } },
+          set: { active: { ...current, reached: true } },
         });
       }
       return;
@@ -2583,6 +2584,30 @@ const crewmateEvent = (b: Builder, member: MemberRecord, event: KnownEngineEvent
       return runEnded(b, member, event);
     default:
       return;
+  }
+};
+
+/**
+ * The crewmate's run got past admission: the engine's `RunAdmitted` only takes its slot, the
+ * admission is `run.prepare`'s. A task its first turn starts is working from here; a refused one
+ * stays queued with its Can't start row.
+ */
+const passedAdmission = (b: Builder, handle: string): void => {
+  const active = b.state.members[handle]?.active;
+  if (active == null) return;
+  const task = active.taskId === null ? undefined : b.state.tasks[active.taskId];
+  if (active.purpose === "task" && task?.starting != null) {
+    step(
+      b,
+      task,
+      {
+        type: "dispatch",
+        facts: { dependenciesLanded: true, laneIdle: true, hostFrozen: false, admitted: true },
+      },
+      { starting: null, cantStart: null, midway: null },
+    );
+  } else if (task !== undefined && task.midway !== null) {
+    b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { midway: null } });
   }
 };
 
