@@ -1452,7 +1452,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         data-timeline-thread={routeThreadKey}
       />
     ) : crew === null ? (
-      <TimelineEmptyState environmentId={activeThreadEnvironmentId} threadKey={routeThreadKey} />
+      <TimelineEmptyState
+        environmentId={activeThreadEnvironmentId}
+        threadKey={routeThreadKey}
+        bottomInset={contentInsetEndAdjustment}
+      />
     ) : (
       <CrewmateEmptyState
         bottomInset={contentInsetEndAdjustment}
@@ -3806,9 +3810,11 @@ function QuestionAnswerHistory({
 function TimelineEmptyState({
   environmentId,
   threadKey,
+  bottomInset,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadKey: string;
+  readonly bottomInset: number;
 }) {
   const whoLivesHere = useZeropsMate(environmentId);
   // Neither opening while that is not known: the region stays, empty.
@@ -3822,6 +3828,7 @@ function TimelineEmptyState({
   }
   return (
     <ZeropsMateEmptyState
+      bottomInset={bottomInset}
       environmentId={environmentId}
       mate={whoLivesHere.mate}
       threadRef={parseScopedThreadKey(threadKey)}

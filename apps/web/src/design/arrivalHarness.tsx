@@ -275,6 +275,27 @@ const STATES: ReadonlyArray<HarnessState> = [
       processes: false,
     },
   },
+  {
+    id: "stopped",
+    label: "0 Stopped · its container is not running",
+    mate: { ...WREN, connected: false },
+    phase: null,
+    coming: "reaching",
+    voice: {
+      surface: "stage",
+      headline: "Wren's container is stopped.",
+      text: null,
+      secondary: "Start Wren to reconnect.",
+      actions: ["try-now"],
+      processes: false,
+    },
+  },
+  {
+    id: "empty",
+    label: "4 Empty conversation · ready for its first ask",
+    mate: WREN,
+    phase: null,
+  },
   { id: "signin", label: "2 Sign-in · the choice", mate: WREN, phase: "sign-in", logins: {} },
   {
     id: "signin-claude",
@@ -538,6 +559,14 @@ const PROCESSES: ReadonlyArray<ArrivalService> = [
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
   if (state.coming === undefined) return null;
+  if (state.id === "opening")
+    return {
+      kind: "reaching",
+      face: "sleep",
+      headline: "Wren is opening the conversation.",
+      sentence: "Picking up where you left off.",
+      below: null,
+    };
   if (state.coming === "reaching") {
     const voice: Spoken = state.voice?.surface === "stage" ? state.voice : SILENT;
     // A restart speaks on the stage as the Mate (`MateLinkStage`): its line is the headline.
@@ -551,6 +580,8 @@ function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
           }
         : {};
     return {
+      headline: voice.headline,
+      sentence: voice.secondary,
       ...restart,
       kind: "reaching",
       below: (
@@ -733,7 +764,18 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
   );
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-harness-pane>
-      {state.conversation === true ? <Conversation /> : stage}
+      <div className="relative min-h-0 flex-1">
+        {state.conversation === true ? <Conversation /> : stage}
+      </div>
+      {state.id === "empty" ? (
+        <div className="shrink-0 px-6 pb-5" data-harness-composer>
+          <textarea
+            aria-label="Message Wren"
+            className="mx-auto block min-h-17.5 w-full max-w-3xl rounded-2xl border border-border bg-background p-4"
+            placeholder="Ask Wren to do something…"
+          />
+        </div>
+      ) : null}
       {state.dialog === undefined ? null : (
         <Dialog defaultOpen key={state.id}>
           <div className="self-start p-4">

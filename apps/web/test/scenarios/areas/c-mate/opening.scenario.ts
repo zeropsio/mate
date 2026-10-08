@@ -59,6 +59,9 @@ describe("C: the conversation opening follows readiness", () => {
                             columnX: number;
                             columnWidth: number;
                             stages: number;
+                            leadY: number;
+                            leadHeight: number;
+                            areaHeight: number;
                           }> = [];
                           let seenStage = false;
                           let conversationReady = false;
@@ -95,6 +98,9 @@ describe("C: the conversation opening follows readiness", () => {
                             if (stage && column) {
                               const box = stage.getBoundingClientRect();
                               const pane = column.getBoundingClientRect();
+                              const lead = stage
+                                .querySelector("[data-mate-empty-lead]")!
+                                .getBoundingClientRect();
                               const phase = stage
                                 .closest("[data-conversation-opening]")
                                 ?.getAttribute("data-conversation-opening");
@@ -125,6 +131,9 @@ describe("C: the conversation opening follows readiness", () => {
                                 columnX: pane.x,
                                 columnWidth: pane.width,
                                 stages: stages.length,
+                                leadY: lead.y,
+                                leadHeight: lead.height,
+                                areaHeight: box.height,
                               });
                             } else if (seenStage && !conversationReady) {
                               Reflect.set(window, "openingStageGap", true);
@@ -176,6 +185,15 @@ describe("C: the conversation opening follows readiness", () => {
                         ).toBe("sleep");
                         // Time passing and a finished face animation cannot make the held source read ready.
                         if (person !== "reader") {
+                          expect(
+                            await s.page.evaluate(() => {
+                              const footer = document.querySelector("[data-conversation-footer]");
+                              const held = document.querySelector("[data-composer-room-held]");
+                              return footer !== null
+                                ? getComputedStyle(footer).opacity !== "0"
+                                : held !== null && getComputedStyle(held).visibility !== "hidden";
+                            }),
+                          ).toBe(false);
                           await s.clock.advance(10_000);
                           expect(
                             await stage!.evaluate((node) =>
@@ -214,6 +232,12 @@ describe("C: the conversation opening follows readiness", () => {
                         yield* chat.then.text("Sage's conversation is ready");
                         yield* Effect.promise(async () => {
                           await s.page.waitForSelector('[data-conversation-opening="ready"]');
+                          expect(
+                            await s.page.$eval(
+                              "[data-conversation-footer]",
+                              (node) => getComputedStyle(node).visibility,
+                            ),
+                          ).toBe("visible");
                           if (entry === "menu")
                             expect(
                               await stage!.evaluate(

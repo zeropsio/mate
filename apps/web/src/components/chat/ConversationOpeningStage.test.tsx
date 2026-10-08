@@ -40,6 +40,10 @@ it("holds one waiting face until the conversation is ready, then opens its eyes 
     expect(face?.getAttribute("data-mate-face-state")).toBe("idle");
     expect(stage?.getAttribute("aria-hidden")).toBe("true");
     expect(stage?.getAttribute("data-conversation-opening")).toBe("ready");
+    // Later history changes or catch-up cannot reopen a conversation already handed over.
+    await act(() => show(false));
+    expect(stage?.getAttribute("data-conversation-opening")).toBe("ready");
+    expect(face?.getAttribute("data-mate-face-state")).toBe("idle");
   } finally {
     await act(() => root.unmount());
     vi.unstubAllGlobals();
