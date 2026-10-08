@@ -2016,7 +2016,7 @@
         "none": "Admission behavior is protected by consumed-record tests."
       },
       "tests": [
-        "apps/web/src/components/chat/AgentAdmission.test.tsx",
+        "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
         "apps/web/src/components/chat/ThreadErrorBanner.test.tsx",
         "packages/client-runtime/src/data/projections/agentAdmission.test.ts"
       ],

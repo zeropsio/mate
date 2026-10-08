@@ -78,7 +78,12 @@ export function resolveZeropsProviderAvailability(input: {
 
 export interface AgentAdmissionAttention {
   readonly key: string;
-  readonly cause: "missing-sign-in" | "expired-login" | "another-signer" | "unrecorded-login";
+  readonly cause:
+    | "missing-sign-in"
+    | "sign-in-in-progress"
+    | "expired-login"
+    | "another-signer"
+    | "unrecorded-login";
   readonly instanceId: string;
   readonly loginKey: string;
   readonly agentId: ZeropsAgentId | undefined;
@@ -86,7 +91,12 @@ export interface AgentAdmissionAttention {
   readonly dismissible: false;
   readonly text: string;
   readonly summary: string;
-  readonly action: "sign-in" | "check-again" | "register-again";
+  readonly action:
+    | "sign-in"
+    | "continue-sign-in"
+    | "manage-api-key"
+    | "check-again"
+    | "register-again";
   readonly actionLabel: string;
   readonly refusalMessages: ReadonlyArray<string>;
 }
@@ -119,6 +129,7 @@ export function agentAdmission(input: {
       : candidates.find(
           (provider) =>
             input.availability?.get(provider.instanceId)?.kind === "needs-sign-in" ||
+            input.availability?.get(provider.instanceId)?.kind === "signing-in" ||
             input.availability?.get(provider.instanceId)?.kind === "someone-else" ||
             input.availability?.get(provider.instanceId)?.kind === "unrecorded",
         )?.instanceId);
@@ -141,17 +152,19 @@ export function agentAdmission(input: {
     provider.auth.status === "unauthenticated";
   let attention: AgentAdmissionAttention | null = null;
   const cause =
-    available?.kind === "needs-sign-in"
-      ? available.signInKind === "needs-reauth"
-        ? "expired-login"
-        : "missing-sign-in"
-      : available?.kind === "someone-else"
-        ? "another-signer"
-        : available?.kind === "unrecorded"
-          ? "unrecorded-login"
-          : !managed && cliSignIn
-            ? "missing-sign-in"
-            : null;
+    available?.kind === "signing-in"
+      ? "sign-in-in-progress"
+      : available?.kind === "needs-sign-in"
+        ? available.signInKind === "needs-reauth"
+          ? "expired-login"
+          : "missing-sign-in"
+        : available?.kind === "someone-else"
+          ? "another-signer"
+          : available?.kind === "unrecorded"
+            ? "unrecorded-login"
+            : !managed && cliSignIn
+              ? "missing-sign-in"
+              : null;
   // An unidentified viewer cannot earn a person-scoped ownership assertion.
   if (cause !== null && instanceId !== undefined && input.viewerSubject !== undefined) {
     attention = admissionAttention({
@@ -168,7 +181,12 @@ export function agentAdmission(input: {
           : (provider?.displayName ?? "coding agent"),
       refusalMessages:
         spent === undefined ? [] : admissionRefusalMessages(spent.agent.agentId, spentLogin),
-      action: available?.ended?.action ?? "sign-in",
+      action:
+        spentLogin?.kind === "apiKey"
+          ? "manage-api-key"
+          : available?.kind === "signing-in"
+            ? "continue-sign-in"
+            : (available?.ended?.action ?? "sign-in"),
     });
   }
   return { attention, providerStatus };
@@ -210,11 +228,17 @@ function admissionAttention(input: {
         ? "Claude"
         : input.agentName;
   const text =
-    cause === "another-signer" || cause === "unrecorded-login"
-      ? agentOwnershipComposerNotice(cause === "another-signer" ? "someone-else" : "unrecorded")!
-      : cause === "expired-login"
-        ? `${input.mateName}'s ${agentName} login no longer works. Sign in again to continue.`
-        : `${input.mateName} needs a ${agentName} sign-in to continue.`;
+    action === "manage-api-key"
+      ? `${input.mateName}'s ${agentName} is unavailable. Add a working key in Coding agents to continue.`
+      : cause === "sign-in-in-progress"
+        ? `${input.mateName}'s ${agentName} sign-in is not finished. Continue authorization to use it.`
+        : cause === "another-signer" || cause === "unrecorded-login"
+          ? agentOwnershipComposerNotice(
+              cause === "another-signer" ? "someone-else" : "unrecorded",
+            )!
+          : cause === "expired-login"
+            ? `${input.mateName}'s ${agentName} login no longer works. Sign in again to continue.`
+            : `${input.mateName} needs a ${agentName} sign-in to continue.`;
   return {
     ...input,
     key: JSON.stringify([
@@ -228,19 +252,27 @@ function admissionAttention(input: {
     dismissible: false,
     text,
     summary:
-      cause === "another-signer"
-        ? "Another signer's login"
-        : cause === "unrecorded-login"
-          ? "Sign-in not recorded"
-          : "Sign in",
+      action === "manage-api-key"
+        ? "API key required"
+        : cause === "sign-in-in-progress"
+          ? "Finish sign-in"
+          : cause === "another-signer"
+            ? "Another signer's login"
+            : cause === "unrecorded-login"
+              ? "Sign-in not recorded"
+              : "Sign in",
     actionLabel:
-      action === "check-again"
-        ? "Check again"
-        : action === "register-again"
-          ? "Register again"
-          : cause === "another-signer" || cause === "unrecorded-login"
-            ? "Sign in with your own account"
-            : "Sign in",
+      action === "manage-api-key"
+        ? "Manage API key"
+        : action === "continue-sign-in"
+          ? "Continue authorization"
+          : action === "check-again"
+            ? "Check again"
+            : action === "register-again"
+              ? "Register again"
+              : cause === "another-signer" || cause === "unrecorded-login"
+                ? "Sign in with your own account"
+                : "Sign in",
   };
 }
 
@@ -301,16 +333,11 @@ export function admissionProviderStatus<
   provider: T | null,
   snapshot: ZeropsAgentAuthSnapshot | null,
   providers: ReadonlyArray<{ readonly instanceId: string; readonly driver: string }>,
-): T | null {
+) {
   if (
     provider === null ||
     provider.installed === false ||
     (provider.status !== "warning" && provider.status !== "error")
-  )
-    return provider;
-  if (
-    provider.compatibilityAdvisory?.status === "broken" ||
-    provider.compatibilityAdvisory?.status === "unsupported"
   )
     return provider;
   const spent = resolveSpentLogin(provider.instanceId, snapshot, providers);
@@ -333,7 +360,13 @@ export function admissionProviderStatus<
         provider.message === "Sign in with Google to use Antigravity.") ||
       agentNeedsSignIn(provider.message, provider.driver) ||
       /^(?:Not signed in\.|Not authenticated\.|Authentication required\.)/u.test(provider.message));
-  return managedWords || cliWords ? null : provider;
+  if (!managedWords && !cliWords) return provider;
+  // Admission owns the auth part even when config also carries a version advisory.
+  // Keep that independent evidence without presenting the obsolete auth error again.
+  return provider.compatibilityAdvisory?.status === "broken" ||
+    provider.compatibilityAdvisory?.status === "unsupported"
+    ? { ...provider, status: "ready" as const, message: undefined }
+    : null;
 }
 
 export function admissionRefusalWords(

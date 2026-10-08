@@ -3250,15 +3250,9 @@ export default function ChatView(props: ChatViewProps) {
     resumeCompactionPermanentlyDismissed,
     setResumeCompactionPermanentlyDismissed,
   ]);
-  const providerStatusBannerKey = getProviderStatusBannerKey(activeProviderStatus);
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
   >(null);
-  useEffect(() => {
-    if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
-      setDismissedProviderStatusBannerKey(null);
-    }
-  }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
   const admission = agentAdmission({
     environmentId,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
@@ -3271,6 +3265,12 @@ export default function ChatView(props: ChatViewProps) {
       return mate.kind === "mate" ? mate.mate.name : "This Mate";
     })(),
   });
+  const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
+  useEffect(() => {
+    if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
+      setDismissedProviderStatusBannerKey(null);
+    }
+  }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
   const admissionRefusal = admissionExplainsRefusal(
     admission.attention,
     visibleThreadError,
@@ -4058,8 +4058,10 @@ export default function ChatView(props: ChatViewProps) {
   const crewDoor = useCrewAccess(activeThreadEnvironmentId, crew.snapshot);
   const openAgentAuthDialog = useCallback(() => {
     const item = admission.attention;
-    if (item?.agentId !== undefined) {
-      if (item.action !== "sign-in") {
+    if (item?.action === "manage-api-key") {
+      addZeropsSurface();
+    } else if (item?.agentId !== undefined) {
+      if (item.action === "check-again" || item.action === "register-again") {
         if (activeThreadRef !== null)
           void checkAgentAuth({
             environmentId: activeThreadRef.environmentId,
@@ -4075,6 +4077,7 @@ export default function ChatView(props: ChatViewProps) {
         );
     } else if (activeProviderStatus !== null) openProviderSetup(activeProviderStatus.instanceId);
   }, [
+    addZeropsSurface,
     admission.attention,
     activeProviderStatus,
     activeThreadRef,
