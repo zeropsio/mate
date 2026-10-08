@@ -80,33 +80,38 @@ export async function readResourceHealth(
   // supplies evidence; unreadable ancestors stay explicitly unavailable.
   const known = memories.filter((memory) => memory !== null);
   const tightest = known.toSorted((a, b) => (a.max ?? Infinity) - (b.max ?? Infinity))[0];
+  // Hierarchical events, PSI and swap belong to the outermost readable scope,
+  // which includes descendant pressure. Events cannot identify which threshold
+  // was crossed (memory.events is hierarchical). The effective hard cap is independent.
+  const container = known.at(-1);
   const memory =
-    tightest === undefined
+    container === undefined
       ? null
       : {
-          ...tightest,
+          ...container,
+          max: tightest?.max ?? null,
           swapGrowth: growing(
-            tightest.swapCurrent ?? 0,
-            previous?.memory?.scope === tightest.scope
+            container.swapCurrent ?? 0,
+            previous?.memory?.scope === container.scope
               ? (previous.memory.swapCurrent ?? undefined)
               : undefined,
           ),
           growth: {
             max: growing(
-              tightest.events.max,
-              previous?.memory?.scope === tightest.scope ? previous.memory.events.max : undefined,
+              container.events.max,
+              previous?.memory?.scope === container.scope ? previous.memory.events.max : undefined,
             ),
             high: growing(
-              tightest.events.high,
-              previous?.memory?.scope === tightest.scope ? previous.memory.events.high : undefined,
+              container.events.high,
+              previous?.memory?.scope === container.scope ? previous.memory.events.high : undefined,
             ),
             oom: growing(
-              tightest.events.oom,
-              previous?.memory?.scope === tightest.scope ? previous.memory.events.oom : undefined,
+              container.events.oom,
+              previous?.memory?.scope === container.scope ? previous.memory.events.oom : undefined,
             ),
             oomKill: growing(
-              tightest.events.oomKill,
-              previous?.memory?.scope === tightest.scope
+              container.events.oomKill,
+              previous?.memory?.scope === container.scope
                 ? previous.memory.events.oomKill
                 : undefined,
             ),
@@ -291,12 +296,16 @@ export function resourceHealthChanges(
         Stream.mapEffect(() =>
           Effect.promise(async () => {
             const observationDue = cpuDue;
-            if (observationDue) previous = observed;
+            // Consume the tick once, before any await. A tick arriving during this
+            // read remains pending for the next read, for both CPU and memory.
+            if (observationDue) {
+              cpuDue = false;
+              previous = observed;
+            }
             const value = await readResourceHealth(groups, stateDir, previous, async () => {
               // Requests and unrelated filesystem changes cannot replace the current CPU
               // window with a tiny interval or extend it beyond the declared cadence.
-              if (cpuDue || cpuRead === undefined) {
-                cpuDue = false;
+              if (observationDue || cpuRead === undefined) {
                 cpuRead = await sampleCpu();
               }
               return cpuRead;

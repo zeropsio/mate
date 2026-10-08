@@ -47,6 +47,7 @@ describe("Mate's visible resource warning", () => {
             evidence: {
               ...health.evidence,
               resources: ["io"],
+              memory: null,
               io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
             },
           },

@@ -271,3 +271,39 @@ describe("health at the screen boundary", () => {
     },
   );
 });
+
+it("describes hierarchical reclaim without attributing it to the displayed threshold", () => {
+  const copy = mateHealthCopy("Rhea", {
+    live: true,
+    health: {
+      ...health,
+      evidence: {
+        ...evidence,
+        memory: { ...evidence.memory!, current: 1024 ** 3, high: 1.75 * 1024 ** 3 },
+      },
+    },
+  });
+  expect(copy?.description).toContain("Memory reclaim threshold: 1.75 GB");
+  expect(copy?.description).toContain("within the container hierarchy");
+  expect(copy?.description).not.toContain("container hit its memory reclaim threshold");
+});
+it.each([1000, 0])("normalizes legacy severity and concurrent I/O with disk free=%s", (free) => {
+  const copy = mateHealthCopy("Rhea", {
+    live: true,
+    health: {
+      ...health,
+      evidence: {
+        ...evidence,
+        resources: ["memory", "disk"],
+        severity: "critical",
+        disk: { free, total: 5000 },
+        memory: { ...evidence.memory!, growth: { high: 0, oom: 0, oomKill: 0 }, pressure: null },
+        io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+      },
+    },
+  });
+  expect(copy?.severity).toBe(free === 0 ? "critical" : "warning");
+  expect(copy?.description).toContain("I/O stalls");
+  expect(copy?.description).not.toContain("swap is full");
+  if (free === 0) expect(copy?.title).toContain("no free space");
+});

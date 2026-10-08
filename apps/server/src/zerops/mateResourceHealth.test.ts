@@ -5,6 +5,8 @@ import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import * as Queue from "effect/Queue";
+import { vi } from "vite-plus/test";
 import * as TestClock from "effect/testing/TestClock";
 import {
   resourceHealthChanges,
@@ -12,6 +14,19 @@ import {
 } from "./mateResourceHealth.ts";
 import { makeCpuSampler } from "./mateCpuHealth.ts";
 import type { MateResourceHealth } from "@t3tools/contracts";
+
+// Hold a kernel read to deliver a cadence tick at the asynchronous boundary.
+const reads = vi.hoisted(() => ({ beforeCurrent: undefined as (() => Promise<void>) | undefined }));
+vi.mock("node:fs/promises", async (original) => {
+  const fs = await original<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    readFile: async (...args: Parameters<typeof fs.readFile>) => {
+      if (String(args[0]).endsWith("memory.current")) await reads.beforeCurrent?.();
+      return fs.readFile(...args);
+    },
+  };
+});
 
 // Memory/disk cases begin with an established, quiet CPU window.
 async function readResourceHealth(
@@ -51,6 +66,7 @@ async function fixture(values: Record<string, string> = {}) {
   return dir;
 }
 afterEach(async () => {
+  reads.beforeCurrent = undefined;
   await Promise.all(dirs.splice(0).map((dir) => NodeFSP.rm(dir, { recursive: true, force: true })));
 });
 describe("container resource evidence", () => {
@@ -99,6 +115,33 @@ describe("container resource evidence", () => {
       memory: { high: 150, max: 300, current: 200 },
     });
   });
+  it.each(["reclaim", "swap"])(
+    "retains root %s pressure with a tighter child cap",
+    async (signal) => {
+      const root = await fixture({
+        "memory.max": String(3.75 * 1024 ** 3),
+        "memory.high": String(1.75 * 1024 ** 3),
+        "memory.swap.max": String(512 * 1024 ** 2),
+      });
+      const child = await fixture({ "memory.max": String(3 * 1024 ** 3) });
+      const previous = await readResourceHealth([child, root], root);
+      await NodeFSP.writeFile(
+        NodePath.join(root, signal === "reclaim" ? "memory.events" : "memory.swap.current"),
+        signal === "reclaim" ? "high 1\nmax 0\noom 0\noom_kill 0\n" : String(200 * 1024 ** 2),
+      );
+      const next = await readResourceHealth([child, root], root, previous);
+      expect(next).toMatchObject({
+        status: "strained",
+        resources: ["memory"],
+        memory: {
+          scope: root,
+          max: 3 * 1024 ** 3,
+          high: 1.75 * 1024 ** 3,
+          ...(signal === "reclaim" ? { growth: { high: 1 } } : { swapGrowth: 200 * 1024 ** 2 }),
+        },
+      });
+    },
+  );
   it.each([
     { allocation: 3.375, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 30, resources: ["io"] },
     { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 0, resources: [] },
@@ -298,4 +341,51 @@ it.effect(
       expect(values[1]?.memory?.swapGrowth).toBe(209715200);
       expect(values[2]?.memory?.swapCurrent).toBe(209715200);
     }),
+);
+
+it.effect("a tick during an event read advances CPU and memory together at the next boundary", () =>
+  Effect.gen(function* () {
+    const dir = yield* Effect.promise(() => fixture());
+    const samples = yield* Queue.unbounded<MateResourceHealth>();
+    let calls = 0;
+    const cpu = async () => ({
+      cpu: { some: { avg10: 0, total: ++calls }, full: null, window: null },
+      strained: false,
+      unavailable: [],
+    });
+    yield* Effect.forkScoped(
+      Stream.runForEach(resourceHealthChanges(dir, [dir], undefined, cpu), (value) =>
+        Queue.offer(samples, value),
+      ),
+    );
+    yield* Queue.take(samples);
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    reads.beforeCurrent = async () => {
+      reads.beforeCurrent = undefined;
+      entered();
+      await blocked;
+    };
+    yield* Effect.promise(() =>
+      NodeFSP.writeFile(NodePath.join(dir, "memory.events"), "high 1\nmax 0\noom 0\noom_kill 0\n"),
+    );
+    yield* Effect.promise(() => started);
+    yield* TestClock.adjust(2000);
+    release();
+    const event = yield* Queue.take(samples);
+    expect(event.memory?.growth.high).toBe(1);
+    expect(event.cpu?.some.total).toBe(1);
+    const tick = yield* Queue.take(samples);
+    expect(tick.cpu?.some.total).toBe(2);
+    yield* TestClock.adjust(2000);
+    const recovered = yield* Queue.take(samples);
+    expect(recovered.memory?.growth.high).toBe(0);
+    expect(recovered.resources).toEqual([]);
+  }),
 );
