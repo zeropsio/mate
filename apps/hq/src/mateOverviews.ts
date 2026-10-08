@@ -156,6 +156,7 @@ const retainedStateOf = (overview: MateOverview | null) =>
     kindsOf(overview),
     overview?.main?.session?.lastError ?? null,
     overview?.main?.usagePause ?? null,
+    overview?.main?.refusal,
   ]);
 
 export const makeMateOverviews = (

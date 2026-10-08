@@ -18,7 +18,6 @@ const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp"]
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
-import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
 import { splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
 import { helperNowWords, helperSpan } from "./helpers.logic";
@@ -583,23 +582,4 @@ export function deriveDock(input: {
         pause,
         ...(ends ? { endings } : {}),
       };
-}
-
-/**
- * Whether the thread is held by a usage limit right now: its latest word is
- * the limit's notice and nothing has worked since. Read backwards from the
- * end, so it costs a few entries, not the thread.
- */
-export function latestUsagePause(
-  timelineEntries: ReadonlyArray<TimelineEntry>,
-): { readonly resetsAt: string | null } | null {
-  for (let index = timelineEntries.length - 1; index >= 0; index -= 1) {
-    const entry = timelineEntries[index]!;
-    if (entry.kind === "change-landed" || entry.kind === "turn-plan") continue;
-    if (entry.kind !== "message") return null;
-    if (entry.message.role === "user" || entry.message.role === "reasoning") continue;
-    const notice = readUsageLimitNotice(entry.message.text, entry.message.createdAt);
-    return notice === null ? null : { resetsAt: notice.resetsAt };
-  }
-  return null;
 }

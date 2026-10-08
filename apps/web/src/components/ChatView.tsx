@@ -1,3 +1,4 @@
+import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   agentAdmission,
@@ -14,7 +15,7 @@ import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
-import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
+import { timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";

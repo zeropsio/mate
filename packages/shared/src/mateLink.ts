@@ -187,6 +187,16 @@ export const OverviewMain = Schema.Struct({
   ),
   planProgress: Schema.NullOr(Schema.Struct({ step: Text })),
   pendingQuestion: Schema.NullOr(Text),
+  /** Refusal evidence, not a permanent admission verdict. Absent only on legacy frames. */
+  refusal: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        turnId: Schema.NullOr(OrchestrationLatestTurn.fields.turnId),
+        provider: Text,
+        resetsAt: Schema.NullOr(IsoDateTime),
+      }),
+    ),
+  ),
   usagePause: Schema.NullOr(Schema.Struct({ resetsAt: IsoDateTime })),
   liveStep: Schema.NullOr(LiveStep),
 });

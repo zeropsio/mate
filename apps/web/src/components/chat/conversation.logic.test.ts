@@ -1,4 +1,4 @@
-import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
+import { projectLimitEntry } from "@t3tools/client-runtime/data";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -216,17 +216,34 @@ describe("readUsageLimitNotice", () => {
     ["Claude AI usage limit reached|1790283600", at(0), new Date(1790283600 * 1000).toISOString()],
     ["You've hit your session limit", at(0), null],
   ])("%j", (text, createdAt, resetsAt) => {
-    expect(readUsageLimitNotice(text, createdAt)).toEqual({ resetsAt });
+    expect(
+      projectLimitEntry({
+        kind: "message",
+        createdAt,
+        message: { role: "assistant", text, createdAt },
+      }),
+    ).toMatchObject({ resetsAt });
   });
 
   it("does not read a narration that mentions a limit", () => {
     expect(
-      readUsageLimitNotice(
-        "All three agents stopped on the session limit. I'm resuming each with its existing context, and checking what they'd already written so no work is lost — the rest of the plan stays as it was.",
-        at(0),
-      ),
+      projectLimitEntry({
+        kind: "message",
+        createdAt: at(0),
+        message: {
+          role: "assistant",
+          createdAt: at(0),
+          text: "All three agents stopped on the session limit. I'm resuming each with its existing context, and checking what they'd already written so no work is lost — the rest of the plan stays as it was.",
+        },
+      }),
     ).toBeNull();
-    expect(readUsageLimitNotice("Deployed to stage.", at(0))).toBeNull();
+    expect(
+      projectLimitEntry({
+        kind: "message",
+        createdAt: at(0),
+        message: { role: "assistant", text: "Deployed to stage.", createdAt: at(0) },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -500,7 +517,7 @@ describe("deriveConversationStructure", () => {
       latest: { id: "t1", state: "completed", completed: true },
     }).turns;
     expect(only!.limitOnly).toBe(true);
-    expect(only!.limit).toEqual({
+    expect(only!.limit).toMatchObject({
       resetsAt: new Date(Date.UTC(2026, 8, 24, 21, 20)).toISOString(),
     });
   });
@@ -3503,6 +3520,26 @@ describe("a run, its woken turns and its work", () => {
       agentSpawn: { workflowId: null, agentTaskIds: [`task-${id}`] },
     });
 
+  it("a typed provider refusal ends the attempt before a helper wakes a new turn", () => {
+    const entries = [
+      user("u1", 0),
+      launched("h1", 1),
+      tool("refused", "t1", 2, {
+        label: "Claude usage limit reached.",
+        tone: "info",
+        sourceActivityKind: "runtime.warning",
+        usageLimit: { resetsAt: at(60) },
+      }),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+      assistant("a2", "t2", 6, ANSWER),
+    ];
+    const built = structure(entries, { latest: { id: "t2", state: "completed", completed: true } });
+    expect(built.turns.map((run) => run.turnId)).toEqual([turn("t1"), turn("t2")]);
+    expect(built.turns[0]?.limit).toMatchObject({ resetsAt: at(60) });
+    expect(built.turns[1]?.answer?.id).toBe("a2");
+  });
+
   it("draws a turn nobody wrote to start as the run before it going on", () => {
     const entries = [
       user("u1", 0),
@@ -3721,7 +3758,7 @@ describe("the provider's refusal record", () => {
       ],
       { latest: { id: "t1", state: "error", completed: true } },
     ).turns;
-    expect(only?.limit).toEqual({ resetsAt: "2026-10-07T02:00:00.000Z" });
+    expect(only?.limit).toMatchObject({ resetsAt: "2026-10-07T02:00:00.000Z" });
     expect(only?.limitOnly).toBe(true);
   });
 });

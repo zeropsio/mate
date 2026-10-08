@@ -9,26 +9,6 @@ import type { RelayAgentAwarenessPhase } from "@t3tools/contracts/relay";
 import type { MateMarkState } from "./brand.ts";
 import { isLatestTurnSettled } from "./orchestrationTiming.ts";
 
-/** A provider refusal, distinct from allowed or warning admission telemetry. */
-export function usageLimitProvider(
-  error: string | null | undefined,
-  driver?: string | null,
-): string | null {
-  if (!error) return null;
-  const known = Object.entries(PROVIDER_DISPLAY_NAMES).find(([key]) => key === driver)?.[1];
-  const matched =
-    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
-      error.trim(),
-    );
-  if (matched)
-    return matched[1]!.toLowerCase() === "coding agent"
-      ? (known ?? "coding agent")
-      : matched[1]!.replace(/ AI$/i, "");
-  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim())
-    ? (known ?? "coding agent")
-    : null;
-}
-
 export type ThreadStatusKind =
   | "approval"
   | "input"

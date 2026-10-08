@@ -1,3 +1,4 @@
+import { projectLatestUsagePause } from "@t3tools/client-runtime/data";
 /**
  * A conversation's list props, read on their own for a conversation not open
  * yet (`KeptTimelines` warms it): what `ChatView` gives the list of the open
@@ -40,7 +41,7 @@ import {
 } from "../../zerops/useZeropsChangeLandedEvents";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { useDeployBuilds, useRunningBuildDemand } from "../../zerops/activity/useDeployBuilds";
-import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./conversationDock.logic";
+import { deriveDock, foldBackgroundTasks } from "./conversationDock.logic";
 import { readTimelinePosition } from "./timelineScrollAnchoring";
 import { crewChatEntries } from "../zerops/crew/crewChatSeams";
 import type { MessagesTimeline } from "./MessagesTimeline";
@@ -207,7 +208,7 @@ export function useWarmTimeline(
         agentPanelModel: NO_AGENTS,
         plan: null,
         backgroundTasks: foldBackgroundTasks(activities),
-        pause: usagePause ? { resetsAt: usagePause.resetsAt } : latestUsagePause(entries),
+        pause: usagePause ? { resetsAt: usagePause.resetsAt } : projectLatestUsagePause(entries),
       }),
     [activeTurnStartedAt, activities, entries, isWorking, runningTurnId, usagePause],
   );

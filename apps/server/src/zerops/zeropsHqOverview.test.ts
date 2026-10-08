@@ -232,6 +232,7 @@ describe("mateOverviewOf", () => {
       latestMessagePreview: { role: "assistant", text: "Reading the router" },
       planProgress: { step: "Wire the form" },
       pendingQuestion: null,
+      refusal: null,
       usagePause: null,
       liveStep: { kind: "thinking", since: "2026-10-02T10:00:04Z" },
     });
@@ -582,7 +583,10 @@ it("HQ learns which provider paused the Mate, with the provider's reset", () => 
       },
     }),
   ]);
-  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791475200");
+  expect(overview.main).toMatchObject({
+    refusal: { provider: "Claude", resetsAt: "2026-10-08T16:00:00Z" },
+  });
+  expect(overview.main?.session?.lastError).toBeNull();
   expect(overview.main?.usagePause).toEqual({
     resetsAt: "2026-10-08T16:00:00Z",
   });
@@ -604,7 +608,10 @@ it("HQ keeps a provider deadline after the scheduling pause clears", () => {
     }),
   ]);
   expect(overview.main?.usagePause).toBeNull();
-  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791338400");
+  expect(overview.main).toMatchObject({
+    refusal: { provider: "Claude", resetsAt: "2026-10-07T02:00:00Z" },
+  });
+  expect(overview.main?.session?.lastError).toBeNull();
 });
 
 it("a generic weekly refusal retains Claude's identity through HQ compaction", () => {
@@ -618,7 +625,10 @@ it("a generic weekly refusal retains Claude's identity through HQ compaction", (
       },
     }),
   ]);
-  expect(overview.main?.session?.lastError).toBe("Claude usage limit reached. |1791597600");
+  expect(overview.main).toMatchObject({
+    refusal: { provider: "Claude", resetsAt: "2026-10-10T02:00:00Z" },
+  });
+  expect(overview.main?.session?.lastError).toBeNull();
   expect(overview.main?.usagePause).toBeNull();
 });
 
@@ -648,5 +658,6 @@ it("a newer admitted turn publishes no inherited refusal to existing HQ readers"
   ]);
   expect(overview.main?.session?.lastError).toBeNull();
   expect(overview.main?.usagePause).toBeNull();
+  expect(overview.main).toMatchObject({ refusal: null });
   expect(overview.threads.list.find((thread) => thread.id === "main")?.kind).toBe("working");
 });

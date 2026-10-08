@@ -1,15 +1,19 @@
-import { projectMateLimit } from "@t3tools/client-runtime/data";
+import { projectMateLimit, projectLimitEntry, projectLimitError } from "./mateLimit.ts";
 import { describe, expect, it } from "vite-plus/test";
-import { readUsageLimitNotice, usageLimitProvider } from "./providerLimit.logic";
 
 describe("provider refusal deadlines", () => {
   it("a weekly refusal with only a time of day cannot invent tomorrow as its reset", () => {
     expect(
-      readUsageLimitNotice(
-        "You've hit your weekly limit · resets 2am (UTC)",
-        "2026-10-08T09:00:00Z",
-      ),
-    ).toEqual({ resetsAt: null });
+      projectLimitEntry({
+        kind: "message",
+        createdAt: "2026-10-08T09:00:00Z",
+        message: {
+          role: "assistant",
+          text: "You've hit your weekly limit · resets 2am (UTC)",
+          createdAt: "2026-10-08T09:00:00Z",
+        },
+      }),
+    ).toMatchObject({ resetsAt: null });
   });
   it("the provider's dated reset governs a weekly refusal", () => {
     const evidence = {
@@ -36,6 +40,6 @@ describe("provider refusal deadlines", () => {
 });
 
 it("names the known driver when Claude's refusal wording is generic", () => {
-  expect(usageLimitProvider("You've hit your weekly limit", "claudeAgent")).toBe("Claude");
-  expect(usageLimitProvider("99% used", "claudeAgent")).toBeNull();
+  expect(projectLimitError("You've hit your weekly limit", "claudeAgent")?.provider).toBe("Claude");
+  expect(projectLimitError("99% used", "claudeAgent")).toBeNull();
 });

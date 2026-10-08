@@ -1,7 +1,7 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { admissionRefusalWords } from "@t3tools/client-runtime/data";
-import { usageLimitProvider } from "./providerLimit.logic";
+import { projectLimitError } from "@t3tools/client-runtime/data";
 
 export function usageLimitWords(provider: string, reset?: string, mateName = "The Mate"): string {
   const name = provider === "coding agent" ? "coding agent's" : provider;
@@ -16,8 +16,8 @@ export function mateFailureWords(
   driver?: string | null,
   mateName = "The Mate",
 ): string {
-  const limit = usageLimitProvider(error);
-  if (limit !== null) return usageLimitWords(limit, undefined, mateName);
+  const limit = projectLimitError(error);
+  if (limit !== null) return usageLimitWords(limit.provider, undefined, mateName);
   return admissionRefusalWords(error, driver, mateName) ?? error;
 }
 
