@@ -23,6 +23,20 @@ export function outageControls(drivers: ScenarioDrivers) {
   return connection;
 }
 
+/** Source evidence: a new Core can declare a newer compatible navigation protocol. */
+export function newerHqProtocol(drivers: ScenarioDrivers) {
+  drivers.hq.mapFrames((frame) => {
+    const message = JSON.parse(frame) as { type?: string; core?: { protocol?: number } };
+    if (message.type === "scope-ready" && message.core !== undefined) message.core.protocol = 2;
+    return JSON.stringify(message);
+  });
+}
+
+/** An actual HQ session ending, distinct from a refused source or a transport outage. */
+export function endHqStream(drivers: ScenarioDrivers, code: 4401 | 4403) {
+  for (const socket of drivers.hq.links.keys()) socket.close(code, "scenario HQ ending");
+}
+
 /** Chrome freeze sends 1001; a deliberately stalled sleep must reach the client as silent loss. */
 export const installSilentSleep = (page: Page) =>
   page.evaluateOnNewDocument(() => {

@@ -5184,6 +5184,26 @@ button.run-bar:focus-visible {
   transition: box-shadow 150ms ease;
 }
 /* Failed bytes and failed signing hold the picture's reserved room. */
+/* A quiet frame survives fetching and decoding; the image keeps its reserved size. */
+.asset-image-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: 10px;
+}
+.asset-image-frame[data-image-pending] {
+  background: var(--color-muted);
+}
+.asset-image-frame > img {
+  transition: opacity 140ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .asset-image-frame > img {
+    transition: none;
+  }
+}
+
 .asset-image-unavailable {
   display: flex;
   flex-direction: column;
@@ -7724,6 +7744,26 @@ button.rv-relrow:hover .rv-relrow-go {
 
 @media (prefers-reduced-motion: reduce) {
   [data-timeline-thread] {
+    transition: none;
+  }
+}
+
+/* Readiness opens the waiting face and reveals the placed rows in the same render.
+   The fade is presentation only: neither layer waits on an animation or a clock. */
+[data-conversation-opening] {
+  transition: opacity 140ms ease-out;
+}
+
+[data-conversation-opening="ready"] {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms ease-out,
+    visibility 0s 140ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-conversation-opening] {
     transition: none;
   }
 }

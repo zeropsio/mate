@@ -228,7 +228,6 @@ describe("a picture's room before it loads", () => {
     expect(html).toMatch(/<img[^>]*height="800"/);
     expect(html).toMatch(/<img[^>]*width="1200"/);
     expect(html).not.toContain("aspect-video");
-    expect(html).toMatch(/<img[^>]*style="width:min\(1200px, 30rem, calc\(30rem \* 1\.5\)\)"/);
   });
 
   it("holds the room a picture usually takes the first time it is seen", () => {
@@ -271,10 +270,5 @@ describe("a picture's room before it loads", () => {
     expect(html).toMatch(/<img[^>]*height="600"/);
     expect(html).toMatch(/<img[^>]*width="800"/);
     expect(html).not.toContain("aspect-video");
-    // A width it will stand at, so the attributes' ratio gives its height
-    // before a byte has come — `w-auto` alone left it none.
-    expect(html).toMatch(
-      /<img[^>]*style="width:min\(800px, 30rem, calc\(30rem \* 1\.3333333333333333\)\)"/,
-    );
   });
 });

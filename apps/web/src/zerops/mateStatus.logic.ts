@@ -14,6 +14,7 @@ export function mateStatus(
   activity: ZeropsAgentActivity | undefined,
   needsSignIn = false,
 ): MateStatus | null {
+  if (activity?.remembered === true) return null;
   if (
     activity?.usageLimited === true ||
     activity?.pausedUntil !== undefined ||
@@ -23,7 +24,7 @@ export function mateStatus(
       kind: "limit",
       severity: "attention",
       until: activity?.pausedUntil,
-      provider: usageLimitProvider(activity?.errorLine) ?? undefined,
+      provider: activity?.limitProvider ?? usageLimitProvider(activity?.errorLine) ?? undefined,
     };
   }
   if (

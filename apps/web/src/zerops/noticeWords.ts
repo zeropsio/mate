@@ -4,10 +4,13 @@ import { signedOutAgent } from "@t3tools/client-runtime/zerops";
 export function usageLimitProvider(error: string | null | undefined): string | null {
   if (!error) return null;
   const matched =
-    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity) usage limit reached\b/i.exec(
+    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
       error.trim(),
     );
-  if (matched) return matched[1]!.replace(/ AI$/i, "");
+  if (matched)
+    return matched[1]!.toLowerCase() === "coding agent"
+      ? "coding agent"
+      : matched[1]!.replace(/ AI$/i, "");
   return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim()) ? "coding agent" : null;
 }
 

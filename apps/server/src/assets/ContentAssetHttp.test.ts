@@ -75,7 +75,7 @@ it.effect("reload revalidates a cached preview with a strong digest ETag and no 
       );
     const first = yield* serve({});
     expect(first.status).toBe(200);
-    expect(first.headers["cache-control"]).toBe("private, no-cache");
+    expect(first.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
     expect(first.headers.etag).toBe(`"sha256-${object.digest}"`);
     const reload = yield* serve({ "if-none-match": first.headers.etag! });
     expect(reload.status).toBe(304);

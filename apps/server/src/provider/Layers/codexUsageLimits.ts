@@ -8,6 +8,7 @@
  */
 import type {
   ProviderUsageLimitsUpdate,
+  ProviderUsageLimitBlock,
   ServerProviderResetCredits,
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
@@ -231,4 +232,22 @@ export function codexUsageLimitMessage(
     reset = ` The ${window.kind} limit resets in ${formatCodexUsageLimitWait(resetMs - atMs)}.`;
   }
   return `Codex usage limit reached.${reset}${codexUsageLimitNextStep(snapshot?.rateLimitReachedType)}`;
+}
+
+/** A refused turn proves a limit; only the provider's exhausted window supplies its reset. */
+export function codexUsageLimitBlock(
+  snapshot: CodexRateLimitSnapshot | undefined,
+  atIso: string,
+): ProviderUsageLimitBlock | undefined {
+  const windows = snapshot ? codexRateLimitsToWindows(snapshot) : [];
+  const exhausted = windows.filter(
+    (window) =>
+      window.usedPercent >= 100 &&
+      window.resetsAt !== undefined &&
+      Date.parse(window.resetsAt) > Date.parse(atIso),
+  );
+  const latest = exhausted.toSorted((a, b) => Date.parse(b.resetsAt!) - Date.parse(a.resetsAt!))[0];
+  return latest?.resetsAt === undefined
+    ? undefined
+    : { window: latest.label, resetsAt: latest.resetsAt };
 }

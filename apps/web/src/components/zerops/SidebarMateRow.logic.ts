@@ -1,5 +1,6 @@
+import { lastKnownMateWords } from "../../zerops/lastKnownMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
-import { mateFailureWords } from "../../zerops/noticeWords";
+import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
@@ -415,6 +416,9 @@ export function mateRowView(
     ask,
     reply: ask === undefined ? undefined : reply,
   });
+  const held = lastKnownMateWords(activity, name);
+  if (activity.remembered === true && held !== undefined)
+    return { ...view(undefined), reply: { kind: "words", text: held, tone: "muted" } };
   // A new Mate's first run is the stand-up its person's sign-in sent: while it works, and where
   // it stops, the row says so in the person's words — never the command sent on their behalf.
   // Waiting on them, or done, it is any Mate's row.
@@ -463,9 +467,11 @@ export function mateRowView(
           ? undefined
           : mateFailureWords(activity.errorLine, undefined, name);
       return view(
-        activity.errorLine === undefined
-          ? said("muted")
-          : { kind: "words", text: text ?? activity.errorLine, tone: "muted" },
+        {
+          kind: "words",
+          text: text ?? usageLimitWords(activity.limitProvider ?? "coding agent", undefined, name),
+          tone: "muted",
+        },
         activity.pausedUntil === undefined
           ? undefined
           : { kind: "paused", until: activity.pausedUntil },

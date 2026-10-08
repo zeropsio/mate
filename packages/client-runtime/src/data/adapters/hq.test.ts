@@ -6,6 +6,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
 import type { HqScopeDelivery, HqStreamMessage } from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
@@ -899,23 +900,40 @@ describe("an HQ outage", () => {
 });
 
 describe("an HQ session", () => {
-  it.effect(
-    "is renewed once; a renewed socket ended for its session before it said anything refuses",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* run(store, fixture);
-        const sessionEnded = { outcome: "recoverable-session", message: "4401" } as const;
-        yield* fixture.drop(sessionEnded);
+  it.effect("repeated session endings keep retrying and recover as soon as HQ answers", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* run(store, fixture);
+      // The owner requires source evidence, never a retry count, to decide a permanent refusal.
+      for (let ended = 0; ended < 3; ended++) {
+        yield* fixture.drop(classifyHqClose(4401));
         yield* settle;
-        expect(fixture.opens()).toBe(2);
-        yield* fixture.drop(sessionEnded);
+        const next = streamOf(store.state(), linkKeys.hq(ORG)).next;
+        expect(next.kind).toBe("retry");
+        if (next.kind === "retry")
+          yield* TestClock.adjust(next.at - (yield* Clock.currentTimeMillis));
         yield* settle;
-        expect(phase(store, linkKeys.hq(ORG))).toBe("refused");
-        expect(fixture.opens()).toBe(2);
-        yield* Fiber.interrupt(fiber);
-      }),
+      }
+      yield* fixture.send(
+        navigation(
+          "scope-reset",
+          1,
+          [{ key: "app:shop", value: app("shop", "Returned") }],
+          [],
+          "redeployed",
+        ),
+      );
+      yield* fixture.send({ ...ready(1, "redeployed"), core: { build: "new-core", protocol: 2 } });
+      yield* settle;
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
+        live: true,
+        refusal: null,
+        coreBuild: "new-core",
+        structure: { apps: [{ name: "Returned" }] },
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
   );
 
   it.effect("HQ refusing the whole socket (4403) is asked again only with the person's retry", () =>
@@ -944,7 +962,7 @@ describe("an HQ session", () => {
 describe("classifyHqClose", () => {
   it.each([
     { code: 4403, outcome: "definitive-refusal" },
-    { code: 4401, outcome: "recoverable-session" },
+    { code: 4401, outcome: "transient" },
     { code: 1011, outcome: "transient" },
     { code: 1006, outcome: "transient" },
   ])("$code is $outcome", ({ code, outcome }) => {

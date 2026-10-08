@@ -2933,6 +2933,30 @@ const make = Effect.gen(function* () {
         ),
       ).pipe(Effect.asVoid);
 
+      // A parked SDK turn still owns its active turn. The provider's refusal/recovery is
+      // persisted independently of a reset schedule, including limits with no reset time.
+      if (
+        event.type === "account.rate-limits.updated" &&
+        event.payload.refused !== undefined &&
+        !conflictsWithActiveTurn &&
+        !missingTurnForActiveTurn &&
+        thread.session?.status === "running" &&
+        eventTurnId !== undefined &&
+        sameId(activeTurnId, eventTurnId)
+      ) {
+        const lastError = event.payload.refused
+          ? `${event.provider === "claudeAgent" ? "Claude" : event.provider === "codex" ? "Codex" : "Coding agent"} usage limit reached.`
+          : null;
+        if (lastError !== thread.session.lastError)
+          yield* orchestrationEngine.dispatch({
+            type: "thread.session.set",
+            commandId: yield* providerCommandId(event, "usage-limit-session-set"),
+            threadId: thread.id,
+            session: { ...thread.session, lastError, updatedAt: now },
+            createdAt: now,
+          });
+      }
+
       // After its record: the turn it settles has its error in it already.
       if (event.type === "runtime.error") {
         const runtimeErrorMessage = event.payload.message;

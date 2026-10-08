@@ -34,7 +34,13 @@ export function MateStatusMarker({
           : "Needs attention";
   const cause =
     status.kind === "limit"
-      ? usageLimitWords(status.provider ?? "coding agent", undefined, mateName)
+      ? usageLimitWords(
+          status.provider ?? "coding agent",
+          status.until === undefined
+            ? undefined
+            : formatDayAwareTimestamp(status.until, timestampFormat),
+          mateName,
+        )
       : `${mateName}: ${label}`;
   return (
     <Tooltip>

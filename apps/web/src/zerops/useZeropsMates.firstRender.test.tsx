@@ -30,6 +30,7 @@ vi.mock("~/components/zerops/ZeropsMateComingPage", () => ({
   ),
 }));
 vi.mock("~/components/zerops/ZeropsMateEmptyState", () => ({
+  MateConnectionState: ({ headline }: { headline: string }) => <h2>{headline}</h2>,
   MateEmptyStateView: ({ coming }: { coming: { headline: string } }) => <h2>{coming.headline}</h2>,
 }));
 

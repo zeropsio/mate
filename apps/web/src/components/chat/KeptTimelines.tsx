@@ -85,9 +85,11 @@ export function KeptTimelines({
   insetMeasured = true,
   insetRemembered = true,
   Reader = WarmTimelineReader,
+  onReady,
 }: {
   /** The open conversation's key. */
   readonly open: string;
+  readonly onReady?: ((key: string, ready: boolean) => void) | undefined;
   /** The open conversation's list, its `listRef` the pane's own. */
   readonly timeline: TimelineProps;
   readonly crewTimeline: CrewTimeline | null;
@@ -123,12 +125,14 @@ export function KeptTimelines({
   const openShown = useMemo(
     () => ({
       shown: true,
-      onStanding: (key: string, now: boolean) =>
+      onStanding: (key: string, now: boolean) => {
         setStanding((held) =>
           held.key === key && held.standing === now ? held : { key, standing: now },
-        ),
+        );
+        onReady?.(key, now);
+      },
     }),
-    [],
+    [onReady],
   );
   const warming = warmingTimeline({
     asked: warm !== null && alive(warm) ? warm : null,

@@ -6492,6 +6492,11 @@ describe("ClaudeAdapterLive", () => {
         ],
       );
 
+      assert.isTrue(
+        runtimeEvents.some(
+          (event) => event.type === "account.rate-limits.updated" && event.payload.refused === true,
+        ),
+      );
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -7220,12 +7225,14 @@ describe("ClaudeAdapterLive", () => {
         } as unknown as SDKMessage);
       }
       yield* drainSdkMessages;
-      // Refused with no reset: each parks the turn, until nobody knows when.
       assert.deepEqual(
         runtimeEvents.flatMap((event) =>
-          event.type === "account.rate-limits.updated" ? [event.payload.refused] : [],
+          event.type === "account.rate-limits.updated" ? [event.payload] : [],
         ),
-        [{ window: "7-day model" }, { window: "usage" }],
+        [
+          { limits: { windows: [] }, refused: true },
+          { limits: { windows: [] }, refused: true },
+        ],
       );
 
       yield* Ref.set(scopedLimitNames, { overageIncluded: "Model A" });
@@ -7252,10 +7259,12 @@ describe("ClaudeAdapterLive", () => {
           "Claude usage limit reached. This turn is paused until the 7-day Model A limit resets in 1h.",
         ],
       );
-      // The two refused windows before it, then this one's believable reset.
       assert.equal(
-        runtimeEvents.filter((event) => event.type === "account.rate-limits.updated").length,
-        3,
+        runtimeEvents.filter(
+          (event) =>
+            event.type === "account.rate-limits.updated" && event.payload.limits.windows.length > 0,
+        ).length,
+        1,
       );
       runtimeEventsFiber.interruptUnsafe();
     }).pipe(

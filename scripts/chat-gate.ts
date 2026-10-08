@@ -150,6 +150,18 @@ if (import.meta.main) {
     if (process.env.SPI_UPDATE_GOLDENS === "1")
       throw new Error("The chat gate compares goldens; unset SPI_UPDATE_GOLDENS.");
     const root = NodePath.resolve(import.meta.dirname, "..");
+    // Stage B's journeys run in the pinned Chrome for Testing. Installing it here (a no-op once
+    // the host has it) keeps one gate command for CI and a fresh worktree alike.
+    const browserInstalled = await new Promise<number>((resolve) => {
+      const child = NodeChildProcess.spawn(process.execPath, ["apps/web/test/testBrowser.ts"], {
+        cwd: root,
+        stdio: "inherit",
+      });
+      child.on("error", () => resolve(1));
+      child.on("exit", (code) => resolve(code ?? 1));
+    });
+    if (browserInstalled !== 0)
+      throw new Error("The chat gate could not install the scenarios' Chrome for Testing.");
     const results = await Promise.all(
       chatGateStages.map(async (stage) => {
         const started = performance.now();

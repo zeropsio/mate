@@ -52,6 +52,12 @@ vi.mock("./MateLinkLine", () => ({
   MateLinkProcesses: () => <ol data-processes="" />,
 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
+  MateConnectionState: (props: { headline: string; secondary: string }) => (
+    <section>
+      <h2>{props.headline}</h2>
+      <p>{props.secondary}</p>
+    </section>
+  ),
   MateEmptyStateView: (props: {
     mate: { name: string } | null;
     coming: { below: ReactNode; headline?: string; sentence?: string } | null;
