@@ -10,7 +10,12 @@ import {
 
 const RULE_NAME = "no-legacy-vocabulary";
 const LEDGER_DIRECTORY_ENV = "T3CODE_LEGACY_VOCABULARY_LEDGER_DIRECTORY";
-const GUARDED_SOURCE_MARKERS = ["/apps/web/src/", "/apps/mobile/src/", "/apps/desktop/src/"];
+const GUARDED_SOURCE_MARKERS = [
+  "/apps/web/src/",
+  "/apps/mobile/src/",
+  "/apps/desktop/src/",
+  "/packages/client-runtime/src/data/projections/",
+];
 const TEST_FILE_PATTERN = /(?:^|\/)(?:__tests__\/|[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$)/u;
 
 const COPY_SINK_ATTRIBUTES = new Set<string>([
@@ -45,6 +50,7 @@ const COPY_PROPERTY_KEYS = new Set<string>([
  * list; registering another module widens the set of literals checked by this rule.
  */
 const COPY_MODULES = [
+  "packages/client-runtime/src/data/projections/agentAdmission.ts",
   "apps/web/src/branding.ts",
   "apps/web/src/hooks/useThreadActions.ts",
   "apps/web/src/environments/primary/auth.ts",

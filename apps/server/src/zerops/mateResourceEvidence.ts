@@ -15,10 +15,27 @@ export function pressureOf(text: string): ResourcePressure {
       .map((line) => {
         const [kind, ...fields] = line.split(/\s+/);
         const values = Object.fromEntries(fields.map((field) => field.split("=")));
-        const avg10 = Number(values.avg10);
-        if (!Number.isFinite(avg10) || avg10 < 0 || avg10 > 100 || values.total === undefined)
-          throw new Error("Invalid PSI");
-        return [kind, { avg10, total: numberOf(values.total) }] as const;
+        const average = (name: string) => {
+          const text = values[name];
+          if (text === undefined) return undefined;
+          const value = Number(text);
+          if (text === "" || !Number.isFinite(value) || value < 0 || value > 100)
+            throw new Error("Invalid PSI");
+          return value;
+        };
+        const avg10 = average("avg10");
+        const avg60 = average("avg60");
+        const avg300 = average("avg300");
+        if (avg10 === undefined || values.total === undefined) throw new Error("Invalid PSI");
+        return [
+          kind,
+          {
+            avg10,
+            ...(avg60 === undefined ? {} : { avg60 }),
+            ...(avg300 === undefined ? {} : { avg300 }),
+            total: numberOf(values.total),
+          },
+        ] as const;
       }),
   );
   const some = lines.get("some");

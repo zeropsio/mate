@@ -9,12 +9,28 @@ const Counter = Schema.Struct({
   oom: NonNegativeInt,
   oomKill: NonNegativeInt,
 });
-const PressureLine = Schema.Struct({ avg10: Schema.Finite, total: NonNegativeInt });
+const PressureAverage = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+const PressureLine = Schema.Struct({
+  avg10: PressureAverage,
+  // Optional for retained reports and older Mates.
+  avg60: Schema.optionalKey(PressureAverage),
+  avg300: Schema.optionalKey(PressureAverage),
+  total: NonNegativeInt,
+});
 export const ResourcePressure = Schema.Struct({
   some: PressureLine,
   full: Schema.NullOr(PressureLine),
 });
 export type ResourcePressure = typeof ResourcePressure.Type;
+
+/** No preceding sample is retained: both longer averages must prove sustained stalls.
+ * Used by notice eligibility and hierarchy selection so brief spikes cannot hide sustained stalls.
+ */
+export function sustainedPressureLevel(pressure: ResourcePressure | null): number {
+  const level = (line: ResourcePressure["full"], threshold: number) =>
+    line === null ? 0 : Math.min(line.avg60 ?? 0, line.avg300 ?? 0) / threshold;
+  return pressure === null ? 0 : Math.max(level(pressure.full, 10), level(pressure.some, 40));
+}
 export const MateResourceHealth = Schema.Struct({
   status: Schema.Literals(["ok", "strained", "unknown"]),
   severity: Schema.Literals(["warning", "critical"]),

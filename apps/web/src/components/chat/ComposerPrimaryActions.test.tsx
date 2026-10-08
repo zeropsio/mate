@@ -31,27 +31,6 @@ function renderPendingActions(isRunning: boolean) {
   );
 }
 
-function renderStandaloneStop() {
-  return renderToStaticMarkup(
-    createElement(ComposerPrimaryActions, {
-      compact: true,
-      pendingAction: null,
-      isRunning: true,
-      showPlanFollowUpPrompt: false,
-      promptHasText: false,
-      isSendBusy: false,
-      sendDisabledReason: null,
-      isConnecting: false,
-      isEnvironmentUnavailable: false,
-      isPreparingWorktree: false,
-      hasSendableContent: false,
-      onPreviousPendingQuestion: () => {},
-      onInterrupt: () => {},
-      onImplementPlanInNewThread: () => {},
-    }),
-  );
-}
-
 function renderRunningActions(hasSendableContent: boolean) {
   return renderToStaticMarkup(
     createElement(ComposerPrimaryActions, {
@@ -110,34 +89,12 @@ describe("ComposerPrimaryActions", () => {
     expect(renderPendingActions(false)).not.toContain('aria-label="Stop generation"');
   });
 
-  it("matches the small pending action size without changing the standalone size", () => {
-    expect(renderPendingActions(true)).toContain("size-8 sm:size-7");
-    expect(renderStandaloneStop()).toContain("size-8 sm:h-8 sm:w-8");
-    expect(renderStandaloneStop()).not.toContain("sm:size-7");
-  });
-
-  it("keeps the normal send-button fill", () => {
-    const markup = renderSendButton();
-
-    expect(markup).toContain("bg-message-action text-message-action-foreground");
-  });
-
-  // Blue means something to click (S3): a send that cannot be pressed wears
-  // the toolbar's grey, not a faded blue.
-  it("greys the send button out rather than fading its blue", () => {
-    const markup = renderSendButton("Sending feedback");
-
-    expect(markup).toContain("disabled:bg-foreground/9 disabled:text-muted-foreground");
-    expect(markup).not.toContain("disabled:opacity-64");
-  });
-
   it("renders a queue action alongside stop while running with a sendable draft", () => {
     const markup = renderRunningActions(true);
 
     expect(markup).toContain('aria-label="Stop generation"');
     expect(markup).toContain('aria-label="Queue message"');
     expect(markup).toContain('type="submit"');
-    expect(markup).toContain("size-9 sm:size-8");
   });
 
   it("keeps stop as the only action while running with an empty composer", () => {

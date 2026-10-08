@@ -22,6 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          fetch-depth: 0
           sparse-checkout: |
             /*
             !/.repos/
@@ -62,6 +63,9 @@ jobs:
       # One AST scan reconciles every ledger and checks the identity ratchets.
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
+
+      - name: Check test sentence retention
+        run: node scripts/check-test-sentences.ts
 
       - name: Check CSS motion
         run: node scripts/check-css-motion.ts

@@ -43,7 +43,7 @@ describe("the review opening while its body loads", () => {
         else if (method === "Escape")
           dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         else {
-          const outside = document.querySelector(".rv-viewport")!;
+          const outside = dialog.parentElement!;
           for (const type of ["mousedown", "mouseup", "click"])
             outside.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
         }

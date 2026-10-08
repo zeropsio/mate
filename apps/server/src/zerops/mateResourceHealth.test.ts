@@ -70,6 +70,24 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => NodeFSP.rm(dir, { recursive: true, force: true })));
 });
 describe("container resource evidence", () => {
+  it("Sustained ancestor stalls remain visible when a descendant has a brief spike", async () => {
+    const root = await fixture({
+      "memory.pressure":
+        "some avg10=5 avg60=5 avg300=5 total=300\nfull avg10=0 avg60=10 avg300=10 total=200\n",
+      "io.pressure":
+        "some avg10=5 avg60=5 avg300=5 total=300\nfull avg10=0 avg60=10 avg300=10 total=200\n",
+    });
+    const leaf = await fixture({
+      "memory.pressure":
+        "some avg10=90 avg60=1 avg300=1 total=300\nfull avg10=0 avg60=0 avg300=0 total=0\n",
+      "io.pressure":
+        "some avg10=90 avg60=1 avg300=1 total=300\nfull avg10=0 avg60=0 avg300=0 total=0\n",
+    });
+    const health = await readResourceHealth([leaf, root], root);
+    expect(health.memory?.pressure?.full).toEqual({ avg10: 0, avg60: 10, avg300: 10, total: 200 });
+    expect(health.io?.full).toEqual({ avg10: 0, avg60: 10, avg300: 10, total: 200 });
+    expect(health.resources).toEqual(["memory", "io"]);
+  });
   it("reports the measured starving container without needing a previous sample", async () => {
     const dir = await fixture({
       "memory.current": "1700000000",

@@ -277,7 +277,7 @@ export const ChatHeader = memo(function ChatHeader({
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
   const linkVoice = useMateVoice();
-  const status = linkVoice.surface === "none" ? mateStatus(mateActivity) : null;
+  const status = linkVoice.surface === "none" ? mateStatus(mateActivity, null) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
   const spoken = activeThreadShell?.latestUserMessageAt != null;

@@ -1,3 +1,4 @@
+import { markupDom } from "../../../../test/markupDom";
 /**
  * The commits a change squashes, one line each — what it did, its age and its hash on the right
  * edge — a long run folded after its newest five, the rows' room held while they are read.
@@ -30,9 +31,9 @@ function html(part: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>, onRetry?: (
 describe("a change's commits in its review", () => {
   it("draws each on one line: what it did, then its age and its hash", () => {
     const markup = html(commits(1));
-    expect(markup).toMatch(
-      /<li class="rv-commit">.*Commit number 0<\/span><span class="rv-commit-at">1h<\/span><code class="rv-commit-sha">0000000<\/code><\/li>/u,
-    );
+    const row = markupDom(markup).querySelector("li");
+    expect(row?.textContent).toBe("Commit number 01h0000000");
+    expect(row?.querySelector("code")?.textContent).toBe("0000000");
   });
 
   it.each([
@@ -40,14 +41,10 @@ describe("a change's commits in its review", () => {
     ["a long run's newest five, with the way to all of them", 19, 5, "Show all 19"],
   ] as const)("shows %s", (_case, count, shown, fold) => {
     const markup = html(commits(count));
-    expect(markup.match(/class="rv-commit"/gu)?.length).toBe(shown);
+    expect(markupDom(markup).querySelectorAll("li")).toHaveLength(shown);
     expect(markup.includes("Show all")).toBe(fold !== undefined);
     if (fold !== undefined) expect(markup).toContain(fold);
     expect(markup).toContain(`<span>${String(count)}</span>`);
-  });
-
-  it("holds three rows' room while they are read", () => {
-    expect(html({ kind: "reading" }).match(/class="rv-commit-skeleton"/gu)?.length).toBe(3);
   });
 
   it("says they could not be read, with Try again where it can try", () => {

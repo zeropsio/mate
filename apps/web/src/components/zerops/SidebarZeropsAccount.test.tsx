@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
@@ -101,18 +102,16 @@ describe("SidebarZeropsAccountMenu", () => {
     expect(renderMenu({ activeOrganization: null })).toContain("ada@example.com");
   });
 
-  // Show and Order are switches — a label and its choices on one track, the
-  // chosen one raised — never a list of rows whose chosen one is only grey.
-  it("draws Show and Order as switches, each choice on one track", () => {
+  it("offers the Show and Order choices and marks Everyone selected", () => {
     const html = renderMenu();
-    const track = (attribute: string) =>
-      /<div class="[^"]*rounded-lg[^"]*">(.*?)<\/div><\/div>/u.exec(
-        html.slice(html.indexOf(attribute) - 400),
-      )?.[0] ?? "";
     expect(html.match(/data-zerops-account-scope="/g)).toHaveLength(2);
     expect(html.match(/data-zerops-account-order="/g)).toHaveLength(3);
-    expect(track("data-zerops-account-scope")).toContain("Everyone");
-    expect(html).toContain("data-checked:bg-popover");
+    const document = markupDom(html);
+    expect(
+      Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+        .find((button) => button.textContent === "Everyone")
+        ?.getAttribute("aria-checked"),
+    ).toBe("true");
   });
 
   it("folds every place the foot used to spend a glyph on", () => {

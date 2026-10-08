@@ -26,7 +26,7 @@ import { useMemo } from "react";
 
 import { environmentProjects } from "../../state/projects";
 import { environmentServerConfigsAtom } from "../../state/server";
-import { resolveAgentAuthorizer } from "../agentSigner";
+import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { useZeropsAgentAuth } from "../useZeropsFeeds";
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 

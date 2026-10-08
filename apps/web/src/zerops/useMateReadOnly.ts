@@ -22,7 +22,7 @@ import { useMemo } from "react";
 
 import { resolveZeropsConversationReadOnly } from "../components/ChatView.logic";
 import { hqMatesAtom } from "../state/zerops";
-import { resolveAgentAuthorizer } from "./agentSigner";
+import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { useZeropsAgentAuth } from "./useZeropsFeeds";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 

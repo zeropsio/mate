@@ -418,6 +418,7 @@ const preview = {
 it("applies an answer with the pictures attached to each question, and its record keeps them", async () => {
   const r = await connect();
   try {
+    r.chat.history("The earlier conversation remains separate");
     r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
     r.chat.run("question-custom-run", "running");
     r.chat.question("question-custom", "question-custom-run");
@@ -455,7 +456,7 @@ it("applies an answer with the pictures attached to each question, and its recor
       .flatMap((frame) => (frame.type === "changes" ? frame.requests : []))
       .findLast((request) => request.id === asked!.id);
     expect(answered).toMatchObject({ runId: asked!.runId, answer: given });
-    expect(r.wire.engine.runs.get(asked!.runId)?.state).toBe("running");
+    expect(r.wire.engine.runs.get(asked!.runId)).toMatchObject({ state: "running", joins: null });
   } finally {
     await r.close();
   }
@@ -574,7 +575,8 @@ it("stops the run a Stop names, and refuses one that ended, as the engine does",
     const engine = r.wire.engine;
     const first = engine.personRun("Deploy the api");
     engine.end(first, { kind: "completed" });
-    const continued = engine.startRun();
+    const continued = engine.startRun(first);
+    expect(engine.runs.get(continued)?.joins).toBe(first);
     const stop = async (id: string, runId: string) =>
       decodeCall(
         (await r.call(id, WS_METHODS.engineStop, { ...conversation, commandId: id, runId })).value,

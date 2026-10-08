@@ -173,6 +173,7 @@ export class ChatDriver {
   private readonly replay = new Map<WebSocket, string>();
   usagePause: ThreadUsagePause | null = null;
   turnRefusal: string | null = null;
+  turnAdmissionRefusal: import("@t3tools/contracts").AgentAdmissionRefusal | undefined;
   readonly assets = new Map<string, { bytes: Buffer; mimeType: string }>();
   readonly writes = new Map<string, ReadonlyArray<import("@t3tools/contracts").FileWrite>>();
   readonly http: string[] = [];
@@ -573,9 +574,17 @@ export class ChatDriver {
                 {
                   _tag: "Fail",
                   error: {
-                    _tag: "EnvironmentAuthorizationError",
+                    ...(command.type === "thread.turn.start" &&
+                    this.turnAdmissionRefusal !== undefined
+                      ? {
+                          _tag: "OrchestrationDispatchCommandError",
+                          agentAdmission: this.turnAdmissionRefusal,
+                        }
+                      : {
+                          _tag: "EnvironmentAuthorizationError",
+                          requiredScope: "orchestration:operate",
+                        }),
                     message: authorizationRefusal,
-                    requiredScope: "orchestration:operate",
                   },
                 },
               ],

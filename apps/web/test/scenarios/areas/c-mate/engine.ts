@@ -81,7 +81,7 @@ export class EngineChatWire implements ChatWire {
       if (run !== undefined) this.engine.settleRun(run, state);
       return;
     }
-    if (run === undefined) this.journeyRuns.set(turnId, this.engine.startRun());
+    if (run === undefined) this.journeyRuns.set(turnId, this.engine.startRun(null));
   }
 
   intents() {

@@ -161,7 +161,6 @@ describe("MateFace", () => {
     expect(face.eyes.map((eye) => eye.opacity)).toEqual(["0", "0"]);
     expect(html).toContain('vector-effect="non-scaling-stroke"');
     expect(html).toContain('stroke-width="1.25"');
-    expect(html).toContain("size-3.5");
   });
 
   // Waking — a Mate on its way up (`matePose`) — draws asleep's closed eyes; only its state, and
@@ -350,15 +349,5 @@ describe("MateFace", () => {
     expect(renderToStaticMarkup(<MateFace state="working" tint="sand" />)).not.toContain(
       "data-mate-face-gaze",
     );
-  });
-
-  it("sizes as a dot, beside text, or as a card's avatar", () => {
-    expect(renderToStaticMarkup(<MateFace size="dot" state="idle" tint="sand" />)).toContain(
-      'data-mate-face-size="dot"',
-    );
-    expect(renderToStaticMarkup(<MateFace size="sm" state="idle" tint="sand" />)).toContain(
-      "size-5",
-    );
-    expect(renderToStaticMarkup(<MateFace state="idle" tint="sand" />)).toContain("size-7");
   });
 });

@@ -151,11 +151,31 @@ const spawnGuardLint = Effect.fn("spawnGuardLint")(function* (request: GuardLint
 
 /** These ledgers remain files even at zero; rule discovery must never lose a guard. */
 export const RATCHET_RULES = [
+  "no-legacy-notice-policy",
   "no-remote-io-outside-data-layer",
   "no-retired-mechanism",
   "no-failure-to-empty",
   "no-remote-data-in-browser-storage",
 ] as const;
+
+export const ADMISSION_POLICY_BOOTSTRAP: ReadonlyArray<ExceptionEntry> = [
+  {
+    path: "apps/web/src/zerops/chatChrome.ts",
+    kind: "CallExpression",
+    fingerprint: "zeropsAgentSignInRequired",
+    owner: "admission slice 1",
+    reason: "Replaced hosted sign-in derivation",
+    expires: "never",
+  },
+  {
+    path: "apps/web/src/components/ChatView.tsx",
+    kind: "CallExpression",
+    fingerprint: "spentLoginStatusStale",
+    owner: "admission slice 1",
+    reason: "Replaced hosted sign-in derivation",
+    expires: "never",
+  },
+];
 
 const encodeIdentity = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
@@ -229,7 +249,17 @@ export const loadRatchetBaseline = (
   try {
     return new Map(
       RATCHET_RULES.map((ruleName) => {
-        // Missing history or a missing baseline ledger is an error, never a fresh allowance.
+        // The admission guard was bootstrapped with this slice; the frozen AST findings are its first baseline.
+        const ledgerPath = `oxlint-plugin-t3code/exceptions/${ruleName}.json`;
+        if (
+          ruleName === "no-legacy-notice-policy" &&
+          NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${revision}:${ledgerPath}`], {
+            cwd,
+            encoding: "utf8",
+          }).status !== 0
+        ) {
+          return [ruleName, ADMISSION_POLICY_BOOTSTRAP];
+        }
         NodeFS.writeFileSync(
           NodePath.join(directory, `${ruleName}.json`),
           git(["show", `${revision}:oxlint-plugin-t3code/exceptions/${ruleName}.json`]),
@@ -437,6 +467,19 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
       );
       const baseline = options.baseline?.get(ruleName);
       if (baseline !== undefined) {
+        if (
+          ruleName === "no-legacy-notice-policy" &&
+          baseline.length > 0 &&
+          (ledger.entries.length >= baseline.length ||
+            ledger.entries.some((entry) =>
+              ADMISSION_POLICY_BOOTSTRAP.some((frozen) => identityOf(frozen) === identityOf(entry)),
+            ))
+        ) {
+          problemCount += 1;
+          reports.push(
+            `${ruleName}: the admission slice must strictly decrease its frozen baseline`,
+          );
+        }
         const additions = ratchetAdditions(ledger.entries, baseline);
         problemCount += additions.length;
         for (const addition of additions)

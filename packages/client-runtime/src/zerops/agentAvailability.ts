@@ -1,3 +1,5 @@
+import type { ProviderInstanceId } from "@t3tools/contracts";
+import { agentIdForDriverKind } from "@t3tools/contracts";
 /**
  * One client answer to "can this viewer run this agent right now" — folding
  * `classifyZeropsAgentAuth` (`@t3tools/shared/zeropsAgentAuth`, the one
@@ -247,4 +249,52 @@ function resolveZeropsAgentOwnership(
 /** Whether the composer may select this agent: `ready` now, or `registering` on its way there. */
 export function zeropsAgentAvailabilityIsRunnable(availability: ZeropsAgentAvailability): boolean {
   return availability.kind === "ready" || availability.kind === "registering";
+}
+
+/** Web selection follows scoped auth; command permission remains the server's decision. */
+export function resolveZeropsProviderAvailability(input: {
+  readonly entries: ReadonlyArray<{
+    readonly instanceId: ProviderInstanceId;
+    readonly driverKind: string;
+  }>;
+  readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
+}): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
+  if (input.agentAuth === undefined) return undefined;
+  // Native availability retains its existing ownership path; web consumes auth facts only.
+  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number]) => ({
+    credPresent: agent.credPresent,
+    flagToken: agent.flagToken,
+    providerAuth: agent.providerAuth,
+    verification: agent.verification,
+    registration: agent.registration,
+    state: agent.state,
+    loginPhase: agent.login?.phase,
+  });
+  const reads = zeropsAgentAuthReads(input.agentAuth, factsOf);
+  if (reads === undefined) return undefined;
+  // A login beyond the defaults answers for itself, as the server's admission
+  // resolves it; until the feed is known, its driver's agent says `unknown`
+  // for it like for every other instance.
+  const loginReads = zeropsLoginAuthReads(input.agentAuth, factsOf);
+  const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
+  const authentication = (agent: ZeropsAgentAuthRead): ZeropsAgentAvailability => {
+    if (agent.state !== "known") return { kind: "unknown", read: agent };
+    const auth = classifyZeropsAgentAuth(agent.value).kind;
+    if (auth === "authorized") return { kind: "ready" };
+    if (auth === "registering") return { kind: "registering" };
+    return resolveZeropsAgentAvailability({ agent, viewerSubject: undefined });
+  };
+  for (const entry of input.entries) {
+    const login = loginReads(entry.instanceId);
+    if (login !== undefined) {
+      map.set(entry.instanceId, authentication(login));
+      continue;
+    }
+    const agentId = agentIdForDriverKind(entry.driverKind);
+    if (agentId === undefined) continue;
+    const agent = reads(agentId);
+    if (agent === undefined) continue;
+    map.set(entry.instanceId, authentication(agent));
+  }
+  return map;
 }

@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+import { agentAdmission, admissionExplainsRefusal } from "@t3tools/client-runtime/data";
+import { ProviderInstanceId, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
+import { AgentAdmissionExplanation } from "./AgentAdmissionExplanation";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -8,6 +11,47 @@ import { ThreadErrorBanner } from "./ThreadErrorBanner";
 
 const SIGNED_OUT =
   "Claude could not authenticate. For subscription login, run `claude auth login` on this environment's machine, then start a new thread. For API-key authentication, check this instance's configured credentials.";
+
+const provider: ServerProvider = {
+  instanceId: ProviderInstanceId.make("claudeAgent"),
+  driver: ProviderDriverKind.make("claudeAgent"),
+  enabled: true,
+  installed: true,
+  version: "1",
+  status: "error",
+  auth: { status: "unauthenticated" },
+  checkedAt: "2026-10-08T00:00:00Z",
+  models: [],
+  skills: [],
+  slashCommands: [],
+};
+const snapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      providerAuth: "unauthenticated",
+      state: "not-authorized",
+    },
+  ],
+} as const;
+const attention = agentAdmission({
+  environmentId: "rig",
+  instanceId: provider.instanceId,
+  viewerSubject: "owner",
+  read: {
+    state: "known",
+    value: snapshot,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  },
+  providers: [provider],
+  mateName: "Rosa",
+}).attention;
 
 describe("the thread's error banner", () => {
   it("tells a legacy limit calmly, without asking for a message to be retyped", () => {
@@ -23,7 +67,7 @@ describe("the thread's error banner", () => {
   });
   it("offers to sign the agent in rather than repeat a command nobody here can run", () => {
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner mateName="Rosa" error={SIGNED_OUT} onAuthorize={() => {}} />,
+      <AgentAdmissionExplanation attention={attention} onAction={() => {}} />,
     );
     expect(html).toContain('data-zerops-primary-action="Authorize"');
     expect(html).toContain("Rosa needs a Claude sign-in to continue.");
@@ -41,9 +85,12 @@ describe("the thread's error banner", () => {
       error:
         "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
     },
-  ])("says the Mate is signed out where its sign-in was $case", ({ error }) => {
+  ])("says the Mate is signed out where its sign-in was $case", () => {
+    expect(
+      admissionExplainsRefusal(attention, { loginId: "claude-code", reason: "missing-sign-in" }),
+    ).toBe(true);
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner mateName="Rosa" error={error} onAuthorize={() => {}} />,
+      <AgentAdmissionExplanation attention={attention} onAction={() => {}} />,
     );
     expect(html).toContain("Rosa needs a Claude sign-in to continue.");
     expect(html).toContain('data-zerops-primary-action="Authorize"');
@@ -59,16 +106,16 @@ describe("the thread's error banner", () => {
     { case: "Claude's words in another driver's conversation", error: SIGNED_OUT, driver: "codex" },
   ])("leaves $case as it came, with nothing to authorize", ({ error, driver }) => {
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner mateName="Rosa" driver={driver} error={error} onAuthorize={() => {}} />,
+      <ThreadErrorBanner mateName="Rosa" driver={driver} error={error} />,
     );
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
     expect(html).not.toContain("signed out");
   });
 
-  it("keeps a sign-in request calm even where there is nowhere to sign in", () => {
+  it("keeps a sign-in refusal as history without claiming current admission", () => {
     const html = renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={SIGNED_OUT} />);
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
-    expect(html).toContain("Rosa needs a Claude sign-in to continue.");
+    expect(html).toContain("Rosa&#x27;s turn could not continue because Claude was signed out.");
     expect(html).not.toContain("claude auth login");
     expect(html).toContain('role="status"');
     expect(html).not.toContain("<svg");
@@ -76,11 +123,7 @@ describe("the thread's error banner", () => {
 
   it("leaves every other failure exactly as it came back", () => {
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner
-        mateName="Rosa"
-        error="The container is not reachable."
-        onAuthorize={() => {}}
-      />,
+      <ThreadErrorBanner mateName="Rosa" error="The container is not reachable." />,
     );
     expect(html).toContain("The container is not reachable.");
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
@@ -98,7 +141,7 @@ it("the sign-in button opens the available sign-in action", async () => {
   const signIn = vi.fn();
   try {
     await act(() =>
-      root.render(<ThreadErrorBanner mateName="Rosa" error={SIGNED_OUT} onAuthorize={signIn} />),
+      root.render(<AgentAdmissionExplanation attention={attention} onAction={signIn} />),
     );
     const button = Array.from(host.querySelectorAll("button")).find(
       (item) => item.textContent === "Sign in",

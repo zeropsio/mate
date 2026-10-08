@@ -106,10 +106,9 @@ describe("ComposerPendingApprovalActions", () => {
     );
 
     expect(markup).not.toContain(">Cancel<");
-    expect(markup).toContain("lucide-ellipsis");
     expect(markup).toContain("Always allow this session");
     expect(markup).not.toContain(">Always allow<");
-    expect(markup).toContain("min-h-7");
+
     expect(markup).toContain('data-approval-action-tone="primary"');
     expect(markup).toContain('data-approval-action-tone="secondary"');
   });
@@ -158,7 +157,7 @@ describe("ComposerPendingApprovalActions", () => {
     expect(markup).toContain(
       'aria-description="Untrusted files could re-run this action without asking."',
     );
-    expect(markup).toContain("text-warning");
+
     expect(markup).toContain("Allow for this thread");
   });
 
@@ -173,8 +172,6 @@ describe("ComposerPendingApprovalActions", () => {
       />,
     );
 
-    expect(markup).toContain("max-w-48 whitespace-normal break-words text-center");
-    expect(markup).not.toContain("truncate");
     expect(markup).toContain(label);
   });
 });

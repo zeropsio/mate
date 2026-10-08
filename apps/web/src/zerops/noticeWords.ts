@@ -1,6 +1,6 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatShortTimestamp } from "../timestampFormat";
-import { signedOutAgent } from "@t3tools/client-runtime/zerops/agentSignIn";
+import { admissionRefusalWords } from "@t3tools/client-runtime/data";
 import { usageLimitProvider } from "./providerLimit.logic";
 
 export function usageLimitWords(provider: string, reset?: string, mateName = "The Mate"): string {
@@ -18,8 +18,7 @@ export function mateFailureWords(
 ): string {
   const limit = usageLimitProvider(error);
   if (limit !== null) return usageLimitWords(limit, undefined, mateName);
-  const agent = signedOutAgent(error, driver);
-  return agent === null ? error : `${mateName} needs a ${agent} sign-in to continue.`;
+  return admissionRefusalWords(error, driver, mateName) ?? error;
 }
 
 /** A dated refusal is a record, never a claim about admission or work now. */

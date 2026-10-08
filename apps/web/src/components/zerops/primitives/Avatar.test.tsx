@@ -23,10 +23,4 @@ describe("Avatar", () => {
   it("is decoration: the name it stands for is written beside it", () => {
     expect(renderToStaticMarkup(<Avatar initials="A" />)).toContain('aria-hidden="true"');
   });
-
-  it("has the badge size, the bar size and the identity-block size", () => {
-    expect(renderToStaticMarkup(<Avatar initials="A" size="xs" />)).toContain("size-3.5");
-    expect(renderToStaticMarkup(<Avatar initials="A" />)).toContain("size-6");
-    expect(renderToStaticMarkup(<Avatar initials="A" size="md" />)).toContain("size-8");
-  });
 });

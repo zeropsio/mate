@@ -1,7 +1,8 @@
-import { agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
+import type { AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import type { ZeropsAgentActivity } from "./agentActivity";
 
 export type MateStatus = {
+  readonly admission?: AgentAdmissionAttention;
   readonly kind: "limit" | "sign-in" | "answer" | "broken";
   readonly severity: "attention" | "danger";
   readonly until?: string | undefined;
@@ -11,7 +12,7 @@ export type MateStatus = {
 /** Status evidence is shared by the menu and conversation; a reset never proves a resume. */
 export function mateStatus(
   activity: ZeropsAgentActivity | undefined,
-  needsSignIn = false,
+  admission?: AgentAdmissionAttention | null,
 ): MateStatus | null {
   if (activity?.remembered === true) return null;
   if (activity?.limit?.kind === "limited") {
@@ -23,12 +24,13 @@ export function mateStatus(
     };
   }
   if (
-    (needsSignIn &&
-      (activity === undefined || activity.kind === "idle" || activity.kind === "failed")) ||
-    agentNeedsSignIn(activity?.errorLine ?? "")
+    admission !== undefined &&
+    admission !== null &&
+    (activity === undefined || activity.kind === "idle" || activity.kind === "failed")
   ) {
-    return { kind: "sign-in", severity: "attention" };
+    return { kind: "sign-in", severity: admission.severity, admission };
   }
+
   if (
     activity?.kind === "approval" ||
     activity?.kind === "input" ||

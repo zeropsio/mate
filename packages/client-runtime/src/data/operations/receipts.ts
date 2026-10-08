@@ -6,7 +6,24 @@
  *
  * @module data/operations/receipts
  */
-import type { OperationIntent, OperationReceipt, OperationRecord, Unobservable } from "../model.ts";
+import {
+  operationResult,
+  type OperationIntent,
+  type OperationReceipt,
+  type OperationRecord,
+  type Unobservable,
+} from "../model.ts";
+
+/** A creation's accepted identity is evidence even before the roster supplies its row. */
+export function acceptedProjectOf(record: OperationRecord | undefined) {
+  if (record?.intent.kind !== "create-project" && record?.intent.kind !== "import-project")
+    return null;
+  const result =
+    operationResult(record, "create-project") ?? operationResult(record, "import-project");
+  return result === undefined
+    ? null
+    : { orgId: record.intent.orgId, projectId: result.projectId, name: record.intent.name };
+}
 
 export type OperationInput =
   | {

@@ -1774,15 +1774,19 @@ describe("failed setup recovery fixture", () => {
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(host.querySelector("pre")?.textContent).toContain("Could not resolve host");
     expect(host.textContent).not.toContain(process.id);
-    const actions = [...host.querySelectorAll<HTMLButtonElement>(".arrival-acts button")];
+    const actions = [...host.querySelectorAll<HTMLButtonElement>("button")].filter(
+      (button) => button.textContent === "Try again" || button.textContent === "Remove",
+    );
     expect(actions.map((button) => button.textContent)).toEqual(["Try again", "Remove"]);
     await act(async () => actions[0]!.click());
     await act(async () => actions[1]!.click());
     expect(retry).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
-    expect(host.querySelector(".arrival-acts a")?.getAttribute("href")).toBe(
-      `https://app.zerops.io/project/${PROJECT}`,
-    );
+    expect(
+      Array.from(host.querySelectorAll("a"))
+        .find((link) => link.textContent === "Open the process in Zerops")
+        ?.getAttribute("href"),
+    ).toBe(`https://app.zerops.io/project/${PROJECT}`);
     expect(host.querySelector("a")?.textContent).toBe("Open the process in Zerops");
     await act(async () => root.unmount());
     host.remove();

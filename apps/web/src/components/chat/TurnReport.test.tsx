@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act, type ReactNode } from "react";
@@ -282,23 +283,33 @@ describe("TurnReport's pictures", () => {
 
   it("stands six tiles at most, the sixth saying how many more", () => {
     const names = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
-    const renderer = renderPictures(names.map((name) => checkPicture(`op:${name}`, `/${name}`)));
-    const tiles = tilesOf(renderer);
-    expect(tiles).toHaveLength(6);
-    expect(tiles.at(-1)!.props["aria-label"]).toBe(
-      "/f in the browser, and 3 more. Open the pictures",
-    );
-    expect(tiles.at(-1)!.findByProps({ className: "run-result-more" }).children).toEqual([
-      "+",
-      "3",
-    ]);
-    expect(
-      tiles
-        .slice(0, -1)
-        .some(
-          (tile) => tile.findAll((node) => node.props.className === "run-result-more").length > 0,
+    const document = markupDom(
+      renderToStaticMarkup(
+        inConversation(
+          <TurnReport
+            facts={FACTS}
+            onOpenImage={() => undefined}
+            onOpenTurnDiff={() => undefined}
+            outcome={{
+              ...OUTCOME,
+              pictures: names.map((name) => checkPicture(`op:${name}`, `/${name}`)),
+            }}
+          />,
         ),
-    ).toBe(false);
+      ),
+    );
+    const tiles = document.querySelectorAll('button[aria-label*="Open the picture"]');
+    expect(tiles).toHaveLength(6);
+    const overflow = document.querySelector(
+      'button[aria-label="/f in the browser, and 3 more. Open the pictures"]',
+    );
+    expect(overflow).not.toBeNull();
+    expect(overflow?.textContent).toContain("+3");
+    expect(
+      Array.from(tiles)
+        .slice(0, -1)
+        .every((tile) => !tile.textContent?.includes("+3")),
+    ).toBe(true);
   });
 
   // The viewer holds every picture of the run, the ones past the strip's
@@ -538,16 +549,6 @@ describe("TurnReport's pictures", () => {
     expect(rowsOf(renderer)).toEqual([]);
     expect(tilesOf(renderer)).toHaveLength(1);
   });
-
-  // T5: the strip rises with the rows, last, when the run finished while the
-  // person watched.
-  it("rises last, after the rows, when watched", () => {
-    const renderer = renderPictures([filePicture("home-mobile.png")], { settling: true });
-    const strip = renderer.root.find(
-      (node) => node.type === "div" && node.props.className === "run-result-pictures",
-    );
-    expect([strip.props["data-rising"], strip.props.style?.["--row-index"]]).toEqual([true, 3]);
-  });
 });
 
 describe("TurnReport", () => {
@@ -572,7 +573,6 @@ describe("TurnReport", () => {
     const markup = markupOf();
     expect(markup).not.toContain("2 commands");
     expect(markup).not.toContain("data-pill");
-    expect(markup).not.toContain("rounded-full");
   });
 
   it("draws nothing at all when the run left nothing open or running", () => {

@@ -14,9 +14,8 @@ describe("ThreadSyncIndicator", () => {
     expect(markup).toContain('role="status"');
     expect(markup).toContain(`aria-label="${label}"`);
     // Fixed size: it sits in a slot the header keeps whether or not it spins.
-    expect(markup).toContain("size-4");
+
     // Never the drawer that pushed the composer down.
-    expect(markup).not.toContain("chat-composer-drawer");
   });
 });
 

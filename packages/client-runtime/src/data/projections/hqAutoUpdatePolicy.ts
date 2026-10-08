@@ -2,13 +2,16 @@ import {
   autoUpdatePolicyRequestId,
   autoUpdatePolicyScope,
 } from "../families/hqAutoUpdatePolicy.ts";
+import type { PublicRead } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { hqVerdict } from "./hqVerdict.ts";
 import { sameValue } from "./equal.ts";
 
 export interface AutoUpdatePolicySettings {
-  readonly enabled: boolean | null;
+  readonly policy:
+    | { readonly kind: "known"; readonly enabled: boolean }
+    | Exclude<PublicRead<never>, { readonly kind: "known" }>;
   readonly editable: boolean;
   readonly pending: boolean;
   readonly words: string;
@@ -61,7 +64,8 @@ export const autoUpdatePolicySettings: Projection<
         ? result.policy
         : null;
     const unconfirmed = progress?.stage === "uncertain" || progress?.stage === "unresolved";
-    const enabled = fact.kind === "known" ? (confirmed ?? fact.value).enabled : null;
+    const policy: AutoUpdatePolicySettings["policy"] =
+      fact.kind === "known" ? { kind: "known", enabled: (confirmed ?? fact.value).enabled } : fact;
     const error =
       progress?.stage === "refused" || progress?.stage === "unsent"
         ? (progress.reason ?? "HQ did not take this change.")
@@ -69,13 +73,13 @@ export const autoUpdatePolicySettings: Projection<
           ? "HQ could not confirm this change. You can send a new change once HQ confirms the current policy. The earlier receipt stays unconfirmed."
           : (stream.fault?.message ?? null);
     return {
-      enabled,
+      policy,
       pending,
       recoverable:
         admin &&
         available &&
         !upgradeRequired &&
-        enabled !== null &&
+        policy.kind === "known" &&
         stream.phase === "live" &&
         unconfirmed,
       error,
@@ -83,16 +87,16 @@ export const autoUpdatePolicySettings: Projection<
         admin &&
         available &&
         !upgradeRequired &&
-        enabled !== null &&
+        policy.kind === "known" &&
         stream.phase === "live" &&
         !pending,
       words: upgradeRequired
         ? "Update HQ Core to manage automatic Mate updates."
         : pending
           ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
-            ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${enabled === null ? "unknown" : enabled ? "On" : "Off"}; change unconfirmed`
+            ? `${available && stream.phase === "live" ? "Current policy" : "Last known policy"}: ${policy.kind !== "known" ? "unknown" : policy.enabled ? "On" : "Off"}; change unconfirmed`
             : "Saving…"
-          : enabled === null
+          : policy.kind !== "known"
             ? hq === "none"
               ? "Set up HQ to read this policy."
               : hq === "unreadable"
@@ -102,7 +106,7 @@ export const autoUpdatePolicySettings: Projection<
                   : stream.fault !== null
                     ? "Policy unavailable"
                     : "Waiting for HQ…"
-            : `${available && stream.phase === "live" ? "" : "Last known: "}${enabled ? "On" : "Off"}`,
+            : `${available && stream.phase === "live" ? "" : "Last known: "}${policy.enabled ? "On" : "Off"}`,
       retryRead: stream.fault !== null,
       requestId: autoUpdatePolicyRequestId(orgId, attempt),
     };

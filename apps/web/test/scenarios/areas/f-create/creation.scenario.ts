@@ -242,7 +242,7 @@ describe("F: creation through the hosted client", () => {
         yield* c.matePage("Nova");
         yield* c.settled;
         expect(c.refusedReads(), "The owner read the new project's own row").toBe(0);
-        yield* Effect.promise(() => s.clock.advance(5_000));
+        yield* Effect.promise(() => s.clock.advanceStepped(5_000));
         yield* c.pastRetryWindow;
         yield* s.then.noExternalNetwork;
         expect(c.refusedReads(), "Definitive 403 on the new project was asked").toBe(0);
