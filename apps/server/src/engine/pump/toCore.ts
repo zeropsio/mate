@@ -14,11 +14,13 @@
  * @module engine/pump/toCore
  */
 import type {
+  CallResult,
   ItemActor,
   ItemBody,
   RequestAsk,
   RequestState,
   RunId,
+  SpiToolCallImage,
   ThreadTokenUsageSnapshot,
   TurnHandle,
 } from "@t3tools/contracts";
@@ -34,6 +36,8 @@ import type {
   SessionCloseCause,
   WorkStatus,
 } from "../bridge/spi3.ts";
+import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
+import { callStep } from "../bridge/callFacts.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */
@@ -77,6 +81,11 @@ export interface CoreStep {
   readonly evidence: ReadonlyArray<{ readonly turn: TurnHandle; readonly evidence: SendEvidence }>;
   readonly live: ReadonlyArray<LiveOp>;
   readonly session: SessionChange | null;
+  /** The pictures a closing call's result carried, by item: the host stores them first. */
+  readonly pictures: ReadonlyArray<{
+    readonly key: string;
+    readonly images: ReadonlyArray<SpiToolCallImage>;
+  }>;
 }
 
 export interface ToCoreOptions {
@@ -157,6 +166,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     const signals: Array<ProviderSignal> = [];
     const evidence: Array<{ readonly turn: TurnHandle; readonly evidence: SendEvidence }> = [];
     const live: Array<LiveOp> = [];
+    const pictures: Array<CoreStep["pictures"][number]> = [];
     let session: SessionChange | null = null;
 
     const marker = (turn: TurnHandle | undefined, kind: string, reason?: string) => {
@@ -253,7 +263,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         item.body = signal.body;
         item.status = signal.status;
         const closing = signal.status !== "running";
-        const { body, detail } = engineBody(item, now);
+        const { body, detail, pictures: images } = engineBody(item, now);
         const afterEnd = signal.afterEnd === true ? { afterEnd: true as const } : {};
         const told = JSON.stringify(body);
         if (closing && !first && item.closed && told === item.told) {
@@ -269,6 +279,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             ...(detail === undefined ? {} : { detail }),
             ...afterEnd,
           });
+          if (images !== undefined) pictures.push({ key: signal.item, images });
           live.push({ _tag: "Settle", key: signal.item });
           // The record holds it now: its text and state are let go.
           items.delete(signal.item);
@@ -370,7 +381,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         if (signal.level === "error") marker(signal.turn, "error", signal.words);
         break;
     }
-    return { signals, evidence, live, session };
+    return { signals, evidence, live, session, pictures };
   };
 
   return {
@@ -406,17 +417,6 @@ const engineAsk = (ask: SpiRequestAsk): RequestAsk =>
     ? { kind: "approval", requestKind: ask.requestType, detail: ask.detail ?? "" }
     : { kind: "question", questions: [...ask.questions], dismissible: true };
 
-/** A call's kind in the record, from the driver's tool kind. */
-const STEPS: Record<string, string> = {
-  command_execution: "command",
-  file_change: "edit",
-  web_search: "web",
-  image_view: "look",
-  collab_agent_tool_call: "helper",
-  mcp_tool_call: "tool",
-  dynamic_tool_call: "tool",
-};
-
 const CALL_STATES: Record<ItemStatus, string> = {
   running: "running",
   completed: "done",
@@ -427,6 +427,10 @@ const CALL_STATES: Record<ItemStatus, string> = {
   cut: "stopped",
 };
 
+/** A result as the record holds it until its pictures are references. */
+const withoutPictures = ({ images: _images, ...result }: ZeropsActivityResult): CallResult =>
+  result;
+
 const capped = (text: string): { readonly text: string; readonly detail?: string } =>
   text.length > ITEM_TEXT_LIMIT ? { text: text.slice(0, ITEM_TEXT_LIMIT), detail: text } : { text };
 
@@ -434,7 +438,11 @@ const capped = (text: string): { readonly text: string; readonly detail?: string
 const engineBody = (
   item: ItemState,
   now: number,
-): { readonly body: ItemBody; readonly detail?: string } => {
+): {
+  readonly body: ItemBody;
+  readonly detail?: string;
+  readonly pictures?: ReadonlyArray<SpiToolCallImage>;
+} => {
   const streaming = item.status === "running";
   const endedAt = streaming ? null : now;
   const body = item.body;
@@ -466,11 +474,14 @@ const engineBody = (
     case "tool":
     case "other": {
       const call = body.kind === "tool" ? body.call : undefined;
+      const facts = body.kind === "tool" ? body.facts : undefined;
       const output = item.text.get("output");
+      const hasOutput = output !== undefined && output !== "";
+      const result = facts?.result;
       return {
         body: {
           kind: "call",
-          step: body.kind === "tool" ? (STEPS[body.toolKind] ?? "tool") : "tool",
+          step: body.kind === "tool" ? callStep(body.toolKind, facts ?? {}, body.title) : "tool",
           tool: {
             name: call?.name ?? body.title ?? (body.kind === "tool" ? body.toolKind : "tool"),
             ...(call?.server === undefined ? {} : { server: call.server }),
@@ -481,8 +492,16 @@ const engineBody = (
           ...(body.kind === "tool" && body.presentation !== undefined
             ? { presentation: body.presentation }
             : {}),
+          ...(facts?.line === undefined ? {} : { input: facts.line }),
+          ...(facts?.shows === undefined ? {} : { shows: facts.shows }),
+          // Its pictures go to the asset store first (`pictures`): the record holds references.
+          ...(result === undefined ? {} : { result: withoutPictures(result) }),
+          ...(hasOutput ? { parts: ["detail"] } : {}),
         },
-        ...(output === undefined || output === "" ? {} : { detail: output }),
+        ...(hasOutput ? { detail: output } : {}),
+        ...(result?.images === undefined || result.images.length === 0
+          ? {}
+          : { pictures: result.images }),
       };
     }
   }

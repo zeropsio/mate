@@ -32,6 +32,7 @@ import {
 } from "@t3tools/contracts";
 
 import { applyToolCall } from "../../spi/toolCall.ts";
+import { callFacts } from "./callFacts.ts";
 import { DRIVER_CAPABILITIES } from "./capabilities.ts";
 import type {
   AppendStream,
@@ -1177,12 +1178,14 @@ function itemBody(
     // it keeps the one it gave.
     const presentation =
       payload.presentation ?? (previous?.kind === "tool" ? previous.presentation : undefined);
+    const facts = callFacts(event, previous?.kind === "tool" ? previous.facts : undefined);
     return {
       kind: "tool",
       toolKind: itemType,
       ...(call === undefined ? {} : { call }),
       ...(payload.title === undefined ? {} : { title: payload.title }),
       ...(presentation === undefined ? {} : { presentation }),
+      ...(Object.keys(facts).length === 0 ? {} : { facts }),
     };
   }
   switch (itemType) {
