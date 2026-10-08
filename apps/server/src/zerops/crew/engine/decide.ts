@@ -2825,6 +2825,8 @@ const runEnded = (
     }
   }
 
+  // The lead's turn serves a task it was woken about, which stays its crewmate's.
+  if (member.kind === "lead") return;
   const task =
     (taskId === null ? undefined : b.state.tasks[taskId]) ?? openTaskOf(b.state, member.handle);
   if (task === undefined || !isOpenTask(task.state)) return;

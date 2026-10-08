@@ -73,9 +73,11 @@ const journeys: ReadonlyArray<Journey> = [
         w.turns("reviewer"),
         answer?.command._tag === "Send" ? answer.command.card?.why : undefined,
         w.task(1).state,
+        // The lead's turn ending is not its crewmate's: the answered task stands open.
+        w.task(1).midway,
       ];
     },
-    expected: [["question"], ["task", "answer"], "EUR.", "working"],
+    expected: [["question"], ["task", "answer"], "EUR.", "working", null],
   },
   {
     sentence:
