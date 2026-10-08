@@ -802,9 +802,10 @@ export const pressWhenFree = (world: CrewWorld, input: CrewCommand) =>
   eventually(
     world.press(input).pipe(
       Effect.as(true),
-      Effect.catchTag("CrewCommandError", (error) =>
-        error.detail?.includes("is busy") === true ? Effect.succeed(false) : Effect.fail(error),
-      ),
+      Effect.catchTags({
+        CrewCommandError: (error) =>
+          error.detail?.includes("is busy") === true ? Effect.succeed(false) : Effect.fail(error),
+      }),
     ),
   );
 

@@ -1000,18 +1000,16 @@ describe("the crew's effects on the git core", () => {
     ),
   );
 
-  for (const row of [...rows, ...deliveries]) {
-    it.effect(row.sentence, () => {
-      const told: Told = { envelopes: [], platform: undefined };
-      return withCrewEffects(
-        (root) =>
-          Effect.map(row.scene(root, told).pipe(Effect.provide(ports(told))), (actual) => {
-            assert.deepStrictEqual(actual, row.expected(root));
-          }),
-        SETSID,
-      );
-    });
-  }
+  it.effect.each([...rows, ...deliveries])("$sentence", (row) => {
+    const told: Told = { envelopes: [], platform: undefined };
+    return withCrewEffects(
+      (root) =>
+        Effect.map(row.scene(root, told).pipe(Effect.provide(ports(told))), (actual) => {
+          assert.deepStrictEqual(actual, row.expected(root));
+        }),
+      SETSID,
+    );
+  });
 
   it.effect("a delivery of a card queues a run whose first item is the card", () =>
     withCrewEffects(() =>

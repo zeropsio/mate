@@ -98,11 +98,11 @@ export const makeSessionOpen = Effect.gen(function* () {
         const driver = payload.driver;
         const host = yield* pump.hostFor(row.conversationId, driver, payload.generation ?? 1);
         const session = yield* sessionIdOf(host.thread, row.conversationId, row.effectId);
-        const setup = yield* workspace
-          .of(row.conversationId)
-          .pipe(
-            Effect.catchTag("WorkspaceUnavailable", (unavailable) => Effect.succeed(unavailable)),
-          );
+        const setup = yield* workspace.of(row.conversationId).pipe(
+          Effect.catchTags({
+            WorkspaceUnavailable: (unavailable) => Effect.succeed(unavailable),
+          }),
+        );
         // A workspace that cannot be told now (a crewmate's copy unread) opens nothing anywhere
         // else: the open is tried again, over minutes, as the copy's own effects are.
         if ("_tag" in setup)

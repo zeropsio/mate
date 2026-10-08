@@ -30,11 +30,11 @@ export const makeWorkspaceFinish = Effect.gen(function* () {
         const thread = row.conversationId as string as ThreadId;
         const turn = payload.providerTurnId ?? null;
         if (payload.started && turn !== null) {
-          const setup = yield* workspace
-            .of(row.conversationId)
-            .pipe(
-              Effect.catchTag("WorkspaceUnavailable", (unavailable) => Effect.succeed(unavailable)),
-            );
+          const setup = yield* workspace.of(row.conversationId).pipe(
+            Effect.catchTags({
+              WorkspaceUnavailable: (unavailable) => Effect.succeed(unavailable),
+            }),
+          );
           // A workspace that cannot be told now is read again: the turn's capture waits for it.
           if ("_tag" in setup)
             return { _tag: "Retry", reason: setup.message, patient: true } as const;
