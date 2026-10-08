@@ -690,6 +690,35 @@ describe("a client's calls to an engine conversation", () => {
   );
 
   it.effect(
+    "a message in an interaction mode this engine does not know goes in the default mode",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const result = yield* wire.send(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("send-review"),
+              text: "Look it over",
+              interactionMode: "unknown",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.strictEqual(snapshot.header.interactionMode ?? "default", "default");
+          const sent = w.provider.sends.at(-1) as { readonly interactionMode?: string } | undefined;
+          assert.strictEqual(sent?.interactionMode ?? "default", "default");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
     "a model switch carries its options, and the header names the conversation's runtime mode and latest interaction mode",
     () =>
       Effect.scoped(

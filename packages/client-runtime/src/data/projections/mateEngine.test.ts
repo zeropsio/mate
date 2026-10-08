@@ -386,6 +386,15 @@ describe("an engine conversation as the thread the view draws", () => {
     });
   });
 
+  it("shows the default modes for a header naming modes this build does not know", () => {
+    const state = held({ header: { runtimeMode: "unknown", interactionMode: "unknown" } });
+    expect(thread(state)).toMatchObject({
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      session: { runtimeMode: "full-access" },
+    });
+  });
+
   it("gives the menu row the model its held conversation switched to", () => {
     const state = apply(held({ header: { model: "claude-opus-4-1" } }), [
       {

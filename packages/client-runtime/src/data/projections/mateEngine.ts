@@ -589,6 +589,12 @@ function requestActivities(
   ];
 }
 
+/** A mode a newer engine named and this build does not know reads as not said. */
+const known = <Mode extends string>(
+  mode: Mode | undefined,
+): Exclude<Mode, "unknown"> | undefined =>
+  mode === "unknown" ? undefined : (mode as Exclude<Mode, "unknown"> | undefined);
+
 const shellThreadOf = (read: ProjectionReads, key: EngineConversationKey) => {
   const shell = read.fact("mateShell", key.environmentId);
   if (shell.kind !== "known") return null;
@@ -743,7 +749,7 @@ export function engineThreadOf(
     ...(agent === null
       ? {}
       : { providerInstanceId: agent.instanceId as OrchestrationSession["providerInstanceId"] }),
-    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
+    runtimeMode: known(header.runtimeMode) ?? shell?.runtimeMode ?? "full-access",
     activeTurnId: turn.activeTurnId as OrchestrationSession["activeTurnId"],
     lastError:
       latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
@@ -765,8 +771,8 @@ export function engineThreadOf(
         : (shell?.modelSelection ??
           ({ instanceId: "unknown", model: "default" } as OrchestrationThread["modelSelection"])),
     // The engine's own word once a person set the mode or sent a message; V1's until then.
-    runtimeMode: header.runtimeMode ?? shell?.runtimeMode ?? "full-access",
-    interactionMode: header.interactionMode ?? shell?.interactionMode ?? "default",
+    runtimeMode: known(header.runtimeMode) ?? shell?.runtimeMode ?? "full-access",
+    interactionMode: known(header.interactionMode) ?? shell?.interactionMode ?? "default",
     branch: shell?.branch ?? null,
     worktreePath: shell?.worktreePath ?? null,
     latestTurn: turn.latestTurn,
