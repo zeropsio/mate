@@ -222,7 +222,11 @@ import {
   standsAtFoot,
 } from "./runCard.logic";
 import { useRunScrollResettle } from "./useRunScrollResettle";
-import { useEngineLiveMessage, useEngineLiveMessages } from "../../zerops/useEngineLiveMessage";
+import {
+  useEngineLiveMessage,
+  useEngineLiveMessages,
+  useEngineLiveNow,
+} from "../../zerops/useEngineLiveMessage";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -3128,9 +3132,10 @@ function NowLine({
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
+  const thinking = useEngineLiveNow(now);
   const latest = nowLineOf({
     status,
-    now,
+    now: thinking,
     answering,
     compacting: isCompacting,
     speaker: ctx.speaker.name,
@@ -3486,9 +3491,10 @@ function LiveSlot({
   const { isCompacting } = use(TimelineRowActivityCtx);
   // What the face and a screen reader say stands its dwell, as the slot's
   // items do: a call of 180 ms between two thoughts never flips them.
+  const thinking = useEngineLiveNow(now);
   const doing = nowLineOf({
     status,
-    now,
+    now: thinking,
     answering,
     compacting: isCompacting,
     speaker: ctx.speaker.name,

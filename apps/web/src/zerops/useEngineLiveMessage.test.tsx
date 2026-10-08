@@ -12,7 +12,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { TimelineRowCtx, type TimelineRowSharedState } from "../components/chat/timelineContext";
 import type { ChatMessage } from "../types";
-import { useEngineLiveMessage, useEngineLiveMessages } from "./useEngineLiveMessage";
+import {
+  useEngineLiveMessage,
+  useEngineLiveMessages,
+  useEngineLiveNow,
+} from "./useEngineLiveMessage";
 
 const ENV = "env-ada";
 const conversation = { environmentId: ENV, conversationId: "thread-ada" };
@@ -40,6 +44,11 @@ function Thought({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }
         .join(" | ")}
     </p>
   );
+}
+
+function Now({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
+  const now = useEngineLiveNow({ kind: "thinking", key: null, messages });
+  return <p>{now?.messages?.map((said) => said.text).join(" | ")}</p>;
 }
 
 function drawn(node: React.ReactNode, streamed: (live: MateEngineHost["live"]) => void) {
@@ -94,5 +103,13 @@ describe("an engine Mate's words as it writes them", () => {
 
   it("draws a message whose live text is not held as its record says", () => {
     expect(drawn(<Words message={message({ text: "Deploy" })} />, () => undefined)).toBe("Deploy");
+  });
+
+  it("names the thought it is having on the run's line as it streams", () => {
+    expect(
+      drawn(<Now messages={[message({ role: "reasoning" })]} />, (live) =>
+        live.open(conversation, "thread-ada/r/1/i/2", "reasoning", "Check the logs"),
+      ),
+    ).toBe("Check the logs");
   });
 });

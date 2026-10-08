@@ -61,3 +61,17 @@ export function useEngineLiveMessages(
     return drawn === streaming ? messages : messages.with(index, drawn);
   }, [index, messages, streaming, text]);
 }
+
+/** What a run is doing now, its thought with the words streamed so far. */
+export function useEngineLiveNow<
+  Now extends { readonly kind: string; readonly messages?: ReadonlyArray<ChatMessage> },
+>(now: Now | null): Now | null {
+  const recorded = now?.kind === "thinking" ? (now.messages ?? NO_MESSAGES) : NO_MESSAGES;
+  const messages = useEngineLiveMessages(recorded);
+  return useMemo(
+    () => (now === null || messages === recorded ? now : { ...now, messages }),
+    [messages, now, recorded],
+  );
+}
+
+const NO_MESSAGES: ReadonlyArray<ChatMessage> = [];
