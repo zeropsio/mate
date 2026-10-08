@@ -11,14 +11,13 @@
  * §5, part D) joins `CREW_WORLDS` beside it. A sentence holds when it passes on both.
  *
  * A few journeys arrange their input through V1's own tables (an operation a crash left behind,
- * a lane row): `v1Journey` runs them on the V1 world only, through `V1CrewWorld.v1`, and `itV1`
- * skips them on any other.
+ * a lane row): `v1Journey` runs them on the V1 world only, through `V1CrewWorld.v1`, and their
+ * tests are `it.live.skipIf(CREW_WORLD !== "v1")`, skipped on any other.
  *
  * @module crewWorld
  */
 import * as NodePath from "node:path";
 
-import { it } from "@effect/vitest";
 import {
   type ChatAttachment,
   type CrewCommand,
@@ -737,7 +736,7 @@ export const crewJourney = <E>(
 };
 
 /**
- * Plays a journey that arranges through V1's own tables: on the V1 world only (see `itV1`), each
+ * Plays a journey that arranges through V1's own tables: on the V1 world only (its test skips elsewhere), each
  * phase with V1's engine services at hand.
  */
 export const v1Journey = <E>(
@@ -762,9 +761,6 @@ export const onV1Value = <A, E>(
   read: (world: V1CrewWorld) => Effect.Effect<A, E>,
 ): Effect.Effect<A | undefined> =>
   "v1" in world ? Effect.orDie(read(world as V1CrewWorld)) : Effect.succeed(undefined);
-
-/** A test of a `v1Journey`: it runs where the journeys run on V1, and is skipped elsewhere. */
-export const itV1 = it.live.skipIf(CREW_WORLD !== "v1");
 
 // ─── Steps over the port ───────────────────────────────────────────────────────────────────────
 

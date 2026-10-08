@@ -8,7 +8,7 @@ import {
   crewJourney,
   eventually,
   firstTurn,
-  itV1,
+  CREW_WORLD,
   lastAdmitted,
   reportDone,
   turnsSent,
@@ -139,7 +139,7 @@ describe("CrewEngine tasks stopped mid-way", () => {
   );
 
   // The rig's rows are an old V1 engine's, written into V1's own tables.
-  itV1(
+  it.live.skipIf(CREW_WORLD !== "v1")(
     "the rig: a working task with no turn stops its queue; the next run carries it on as its starter",
     () => {
       let thread: CrewChat | undefined;

@@ -24,7 +24,7 @@ import {
   eventually,
   everyCopyReady,
   firstTurn,
-  itV1,
+  CREW_WORLD,
   lastAdmitted,
   onV1,
   opened,
@@ -490,24 +490,28 @@ describe("CrewEngine", () => {
   const stuckStates: ReadonlyArray<"merging" | "checking"> = ["merging", "checking"];
   for (const state of stuckStates) {
     // Only V1's own tables can hold a task in a state nothing runs on.
-    itV1(`a task left ${state} with nothing running on it can be discarded`, () =>
-      v1Journey((world) =>
-        Effect.gen(function* () {
-          const { taskId } = yield* turnEndedWorking(world);
-          // A redeploy held its merge, or its check errored: nothing runs on it now.
-          yield* world.v1.run(
-            Effect.gen(function* () {
-              const store = yield* CrewStore;
-              const row = (yield* store.assignments(CREW_ID)).find(
-                (task) => task.assignment === taskId,
-              )!;
-              yield* store.putAssignment({ ...row, state });
-            }),
-          );
-          yield* world.press({ _tag: "discard", taskId });
-          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
-        }),
-      ),
+    it.live.skipIf(CREW_WORLD !== "v1")(
+      `a task left ${state} with nothing running on it can be discarded`,
+      () =>
+        v1Journey((world) =>
+          Effect.gen(function* () {
+            const { taskId } = yield* turnEndedWorking(world);
+            // A redeploy held its merge, or its check errored: nothing runs on it now.
+            yield* world.v1.run(
+              Effect.gen(function* () {
+                const store = yield* CrewStore;
+                const row = (yield* store.assignments(CREW_ID)).find(
+                  (task) => task.assignment === taskId,
+                )!;
+                yield* store.putAssignment({ ...row, state });
+              }),
+            );
+            yield* world.press({ _tag: "discard", taskId });
+            yield* world.snapshotWhere(
+              (snapshot) => snapshot.board.tasks[0]?.state === "discarded",
+            );
+          }),
+        ),
     );
   }
 
@@ -1252,84 +1256,88 @@ describe("CrewEngine", () => {
   // A conversation's stored worktree path is V1's thread's: the engine resolves a crewmate's
   // workspace from its copy each time, so nothing drifts to put back (the owner, 2026-10-08:
   // V1's mechanism goes at cutover).
-  itV1("a writer's conversation without its copy as its worktree gets it back at boot", () =>
-    crewJourney([
-      (world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* eventually(Effect.map(opened(world), (creates) => creates.length > 0));
-          const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
-          yield* world.chatWas(created.chat, { worktreePath: null });
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* world.serverReady;
-          const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
-          yield* eventually(Effect.map(sentKind(world, "copy"), (updates) => updates.length > 0));
-          const [update] = yield* sentKind(world, "copy");
-          assert.deepStrictEqual(
-            [update?.chat, update?.path, created.copy?.endsWith("/.crew/backend")],
-            [created.chat, created.copy, true],
-          );
-        }),
-    ]),
+  it.live.skipIf(CREW_WORLD !== "v1")(
+    "a writer's conversation without its copy as its worktree gets it back at boot",
+    () =>
+      crewJourney([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* eventually(Effect.map(opened(world), (creates) => creates.length > 0));
+            const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+            yield* world.chatWas(created.chat, { worktreePath: null });
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* world.serverReady;
+            const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+            yield* eventually(Effect.map(sentKind(world, "copy"), (updates) => updates.length > 0));
+            const [update] = yield* sentKind(world, "copy");
+            assert.deepStrictEqual(
+              [update?.chat, update?.path, created.copy?.endsWith("/.crew/backend")],
+              [created.chat, created.copy, true],
+            );
+          }),
+      ]),
   );
 
   {
     const path = "/chosen/copy";
     // V1's thread worktree a person chose: an engine crewmate's conversation has no path of its
     // own to choose (the owner, 2026-10-08: V1's mechanism goes at cutover).
-    itV1("boot keeps a conversation path a person chose and offers a selected crew copy", () =>
-      crewJourney([
-        (world) =>
-          Effect.gen(function* () {
-            yield* applied(world);
-            yield* world.press({
-              _tag: "message",
-              handle: "backend",
-              text: "Work",
-              attachments: [],
-            });
-            const [created] = yield* opened(world);
-            yield* world.chatWas(created!.chat, { worktreePath: path });
-          }),
-        (world) =>
-          Effect.gen(function* () {
-            yield* world.serverReady;
-            const snapshot = yield* world.snapshotWhere((frame) =>
-              frame.attention.some((row) => row.kind === "conversation-copy"),
-            );
-            assert.deepStrictEqual(yield* sentKind(world, "copy"), []);
-            const need = snapshot.attention.find((row) => row.kind === "conversation-copy")!;
-            const [created] = yield* opened(world);
-            assert.deepStrictEqual(need.copyAssignment, {
-              threadId: ThreadId.make(created!.chat),
-              currentPath: path,
-              crewPath: created!.copy!,
-              source: "crew-stint",
-            });
-            // The restart's turn carries on first; the press waits for its copy to be free.
-            yield* pressWhenFree(world, {
-              _tag: "useCrewCopy",
-              handle: "backend",
-              threadId: ThreadId.make(created!.chat),
-              expectedPath: path,
-            });
-            const [update] = yield* sentKind(world, "copy");
-            assert.deepStrictEqual([update?.path, update?.expected], [created!.copy, path]);
-            yield* world.chatWas(created!.chat, { worktreePath: "/new/choice" });
-            const error = yield* Effect.flip(
-              world.press({
+    it.live.skipIf(CREW_WORLD !== "v1")(
+      "boot keeps a conversation path a person chose and offers a selected crew copy",
+      () =>
+        crewJourney([
+          (world) =>
+            Effect.gen(function* () {
+              yield* applied(world);
+              yield* world.press({
+                _tag: "message",
+                handle: "backend",
+                text: "Work",
+                attachments: [],
+              });
+              const [created] = yield* opened(world);
+              yield* world.chatWas(created!.chat, { worktreePath: path });
+            }),
+          (world) =>
+            Effect.gen(function* () {
+              yield* world.serverReady;
+              const snapshot = yield* world.snapshotWhere((frame) =>
+                frame.attention.some((row) => row.kind === "conversation-copy"),
+              );
+              assert.deepStrictEqual(yield* sentKind(world, "copy"), []);
+              const need = snapshot.attention.find((row) => row.kind === "conversation-copy")!;
+              const [created] = yield* opened(world);
+              assert.deepStrictEqual(need.copyAssignment, {
+                threadId: ThreadId.make(created!.chat),
+                currentPath: path,
+                crewPath: created!.copy!,
+                source: "crew-stint",
+              });
+              // The restart's turn carries on first; the press waits for its copy to be free.
+              yield* pressWhenFree(world, {
                 _tag: "useCrewCopy",
                 handle: "backend",
                 threadId: ThreadId.make(created!.chat),
                 expectedPath: path,
-              }),
-            );
-            assert.strictEqual(error.reason, "wrong-state");
-            assert.strictEqual((yield* sentKind(world, "copy")).length, 1);
-          }),
-      ]),
+              });
+              const [update] = yield* sentKind(world, "copy");
+              assert.deepStrictEqual([update?.path, update?.expected], [created!.copy, path]);
+              yield* world.chatWas(created!.chat, { worktreePath: "/new/choice" });
+              const error = yield* Effect.flip(
+                world.press({
+                  _tag: "useCrewCopy",
+                  handle: "backend",
+                  threadId: ThreadId.make(created!.chat),
+                  expectedPath: path,
+                }),
+              );
+              assert.strictEqual(error.reason, "wrong-state");
+              assert.strictEqual((yield* sentKind(world, "copy")).length, 1);
+            }),
+        ]),
     );
   }
 

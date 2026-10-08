@@ -14,7 +14,7 @@ import {
   turnsSent,
   type CrewChat,
   type CrewWorld,
-  itV1,
+  CREW_WORLD,
 } from "./testing/crewWorld.ts";
 
 /** The crewmate's current conversation. */
@@ -161,46 +161,48 @@ describe("CrewEngine endings", () => {
 
   // Its turn-start rotation is a transcript gone before a resume: V1's own mechanism (the engine
   // resumes its sessions itself), so it runs on V1 until the cutover (the owner, 2026-10-08).
-  itV1("a rotation a turn's start makes counts toward the attempt's two", () =>
-    crewJourney((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const first = yield* firstTurn(world, () => undefined);
-        yield* endsWith(world, first, "prompt_too_long");
-        yield* world.sessionsWhere("backend", (sessions) => sessions.count === 2);
-        const second = yield* currentChat(world);
-        const transcript = NodePath.join(world.workspace, "second.jsonl");
-        NodeFS.writeFileSync(transcript, "{}\n");
-        yield* world.sessionStart(second, {
-          source: "startup",
-          sessionId: "session-2",
-          transcriptPath: transcript,
-        });
-        yield* world.sessionsWhere(
-          "backend",
-          (sessions) => sessions.count === 2 && sessions.latest === "active",
-        );
-        NodeFS.rmSync(transcript);
-        const third = yield* nextTurn(world, 2);
-        yield* endsWith(world, third, "prompt_too_long");
-        const parked = yield* world.snapshotWhere(
-          (current) => current.board.tasks[0]?.state === "parked",
-        );
-        assert.deepStrictEqual(
-          [
-            (yield* world.sessionsWhere("backend", () => true)).reasons,
-            parked.board.tasks[0]!.reason,
-          ],
-          [
+  it.live.skipIf(CREW_WORLD !== "v1")(
+    "a rotation a turn's start makes counts toward the attempt's two",
+    () =>
+      crewJourney((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const first = yield* firstTurn(world, () => undefined);
+          yield* endsWith(world, first, "prompt_too_long");
+          yield* world.sessionsWhere("backend", (sessions) => sessions.count === 2);
+          const second = yield* currentChat(world);
+          const transcript = NodePath.join(world.workspace, "second.jsonl");
+          NodeFS.writeFileSync(transcript, "{}\n");
+          yield* world.sessionStart(second, {
+            source: "startup",
+            sessionId: "session-2",
+            transcriptPath: transcript,
+          });
+          yield* world.sessionsWhere(
+            "backend",
+            (sessions) => sessions.count === 2 && sessions.latest === "active",
+          );
+          NodeFS.rmSync(transcript);
+          const third = yield* nextTurn(world, 2);
+          yield* endsWith(world, third, "prompt_too_long");
+          const parked = yield* world.snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "parked",
+          );
+          assert.deepStrictEqual(
             [
-              null,
-              "A fresh conversation: the last one grew too long",
-              "A fresh conversation: the last one couldn't be resumed",
+              (yield* world.sessionsWhere("backend", () => true)).reasons,
+              parked.board.tasks[0]!.reason,
             ],
-            "its conversation outgrew its context too often",
-          ],
-        );
-      }),
-    ),
+            [
+              [
+                null,
+                "A fresh conversation: the last one grew too long",
+                "A fresh conversation: the last one couldn't be resumed",
+              ],
+              "its conversation outgrew its context too often",
+            ],
+          );
+        }),
+      ),
   );
 });

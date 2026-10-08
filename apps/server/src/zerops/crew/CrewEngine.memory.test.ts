@@ -18,7 +18,7 @@ import {
   opened,
   type CrewChat,
   type CrewWorld,
-  itV1,
+  CREW_WORLD,
 } from "./testing/crewWorld.ts";
 
 const decodeBoard = Schema.decodeUnknownEffect(
@@ -128,68 +128,72 @@ describe("CrewEngine memory", { timeout: CREW_ENGINE_TEST_TIMEOUT }, () => {
 
   // A transcript gone before a resume is V1's own mechanism (the engine resumes its sessions
   // itself): it runs on V1 until the cutover (the owner, 2026-10-08).
-  itV1("a transcript gone before a resume rotates the conversation at once", () =>
-    crewJourney((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () => undefined);
-        const transcript = NodePath.join(world.workspace, "transcript.jsonl");
-        NodeFS.writeFileSync(transcript, "{}\n");
-        yield* sessionStarted(world, thread, "startup", transcript);
-        yield* world.turnEnds(thread);
-        yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints[0]?.state === "active",
-        );
-        NodeFS.rmSync(transcript);
-        yield* world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] });
-        const rotated = yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints.length === 2,
-        );
-        assert.strictEqual(
-          rotated.crewmates[0]!.stints[1]!.reason,
-          "A fresh conversation: the last one couldn't be resumed",
-        );
-      }),
-    ),
+  it.live.skipIf(CREW_WORLD !== "v1")(
+    "a transcript gone before a resume rotates the conversation at once",
+    () =>
+      crewJourney((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          const transcript = NodePath.join(world.workspace, "transcript.jsonl");
+          NodeFS.writeFileSync(transcript, "{}\n");
+          yield* sessionStarted(world, thread, "startup", transcript);
+          yield* world.turnEnds(thread);
+          yield* world.snapshotWhere(
+            (current) => current.crewmates[0]!.stints[0]?.state === "active",
+          );
+          NodeFS.rmSync(transcript);
+          yield* world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+          const rotated = yield* world.snapshotWhere(
+            (current) => current.crewmates[0]!.stints.length === 2,
+          );
+          assert.strictEqual(
+            rotated.crewmates[0]!.stints[1]!.reason,
+            "A fresh conversation: the last one couldn't be resumed",
+          );
+        }),
+      ),
   );
 
   // The engine keeps no crew-state git mirror (the owner, 2026-10-08): V1's until the cutover.
-  itV1("the crew-state ref carries each crewmate's memory and the board", () =>
-    crewJourney((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () => undefined);
-        yield* world.memory(thread, {
-          op: "add",
-          kind: "decision",
-          topic: "api",
-          text: "Prices are in EUR.",
-        });
-        yield* world.turnEnds(thread);
-        const tree = () => {
-          try {
-            return git(world.root, [
-              "ls-tree",
-              "-r",
-              "--name-only",
-              "refs/t3/crew-state/main",
-            ]).split("\n");
-          } catch {
-            return [];
-          }
-        };
-        yield* eventually(Effect.sync(() => tree().includes("memory/backend/index.json")));
-        const board = yield* decodeBoard(
-          git(world.root, ["show", "refs/t3/crew-state/main:board.json"]),
-        );
-        assert.deepStrictEqual(
-          [
-            tree().includes("memory/backend/index.json"),
-            board.tasks.map((task) => [task.number, task.state]),
-          ],
-          [true, [[1, "working"]]],
-        );
-      }),
-    ),
+  it.live.skipIf(CREW_WORLD !== "v1")(
+    "the crew-state ref carries each crewmate's memory and the board",
+    () =>
+      crewJourney((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* world.memory(thread, {
+            op: "add",
+            kind: "decision",
+            topic: "api",
+            text: "Prices are in EUR.",
+          });
+          yield* world.turnEnds(thread);
+          const tree = () => {
+            try {
+              return git(world.root, [
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "refs/t3/crew-state/main",
+              ]).split("\n");
+            } catch {
+              return [];
+            }
+          };
+          yield* eventually(Effect.sync(() => tree().includes("memory/backend/index.json")));
+          const board = yield* decodeBoard(
+            git(world.root, ["show", "refs/t3/crew-state/main:board.json"]),
+          );
+          assert.deepStrictEqual(
+            [
+              tree().includes("memory/backend/index.json"),
+              board.tasks.map((task) => [task.number, task.state]),
+            ],
+            [true, [[1, "working"]]],
+          );
+        }),
+      ),
   );
 });
