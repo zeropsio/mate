@@ -35,11 +35,23 @@ describe("registerCrewRpc", () => {
     ["files.get", inert[WS_METHODS.zeropsCrewFilesGet]({})],
     ["files.put", inert[WS_METHODS.zeropsCrewFilesPut]({ files: [] })],
     ["command", inert[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" })],
+    ["taskPage", inert[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null })],
   ] as const)("inert: refuses %s as unavailable", ([, request]) =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(request);
       expect(error).toMatchObject({ _tag: "CrewCommandError", reason: "unavailable" });
     }),
+  );
+
+  it.live("live on V1: the board holds every task, so no finished work pages past it", () =>
+    withCrewEngine(() =>
+      Effect.gen(function* () {
+        const handlers = registerCrewRpc({ crew: yield* CrewEngine, subject: SUBJECT, ...observe });
+        expect(
+          yield* handlers[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null }),
+        ).toEqual({ tasks: [], next: null });
+      }),
+    ),
   );
 
   it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>

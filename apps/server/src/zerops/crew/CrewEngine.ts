@@ -63,4 +63,5 @@ export const inertCrewEngine: CrewEngineService = {
   readFiles: unavailable,
   writeFiles: () => unavailable,
   command: () => unavailable,
+  taskPage: () => unavailable,
 };
