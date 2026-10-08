@@ -154,3 +154,48 @@ describe("a call's V1 payload, kept as its data", () => {
     expect(boundedCallData(payload)).toEqual(kept);
   });
 });
+
+describe("a call V1 heard return", () => {
+  const conversation = ConversationId.make("mate");
+  const head = (id: string, kind: string, minute: number) => ({
+    id,
+    kind,
+    summary: "Tool call",
+    turnId: "turn-0",
+    callId: "call-1",
+    taskId: null,
+    createdAt: iso(minute),
+    sequence: null,
+    payload: null,
+  });
+  // V1 recorded an update in the same millisecond as the completion; ties sort by id, after it.
+  const lifecycle = [
+    head("a-started", "tool.started", 1),
+    head("b-completed", "tool.completed", 2),
+    head("c-updated", "tool.updated", 2),
+  ];
+  const payloads: Record<string, unknown> = {
+    "a-started": { itemType: "command_execution", status: "inProgress", data: { command: "ls" } },
+    "b-completed": { itemType: "command_execution", status: "completed", data: { command: "ls" } },
+    "c-updated": { itemType: "command_execution", status: "inProgress", data: { command: "ls" } },
+  };
+
+  it("has returned, though an update V1 kept after it carries no end", () => {
+    const plan = planOf({ ...skeleton(1, 0), activities: lifecycle }, { turns: 10, records: 100 });
+    const { records } = recordsOf(conversation, plan, 0, plan.entries.length, {
+      messages: new Map([["user-0", { text: "go", attachments: [] }]]),
+      activities: new Map(
+        lifecycle.map((activity) => [
+          activity.id,
+          { kind: activity.kind, summary: activity.summary, payload: payloads[activity.id] },
+        ]),
+      ),
+    });
+    const call = records.find(
+      (record) => record._tag === "ItemImported" && record.body.kind === "call",
+    );
+    expect(call).toMatchObject({
+      body: { kind: "call", step: "command", state: "done", endedAt: Date.parse(iso(2)) },
+    });
+  });
+});
