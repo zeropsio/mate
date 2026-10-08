@@ -45,6 +45,10 @@ import type { ConversationList, ConversationView } from "./read/conversationView
 import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
 
 export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
+/** How a run reads when its own agent interrupted the turn: an owner kind tells it apart. */
+export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
+/** A store read or write that failed, as an owner kind's effects meet it. */
+export type { EngineStoreError } from "./store/EngineStore.ts";
 export type {
   ConversationList,
   ConversationView,

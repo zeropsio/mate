@@ -1694,20 +1694,18 @@ const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi
 
 // The crew on the engine is an owner kind of the engine (CREW-DESIGN §5): `zerops/crew/engine/**`
 // reaches the engine's owner seams — the owner registry and its doors, the effect outbox and
-// worker its effects run in, the command and its decide's words, the turn pump's directory —
+// worker its effects run in, the command, the turn pump's directory —
 // besides its public surface. The rest of crew never reaches the engine.
 const ENGINE_OWNER_KIND_DIR = `${CREW_DIR}/engine/`;
 const ENGINE_OWNER_SEAMS: ReadonlySet<string> = new Set([
   "apps/server/src/engine/ConversationActor.ts",
   "apps/server/src/engine/Conversations.ts",
   "apps/server/src/engine/domain/command.ts",
-  "apps/server/src/engine/domain/decide.ts",
   "apps/server/src/engine/effects/index.ts",
   "apps/server/src/engine/outbox/EffectOutbox.ts",
   "apps/server/src/engine/outbox/EffectWorker.ts",
   "apps/server/src/engine/owners.ts",
   "apps/server/src/engine/pump/TurnPump.ts",
-  "apps/server/src/engine/store/EngineStore.ts",
 ]);
 const isEngineOwnerSeam = (file: string, target: string) =>
   file.startsWith(ENGINE_OWNER_KIND_DIR) &&

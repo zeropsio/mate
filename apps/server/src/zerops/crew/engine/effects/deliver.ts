@@ -27,7 +27,7 @@ import type { StepFailure } from "../../../../engine/ConversationActor.ts";
 import { Conversations } from "../../../../engine/Conversations.ts";
 import type { Command, Envelope } from "../../../../engine/domain/command.ts";
 import type { EffectHandler, HandlerResult } from "../../../../engine/outbox/EffectWorker.ts";
-import type { EngineStoreError } from "../../../../engine/store/EngineStore.ts";
+import type { EngineStoreError } from "../../../../engine/MateEngine.ts";
 import { CREW_EFFECT_KINDS, done, payloadOf } from "./shared.ts";
 
 export interface CrewDeliveryShape {

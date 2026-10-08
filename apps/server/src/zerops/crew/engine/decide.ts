@@ -38,7 +38,7 @@ import {
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
-import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
+import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
 import { principalUserId } from "../../ZeropsTurnAdmission.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
