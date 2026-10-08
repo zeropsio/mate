@@ -85,4 +85,15 @@ describe("an engine Mate's receipts", () => {
       expect(receipts(runs, items)).toEqual(said);
     },
   );
+
+  // A Stop before its run began: the agent never had the message.
+  it("a message whose run never started was never read", () => {
+    const runs = [engineRun("thread-ada", 1, { ...STOPPED, startedAt: null })];
+    const items = [
+      personItem(runId(1), 1, "Write the numbers 1 to 300.", {
+        delivery: { state: "refused", at: null },
+      }),
+    ];
+    expect(receipts(runs, items)).toEqual([["Write the numbers 1 to 300.", "sent"]]);
+  });
 });

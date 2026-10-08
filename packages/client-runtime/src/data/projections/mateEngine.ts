@@ -124,7 +124,14 @@ const personMessageId = (item: Extract<Item, { kind: "person" }>) => {
  */
 type CardOf = (runId: string | null) => string | null;
 
-function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
+/** Whether a run ended without ever starting: its message never reached the agent. */
+type NeverStarted = (runId: string | null) => boolean;
+
+function messageOf(
+  item: Item,
+  cardOf: CardOf,
+  neverStarted: NeverStarted = () => false,
+): OrchestrationMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
     createdAt: iso(item.at),
@@ -134,6 +141,8 @@ function messageOf(item: Item, cardOf: CardOf): OrchestrationMessage | null {
     case "person":
       return {
         ...base,
+        // A message whose run ended before it began names no run, as a V1 message no run took.
+        ...(neverStarted(item.runId) ? { turnId: null } : {}),
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,
@@ -699,8 +708,13 @@ export function engineThreadOf(
   );
   const messages: OrchestrationMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
+  const runById = new Map(runs.map((run) => [run.id as string, run]));
+  const neverStarted: NeverStarted = (runId) => {
+    const run = runId === null ? undefined : runById.get(runId);
+    return run !== undefined && run.state === "ended" && run.startedAt === null;
+  };
   for (const item of items) {
-    const message = messageOf(item, cardOf);
+    const message = messageOf(item, cardOf, neverStarted);
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":
