@@ -5,7 +5,7 @@
  */
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { MateFaceCue } from "~/components/zerops/primitives";
 import { useEnvironmentReachability } from "~/routes/-environmentTargets";
@@ -20,9 +20,6 @@ import {
   restartBeat,
   type RestartBeat,
 } from "./mateMoments.logic";
-
-/** Whether this page has shown a conversation header yet: the first is a reload's landing. */
-let headerShownInPage = false;
 
 /** The cue a value's last change gave, kept while the value holds. */
 export function useChangeCue<T>(
@@ -49,13 +46,15 @@ export function useMateHeaderCues(input: {
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
 }): { readonly cues: ReadonlyArray<MateFaceCue>; readonly restarting: boolean } {
   const { currentThreadId, mate } = input;
-  useEffect(() => {
-    headerShownInPage = true;
-  }, []);
+  const navigation = useChangeCue(
+    input.environmentId,
+    () => ({ moment: "peek", key: `mate-open:${input.environmentId}`, arrives: true }),
+    (_previous, next) => ({ moment: "peek", key: `mate-open:${next}`, arrives: true }),
+  );
   const conversation = useChangeCue<ThreadId | null>(
     currentThreadId,
-    () => conversationCue(undefined, currentThreadId, headerShownInPage),
-    (previous, next) => conversationCue(previous, next, true),
+    () => undefined,
+    (previous, next) => conversationCue(previous, next),
   );
   const moved = useChangeCue(mate.projectId, () => undefined, movedCue);
   // Its arrival window (`mateArrivingUntil`) is HQ's fact, not the clock's: it goes once somebody
@@ -77,13 +76,16 @@ export function useMateHeaderCues(input: {
   const shown = input.chats.find((chat) => chat.id === currentThreadId);
   return {
     restarting,
-    cues: mateHeaderCues({
-      conversation,
-      restarting,
-      backs: nextBeat.backs,
-      limitedThreadId: shown?.usagePause == null ? null : shown.id,
-      moved,
-      arrived,
-    }),
+    cues: [
+      navigation,
+      ...mateHeaderCues({
+        conversation,
+        restarting,
+        backs: nextBeat.backs,
+        limitedThreadId: shown?.usagePause == null ? null : shown.id,
+        moved,
+        arrived,
+      }),
+    ].filter((cue): cue is MateFaceCue => cue !== undefined),
   };
 }

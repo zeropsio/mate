@@ -813,8 +813,8 @@ export function ConversationStrip({
       mate={{
         ...shownMate,
         face: conversationReady ? shownMate.face : "sleep",
-        // An opening's eyes follow the placed-list verdict, without a clock-driven peek.
-        cues: moments.cues.filter((cue) => cue.moment !== "peek"),
+        // The face state follows readiness; its arrival greets navigation to this Mate.
+        cues: moments.cues,
         restarting: moments.restarting,
       }}
       onCloseChat={(chat) => void close(chat)}
