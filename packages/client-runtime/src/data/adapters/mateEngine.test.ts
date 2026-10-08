@@ -133,6 +133,7 @@ function rig() {
       for (const callback of due) callback();
     },
     deny: (fault: StreamFault) => access?.(fault),
+    allow: () => access?.(null),
     close: () => {
       conversations.close();
       store.close();
@@ -347,6 +348,90 @@ describe("an engine conversation's subscription", () => {
       expect(r.item(`${run1}/i/2`).kind).toBe("unknown");
       expect(r.live.read(ENV, `${run1}/i/3`, "text")).toBeNull();
       expect(r.read().stream(engineConversationLink(ada)).phase).toBe("refused");
+      r.close();
+    }),
+  );
+
+  it.live(
+    "subscribes again when held after its Mate's access came back while it was released",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        const release = r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot(), synchronized(12));
+        r.deny({ outcome: "authoritative-denial", message: "No longer yours." });
+        yield* settle;
+        release();
+        r.allow();
+        yield* settle;
+        r.conversations.hold(ada);
+        yield* settle;
+        expect(r.opens).toHaveLength(2);
+        yield* r.send(snapshot(), synchronized(12));
+        expect(r.read().stream(engineConversationLink(ada)).phase).toBe("live");
+        expect(r.item(`${run1}/i/2`).kind).toBe("known");
+        r.close();
+      }),
+  );
+
+  it.live(
+    "reopens a held conversation when its Mate's access comes back, whatever was told meanwhile",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot(), synchronized(12));
+        r.deny({ outcome: "access-unverified", message: "Sign in again." });
+        yield* settle;
+        r.deny({ outcome: "access-unverified", message: "Sign in again." });
+        yield* settle;
+        r.allow();
+        yield* settle;
+        expect(r.opens).toHaveLength(2);
+        yield* r.send(snapshot(), synchronized(12));
+        expect(r.read().stream(engineConversationLink(ada)).phase).toBe("live");
+        r.close();
+      }),
+  );
+
+  it.live("keeps nothing of a denied conversation, not even a frame already on its way", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12));
+      const frames = r.opens.at(-1)!.frames;
+      r.deny({ outcome: "authoritative-denial", message: "No longer yours." });
+      Queue.offerUnsafe(frames, snapshot({ head: 14 }));
+      yield* settle;
+      expect(r.item(`${run1}/i/2`).kind).toBe("unknown");
+      expect(r.read().fact("mateEngineRun", engineFactId(ENV, run1)).kind).toBe("unknown");
+      r.close();
+    }),
+  );
+
+  it.live("drops an item's streamed text when its record arrives closed after a drop", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12), {
+        type: "live.open",
+        itemId: `${run1}/i/3` as ItemId,
+        stream: "text",
+        text: "On it",
+      });
+      yield* Queue.fail(r.opens[0]!.frames, { outcome: "transient", message: "socket closed" });
+      yield* settle;
+      r.conversations.retry(ada);
+      yield* settle;
+      yield* r.send(
+        changes(12, 13, { items: [noteItem(run1, 3, "On it.", { rev: 13 })] }),
+        synchronized(13),
+      );
+      expect(r.live.read(ENV, `${run1}/i/3`, "text")).toBeNull();
       r.close();
     }),
   );

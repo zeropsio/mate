@@ -18,13 +18,15 @@ import {
   type EnvironmentId,
   type EngineCursor,
   type EngineRowsFrame,
+  type Item,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -230,6 +232,7 @@ interface Held {
   count: number;
   stop: () => void;
   retry: () => void;
+  recover: () => void;
   fault: (fault: StreamFault) => void;
 }
 
@@ -259,14 +262,26 @@ function makeLinks(options: {
     }
     let entry = held.get(link);
     if (entry === undefined) {
-      const faults = Effect.runSync(Queue.unbounded<StreamFault>());
+      // A fault told to the attempt under way ends it; told with none under way, it is the next
+      // attempt's own check (the Mate's access) that decides, never a stale fault.
+      let current: Deferred.Deferred<never, StreamFault> | null = null;
       const supervisor = Effect.runSync(
         superviseLink({
           key: link,
           scopes,
           store: options.store,
           attempt: () =>
-            Effect.raceFirst(attempt(), Queue.take(faults).pipe(Effect.flatMap(Effect.fail))),
+            Effect.gen(function* () {
+              const told = yield* Deferred.make<never, StreamFault>();
+              current = told;
+              return yield* Effect.raceFirst(attempt(), Deferred.await(told));
+            }).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  current = null;
+                }),
+              ),
+            ),
           repairSession: Effect.fail({
             outcome: "definitive-refusal",
             message: "Reconnect this Mate to verify access.",
@@ -281,7 +296,10 @@ function makeLinks(options: {
           void Effect.runFork(Fiber.interrupt(fiber));
         },
         retry: () => void Effect.runFork(supervisor.signal("manual-retry")),
-        fault: (fault) => Queue.offerUnsafe(faults, fault),
+        recover: () => void Effect.runFork(supervisor.signal("input-changed")),
+        fault: (fault) => {
+          if (current !== null) Deferred.doneUnsafe(current, Exit.fail(fault));
+        },
       };
       held.set(link, entry);
     }
@@ -378,6 +396,15 @@ export function makeMateEngineConversations(options: {
         }));
         /** The header of a split commit's first part, until the part that moves the cursor. */
         let splitHeader: { readonly from: number; readonly header: ConversationHeader } | undefined;
+        /** An item whose record arrives whole drops its streamed text, settle frame or not. */
+        const settleClosed = (items: ReadonlyArray<Item>) => {
+          for (const item of items)
+            if (
+              ((item.kind === "note" || item.kind === "thought") && !item.streaming) ||
+              (item.kind === "call" && item.state !== "running")
+            )
+              live.settle(key, item.id);
+        };
         const deliver = (rows: ReadonlyArray<Row>, reset: boolean) =>
           store.dispatch({
             kind: "delivery",
@@ -393,6 +420,9 @@ export function makeMateEngineConversations(options: {
         ): Effect.Effect<void, StreamFault | Resubscribe> =>
           Effect.suspend((): Effect.Effect<void, StreamFault | Resubscribe> => {
             if (closed) return Effect.void;
+            // Denied or unverified: nothing more of it is taken, even a frame already on its way.
+            const access = withheld.get(key.environmentId);
+            if (access !== undefined) return Effect.fail(access);
             const cursor = cursors.get(id);
             switch (frame.type) {
               case "snapshot": {
@@ -402,6 +432,7 @@ export function makeMateEngineConversations(options: {
                 )
                   forget(key);
                 Atom.batch(() => deliver(rowsOf(key, frame.epoch, frame, frame.window), true));
+                settleClosed(frame.items);
                 cursors.set(id, { epoch: frame.epoch, origin: frame.origin, seq: frame.head });
                 return Effect.void;
               }
@@ -444,6 +475,7 @@ export function makeMateEngineConversations(options: {
                     false,
                   ),
                 );
+                settleClosed(frame.items);
                 cursors.set(id, { ...cursor, epoch: frame.epoch, seq: frame.to });
                 return Effect.void;
               }
@@ -533,8 +565,14 @@ export function makeMateEngineConversations(options: {
       byEnvironment.set(engineConversationId(key), key);
       known.set(key.environmentId, byEnvironment);
       watchAccess(key.environmentId);
-      return links.hold(
-        engineConversationLink(key),
+      const link = engineConversationLink(key);
+      const fault = streamOf(store.state(), link).fault;
+      const refusedForAccess =
+        !withheld.has(key.environmentId) &&
+        !links.held(link) &&
+        (fault?.outcome === "access-unverified" || fault?.outcome === "authoritative-denial");
+      const release = links.hold(
+        link,
         Object.values(engineConversationScopes(key)),
         () => attempt(key) as Effect.Effect<never, StreamFault>,
         {
@@ -545,6 +583,9 @@ export function makeMateEngineConversations(options: {
           },
         },
       );
+      // Refused for its Mate's access, held again after that access came back: it tries anew.
+      if (refusedForAccess) links.held(link)?.recover();
+      return release;
     },
     retry(key: EngineConversationKey) {
       links.held(engineConversationLink(key))?.retry();
