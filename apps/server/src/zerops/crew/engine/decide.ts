@@ -1836,7 +1836,8 @@ const landNow = (b: Builder, task: TaskRecord, as: Principal): void => {
   const member = b.member(task.owner);
   if (isWorking(b.state, member.handle)) throw wrongState(`@${member.handle}'s turn is running`);
   if (laneShown(b.state, member.handle)) throw wrongState(ON_DEV);
-  requireFreeCopy(b, member.handle);
+  // A check still running on the copy is no reason to wait: the landing integrates after it.
+  if (copyWriting(b.state, member.handle)) throw wrongState(busyWords(member.handle));
   if (member.kind !== "writer") {
     const merging = stepOrRefuse(b, task, { type: "land-now" }, { wait: null, landAs: as });
     mergeIn(b, merging);
