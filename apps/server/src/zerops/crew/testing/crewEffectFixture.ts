@@ -71,9 +71,15 @@ export const okValue = (result: HandlerResult): unknown => {
 };
 
 /** The crew git core with reads and the claim runtime, over the shim. */
+/** Where the fixture's dev server writes its pid: beside the service repository. */
+export const devServerPidFile = (root: string): string => `${root}.dev-server.pid`;
+
 export const crewEffectLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
   const core = crewGitLayer(root, options);
-  return Layer.mergeAll(CrewReads.layer, CrewRuntime.layer).pipe(Layer.provideMerge(core));
+  return Layer.mergeAll(CrewReads.layer, CrewRuntime.layer).pipe(
+    Layer.provide(Layer.succeed(CrewRuntime.DevServerPidFile, devServerPidFile(root))),
+    Layer.provideMerge(core),
+  );
 };
 
 export type CrewEffectServices = Layer.Success<ReturnType<typeof crewEffectLayer>>;
