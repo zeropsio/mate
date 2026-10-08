@@ -70,6 +70,9 @@ function valuesOf<F extends "mateEngineRun" | "mateEngineItem" | "mateEngineRequ
   return values;
 }
 
+/** The run states in which the agent works on the run (or is about to): the turn. */
+const LIVE_RUN_STATES: ReadonlySet<string> = new Set(["admitted", "sending", "running", "waiting"]);
+
 /** A run's end as the turn the view reads. */
 function turnState(run: RunRecord): OrchestrationLatestTurn["state"] {
   if (run.state !== "ended") return "running";
@@ -264,8 +267,10 @@ export function engineThreadOf(
   }
   for (const request of requests) activities.push(...requestActivities(request));
   activities.sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0));
-  const latest = runs.at(-1) ?? null;
-  const active = runs.findLast((run) => run.state !== "ended") ?? null;
+  // The turn is the live run; a queued run is a message waiting its turn (behind a working run, or
+  // held by a usage-limit pause), never the work Stop ends.
+  const active = runs.findLast((run) => LIVE_RUN_STATES.has(run.state)) ?? null;
+  const latest = active ?? runs.findLast((run) => run.state === "ended") ?? null;
   const shell = shellThreadOf(read, key);
   const agent = header.agent;
   const failed = latest?.end?.kind === "failed" || latest?.end?.kind === "crashed";

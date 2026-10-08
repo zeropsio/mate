@@ -173,6 +173,57 @@ describe("an engine conversation as the thread the view draws", () => {
     expect(thread(state)?.session?.status).toBe(session);
   });
 
+  it.each([
+    {
+      name: "a message queued behind a working run leaves the working run the turn Stop ends",
+      runs: [
+        engineRun("thread-ada", 1, { state: "running", end: null, endedAt: null }),
+        engineRun("thread-ada", 2, { state: "queued", end: null, endedAt: null, startedAt: null }),
+      ],
+      header: {},
+      turn: { turnId: run1, state: "running" },
+      session: "running",
+      active: run1,
+    },
+    {
+      name: "a message queued while a run is admitted keeps the admitted run the turn",
+      runs: [
+        engineRun("thread-ada", 1, { state: "admitted", end: null, endedAt: null }),
+        engineRun("thread-ada", 2, { state: "queued", end: null, endedAt: null }),
+        engineRun("thread-ada", 3, { state: "queued", end: null, endedAt: null }),
+      ],
+      header: {},
+      turn: { turnId: run1, state: "running" },
+      session: "running",
+      active: run1,
+    },
+    {
+      name: "a usage-limit pause holding a queued message shows no work and no Stop",
+      runs: [
+        engineRun("thread-ada", 1, { end: { kind: "usage-limit", resetsAt: 9 } }),
+        engineRun("thread-ada", 2, { state: "queued", end: null, endedAt: null, startedAt: null }),
+      ],
+      header: { pausedUntil: 9 },
+      turn: { turnId: run1, state: "interrupted" },
+      session: "ready",
+      active: null,
+    },
+    {
+      name: "only queued messages are no work yet",
+      runs: [engineRun("thread-ada", 1, { state: "queued", end: null, endedAt: null })],
+      header: {},
+      turn: null,
+      session: "ready",
+      active: null,
+    },
+  ] as const)("$name", ({ runs, header, turn, session, active }) => {
+    const state = held({ runs: runs as ReadonlyArray<RunRecord>, header });
+    if (turn === null) expect(thread(state)?.latestTurn).toBeNull();
+    else expect(thread(state)?.latestTurn).toMatchObject(turn);
+    expect(thread(state)?.session?.status).toBe(session);
+    expect(thread(state)?.session?.activeTurnId ?? null).toBe(active);
+  });
+
   it("takes its model selection from the conversation's agent", () => {
     const state = held({
       header: {
