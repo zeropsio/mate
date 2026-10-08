@@ -489,7 +489,12 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...prepared,
         effects: without(prepared.effects, event.effectId),
-        answering: without(prepared.answering, event.effectId),
+        // An answer whose call failed stays until the step reopens or closes its request, which
+        // rebuilds the open request from it.
+        answering:
+          event.outcome.kind === "ok"
+            ? without(prepared.answering, event.effectId)
+            : prepared.answering,
         closing: prepared.closing?.effectId === event.effectId ? null : prepared.closing,
       };
     }

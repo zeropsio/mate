@@ -27,6 +27,7 @@ import {
   type EffectId,
   type EffectOutcome,
   type ItemBody,
+  type PersonAttachment,
   type Principal,
   type ProviderInteractionMode,
   type ProviderOptionSelection,
@@ -835,22 +836,39 @@ const answerByMessage = (
   });
   // The message carries every attachment as V1's does: pictures and files, each also named.
   const attachments = Object.values(byQuestion).flat();
-  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
-  send(b, {
-    _tag: "Send",
-    text: replies.join("\n\n"),
-    attachments,
-    ...(b.state.interactionMode === null ? {} : { interactionMode: b.state.interactionMode }),
-  });
-  b.emit({
+  const text = replies.join("\n\n");
+  // The person's message shows the answer, so the question's record keeps its summary alone.
+  const answered = {
     _tag: "RequestAnswered",
     runId: request.runId,
     requestId: request.id,
     by: b.envelope.principal,
     summary: command.summary,
-    bySend: carrier,
-    ...given,
+  } as const;
+  const asking = b.state.runs[request.runId];
+  const session = b.state.session;
+  if (
+    asking !== undefined &&
+    (asking.state === "running" || asking.state === "waiting") &&
+    session !== null &&
+    session.id === asking.sessionId
+  ) {
+    // The agent waits inside the turn that asked (Codex sleeps until the input comes): the
+    // answer goes into that turn, as V1's turn start does, measured on Codex 0.161.0.
+    const effect = steerInto(b, asking, session.id, text, attachments);
+    b.emit({ ...answered, effectId: effect });
+    b.result = { ...b.result, requestId: request.id, runId: asking.id };
+    return;
+  }
+  // Its turn is over: the answer is the next message, a run of its own.
+  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
+  send(b, {
+    _tag: "Send",
+    text,
+    attachments,
+    ...(b.state.interactionMode === null ? {} : { interactionMode: b.state.interactionMode }),
   });
+  b.emit({ ...answered, bySend: carrier });
   b.result = { ...b.result, requestId: request.id, runId: carrier };
 };
 
@@ -927,6 +945,17 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   if (session === null || session.id !== run.sessionId || !session.capabilities.steer) {
     throw new Rejected("steer-unsupported");
   }
+  steerInto(b, run, session.id, command.text, []);
+};
+
+/** The person's message into the run's turn: its item, steered, and the effect that sends it. */
+const steerInto = (
+  b: StepBuilder,
+  run: RunRecord,
+  sessionId: SessionId,
+  text: string,
+  attachments: ReadonlyArray<PersonAttachment>,
+): EffectId => {
   const item = deriveItemId(run.id, run.nextItemOrdinal);
   b.emit({
     _tag: "ItemOpened",
@@ -936,21 +965,23 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
     by: { kind: "person", principal: b.envelope.principal },
     body: {
       kind: "person",
-      text: command.text,
-      attachments: [],
+      text,
+      attachments: [...attachments],
       sendId: b.envelope.commandId,
       delivery: { state: "steered", at: b.now },
     },
   });
-  b.effect("provider.steer", item, 1, run.id, {
+  const effect = b.effect("provider.steer", item, 1, run.id, {
     runId: run.id,
-    sessionId: session.id,
+    sessionId,
     itemId: item,
-    text: command.text,
+    text,
+    ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
     instanceId: b.state.agent?.instanceId ?? null,
     principal: b.envelope.principal,
   });
   b.result = { ...b.result, runId: run.id, itemId: item };
+  return effect;
 };
 
 // ── wakes ───────────────────────────────────────────────────────────────────────────────────
@@ -1116,6 +1147,17 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   // A call that timed out says nothing of what the agent did: only evidence ends a run.
   const timedOut = outcome.kind === "timed-out";
   if (effect.kind === "session.close") return sessionCloseSettled(b, closing, outcome);
+  if (effect.kind === "provider.steer" && answered !== undefined && !timedOut) {
+    // The answer steered into the turn that waits on it: taken is its evidence.
+    if (failure === null) {
+      b.emit({
+        _tag: "RequestClosed",
+        runId: answered.runId,
+        requestId: answered.id,
+        state: "answered",
+      });
+    } else reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`);
+  }
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
   if (run === undefined || run.state === "ended") {
     if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
@@ -1485,6 +1527,19 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         answerable: (live || byMessage) && (signal.answerable ?? true),
         principal: run.principal,
       });
+      // The agent's message that asked it: the request takes its place in the record.
+      const asker =
+        signal.item === undefined
+          ? undefined
+          : Object.values(b.state.items).find((item) => item.key === signal.item);
+      if (asker !== undefined) {
+        b.emit({
+          _tag: "ItemClosed",
+          runId: asker.runId,
+          itemId: asker.id,
+          body: { kind: "request", requestId: id },
+        });
+      }
       if (byMessage) return;
       if (!live) {
         // Its turn already ended: nothing can take the answer.
@@ -1747,7 +1802,15 @@ const recovered = (
     });
     return effect;
   };
-  for (const id of cutEffects) record(id, "the server restarted");
+  for (const id of cutEffects) {
+    // An answer steered into a turn the restart cut may not have arrived, and nothing sends it
+    // again: the person answers again.
+    const carried =
+      b.state.effects[id]?.kind === "provider.steer" ? b.state.answering[id] : undefined;
+    record(id, "the server restarted");
+    if (carried !== undefined)
+      reopenCarried(b, carried, "The server restarted before the agent took the answer.");
+  }
   const neverSent = new Set<string>();
   for (const id of unstartedEffects) {
     const effect = record(id, "the server restarted before it was tried");

@@ -90,6 +90,8 @@ export type ProviderSignal =
       readonly key: string;
       readonly ask: RequestAsk;
       readonly answerable?: boolean;
+      /** The agent's item that asked it: the request takes its place in the record. */
+      readonly item?: string;
     }
   | {
       readonly kind: "request-closed";
