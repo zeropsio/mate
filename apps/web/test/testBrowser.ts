@@ -29,7 +29,23 @@ export async function resolveTestBrowser(override: string | undefined, directory
   return executable;
 }
 
+/** The named chat gate owns provisioning; cached and explicit browsers never download. */
+export async function ensureTestBrowser(
+  override: string | undefined,
+  directory = cacheDir,
+  provision: (options: ReturnType<typeof testBrowserOptions>) => Promise<unknown> = install,
+) {
+  const executable = override ?? computeExecutablePath(testBrowserOptions(directory));
+  try {
+    await NodeFSP.access(executable, NodeFS.constants.X_OK);
+  } catch (cause) {
+    if (override !== undefined) return resolveTestBrowser(override, directory);
+    if (!(cause instanceof Error) || !("code" in cause) || cause.code !== "ENOENT") throw cause;
+    await provision(testBrowserOptions(directory));
+  }
+  return resolveTestBrowser(override, directory);
+}
+
 if (import.meta.main) {
-  const browser = await install(testBrowserOptions());
-  console.log(browser.executablePath);
+  console.log(await ensureTestBrowser(process.env.MATE_CHROME_BIN));
 }
