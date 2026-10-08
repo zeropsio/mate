@@ -1,3 +1,4 @@
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 /**
  * What the thread's Zerops project says of the builds its deploys named — the read
  * `deriveZeropsThreadModel` takes as `builds`, so a deploy whose build zcp stopped following
@@ -94,6 +95,7 @@ const UNREAD_BUILDS = Atom.make<DeployBuildsInput["snapshot"]>({
 export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): {
   readonly builds: (appVersionId: string) => DeployBuildRead;
   readonly projectId: string | null;
+  readonly processes: (processId: string) => ActivityProcess | undefined;
 } {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
@@ -122,19 +124,27 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
     () => deployBuildLookup({ signedIn, thread, project, snapshot }),
     [signedIn, thread, project, snapshot],
   );
-  return { builds, projectId };
+  const processes = useMemo(
+    () => (id: string) =>
+      signedIn && project === "readable"
+        ? snapshot.processes?.find((process) => process.id === id)
+        : undefined,
+    [signedIn, project, snapshot],
+  );
+  return { builds, projectId, processes };
 }
 
 /**
- * Keeps the store reading the project while the thread's running operation is a deploy whose
- * build it follows by the appVersion its result named — whether or not its card is drawn.
+ * Keeps the store reading the project while a running operation follows the build or restart
+ * process its result named — whether or not its card is drawn.
  */
 export function useRunningBuildDemand(
   projectId: string | null,
   running: ZeropsOperation | undefined,
 ): void {
   const follows =
-    running?.kind === "deploy" &&
-    (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0);
+    (running?.kind === "deploy" &&
+      (running.version?.id !== undefined || (running.appVersionIds?.length ?? 0) > 0)) ||
+    (running?.kind === "manage" && (running.processIds?.length ?? 0) > 0);
   useProjectActivityDemand(follows ? projectId : null);
 }

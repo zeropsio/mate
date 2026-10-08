@@ -1,3 +1,4 @@
+import type { ActivityProcess } from "../../activity/dto.ts";
 /**
  * Small helpers every per-kind builder shares: reading a call's decoded card,
  * the step/status-word/voice plumbing, and `phaseFor` — the ONE mapping from
@@ -32,6 +33,7 @@ import type {
   ZeropsOperationPullRequest,
   ZeropsOperationStep,
   ZeropsOperationStepState,
+  ZeropsOperation,
   ZeropsOperationVersion,
   ZeropsEnvChange,
   ZeropsReadResult,
@@ -43,6 +45,8 @@ export interface OperationBuildContext {
   readonly projectId: string | undefined;
   /** Where the build a deploy result named by its appVersion stands on the platform. */
   readonly builds: (appVersionId: string) => DeployBuildRead;
+  /** The exact process named by a tool result, from the same account history as builds. */
+  readonly processes?: (processId: string) => ActivityProcess | undefined;
 }
 
 /**
@@ -69,6 +73,7 @@ export interface BuiltCardFields {
   readonly hasResult: boolean;
   readonly version?: ZeropsOperationVersion;
   readonly processIds?: ReadonlyArray<string>;
+  readonly restartProcess?: NonNullable<ZeropsOperation["restartProcess"]>;
   readonly appVersionIds?: ReadonlyArray<string>;
   readonly explanation?: ZeropsOperationExplanation;
   /** `browser` only: the last call's screenshot, as a data URI ready for an `<img src>`. */

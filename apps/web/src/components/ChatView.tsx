@@ -2648,8 +2648,15 @@ export default function ChatView(props: ChatViewProps) {
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
         builds: zeropsBuilds.builds,
+        processes: zeropsBuilds.processes,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, zeropsBuilds.builds],
+    [
+      threadActivities,
+      activeZeropsLifecycle,
+      activeRunningTurnId,
+      zeropsBuilds.builds,
+      zeropsBuilds.processes,
+    ],
   );
   useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
   const workLogEntries = useMemo(

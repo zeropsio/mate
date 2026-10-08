@@ -17,6 +17,8 @@ import {
 } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/reactivity";
 import {
+  accountReadsAtom,
+  mateLink as mateLinkProjection,
   hqMateOverviewAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
@@ -228,17 +230,25 @@ export function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): numb
   return useWakeAt(useMemo(() => candidates.flatMap(mateComingDeadlines), [candidates]));
 }
 
+/** The socket-loss timestamp is read through the target's keyed account state. */
+export const mateSocketLostAtAtom = Atom.family((key: string) =>
+  Atom.make((get): number | undefined => {
+    const account = get(accountReadsAtom);
+    if (account === null) return undefined;
+    return get(account.data.project(mateLinkProjection, key))?.environment.linkLostAt?.wall;
+  }),
+);
+
 /** HQ transport loss is not evidence that a Mate went offline. */
 export function useMateOfflineSince(
   projectId: string | null | undefined,
   key?: string,
 ): string | undefined {
   const read = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
-  const { mateLink } = useEnvironmentLinks();
-  const link = mateLink({ key: key ?? projectId ?? "", project: { id: projectId ?? "" } });
-  return link.linkLostAt === undefined
+  const lostAt = useAtomValue(mateSocketLostAtAtom(key ?? projectId ?? ""));
+  return lostAt === undefined
     ? read.live && read.presence?.online === false
       ? read.presence.since
       : undefined
-    : new Date(link.linkLostAt).toISOString();
+    : new Date(lostAt).toISOString();
 }

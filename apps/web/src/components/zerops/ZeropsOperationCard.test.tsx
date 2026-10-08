@@ -1900,7 +1900,14 @@ it("a failed restart card says the process outcome and offers an explicit retry 
     input: { serviceHostname: "Eddy", action: "restart" },
     status: "completed",
     resultText: JSON.stringify({
-      process: { id: "r", actionName: "stack.restart", status: "RUNNING" },
+      process: {
+        id: "r",
+        actionName: "stack.restart",
+        status: "FAILED",
+        created: "2026-10-08T10:00:00Z",
+        finished: "2026-10-08T10:15:00Z",
+        failReason: "serviceStack private-id broke",
+      },
     }),
     truncated: false,
     startedAt: "2026-10-08T10:00:00Z",
@@ -1913,16 +1920,6 @@ it("a failed restart card says the process outcome and offers an explicit retry 
     <ZeropsOperationCard
       operation={operation}
       now={Date.parse("2026-10-08T10:20:00Z")}
-      restartProcess={{
-        id: "r",
-        projectId: "p",
-        serviceStackIds: ["other-service"],
-        actionName: "stack.restart",
-        status: "FAILED",
-        created: "2026-10-08T10:00:00Z",
-        finished: "2026-10-08T10:15:00Z",
-        failReason: "serviceStack private-id broke",
-      }}
       onRestartRetry={async () => {}}
     />,
   );

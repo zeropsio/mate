@@ -1,5 +1,4 @@
 import { Button } from "~/components/ui/button";
-import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 /**
@@ -666,8 +665,9 @@ function StepsBody({
 export function ZeropsOperationCard(props: {
   readonly operation: ZeropsOperation;
   readonly observed?: ObservedRegion;
-  readonly restartProcess?: ActivityProcess;
   readonly onRestartRetry?: () => Promise<void>;
+  readonly restartRetryLabel?: string;
+  readonly restartRetryDisabled?: boolean;
   /**
    * `devServer` only: the subdomain URL resolved by the timeline's own
    * topology view (client-topology-view — server feed, not the tool result).
@@ -711,32 +711,15 @@ export function ZeropsOperationCard(props: {
     threadRef,
   } = props;
   const [retryBusy, setRetryBusy] = useState(false);
-  const sourceOperation = props.operation;
-  const restartProcess = props.restartProcess;
-  const restartRunning =
-    restartProcess !== undefined &&
-    !["FINISHED", "FAILED", "CANCELED"].includes(restartProcess.status);
-  const isRunning = restartProcess === undefined ? isRunningPhase(sourceOperation) : restartRunning;
+  const operation = props.operation;
+  const restartProcess = operation.restartProcess;
+  const isRunning = isRunningPhase(operation);
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
   const restartReadout =
     restartProcess === undefined
       ? undefined
-      : restartCardReadout(restartProcess, sourceOperation.subject, now);
-  const { explanation: _sourceExplanation, ...restartOperation } = sourceOperation;
-  const operation =
-    restartReadout === undefined
-      ? sourceOperation
-      : {
-          ...restartOperation,
-          statusWord: restartReadout.status,
-          phase: restartRunning
-            ? ("running" as const)
-            : restartProcess?.status === "FINISHED"
-              ? ("done" as const)
-              : ("failed" as const),
-          closing: restartReadout.text,
-        };
+      : restartCardReadout(restartProcess, operation.subject, now);
   const tone = operationTone(operation);
   const deploy = readsPipeline(operation)
     ? deployHeader(operation, observed?.pipeline, now)
@@ -845,7 +828,7 @@ export function ZeropsOperationCard(props: {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={retryBusy}
+                  disabled={retryBusy || props.restartRetryDisabled}
                   onClick={async () => {
                     if (retryBusy) return;
                     setRetryBusy(true);
@@ -856,7 +839,7 @@ export function ZeropsOperationCard(props: {
                     }
                   }}
                 >
-                  {retryBusy ? "Asking Zerops…" : "Try again"}
+                  {retryBusy ? "Asking Zerops…" : (props.restartRetryLabel ?? "Try again")}
                 </Button>
               )}
               {version !== undefined ? (

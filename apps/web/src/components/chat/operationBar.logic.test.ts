@@ -3,6 +3,11 @@ import type {
   PipelineReadout,
   PipelineSpokenState,
 } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
+import {
+  deriveZeropsThreadModel,
+  reduceZeropsOperations,
+} from "@t3tools/client-runtime/zerops/model";
+import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -679,4 +684,88 @@ describe("slotOpenDeployLine — the one deploy that stands open in the live slo
   }>)("$name", ({ lines, held, open }) => {
     expect(slotOpenDeployLine(lines, held ?? null)).toBe(open);
   });
+});
+
+it.each(["FAILED", "FINISHED", "RUNNING"])(
+  "a timed-out restart's transcript and detail drawer follow its process %s",
+  (status) => {
+    const process: ActivityProcess = {
+      id: "restart",
+      projectId: "p",
+      serviceStackIds: ["s"],
+      actionName: "stack.restart",
+      status,
+      created: "2026-10-08T10:00:00Z",
+      ...(status === "RUNNING" ? {} : { finished: "2026-10-08T10:15:00Z" }),
+      failReason: "serviceStack secret-id broke",
+    };
+    const activities = [
+      {
+        id: "a",
+        tone: "tool",
+        kind: "tool.completed",
+        summary: "Tool call",
+        turnId: "t",
+        createdAt: "2026-10-08T10:01:00Z",
+        payload: {
+          toolCallId: "c",
+          status: "completed",
+          data: {
+            toolName: "zerops_manage",
+            input: { serviceHostname: "Eddy", action: "restart" },
+            zerops: {
+              toolName: "zerops_manage",
+              resultText: JSON.stringify({
+                process: { ...process, status: "RUNNING", finished: undefined },
+                timedOut: true,
+              }),
+            },
+          },
+        },
+      },
+    ] as unknown as ReadonlyArray<OrchestrationThreadActivity>;
+    const model = deriveZeropsThreadModel({
+      activities,
+      processes: (id) => (id === process.id ? process : undefined),
+    });
+    const entry = model.entries[0];
+    expect(entry?.kind).toBe("operation");
+    if (entry?.kind !== "operation") return;
+    if (status === "RUNNING") {
+      expect(model.running?.phase).toBe("running");
+      expect(detailLines(entry.operation, null)).toBeGreaterThan(0);
+      return;
+    }
+    expect(model.running).toBeUndefined();
+    expect(entry.operation.phase).toBe(status === "FAILED" ? "failed" : "done");
+    expect(entry.operation.statusWord).not.toContain("Restarting");
+    if (status === "FAILED") {
+      expect(detailLines(entry.operation, null)).toBeGreaterThan(0);
+      expect(entry.operation.closing).toBe(
+        "Zerops couldn't restart Eddy after 15 min — platform error.",
+      );
+      expect(entry.operation.steps[0]?.state).toBe("failed");
+    }
+  },
+);
+it("a completed restart with a failed process exposes its detail drawer before any card mounts", () => {
+  const fields = reduceZeropsOperations(
+    [
+      {
+        id: "c",
+        toolName: "zerops_manage",
+        turnId: "t",
+        input: { serviceHostname: "Eddy" },
+        status: "completed",
+        resultText: JSON.stringify({ id: "r", actionName: "stack.restart", status: "FAILED" }),
+        truncated: false,
+        startedAt: "2026-10-08T10:00:00Z",
+        anchorActivityId: "a",
+        rowIds: new Set(["a"]),
+        agentInternal: false,
+      },
+    ],
+    { projectId: "p", builds: () => "unobservable" },
+  ).operations[0]!;
+  expect(detailLines(fields, null)).toBeGreaterThan(0);
 });

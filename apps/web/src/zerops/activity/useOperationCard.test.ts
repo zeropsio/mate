@@ -19,6 +19,14 @@ const browserStreamSpy = vi.hoisted(() =>
 );
 const topologySpy = vi.hoisted(() => vi.fn<() => unknown>(() => undefined));
 
+vi.mock("@effect/atom-react", async (original) => ({
+  ...(await original<typeof import("@effect/atom-react")>()),
+  useAtomValue: () => null,
+}));
+vi.mock("../ZeropsAccountData", () => ({
+  useAccountDataOptional: () => null,
+  useProjection: () => ({ stage: "unknown" }),
+}));
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
   const { reactHookHarness } = await import("../../test/reactHookHarness");
@@ -68,6 +76,8 @@ import {
   pipelineServiceFor,
   useOperationCard,
   restartCardReadout,
+  requestRestartRetry,
+  restartRetryWords,
 } from "./useOperationCard.ts";
 
 const NOW = Date.parse("2026-09-01T00:00:42.000Z");
@@ -1032,4 +1042,50 @@ it("a long restart card counts its own process without manufacturing failure", (
     status: "Restarting",
     duration: "15m",
   });
+});
+
+it("a restart retry with a lost response keeps its receipt across remounts and reconciles without another write", async () => {
+  let selected: string | null = null;
+  const progress = { stage: "uncertain", next: "ask-owner-again" } as const;
+  const calls: string[] = [];
+  const operations = {
+    readProgress: () => progress,
+    askAgain: async (id: string) => {
+      calls.push(`ask:${id}`);
+    },
+    submit: async (_intent: unknown, id?: string) => {
+      calls.push(`send:${id}`);
+      return { requestId: id!, progress, evidence: null };
+    },
+  };
+  const intent = {
+    kind: "mate-restart",
+    orgId: "org",
+    projectId: "p",
+    serviceId: "other-service",
+    way: "restart",
+  } as const;
+  await requestRestartRetry(
+    operations,
+    intent,
+    () => selected,
+    (id) => {
+      selected = id;
+    },
+  );
+  const original = selected;
+  expect(restartRetryWords(selected, progress)).toEqual({
+    restartRetryLabel: "Check restart",
+    restartRetryDisabled: false,
+  });
+  await requestRestartRetry(
+    operations,
+    intent,
+    () => selected,
+    (id) => {
+      selected = id;
+    },
+  );
+  expect(selected).toBe(original);
+  expect(calls).toEqual([`send:${original}`, `ask:${original}`]);
 });

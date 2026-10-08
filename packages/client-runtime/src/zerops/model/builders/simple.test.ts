@@ -367,3 +367,19 @@ it("a restart result retains process identity and uses calm failure words after 
   });
   expect(fields.explanation).toBeUndefined();
 });
+
+it("a history baseline behind a failed restart result cannot put it back in progress", () => {
+  const process = {
+    id: "proc-1",
+    actionName: "stack.restart",
+    status: "FAILED",
+    created: "2026-09-01T00:00:01Z",
+  };
+  expect(
+    buildSimpleFields("manage", simpleCall("zerops_manage", "completed", { process }), {
+      projectId: "p",
+      builds: () => "unobservable",
+      processes: () => ({ ...process, projectId: "p", serviceStackIds: ["s"], status: "RUNNING" }),
+    }),
+  ).toMatchObject({ phaseOverride: "failed", statusWord: "Failed", steps: [{ state: "failed" }] });
+});

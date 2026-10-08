@@ -1,3 +1,5 @@
+import { type AccountStore } from "@t3tools/client-runtime/data";
+import { initialEnvironment, initialContainer } from "@t3tools/client-runtime/zerops/environments";
 import { RegistryContext } from "@effect/atom-react";
 import { MateAttention } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -20,21 +22,11 @@ import {
   useMateRowActivity,
   useLastKnownMateWords,
   useMateOfflineSince,
+  mateSocketLostAtAtom,
 } from "./useMenuMateReadings";
 import { useMatesActivity } from "./useZeropsAgentActivity";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
-const socketLoss = vi.hoisted(() => ({ at: undefined as number | undefined }));
-vi.mock("../routes/-environmentTargets", async (original) => {
-  const actual = await original<typeof import("../routes/-environmentTargets")>();
-  return {
-    ...actual,
-    useEnvironmentLinks: () =>
-      socketLoss.at === undefined
-        ? actual.useEnvironmentLinks()
-        : { mateLink: () => ({ linkLostAt: socketLoss.at }) },
-  };
-});
 const AT = "2026-10-03T09:00:00.000Z";
 
 /** Vera, online, at work on her main chat. */
@@ -230,15 +222,51 @@ it.each([
   },
 );
 
+function socketLoss(store: AccountStore, key: string, wall: number, sequence: number) {
+  const projectId = key.split(":")[0]!;
+  store.dispatch({
+    kind: "rows",
+    scope: `mate:${projectId}:link`,
+    generation: 0,
+    method: "read",
+    via: "mate-direct",
+    rows: [
+      {
+        family: "mateLink",
+        id: key,
+        value: {
+          key,
+          projectId,
+          orgId: "org-acme",
+          origin: null,
+          shown: true,
+          watched: false,
+          environment: {
+            ...initialEnvironment({ record: null }),
+            linkLostAt: { wall, mono: wall },
+          },
+          container: initialContainer(),
+        },
+        revision: { kind: "mate-link", sequence },
+      },
+    ],
+  });
+}
 it("a lost browser socket supplies the since-time while HQ still sees the Mate online", () => {
   const registry = told(VERA);
-  mountHqNavigation(registry, "org-acme", { live: true, mates: { "p-vera": VERA } });
-  socketLoss.at = Date.parse("2026-10-08T10:36:00Z");
-  try {
-    expect(mountedOver(registry, () => useMateOfflineSince("p-vera", "p-vera:s"))).toBe(
-      "2026-10-08T10:36:00.000Z",
-    );
-  } finally {
-    socketLoss.at = undefined;
-  }
+  const { store } = mountHqNavigation(registry, "org-acme", {
+    live: true,
+    mates: { "p-vera": VERA },
+  });
+  socketLoss(store, "p-vera:s", Date.parse("2026-10-08T10:36:00Z"), 1);
+  expect(mountedOver(registry, () => useMateOfflineSince("p-vera", "p-vera:s"))).toBe(
+    "2026-10-08T10:36:00.000Z",
+  );
+  let changes = 0;
+  const stop = registry.subscribe(mateSocketLostAtAtom("p-vera:s"), () => changes++);
+  socketLoss(store, "p-other:s", Date.parse("2026-10-08T10:37:00Z"), 2);
+  expect(changes).toBe(0);
+  socketLoss(store, "p-vera:s", Date.parse("2026-10-08T10:38:00Z"), 3);
+  expect(changes).toBe(1);
+  stop();
 });

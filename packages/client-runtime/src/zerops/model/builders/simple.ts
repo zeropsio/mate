@@ -9,6 +9,7 @@ import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
 import type { ZeropsCall, ZeropsEnvChange, ZeropsVaultRequest } from "../types.ts";
 import {
   type BuiltCardFields,
+  type OperationBuildContext,
   KIND_LABEL,
   buildStep,
   decodeCall,
@@ -47,10 +48,11 @@ function readSimpleSubject(
 export function buildSimpleFields(
   kind: "delete" | "scale" | "manage" | "env",
   call: ZeropsCall,
+  context?: OperationBuildContext,
 ): BuiltCardFields {
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
-  const phase = phaseFor(call.status);
+  const callPhase = phaseFor(call.status);
   const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
   // The service it names, the one it observes: none where it names none.
   const named =
@@ -80,10 +82,28 @@ export function buildSimpleFields(
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
   const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
-  const restart =
+  const returnedRestart =
     kind === "manage" && outcome?.process?.actionName === "stack.restart"
       ? outcome.process
       : undefined;
+  const observedRestart =
+    returnedRestart === undefined ? undefined : context?.processes?.(returnedRestart.id);
+  // A history baseline behind a terminal tool result cannot put that process back in progress.
+  const restart =
+    observedRestart === undefined ||
+    (returnedRestart !== undefined &&
+      ["FAILED", "FINISHED", "CANCELED"].includes(returnedRestart.status) &&
+      !["FAILED", "FINISHED", "CANCELED"].includes(observedRestart.status))
+      ? returnedRestart
+      : observedRestart;
+  const phase =
+    restart === undefined
+      ? callPhase
+      : restart.status === "FAILED" || restart.status === "CANCELED"
+        ? "failed"
+        : restart.status === "FINISHED"
+          ? "done"
+          : "running";
   const restartWords =
     restart === undefined ? undefined : restartCardReadout(restart, named ?? subject, NaN);
   // An env call's failure never carries an entry it was given: values can be secrets.
@@ -110,16 +130,7 @@ export function buildSimpleFields(
     kicker: `${KIND_LABEL[kind]} · ${subject}`,
     voice,
     voiceSource,
-    ...(restart === undefined
-      ? {}
-      : {
-          phaseOverride:
-            restart.status === "FAILED" || restart.status === "CANCELED"
-              ? ("failed" as const)
-              : restart.status === "FINISHED"
-                ? ("done" as const)
-                : ("running" as const),
-        }),
+    ...(restart === undefined ? {} : { phaseOverride: phase, restartProcess: restart }),
     statusWord:
       restartWords?.status ??
       gatedStatusWord(kind, phase, decoded.document !== undefined, call.resultText !== undefined),

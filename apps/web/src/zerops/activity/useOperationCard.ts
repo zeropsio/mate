@@ -1,3 +1,7 @@
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { randomUUID } from "~/lib/utils";
+import { currentAccountEpoch } from "../accountLifetime";
 /**
  * Maps source observations onto the operation card's presentational `ObservedRegion` prop.
  *
@@ -11,7 +15,6 @@
 import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
 
 export { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
-import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type {
@@ -37,10 +40,13 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
-import { restartWay } from "@t3tools/client-runtime/data";
-import { AccountOperationsContext } from "../accountOperations";
-import { useAccountDataOptional } from "../ZeropsAccountData";
-import { submitZeropsWrite } from "../zeropsWrite";
+import {
+  operationProgress,
+  type OperationProgress,
+  restartWay,
+} from "@t3tools/client-runtime/data";
+import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
+import { useAccountDataOptional, useProjection } from "../ZeropsAccountData";
 import { toastManager } from "~/components/ui/toast";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import { browserPageUrl } from "../../components/zerops/operation/subject";
@@ -348,8 +354,9 @@ function useLiveBrowserFrame(
 
 export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
-  readonly restartProcess?: ActivityProcess;
   readonly onRestartRetry?: () => Promise<void>;
+  readonly restartRetryLabel?: string;
+  readonly restartRetryDisabled?: boolean;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
   /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
@@ -395,6 +402,14 @@ export function useOperationCard(
 ): OperationCardRegions {
   const operations = useContext(AccountOperationsContext);
   const account = useAccountDataOptional();
+  const registry = useContext(RegistryContext);
+  const orgId = account?.orgId ?? null;
+  const retrySlot =
+    operation.restartProcess === undefined
+      ? NO_RETRY_REQUEST
+      : restartRetryRequests(JSON.stringify([currentAccountEpoch(), orgId, operation.key]));
+  const retryRequestId = useAtomValue(retrySlot);
+  const retryProgress = useProjection(operationProgress, retryRequestId, UNKNOWN_RETRY);
   const target = observationTargetFor(operation);
   const running = operation.phase === "running";
   // A settled one whose pipeline still runs moves on the clock too: its steps count on.
@@ -428,35 +443,44 @@ export function useOperationCard(
     operation.kind === "manage" && seen?.process?.actionName === "stack.restart"
       ? seen.process
       : undefined;
-  const restartService = topology?.services.find((service) =>
-    restartProcess?.serviceStackIds.includes(service.serviceId),
+  const restartService = topology?.services.find(
+    (service) =>
+      service.hostname === operation.target?.hostname &&
+      restartProcess?.serviceStackIds.includes(service.serviceId),
   );
   const fields = {
-    ...(restartProcess?.status !== "FAILED" ||
+    ...(operation.phase !== "failed" ||
+    restartProcess?.status !== "FAILED" ||
     restartService === undefined ||
     operations === null ||
-    account?.orgId == null
+    orgId === null
       ? {}
       : {
+          ...restartRetryWords(retryRequestId, retryProgress),
           onRestartRetry: async () => {
             try {
-              await submitZeropsWrite(operations, account.orgId, {
-                kind: "mate-restart",
-                projectId: restartProcess.projectId,
-                serviceId: restartService.serviceId,
-                way: restartWay(restartService.status),
-              });
+              await requestRestartRetry(
+                operations,
+                {
+                  kind: "mate-restart",
+                  orgId,
+                  projectId: restartProcess.projectId,
+                  serviceId: restartService.serviceId,
+                  way: restartWay(restartService.status),
+                },
+                () => registry.get(retrySlot),
+                (id) => registry.set(retrySlot, id),
+              );
             } catch {
               toastManager.add({
                 type: "error",
-                title: "Zerops could not confirm the restart request.",
+                title:
+                  "Zerops could not confirm the restart request. Check it before trying again.",
               });
             }
           },
         }),
-    ...(operation.kind === "manage" && seen?.process?.actionName === "stack.restart"
-      ? { restartProcess: seen.process }
-      : {}),
+
     ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
@@ -503,4 +527,56 @@ export function useOperationCard(
     subject: service ?? operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
+}
+
+/** Keeps the selected receipt across card remounts, within the account lifetime. */
+const restartRetryRequests = Atom.family((_key: string) => Atom.make<string | null>(null));
+const NO_RETRY_REQUEST = Atom.make<string | null>(null);
+const UNKNOWN_RETRY = Atom.make<OperationProgress>({ stage: "unknown" });
+
+/** An uncertain write is asked about by its original id; only a proved end admits another write. */
+export async function requestRestartRetry(
+  operations: Pick<AccountOperations, "readProgress" | "askAgain" | "submit">,
+  intent: Extract<Parameters<AccountOperations["submit"]>[0], { kind: "mate-restart" }>,
+  selected: () => string | null,
+  remember: (requestId: string) => void,
+): Promise<void> {
+  const previous = selected();
+  if (previous !== null) {
+    const progress = operations.readProgress(previous);
+    if (progress.stage === "done" && progress.outcome === "succeeded") return;
+    if (!["done", "refused"].includes(progress.stage)) {
+      await operations.askAgain(previous);
+      return;
+    }
+  }
+  const requestId = randomUUID();
+  remember(requestId);
+  await operations.submit(intent, requestId);
+}
+
+export function restartRetryWords(requestId: string | null, progress: OperationProgress) {
+  if (
+    requestId === null ||
+    progress.stage === "refused" ||
+    progress.stage === "unsent" ||
+    (progress.stage === "done" && progress.outcome !== "succeeded")
+  )
+    return { restartRetryLabel: "Try again", restartRetryDisabled: false };
+  if (progress.stage === "unresolved")
+    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
+  if (progress.stage === "uncertain")
+    return {
+      restartRetryLabel: "Check restart",
+      restartRetryDisabled: progress.next === "asking-owner",
+    };
+  return {
+    restartRetryLabel:
+      progress.stage === "done"
+        ? "Restarted"
+        : progress.stage === "accepted" || progress.stage === "reflected"
+          ? "Restart requested"
+          : "Asking Zerops…",
+    restartRetryDisabled: true,
+  };
 }
