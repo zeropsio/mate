@@ -140,6 +140,8 @@ export interface ThreadSnapshotCapabilities {
 
 export interface PreparedConnection {
   readonly contentAddressedImages?: boolean;
+  /** The engine conversation protocol the Mate serves (`capabilities.mateEngine`); absent on V1. */
+  readonly mateEngine?: number;
   readonly environmentId: EnvironmentId;
   readonly label: string;
   readonly httpBaseUrl: string;

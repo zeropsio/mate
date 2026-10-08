@@ -166,6 +166,7 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
       ...(authorized.contentAddressedImages === undefined
         ? {}
         : { contentAddressedImages: authorized.contentAddressedImages }),
+      ...(authorized.mateEngine === undefined ? {} : { mateEngine: authorized.mateEngine }),
       ...(authorized.threadSnapshot === undefined
         ? {}
         : { threadSnapshot: authorized.threadSnapshot }),

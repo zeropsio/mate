@@ -278,6 +278,38 @@ describe("RemoteEnvironmentAuthorization", () => {
       }),
   );
 
+  it.effect.each([
+    {
+      name: "serves the engine's protocol 1",
+      capabilities: { mateEngine: { protocol: 1 } },
+      expected: 1,
+    },
+    { name: "keeps its conversation on V1", capabilities: {}, expected: undefined },
+  ])("knows at the door, before any socket, whether a Mate $name", ({ capabilities, expected }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        responses: [
+          Response.json({
+            ...DESCRIPTOR,
+            capabilities: { ...DESCRIPTOR.capabilities, ...capabilities },
+          }),
+          websocketTicket("ticket"),
+        ],
+      });
+      const authorized = yield* Effect.gen(function* () {
+        const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+        return yield* remote.authorizeBearer({
+          expectedEnvironmentId: ENVIRONMENT_ID,
+          httpBaseUrl: ENDPOINT.httpBaseUrl,
+          wsBaseUrl: ENDPOINT.wsBaseUrl,
+          bearerToken: "bearer-token",
+          connectionMethod: "direct",
+        });
+      }).pipe(Effect.provide(harness.layer));
+      expect(authorized.mateEngine).toEqual(expected);
+    }),
+  );
+
   it.effect("revalidates a bearer descriptor after the cache expires", () =>
     Effect.gen(function* () {
       const reassignedEnvironmentId = EnvironmentId.make("environment-2");
