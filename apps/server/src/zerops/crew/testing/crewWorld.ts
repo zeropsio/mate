@@ -169,6 +169,8 @@ export interface CrewHeldTask {
   readonly attempt: number;
   readonly reworks: number;
   readonly run: string | null;
+  /** When it last moved, as the crew keeps it. */
+  readonly movedAt: string;
 }
 
 /** One attempt of a task: its conversation, how it ended and what it spent. */
@@ -647,6 +649,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
             attempt: row.attempt,
             reworks: row.reworks,
             run: row.run,
+            movedAt: row.updatedAt,
           })),
         ),
         Effect.orDie,

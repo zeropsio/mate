@@ -21,6 +21,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -69,6 +70,7 @@ import {
   type EngineCrewPolicyInstaller,
 } from "../engine/CrewEngineLayer.ts";
 import { crewDomain } from "../engine/CrewOwner.ts";
+import { UNATTENDED_MS } from "../engine/decide.ts";
 import { evolveCrew } from "../engine/evolve.ts";
 import { delivering, initialCrewState, membersInOrder, type CrewState } from "../engine/state.ts";
 import { stintReasonWords } from "../crewCards.ts";
@@ -169,6 +171,8 @@ const enginePort = (input: {
   readonly releases: Array<Effect.Effect<void>>;
   /** The session each conversation's agent last started (its session-start hook), across lives. */
   readonly hooked: Map<string, number>;
+  /** How far the world's clock was moved on. */
+  readonly shift: { ms: number };
 }): CrewWorld & { readonly sendsReached: Effect.Effect<void> } => {
   const { fx, fixture, context, provider } = input;
   const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -755,7 +759,9 @@ const enginePort = (input: {
         : Effect.void,
     taskLastMovedAt: (taskId) =>
       Effect.gen(function* () {
-        // The task has waited as long as the crew can tell: its waits come due now.
+        // The task has waited as long as the crew can tell: the clock moves on past its waits,
+        // which come due now. Its record keeps when it moved (the tasks' movedAt).
+        input.shift.ms += UNATTENDED_MS + 1_000;
         const state = yield* crewState;
         const due = Object.entries(state.wakes).filter(([id]) => id.includes(taskId));
         for (const [wakeId] of due) {
@@ -817,6 +823,7 @@ const enginePort = (input: {
           attempt: task.counters.attempt,
           reworks: task.counters.reworks,
           run: task.runId,
+          movedAt: DateTime.formatIso(DateTime.makeUnsafe(task.updatedAt)),
         })),
     ),
     attempts: (taskId) =>
@@ -880,10 +887,13 @@ const lifeLayer = (
   fixture: Effect.Success<typeof makeFixtureWorld>,
   provider: ScriptedProvider,
   installer: EngineCrewPolicyInstaller,
+  clock: Clock.Clock,
 ) => {
   const { world, signIns, holds } = fixture;
   const history = makeFakeWorkspaceHistory();
   const base = Layer.mergeAll(
+    // The world's clock: real time, which a journey moves on to let a wait come due.
+    Layer.succeed(Clock.Clock, clock),
     // A redeploy's reads come within moments, not minutes, as V1's world has them.
     Layer.succeed(CrewTimingConfig, {
       deployPollFirstMs: 50,
@@ -947,13 +957,27 @@ export const engineWorld: CrewWorldRunner = <E>(
     let first = true;
     const releases: Array<Effect.Effect<void>> = [];
     const hooked = new Map<string, number>();
+    const real = yield* Clock.Clock;
+    /** How far a journey moved the world's clock on (`taskLastMovedAt`). */
+    const shift = { ms: 0 };
+    const clock: Clock.Clock = {
+      currentTimeMillisUnsafe: () => real.currentTimeMillisUnsafe() + shift.ms,
+      currentTimeMillis: Effect.sync(() => real.currentTimeMillisUnsafe() + shift.ms),
+      currentTimeNanosUnsafe: () => real.currentTimeNanosUnsafe() + BigInt(shift.ms) * 1_000_000n,
+      currentTimeNanos: Effect.sync(
+        () => real.currentTimeNanosUnsafe() + BigInt(shift.ms) * 1_000_000n,
+      ),
+      monotonicTimeNanosUnsafe: () => real.monotonicTimeNanosUnsafe(),
+      monotonicTimeNanos: real.monotonicTimeNanos,
+      sleep: (duration) => real.sleep(duration),
+    };
     for (const phase of phases) {
       const scripted = yield* makeScriptedProvider({ driver: "claudeAgent" });
       const sendHold = yield* Ref.make<CrewHold | undefined>(undefined);
       const provider = holdableProvider(scripted, sendHold);
       const life = yield* Scope.make();
       const context = (yield* Layer.buildWithScope(
-        lifeLayer(fixture, provider, installer),
+        lifeLayer(fixture, provider, installer, clock),
         life,
       )) as Context.Context<never>;
       const startedFlag = yield* Ref.make(false);
@@ -994,6 +1018,7 @@ export const engineWorld: CrewWorldRunner = <E>(
         sendHold,
         releases,
         hooked,
+        shift,
       });
       const exit = yield* Effect.exit(phase(world));
       if (Exit.isSuccess(exit)) yield* world.sendsReached;

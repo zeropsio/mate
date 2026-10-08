@@ -340,6 +340,7 @@ describe("CrewEngine lead", () => {
           // The review has waited ten minutes with nobody on it.
           const task = (yield* world.tasks)[0]!;
           yield* world.taskLastMovedAt(task.id, "2026-09-28T07:00:00.000Z");
+          const movedAt = (yield* world.tasks)[0]!.movedAt;
           const waiting = yield* world.snapshotWhere((current) => current.attention.length > 0);
           yield* world.press({ _tag: "land", taskId: task.id });
           const landed = yield* world.snapshotWhere(
@@ -352,7 +353,8 @@ describe("CrewEngine lead", () => {
               tree: read(world.root, "ok.txt"),
             },
             {
-              waiting: [["review-wait", "backend", task.id, "2026-09-28T07:00:00.000Z"]],
+              // From when it last moved, as the crew keeps it.
+              waiting: [["review-wait", "backend", task.id, movedAt]],
               review: { verdict: "accept", note: "", by: null },
               tree: "ok\n",
             },
