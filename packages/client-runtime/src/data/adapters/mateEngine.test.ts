@@ -731,6 +731,59 @@ describe("an engine conversation's older pages", () => {
       }),
   );
 
+  // Catches "Load earlier" that never goes: an import that failed on its first batch reserved
+  // ordinals 1..3 that hold nothing, and the Mate's window says so.
+  it.live("offers nothing earlier when the Mate says its window holds its oldest run", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({
+          runs: [run(4, 1)],
+          items: [personItem("thread-ada/r/4", 1, "Fourth")],
+          window: { oldestOrdinal: 4, earlier: false },
+        }),
+        synchronized(12),
+      );
+      expect(drawn(r).page).toEqual(Option.none());
+      expect(r.conversations.readEarlier(ada)).toBe(false);
+      r.close();
+    }),
+  );
+
+  it.live("offers nothing more once a page says nothing earlier is left", () =>
+    Effect.gen(function* () {
+      const r = rig(({ runId }) =>
+        Effect.succeed(
+          runId === null
+            ? page({
+                runs: [run(5, 1)],
+                items: [personItem("thread-ada/r/5", 1, "Fifth")],
+                window: { oldestOrdinal: 5, earlier: false },
+                more: false,
+              })
+            : page(),
+        ),
+      );
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({
+          runs: [run(6, 1)],
+          items: [personItem("thread-ada/r/6", 1, "Sixth")],
+          window: { oldestOrdinal: 6, earlier: true },
+        }),
+        synchronized(12),
+      );
+      expect(r.conversations.readEarlier(ada)).toBe(true);
+      yield* settle;
+      expect(drawn(r).page).toEqual(Option.none());
+      expect(r.conversations.readEarlier(ada)).toBe(false);
+      r.close();
+    }),
+  );
+
   it.live("offers nothing earlier when its window starts at the first run", () =>
     Effect.gen(function* () {
       const r = rig();

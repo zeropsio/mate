@@ -1,8 +1,9 @@
 /**
  * What the Mate engine needs from the product around it, as ports: who may
  * start a run (`RunAdmission`), what the platform says about the last
- * restart (`RestartEvidence`) and where a conversation's agent works
- * (`AgentWorkspace`). The engine imports these, never `zerops/`;
+ * restart (`RestartEvidence`), where a conversation's agent works
+ * (`AgentWorkspace`) and how a call's pictures are claimed (`MessagePictures`). The engine
+ * imports these, never `zerops/`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
  *
@@ -11,7 +12,13 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
-import type { ConversationId, Principal, RunTrigger, RuntimeMode } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  ConversationId,
+  Principal,
+  RunTrigger,
+  RuntimeMode,
+} from "@t3tools/contracts";
 
 /**
  * A wake's kind: today's triggers that start a run with no person at the keyboard. The
@@ -85,3 +92,25 @@ export class AgentWorkspace extends Context.Service<
   AgentWorkspace,
   { readonly of: (conversation: ConversationId) => Effect.Effect<WorkspaceSetup> }
 >()("t3/engine/ports/AgentWorkspace") {}
+
+/** A picture a call carries that could not be claimed, in the words V1 refuses it with. */
+export class PicturesRefused extends Data.TaggedError("PicturesRefused")<{
+  readonly message: string;
+}> {}
+
+/**
+ * The pictures a person's call carries, claimed for a conversation before the step that records
+ * them, as V1 claims a message's: a pending upload copied under the conversation's own id (the
+ * client lets the upload go once the call is answered), within V1's limits; nothing claimed
+ * stays when one fails. `release` lets go of a claim whose call was not taken.
+ */
+export class MessagePictures extends Context.Service<
+  MessagePictures,
+  {
+    readonly claim: (
+      conversation: ConversationId,
+      attachments: ReadonlyArray<ChatAttachment>,
+    ) => Effect.Effect<ReadonlyArray<ChatAttachment>, PicturesRefused>;
+    readonly release: (claimed: ReadonlyArray<ChatAttachment>) => Effect.Effect<void>;
+  }
+>()("t3/engine/ports/MessagePictures") {}

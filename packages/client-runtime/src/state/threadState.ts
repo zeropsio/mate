@@ -39,6 +39,9 @@ export function threadHasOlderTurns(state: EnvironmentThreadState): boolean {
   });
 }
 
-/** What a V1-only app says of a Mate whose conversation runs on the engine. */
+/**
+ * What a V1-only app (the phone's) says of a Mate whose conversation runs on the engine: the same
+ * news as the Mate's door, and the phone's way out of it, an update.
+ */
 export const NATIVE_ENGINE_WORDS =
-  "This Mate's conversation runs on its engine, which this app does not read yet. Update the app to keep talking to it.";
+  "This Mate moved to its new engine. Update the app to keep talking to it.";

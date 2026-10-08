@@ -2777,6 +2777,23 @@ describe("deriveMessagesTimelineRows", () => {
     });
   });
 
+  // Catches an imported conversation that hides where its earlier turns stayed behind, or files
+  // the line among the work of the run it was recorded in.
+  it("opens a conversation the history import cut on a line saying what stayed behind", () => {
+    const words =
+      "12 earlier turns stayed with the previous engine: this conversation starts here.";
+    const list = rows({
+      entries: [
+        tool("cut", "t1", 0, { sourceActivityKind: "history.cut", label: words }),
+        user("m0", 1),
+        assistant("a1", "t1", 2, "Hi."),
+      ],
+      settled: "t1",
+    });
+    expect(list[0]).toMatchObject({ kind: "seam", seam: "cut", words });
+    expect(JSON.stringify(list.slice(1))).not.toContain(words);
+  });
+
   it("marks where the person left off, once, before the first stretch after it", () => {
     const list = deriveMessagesTimelineRows({
       timelineEntries: [

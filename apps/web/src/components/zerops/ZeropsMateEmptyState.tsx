@@ -2,10 +2,9 @@ import { CircleAlertIcon, CircleHelpIcon } from "lucide-react";
 /**
  * An empty conversation with a Mate, and the Mate's own view before the conversation exists
  * (`ZeropsMateComingPage`): the approved "Arrival" board's stage (`mateArrival.ts`). The Mate's
- * face a third of the way down — its shape in its colour, asleep until it answers — one headline
- * under it, one sentence under that, and one slot under the sentence. Every state from the press
- * to the first answer changes those words and that slot, never their places: the face and the
- * headline stand where "What should Fen do on Acme Docs?" will stand.
+ * complete composition centres in the visible conversation area: its face, one headline, one
+ * sentence under that, and one slot under the sentence. Every state from the press to the first
+ * answer shares that column and rhythm.
  *
  * - Coming up, the Mate's own steps in the slot, with their times.
  * - No agent signed in yet — the person who added it, a colleague, anyone — "Sign Fen in to
@@ -86,14 +85,17 @@ export function ZeropsMateEmptyState({
   environmentId,
   mate,
   threadRef,
+  bottomInset = 0,
 }: {
   readonly environmentId: EnvironmentId;
   readonly mate: ZeropsMateIdentity;
   readonly threadRef: ScopedThreadRef | null;
+  readonly bottomInset?: number;
 }) {
   const state = useMateEmptyState({ environmentId, mate, threadRef });
   return (
     <MateEmptyStateView
+      bottomInset={bottomInset}
       addedBy={state.addedBy}
       agentReady={state.agentReady}
       mate={mate}
@@ -327,6 +329,7 @@ export function MateEmptyStateView({
   agentReady = false,
   runtimes,
   focusOnArrival = false,
+  bottomInset = 0,
 }: {
   /** Null while the directory has not named the Mate: its places held, empty. */
   readonly mate: DrawnMate | null;
@@ -350,6 +353,8 @@ export function MateEmptyStateView({
    * it, and reads with the sentence under it.
    */
   readonly focusOnArrival?: boolean;
+  /** The conversation's measured footer; the stage occupies the room above it. */
+  readonly bottomInset?: number;
 }) {
   const mate = named ?? UNNAMED;
   const headline = useRef<HTMLHeadingElement>(null);
@@ -411,6 +416,7 @@ export function MateEmptyStateView({
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <ArrivalComposition
+      bottomInset={bottomInset}
       clauses={clauses}
       headline={headline}
       kind={kind}
@@ -430,8 +436,8 @@ export function MateEmptyStateView({
 
 /**
  * Every opening state's one composition: the face centred on top, the headline, the line under it
- * and the slot under that, each place handing over in place (`ArrivalSwap`) — so a state changing
- * keeps the face where it stands, its words cross-fade, and nothing is drawn anew.
+ * and the slot under that. The complete block centres in the room above the measured footer;
+ * each place hands over in place (`ArrivalSwap`) while its words cross-fade.
  */
 function ArrivalComposition({
   kind,
@@ -446,6 +452,7 @@ function ArrivalComposition({
   status,
   headline,
   tracks = true,
+  bottomInset = 0,
 }: {
   readonly kind: ArrivalKind;
   /** Null while the directory has not named the Mate: its face's place held, empty. */
@@ -461,6 +468,7 @@ function ArrivalComposition({
   readonly status: boolean;
   readonly headline?: RefObject<HTMLHeadingElement | null>;
   readonly tracks?: boolean;
+  readonly bottomInset?: number;
 }) {
   const sentenceId = useId();
   // Standing up, it paces the headline's width; done, it gives a satisfied little dance.
@@ -480,15 +488,14 @@ function ArrivalComposition({
   );
   return (
     <div
-      className="flex h-full w-full min-w-0 flex-col items-center px-5 sm:px-6"
+      className="flex h-full min-h-0 w-full min-w-0 flex-col items-center overflow-y-auto px-5 py-6 sm:px-6"
       data-arrival={kind}
+      data-mate-stage-area=""
       data-zerops-surface="mate-empty-state"
+      style={bottomInset === 0 ? undefined : { height: `calc(100% - ${bottomInset}px)` }}
     >
-      {/* The face's place, a third of the way down whatever is said under it:
-          every Mate's opening, in every state, puts its face where the last did. */}
-      <div aria-hidden="true" className="shrink-0 basis-1/3" />
       <div
-        className="flex w-full flex-col items-center"
+        className="my-auto flex w-full max-w-2xl shrink-0 flex-col items-center"
         data-mate-empty-lead
         role={status ? "status" : undefined}
       >
@@ -556,7 +563,7 @@ function ArrivalComposition({
           </ArrivalSwap>
         )}
         <ArrivalSwap
-          className="mt-7 w-full max-w-126"
+          className={cn("w-full max-w-126", slot.node !== null && "mt-7")}
           data-arrival-slot={slot.id}
           id={slot.id}
           kind="slot"

@@ -35,6 +35,7 @@ import {
 import {
   engineHeldTurns,
   engineRows,
+  engineStopTarget,
   engineThread,
   overlayEngineRow,
   overlayEngineShell,
@@ -407,7 +408,7 @@ describe("an engine conversation as the thread the view draws", () => {
     });
   });
 
-  it("names the update route when its Mate speaks a newer protocol", () => {
+  it("names the reload-or-update route when its Mate speaks a newer protocol", () => {
     const scope = engineConversationScopes(key).item;
     const state = apply(emptyAccount, [
       { kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } },
@@ -422,8 +423,8 @@ describe("an engine conversation as the thread the view draws", () => {
         },
       },
     ]);
-    expect(Option.getOrNull(engineThread.derive(readsOfState(state), key).error)).toMatch(
-      /Update the app/,
+    expect(Option.getOrNull(engineThread.derive(readsOfState(state), key).error)).toBe(
+      "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
     );
   });
 
@@ -777,8 +778,39 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
         payload: { message: "api: Snapshot refused: disk full" },
       },
     },
+    {
+      marker: { kind: "warning", reason: "The model is overloaded; retrying." },
+      expected: {
+        kind: "runtime.warning",
+        summary: "The model is overloaded; retrying.",
+        tone: "info",
+        payload: { message: "The model is overloaded; retrying." },
+      },
+    },
+    {
+      marker: { kind: "plan", reason: "Deploy the api, then check it." },
+      expected: {
+        kind: "turn.plan.updated",
+        summary: "Plan updated",
+        tone: "info",
+        payload: { explanation: "Deploy the api, then check it." },
+      },
+    },
+    {
+      marker: { kind: "runtime.note", reason: "Resumed from a checkpoint" },
+      expected: { kind: "runtime.note", summary: "Resumed from a checkpoint", tone: "info" },
+    },
   ])("a $marker.kind marker is the event V1 draws for it", ({ marker, expected }) => {
     expect(activitiesOf([markerItem(run1, 2, marker)])).toMatchObject([expected]);
+  });
+
+  // Catches an imported conversation that hides where its earlier turns stayed behind.
+  it("where the history import cut, a line at the top says what stayed behind", () => {
+    const reason =
+      "12 earlier turns stayed with the previous engine: this conversation starts here.";
+    expect(activitiesOf([markerItem(run1, 1, { kind: "history-cut", reason })])).toMatchObject([
+      { kind: "history.cut", summary: reason, tone: "info" },
+    ]);
   });
 
   it("a marker this build does not know draws nothing", () => {
@@ -841,6 +873,25 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       },
       { kind: "context-window.updated", payload: { usedTokens: 4_000, maxTokens: 200_000 } },
     ]);
+  });
+
+  // Catches Stop aimed at the card: the card's root ended, the run on it works on.
+  it("Stop on a card a continuing run shares ends the run that works", () => {
+    const state = held({
+      runs: [
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: run1 as never,
+          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ],
+    });
+    expect(thread(state)?.session?.activeTurnId).toBe(run1);
+    expect(engineStopTarget(readsOfState(state), key, run1)).toBe("thread-ada/r/2");
+    expect(engineStopTarget(readsOfState(state), key, "thread-ada/r/9")).toBe("thread-ada/r/9");
   });
 
   it("a run that continues another shares its card, and is its latest turn", () => {

@@ -25,21 +25,14 @@ export function mateRowCues(
   ];
 }
 
-/**
- * The conversation on screen changing under a header that stays: a chat being started that its
- * first message makes real is a hello; any other chat is an opening, which plays on the face's
- * first paint too. `previous` is undefined on the header's first paint, when only a header after
- * the page's first one greets the chat it opens onto: a reload lands without a flourish.
- */
+/** A chat becoming durable after its first message is a hello; Mate navigation owns arrival. */
 export function conversationCue(
   previous: string | null | undefined,
   current: string | null,
-  pageShowedOne: boolean,
 ): MateFaceCue | undefined {
-  if (current === null) return undefined;
-  if (previous === null) return { moment: "wink", key: `hello:${current}` };
-  if (previous === undefined && !pageShowedOne) return undefined;
-  return { moment: "peek", key: `open:${current}`, arrives: true };
+  return previous === null && current !== null
+    ? { moment: "wink", key: `hello:${current}` }
+    : undefined;
 }
 
 /** A Mate's project changing under a face that watched it: moved somewhere new. */

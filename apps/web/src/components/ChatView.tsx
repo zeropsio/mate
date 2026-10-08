@@ -8731,7 +8731,7 @@ export default function ChatView(props: ChatViewProps) {
                     : EMPTY_PROVIDER_SKILLS,
                   anchorMessageId: timelineAnchorMessageId,
                   onAnchorReady: onTimelineAnchorReady,
-                  contentInsetEndAdjustment: timelineInsetEnd,
+                  contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
                   liveFollowEnabled: timelineLiveFollowEnabled,
                   onIsAtEndChange,
                   onPersonInput: onTimelinePersonInput,
@@ -8814,6 +8814,7 @@ export default function ChatView(props: ChatViewProps) {
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
             <div
               ref={setComposerOverlayElement}
+              data-conversation-footer=""
               inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               data-chat-composer-hero={isDraftHeroState ? "true" : undefined}

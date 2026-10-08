@@ -34,7 +34,12 @@ import { NATIVE_ENGINE_WORDS } from "../state/threadState.ts";
 import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
-import { ENGINE_UPDATE_WORDS } from "./projections/mateEngine.ts";
+import {
+  ENGINE_UPDATE_WORDS,
+  NATIVE_UPDATE_WORDS,
+  engineStopTarget,
+} from "./projections/mateEngine.ts";
+import { readsOfState } from "./store.ts";
 
 type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
   Extract<ClientOrchestrationCommand, { readonly type: T }>,
@@ -61,9 +66,12 @@ export function viaEngine<E, R>(
     if (Option.isNone(prepared)) return yield* v1;
     const route = engineRouteOf(prepared.value);
     if (route.kind === "v1" || route.kind === "unknown") return yield* v1;
+    const native = registry.get(mateEngineReaderAtom) === "none";
     if (route.kind === "update")
-      return yield* Effect.fail(new MateEngineUnsupported({ message: ENGINE_UPDATE_WORDS }));
-    if (registry.get(mateEngineReaderAtom) === "none")
+      return yield* Effect.fail(
+        new MateEngineUnsupported({ message: native ? NATIVE_UPDATE_WORDS : ENGINE_UPDATE_WORDS }),
+      );
+    if (native)
       return yield* Effect.fail(new MateEngineUnsupported({ message: NATIVE_ENGINE_WORDS }));
     const host = registry.get(mateEngineHostAtom);
     if (host === null)
@@ -117,12 +125,21 @@ export const engineStartTurn =
     });
   };
 
+/** Stop names the turn the view draws (a card); the engine stops the run that works on it. */
 export const engineInterruptTurn =
   (environmentId: string, input: Command<"thread.turn.interrupt">) => (host: MateEngineHost) =>
     host.operations.stop({
       environmentId,
       conversationId: input.threadId,
-      ...(input.turnId === undefined ? {} : { runId: input.turnId }),
+      ...(input.turnId === undefined
+        ? {}
+        : {
+            runId: engineStopTarget(
+              readsOfState(host.store.state()),
+              { environmentId, conversationId: input.threadId },
+              input.turnId,
+            ),
+          }),
     });
 
 const DECISION_WORDS: Readonly<Record<string, string>> = {

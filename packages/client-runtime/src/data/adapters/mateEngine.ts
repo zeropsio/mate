@@ -54,6 +54,7 @@ import {
 } from "../families/mateEngine.ts";
 import type { FamilyValues, LinkKey, Revision, ScopeKey } from "../model.ts";
 import { streamOf, type Row } from "../reducer.ts";
+import { earlierOf } from "../projections/mateEngine.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -765,14 +766,9 @@ export function makeMateEngineConversations(options: {
     const id = engineConversationId(key);
     const cursor = cursors.get(id);
     if (cursor === undefined) return false;
-    const read = readsOfState(store.state());
-    let oldest: number | null = null;
-    for (const runId of read.index("engineRunsIn", id)) {
-      const run = read.fact("mateEngineRun", runId);
-      if (run.kind === "known" && (oldest === null || run.value.ordinal < oldest))
-        oldest = run.value.ordinal;
-    }
-    if (oldest === null || oldest <= 1) return false;
+    const earlier = earlierOf(readsOfState(store.state()), key);
+    if (earlier === null || !earlier.more) return false;
+    const oldest = earlier.before;
     const scope = engineEarlierScope(key);
     const phase = streamOf(store.state(), scope).phase;
     if (phase === "connecting" || phase === "baselining") return false;
@@ -807,6 +803,13 @@ export function makeMateEngineConversations(options: {
               signal(scope, { kind: "fault", fault: access, jitter: 0 });
               return;
             }
+            // Where this page left off, and whether the Mate has more before it.
+            const before = Math.min(beforeOrdinal, ...page.runs.map((run) => run.ordinal));
+            const held = readsOfState(store.state()).fact("mateEngineGauge", id);
+            const gauge: FamilyValues["mateEngineGauge"] =
+              held.kind === "known"
+                ? held.value
+                : { environmentId: key.environmentId, usage: null, progress: {} };
             Atom.batch(() => {
               store.dispatch({
                 kind: "delivery",
@@ -814,17 +817,25 @@ export function makeMateEngineConversations(options: {
                 scopes: generations,
                 reset: false,
                 partial: true,
-                rows: rowsOf(
-                  key,
-                  cursor.epoch,
+                rows: [
+                  ...rowsOf(
+                    key,
+                    cursor.epoch,
+                    {
+                      runs: page.runs,
+                      items: lacked.items,
+                      requests: [...page.requests, ...lacked.requests],
+                      head: cursor.seq,
+                    },
+                    undefined,
+                  ),
                   {
-                    runs: page.runs,
-                    items: lacked.items,
-                    requests: [...page.requests, ...lacked.requests],
-                    head: cursor.seq,
+                    family: "mateEngineGauge",
+                    id,
+                    value: { ...gauge, earlier: { before, more: page.more } },
+                    revision: { kind: "mate-link", sequence: ++heard },
                   },
-                  undefined,
-                ),
+                ],
                 removals: [],
               });
               signal(scope, { kind: "baseline-committed" });

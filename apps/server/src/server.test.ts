@@ -2588,7 +2588,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect(
-    "refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation",
+    'refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation: "This Mate moved to its new engine. Reload or update this app to keep talking to it."',
     () =>
       Effect.gen(function* () {
         const dispatched: Array<string> = [];
@@ -2624,7 +2624,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           ),
         );
 
-        assert.equal(refused.message, ENGINE_MOVED);
+        assert.equal(
+          refused.message,
+          "This Mate moved to its new engine. Reload or update this app to keep talking to it.",
+        );
         assert.deepEqual(dispatched, []);
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );

@@ -24,22 +24,13 @@ describe("which events a Mate's faces greet", () => {
   });
 
   it.each([
-    // A chat being started that its first message makes real: hello.
-    [null, "t1", true, { moment: "wink", key: "hello:t1" }],
-    // Another chat opened under the same header.
-    ["t1", "t2", true, { moment: "peek", key: "open:t2", arrives: true }],
-    // A header drawn after the page's first one opens onto its chat.
-    [undefined, "t1", true, { moment: "peek", key: "open:t1", arrives: true }],
-    // The page's first header is a reload landing: no flourish.
-    [undefined, "t1", false, undefined],
-    // A chat being started is no opening yet.
-    ["t1", null, true, undefined],
-  ] as const)(
-    "greets the conversation %s → %s (a header before: %s) with %o",
-    (previous, current, before, cue) => {
-      expect(conversationCue(previous, current, before)).toEqual(cue);
-    },
-  );
+    [null, "t1", { moment: "wink", key: "hello:t1" }],
+    ["t1", "t2", undefined],
+    [undefined, "t1", undefined],
+    ["t1", null, undefined],
+  ] as const)("greets a newly started conversation %s → %s with %o", (previous, current, cue) => {
+    expect(conversationCue(previous, current)).toEqual(cue);
+  });
 
   it.each([
     ["p1", "p2", { moment: "dizzy", key: "moved:p2" }],

@@ -11,6 +11,7 @@ import {
   engineSetRuntimeMode,
   engineUpdateMetadata,
   engineDismissUserInput,
+  engineInterruptTurn,
   engineRespondToApproval,
   engineRespondToUserInput,
   engineStartTurn,
@@ -19,8 +20,12 @@ import {
 import { mateEngineHostAtom, mateEngineReaderAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
-import { engineConversationId, engineConversationScopes } from "./families/mateEngine.ts";
-import { engineHeader } from "./__fixtures__/mateEngine.ts";
+import {
+  engineConversationId,
+  engineConversationScopes,
+  engineFactId,
+} from "./families/mateEngine.ts";
+import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -61,6 +66,32 @@ function rig(mateEngine: number | undefined) {
         Effect.provideService(EnvironmentSupervisor, { prepared } as never),
       );
     });
+  /** The conversation the account holds, with these runs. */
+  const runs = (held: ReadonlyArray<ReturnType<typeof engineRun>>) => {
+    const key = { environmentId: ENV, conversationId: "thread-ada" };
+    header();
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+        scope,
+        generation: 0,
+      })),
+      reset: false,
+      rows: held.map((run) => ({
+        family: "mateEngineRun" as const,
+        id: engineFactId(ENV, run.id),
+        value: { ...run, environmentId: ENV },
+        revision: {
+          kind: "mate-conversation" as const,
+          environmentId: ENV,
+          epoch: 1,
+          seq: run.rev,
+        },
+      })),
+      removals: [],
+    });
+  };
   /** The conversation the account holds: its agent and model, as the engine's header says. */
   const header = (patch: Parameters<typeof engineHeader>[1] = {}) => {
     const key = { environmentId: ENV, conversationId: "thread-ada" };
@@ -87,10 +118,46 @@ function rig(mateEngine: number | undefined) {
       removals: [],
     });
   };
-  return { registry, calls, v1, v1Calls, run, header };
+  return { registry, calls, v1, v1Calls, run, header, runs };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
+  // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
+  // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
+  it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs([
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: "thread-ada/r/1" as never,
+          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ]);
+      yield* Effect.forkChild(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineInterruptTurn(ENV, {
+              type: "thread.turn.interrupt",
+              commandId: "stop-1",
+              threadId: "thread-ada",
+              turnId: "thread-ada/r/1",
+              createdAt: "2026-10-08T00:00:00.000Z",
+            } as never),
+            r.v1,
+          ),
+        ),
+      );
+      yield* Effect.yieldNow;
+      expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
+    }),
+  );
+
   it.effect(
     "a turn on a Mate on the engine goes as the engine's send, under its message's id",
     () =>
@@ -120,16 +187,30 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
-  it.effect("a Mate serving only a newer protocol refuses with the update route", () =>
-    Effect.gen(function* () {
-      const r = rig(2);
-      const failure = yield* Effect.flip(
-        r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
-      );
-      expect(failure.message).toMatch(/Update the app/);
-      expect(r.calls).toEqual([]);
-      expect(r.v1Calls).toEqual([]);
-    }),
+  it.effect.each([
+    {
+      reader: "engine",
+      words:
+        "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+    },
+    {
+      reader: "none",
+      words:
+        "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.",
+    },
+  ] as const)(
+    "a Mate serving only a newer protocol refuses with its app's way out: a reload or update on the web and desktop, an update on the phone (reader $reader)",
+    ({ reader, words }) =>
+      Effect.gen(function* () {
+        const r = rig(2);
+        r.registry.set(mateEngineReaderAtom, reader);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
+        );
+        expect(failure.message).toBe(words);
+        expect(r.calls).toEqual([]);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect(

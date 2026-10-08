@@ -15,18 +15,20 @@ export function ConversationOpeningStage({
     "name" | "tint" | "shape" | "connected" | "project"
   > | null;
 }) {
-  const [waited, setWaited] = useState(!ready);
-  if (!ready && !waited) setWaited(true);
+  const [waited] = useState(!ready);
+  const [arrived, setArrived] = useState(ready);
+  if (ready && !arrived) setArrived(true);
+  const handedOver = ready || arrived;
   if (!waited) return null;
   return (
     <div
-      aria-hidden={ready ? true : undefined}
+      aria-hidden={handedOver ? true : undefined}
       className="pointer-events-none absolute inset-0 z-10"
-      data-conversation-opening={ready ? "ready" : "waiting"}
+      data-conversation-opening={handedOver ? "ready" : "waiting"}
     >
       <MateConnectionState
         mate={mate}
-        face={ready ? "idle" : "sleep"}
+        face={handedOver ? "idle" : "sleep"}
         headline={`${name || "The Mate"} is opening the conversation.`}
         secondary="Picking up where you left off."
         actions={null}

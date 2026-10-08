@@ -7763,6 +7763,17 @@ button.rv-relrow:hover .rv-relrow-go {
   transition: opacity 140ms ease-out;
 }
 
+/* A waiting conversation has no footer yet. Its real footer is measured behind the stage,
+   then arrives with the placed conversation; no stand-in height positions the waiting face. */
+[data-chat-workspace-drop-target]:has([data-conversation-opening="waiting"])
+  [data-conversation-footer] {
+  opacity: 0;
+}
+
+[data-conversation-footer] {
+  transition: opacity 140ms ease-out;
+}
+
 /* The open eyes are the readiness verdict. Their shared pose morph must not
    keep the sleeping strokes painted while this stage hands over. */
 [data-conversation-opening] :is([data-mate-face-eye], [data-mate-face-shut]) {
@@ -7778,7 +7789,8 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-conversation-opening] {
+  [data-conversation-opening],
+  [data-conversation-footer] {
     transition: none;
   }
 }
@@ -9784,7 +9796,12 @@ button.rv-relrow:hover .rv-relrow-go {
   min-width: 0;
   color: var(--muted-foreground);
   font-size: var(--text-sm);
-  text-align: left;
+  text-align: center;
+}
+
+.arrival-failure-details summary {
+  width: fit-content;
+  margin-inline: auto;
 }
 
 .arrival-failure-details summary,
@@ -9798,4 +9815,5 @@ button.rv-relrow:hover .rv-relrow-go {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  text-align: left;
 }

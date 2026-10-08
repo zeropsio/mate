@@ -162,12 +162,17 @@ function stubDomGlobals() {
 
 beforeAll(async () => {
   stubDomGlobals();
-  ({ MessagesTimeline, messageEnters } = await import("./MessagesTimeline"));
+  try {
+    ({ MessagesTimeline, messageEnters } = await import("./MessagesTimeline"));
+  } finally {
+    vi.unstubAllGlobals();
+  }
 }, 30_000);
 
-// The scroll-settling test clears every global stub; mounted timeline rows
-// still touch `window` through the tooltip's focus handling.
+// Timeline rows need the DOM during render; later files must not inherit
+// this fixture's browser storage when choosing their persistence backend.
 beforeEach(stubDomGlobals);
+afterEach(() => vi.unstubAllGlobals());
 
 const ACTIVE_THREAD_ENVIRONMENT_ID = EnvironmentId.make("environment-local");
 const MESSAGE_CREATED_AT = "2026-03-17T19:12:28.000Z";

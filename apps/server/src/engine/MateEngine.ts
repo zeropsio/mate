@@ -45,9 +45,12 @@ export type {
   ViewRun,
 } from "./read/conversationView.ts";
 
-/** What a V1 door answers once the Mate engine owns the conversation. */
+/**
+ * What a V1 door answers once the Mate engine owns the conversation. Only a stale app reaches a V1
+ * door, so the words are for it: a web app reloads, a desktop or phone app updates.
+ */
 export const ENGINE_MOVED =
-  "This Mate's conversation moved to the new engine. Update Zerops Mate to keep talking to it.";
+  "This Mate moved to its new engine. Reload or update this app to keep talking to it.";
 
 /** Why the engine stops a live session. */
 export type StopCause = "sign-out";
@@ -142,6 +145,12 @@ export interface MateEngineService {
     source: HistorySource,
   ) => Effect.Effect<number>;
   /**
+   * Holds every person's send until the returned effect lets them go: a flipped Mate holds them
+   * from its start until its main conversation is adopted, so its earlier record goes in before
+   * anything of the person's takes the first run.
+   */
+  readonly holdSends: Effect.Effect<Effect.Effect<void>>;
+  /**
    * A call's progress (the stand-up's, from zcp's status file), live on the call's item in the
    * conversation a provider thread belongs to; never stored. `null` clears it.
    */
@@ -200,6 +209,7 @@ export const inertMateEngine: MateEngineService = {
   runOutcome: () => Effect.succeed(undefined),
   assignAgent: () => Effect.succeed(false),
   importHistory: () => Effect.succeed(0),
+  holdSends: Effect.succeed(Effect.void),
   callProgress: () => Effect.void,
   callData: () => Effect.succeed([]),
   runOf: () => Effect.succeed(undefined),

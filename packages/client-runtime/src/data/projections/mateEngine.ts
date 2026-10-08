@@ -50,8 +50,9 @@ import { sameValue } from "./equal.ts";
 const iso = (ms: number | null | undefined) =>
   DateTime.formatIso(DateTime.makeUnsafe(ms === null || ms === undefined ? 0 : ms));
 
+/** What the engine reader (the web and desktop, which load the hosted client) says: a reload fixes it. */
 const UPDATE_WORDS =
-  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
+  "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.";
 
 function valuesOf<F extends "mateEngineRun" | "mateEngineItem" | "mateEngineRequest">(
   read: ProjectionReads,
@@ -323,6 +324,9 @@ function workActivities(
 }
 
 /** A marker in a run, as V1 draws the same event: a compaction, an error, a capture's gap. */
+/** The activity kind of the line where the history import cut a conversation's earlier turns. */
+export const HISTORY_CUT_KIND = "history.cut";
+
 function markerActivity(
   item: Extract<Item, { kind: "marker" }>,
   cardOf: CardOf,
@@ -357,6 +361,45 @@ function markerActivity(
         "runtime.warning",
         "The workspace was not captured",
         marker.reason === undefined ? {} : { message: marker.reason },
+        card,
+        item.at,
+        item.seq,
+      );
+    case "warning":
+      // V1 labels a warning by its own words.
+      return marker.reason === undefined
+        ? null
+        : activity(
+            item.id,
+            "runtime.warning",
+            marker.reason,
+            { message: marker.reason },
+            card,
+            item.at,
+            item.seq,
+          );
+    case "plan":
+      // The plan's steps are the item's data, not its record: its words, as V1's update says them.
+      return activity(
+        item.id,
+        "turn.plan.updated",
+        "Plan updated",
+        marker.reason === undefined ? {} : { explanation: marker.reason },
+        card,
+        item.at,
+        item.seq,
+      );
+    case "runtime.note":
+      return marker.reason === undefined
+        ? null
+        : activity(item.id, "runtime.note", marker.reason, {}, card, item.at, item.seq);
+    case "history-cut":
+      // Drawn by the timeline as a line at the conversation's top, never a step of its run.
+      return activity(
+        item.id,
+        HISTORY_CUT_KIND,
+        marker.reason ?? "Earlier turns stayed with the previous engine.",
+        {},
         card,
         item.at,
         item.seq,
@@ -577,6 +620,22 @@ function cardsOf(read: ProjectionReads, conversationKey: string) {
   return { runs, rootOf, cardOf, latest, turn };
 }
 
+/**
+ * The run a Stop on a turn ends: the live run drawn on that card (a run that continues another
+ * draws on its root's, which ended), else the run the turn names.
+ */
+export function engineStopTarget(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+  turnId: string,
+): string {
+  const { runs, rootOf } = cardsOf(read, engineConversationId(key));
+  return (
+    runs.findLast((run) => LIVE_RUN_STATES.has(run.state) && rootOf(run).id === turnId)?.id ??
+    turnId
+  );
+}
+
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
 export interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;
@@ -735,17 +794,39 @@ export const engineThread: Projection<EngineConversationKey, EnvironmentThreadSt
  * Whether older run groups exist before the oldest held — run ordinals are gapless, so any held
  * run past the first says so — and whether reading them is in flight.
  */
+/**
+ * The oldest run the account holds of a conversation, and whether the Mate has runs before it, as
+ * the Mate said: its window for the runs it opened on, the last earlier page for the runs read
+ * since. An ordinal says nothing of it: an import that failed reserved ordinals that hold nothing.
+ */
+export function earlierOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): { readonly before: number; readonly more: boolean } | null {
+  const id = engineConversationId(key);
+  let oldest: number | null = null;
+  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", id))
+    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
+  if (oldest === null) return null;
+  const gauge = read.fact("mateEngineGauge", id);
+  const paged = gauge.kind === "known" ? gauge.value.earlier : undefined;
+  if (paged !== undefined && paged.before === oldest) return paged;
+  const conversation = read.fact("mateEngineConversation", id);
+  const window = conversation.kind === "known" ? conversation.value.window : null;
+  if (window !== null && (window.oldestOrdinal === null || window.oldestOrdinal <= oldest))
+    return { before: oldest, more: window.earlier };
+  return { before: oldest, more: oldest > 1 };
+}
+
 function pageOf(
   read: ProjectionReads,
   key: EngineConversationKey,
 ): Option.Option<EnvironmentThreadPageState> {
-  let oldest: number | null = null;
-  for (const run of valuesOf(read, "mateEngineRun", "engineRunsIn", engineConversationId(key)))
-    if (oldest === null || run.ordinal < oldest) oldest = run.ordinal;
-  if (oldest === null || oldest <= 1) return Option.none();
+  const earlier = earlierOf(read, key);
+  if (earlier === null || !earlier.more) return Option.none();
   const phase = read.stream(engineEarlierScope(key)).phase;
   return Option.some({
-    beforeCursor: String(oldest),
+    beforeCursor: String(earlier.before),
     hasMore: true,
     loadingOlder: phase === "connecting" || phase === "baselining",
   });
@@ -753,6 +834,9 @@ function pageOf(
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
+/** The same news on the phone, which reads no engine conversation: only an update fixes it. */
+export const NATIVE_UPDATE_WORDS =
+  "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
 
 /** A conversation row onto the thread shell the menu draws: its state, its turn, its agent. */
 export function overlayEngineRow(

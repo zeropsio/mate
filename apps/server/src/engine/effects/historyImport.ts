@@ -8,6 +8,7 @@
  * @module engine/effects/historyImport
  */
 import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CommandId, ThreadId, type ConversationId, type HistorySource } from "@t3tools/contracts";
 
@@ -58,6 +59,41 @@ export const askImport = (conversationId: ConversationId, source: HistorySource)
     const history = (yield* conversations.state(conversationId)).history;
     return history?.state === "importing" ? history.runs : 0;
   });
+
+/** How an import that could not start is asked again: soon, then less often, a few times. */
+export const IMPORT_RETRY = Schedule.max([Schedule.exponential("1 second"), Schedule.recurs(5)]);
+
+/**
+ * Starts a conversation's import, asking again while it fails; one that fails for good says its
+ * gap in the conversation (a marker where the earlier record would be), never as if there were
+ * nothing to bring. How many turns it reserved.
+ */
+export const importOrSayGap = (
+  conversationId: ConversationId,
+  source: HistorySource,
+  retry: Schedule.Schedule<unknown, unknown> = IMPORT_RETRY,
+) =>
+  askImport(conversationId, source).pipe(
+    Effect.retry(retry),
+    Effect.catchCause((cause) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning("Mate engine: the earlier conversation could not be read", cause);
+        const conversations = yield* Conversations;
+        yield* conversations.ask({
+          commandId: CommandId.make(`history-unread:${conversationId}`),
+          conversationId,
+          principal: ENGINE,
+          command: {
+            _tag: "ImportHistory",
+            source,
+            runs: 0,
+            unread: "its earlier record could not be read",
+          },
+        });
+        return 0;
+      }),
+    ),
+  );
 
 export interface HistoryImportOptions {
   readonly records?: number;
