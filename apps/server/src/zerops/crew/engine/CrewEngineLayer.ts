@@ -590,12 +590,15 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     );
     const refresh = Effect.flatMap(state, frameOf).pipe(
       Effect.flatMap((frame) =>
-        Effect.flatMap(SubscriptionRef.get(hub), (current) => {
-          const next = nextCrewFrame(current, frame);
-          return Ref.set(latest, next ?? frame).pipe(
-            Effect.andThen(next === null ? Effect.void : SubscriptionRef.set(hub, next)),
-          );
-        }),
+        Effect.flatMap(
+          Effect.all([SubscriptionRef.get(hub), Ref.get(latest)]),
+          ([current, last]) => {
+            const next = nextCrewFrame(current, frame, last);
+            return Ref.set(latest, next ?? frame).pipe(
+              Effect.andThen(next === null ? Effect.void : SubscriptionRef.set(hub, next)),
+            );
+          },
+        ),
       ),
     );
     /** The latest frame at once (its revision current), then one per change of what it shows. */

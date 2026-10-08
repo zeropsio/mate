@@ -108,6 +108,19 @@ const run = (state: RunRecord["state"]): RunRecord => ({
 const decode = Schema.decodeUnknownSync(CrewSnapshot);
 
 describe("crew snapshot", () => {
+  it("a dev service that came up after a step that showed nothing new moves past the frame a late client started from", () => {
+    const none = new CrewWorld().state;
+    const shown = crewSnapshotOf({ ...none, headSeq: 12 }, view({ devHosts: { appdev: null } }));
+    // An observed batch moves the crew's step and nothing it shows: the latest frame, unpublished,
+    // that a client subscribing now starts from.
+    const latest = crewSnapshotOf({ ...none, headSeq: 13 }, view({ devHosts: { appdev: null } }));
+    const up = crewSnapshotOf({ ...none, headSeq: 13 }, view({ devHosts: { appdev: true } }));
+    expect([nextCrewFrame(shown, latest), nextCrewFrame(shown, up, latest)?.revision]).toEqual([
+      null,
+      { epoch: 4, seq: 13, view: 1 },
+    ]);
+  });
+
   it("a dev service that came up at the same step moves the frame's view, so a client takes it", () => {
     const none = { ...new CrewWorld().state, headSeq: 12 };
     const before = crewSnapshotOf(none, view({ devHosts: { appdev: null } }));

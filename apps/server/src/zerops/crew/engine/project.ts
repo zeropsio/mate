@@ -452,20 +452,27 @@ export const crewFrameContent = (frame: CrewSnapshot): string => {
 
 /**
  * The frame to publish after `published`, or none when it shows nothing new. A frame whose showing
- * moved at the same step (a dev service came up or went) comes with its view moved on, so a client
- * that takes only newer frames takes it.
+ * moved at a step a frame already stands at (the published one, or `latest`, the unpublished frame
+ * of a step that showed nothing new, which a client subscribing meanwhile starts from) comes with
+ * its view moved past both, so a client that takes only newer frames takes it.
  */
 export const nextCrewFrame = (
   published: CrewSnapshot,
   frame: CrewSnapshot,
+  latest: CrewSnapshot = published,
 ): CrewSnapshot | null => {
   if (crewFrameContent(published) === crewFrameContent(frame)) return null;
-  const was = published.revision;
   const now = frame.revision;
-  if (was === undefined || now === undefined || was.epoch !== now.epoch || was.seq !== now.seq) {
-    return frame;
-  }
-  return { ...frame, revision: { ...now, view: (was.view ?? 0) + 1 } };
+  if (now === undefined) return frame;
+  const viewAt = (other: CrewSnapshot): number | undefined =>
+    other.revision !== undefined &&
+    other.revision.epoch === now.epoch &&
+    other.revision.seq === now.seq
+      ? (other.revision.view ?? 0)
+      : undefined;
+  const seen = [viewAt(published), viewAt(latest)].filter((view) => view !== undefined);
+  if (seen.length === 0) return frame;
+  return { ...frame, revision: { ...now, view: Math.max(...seen) + 1 } };
 };
 
 /** One frame of the crew feed. */
