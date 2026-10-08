@@ -4507,7 +4507,7 @@ function RunScroll({
       const element = scrollRef.current;
       // A motion of the card's own — its glide, its boxes easing, the card
       // around it or the slot beside it — or a resize moves it only as far as
-      // the clamp explains, its lines resizing a frame's speed past it (run
+      // the clamp explains, its lines or its box resizing a frame's speed past it (run
       // 12: 6 px taller, the top set 14 px up): further up is the person's,
       // whatever took it there with no input on it (find in page, Tab, a
       // drag-select, a screen reader).
@@ -4519,6 +4519,7 @@ function RunScroll({
           stoodMax: stoodAt.max,
           max: element.scrollHeight - element.clientHeight,
           linesResized,
+          boxResized,
         });
       const person = movesAsPerson({
         moving:

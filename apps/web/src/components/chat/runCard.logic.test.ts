@@ -895,6 +895,26 @@ describe("movedByClamp", () => {
       clamp: false,
     },
     {
+      // Journey 9 on the engine: a settled card a joined run makes live again eases its work open;
+      // read as the person's move up, the card never folded when the run settled.
+      what: "its box eased 11 px open, the top set 16 px up",
+      stood: 92,
+      top: 76,
+      stoodMax: 92,
+      max: 81,
+      boxResized: true,
+      clamp: true,
+    },
+    {
+      what: "a find in page as its box eases open",
+      stood: 400,
+      top: 100,
+      stoodMax: 400,
+      max: 380,
+      boxResized: true,
+      clamp: false,
+    },
+    {
       what: "a move a frame's speed past the clamp, nothing resized",
       stood: 400,
       top: 380,
@@ -904,7 +924,8 @@ describe("movedByClamp", () => {
     },
   ])("$what: the clamp's $clamp", ({ stood, top, stoodMax, max, clamp, ...row }) => {
     const linesResized = "linesResized" in row ? row.linesResized : false;
-    expect(movedByClamp({ stood, top, stoodMax, max, linesResized })).toBe(clamp);
+    const boxResized = "boxResized" in row ? row.boxResized : false;
+    expect(movedByClamp({ stood, top, stoodMax, max, linesResized, boxResized })).toBe(clamp);
   });
 });
 
