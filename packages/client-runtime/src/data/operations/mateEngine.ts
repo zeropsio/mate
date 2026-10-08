@@ -42,12 +42,14 @@ declare module "../model.ts" {
       readonly runId: string;
       readonly text: string;
     };
+    readonly "mate-engine-switch-model": EngineOperationTarget & { readonly model: string };
   }
   interface OperationResults {
     readonly "mate-engine-send": EngineAcceptance;
     readonly "mate-engine-stop": EngineAcceptance;
     readonly "mate-engine-answer": EngineAcceptance;
     readonly "mate-engine-steer": EngineAcceptance;
+    readonly "mate-engine-switch-model": EngineAcceptance;
   }
 }
 
@@ -118,9 +120,23 @@ export const mateEngineStop: OperationKind<"mate-engine-stop"> = {
   },
 };
 
+/** A model switch shows once the conversation's header names the model. */
+export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = {
+  kind: "mate-engine-switch-model",
+  executor: "mate",
+  reflected: (read, intent) => {
+    const conversation = read.fact(
+      "mateEngineConversation",
+      engineFactId(intent.environmentId, intent.conversationId),
+    );
+    return conversation.kind === "known" && conversation.value.header.model === intent.model;
+  },
+};
+
 export const MATE_ENGINE_KINDS = [
   mateEngineSend,
   mateEngineStop,
   mateEngineAnswer,
   mateEngineSteer,
+  mateEngineSwitchModel,
 ] as const;

@@ -7,6 +7,8 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
+  engineModeChange,
+  engineUpdateMetadata,
   engineDismissUserInput,
   engineRespondToApproval,
   engineRespondToUserInput,
@@ -16,6 +18,8 @@ import {
 import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
+import { engineConversationId, engineConversationScopes } from "./families/mateEngine.ts";
+import { engineHeader } from "./__fixtures__/mateEngine.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -56,7 +60,33 @@ function rig(mateEngine: number | undefined) {
         Effect.provideService(EnvironmentSupervisor, { prepared } as never),
       );
     });
-  return { registry, calls, v1, v1Calls, run };
+  /** The conversation the account holds: its agent and model, as the engine's header says. */
+  const header = (patch: Parameters<typeof engineHeader>[1] = {}) => {
+    const key = { environmentId: ENV, conversationId: "thread-ada" };
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+        scope,
+        generation: 0,
+      })),
+      reset: true,
+      rows: [
+        {
+          family: "mateEngineConversation",
+          id: engineConversationId(key),
+          value: {
+            environmentId: ENV,
+            header: engineHeader("thread-ada", patch),
+            window: { oldestOrdinal: null, earlier: false },
+          },
+          revision: { kind: "mate-conversation", environmentId: ENV, epoch: 1, seq: 1 },
+        },
+      ],
+      removals: [],
+    });
+  };
+  return { registry, calls, v1, v1Calls, run, header };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
@@ -188,5 +218,120 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       expect(failure.message).toMatch(/Answer the question/);
       expect(r.v1Calls).toEqual([]);
     }),
+  );
+
+  it.effect("a first message's title is never sent to an engine Mate, nor over V1", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", title: "Deploy the api" } as never),
+          r.v1,
+        ),
+      );
+      expect(r.calls).toEqual([]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  it.effect("a model change on the conversation's agent goes as the engine's model switch", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, {
+            threadId: "thread-ada",
+            title: "Deploy",
+            modelSelection: { instanceId: "claudeAgent", model: "claude-opus-4-1" },
+          } as never),
+          r.v1,
+        ),
+      );
+      expect(r.calls).toEqual([
+        {
+          kind: "switch-model",
+          conversationId: "thread-ada",
+          commandId: "op-1",
+          model: "claude-opus-4-1",
+        },
+      ]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  it.effect("the same model again sends nothing", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, {
+            threadId: "thread-ada",
+            modelSelection: { instanceId: "claudeAgent", model: "claude-sonnet-4-5" },
+          } as never),
+          r.v1,
+        ),
+      );
+      expect(r.calls).toEqual([]);
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "another agent",
+      input: { modelSelection: { instanceId: "codex", model: "gpt-5.4" } },
+      words: /one agent/,
+    },
+    {
+      name: "a changed effort",
+      input: {
+        modelSelection: {
+          instanceId: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          options: [{ id: "effort", value: "high" }],
+        },
+      },
+      words: /effort/,
+    },
+    { name: "a branch", input: { branch: "feature" }, words: /branch/ },
+  ])("$name for an engine conversation is refused in words, sending nothing", ({ input, words }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      const failure = yield* Effect.flip(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+            r.v1,
+          ),
+        ),
+      );
+      expect(failure.message).toMatch(words);
+      expect(r.calls).toEqual([]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  it.effect.each(["runtime", "interaction"] as const)(
+    "a %s mode change for an engine conversation is refused in words, never sent over V1",
+    (mode) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineModeChange(mode), r.v1)),
+        );
+        expect(failure.message).toMatch(/mode/);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 });

@@ -66,6 +66,8 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  engineModeChange,
+  engineUpdateMetadata,
   engineDismissUserInput,
   engineInterruptTurn,
   engineRespondToApproval,
@@ -198,19 +200,37 @@ export function createThreadEnvironmentAtoms<R, E>(
     }),
     updateMetadata: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:update-metadata",
-      execute: (input: UpdateThreadMetadataInput) => updateThreadMetadata(input),
+      execute: (input: UpdateThreadMetadataInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineUpdateMetadata(environmentId, input),
+          updateThreadMetadata(input),
+        ),
       scheduler,
       concurrency,
     }),
     setRuntimeMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-runtime-mode",
-      execute: (input: SetThreadRuntimeModeInput) => setThreadRuntimeMode(input),
+      execute: (input: SetThreadRuntimeModeInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineModeChange("runtime"),
+          setThreadRuntimeMode(input),
+        ),
       scheduler,
       concurrency,
     }),
     setInteractionMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-interaction-mode",
-      execute: (input: SetThreadInteractionModeInput) => setThreadInteractionMode(input),
+      execute: (input: SetThreadInteractionModeInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineModeChange("interaction"),
+          setThreadInteractionMode(input),
+        ),
       scheduler,
       concurrency,
     }),

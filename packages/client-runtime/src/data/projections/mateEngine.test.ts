@@ -182,12 +182,42 @@ describe("an engine conversation as the thread the view draws", () => {
           model: "claude-opus-4-1",
           profile: { kind: "mate" },
         },
+        model: "claude-opus-4-1",
       },
     });
     expect(thread(state)?.modelSelection).toMatchObject({
       instanceId: "claudePersonal",
       model: "claude-opus-4-1",
     });
+  });
+
+  it("shows the model the conversation switched to, on the agent it runs", () => {
+    const state = held({ header: { model: "claude-opus-4-1" } });
+    expect(thread(state)?.modelSelection).toMatchObject({
+      instanceId: "claudeAgent",
+      model: "claude-opus-4-1",
+    });
+  });
+
+  it("gives the menu row the model its held conversation switched to", () => {
+    const state = apply(held({ header: { model: "claude-opus-4-1" } }), [
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+        reset: true,
+        rows: [
+          {
+            family: "mateEngineRow",
+            id: engineFactId(ENV, "thread-ada"),
+            value: { ...engineRow(ENV, "thread-ada"), environmentId: ENV },
+            revision: revision(5),
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(engineRows.derive(readsOfState(state), ENV)[0]?.agent?.model).toBe("claude-opus-4-1");
   });
 
   it("is still opening before its window arrives", () => {

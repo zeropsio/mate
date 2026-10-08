@@ -90,6 +90,12 @@ export interface EngineCallWire {
           readonly commandId: string;
           readonly runId: string;
           readonly text: string;
+        }
+      | {
+          readonly kind: "switch-model";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly model: string;
         },
   ) => Effect.Effect<EngineCallResult, EngineCallError>;
   readonly receipt: (
@@ -148,6 +154,11 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               runId: command.runId as never,
               text: command.text,
             }),
+          );
+        case "switch-model":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineSwitchModel, { ...base, model: command.model }),
           );
       }
     },
@@ -427,6 +438,22 @@ export function makeMateEngineOperations(options: {
           commandId,
           runId: target.runId,
           text: target.text,
+        }),
+      ),
+    /** The conversation's next model, on the agent it already runs. */
+    switchModel: (target: EngineOperationTarget & { readonly model: string }) =>
+      execute(
+        {
+          kind: "mate-engine-switch-model",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          model: target.model,
+        },
+        (commandId) => ({
+          kind: "switch-model",
+          conversationId: target.conversationId,
+          commandId,
+          model: target.model,
         }),
       ),
     close: () => {

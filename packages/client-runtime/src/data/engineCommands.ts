@@ -9,6 +9,7 @@
 import {
   ChatImageAttachment,
   OrchestrationDispatchCommandError,
+  type ConversationHeader,
   type ClientOrchestrationCommand,
   type DispatchResult,
 } from "@t3tools/contracts";
@@ -21,6 +22,7 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
 import { engineRouteOf, mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
+import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
 import { ENGINE_UPDATE_WORDS } from "./projections/mateEngine.ts";
@@ -145,4 +147,61 @@ export const engineDismissUserInput = () => () =>
       outcome: "refused",
       message: "Answer the question or stop the work; this Mate's engine has no dismissal yet.",
     }),
+  );
+
+const refused = (message: string) =>
+  Effect.fail(new EngineOperationFailed({ outcome: "refused", message }));
+
+const sameOptions = (left: unknown, right: unknown) =>
+  JSON.stringify(left ?? []) === JSON.stringify(right ?? []);
+
+/**
+ * A thread's metadata on an engine conversation: its title is never sent (the engine generates
+ * none; the menu's subject is the person's latest message), a model change on the agent the
+ * conversation runs goes as the engine's model switch, and anything the engine does not take —
+ * another agent, a changed effort, a branch or worktree — is refused in words.
+ */
+export const engineUpdateMetadata =
+  (environmentId: string, input: Command<"thread.meta.update">) =>
+  (host: MateEngineHost): Effect.Effect<EngineAcceptance, EngineOperationFailed> => {
+    if (
+      input.branch !== undefined ||
+      input.worktreePath !== undefined ||
+      input.expectedBranch !== undefined ||
+      input.expectedWorktreePath !== undefined ||
+      input.linkedPullRequest !== undefined
+    )
+      return refused("A branch or worktree is not something this Mate's engine takes yet.");
+    const selection = input.modelSelection;
+    if (selection === undefined) return Effect.succeed({ seq: 0 });
+    const conversation = host.store
+      .state()
+      .facts.get(
+        `mateEngineConversation:${engineConversationId({ environmentId, conversationId: input.threadId })}`,
+      )?.content;
+    if (conversation?.kind !== "value")
+      return refused("Open this conversation before changing its model.");
+    const { header } = conversation.value as { readonly header: ConversationHeader };
+    const agent = header.agent;
+    if (agent !== null && selection.instanceId !== agent.instanceId)
+      return refused(
+        "This Mate's engine runs one agent per conversation; switch the model, not the agent.",
+      );
+    if (agent !== null && !sameOptions(selection.options, agent.options))
+      return refused("This Mate's engine does not take an effort change yet; keep the effort.");
+    if (selection.model === (header.model ?? agent?.model ?? null))
+      return Effect.succeed({ seq: 0 });
+    return host.operations.switchModel({
+      environmentId,
+      conversationId: input.threadId,
+      model: selection.model,
+    });
+  };
+
+/** The engine takes neither mode: the workspace sets the runtime mode, and there is no plan mode. */
+export const engineModeChange = (mode: "runtime" | "interaction") => () =>
+  refused(
+    mode === "runtime"
+      ? "This Mate's engine takes its runtime mode from its workspace; it cannot be changed here."
+      : "This Mate's engine has no plan mode yet; send the message as it is.",
   );
