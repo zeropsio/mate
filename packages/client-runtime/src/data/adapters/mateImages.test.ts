@@ -1,4 +1,4 @@
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
@@ -227,4 +227,64 @@ it("reopening a seen conversation image reuses its authorized Blob without anoth
   expect(mateImage.derive(readsOfState(store.state()), key)).toMatchObject({ kind: "ready", blob });
   again();
   images.stop();
+});
+
+it("revalidates mutable image identities but reuses authorized bytes for an unchanged digest", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const current: MateImageKey = {
+    ...key,
+    resource: {
+      _tag: "workspace-file",
+      threadId: ThreadId.make("thread"),
+      path: "/tmp/current.png",
+    },
+  };
+  let digest = "first";
+  let metadata = 0;
+  let transfers = 0;
+  const images = makeMateImages({
+    store,
+    reuseRetained: true,
+    wire: {
+      read: (_, retained) =>
+        Effect.sync(() => {
+          metadata++;
+          const blob =
+            retained?.(digest) ??
+            (() => {
+              transfers++;
+              return new Blob([digest]);
+            })();
+          return { blob, digest };
+        }),
+      repair: () => Effect.void,
+    },
+  });
+  const mount = async () => {
+    const done = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (streamOf(store.state(), mateImageScope(current)).phase === "live") {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    const release = images.demand(current);
+    await done;
+    const read = mateImage.derive(readsOfState(store.state()), current);
+    release();
+    return read;
+  };
+  const first = await mount();
+  expect(await mount()).toEqual(first);
+  expect(metadata).toBe(2);
+  expect(transfers).toBe(1);
+  digest = "changed";
+  expect(await mount()).toMatchObject({ kind: "ready", digest: "changed" });
+  expect(metadata).toBe(3);
+  expect(transfers).toBe(2);
+  images.stop();
+  store.close();
+  registry.dispose();
 });

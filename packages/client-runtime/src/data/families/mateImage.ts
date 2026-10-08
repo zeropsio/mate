@@ -13,6 +13,7 @@ export interface MateImageKey extends MateImageReference {
 }
 export interface MateImageValue {
   readonly blob: Blob | null;
+  readonly digest?: string;
   readonly reference?: string;
   readonly dimensions?: { readonly width: number; readonly height: number };
   readonly failure?: string;
@@ -27,7 +28,10 @@ export const mateImageFamily: FamilySpec<"mateImage"> = {
   family: "mateImage",
   authority: "mate",
   scope: { source: "mate", suffix: "image", leaving: "removed", demand: "detail" },
-  indexes: [{ name: "mateImageReference", keyOf: (value) => value.reference ?? null }],
+  indexes: [
+    { name: "mateImageReference", keyOf: (value) => value.reference ?? null },
+    { name: "mateImageDigest", keyOf: (value) => value.digest ?? null },
+  ],
 };
 export const mateImageId = (key: MateImageKey) =>
   `${key.resource._tag === "project-favicon" || (key.resource._tag === "workspace-file" && !key.resource.path.startsWith("mate-asset:")) ? "image-current" : "image"}/${encodeURIComponent(JSON.stringify(key))}`;

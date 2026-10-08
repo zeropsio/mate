@@ -122,3 +122,9 @@ centrally owned two-second observation cadence, including quiet windows for reco
 kernel's shortest unprivileged PSI tracking window, not a truth threshold. Current runnable demand
 is compared with the visible cgroup's cpuset and quota allocation; historical PSI averages alone
 cannot establish exhaustion. Requests and unrelated notifications do not replace that observation window.
+
+- Hosted images retain their object URL and a detached decoded browser resource by representation
+  digest within the account lifetime. Remounts read an authorized retained preview before measuring
+  the new slot; mutable paths still revalidate metadata, then reuse bytes only for the confirmed
+  digest. Access withdrawal releases browser resources; account closure revokes every URL. Desktop
+  inherits this web path. Mobile later: native image presentation and byte retention stay unchanged.

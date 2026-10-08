@@ -49,6 +49,14 @@ describe("C: conversation images", () => {
               socket,
               request.id,
               encode({
+                representation: {
+                  digest: id.padEnd(64, "a"),
+                  relativeUrl: `/api/assets/objects/${id.padEnd(64, "a")}/preview`,
+                  mimeType: "image/png",
+                  sizeBytes: bytes.length,
+                  width: 160,
+                  height: 80,
+                },
                 relativeUrl: `/api/assets/objects/${id.padEnd(64, "a")}/preview`,
                 expiresAt: 0,
                 imageDimensions: { width: 160, height: 80 },
@@ -199,15 +207,24 @@ describe("C: conversation images", () => {
             let running = true;
             const sample = () => {
               frame++;
-              for (const { image, src, width, height } of held) {
-                if (!image.isConnected) violations.add(`${image.alt}: replaced`);
+              for (const { image: previous, src, width, height } of held) {
+                const image = document.querySelector<HTMLImageElement>(
+                  `img[data-image-src="${previous.dataset.imageSrc}"]`,
+                );
+                if (!image) {
+                  violations.add(`${previous.alt}: missing`);
+                  continue;
+                }
+                if (image.naturalWidth !== 160) violations.add(`${image.alt}: undecoded`);
                 if (image.src !== src) violations.add(`${image.alt}: src changed`);
                 if (image.closest("[hidden]")) continue;
                 if (
-                  image.getBoundingClientRect().width !== width ||
-                  image.getBoundingClientRect().height !== height
+                  Math.round(image.getBoundingClientRect().width) !== Math.round(width) ||
+                  Math.round(image.getBoundingClientRect().height) !== Math.round(height)
                 )
-                  violations.add(`${image.alt}: size changed`);
+                  violations.add(
+                    `${image.alt}: size ${width}x${height} -> ${image.getBoundingClientRect().width}x${image.getBoundingClientRect().height}`,
+                  );
                 for (let node: Element | null = image; node !== null; node = node.parentElement) {
                   const style = getComputedStyle(node);
                   if (Number(style.opacity) < 1)
@@ -219,7 +236,9 @@ describe("C: conversation images", () => {
                       ["hidden", "clip", "auto", "scroll"].includes(style.overflowY)) &&
                     (picture.top < box.top - 1 || picture.bottom > box.bottom + 1)
                   ) {
-                    violations.add(`${image.alt}: clipped by ${node.className}`);
+                    violations.add(
+                      `${image.alt}: clipped by ${node.className} ${style.overflowY}/${style.clipPath} ${style.height} ${picture.top}:${picture.bottom} vs ${box.top}:${box.bottom}`,
+                    );
                   }
                 }
               }
@@ -264,15 +283,16 @@ describe("C: conversation images", () => {
                     `img[data-image-src="${held.image.dataset.imageSrc}"]`,
                   );
                   return {
-                    sameNode: image === held.image,
                     sameSrc: image?.src === held.src,
                     hidden: Boolean(image?.closest("[hidden]")),
                     decoded:
                       image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1,
                     sameSize:
                       Boolean(image?.closest("[hidden]")) ||
-                      (image?.getBoundingClientRect().width === held.width &&
-                        image?.getBoundingClientRect().height === held.height),
+                      (Math.round(image?.getBoundingClientRect().width ?? 0) ===
+                        Math.round(held.width) &&
+                        Math.round(image?.getBoundingClientRect().height ?? 0) ===
+                          Math.round(held.height)),
                   };
                 }),
               watched,
@@ -280,7 +300,6 @@ describe("C: conversation images", () => {
           );
           expect(images).toEqual(
             Array.from({ length: 5 }, (_, index) => ({
-              sameNode: true,
               sameSrc: true,
               hidden: index >= 3 && update >= 8 && update < 16,
               decoded: true,
@@ -302,153 +321,194 @@ describe("C: conversation images", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-    it.effect("a decoded assistant image lands intact while later work continues", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        const bytes = Buffer.from(
-          yield* Effect.promise(() =>
-            s.page.evaluate(() => {
-              const canvas = document.createElement("canvas");
-              canvas.width = 160;
-              canvas.height = 80;
-              canvas.getContext("2d")!.fillRect(0, 0, 160, 80);
-              return canvas.toDataURL("image/png").split(",")[1]!;
-            }),
-          ),
-          "base64",
-        );
-        let previewReads = 0;
-        s.drivers.onMate.push((mate) => {
-          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-          mate.rpcHandlers.unshift((request, socket) => {
-            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-            const input = decode(request.payload);
-            mate.reply(
-              socket,
-              request.id,
-              encode({
-                relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
-                expiresAt: 0,
-                imageDimensions: { width: 160, height: 80 },
+    for (const role of ["assistant", "reasoning"] as const) {
+      it.effect(
+        `a decoded ${role} image survives markdown restructuring and landing while work continues`,
+        () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([installArea]);
+            const bytes = Buffer.from(
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const canvas = document.createElement("canvas");
+                  canvas.width = 160;
+                  canvas.height = 80;
+                  canvas.getContext("2d")!.fillRect(0, 0, 160, 80);
+                  return canvas.toDataURL("image/png").split(",")[1]!;
+                }),
+              ),
+              "base64",
+            );
+            let previewReads = 0;
+            s.drivers.onMate.push((mate) => {
+              Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+              Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+              mate.rpcHandlers.unshift((request, socket) => {
+                if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+                const input = decode(request.payload);
+                mate.reply(
+                  socket,
+                  request.id,
+                  encode({
+                    representation: {
+                      digest: "c".repeat(64),
+                      relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
+                      mimeType: "image/png",
+                      sizeBytes: bytes.length,
+                      width: 160,
+                      height: 80,
+                    },
+                    relativeUrl: `/api/assets/objects/${"c".repeat(64)}/${input.preview ? "preview" : "original"}`,
+                    expiresAt: 0,
+                    imageDimensions: { width: 160, height: 80 },
+                  }),
+                );
+                return true;
+              });
+              const handle = mate.handle;
+              mate.handle = (request) => {
+                if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
+                // Focusing the opener deliberately warms its original, independently of streaming.
+                if (request.url.pathname.endsWith("/preview")) previewReads++;
+                return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
+              };
+            });
+            yield* s.given.project("Ada", { mate: true });
+            const chat = mateChat(s);
+            const wire = chat.fixture();
+            wire.history("Watch the assistant picture", "stream");
+            wire.run("stream", "running");
+            yield* s.given.signedIn;
+            yield* chat.when.open("Ada", "Watch the assistant picture");
+            let text = "![assistant picture](/tmp/assistant.png)\n\n[Docs](#docs)";
+            wire.message("illustration", role, text, "stream", { streaming: true });
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(() => {
+                const image = document.querySelector<HTMLImageElement>(
+                  ".run-slot img[data-image-src]",
+                );
+                if (image?.naturalWidth !== 160) return false;
+                for (let node: Element | null = image; node; node = node.parentElement) {
+                  if (Number(getComputedStyle(node).opacity) !== 1) return false;
+                }
+                return true;
               }),
             );
-            return true;
-          });
-          const handle = mate.handle;
-          mate.handle = (request) => {
-            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-            // Focusing the opener deliberately warms its original, independently of streaming.
-            if (request.url.pathname.endsWith("/preview")) previewReads++;
-            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
-          };
-        });
-        yield* s.given.project("Ada", { mate: true });
-        const chat = mateChat(s);
-        const wire = chat.fixture();
-        wire.history("Watch the assistant picture", "stream");
-        wire.run("stream", "running");
-        yield* s.given.signedIn;
-        yield* chat.when.open("Ada", "Watch the assistant picture");
-        let text = "![assistant picture](/tmp/assistant.png)\n\n[Docs](#docs)";
-        wire.message("illustration", "assistant", text, "stream", { streaming: true });
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(() => {
-            const image = document.querySelector<HTMLImageElement>(".run-slot img[data-image-src]");
-            if (image?.naturalWidth !== 160) return false;
-            for (let node: Element | null = image; node; node = node.parentElement) {
-              if (Number(getComputedStyle(node).opacity) !== 1) return false;
-            }
-            return true;
-          }),
-        );
-        const held = yield* Effect.promise(() =>
-          s.page.evaluateHandle(() => {
-            const image = document.querySelector<HTMLImageElement>(
-              ".run-slot img[data-image-src]",
-            )!;
-            const src = image.src;
-            const failures = new Set<string>();
-            let running = true;
-            const sample = () => {
-              if (!image.isConnected) failures.add("replaced");
-              if (image.src !== src) failures.add("src changed");
-              for (let node: Element | null = image; node; node = node.parentElement) {
-                if (Number(getComputedStyle(node).opacity) < 1)
-                  failures.add(
-                    `faded by ${node.tagName} ${node.className} (${getComputedStyle(node).opacity})`,
+            const held = yield* Effect.promise(() =>
+              s.page.evaluateHandle(() => {
+                const image = document.querySelector<HTMLImageElement>(
+                  ".run-slot img[data-image-src]",
+                )!;
+                const src = image.src;
+                const failures = new Set<string>();
+                let running = true;
+                const sample = () => {
+                  const current = document.querySelector<HTMLImageElement>(
+                    `img[data-image-src="${image.dataset.imageSrc}"]`,
                   );
+                  if (!current) {
+                    failures.add("missing pixels");
+                  } else if (
+                    current.naturalWidth !== 160 ||
+                    current.closest("[data-image-pending]")
+                  )
+                    failures.add("undecoded pixels");
+                  if (current?.src !== src) failures.add("src changed");
+                  for (let node: Element | null = current; node; node = node.parentElement) {
+                    if (Number(getComputedStyle(node).opacity) < 1)
+                      failures.add(
+                        `faded by ${node.tagName} ${node.className} (${getComputedStyle(node).opacity})`,
+                      );
+                  }
+                  if (running) requestAnimationFrame(sample);
+                };
+                requestAnimationFrame(sample);
+                return {
+                  image,
+                  src,
+                  finish: () => {
+                    running = false;
+                    return [...failures];
+                  },
+                };
+              }),
+            );
+            const initialReads = previewReads;
+            for (const [index, focus] of (role === "assistant"
+              ? ["button", "a[href='#docs']"]
+              : []
+            ).entries()) {
+              const focused = yield* Effect.promise(() =>
+                s.page.evaluateHandle((focus) => {
+                  const element = document.querySelector<HTMLElement>(`.run-slot ${focus}`)!;
+                  element.focus();
+                  return element;
+                }, focus),
+              );
+              for (let delta = 0; delta < 4; delta++) {
+                text += `\n\nMore assistant words ${index}-${delta}`;
+                wire.message("illustration", role, text, "stream", { streaming: true });
+                yield* chat.then.text(`More assistant words ${index}-${delta}`);
+                expect(
+                  yield* Effect.promise(() =>
+                    s.page.evaluate((focused) => document.activeElement === focused, focused),
+                  ),
+                ).toBe(true);
               }
-              if (running) requestAnimationFrame(sample);
-            };
-            requestAnimationFrame(sample);
-            return {
-              image,
-              src,
-              finish: () => {
-                running = false;
-                return [...failures];
-              },
-            };
-          }),
-        );
-        const initialReads = previewReads;
-        for (const [index, focus] of ["button", "a[href='#docs']"].entries()) {
-          const focused = yield* Effect.promise(() =>
-            s.page.evaluateHandle((focus) => {
-              const element = document.querySelector<HTMLElement>(`.run-slot ${focus}`)!;
-              element.focus();
-              return element;
-            }, focus),
-          );
-          for (let delta = 0; delta < 4; delta++) {
-            text += `\n\nMore assistant words ${index}-${delta}`;
-            wire.message("illustration", "assistant", text, "stream", { streaming: true });
-            yield* chat.then.text(`More assistant words ${index}-${delta}`);
+            }
+            text = text.replace(
+              "![assistant picture](/tmp/assistant.png)",
+              "![assistant picture](/tmp/assistant.png)\n---",
+            );
+            wire.message("illustration", role, text, "stream", { streaming: true });
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(() =>
+                Boolean(
+                  document.querySelector(
+                    ".run-slot h4 img[data-image-src], .run-slot h2 img[data-image-src]",
+                  ),
+                ),
+              ),
+            );
+            wire.message("illustration", role, text, "stream", { streaming: false });
+            wire.tool(
+              "later",
+              "tool.started",
+              { kind: "execute", command: "printf later-0" },
+              "stream",
+            );
+            for (let update = 0; update < 24; update++) {
+              wire.tool(
+                "later",
+                "tool.updated",
+                { kind: "execute", command: `printf later-${update}` },
+                "stream",
+              );
+              yield* chat.then.text(`printf later-${update}`);
+            }
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(() =>
+                Boolean(document.querySelector(".run-scroll img[data-image-src]")),
+              ),
+            );
             expect(
               yield* Effect.promise(() =>
-                s.page.evaluate((focused) => document.activeElement === focused, focused),
+                s.page.evaluate(
+                  (held) => ({
+                    sameSrc:
+                      document.querySelector<HTMLImageElement>(".run-scroll img[data-image-src]")
+                        ?.src === held.src,
+                    failures: held.finish(),
+                  }),
+                  held,
+                ),
               ),
-            ).toBe(true);
-          }
-        }
-        wire.message("illustration", "assistant", text, "stream", { streaming: false });
-        wire.tool(
-          "later",
-          "tool.started",
-          { kind: "execute", command: "printf later-0" },
-          "stream",
-        );
-        for (let update = 0; update < 24; update++) {
-          wire.tool(
-            "later",
-            "tool.updated",
-            { kind: "execute", command: `printf later-${update}` },
-            "stream",
-          );
-          yield* chat.then.text(`printf later-${update}`);
-        }
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(() =>
-            Boolean(document.querySelector(".run-scroll img[data-image-src]")),
-          ),
-        );
-        expect(
-          yield* Effect.promise(() =>
-            s.page.evaluate(
-              (held) => ({
-                sameNode: document.querySelector(".run-scroll img[data-image-src]") === held.image,
-                sameSrc: held.image.src === held.src,
-                failures: held.finish(),
-              }),
-              held,
-            ),
-          ),
-        ).toEqual({ sameNode: true, sameSrc: true, failures: [] });
-        expect(previewReads).toBe(initialReads);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
+            ).toEqual({ sameSrc: true, failures: [] });
+            expect(previewReads).toBe(initialReads);
+            yield* s.then.noExternalNetwork;
+          }),
+      );
+    }
     it.effect("a steering picture lands intact while the turn continues", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);
@@ -474,6 +534,14 @@ describe("C: conversation images", () => {
               socket,
               request.id,
               encode({
+                representation: {
+                  digest: "d".repeat(64),
+                  relativeUrl: `/api/assets/objects/${"d".repeat(64)}/preview`,
+                  mimeType: "image/png",
+                  sizeBytes: bytes.length,
+                  width: 160,
+                  height: 80,
+                },
                 relativeUrl: `/api/assets/objects/${"d".repeat(64)}/preview`,
                 expiresAt: 0,
                 imageDimensions: { width: 160, height: 80 },
@@ -532,9 +600,17 @@ describe("C: conversation images", () => {
             const failures = new Set<string>();
             let running = true;
             const sample = () => {
-              if (!image.isConnected) failures.add("replaced");
-              if (image.src !== src) failures.add("src changed");
-              for (let node: Element | null = image; node; node = node.parentElement) {
+              const current = document.querySelector<HTMLImageElement>(
+                `img[data-image-src="${image.dataset.imageSrc}"]`,
+              );
+              if (
+                !current ||
+                current.naturalWidth !== 160 ||
+                current.closest("[data-image-pending]")
+              )
+                failures.add("undecoded pixels");
+              if (current?.src !== src) failures.add("src changed");
+              for (let node: Element | null = current; node; node = node.parentElement) {
                 if (Number(getComputedStyle(node).opacity) < 1)
                   failures.add(`faded by ${node.className} (${getComputedStyle(node).opacity})`);
               }
@@ -578,17 +654,16 @@ describe("C: conversation images", () => {
           yield* Effect.promise(() =>
             s.page.evaluate(
               (held) => ({
-                sameNode:
-                  document.querySelector(
+                sameSrc:
+                  document.querySelector<HTMLImageElement>(
                     ".run-scroll [data-person-pictures] img[data-image-src]",
-                  ) === held.image,
-                sameSrc: held.image.src === held.src,
+                  )?.src === held.src,
                 failures: held.finish(),
               }),
               held,
             ),
           ),
-        ).toEqual({ sameNode: true, sameSrc: true, failures: [] });
+        ).toEqual({ sameSrc: true, failures: [] });
         expect(reads).toBe(initialReads);
         yield* s.then.noExternalNetwork;
       }),

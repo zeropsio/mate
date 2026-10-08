@@ -79,7 +79,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { flushSync } from "react-dom";
 
 import { afterLayout } from "~/lib/afterLayout";
 import { cn } from "~/lib/utils";
@@ -1240,17 +1240,10 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  */
 function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
-  const content = useMemo(() => ({ kind: "message" as const, message }), [message]);
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} what="message">
-        <RetainedRunContent
-          contentKey={`message:${message.id}`}
-          content={content}
-          className="min-w-0"
-        >
-          <NoteWords message={message} />
-        </RetainedRunContent>
+        <NoteWords message={message} />
       </OpensWhole>
     </Bubble>
   );
@@ -1368,68 +1361,13 @@ function StepPictures({ step }: { readonly step: WorkStep }) {
   return (
     <span className="flex min-w-0 flex-wrap gap-1.5 px-3 pb-1.75">
       {shown.map(({ key, path }) => (
-        <StepPicture
-          key={key}
-          pictureKey={key}
-          onOpen={onImageExpand}
-          path={path}
-          threadRef={threadRef}
-        />
+        <StepPicture key={key} onOpen={onImageExpand} path={path} threadRef={threadRef} />
       ))}
     </span>
   );
 }
 
-type RunContent =
-  | { readonly kind: "picture"; readonly path: string }
-  | { readonly kind: "message"; readonly message: ChatMessage }
-  | { readonly kind: "person-pictures"; readonly pictures: ReadonlyArray<ChatImageAttachment> };
-const RunContentTargets = createContext<{
-  readonly attach: (key: string, host: HTMLElement) => () => void;
-  readonly update: (key: string, content: RunContent) => void;
-} | null>(null);
-
-/** The rendered content belongs to the run; its anchor can move between slot and history. */
-function RetainedRunContent({
-  contentKey,
-  content,
-  children,
-  className,
-}: {
-  readonly contentKey: string;
-  readonly content: RunContent;
-  readonly children: ReactNode;
-  readonly className?: string;
-}) {
-  const targets = use(RunContentTargets);
-  const attach = useCallback(
-    (host: HTMLDivElement | null) => {
-      if (host !== null && targets !== null) return targets.attach(contentKey, host);
-    },
-    [targets, contentKey],
-  );
-  useLayoutEffect(() => {
-    targets?.update(contentKey, content);
-  }, [targets, contentKey, content]);
-  return targets === null ? children : <div ref={attach} className={className} />;
-}
-
-/** A call may move between the live slot and history; its decoded picture stays owned by the run. */
-function StepPicture(props: {
-  readonly pictureKey: string;
-  readonly path: string;
-  readonly threadRef: ScopedThreadRef;
-  readonly onOpen: (preview: ExpandedImagePreview) => void;
-}) {
-  const content = useMemo(() => ({ kind: "picture" as const, path: props.path }), [props.path]);
-  return (
-    <RetainedRunContent contentKey={props.pictureKey} content={content} className="block h-20 w-32">
-      <StepPictureContent {...props} />
-    </RetainedRunContent>
-  );
-}
-
-function StepPictureContent({
+function StepPicture({
   path,
   threadRef,
   onOpen,
@@ -2769,20 +2707,6 @@ function AnswerFiles({ attachments }: { readonly attachments: ReadonlyArray<Chat
 
 /** The pictures of a message the person sent into the run: a compact strip, each opening the viewer on all of them. */
 function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatImageAttachment> }) {
-  const lineKey = use(ChatLineContext);
-  const content = useMemo(() => ({ kind: "person-pictures" as const, pictures }), [pictures]);
-  return (
-    <RetainedRunContent contentKey={`pictures:${lineKey}`} content={content} className="min-w-0">
-      <PersonPicturesContent pictures={pictures} />
-    </RetainedRunContent>
-  );
-}
-
-function PersonPicturesContent({
-  pictures,
-}: {
-  readonly pictures: ReadonlyArray<ChatImageAttachment>;
-}) {
   const { activeThreadEnvironmentId, onImageExpand } = use(TimelineRowCtx);
   const resources = useMemo(() => selectMessageImageResources(pictures), [pictures]);
   const urls = useAssetUrls(activeThreadEnvironmentId, resources);
@@ -3687,7 +3611,7 @@ function LiveSlot({
     const rooms = easeRooms({
       root: slotBox,
       selector: EASED_BOXES,
-      eases: () => shownRef.current && !syncingRef.current && !hasDecodedPicture(slotBox),
+      eases: () => shownRef.current && !syncingRef.current,
       rootClips: true,
       budget: motionRef.current.budget,
     });
@@ -3852,7 +3776,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     const rooms = easeRooms({
       root,
       selector: ":not(*)",
-      eases: () => cardEasesRef.current && !hasDecodedPicture(root),
+      eases: () => cardEasesRef.current,
       rootClips: true,
       attributes: ["data-run-live"],
     });
@@ -3894,56 +3818,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       }),
     [now, row.answering, isCompacting, row.items],
   );
-  // A row's old anchor releases and its new anchor attaches in the same commit.
-  // Keep the portal target through that handoff; a removed row drops its demand.
-  const [contentTargets] = useState(
-    () => new Map<string, { target: HTMLElement; holders: number }>(),
-  );
-  const [contents, setContents] = useState<
-    ReadonlyMap<string, { content: RunContent; target: HTMLElement }>
-  >(() => new Map());
-  const attachContent = useCallback(
-    (key: string, host: HTMLElement) => {
-      let held = contentTargets.get(key);
-      if (held === undefined) {
-        held = { target: document.createElement("div"), holders: 0 };
-        contentTargets.set(key, held);
-      }
-      if (held.target.parentElement !== host) host.appendChild(held.target);
-      held.holders += 1;
-      return () => {
-        held.holders -= 1;
-        if (held.holders === 0)
-          setContents((paths) => {
-            const next = new Map(paths);
-            next.delete(key);
-            return next;
-          });
-      };
-    },
-    [contentTargets],
-  );
-  const updateContent = useCallback(
-    (key: string, content: RunContent) => {
-      const held = contentTargets.get(key);
-      if (held === undefined || held.holders === 0) return;
-      setContents((contents) =>
-        contents.get(key)?.content === content
-          ? contents
-          : new Map(contents).set(key, { content, target: held.target }),
-      );
-    },
-    [contentTargets],
-  );
-  const targets = useMemo(
-    () => ({ attach: attachContent, update: updateContent }),
-    [attachContent, updateContent],
-  );
-  useEffect(() => {
-    for (const [key, picture] of contentTargets) {
-      if (picture.holders === 0 && !contents.has(key)) contentTargets.delete(key);
-    }
-  }, [contents, contentTargets]);
   // A folded line's own calls are the record's too (`parts`).
   const recordKeys = useMemo(
     () =>
@@ -4026,19 +3900,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   useLayoutEffect(() => {
     // Each landing once: it stays the last one heard until the next.
     if (landing === null) return;
-    if (prefersReducedMotion()) {
-      for (const key of landing.from.keys()) {
-        // Faded from its first frame: never a frame at full opacity first.
-        const line = rowByKey(aboveRef.current, key);
-        if (line === null || hasDecodedPicture(line)) continue;
-        line.animate([{ opacity: 0 }, { opacity: 1 }], {
-          duration: 200,
-          easing: "ease",
-          fill: "backwards",
-        });
-      }
-      return;
-    }
+    if (prefersReducedMotion()) return;
     const grew = (boxOf(cardRowOf(rootRef.current))?.height ?? 0) - (landing.card ?? 0);
     // A history that follows its foot follows it to where the landed line
     // ends; a move up the person made just before is read first, and stops it.
@@ -4166,143 +4028,121 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [settledOutcome],
   );
   const resultPictures = useStripFiles(settledOutcome?.turnKey ?? null, stripGuess);
-  const threadRef = ctx.threadRef;
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
     // scroll the person watched is the one that folds away.
-    <RunContentTargets value={typeof document === "undefined" ? null : targets}>
-      <CarriedOpenContext value={carriedOpen}>
-        <ResultPicturesContext value={resultPictures}>
-          <div
-            ref={rootRef}
-            className="@container/chat min-w-0"
-            data-run-chat
-            data-run-fold={settled ? fold : undefined}
-            // The shared height holds through the settle's fold: dropped in the
-            // commit the fold measures, the history jumped to its own height first.
-            data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
-            style={
-              {
-                "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
-              } as CSSProperties
-            }
-          >
-            {above && scroll !== null ? (
-              <div
-                key="above"
-                ref={aboveRef}
-                className="run-above"
-                hidden={row.live && liveFolded}
-                style={row.live && liveFolded ? { display: "none" } : undefined}
-                data-folding={fold === "folding" ? "" : undefined}
-              >
-                {scroll}
-                {/* The hairline over the line, folding away with the work. */}
-                {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
-              </div>
-            ) : null}
-            {row.status === null ? null : settled ? (
+    <CarriedOpenContext value={carriedOpen}>
+      <ResultPicturesContext value={resultPictures}>
+        <div
+          ref={rootRef}
+          className="@container/chat min-w-0"
+          data-run-chat
+          data-run-fold={settled ? fold : undefined}
+          // The shared height holds through the settle's fold: dropped in the
+          // commit the fold measures, the history jumped to its own height first.
+          data-run-live={slotted || settling || fold === "folding" ? "" : undefined}
+          style={
+            {
+              "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
+            } as CSSProperties
+          }
+        >
+          {above && scroll !== null ? (
+            <div
+              key="above"
+              ref={aboveRef}
+              className="run-above"
+              hidden={row.live && liveFolded}
+              style={row.live && liveFolded ? { display: "none" } : undefined}
+              data-folding={fold === "folding" ? "" : undefined}
+            >
+              {scroll}
+              {/* The hairline over the line, folding away with the work. */}
+              {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
+            </div>
+          ) : null}
+          {row.status === null ? null : settled ? (
+            <NowLine
+              key="line"
+              answering={false}
+              outcome={row.outcome}
+              settledHere={watchedLive}
+              end={
+                // A chat opens from its first thing the Mate did (`chatLines`),
+                // and only onto a line that shows something.
+                shows.toggle !== null &&
+                opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
+                  <WorkToggle
+                    onToggle={() => {
+                      hold(folded);
+                      // Watched to its end and still open over its line: it
+                      // folds into the line as a run settling does.
+                      if (fold === "watched") {
+                        foldNow();
+                        return;
+                      }
+                      fromHeightRef.current =
+                        feedRef.current?.getBoundingClientRect().height ?? null;
+                      setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                    }}
+                    open={!folded}
+                  />
+                ) : null
+              }
+              now={null}
+              status={row.status}
+            />
+          ) : (
+            <LiveSlot
+              key="slot"
+              folded={liveFolded}
+              ref={slotRef}
+              items={row.items}
+              live={model.live}
+              filler={model.filler}
+              now={now}
+              answering={row.answering}
+              slot={slot}
+              status={row.status}
+              undone={undone}
+              motionRef={motionRef}
+            />
+          )}
+          {row.live && row.status !== null ? (
+            liveFolded ? (
               <NowLine
-                key="line"
-                answering={false}
-                outcome={row.outcome}
-                settledHere={watchedLive}
-                end={
-                  // A chat opens from its first thing the Mate did (`chatLines`),
-                  // and only onto a line that shows something.
-                  shows.toggle !== null &&
-                  opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
-                    <WorkToggle
-                      onToggle={() => {
-                        hold(folded);
-                        // Watched to its end and still open over its line: it
-                        // folds into the line as a run settling does.
-                        if (fold === "watched") {
-                          foldNow();
-                          return;
-                        }
-                        fromHeightRef.current =
-                          feedRef.current?.getBoundingClientRect().height ?? null;
-                        setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
-                      }}
-                      open={!folded}
-                    />
-                  ) : null
-                }
-                now={null}
+                key="live-summary"
+                answering={row.answering}
+                outcome={null}
+                now={now}
                 status={row.status}
+                end={
+                  <WorkToggle
+                    open={false}
+                    onToggle={() => {
+                      hold(false);
+                      setRunFold(ctx.routeThreadKey, row.turnKey, "watched");
+                    }}
+                  />
+                }
               />
             ) : (
-              <LiveSlot
-                key="slot"
-                folded={liveFolded}
-                ref={slotRef}
-                items={row.items}
-                live={model.live}
-                filler={model.filler}
-                now={now}
-                answering={row.answering}
-                slot={slot}
-                status={row.status}
-                undone={undone}
-                motionRef={motionRef}
+              <WorkToggle
+                open
+                onToggle={() => {
+                  hold(true);
+                  setRunFold(ctx.routeThreadKey, row.turnKey, "folded");
+                }}
               />
-            )}
-            {row.live && row.status !== null ? (
-              liveFolded ? (
-                <NowLine
-                  key="live-summary"
-                  answering={row.answering}
-                  outcome={null}
-                  now={row.now}
-                  status={row.status}
-                  end={
-                    <WorkToggle
-                      open={false}
-                      onToggle={() => {
-                        hold(false);
-                        setRunFold(ctx.routeThreadKey, row.turnKey, "watched");
-                      }}
-                    />
-                  }
-                />
-              ) : (
-                <WorkToggle
-                  open
-                  onToggle={() => {
-                    hold(true);
-                    setRunFold(ctx.routeThreadKey, row.turnKey, "folded");
-                  }}
-                />
-              )
-            ) : null}
-            <div key="below" ref={feedRef} className="run-later-feed">
-              {above ? null : scroll}
-            </div>
-            {threadRef === null
-              ? null
-              : [...contents].map(([key, picture]) =>
-                  createPortal(
-                    picture.content.kind === "picture" ? (
-                      <StepPictureContent
-                        path={picture.content.path}
-                        threadRef={threadRef}
-                        onOpen={ctx.onImageExpand}
-                      />
-                    ) : picture.content.kind === "message" ? (
-                      <NoteWords message={picture.content.message} />
-                    ) : (
-                      <PersonPicturesContent pictures={picture.content.pictures} />
-                    ),
-                    picture.target,
-                    key,
-                  ),
-                )}
+            )
+          ) : null}
+          <div key="below" ref={feedRef} className="run-later-feed">
+            {above ? null : scroll}
           </div>
-        </ResultPicturesContext>
-      </CarriedOpenContext>
-    </RunContentTargets>
+        </div>
+      </ResultPicturesContext>
+    </CarriedOpenContext>
   );
 }
 
@@ -4602,11 +4442,7 @@ function RunScroll({
       selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
       // Earlier lines drawn over the ones in view take their room at once:
       // where the person reads is kept by the scroll (`keepFromFootRef`).
-      eases: () =>
-        easesRef.current &&
-        shownRef.current &&
-        !drawingEarlierRef.current &&
-        !hasDecodedPicture(element),
+      eases: () => easesRef.current && shownRef.current && !drawingEarlierRef.current,
       budget: motionRef?.current.budget ?? null,
     });
     roomRef.current = rooms;
@@ -5060,8 +4896,29 @@ function glideFrom(element: HTMLElement, stood: number): number {
   return glideBy(element, stood - element.getBoundingClientRect().top);
 }
 
+/** A translated row stays inside the scroll that clips it, including its first frame. */
+function visibleTravel(element: HTMLElement, moved: number): number {
+  if (typeof getComputedStyle !== "function") return moved;
+  const box = element.getBoundingClientRect();
+  let lower = Number.NEGATIVE_INFINITY;
+  let upper = Number.POSITIVE_INFINITY;
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (
+      style.clipPath === "none" &&
+      !["auto", "scroll", "hidden", "clip"].includes(style.overflowY)
+    )
+      continue;
+    const view = parent.getBoundingClientRect();
+    lower = Math.max(lower, Math.min(0, view.top - box.top));
+    upper = Math.min(upper, Math.max(0, view.bottom - box.bottom));
+  }
+  return Math.max(lower, Math.min(upper, moved));
+}
+
 /** An element gliding from `moved` px off its place to it, on the plop's curve. */
 function glideBy(element: HTMLElement, moved: number): number {
+  moved = visibleTravel(element, moved);
   if (Math.abs(moved) < 0.5) return 0;
   // Added to what moves it already: a call's rise keeps the rest of its way.
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
@@ -5301,77 +5158,11 @@ function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): bool
   return from !== undefined && Number.isFinite(from);
 }
 
-/** The plop (pass 35, the board's "Plop"): a translate on the strong ease-out, then a 1.5 px settle. */
+/** A landed row uses the same bounded travel as every other line moving in a scroll. */
 const PLOP_MS = 340;
-const PLOP_SETTLE_PX = 1.5;
-/** The settle starts this far into the plop, and swings once past the place and back. */
-const PLOP_SETTLE_FROM = 0.42;
-/** The plop is drawn a frame at a time: WAAPI goes linearly between them. */
-const PLOP_FRAME_MS = 1000 / 60;
-
-/** Already decoded pictures move intact: easing their new container can clip them back to nothing. */
-function hasDecodedPicture(element: HTMLElement): boolean {
-  return (
-    element.querySelector(".asset-image-frame:not([data-image-pending]) > img[data-image-src]") !==
-    null
-  );
-}
-
-/**
- * A row that left the live slot lands where the history drew it: it starts
- * where it stood (`from`, its top on screen) and travels to its place on the
- * strong ease-out, settling 1.5 px past it and back; its kind's mark fades in
- * where the slot's face stood. Under reduced motion it fades in, in place.
- */
-
 function plop(row: HTMLElement, from: number) {
-  if (hasDecodedPicture(row)) return;
-  const mark = row.querySelector<HTMLElement>("[data-run-mark] > span");
-  if (prefersReducedMotion() || !Number.isFinite(from)) {
-    row.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 200,
-      easing: "ease",
-      fill: "backwards",
-    }).currentTime = 0;
-    return;
-  }
-  stopGliding(row);
-  const travel = from - row.getBoundingClientRect().top;
-  if (Math.abs(travel) < 0.5) {
-    mark?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "ease" });
-    return;
-  }
-  // Past its place on the side it travels towards, and back.
-  const past = travel > 0 ? -PLOP_SETTLE_PX : PLOP_SETTLE_PX;
-  // Its way, a frame at a time, on the card's own curve (`approach`): a long
-  // travel goes at the card's top speed, never a 40 px frame.
-  const way = [travel];
-  while (way.at(-1) !== 0 && way.length < 120) {
-    way.push(approach(way.at(-1)!, 0, PLOP_FRAME_MS, ROOM_TAU_MS));
-  }
-  const steps = Math.max(1, way.length - 1);
-  const frames = way.map((at, frame) => {
-    const progress = frame / steps;
-    const settle =
-      progress > PLOP_SETTLE_FROM
-        ? Math.sin((Math.PI * (progress - PLOP_SETTLE_FROM)) / (1 - PLOP_SETTLE_FROM))
-        : 0;
-    return { translate: `0 ${at + past * settle}px` };
-  });
-  // In effect from this frame: a new animation waits a frame for its start
-  // time, and the row would stand a frame at its place before travelling.
-  row.animate(frames, {
-    id: GLIDE_ID,
-    duration: Math.max(PLOP_MS, steps * PLOP_FRAME_MS),
-    easing: "linear",
-  }).currentTime = 0;
-  const fade = mark?.animate([{ opacity: 0 }, { opacity: 1 }], {
-    duration: 240,
-    delay: 60,
-    easing: "ease",
-    fill: "backwards",
-  });
-  if (fade !== undefined) fade.currentTime = 0;
+  if (prefersReducedMotion() || !Number.isFinite(from)) return;
+  glideFrom(row, from);
 }
 
 /**

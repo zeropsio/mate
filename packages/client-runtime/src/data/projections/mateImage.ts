@@ -14,6 +14,7 @@ export type MateImageRead =
   | {
       readonly kind: "ready";
       readonly blob: Blob;
+      readonly digest?: string;
       readonly dimensions?: MateImageValue["dimensions"];
       readonly occurrence?: MateImageValue["occurrence"];
     }
@@ -51,6 +52,7 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
         ? {
             kind: "ready",
             blob: fact.value.blob,
+            ...(fact.value.digest === undefined ? {} : { digest: fact.value.digest }),
             ...(fact.value.dimensions ? { dimensions: fact.value.dimensions } : {}),
             ...(fact.value.occurrence === undefined ? {} : { occurrence: fact.value.occurrence }),
           }
@@ -75,6 +77,7 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
     a.kind === b.kind &&
     (a.kind === "ready" && b.kind === "ready"
       ? a.blob === b.blob &&
+        a.digest === b.digest &&
         a.dimensions?.width === b.dimensions?.width &&
         a.dimensions?.height === b.dimensions?.height
       : a.kind === "failed" && b.kind === "failed"
@@ -101,6 +104,7 @@ export const mateImagePreview: Projection<MateImageReference, MateImageRead> = {
         return {
           kind: "ready",
           blob: fact.value.blob,
+          ...(fact.value.digest === undefined ? {} : { digest: fact.value.digest }),
           ...(fact.value.dimensions ? { dimensions: fact.value.dimensions } : {}),
         };
     }
