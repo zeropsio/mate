@@ -31,6 +31,8 @@ export const CAPTURE_GUARD_BYTES = 64 * 1024;
 const Checkpoint = Schema.Struct({
   /** Claude v2 excludes synthetic refusals; an older checkpoint needs one reconciliation scan. */
   normalization: Schema.optionalKey(Schema.String),
+  /** Upgrade reconciliation retracts old records without importing the prefix skipped at capture. */
+  reconcileUntil: Schema.optionalKey(Schema.Number),
   offset: Schema.Number,
   /** Digest of the bytes from `from` up to `offset`; absent on a checkpoint from an older build. */
   guard: Schema.optionalKey(Schema.Struct({ from: Schema.Number, digest: Schema.String })),
@@ -125,7 +127,7 @@ export const captureSource = Effect.fnUntraced(function* (
           : { offset: 0, meter: initialMeterState() };
         const normalization = source.provider === "claude" ? "claude-refusals-v2" : undefined;
         if (saved && normalization !== undefined && checkpoint.normalization !== normalization)
-          checkpoint = { offset: 0, meter: initialMeterState() };
+          checkpoint = { offset: 0, meter: initialMeterState(), reconcileUntil: checkpoint.offset };
         const handle = yield* Effect.acquireRelease(
           Effect.tryPromise(() => NodeFSP.open(file, "r")),
           (handle) => Effect.promise(() => handle.close()),
@@ -178,7 +180,13 @@ export const captureSource = Effect.fnUntraced(function* (
         if (rewritten) {
           gaps.add("source-rewritten");
           // Reconcile stable native IDs from the beginning; missing rows never retract facts.
-          checkpoint = { offset: 0, meter: initialMeterState() };
+          checkpoint = {
+            offset: 0,
+            meter: initialMeterState(),
+            ...(checkpoint.reconcileUntil === undefined
+              ? {}
+              : { reconcileUntil: checkpoint.reconcileUntil }),
+          };
         }
         const checkpointAt = (offset: number, extra: { readonly skipTo?: number } = {}) =>
           Effect.gen(function* () {
@@ -188,6 +196,8 @@ export const captureSource = Effect.fnUntraced(function* (
               usageCanonical({
                 offset,
                 normalization,
+                reconcileUntil:
+                  offset < (checkpoint.reconcileUntil ?? 0) ? checkpoint.reconcileUntil : undefined,
                 guard: { from, digest: bytesDigest(yield* read(from, offset - from)) },
                 identity,
                 meter: checkpoint.meter,
@@ -250,9 +260,10 @@ export const captureSource = Effect.fnUntraced(function* (
             const result = meterLine(source.provider, line, checkpoint.meter, options.floor);
             if (result.retract !== undefined)
               yield* ledger.retract(origin.originId, result.retract);
+            const reconciling = offset <= (checkpoint.reconcileUntil ?? 0);
             metered = {
-              facts: result.fact ? [result.fact] : [],
-              gaps: result.gap ? [result.gap] : [],
+              facts: !reconciling && result.fact ? [result.fact] : [],
+              gaps: !reconciling && result.gap ? [result.gap] : [],
             };
           }
           for (const gap of metered.gaps) gaps.add(gap);
@@ -276,6 +287,8 @@ export const captureSource = Effect.fnUntraced(function* (
           usageCanonical({
             offset,
             normalization,
+            reconcileUntil:
+              offset < (checkpoint.reconcileUntil ?? 0) ? checkpoint.reconcileUntil : undefined,
             guard: { from, digest: bytesDigest(tail) },
             identity,
             meter: checkpoint.meter,

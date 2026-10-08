@@ -93,6 +93,48 @@ describe("the pause's automatic-resume choice", () => {
     vi.unstubAllGlobals();
   });
 
+  it("an expired refusal cannot Continue until the pending request is answered", async () => {
+    const continued = vi.fn();
+    const show = (blockedByAnswer: boolean) =>
+      act(() =>
+        root!.render(
+          <PauseBlock
+            nowMs={NOW_MS}
+            row={{
+              kind: "pause",
+              id: "refused",
+              createdAt: at(600),
+              resetsAt: at(60),
+              resumedAt: null,
+              held: 0,
+              provider: "Claude",
+            }}
+            serverPause={null}
+            refused={true}
+            blockedByAnswer={blockedByAnswer}
+            onAutoResumeChange={null}
+            onContinue={blockedByAnswer ? null : continued}
+            speaker={NOVA}
+            timestampFormat="24-hour"
+          />,
+        ),
+      );
+    await show(true);
+    const button = document.querySelector<HTMLButtonElement>("button")!;
+    expect(button.disabled).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Respond to Nova's pending request before continuing.",
+    );
+    await act(() => {
+      button.click();
+      button.click();
+    });
+    expect(continued).not.toHaveBeenCalled();
+    await show(false);
+    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    expect(continued).toHaveBeenCalledOnce();
+  });
+
   it.each([null, at(60), new Date(NOW_MS + 3_600_000).toISOString()])(
     "offers an explicit continuation whether the reset time is known (%s)",
     async (resetsAt) => {

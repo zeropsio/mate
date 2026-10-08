@@ -398,6 +398,7 @@ export function PauseBlock({
   refused = serverPause !== null,
   onAutoResumeChange,
   onContinue = null,
+  blockedByAnswer = false,
 }: {
   readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
@@ -410,6 +411,7 @@ export function PauseBlock({
   readonly refused?: boolean;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
+  readonly blockedByAnswer?: boolean;
 }) {
   const resumed = row.resumedAt !== null;
   const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
@@ -436,13 +438,19 @@ export function PauseBlock({
                   : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
   const actions = !resumed ? (
     <div className="flex flex-col items-center gap-4">
-      {onContinue === null ? null : (
+      {blockedByAnswer ? (
+        <p className="text-line text-muted-foreground">
+          Respond to {speaker.name}'s pending request before continuing.
+        </p>
+      ) : null}
+      {onContinue === null && !blockedByAnswer ? null : (
         <Button
           size="sm"
           variant="ghost"
+          disabled={blockedByAnswer}
           onClick={() => {
             if (refused && reset !== null && !passed) setWaitingAt(resetsAt);
-            else onContinue();
+            else onContinue?.();
           }}
         >
           Continue

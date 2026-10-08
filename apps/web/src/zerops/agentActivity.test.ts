@@ -1050,6 +1050,7 @@ describe("a provider refusal in the menu", () => {
     const parked = {
       ...thread,
       latestMessagePreview: null,
+      latestTurn: { ...thread.latestTurn!, state: "running" as const, completedAt: null },
       session: {
         ...thread.session!,
         status: "running" as const,

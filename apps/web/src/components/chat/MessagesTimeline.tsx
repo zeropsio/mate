@@ -2470,6 +2470,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
         onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
         refused={row.id === ctx.livePauseId && ctx.usageRefused === true}
+        blockedByAnswer={row.id === ctx.livePauseId && ctx.queueBlockedByAnswer === true}
         row={row}
         serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
         speaker={ctx.speaker}

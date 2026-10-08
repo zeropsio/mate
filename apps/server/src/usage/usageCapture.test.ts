@@ -12,12 +12,16 @@ import * as Sqlite from "../persistence/NodeSqliteClient.ts";
 import { initialMeterState, meterLine } from "./usageMeters.ts";
 
 const binding = { orgId: "org", projectId: "project", mateId: "mate" };
-const response = (id: string, amount: number) =>
+const response = (
+  id: string,
+  amount: number,
+  timestamp: string | null = "2026-10-07T12:00:00.000Z",
+) =>
   usageCanonical({
     type: "assistant",
     sessionId: "session",
     requestId: "request",
-    timestamp: "2026-10-07T12:00:00.000Z",
+    ...(timestamp === null ? {} : { timestamp }),
     message: {
       id,
       model: "claude",
@@ -55,13 +59,18 @@ it.effect(
       Effect.gen(function* () {
         const directory = yield* temporary;
         const file = NodePath.join(directory, "session.jsonl");
+        const skipped =
+          response("before-capture-undated", 900, null) +
+          response("before-capture-invalid-date", 800, "not-a-date") +
+          usageCanonical({ type: "system", note: "x".repeat(CAPTURE_READ_BYTES) }) +
+          "\n";
         const admitted = response("real", 120);
         const legacy = response("synthetic", 9);
         const refused = legacy.replace(
           '"type":"assistant"',
           '"error":"rate_limit","type":"assistant"',
         );
-        yield* Effect.tryPromise(() => NodeFSP.writeFile(file, admitted + refused));
+        yield* Effect.tryPromise(() => NodeFSP.writeFile(file, skipped + admitted + refused));
         yield* makeUsageLedger.pipe(
           Effect.flatMap((ledger) =>
             Effect.gen(function* () {
@@ -75,10 +84,16 @@ it.effect(
                 usageDigest(["claude", yield* Effect.promise(() => NodeFSP.realpath(directory))]),
                 file,
               ]);
+              const admittedFact = meterLine("claude", admitted.trim(), initialMeterState()).fact!;
+              yield* ledger.capture(
+                { ...admittedFact, originId: origin.originId },
+                key,
+                Buffer.byteLength(skipped + admitted),
+              );
               yield* ledger.capture(
                 { ...legacyFact, originId: origin.originId },
                 key,
-                Buffer.byteLength(admitted + refused),
+                Buffer.byteLength(skipped + admitted + refused),
               );
               const stats = yield* Effect.promise(() => NodeFSP.stat(file));
               yield* ledger.saveCheckpoint(
@@ -103,9 +118,22 @@ it.effect(
                 [...facts.values()].filter((fact) => fact.state !== "retracted").length,
                 1,
               );
+              assert.equal(facts.get(admittedFact.nativeId)?.revision, "1");
               const cut = (yield* ledger.hello).highWater;
               yield* captureSource(ledger, binding, { provider: "claude", directory });
               assert.equal((yield* ledger.hello).highWater, cut);
+              yield* Effect.promise(() =>
+                NodeFSP.appendFile(file, response("new-undated", 15, null)),
+              );
+              yield* captureSource(ledger, binding, { provider: "claude", directory });
+              const after = [...(yield* journaled(ledger)).values()].filter(
+                (fact) => fact.state !== "retracted",
+              );
+              assert.equal(after.length, 2);
+              assert.equal(
+                after.reduce((sum, fact) => sum + Number(fact.components.uncachedInput), 0),
+                135,
+              );
             }),
           ),
           Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),

@@ -452,9 +452,7 @@ function readThreadAgentActivity(
   const status = resolveThreadStatus({ ...thread, ...visited });
   // The parked SDK can remain running after its refused attempt ends.
   const resolved =
-    settledRefusal &&
-    (status.kind === "failed" ||
-      (status.kind === "working" && thread.latestTurn?.state === "error"))
+    settledRefusal && status.kind === "failed"
       ? { kind: "idle" as const, toneId: "neutral" as const }
       : status;
   return {

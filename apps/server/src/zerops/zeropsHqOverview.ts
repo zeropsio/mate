@@ -35,7 +35,7 @@ import {
 } from "@t3tools/shared/mateLink";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
-import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import { resolveThreadStatus, usageLimitProvider } from "@t3tools/shared/threadStatus";
 
 import { extraLoginAgent } from "./zeropsLoginIds.ts";
 
@@ -114,6 +114,13 @@ function liveStepOf(step: ThreadLiveStep | null | undefined): LiveStep | null {
 }
 
 function mainOf(thread: OrchestrationThreadShell): OverviewMain {
+  const error = textOf(thread.session?.lastError?.split("\n")[0]);
+  const provider = usageLimitProvider(error, thread.session?.providerName);
+  // A compact overview omits the driver: qualify its refusal before losing that identity.
+  const lastError =
+    provider !== null && provider !== usageLimitProvider(error)
+      ? textOf(`${provider} usage limit reached. ${error}`)
+      : error;
   return {
     id: thread.id,
     title: titleOf(thread.title),
@@ -128,7 +135,7 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
         : {
             status: thread.session.status,
             lastError:
-              textOf(thread.session.lastError?.split("\n")[0]) ??
+              lastError ??
               (thread.usagePause && thread.session.providerName
                 ? `${thread.session.providerName === "claudeAgent" ? "Claude" : thread.session.providerName === "codex" ? "Codex" : "Coding agent"} usage limit reached.`
                 : null),

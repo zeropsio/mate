@@ -15,6 +15,7 @@ import {
 import * as Schema from "effect/Schema";
 import { usageCanonical } from "@t3tools/shared/agentUsage";
 import { readTranscriptRecords } from "../../../../../server/src/usage/usageTranscriptReader.ts";
+import { mateOverviewOf } from "../../../../../server/src/zerops/zeropsHqOverview.ts";
 import { UsageAggregator } from "../../../../../server/src/usage/usageAggregation.ts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -48,7 +49,7 @@ describe("C: provider refusal and its real deadline", () => {
             const wire = chat.fixture();
             wire.history();
             wire.claudeLoginFacts("ready");
-            wire.run("refused", "error", "You've hit your weekly limit");
+            wire.run("refused", "running", "You've hit your weekly limit");
             const resetsAt = "2099-10-10T00:00:00.000Z";
             wire.snapshot({
               session: {
@@ -151,6 +152,75 @@ describe("C: provider refusal and its real deadline", () => {
               yield* Effect.promise(() => s.page.screenshot({ path: `${output}/codex.png` }));
             yield* s.then.noExternalNetwork;
           }),
+      );
+
+      it.effect("a parked refusal cannot queue Continue behind an unanswered question", () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          const chat = mateChat(s);
+          const wire = chat.fixture();
+          wire.history();
+          wire.claudeLoginFacts("ready");
+          wire.run("refused", "running", "You've hit your weekly limit");
+          const resetsAt = "2020-01-01T00:00:00.000Z";
+          wire.snapshot({
+            session: {
+              ...wire.mate.thread.session!,
+              providerName: "claudeAgent",
+              providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+              usageLimitResetAt: resetsAt,
+            },
+          });
+          wire.activity(
+            "runtime.error",
+            "Claude usage limit reached",
+            {
+              message: "You've hit your weekly limit",
+              turnEnd: "usage-limit",
+              usageLimit: { resetsAt, window: "7-day" },
+            },
+            "refused",
+          );
+          wire.usagePause = {
+            resetsAt,
+            window: "7-day",
+            held: 0,
+            pausedAt: "2019-12-31T23:59:00.000Z",
+            autoResume: false,
+          };
+          wire.question("question-target", "refused");
+          wire.shell();
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.then.text("Which environment should I inspect?");
+          yield* chat.then.text("Respond to Ada's pending request before continuing.");
+          const before = wire.commands.length;
+          yield* Effect.promise(async () => {
+            const button = await s.page.$('::-p-aria([name="Continue"][role="button"])');
+            expect(button).not.toBeNull();
+            expect(await button!.evaluate((node) => (node as HTMLButtonElement).disabled)).toBe(
+              true,
+            );
+            await button!.evaluate((node) => {
+              (node as HTMLButtonElement).click();
+              (node as HTMLButtonElement).click();
+            });
+          });
+          expect(wire.commands.length).toBe(before);
+          yield* chat.then.noText("Continue the work that was paused.");
+          yield* chat.when.click("Staging");
+          yield* Effect.promise(() => wire.waitForCommand("thread.user-input.respond"));
+          yield* chat.then.noText("Respond to Ada's pending request before continuing.");
+          yield* chat.when.press("Continue");
+          expect(
+            yield* Effect.promise(() => wire.waitForCommand("thread.turn.start")),
+          ).toMatchObject({ message: { text: "Continue the work that was paused." } });
+          expect(
+            wire.commands.filter((command) => command.type === "thread.turn.start"),
+          ).toHaveLength(1);
+          yield* s.then.noExternalNetwork;
+        }),
       );
 
       it.effect(
@@ -289,7 +359,7 @@ describe("C: provider refusal and its real deadline", () => {
           wire.history();
           wire.claudeLoginFacts("ready");
           const resetsAt = "2099-10-10T00:00:00.000Z";
-          wire.run("refused", "error", "Claude usage limit reached.");
+          wire.run("refused", "running", "You've hit your weekly limit");
           wire.snapshot({
             session: {
               ...wire.mate.thread.session!,
@@ -316,12 +386,17 @@ describe("C: provider refusal and its real deadline", () => {
             autoResume: false,
           };
           wire.shell();
-          yield* reportConversation(
-            s.drivers,
-            "Ada",
-            { session: wire.mate.thread.session, usagePause: wire.usagePause },
-            "failed",
-          );
+          const overview = mateOverviewOf({
+            identity: {
+              environmentId: wire.mate.descriptor.environmentId,
+              serverVersion: "0.14.62",
+              update: null,
+            },
+            threads: [wire.mate.shellThread()],
+            auth: { available: true, agents: [] },
+            crew: undefined,
+          });
+          yield* reportConversation(s.drivers, "Ada", overview.main!, "failed");
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* Effect.promise(() =>
             s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -334,15 +409,25 @@ describe("C: provider refusal and its real deadline", () => {
           yield* s.drivers.links.get("Ada")!.close;
           wire.disconnect();
           yield* chat.then.text("Last known");
-          yield* chat.then.text("Ada hit the Claude limit");
-          yield* chat.then.text("Oct 10, 2099");
+          const cold = yield* s.given.browserActor({ person: "owner" });
+          yield* Effect.promise(() => cold.page.setViewport({ width: 1786, height: 1000 }));
+          yield* Effect.promise(() =>
+            cold.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+          );
+          const coldChat = mateChat({ ...s, ...cold });
+          yield* cold.given.signedIn;
+          yield* coldChat.when.openReadOnly();
+          yield* coldChat.then.text("Last known");
+          yield* coldChat.then.text("Ada hit the Claude limit");
+          yield* coldChat.then.text("Oct 10, 2099");
+          yield* coldChat.then.noText("coding agent's limit");
           const output = process.env.MATE_LIMIT_EVIDENCE;
           if (output) {
             const fs = yield* FileSystem.FileSystem;
             const path = yield* Path.Path;
             yield* fs.makeDirectory(output, { recursive: true });
             yield* Effect.promise(() =>
-              s.page.screenshot({ path: path.join(output, "unreachable.png") }),
+              cold.page.screenshot({ path: path.join(output, "unreachable.png") }),
             );
           }
           yield* s.then.noExternalNetwork;
@@ -368,7 +453,7 @@ describe("C: provider refusal and its real deadline", () => {
             wire.claudeLoginFacts("ready");
             wire.run(
               "refused",
-              "error",
+              "running",
               "Claude usage limit reached. Send the message again once the limit resets.",
             );
             wire.snapshot({

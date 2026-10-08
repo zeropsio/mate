@@ -7,7 +7,7 @@ import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
 import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
-import { usageLimitProvider } from "../zerops/providerLimit.logic";
+import { isProviderRefused } from "@t3tools/shared/threadStatus";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
   ChatAttachment as ContractChatAttachment,
@@ -1996,12 +1996,7 @@ export default function ChatView(props: ChatViewProps) {
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
-  const usageRefused =
-    activeThreadShell?.usagePause != null ||
-    usageLimitProvider(
-      activeThreadShell?.session?.lastError,
-      activeThreadShell?.session?.providerName,
-    ) !== null;
+  const usageRefused = isProviderRefused(activeThreadShell);
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const activeRunningTurnId = usageRefused
     ? null
@@ -8757,7 +8752,7 @@ export default function ChatView(props: ChatViewProps) {
                   onUsageContinue:
                     isWorking ||
                     isSendBusy ||
-                    (activePendingProgress && !usageRefused) ||
+                    queueBlockedByPendingRequest ||
                     zeropsShownReadOnly !== null
                       ? null
                       : () => {

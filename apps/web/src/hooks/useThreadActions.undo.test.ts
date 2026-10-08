@@ -1,4 +1,4 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, TurnId, type OrchestrationThreadShell } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useThreadActions } from "./useThreadActions";
@@ -39,7 +39,8 @@ const threadShell = vi.hoisted(() => ({
   snoozedUntil: null as string | null,
   projectId: "project",
   environmentId: "undo-env",
-  session: null,
+  session: null as OrchestrationThreadShell["session"],
+  usagePause: null as OrchestrationThreadShell["usagePause"],
 }));
 vi.mock("../state/entities", async (original) => ({
   ...(await original<typeof import("../state/entities")>()),
@@ -97,6 +98,8 @@ beforeEach(() => {
   router.state.matches[0]!.params = {};
   threadShell.pinnedAt = null;
   threadShell.snoozedUntil = null;
+  threadShell.session = null;
+  threadShell.usagePause = null;
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -132,6 +135,24 @@ describe("unpin Undo", () => {
 });
 
 describe("archive Undo", () => {
+  it.each([true, false])(
+    "a running SDK only blocks archiving while its turn is admitted (%s)",
+    async (refused) => {
+      vi.spyOn(toastManager, "add").mockReturnValue("toast");
+      threadShell.session = {
+        threadId: target.threadId,
+        status: "running",
+        activeTurnId: TurnId.make("turn"),
+        providerName: "claudeAgent",
+        runtimeMode: "full-access",
+        lastError: refused ? "You've hit your weekly limit" : null,
+        updatedAt: "2026-10-08T10:00:00Z",
+      };
+      const result = await useThreadActions().archiveThread(target);
+      expect(result._tag).toBe(refused ? "Success" : "Failure");
+      expect(commands.archive).toHaveBeenCalledTimes(refused ? 1 : 0);
+    },
+  );
   it("unarchives and returns to the thread when archiving left it", async () => {
     const add = vi.spyOn(toastManager, "add").mockReturnValue("toast");
     vi.spyOn(toastManager, "close").mockImplementation(() => {});

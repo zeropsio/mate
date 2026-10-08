@@ -523,3 +523,20 @@ it("HQ keeps a provider deadline after the scheduling pause clears", () => {
   ]);
   expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-07T02:00:00Z" });
 });
+
+it("a generic weekly refusal retains Claude's identity through HQ compaction", () => {
+  const overview = overviewOf([
+    shell("main", {
+      session: {
+        ...RUNNING.session,
+        providerName: "claudeAgent",
+        lastError: "You've hit your weekly limit · resets 2am (UTC)",
+        usageLimitResetAt: "2026-10-10T02:00:00Z",
+      },
+    }),
+  ]);
+  expect(overview.main?.session?.lastError).toBe(
+    "Claude usage limit reached. You've hit your weekly limit · resets 2am (UTC)",
+  );
+  expect(overview.main?.usagePause).toEqual({ resetsAt: "2026-10-10T02:00:00Z" });
+});
