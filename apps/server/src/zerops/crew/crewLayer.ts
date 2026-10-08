@@ -127,6 +127,7 @@ import { MIRRORED_TABLES } from "./crewState.ts";
 import { advanceAll, retryRefused, takeUpWaiting } from "./crewRunFlow.ts";
 import { finishRun, pressPause, resumeRun, runView, startRun, stopRun } from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
+import { crewEngineHooksLayer, engineCrewLayer } from "./engine/CrewEngineLayer.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 /** At most four snapshots a second (ARCHITECTURE §6). */
@@ -705,20 +706,48 @@ export const crewLayerInert = Layer.succeedContext(
 
 /**
  * Crew mode runs live only inside a Zerops project, with its switch on
- * (ARCHITECTURE §1 gates 1–2), and only while V1 owns the conversation: crew
- * dispatches V1 commands, so it is off when the Mate engine runs.
+ * (ARCHITECTURE §1 gates 1–2). While V1 owns the conversation, V1's crew runs
+ * it; once the Mate engine does, the crew is an owner of the engine
+ * (`engine/CrewEngineLayer.ts`).
  */
 export const crewModeOn = (config: ServerConfig["Service"]): boolean =>
   isZeropsEnvironment(config) && config.zeropsCrew && config.mateEngine !== "mate";
 
-/** The live engine behind gates 1 and 2, with `installer` for the thread policies. */
-export const makeCrewLayer = (installer: CrewPolicyInstaller) =>
-  Layer.unwrap(
-    Effect.gen(function* () {
-      if (!crewModeOn(yield* ServerConfig)) return crewLayerInert;
-      return Layer.effectContext(makeCrewEngine(installer)).pipe(Layer.provide(crewServicesLayer));
+/** Crew mode on the Mate engine: a Zerops project, the crew's switch on, the engine running. */
+export const engineCrewModeOn = (config: ServerConfig["Service"]): boolean =>
+  isZeropsEnvironment(config) && config.zeropsCrew && config.mateEngine === "mate";
+
+const engineHooks = crewEngineHooksLayer.pipe(Layer.provide(crewServicesLayer));
+
+/**
+ * What the Mate engine runs for the crew, in engine crew mode only: its owner kind, the handlers
+ * of its effects over the crew's own services, and its crewmates' workspaces.
+ */
+export const crewEngineHooks = Layer.unwrap(
+  Effect.map(ServerConfig, (config): typeof engineHooks =>
+    engineCrewModeOn(config) ? engineHooks : (Layer.empty as unknown as typeof engineHooks),
+  ),
+);
+
+/** The live crew behind gates 1 and 2, on V1 or on the engine, with `installer` for the policies. */
+export const makeCrewLayer = (installer: CrewPolicyInstaller) => {
+  const onEngine = engineCrewLayer(installer).pipe(Layer.provide(crewServicesLayer));
+  const onV1 = Layer.effectContext(makeCrewEngine(installer)).pipe(
+    Layer.provide(crewServicesLayer),
+  );
+  type Live = Layer.Layer<
+    Layer.Success<typeof onV1>,
+    Layer.Error<typeof onEngine> | Layer.Error<typeof onV1>,
+    Layer.Services<typeof onEngine> | Layer.Services<typeof onV1>
+  >;
+  return Layer.unwrap(
+    Effect.map(ServerConfig, (config): Live => {
+      if (engineCrewModeOn(config)) return onEngine;
+      if (!crewModeOn(config)) return crewLayerInert;
+      return onV1;
     }),
   );
+};
 
 /**
  * Crew mode behind its gates: the thread policy for crew threads
