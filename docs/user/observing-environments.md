@@ -18,3 +18,8 @@ enforced cap: close idle terminal agents or an IDE in the container, or raise RA
 Zerops's configured minimum exceeds the live cap, Mate says the increase has not reached the
 container. After a lost connection, HQ's retained report is labelled **last-known health** with its
 measurement time; it does not claim the container is still in that condition.
+
+CPU warnings compare recent CPU use and runnable work waiting for CPU with the container's
+enforced CPU limit. They show the measurement window and the busiest measured process when it
+can be identified. A past spike alone does not trigger a warning; the first quiet measurement
+clears it. CPU measurements refresh every two seconds, including while the conversation is idle.

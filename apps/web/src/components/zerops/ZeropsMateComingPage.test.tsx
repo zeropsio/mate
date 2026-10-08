@@ -10,7 +10,7 @@ import {
   type MateLink as MachineLink,
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
-import { act, createElement as h, type ReactNode } from "react";
+import { act, createElement as h, useSyncExternalStore, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -80,6 +80,7 @@ const app = vi.hoisted(() => ({
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
+  router: { preloadRoute: vi.fn(async (_to: unknown) => undefined) },
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
   openMate: vi.fn(),
@@ -93,6 +94,8 @@ const app = vi.hoisted(() => ({
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
+  healthNotice: null as string | null,
+  healthListeners: new Set<() => void>(),
   observeRefused: false,
   wholeForPerson: false,
   registration: {
@@ -110,6 +113,18 @@ vi.mock("~/zerops/useHqOffers", () => ({
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
+vi.mock("./MateHealthNotice", () => ({
+  MateHealthNotice: () => {
+    const notice = useSyncExternalStore(
+      (listener) => {
+        app.healthListeners.add(listener);
+        return () => app.healthListeners.delete(listener);
+      },
+      () => app.healthNotice,
+    );
+    return notice === null ? null : h("p", { role: "status" }, notice);
+  },
+}));
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useToldActivity: () => app.told,
   useLastKnownMateWords: () => undefined,
@@ -117,6 +132,7 @@ vi.mock("~/zerops/useMenuMateReadings", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
+  useRouter: () => app.router,
   Link: ({ children }: { readonly children?: ReactNode }) => h("a", null, children),
 }));
 vi.mock("~/routes/-environmentTargets", () => ({
@@ -227,6 +243,16 @@ vi.mock("~/zerops/inventoryContext", () => ({
   useZeropsInventory: () => ({ services: new Map() }),
 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
+  MateConnectionState: ({
+    headline,
+    secondary,
+    face,
+  }: {
+    headline: string;
+    secondary: string;
+    face: string;
+  }) =>
+    h("section", { "data-kind": "reaching", "data-mate-face-state": face }, headline, secondary),
   useMateEmptyState: () => ({
     standUpFailure: app.standUpFailed ? { retrying: false, retry: app.standUpRetry } : undefined,
     phase: null,
@@ -333,6 +359,7 @@ beforeEach(() => {
   vi.stubGlobal("requestAnimationFrame", () => 0);
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
+  app.router.preloadRoute.mockReset().mockResolvedValue(undefined);
   app.connect.mockClear();
   app.onScreen.mockClear();
   app.openMate.mockClear();
@@ -350,6 +377,7 @@ beforeEach(() => {
   app.registration = { attempt: 0, state: "waiting" };
   app.processes = [];
   app.birthProgress = false;
+  app.healthNotice = null;
   app.wholeForPerson = false;
 });
 afterEach(async () => {
@@ -368,6 +396,31 @@ afterEach(async () => {
 // at /zerops page". A Mate's own view waits for its link where it stands, connects it, and hands
 // over to its conversation; nothing in it takes the person to another screen on its own.
 describe("a Mate's own view while its link is made", () => {
+  it("keeps one waiting face while its project opens, including when a health notice arrives", () => {
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    openView();
+    const stages = () =>
+      tree!.root.findAll((node) => node.props["data-conversation-opening"] === "waiting");
+    const stage = stages()[0];
+    expect(stages()).toHaveLength(1);
+    expect(tree!.root.findByProps({ "data-mate-face-state": "sleep" })).toBeDefined();
+    expect(tree!.root.findByProps({ "data-header-face": "sleep" })).toBeDefined();
+    act(() => {
+      app.healthNotice = "Sign in to the CLI processes.";
+      for (const listener of app.healthListeners) listener();
+    });
+    expect(stages()).toHaveLength(1);
+    expect(stages()[0]).toBe(stage);
+    expect(said()).toContain(app.healthNotice);
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(stages()[0]).toBe(stage);
+    expect(tree!.root.findByProps({ "data-mate-face-state": "sleep" })).toBeDefined();
+  });
+
   it("connects it once by its target, says what it waits for, and stays", () => {
     const link: MateLink = {
       key: KEY,
@@ -515,7 +568,27 @@ describe("a Mate's own view while its link is made", () => {
     expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
   });
 
-  it("hands over at once once its conversation can be opened, telling what its door asked", () => {
+  it("keeps the waiting stage visible until its conversation route can render", async () => {
+    let ready!: () => void;
+    app.router.preloadRoute.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        ready = () => resolve(undefined);
+      }),
+    );
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.threads = [MAIN];
+    openView();
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(tree!.root.findAllByProps({ "data-conversation-opening": "waiting" })).toHaveLength(1);
+    await act(async () => ready());
+    expect(app.navigate).toHaveBeenCalledOnce();
+  });
+
+  it("hands over at once once its conversation can be opened, telling what its door asked", async () => {
     app.link = {
       key: KEY,
       environmentId: ENV_QUINN,
@@ -525,7 +598,7 @@ describe("a Mate's own view while its link is made", () => {
     const told: Array<ScopedThreadRef> = [];
     awaitMateConversation(PROJECT, (conversation) => told.push(conversation));
     openView();
-    act(() => vi.advanceTimersByTime(0));
+    await act(async () => vi.advanceTimersByTime(0));
 
     expect(told).toEqual([{ environmentId: ENV_QUINN, threadId: "thread-main" }]);
     expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
@@ -838,7 +911,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("reaching");
   });
 
-  it("hands over once, its header turning into the conversation's with its words", () => {
+  it("hands over once, its header turning into the conversation's with its words", async () => {
     // The header's actions as the conversation draws them, standing in until it takes the route.
     const headerActions = () =>
       tree?.root.findAllByType("button").filter((node) => node.props.inert === true) ?? [];
@@ -856,7 +929,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(kind()).toBe("coming");
     expect(headerActions()).toHaveLength(1);
     expect(app.navigate).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(1_000));
+    await act(async () => vi.advanceTimersByTime(1_000));
     expect(app.navigate).toHaveBeenCalledOnce();
   });
 });

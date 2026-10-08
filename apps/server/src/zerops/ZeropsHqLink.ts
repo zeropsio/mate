@@ -86,6 +86,7 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import { makeUsageLink, type UsageLink } from "../usage/UsageLink.ts";
+import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import * as UsageSqlite from "../persistence/NodeSqliteClient.ts";
 
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
@@ -416,10 +417,13 @@ export const makeZeropsHqLink = (
           const enrollment = yield* options.readEnrollment;
           // A link that failed, whatever failed in it, is tried again after a growing wait: the loop
           // never ends.
+          const began = yield* Clock.currentTimeMillis;
           const opened = Option.isSome(enrollment)
             ? yield* runOnce(enrollment.value).pipe(Effect.catchCause(() => Effect.succeed(false)))
             : false;
-          attempt = opened ? 0 : attempt + 1;
+          // Only a link that stayed up resets the wait; one HQ closes at once is a failure too.
+          const lived = (yield* Clock.currentTimeMillis) - began;
+          attempt = opened && lived >= LINK_STABLE_MS ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
@@ -437,6 +441,9 @@ export const makeZeropsHqLink = (
       }),
     });
   });
+
+/** How long a link must stay up before the next reconnect starts from the shortest wait. */
+const LINK_STABLE_MS = 30_000;
 
 const EnrollmentFile = Schema.fromJsonString(
   Schema.Struct({ hq: Schema.String, credential: Schema.String }),
@@ -558,12 +565,13 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
       const providers = yield* ProviderInstances;
+      const runtimeEvents = yield* ProviderRuntimeEventBus;
       // Separate home database: capture IO cannot lock the orchestration event store.
       const usage = yield* Effect.gen(function* () {
         const usageDatabase = yield* Layer.build(
           UsageSqlite.layer({ filename: paths.join(config.stateDir, "usage.sqlite") }),
         );
-        return yield* makeUsageLink(engine.streamDomainEvents).pipe(Effect.provide(usageDatabase));
+        return yield* makeUsageLink(runtimeEvents.events).pipe(Effect.provide(usageDatabase));
       }).pipe(
         Effect.asSome,
         Effect.catchCause(() =>

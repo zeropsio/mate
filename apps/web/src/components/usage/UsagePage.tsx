@@ -5,19 +5,25 @@ import {
   type UsageProviderKind,
 } from "@t3tools/contracts";
 import { CheckIcon, InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import {
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
   type MergedUsage,
+  type ModelTotals,
 } from "@t3tools/shared/usageMerge";
 
 import { isElectron } from "../../env";
 import { cn } from "../../lib/utils";
 import { environmentPresentations } from "../../state/presentation";
-import { serverEnvironment } from "../../state/server";
+import { primaryServerKeybindingsAtom, serverEnvironment } from "../../state/server";
+import { isCommandPaletteOpen } from "../../commandPaletteBus";
+import { isModelPickerOpen } from "../../modelPickerVisibility";
+import { shortcutLabelForCommand } from "../../keybindings";
+import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useProviderUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type {
@@ -65,8 +71,15 @@ import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
 import { usagePageState } from "./usagePage.logic";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
-import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
-import { modelShare, sortModelsByTokens } from "./usageBreakdown";
+import { UsageProviderChart } from "./UsageProviderChart";
+import {
+  METRIC_OPTIONS,
+  WINDOW_OPTIONS,
+  resolveUsageShortcut,
+  type UsageMetric,
+} from "./usageShortcuts";
+import { modelShare, sortModelsByTokens, usageTotals, type UsageTotal } from "./usageBreakdown";
+import { UsageModelDialog } from "./UsageModelDialog";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 import {
   readUsagePagePreferences,
@@ -74,23 +87,9 @@ import {
   type UsagePagePreferences,
 } from "./usagePagePreferences";
 
-type UsageMetric = UsageChartMetric | "limits";
-const METRIC_OPTIONS = [
-  { value: "cost", label: "Cost" },
-  { value: "tokens", label: "Tokens" },
-  { value: "limits", label: "Limits" },
-] as const satisfies readonly { value: UsageMetric; label: string }[];
-
 function isUsageMetric(value: string | null | undefined): value is UsageMetric {
   return METRIC_OPTIONS.some((option) => option.value === value);
 }
-
-const WINDOW_OPTIONS = [
-  { days: 1, label: "Past 24h" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-] as const;
 
 function isUsageWindowDays(value: number): value is UsagePagePreferences["windowDays"] {
   return WINDOW_OPTIONS.some((option) => option.days === value);
@@ -143,6 +142,10 @@ export function UsagePage({
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
   const [preferences, setPreferences] = useState(readUsagePagePreferences);
+  useEscapeToGoBack();
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const shortcutOf = (option: (typeof METRIC_OPTIONS)[number] | (typeof WINDOW_OPTIONS)[number]) =>
+    shortcutLabelForCommand(keybindings, option.command, { context: { usagePageOpen: true } });
   const [windowSelection, setWindowSelection] = useState(() => ({
     days: preferences.windowDays,
     window: makeWindow(
@@ -306,6 +309,7 @@ export function UsagePage({
     () => (isPast24Hours ? merged.hourly : merged.daily).toReversed(),
     [isPast24Hours, merged.daily, merged.hourly],
   );
+  const [openModel, setOpenModel] = useState<ModelTotals | null>(null);
   const breakdownModels = useMemo(
     () =>
       breakdown === "model" && metric === "tokens"
@@ -333,6 +337,29 @@ export function UsagePage({
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
   };
+  const onUsageKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      event.repeat ||
+      event.isComposing ||
+      isCommandPaletteOpen() ||
+      isModelPickerOpen()
+    )
+      return;
+    const command = resolveUsageShortcut(event, keybindings);
+    const metricOption = METRIC_OPTIONS.find((option) => option.command === command);
+    const periodOption = WINDOW_OPTIONS.find((option) => option.command === command);
+    if (!metricOption && !periodOption) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (metricOption) selectMetric(metricOption.value);
+    if (periodOption && !showingLimits) selectWindow(periodOption.days);
+  });
+  useEffect(() => {
+    globalThis.window.addEventListener("keydown", onUsageKeyDown, true);
+    return () => globalThis.window.removeEventListener("keydown", onUsageKeyDown, true);
+  }, []);
+
   const refreshWindow = () => {
     if (showingLimits) {
       const refreshes: Promise<unknown>[] = [];
@@ -409,9 +436,9 @@ export function UsagePage({
           }}
         >
           {METRIC_OPTIONS.map((option) => (
-            <Toggle key={option.value} value={option.value}>
-              {option.label}
-            </Toggle>
+            <ShortcutHint key={option.value} shortcut={shortcutOf(option)}>
+              <Toggle value={option.value}>{option.label}</Toggle>
+            </ShortcutHint>
           ))}
         </ToggleGroup>
         {/* The period does not apply to Limits, so it stays in place but
@@ -427,9 +454,9 @@ export function UsagePage({
           }}
         >
           {WINDOW_OPTIONS.map((option) => (
-            <Toggle key={option.days} value={String(option.days)}>
-              {option.label}
-            </Toggle>
+            <ShortcutHint key={option.days} shortcut={shortcutOf(option)}>
+              <Toggle value={String(option.days)}>{option.label}</Toggle>
+            </ShortcutHint>
           ))}
         </ToggleGroup>
         <Button
@@ -687,18 +714,10 @@ export function UsagePage({
 
                 <section className="flex flex-col gap-2">
                   <h2 className="text-sm font-medium text-foreground">Totals</h2>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-                    <Metric label="Processed tokens" value={formatTokens(merged.totalTokens)} />
-                    <Metric label="Cached input" value={formatTokens(merged.cachedInputTokens)} />
-                    <Metric
-                      label="Uncached input"
-                      value={formatTokens(merged.uncachedInputTokens)}
-                    />
-                    <Metric label="Output" value={formatTokens(merged.outputTokens)} />
-                    <Metric
-                      label="Estimated cache savings"
-                      value={formatUsd(merged.costQuality.cacheSavingsUsd)}
-                    />
+                  <div className={USAGE_TOTALS_GRID}>
+                    {usageTotals(merged, dimensionMetric).map((total) => (
+                      <Metric key={total.label} {...total} />
+                    ))}
                   </div>
                 </section>
 
@@ -764,10 +783,15 @@ export function UsagePage({
                                 className="border-b border-border/50 transition-colors hover:bg-muted/50"
                               >
                                 <td className="py-2 text-foreground">
-                                  <span className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="flex max-w-full cursor-pointer items-center gap-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+                                    aria-label={`Open ${model.model}`}
+                                    onClick={() => setOpenModel(model)}
+                                  >
                                     <ProviderMark provider={model.provider} className="size-3.5" />
-                                    {model.model}
-                                  </span>
+                                    <span className="truncate">{model.model}</span>
+                                  </button>
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
@@ -859,6 +883,21 @@ export function UsagePage({
           </WorkspacePageContainer>
         </ScrollArea>
       </div>
+      {openModel === null ? null : (
+        <UsageModelDialog
+          model={openModel}
+          environments={scopedEnvironments}
+          metric={dimensionMetric}
+          chartWindow={{
+            days,
+            hours,
+            resolution: isPast24Hours ? "hour" : "day",
+            timeZone: window.timeZone,
+            referenceTime: window.untilTime,
+          }}
+          onClose={() => setOpenModel(null)}
+        />
+      )}
     </SidebarInset>
   );
 }
@@ -875,11 +914,25 @@ function ProviderMark({
   return <Mark className={cn("shrink-0", className)} aria-hidden />;
 }
 
-function Metric({ label, value }: { readonly label: string; readonly value: string }) {
+/** The Totals row's grid, shared with the loading skeleton so nothing moves when it settles. */
+const USAGE_TOTALS_GRID = "grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-4 lg:grid-cols-7";
+
+/** The Totals the skeleton holds room for: every row but fast mode, which only some windows have. */
+const USAGE_TOTAL_LABELS = [
+  "Processed tokens",
+  "Uncached input",
+  "Cached input",
+  "Cache writes",
+  "Output",
+  "Estimated cache savings",
+] as const;
+
+function Metric({ label, value, detail }: UsageTotal) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-base font-medium text-foreground tabular-nums">{value}</span>
+      <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>
     </div>
   );
 }
@@ -1178,6 +1231,23 @@ function UsageScopeFilters({
  * Static stand-in with the loaded page's shape. No shimmer; blocks fill in
  * exactly once when the last device answers.
  */
+/** A control's keyboard shortcut in a tooltip, when it has one. */
+function ShortcutHint({
+  shortcut,
+  children,
+}: {
+  readonly shortcut: string | null;
+  readonly children: React.ReactElement;
+}) {
+  if (shortcut === null) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={children} />
+      <TooltipPopup side="bottom">{shortcut}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function UsageSkeleton() {
   return (
     <>
@@ -1213,15 +1283,14 @@ function UsageSkeleton() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-sm font-medium text-foreground">Totals</h2>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 py-1 md:grid-cols-5">
-          {["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"].map(
-            (label) => (
-              <div key={label} className="flex flex-col gap-0.5">
-                <span className="text-xs text-muted-foreground">{label}</span>
-                <div className="h-6 w-16 rounded-sm bg-muted" />
-              </div>
-            ),
-          )}
+        <div className={USAGE_TOTALS_GRID}>
+          {USAGE_TOTAL_LABELS.map((label) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <div className="h-6 w-16 rounded-sm bg-muted" />
+              <div className="h-4 w-12 rounded-sm bg-muted/60" />
+            </div>
+          ))}
         </div>
       </section>
 

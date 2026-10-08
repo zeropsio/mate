@@ -89,6 +89,7 @@ import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
+import { CommandScript } from "./CommandScript";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
@@ -1500,7 +1501,8 @@ function CallRow({
  * directly"): four lines of it, following the code as it streams in; in the
  * log its head, and all of it once its call is opened. It is how, under what
  * the command was for, on the words' own edge: in the muted ink, failed too —
- * its mark and its right edge say that it failed.
+ * its mark and its right edge say that it failed. Its grammar tints that ink
+ * without raising it (`CommandScript`).
  */
 function CommandCode({
   script,
@@ -1521,7 +1523,7 @@ function CommandCode({
           META,
         )}
       >
-        {script}
+        <CommandScript script={script} />
       </code>
     </CappedBox>
   );

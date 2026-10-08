@@ -13,6 +13,7 @@ import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connect
 import {
   USAGE_CONTRACT_VERSION,
   type EnvironmentId,
+  type UsageBucket,
   type UsageSummary,
   type UsageSummaryInput,
 } from "@t3tools/contracts";
@@ -169,6 +170,33 @@ export interface UsageView {
    */
   readonly isPartial: boolean;
   readonly refresh: () => void;
+}
+
+/**
+ * Merges every environment that has answered. `keepBucket` narrows the merge,
+ * for example to one model; source ownership still applies, so the result
+ * matches that slice of the full merge. Session counts are per directory and
+ * are not narrowed.
+ */
+export function mergeAnsweredUsage(
+  environments: readonly EnvironmentUsageStatus[],
+  keepBucket?: (bucket: UsageBucket) => boolean,
+): MergedUsage {
+  const answered: EnvironmentUsage[] = environments.flatMap(({ environmentId, label, summary }) =>
+    summary === null
+      ? []
+      : [
+          {
+            environmentId,
+            label,
+            summary:
+              keepBucket === undefined
+                ? summary
+                : { ...summary, buckets: summary.buckets.filter(keepBucket) },
+          },
+        ],
+  );
+  return mergeUsage(answered, USAGE_CONTRACT_VERSION);
 }
 
 /**

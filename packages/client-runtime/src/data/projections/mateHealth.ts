@@ -71,7 +71,14 @@ export function mateHealthCopy(
 } | null {
   const { health, live, configuredMinimumBytes } = read;
   if (health === null) return null;
-  const { evidence } = health;
+  const evidence = {
+    ...health.evidence,
+    // Old avg10-only reports cannot establish current CPU exhaustion, even over a live link.
+    resources: health.evidence.resources.filter(
+      (resource) => resource !== "cpu" || health.evidence.cpu?.window?.saturated === true,
+    ),
+  };
+  const strained = evidence.resources.length > 0;
   const cap =
     evidence.memory === null
       ? null
@@ -79,17 +86,16 @@ export function mateHealthCopy(
   const limited = cap !== null && Number.isFinite(cap);
   const mismatch =
     live && limited && configuredMinimumBytes !== null && configuredMinimumBytes > cap;
-  if (evidence.status !== "strained" && !mismatch && (live || !limited)) return null;
+  if (!strained && !mismatch && (live || !limited)) return null;
   const prefix = live ? name : `${name} · last-known health`;
   const resource = evidence.resources[0];
-  const title =
-    evidence.status !== "strained"
-      ? `${prefix} — the container ${live ? "is" : "was"} capped at ${gigabytes(cap ?? 0)}`
-      : resource === "memory" || mismatch
-        ? `${prefix} is short on memory${limited ? ` — the container is capped at ${gigabytes(cap)}` : ""}`
-        : resource === "disk"
-          ? `${prefix} is short on disk resources`
-          : `${prefix} is under CPU pressure`;
+  const title = !strained
+    ? `${prefix} — the container ${live ? "is" : "was"} capped at ${gigabytes(cap ?? 0)}`
+    : resource === "memory" || mismatch
+      ? `${prefix} is short on memory${limited ? ` — the container is capped at ${gigabytes(cap)}` : ""}`
+      : resource === "disk"
+        ? `${prefix} is short on disk resources`
+        : `${prefix} is under CPU pressure`;
   const actions = evidence.resources.flatMap((resource) =>
     resource === "memory"
       ? ["Close idle terminal agents or the IDE in the container, or raise RAM in Zerops."]
@@ -99,7 +105,21 @@ export function mateHealthCopy(
               ? "Free space on the Mate's state disk."
               : "Reduce container disk activity; the kernel reports I/O stalls.",
           ]
-        : ["Close idle container workloads or increase CPU in Zerops."],
+        : (() => {
+            const window = evidence.cpu?.window;
+            if (window == null) return [];
+            const cores = (value: number) => Number(value.toFixed(2));
+            const usage = cores(window.usageUsec / window.elapsedUsec);
+            const capacity = cores(window.capacityCpus);
+            const measured = `Measured ${usage} CPU cores used out of a limit of ${capacity} over ${cores(window.elapsedUsec / 1_000_000)} seconds.`;
+            const consumer = window.consumer;
+            return [
+              measured,
+              consumer === null
+                ? "The kernel reports runnable work waiting for CPU. No current process could be attributed; inspect container workloads in Zerops."
+                : `Top measured process: ${consumer.name} (PID ${consumer.pid}) used ${cores(consumer.cpuCores)} CPU cores. Check its workload before changing CPU in Zerops.`,
+            ];
+          })(),
   );
   if (mismatch)
     actions.push(

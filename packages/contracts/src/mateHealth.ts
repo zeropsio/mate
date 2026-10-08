@@ -30,7 +30,33 @@ export const MateResourceHealth = Schema.Struct({
       swapMax: Schema.NullOr(NonNegativeInt),
     }),
   ),
-  cpu: Schema.NullOr(ResourcePressure),
+  cpu: Schema.NullOr(
+    Schema.Struct({
+      ...ResourcePressure.fields,
+      // Optional while older Mates/HQ instances still relay the avg10-only report.
+      window: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({
+            scope: Schema.String,
+            elapsedUsec: NonNegativeInt.check(Schema.isGreaterThan(0)),
+            usageUsec: NonNegativeInt,
+            someUsec: NonNegativeInt,
+            fullUsec: Schema.NullOr(NonNegativeInt),
+            capacityCpus: Schema.Finite.check(Schema.isGreaterThan(0)),
+            throttledPeriods: NonNegativeInt,
+            saturated: Schema.Boolean,
+            consumer: Schema.NullOr(
+              Schema.Struct({
+                pid: NonNegativeInt,
+                name: Schema.String,
+                cpuCores: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+              }),
+            ),
+          }),
+        ),
+      ),
+    }),
+  ),
   io: Schema.NullOr(ResourcePressure),
   disk: Schema.NullOr(Schema.Struct({ free: NonNegativeInt, total: NonNegativeInt })),
   unavailable: Schema.Array(Schema.String),
