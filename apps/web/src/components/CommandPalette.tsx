@@ -1,5 +1,7 @@
 "use client";
 
+import { folderListingPresentation } from "./CommandPalette.logic";
+
 import {
   scopedThreadKey,
   scopeProjectRef,
@@ -29,7 +31,6 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   EnvironmentId,
-  type FilesystemBrowseResult,
   type ProjectId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
@@ -191,8 +192,6 @@ import {
   buildSidebarProjectSnapshots,
 } from "../sidebarProjectGrouping";
 import type { Project } from "../types";
-
-const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 
 const APPEARANCE_OPTIONS = [
   { mode: "system", label: "System", icon: MonitorIcon },
@@ -1059,8 +1058,8 @@ function OpenCommandPaletteDialog(props: {
       : null,
   );
   const browseResult = browseQuery.data;
-  const isBrowsePending = browseQuery.isPending;
-  const browseEntries = browseResult?.entries ?? EMPTY_BROWSE_ENTRIES;
+  const browsePresentation = folderListingPresentation(browseQuery);
+  const browseEntries = browsePresentation.entries;
   const { visibleEntries: visibleBrowseEntries, exactEntry: exactBrowseEntry } = useMemo(
     () =>
       pinnedCloneDirectoryName
@@ -2438,10 +2437,10 @@ function OpenCommandPaletteDialog(props: {
   const canSubmitBrowsePath =
     isBrowsing &&
     !relativePathNeedsActiveProject &&
+    browsePresentation.canInferCreation &&
     canCreateProjectInEnvironment(browseEnvironment?.connection.phase);
   const willCreateProjectPath =
     canSubmitBrowsePath &&
-    !isBrowsePending &&
     query.trim().length > 0 &&
     !hasHighlightedBrowseItem &&
     (hasTrailingPathSeparator(query) ? !browseResult : exactBrowseEntry === null);
@@ -2578,16 +2577,12 @@ function OpenCommandPaletteDialog(props: {
               tabIndex={-1}
               className="absolute inset-e-2.5 top-1/2 -translate-y-1/2"
               aria-label={`${submitActionLabel} (${addShortcutLabel})`}
-              disabled={
-                !canCreateProjectInEnvironment(browseEnvironment?.connection.phase) ||
-                relativePathNeedsActiveProject ||
-                (isCloneDestinationStep && isRemoteProjectPending)
-              }
+              disabled={!canSubmitBrowsePath || (isCloneDestinationStep && isRemoteProjectPending)}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
               onClick={() => {
-                if (relativePathNeedsActiveProject) {
+                if (!canSubmitBrowsePath) {
                   return;
                 }
                 if (isCloneDestinationStep) {
@@ -2685,6 +2680,12 @@ function OpenCommandPaletteDialog(props: {
         </p>
       ) : null}
       <CommandPaletteResults
+        statusMessage={
+          isBrowsing && !relativePathNeedsActiveProject
+            ? browsePresentation.message &&
+              `${browsePresentation.message}${browsePresentation.retained && browseEntries.length > 0 ? " Showing last-known folders." : ""}`
+            : null
+        }
         groups={displayedGroups}
         highlightedItemValue={highlightedItemValue}
         isActionsOnly={isActionsOnly}
