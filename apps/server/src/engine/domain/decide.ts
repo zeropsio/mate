@@ -10,8 +10,9 @@
  * Stop ends a run only on its turn's own end. A restart cuts the active run and arms a
  * continuation only when no newer person message, no Stop, no archive and no maintenance turn
  * stands against it; the continuation is a new run that `joins` the cut one, as a usage resume
- * joins its limited run and an agent-started turn joins the run whose work it reports. A watchdog
- * only marks a running run unresponsive.
+ * joins its limited run and an agent-started turn joins the run whose work it reports. Background
+ * work a lost session took with it wakes the Mate once with a note naming it, unless a message
+ * waiting to go carries the note. A watchdog only marks a running run unresponsive.
  *
  * @module engine/domain/decide
  */
@@ -404,10 +405,12 @@ const misfit = (state: ConversationState, session: SessionRecord): "model" | "se
 /**
  * A session is gone, and with it the background work it ran: nothing can report that work's end
  * any more (a session's own close says so through the bridge, but a restart or a close recorded
- * first never hears it), so the work ends as lost and its card stops showing it running.
+ * first never hears it), so the work ends as lost and its card stops showing it running — and the
+ * Mate, which may have promised to answer once it ended, is told (`noteLostWork`).
  */
 const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionCloseReason): void => {
   b.emit({ _tag: "SessionClosed", sessionId, reason });
+  const lost: Array<{ readonly title: string | null; readonly runId: RunId | null }> = [];
   for (const item of Object.values(b.state.items)) {
     if (item.body.kind !== "work" || WORK_ENDED.has(item.body.status)) continue;
     b.emit({
@@ -416,7 +419,86 @@ const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionClos
       itemId: item.id,
       body: { ...item.body, status: "lost" },
     });
+    lost.push({ title: item.body.title, runId: item.runId });
   }
+  noteLostWork(b, lost, reason);
+};
+
+/** How the note says the work's session went, by why it closed; a close not listed tells nothing. */
+const LOST_HOW: Partial<Record<SessionCloseReason, string>> = {
+  restart: "by a restart",
+  exited: "when its session ended",
+  model: "by a session change",
+  settings: "by a session change",
+};
+
+/** The wake that tells the Mate its background work was lost: one per conversation. */
+const lostWorkWakeId = (b: StepBuilder) =>
+  deriveWakeId(b.state.conversationId, "lost-work", "note");
+
+/** A lost-work note held for the next send: it never fires on its own. */
+const HELD_FOR_SEND = Number.MAX_SAFE_INTEGER;
+
+/** What the Mate is told of work its session lost, by the work's own titles. */
+export const lostWorkText = (titles: ReadonlyArray<string | null>, how: string): string => {
+  const named = titles.map((title) => (title === null ? "untitled work" : `“${title}”`));
+  const list =
+    named.length === 1 ? named[0]! : `${named.slice(0, -1).join(", ")} and ${named.at(-1)!}`;
+  return named.length === 1
+    ? `Your background work ${list} was stopped ${how} before it reported.`
+    : `Your background work ${list} were stopped ${how} before they reported.`;
+};
+
+/** A run that has not gone to the agent yet: queued, or admitted and not sent. */
+const runPending = (state: ConversationState): boolean => {
+  if (state.queue.length > 0) return true;
+  const run = activeRun(state);
+  if (run !== undefined && (run.state === "queued" || run.state === "admitted")) return true;
+  return Object.values(state.wakes).some((wake) => wake.kind === "restart-continuation");
+};
+
+/**
+ * Background work its session lost (a restart, the process dying, a session change) never
+ * reports, and the agent re-invoked by its end — Claude Code's background tasks — is never woken:
+ * the engine wakes the Mate once, on the conversation's own lane, with a note naming the work. A
+ * message already waiting (a person's, a restart's continuation) carries the note instead of a
+ * wake of its own (`dispatch`). Nothing after a person's Stop or an archive, or a close the engine
+ * or the person chose (idle, signed out, a Stop's close).
+ */
+const noteLostWork = (
+  b: StepBuilder,
+  lost: ReadonlyArray<{ readonly title: string | null; readonly runId: RunId | null }>,
+  reason: SessionCloseReason,
+): void => {
+  const how = LOST_HOW[reason];
+  if (lost.length === 0 || how === undefined || b.state.archived) return;
+  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
+  if (latest?.stopAsked != null) return;
+  const text = lostWorkText(
+    lost.map((work) => work.title),
+    how,
+  );
+  const armed = b.state.wakes[lostWorkWakeId(b)];
+  const served = lost.findLast((work) => work.runId !== null)?.runId ?? null;
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: lostWorkWakeId(b),
+    kind: "lost-work",
+    dueAt: runPending(b.state) ? HELD_FOR_SEND : b.now,
+    cron: null,
+    principal: latest?.principal ?? ENGINE,
+    // Its answer draws on the card of the run the work served, while that run is the latest.
+    joins: served !== null && served === b.state.latestRunId ? served : null,
+    text: armed?.text == null ? text : `${armed.text} ${text}`,
+  });
+};
+
+/** The send's words with a lost-work note waiting for it, which goes with them (and is spent). */
+const withLostWorkNote = (b: StepBuilder, run: RunRecord): string => {
+  const wake = b.state.wakes[lostWorkWakeId(b)];
+  if (wake === undefined || wake.text === null || run.maintenance) return run.text;
+  b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "went with the next send" });
+  return `${wake.text}\n\n${run.text}`;
 };
 
 /** The agent's background work lives in the session: a new session would end it. */
@@ -456,11 +538,12 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
   if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
     const selection = selectionOf(b.state);
+    const text = withLostWorkNote(b, run);
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
       turn: run.id,
-      text: run.text,
+      text,
       attachments: (run.personBody?.attachments ?? []).filter(
         (attachment) => attachment.type === "image" || attachment.type === "file",
       ),
@@ -1103,6 +1186,25 @@ const wakeFired = (
         if (carried !== undefined)
           reopenCarried(b, carried, `The answer's message was not sent again: ${refusal}.`);
         admitNext(b);
+        return;
+      }
+      startFromWake(b, wake.kind, id, wake);
+      return;
+    }
+    case "lost-work": {
+      if (b.state.archived) return;
+      // A message waiting to go carries the note: held for it, never a run of its own.
+      if (runPending(b.state)) {
+        b.emit({
+          _tag: "WakeArmed",
+          wakeId: id,
+          kind: wake.kind,
+          dueAt: HELD_FOR_SEND,
+          cron: null,
+          principal: wake.principal,
+          joins: wake.joins,
+          text: wake.text,
+        });
         return;
       }
       startFromWake(b, wake.kind, id, wake);

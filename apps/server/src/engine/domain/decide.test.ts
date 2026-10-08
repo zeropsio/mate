@@ -2558,3 +2558,111 @@ describe("decide: files go with a message", () => {
     ]);
   });
 });
+
+// Milo, 2026-10-08: the agent ran `sleep 120` in the background and said it would reply once it
+// finished; a restart killed the work, nothing re-invoked the agent, and the promise was never kept.
+describe("background work its session lost", () => {
+  const SLEEP = "Wait two minutes, then print a confirmation";
+  const lostNote = (titles: string, how = "by a restart", plural = false) =>
+    plural
+      ? `Your background work ${titles} were stopped ${how} before they reported.`
+      : `Your background work ${titles} was stopped ${how} before it reported.`;
+  const work = (key: string, title: string | null, n = 1): Command =>
+    signal({
+      kind: "work-upserted",
+      work: key,
+      origin: T(n),
+      workKind: "shell",
+      status: "running",
+      title,
+    });
+  const backgrounded: ReadonlyArray<Step> = [...running, work("w1", SLEEP), ended(1)];
+  const lostWakeId = wakeId(conversation, "lost-work", "note");
+  const sendText = (scene: Scene) =>
+    scene.effects.flatMap((effect) =>
+      effect.kind === "provider.send" ? [(effect.payload as { text: string }).text] : [],
+    );
+
+  it.each([
+    {
+      name: "a restart",
+      steps: [...backgrounded, recovered()],
+      text: lostNote(`“${SLEEP}”`),
+    },
+    {
+      name: "its session's process exiting",
+      steps: [...backgrounded, signal({ kind: "session-exited", reason: "exit 137" })],
+      text: lostNote(`“${SLEEP}”`, "when its session ended"),
+    },
+    {
+      name: "a restart, several items at once",
+      steps: [...running, work("w1", SLEEP), work("w2", "Tail the api log"), ended(1), recovered()],
+      text: lostNote(`“${SLEEP}” and “Tail the api log”`, "by a restart", true),
+    },
+  ])(
+    "work its session lost wakes the Mate once, on its own lane, naming the work: $name",
+    ({ steps, text }) => {
+      const { log, state } = playAll(steps);
+      expect(
+        log.filter((event) => event._tag === "WakeArmed" && event.kind === "lost-work"),
+      ).toEqual([expect.objectContaining({ wakeId: lostWakeId, dueAt: T0, joins: r(1), text })]);
+      const woken = [...steps, fired("lost-work", "note")];
+      expect(playAll(woken).state.runs[r(2)]).toMatchObject({
+        joins: r(1),
+        trigger: { kind: "wake", cause: "lost-work" },
+      });
+      expect(sendText(play([...woken, prepared(2), opened(2)]))).toEqual([text]);
+      expect(state.runs[r(2)]).toBeUndefined();
+    },
+  );
+
+  it.each([
+    {
+      name: "a message queued before the restart",
+      steps: [...running, work("w1", SLEEP), send("next"), ended(1), recovered()],
+    },
+    {
+      name: "a message sent after the restart, before the wake fired",
+      steps: [...backgrounded, recovered(), send("next")],
+    },
+    {
+      name: "a message sent after the restart, waiting as the wake fired",
+      steps: [...backgrounded, recovered(), send("next"), fired("lost-work", "note")],
+    },
+  ])(
+    "a person's message already waiting carries the note, no wake of its own: $name",
+    ({ steps }) => {
+      const scene = play([...steps, prepared(2), opened(2)]);
+      expect(sendText(scene)).toEqual([`${lostNote(`“${SLEEP}”`)}\n\nnext`]);
+      expect(Object.keys(scene.state.runs)).toEqual([r(1), r(2)]);
+      expect(scene.state.wakes[lostWakeId]).toBeUndefined();
+    },
+  );
+
+  it("a run the restart cut continues with the note, no wake of its own", () => {
+    const steps = [...running, work("w1", SLEEP), recovered(), fired("restart-continuation", r(1))];
+    const scene = play([...steps, prepared(2), opened(2)]);
+    expect(sendText(scene)).toEqual([`${lostNote(`“${SLEEP}”`)}\n\n${CONTINUE_TEXT}`]);
+    expect(Object.keys(scene.state.runs)).toEqual([r(1), r(2)]);
+  });
+
+  it.each([
+    {
+      name: "a person's Stop",
+      steps: [...running, work("w1", SLEEP), stop(), ended(1), recovered()],
+    },
+    { name: "an archive", steps: [...backgrounded, { _tag: "Archive" } as Command, recovered()] },
+    {
+      name: "a session the person closed by a second Stop",
+      steps: [...running, work("w1", SLEEP), stop(), stop(), sessionClosed()],
+    },
+  ])("no wake after $name", ({ steps }) => {
+    const { log } = playAll(steps);
+    expect(log.some((event) => event._tag === "ItemClosed" && event.body.kind === "work")).toBe(
+      true,
+    );
+    expect(log.some((event) => event._tag === "WakeArmed" && event.kind === "lost-work")).toBe(
+      false,
+    );
+  });
+});
