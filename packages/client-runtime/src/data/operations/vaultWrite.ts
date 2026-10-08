@@ -43,61 +43,72 @@ interface Held {
   readonly lastUpdate: string | null;
 }
 
-/** The vault as observed now; `null` when its contents cannot prove this write. */
+/** The vault the write goes to, as observed now; `null` while it is not read. */
 function heldIn(
   read: ProjectionReads,
-  { orgId, projectId, scope, write }: Intent,
+  { orgId, projectId, scope }: Intent,
 ): ReadonlyArray<Held> | null {
-  const removing = write.kind === "remove";
+  if (scope.kind === "shared") {
+    if (read.coverage(projectVariablesScope(orgId, projectId)) === "unknown") return null;
+    const fact = read.fact("projectVariables", projectId);
+    return fact.kind === "known" ? fact.value.rows : [];
+  }
+  const listing = serviceVariablesScope(orgId, projectId);
+  if (read.coverage(listing) === "unknown") return null;
+  return read.members(listing).ids.flatMap((id) => {
+    const fact = read.fact("serviceVariable", id);
+    return fact.kind === "known" && fact.value.serviceId === scope.serviceId
+      ? [{ id, ...fact.value }]
+      : [];
+  });
+}
+
+/** Presence is enough for a baseline; only the owner or a complete readable listing proves removal. */
+function removalEvidence(
+  read: ProjectionReads,
+  { orgId, projectId, scope }: Intent,
+  id: string,
+): "present" | "owner-deleted" | "absent" | null {
   if (scope.kind === "shared") {
     const fact = read.fact("projectVariables", projectId);
     if (fact.kind !== "known") return null;
-    // A readable target proves presence even when other rows are missing.
-    if (removing && fact.value.rows.some((row) => row.id === write.id)) return fact.value.rows;
-    const coverage = read.coverage(projectVariablesScope(orgId, projectId));
-    if (coverage === "unknown" || (removing && (coverage !== "complete" || !fact.value.complete)))
-      return null;
-    return fact.value.rows;
+    if (fact.value.rows.some((row) => row.id === id)) return "present";
+    return fact.value.complete &&
+      read.coverage(projectVariablesScope(orgId, projectId)) === "complete"
+      ? "absent"
+      : null;
   }
+  const target = read.fact("serviceVariable", id);
+  if (target.kind === "deleted") return "owner-deleted";
+  if (target.kind === "withheld") return null;
   const listing = read.members(serviceVariablesScope(orgId, projectId));
-  // Deletion of this keyed row is owner evidence; deletion of the Shared aggregate is not.
-  if (removing) {
-    const target = read.fact("serviceVariable", write.id);
-    if (target.kind === "deleted") return [];
-    if (target.kind === "withheld") return null;
-    if (
-      target.kind === "known" &&
-      target.value.serviceId === scope.serviceId &&
-      listing.ids.includes(write.id)
-    )
-      return [{ id: write.id, ...target.value }];
+  if (
+    target.kind === "known" &&
+    target.value.serviceId === scope.serviceId &&
+    listing.ids.includes(id)
+  )
+    return "present";
+  if (listing.coverage !== "complete" || listing.unverified.length > 0) return null;
+  for (const member of listing.ids) {
+    if (read.fact("serviceVariable", member).kind !== "known") return null;
   }
-  if (listing.coverage === "unknown") return null;
-  if (removing && (listing.coverage !== "complete" || listing.unverified.length > 0)) return null;
-  const held: Held[] = [];
-  for (const id of listing.ids) {
-    const fact = read.fact("serviceVariable", id);
-    if (fact.kind !== "known") {
-      if (removing && fact.kind !== "deleted") return null;
-      continue;
-    }
-    if (fact.value.serviceId === scope.serviceId) held.push({ id, ...fact.value });
-  }
-  return held;
+  return "absent";
 }
 
 /** What the vault shows of the write now, as handles: compared with what it showed at the send. */
 function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string> | null {
-  const held = heldIn(read, intent);
-  if (held === null) return intent.write.kind === "remove" ? null : [];
   const { write } = intent;
+  if (write.kind === "remove") {
+    const evidence = removalEvidence(read, intent, write.id);
+    return evidence === null ? null : evidence === "present" ? [] : [`${EFFECT}gone:${write.id}`];
+  }
+  const held = heldIn(read, intent);
+  if (held === null) return [];
   switch (write.kind) {
     case "add": {
       const key = write.key.toLowerCase();
       return held.filter((row) => row.key.toLowerCase() === key).map((row) => `${EFFECT}${row.id}`);
     }
-    case "remove":
-      return held.some((row) => row.id === write.id) ? [] : [`${EFFECT}gone:${write.id}`];
     case "update": {
       const row = held.find((each) => each.id === write.id);
       if (row === undefined) return [];
@@ -111,7 +122,15 @@ function effectsOf(read: ProjectionReads, intent: Intent): ReadonlyArray<string>
 /** Whether the vault shows the write: an effect it did not show at the send. */
 function shown(read: ProjectionReads, intent: Intent, receipt: OperationReceipt): boolean {
   const before = read.operation(receipt.requestId)?.before;
-  if (before == null && intent.write.kind === "remove") return false;
+  if (intent.write.kind === "remove") {
+    const evidence = removalEvidence(read, intent, intent.write.id);
+    return (
+      evidence === "owner-deleted" ||
+      (evidence === "absent" &&
+        before != null &&
+        !before.includes(`${EFFECT}gone:${intent.write.id}`))
+    );
+  }
   return effectsOf(read, intent)?.some((handle) => !(before ?? []).includes(handle)) ?? false;
 }
 

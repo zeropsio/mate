@@ -366,7 +366,9 @@ describe("vault-write", () => {
       expect(read.fact("projectVariables", "p1").kind).toBe(
         name.startsWith("known") ? "known" : name,
       );
-      expect(vaultWrite.effectHandles?.(read, write)).toEqual(succeeds ? ["vault:gone:e1"] : null);
+      expect(vaultWrite.effectHandles?.(read, write) ?? []).toEqual(
+        succeeds ? ["vault:gone:e1"] : [],
+      );
       yield* operations.retry("r1");
       expect(progressOf(store)).toMatchObject(
         succeeds
@@ -427,8 +429,8 @@ describe("vault-write", () => {
           });
         }
       }
-      expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write)).toEqual(
-        succeeds ? ["vault:gone:u1"] : null,
+      expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual(
+        succeeds ? ["vault:gone:u1"] : [],
       );
       yield* operations.retry("r1");
       expect(progressOf(store)).toMatchObject(
@@ -479,13 +481,13 @@ describe("vault-write", () => {
               ? Promise.resolve({ processId: "proc-env" })
               : Promise.reject(new ZeropsApiError("No answer.", "network")),
           );
-          yield* operations.submit(
-            intent(scope, {
-              kind: "remove",
-              id: scope.kind === "shared" ? "e1" : "u1",
-              key: "TOKEN",
-            }),
-          );
+          const write = intent(scope, {
+            kind: "remove",
+            id: scope.kind === "shared" ? "e1" : "u1",
+            key: "TOKEN",
+          });
+          expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual([]);
+          yield* operations.submit(write);
           vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
           if (accepted) {
             processRow(
@@ -616,6 +618,34 @@ describe("vault-write", () => {
           operationId: "proc-env",
           outcome: "succeeded",
         });
+      }),
+  );
+
+  it.effect(
+    "owner-proven deletion settles an acknowledged removal with an unknown listing and baseline",
+    () =>
+      Effect.gen(function* () {
+        const store = vaultAccount();
+        const listing = serviceVariablesScope(ORG, "p1");
+        store.dispatch({ kind: "forget", scopes: [listing] });
+        const { operations, calls } = operationsOf(store, async () => ({ processId: "proc-env" }));
+        yield* operations.submit(intent(APP, { kind: "remove", id: "u1", key: "TOKEN" }));
+        store.dispatch({
+          kind: "proven-deletion",
+          family: "serviceVariable",
+          scope: listing,
+          id: "u1",
+          evidence: "owner",
+        });
+        expect(readsOfState(store.state()).coverage(listing)).toBe("unknown");
+        expect(progressOf(store).stage).not.toBe("done");
+        processRow(store, "proc-env", "FINISHED", "stack.updateUserData", ["s1"]);
+        expect(progressOf(store)).toEqual({
+          stage: "done",
+          operationId: "proc-env",
+          outcome: "succeeded",
+        });
+        expect(calls).toHaveLength(1);
       }),
   );
 
