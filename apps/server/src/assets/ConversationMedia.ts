@@ -240,6 +240,8 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
       };
     }
     const result: Record<string, unknown> = {};
+    let imageDimensions: { width: number; height: number } | undefined;
+    let imageName: string | undefined;
     for (const [key, item] of Object.entries(record)) {
       if (key === "imagePath" && typeof item === "string" && !item.startsWith("mate-asset:")) {
         const asset = await store.legacy([threadId, activity.id, item], () =>
@@ -248,13 +250,34 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
             name: NodePath.basename(item),
           }),
         );
+        imageName = asset.name;
+        if (asset.original.status === "ready" && asset.original.width && asset.original.height)
+          imageDimensions = { width: asset.original.width, height: asset.original.height };
         result[key] =
           `mate-asset:${asset.id}${asset.original.status === "failed" ? `:${asset.original.code}` : ""}`;
       } else result[key] = await capture(item);
     }
-    return result;
+    return {
+      ...result,
+      ...(imageDimensions ? { imageDimensions } : {}),
+      ...(imageName ? { imageName } : {}),
+    };
   };
-  return { ...activity, payload: yield* Effect.promise(() => capture(activity.payload)) };
+  // Native Read exposes its screenshot through its input path. Persist the captured
+  // reference before the tool event becomes durable, rather than deriving it on first view.
+  const recordOf = (value: unknown): Record<string, unknown> | null =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  const projected = recordOf(projectActivityPayload(activity).payload);
+  const imagePath = recordOf(projected?.data)?.imagePath;
+  const payload = recordOf(activity.payload);
+  const data = recordOf(payload?.data);
+  const capturePayload =
+    typeof imagePath === "string" && payload && data
+      ? { ...payload, data: { ...data, imagePath } }
+      : activity.payload;
+  return { ...activity, payload: yield* Effect.promise(() => capture(capturePayload)) };
 });
 
 export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (

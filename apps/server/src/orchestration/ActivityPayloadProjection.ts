@@ -272,6 +272,7 @@ function projectViewedImagePath(
   data: Record<string, unknown>,
   toolName: string | undefined,
   input: Record<string, unknown> | null,
+  itemType: unknown,
 ): string | undefined {
   const directPath = asTrimmedString(data.imagePath);
   if (
@@ -284,6 +285,10 @@ function projectViewedImagePath(
     return directPath;
   }
 
+  if (itemType === "image_view") {
+    const path = asTrimmedString(asRecord(data.item)?.path);
+    if (path && isWorkspaceImagePreviewPath(path)) return path;
+  }
   const name = toolName?.toLowerCase();
   if (name !== "read" && name !== "read file") {
     return undefined;
@@ -585,9 +590,21 @@ export function projectActivityPayload(
   if (input) {
     projectedData.input = input;
   }
-  const imagePath = projectViewedImagePath(data, toolName, callInput);
+  const imagePath = projectViewedImagePath(data, toolName, callInput, payload.itemType);
   if (imagePath) {
     projectedData.imagePath = imagePath;
+    const imageName = asTrimmedString(data.imageName);
+    if (imageName) projectedData.imageName = imageName;
+    const dimensions = asRecord(data.imageDimensions);
+    if (
+      typeof dimensions?.width === "number" &&
+      dimensions.width > 0 &&
+      Number.isFinite(dimensions.width) &&
+      typeof dimensions.height === "number" &&
+      dimensions.height > 0 &&
+      Number.isFinite(dimensions.height)
+    )
+      projectedData.imageDimensions = { width: dimensions.width, height: dimensions.height };
   }
 
   const changedFiles: string[] = [];
