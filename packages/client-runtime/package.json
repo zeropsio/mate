@@ -187,6 +187,10 @@
       "types": "./src/zerops/index.ts",
       "default": "./src/zerops/index.ts"
     },
+    "./zerops/agentSignIn": {
+      "types": "./src/zerops/agentSignIn.ts",
+      "default": "./src/zerops/agentSignIn.ts"
+    },
     "./zerops/activity/attribution": {
       "types": "./src/zerops/activity/attribution.ts",
       "default": "./src/zerops/activity/attribution.ts"

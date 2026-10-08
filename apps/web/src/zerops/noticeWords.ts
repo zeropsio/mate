@@ -1,6 +1,6 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { formatShortTimestamp } from "../timestampFormat";
-import { signedOutAgent } from "@t3tools/client-runtime/zerops";
+import { signedOutAgent } from "@t3tools/client-runtime/zerops/agentSignIn";
 import { usageLimitProvider } from "./providerLimit.logic";
 
 export function usageLimitWords(provider: string, reset?: string, mateName = "The Mate"): string {
