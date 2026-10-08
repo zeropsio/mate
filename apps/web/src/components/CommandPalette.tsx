@@ -696,7 +696,7 @@ function CommandRootDialog(props: {
   );
 }
 
-function OpenCommandPaletteDialog(props: {
+export function OpenCommandPaletteDialog(props: {
   readonly openIntent: CommandPaletteOpenIntent | null;
   readonly setOpen: (open: boolean) => void;
   readonly openOverlayMode: (mode: SearchOverlayMode) => void;

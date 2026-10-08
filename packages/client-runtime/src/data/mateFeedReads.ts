@@ -1,14 +1,14 @@
 /** Surface bindings hold demand and read projections; they own neither transport nor remote values. */
 import { AsyncResult, Atom } from "effect/reactivity";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { AtomRegistry } from "effect/reactivity";
-import * as Cause from "effect/Cause";
 import type { AccountStore } from "./store.ts";
 import { mateFeed } from "./projections/mateFeeds.ts";
 import type { makeMateFeeds } from "./adapters/mateFeeds.ts";
 import type { MateFeedFamily, MateFeedKey, MateFeedValues } from "./families/mateFeeds.ts";
-import type { Known } from "../zerops/knowledge/index.ts";
+import type { Known, FailureReason } from "../zerops/knowledge/index.ts";
 export interface MateFeedReads {
   readonly data: AccountStore["data"];
   readonly hold: ReturnType<typeof makeMateFeeds>["hold"];
@@ -31,25 +31,58 @@ export function mateFeedAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
 }
 export function mateFeedAsyncAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
   const source = mateFeedAtom(key);
-  return Atom.make((get): AsyncResult.AsyncResult<MateFeedValues[F], unknown> => {
-    const read = get(source);
-    switch (read.state) {
-      case "known":
-        return AsyncResult.success(read.value, {
-          waiting: read.freshness.kind === "revalidating" || read.freshness.kind === "stale",
-        });
-      case "failed":
-        return AsyncResult.failure(Cause.fail(read.failure));
-      default:
-        return AsyncResult.initial(true);
-    }
-  });
+  let retry = () => {};
+  return Atom.readable(
+    (get): AsyncResult.AsyncResult<MateFeedValues[F], unknown> => {
+      const host = get(mateFeedReadsAtom);
+      retry = () => host?.retry(key);
+      const read = get(source);
+      switch (read.state) {
+        case "known": {
+          const freshness = read.freshness;
+          if (
+            freshness.kind === "stale" &&
+            (freshness.reason.kind === "revalidation-failed" ||
+              freshness.reason.kind === "source-recovering")
+          ) {
+            const failure =
+              freshness.reason.kind === "revalidation-failed"
+                ? mateFeedFailure(freshness.reason.failure)
+                : new MateFeedReadFailed({
+                    message: "The Mate is unavailable. Try again when it reconnects.",
+                  });
+            return AsyncResult.fail(failure, {
+              previousSuccess: Option.some(AsyncResult.success(read.value)),
+            });
+          }
+          return AsyncResult.success(read.value, { waiting: freshness.kind === "revalidating" });
+        }
+        case "failed":
+          return AsyncResult.fail(mateFeedFailure(read.failure));
+        default:
+          return AsyncResult.initial(true);
+      }
+    },
+    () => retry(),
+  );
 }
 
 export class MateFeedReadFailed extends Schema.TaggedError<MateFeedReadFailed>()(
   "MateFeedReadFailed",
   { message: Schema.String },
 ) {}
+function mateFeedFailure(failure: FailureReason): MateFeedReadFailed {
+  return new MateFeedReadFailed({
+    message:
+      failure.kind === "refused"
+        ? failure.words
+        : failure.kind === "transport" || failure.kind === "malformed"
+          ? failure.detail
+          : failure.kind === "unsupported"
+            ? failure.capability
+            : "The Mate could not report this detail.",
+  });
+}
 /** Reads through the same demanded family. Refusals remain final until explicit retry. */
 export function readMateFeed<F extends MateFeedFamily>(
   registry: AtomRegistry.AtomRegistry,
@@ -81,17 +114,7 @@ export function readMateFeed<F extends MateFeedFamily>(
           (read) => {
             if (read.state === "known" && read.freshness.kind === "settled")
               resume(Effect.succeed(read.value));
-            else if (read.state === "failed")
-              resume(
-                Effect.fail(
-                  new MateFeedReadFailed({
-                    message:
-                      read.failure.kind === "refused"
-                        ? read.failure.words
-                        : "The Mate could not report this detail.",
-                  }),
-                ),
-              );
+            else if (read.state === "failed") resume(Effect.fail(mateFeedFailure(read.failure)));
             else if (read.state === "known" && read.freshness.kind === "stale")
               resume(
                 Effect.fail(

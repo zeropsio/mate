@@ -817,19 +817,27 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
-    it.effect("returns an empty listing when the OS denies directory access", () =>
-      Effect.gen(function* () {
-        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
-        const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-eacces-" });
+    it.effect.each(["EACCES", "EPERM"])(
+      "directory access refusal remains a failed browse (%s)",
+      (code) =>
+        Effect.gen(function* () {
+          const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+          const cwd = yield* makeTempDir({ prefix: "t3code-workspace-browse-eacces-" });
 
-        const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
-        vi.mocked(NodeFSP.readdir).mockRejectedValueOnce(denied);
+          const denied = Object.assign(new Error(`${code}: permission denied`), { code });
+          vi.mocked(NodeFSP.readdir).mockRejectedValueOnce(denied);
 
-        const result = yield* workspaceEntries.browse({
-          partialPath: yield* appendSeparator(cwd),
-        });
-        expect(result).toEqual({ parentPath: cwd, entries: [] });
-      }),
+          const result = yield* Effect.result(
+            workspaceEntries.browse({
+              partialPath: yield* appendSeparator(cwd),
+            }),
+          );
+          expect(result._tag).toBe("Failure");
+          if (result._tag === "Failure") {
+            expect(result.failure._tag).toBe("WorkspaceEntriesReadDirectoryError");
+            expect(result.failure).toMatchObject({ parentPath: cwd, cause: denied });
+          }
+        }),
     );
   });
 });
