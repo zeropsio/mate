@@ -28,7 +28,7 @@ export const at = (seconds: number) =>
 export const LONG_THOUGHT = `I should read the recipe first. ${"The api needs its env. ".repeat(20)}`;
 export const LONG_NOTE = `Here is the whole log:\n${"line of output\n".repeat(1300)}`;
 /** A picture as zcp's browser returned it, inline. */
-const SCREENSHOT = { type: "image", mimeType: "image/png", data: "iVBORw0KGgo".repeat(400) };
+export const SCREENSHOT = { mimeType: "image/png", data: "iVBORw0KGgo".repeat(400) };
 
 type Turn = ProjectionTurnById;
 const turn = (
@@ -431,6 +431,27 @@ export const activities: ReadonlyArray<ProjectionThreadActivity> = [
     "User input submitted",
     { requestId: "req-ask", answers: { q1: "CZK" } },
     226,
+    "turn-2",
+  ),
+  // The same picture again, from another call: kept once by its content.
+  activity(
+    "a-33",
+    "tool.completed",
+    "Browser",
+    {
+      itemType: "mcp_tool_call",
+      toolCallId: "toolu_browser",
+      status: "completed",
+      data: {
+        toolName: "mcp__zerops__zerops_browser",
+        zerops: {
+          toolName: "zerops_browser",
+          resultText: "Opened the shop.",
+          images: [SCREENSHOT],
+        },
+      },
+    },
+    230,
     "turn-2",
   ),
   activity(

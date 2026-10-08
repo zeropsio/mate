@@ -21,7 +21,7 @@ const skeleton = (count: number, notes: number): V1Skeleton => ({
       id: `note-${index}-${note}`,
       role: "assistant",
       turnId: `turn-${index}`,
-      createdAt: iso(index),
+      createdAt: iso(index).replace(":00.000Z", ":30.000Z"),
     })),
   ]).flat(),
   activities: [],
@@ -68,7 +68,7 @@ describe("the turns a conversation brings over", () => {
 
 describe("a call's V1 payload, kept as its data", () => {
   const big = "x".repeat(CALL_DATA_LIMIT);
-  const picture = { type: "image", mimeType: "image/png", data: "AAAA" };
+  const picture = { mimeType: "image/png", asset: { id: "occurrence", name: "tool-image" } };
   it.each([
     [
       "is kept whole when it fits",
@@ -76,9 +76,9 @@ describe("a call's V1 payload, kept as its data", () => {
       { itemType: "command_execution", detail: "ls", data: { command: "ls" } },
     ],
     [
-      "always leaves its pictures out, saying so",
+      "keeps its pictures' references",
       { data: { zerops: { toolName: "zerops_browser", resultText: "ok", images: [picture] } } },
-      { data: { zerops: { toolName: "zerops_browser", resultText: "ok", imagesDropped: true } } },
+      { data: { zerops: { toolName: "zerops_browser", resultText: "ok", images: [picture] } } },
     ],
     [
       "drops a result text past the limit, saying so",

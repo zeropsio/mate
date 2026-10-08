@@ -3,12 +3,18 @@
  * a recorded V1 thread (`testing/history/v1Thread.ts`) seeded through V1's own repositories, then
  * brought in by the `history.import` effect the way a flipped Mate's first boot does.
  */
+// @effect-diagnostics nodeBuiltinImport:off - the store's objects are files beside the database.
+import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CommandId, ConversationId, type KnownEngineEvent } from "@t3tools/contracts";
 
+import { contentAssetsAt } from "../../assets/ContentAssets.ts";
 import { runMigrations } from "../../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
@@ -26,6 +32,7 @@ import { EngineStoreError, type CommitStage } from "../store/EngineStore.ts";
 import {
   LONG_NOTE,
   LONG_THOUGHT,
+  SCREENSHOT,
   THREAD,
   activities,
   at,
@@ -38,6 +45,9 @@ import { audit, engineLayer, newBoot, tempDb, type Engine } from "../testing/wor
 import { itemOfRow } from "../wire/records.ts";
 
 const c = ConversationId.make(THREAD);
+const SCREENSHOT_DIGEST = NodeCrypto.createHash("sha256")
+  .update(Buffer.from(SCREENSHOT.data, "base64"))
+  .digest("hex");
 const source = { kind: "v1", threadId: THREAD } as const;
 const ana = { kind: "person", subject: "ana" } as const;
 /** Small batches, so the thread takes several steps and a restart can fall between them. */
@@ -115,9 +125,10 @@ const lifetime = <A, E>(
       options.tell === undefined
         ? conversations
         : { ...conversations, tell: options.tell(conversations.tell) };
-    const handler = yield* makeHistoryImport({ records: BATCH }).pipe(
-      Effect.provideService(Conversations, door),
-    );
+    const handler = yield* makeHistoryImport({
+      records: BATCH,
+      pictures: () => contentAssetsAt(NodePath.dirname(file)),
+    }).pipe(Effect.provideService(Conversations, door));
     const worker = yield* makeEffectWorker(newBoot()).pipe(
       Effect.provideService(EffectHandlers, handlersOf(handler)),
       Effect.provideService(Conversations, door),
@@ -152,63 +163,75 @@ const parse = (text: string): unknown => JSON.parse(text);
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
 /** The conversation's record as its readers get it: runs, items, requests, and their parts. */
-const record = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  const runs = yield* sql<{
-    readonly run_id: string;
-    readonly ordinal: number;
-    readonly trigger_json: string;
-    readonly principal_json: string;
-    readonly state: string;
-    readonly end_json: string;
-    readonly end_source: string;
-    readonly queued_at: number;
-    readonly started_at: number | null;
-    readonly ended_at: number | null;
-  }>`
+const recordOf = (file: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const runs = yield* sql<{
+      readonly run_id: string;
+      readonly ordinal: number;
+      readonly trigger_json: string;
+      readonly principal_json: string;
+      readonly state: string;
+      readonly end_json: string;
+      readonly end_source: string;
+      readonly queued_at: number;
+      readonly started_at: number | null;
+      readonly ended_at: number | null;
+    }>`
     SELECT run_id, ordinal, trigger_json, principal_json, state, end_json, end_source, queued_at,
       started_at, ended_at FROM engine_run WHERE conversation_id = ${c} ORDER BY ordinal
   `;
-  const itemRows = yield* sql<Parameters<typeof itemOfRow>[0]>`
+    const itemRows = yield* sql<Parameters<typeof itemOfRow>[0]>`
     SELECT * FROM engine_item WHERE conversation_id = ${c} ORDER BY opened_seq
   `;
-  const items = yield* Effect.forEach(itemRows, itemOfRow);
-  const requests = yield* sql<{
-    readonly request_id: string;
-    readonly run_id: string;
-    readonly at: number;
-    readonly ask_json: string;
-    readonly answerable: number;
-    readonly state: string;
-    readonly answer_json: string | null;
-  }>`
+    const items = yield* Effect.forEach(itemRows, itemOfRow);
+    const requests = yield* sql<{
+      readonly request_id: string;
+      readonly run_id: string;
+      readonly at: number;
+      readonly ask_json: string;
+      readonly answerable: number;
+      readonly state: string;
+      readonly answer_json: string | null;
+    }>`
     SELECT request_id, run_id, at, ask_json, answerable, state, answer_json FROM engine_request
     WHERE conversation_id = ${c} ORDER BY seq
   `;
-  const data = yield* sql<{ readonly item_id: string; readonly data_json: string }>`
+    const data = yield* sql<{ readonly item_id: string; readonly data_json: string }>`
     SELECT item_id, data_json FROM engine_item_data WHERE conversation_id = ${c} ORDER BY item_id
   `;
-  const details = yield* sql<{ readonly item_id: string; readonly body: string }>`
+    const details = yield* sql<{ readonly item_id: string; readonly body: string }>`
     SELECT d.item_id, d.body FROM engine_item_detail d JOIN engine_item i ON i.item_id = d.item_id
     WHERE i.conversation_id = ${c} ORDER BY d.item_id
   `;
-  return {
-    runs: runs.map((run) => ({
-      ...run,
-      trigger: parse(run.trigger_json),
-      end: parse(run.end_json),
-    })),
-    items,
-    requests: requests.map((request) => ({
-      ...request,
-      ask: parse(request.ask_json),
-      answer: request.answer_json === null ? null : parse(request.answer_json),
-    })),
-    data: new Map(data.map((row) => [row.item_id, parse(row.data_json)])),
-    details: new Map(details.map((row) => [row.item_id, row.body])),
-  };
-});
-type Held = Effect.Success<typeof record>;
+    return {
+      runs: runs.map((run) => ({
+        ...run,
+        trigger: parse(run.trigger_json),
+        end: parse(run.end_json),
+      })),
+      items,
+      requests: requests.map((request) => ({
+        ...request,
+        ask: parse(request.ask_json),
+        answer: request.answer_json === null ? null : parse(request.answer_json),
+      })),
+      data: new Map(data.map((row) => [row.item_id, parse(row.data_json)])),
+      details: new Map(details.map((row) => [row.item_id, row.body])),
+      /** The store's objects: each picture's bytes, once. */
+      originals: NodeFS.readdirSync(NodePath.join(NodePath.dirname(file), "assets", "originals"), {
+        withFileTypes: true,
+      })
+        .filter((entry) => entry.isFile() && !entry.name.includes("."))
+        .map((entry) => entry.name)
+        .toSorted(),
+      /** The store's references to them: one per picture of each call, whatever restarted. */
+      occurrences: NodeFS.readdirSync(
+        NodePath.join(NodePath.dirname(file), "assets", "occurrences"),
+      ).length,
+    };
+  });
+type Held = Effect.Success<ReturnType<typeof recordOf>>;
 
 /** What a comparison of two imports reads: the records without the sequence they landed at. */
 const comparable = (held: Held) => ({
@@ -222,9 +245,21 @@ const comparable = (held: Held) => ({
   })),
   items: held.items.map(({ seq: _seq, rev: _rev, ...item }) => item),
   requests: held.requests,
-  data: [...held.data],
+  // An occurrence's id is the store's own; its content is what two imports share.
+  data: [...held.data].map(([id, data]) => [id, withoutOccurrenceIds(data)]),
   details: [...held.details],
+  originals: held.originals,
+  occurrences: held.occurrences,
 });
+
+const withoutOccurrenceIds = (data: unknown): unknown =>
+  JSON.parse(
+    JSON.stringify(data, (key, value: unknown) =>
+      key === "asset" && typeof value === "object" && value !== null
+        ? { ...value, id: "occurrence" }
+        : value,
+    ),
+  );
 
 /** The import once, start to end, on a fresh file. */
 const importedOnce = Effect.gen(function* () {
@@ -233,7 +268,7 @@ const importedOnce = Effect.gen(function* () {
     Effect.gen(function* () {
       const reserved = yield* start;
       yield* drain(worker);
-      return { reserved, held: yield* record, ...(yield* audit(c)) };
+      return { reserved, held: yield* recordOf(file), ...(yield* audit(c)) };
     }),
   );
 });
@@ -385,7 +420,7 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
       },
     ],
     [
-      "a Zerops tool keeps its result, its server and how it presents itself, its pictures left out",
+      "a Zerops tool keeps its result, its server, how it presents itself and its picture, stored by its content",
       (held) => {
         const deploy = callOf(held, "mcp__zerops__zerops_deploy");
         expect(deploy).toMatchObject({
@@ -400,11 +435,36 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
             zerops: {
               toolName: "zerops_deploy",
               resultText: '{"status":"DEPLOYED","service":"api"}',
-              imagesDropped: true,
+              images: [
+                {
+                  mimeType: "image/png",
+                  asset: {
+                    threadId: THREAD,
+                    ownerId: "a-8",
+                    original: { status: "ready", digest: SCREENSHOT_DIGEST },
+                  },
+                },
+              ],
             },
           },
         });
-        expect(JSON.stringify(dataOf(held, deploy.id))).not.toContain("iVBORw0KGgo");
+        expect(JSON.stringify(dataOf(held, deploy.id))).not.toContain(SCREENSHOT.data);
+        expect(JSON.stringify(dataOf(held, deploy.id))).not.toContain("imagesDropped");
+      },
+    ],
+    [
+      "the same picture in two calls is one stored object, each call its own reference",
+      (held) => {
+        const browser = callOf(held, "mcp__zerops__zerops_browser");
+        expect(dataOf(held, browser.id)?.payload).toMatchObject({
+          data: {
+            zerops: {
+              images: [{ asset: { ownerId: "a-33", original: { digest: SCREENSHOT_DIGEST } } }],
+            },
+          },
+        });
+        expect(held.originals).toEqual([SCREENSHOT_DIGEST]);
+        expect(held.occurrences).toBe(2);
       },
     ],
     [
@@ -537,7 +597,7 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
         expect(held.items.map((item) => [item.runId?.slice(-1), item.kind])).toEqual(
           [
             ["1", "person thought call call call call call marker note"],
-            ["2", "person call work call request request note call"],
+            ["2", "person call work call request request call note call"],
             ["3", "person marker marker marker marker work request"],
             ["4", "person marker marker marker request work marker"],
             ["5", "person"],
@@ -596,14 +656,14 @@ describe("the import, once", () => {
         Effect.gen(function* () {
           yield* start;
           yield* drain(worker);
-          return yield* record;
+          return yield* recordOf(file);
         }),
       );
       const second = yield* lifetime(file, ({ worker }) =>
         Effect.gen(function* () {
           expect(yield* start).toBe(0);
           yield* drain(worker);
-          return { held: yield* record, ...(yield* audit(c)) };
+          return { held: yield* recordOf(file), ...(yield* audit(c)) };
         }),
       );
       expect(second.held).toEqual(first);
@@ -624,13 +684,13 @@ describe("the import, once", () => {
             yield* worker.runOnce;
           }),
         );
-        const middle = yield* lifetime(file, () => record);
+        const middle = yield* lifetime(file, () => recordOf(file));
         expect(middle.items.length).toBeGreaterThan(0);
         expect(middle.items.length).toBeLessThan(reference.held.items.length);
         const after = yield* lifetime(file, ({ worker }) =>
           Effect.gen(function* () {
             yield* drain(worker);
-            return { held: yield* record, ...(yield* audit(c)) };
+            return { held: yield* recordOf(file), ...(yield* audit(c)) };
           }),
         );
         expect(comparable(after.held)).toEqual(comparable(reference.held));
@@ -755,7 +815,7 @@ describe("the import's crash table", () => {
             // Whatever the crash cut, a start asked again goes on where the import stands.
             yield* start;
             yield* drain(worker);
-            const held = yield* record;
+            const held = yield* recordOf(file);
             yield* conversations.ask({
               commandId: CommandId.make("after-restart"),
               conversationId: c,

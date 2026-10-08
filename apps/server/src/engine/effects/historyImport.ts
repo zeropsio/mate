@@ -9,10 +9,13 @@
  */
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import { CommandId, type ConversationId, type HistorySource } from "@t3tools/contracts";
+import { CommandId, ThreadId, type ConversationId, type HistorySource } from "@t3tools/contracts";
+
+import type { ContentAssets } from "../../assets/ContentAssets.ts";
 
 import { Conversations } from "../Conversations.ts";
 import { planOf, recordsOf, type Plan, type Records } from "../history/v1.ts";
+import { keepPictures } from "../history/pictures.ts";
 import { readBodies, readSkeleton } from "../history/V1History.ts";
 import type { EffectHandler, HandlerResult } from "../outbox/EffectWorker.ts";
 import { failed, ok } from "./shared.ts";
@@ -59,6 +62,8 @@ export const askImport = (conversationId: ConversationId, source: HistorySource)
 export interface HistoryImportOptions {
   readonly records?: number;
   readonly bytes?: number;
+  /** Where the calls' pictures are kept, asked when a batch has one; none leaves them out. */
+  readonly pictures?: () => ContentAssets | null;
 }
 
 export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
@@ -66,6 +71,7 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
 ) {
   const batchRecords = options.records ?? HISTORY_BATCH_RECORDS;
   const batchBytes = options.bytes ?? HISTORY_BATCH_BYTES;
+  const pictures = options.pictures ?? (() => null);
   const sql = yield* SqlClient.SqlClient;
   const conversations = yield* Conversations;
   // V1 does not change under the import: a thread's plan is read once, until its import ends.
@@ -97,8 +103,11 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
           return ok({ done: true });
         }
         let to = Math.min(plan.entries.length, from + batchRecords);
-        const bodies = yield* readBodies(plan.entries.slice(from, to)).pipe(
+        const read = yield* readBodies(plan.entries.slice(from, to)).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
+        );
+        const bodies = yield* Effect.promise(() =>
+          keepPictures(pictures(), ThreadId.make(threadId), read),
         );
         let built = recordsOf(row.conversationId, plan, from, to, bodies);
         while (to - from > 1 && sizeOf(built) > batchBytes) {

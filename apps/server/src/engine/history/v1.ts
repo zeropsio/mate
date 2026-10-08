@@ -467,22 +467,14 @@ const endOfRun = (run: PlannedRun): { readonly end: RunEnd; readonly source: Run
   }
 };
 
-/** A tool's V1 payload, bounded: pictures out, then the bulky parts, then all but its words. */
+/**
+ * A tool's V1 payload, bounded: past the limit its result text goes, then its output, then all
+ * but its words and its pictures' references (`pictures.ts` already made them references).
+ */
 export const boundedCallData = (payload: unknown): unknown => {
   const record = asRecord(payload);
   if (record === undefined) return payload;
-  const data = asRecord(record.data);
-  const zerops = asRecord(data?.zerops);
-  let kept: Record<string, unknown> =
-    zerops !== undefined && zerops.images !== undefined
-      ? {
-          ...record,
-          data: {
-            ...data,
-            zerops: { ...without(zerops, "images"), imagesDropped: true },
-          },
-        }
-      : record;
+  let kept: Record<string, unknown> = record;
   const fits = () => JSON.stringify(kept).length <= CALL_DATA_LIMIT;
   if (fits()) return kept;
   const keptData = asRecord(kept.data);
@@ -501,13 +493,18 @@ export const boundedCallData = (payload: unknown): unknown => {
   );
   if (fits()) return kept;
   const detail = asText(kept.detail);
+  const pictures = asRecord(asRecord(kept.data)?.zerops)?.images;
   return {
     ...(kept.itemType === undefined ? {} : { itemType: kept.itemType }),
     ...(kept.toolCallId === undefined ? {} : { toolCallId: kept.toolCallId }),
     ...(kept.status === undefined ? {} : { status: kept.status }),
     ...(kept.title === undefined ? {} : { title: kept.title }),
     ...(detail === undefined ? {} : { detail: detail.slice(0, 2_000) }),
-    data: { toolName: asRecord(kept.data)?.toolName ?? null },
+    data: {
+      toolName: asRecord(kept.data)?.toolName ?? null,
+      // Its pictures are references: they stay whatever else had to go.
+      ...(Array.isArray(pictures) ? { zerops: { images: pictures, truncated: true } } : {}),
+    },
     truncated: true,
   };
 };
