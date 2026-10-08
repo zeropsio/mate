@@ -38,6 +38,7 @@ import type { OperationIntent } from "../../model.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import {
   mateEngineStop,
+  stopObservable,
   type EngineAcceptance,
   type EngineOperationTarget,
 } from "../mateEngine.ts";
@@ -204,7 +205,22 @@ export function makeMateEngineOperations(options: {
     for (const requestId of Array.from(stops)) {
       const record = store.state().operations.get(requestId);
       if (record?.intent.kind !== "mate-engine-stop" || record.receipt === null) continue;
-      if (mateEngineStop.settledBy?.(read, record.intent, record.receipt) == null) continue;
+      if (mateEngineStop.settledBy?.(read, record.intent, record.receipt) == null) {
+        // Nothing here follows it any more (never opened, or forgotten): its end cannot be seen.
+        if (!stopObservable(read, record.intent, record.receipt)) {
+          stops.delete(requestId);
+          store.dispatch({
+            kind: "operation-exhausted",
+            requestId,
+            unobservable: {
+              nextActor: "you",
+              nextAction: "Open the conversation to see whether it stopped.",
+              reason: "The Mate took the Stop; this view no longer follows that conversation.",
+            },
+          });
+        }
+        continue;
+      }
       stops.delete(requestId);
       store.dispatch({
         kind: "operation-receipt",

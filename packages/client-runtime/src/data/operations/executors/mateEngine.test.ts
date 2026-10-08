@@ -1,5 +1,6 @@
 import {
   EngineWireError,
+  type ConversationRow,
   type EngineCallResult,
   type EngineReceiptResult,
   type Item,
@@ -11,10 +12,10 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { EnvironmentRpcUnavailableError } from "../../../rpc/client.ts";
-import { engineFactId } from "../../families/mateEngine.ts";
+import { engineFactId, engineRowsScope } from "../../families/mateEngine.ts";
 import type { Row } from "../../reducer.ts";
 import { makeAccountStore, readsOfState } from "../../store.ts";
-import { engineRequest, engineRun, personItem } from "../../__fixtures__/mateEngine.ts";
+import { engineRequest, engineRow, engineRun, personItem } from "../../__fixtures__/mateEngine.ts";
 import { mateEngineAnswer, mateEngineSend } from "../mateEngine.ts";
 import {
   makeMateEngineOperations,
@@ -237,6 +238,68 @@ describe("what a person does to an engine conversation", () => {
       ]);
       expect(r.record()?.receipt?.outcome.kind).toBe("succeeded");
     }),
+  );
+
+  it.effect("a stop sent from the menu ends when the conversation's row shows its run over", () =>
+    Effect.gen(function* () {
+      const r = rig({
+        answers: [
+          Effect.succeed({
+            _tag: "Accepted",
+            seq: 20,
+            runId: "thread-ada/r/2",
+          } as EngineCallResult),
+        ],
+      });
+      const row = (state: ConversationRow["state"], activeRunId: string | null, seq: number) =>
+        r.store.dispatch({
+          kind: "delivery",
+          via: "mate-direct",
+          scopes: [{ scope: engineRowsScope("env-ada"), generation: 0 }],
+          reset: false,
+          rows: [
+            {
+              family: "mateEngineRow",
+              id: engineFactId("env-ada", "thread-ada"),
+              value: {
+                ...engineRow("env-ada", "thread-ada", { state, activeRunId: activeRunId as never }),
+                environmentId: "env-ada",
+              },
+              revision: { kind: "mate-conversation", environmentId: "env-ada", epoch: 1, seq },
+            },
+          ],
+          removals: [],
+        });
+      row({ kind: "working", since: 1, waitsOnHelpers: false }, "thread-ada/r/2", 19);
+      yield* r.operations.stop({ ...target });
+      expect(r.record()?.receipt?.outcome.kind).toBe("pending");
+      row({ kind: "idle" }, null, 21);
+      expect(r.record()?.receipt?.outcome.kind).toBe("succeeded");
+    }),
+  );
+
+  it.effect(
+    "a stop on a conversation this account no longer follows ends unresolved, naming what to do",
+    () =>
+      Effect.gen(function* () {
+        const r = rig({
+          answers: [
+            Effect.succeed({
+              _tag: "Accepted",
+              seq: 20,
+              runId: "thread-ada/r/2",
+            } as EngineCallResult),
+          ],
+        });
+        yield* r.operations.stop({ ...target, runId: "thread-ada/r/2" });
+        expect(r.record()).toMatchObject({
+          receipt: { acceptance: { kind: "accepted" } },
+          unresolved: {
+            nextActor: "you",
+            nextAction: "Open the conversation to see whether it stopped.",
+          },
+        });
+      }),
   );
 
   it.effect("an answer keeps only its summary, never the words it carries", () =>

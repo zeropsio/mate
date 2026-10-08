@@ -116,9 +116,27 @@ export const mateEngineStop: OperationKind<"mate-engine-stop"> = {
   settledBy: (read, intent, receipt) => {
     if (receipt.acceptance.kind !== "accepted") return null;
     const run = stoppedRun(read, intent, receipt);
-    return run?.state === "ended" ? { kind: "succeeded" } : null;
+    if (run !== null) return run.state === "ended" ? { kind: "succeeded" } : null;
+    // Not open here (a Stop from the menu): the conversation's row says when its run is over.
+    const runId = intent.runId ?? acceptance(receipt)?.runId ?? null;
+    const row = read.fact(
+      "mateEngineRow",
+      engineFactId(intent.environmentId, intent.conversationId),
+    );
+    if (row.kind !== "known" || runId === null) return null;
+    return row.value.activeRunId !== runId ? { kind: "succeeded" } : null;
   },
 };
+
+/** Whether this account follows the conversation a Stop asked: its run, or its menu row. */
+export const stopObservable = (
+  read: ProjectionReads,
+  intent: EngineOperationTarget & { readonly runId: string | null },
+  receipt: OperationReceipt,
+) =>
+  stoppedRun(read, intent, receipt) !== null ||
+  read.fact("mateEngineRow", engineFactId(intent.environmentId, intent.conversationId)).kind ===
+    "known";
 
 /** A model switch shows once the conversation's header names the model. */
 export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = {
