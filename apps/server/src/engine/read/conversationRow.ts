@@ -23,15 +23,19 @@ export const rowText = (value: string | null | undefined, max = ROW_TEXT_MAX): s
 };
 
 /**
- * The first line of the person's ask, quoted as V1's row quotes a message (`userAskPreviewText`):
+ * The first line of the person's ask that has words, quoted as V1's row quotes a message (`userAskPreviewText`):
  * a picture's label is no word they wrote, a message of pictures alone reads as their count.
  */
 const subjectOf = (person: UserAskSource): string | null => {
   const ask = userAskOf(person);
   if (ask === null) return null;
   if (ask.kind === "attachments") return rowText(attachmentsLabel(ask));
-  const line = ask.text.split("\n").find((candidate) => candidate.trim().length > 0);
-  return line === undefined ? null : rowText(messagePreviewText(line));
+  // The first line that still has words once its markdown is read: a rule or a fence has none.
+  for (const line of ask.text.split("\n")) {
+    const words = rowText(messagePreviewText(line));
+    if (words !== null) return words;
+  }
+  return null;
 };
 
 /**

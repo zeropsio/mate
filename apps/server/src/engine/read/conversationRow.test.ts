@@ -92,6 +92,16 @@ describe("the menu row", () => {
       person: { text: "Deploy **the api**", attachments: [] },
       said: "Deploy the api",
     },
+    {
+      name: "a rule before the words",
+      person: { text: "---\nDeploy the api", attachments: [] },
+      said: "Deploy the api",
+    },
+    {
+      name: "a code fence before the words",
+      person: { text: "```sh\nnpm run build\n```", attachments: [] },
+      said: "npm run build",
+    },
   ])(
     "reads the person's message as V1's row quotes it, never a picture's label: $name",
     ({ person, said }) => {
