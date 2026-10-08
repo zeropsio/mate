@@ -363,6 +363,29 @@ export interface AttentionRecord {
   readonly taskId: string | null;
   readonly text: string;
   readonly at: number;
+  /** The work it stands for, as an operation the person can continue or drop. */
+  readonly operation?: OperationFacts;
+}
+
+/**
+ * Work the crew could not finish on its own: a check whose setup failed, a task its restart could
+ * not carry on, a person's turn a restart cut. *Continue* takes it up again; *Drop it* lets it go.
+ */
+export interface OperationFacts {
+  readonly kind: "dispatch" | "checkpoint" | "check" | "landing" | "rebuild";
+  readonly stage: string;
+  readonly confirmedStage: string;
+  readonly status: "failed" | "interrupted";
+  /** The state its task goes back to on *Continue*. */
+  readonly resumeState: CrewTaskState;
+  readonly startedBy: string;
+  readonly attempt: number;
+  /** A row of its own on *Waiting on you*; a failed check is its parked task's row. */
+  readonly row: boolean;
+  /** The effect *Continue* asks again, as it was asked. */
+  readonly redo?: { readonly kind: string };
+  /** The turn *Continue* sends again. */
+  readonly turn?: { readonly text: string; readonly principal: Principal };
 }
 
 export interface AppliedCrew {

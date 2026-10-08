@@ -126,6 +126,7 @@ import {
   usagePercentOf,
   type ActiveRun,
   DEFAULT_CREW_TIMING,
+  type AttentionRecord,
   type CrewState,
   type CrewTiming,
   type DeliveryPurpose,
@@ -1653,6 +1654,7 @@ const pressed = (
       const row = b.state.attention.find((entry) => entry.id === press.operationId);
       if (row === undefined) throw wrongState("that row is gone");
       b.emit({ _tag: "AttentionCleared", id: row.id });
+      if (press._tag === "operationContinue") return continueOperation(b, row, as);
       if (press._tag === "operationDiscard" && row.taskId !== null) {
         const task = b.state.tasks[row.taskId];
         if (task !== undefined && task.state !== "landed" && task.state !== "discarded") {
@@ -1796,6 +1798,52 @@ const answer = (
     throw wrongState(`#${task.number} is ${task.state}`);
   }
   continueTask(b, task, as, answerCard(task, null, text), "answer");
+};
+
+/** *Continue* on an operation: its effect asked again from where it stood, or its turn sent again. */
+const continueOperation = (b: Builder, row: AttentionRecord, as: Principal): void => {
+  const facts = row.operation;
+  const task = row.taskId === null ? undefined : b.state.tasks[row.taskId];
+  if (facts?.redo !== undefined && task !== undefined && task.state === "parked") {
+    b.emit({
+      _tag: "TaskStepped",
+      taskId: task.id,
+      cause: "operation-continue",
+      from: task.state,
+      to: facts.resumeState,
+      counters: task.counters,
+      set: {
+        wait: null,
+        ...(facts.kind === "check" ? { check: { state: "running", output: "", tip: null } } : {}),
+      },
+    });
+    b.effect(facts.redo as CrewEffectPayload, task.owner, {
+      handle: task.owner,
+      taskId: task.id,
+      attempt: task.counters.attempt,
+    });
+    return;
+  }
+  const member = row.handle === null ? undefined : b.state.members[row.handle];
+  if (facts?.turn === undefined || member === undefined) return;
+  if (task !== undefined && isOpenTask(task.state)) {
+    continueTask(
+      b,
+      task,
+      facts.turn.principal ?? as,
+      { text: facts.turn.text, card: null },
+      "continue",
+    );
+  } else if (task === undefined) {
+    sendTurn(
+      b,
+      member,
+      { text: facts.turn.text, card: null },
+      facts.turn.principal,
+      member.kind === "lead" ? "lead-message" : "message",
+      null,
+    );
+  }
 };
 
 /** Discards a task; an open one's work is kept aside and its copy reset first. */
@@ -2739,6 +2787,43 @@ const countCost = (
   }
 };
 
+/** Work a restart left that the crew does not carry on by itself: a row with Continue / Drop it. */
+const interrupted = (
+  b: Builder,
+  member: MemberRecord,
+  task: TaskRecord | undefined,
+  words: string,
+  delivery: DeliveryRecord | undefined,
+  runId?: RunId,
+): void => {
+  const id =
+    task === undefined ? `interrupted:${runId ?? member.handle}` : `interrupted:${task.id}`;
+  if (b.state.attention.some((row) => row.id === id)) return;
+  b.emit({
+    _tag: "AttentionRaised",
+    row: {
+      id,
+      handle: member.handle,
+      taskId: task?.id ?? null,
+      text: words,
+      at: b.now,
+      operation: {
+        kind: "dispatch",
+        stage: "dispatching",
+        confirmedStage: "prepared",
+        status: "interrupted",
+        resumeState: task?.state ?? "working",
+        startedBy: userOf(delivery?.principal ?? b.envelope.principal),
+        attempt: task?.counters.attempt ?? 0,
+        row: true,
+        ...(delivery?.text == null
+          ? {}
+          : { turn: { text: delivery.text, principal: delivery.principal } }),
+      },
+    },
+  });
+};
+
 const runEnded = (
   b: Builder,
   member: MemberRecord,
@@ -2771,6 +2856,9 @@ const runEnded = (
       if (runningRun(b.state) !== undefined && !starting.ownCall) pauseRun(b, "refused", words);
     } else if (runningRun(b.state) !== undefined) {
       pauseRun(b, "refused", words);
+    } else if (purpose === "continue" && task !== undefined && isOpenTask(task.state)) {
+      // A task its restart could not carry on: it waits on the person, Continue or Drop it.
+      interrupted(b, member, task, words, delivery);
     }
     return;
   }
@@ -2794,7 +2882,15 @@ const runEnded = (
       );
     }
   }
-  if (ending.kind === "cut") {
+  if (
+    ending.kind === "cut" &&
+    member.kind === "lead" &&
+    purpose === "lead-message" &&
+    active?.reached !== false
+  ) {
+    // A person's own turn to the lead a restart cut: kept as a row, never sent again unasked.
+    interrupted(b, member, undefined, "The Mate restarted during its turn.", delivery, event.runId);
+  } else if (ending.kind === "cut") {
     if (b.state.run?.state === "paused") {
       b.emit({
         _tag: "CrewmateUpdated",
@@ -3495,6 +3591,28 @@ const settled = (
           return;
         case "setup-failed":
           park(b, task, "its setup failed");
+          // The check's command never ran: Continue runs it again from its setup.
+          b.emit({
+            _tag: "AttentionRaised",
+            row: {
+              id: effectId,
+              handle: task.owner,
+              taskId: task.id,
+              text: "its setup failed",
+              at: b.now,
+              operation: {
+                kind: "check",
+                stage: "setting-up",
+                confirmedStage: "setting-up",
+                status: "failed",
+                resumeState: "checking",
+                startedBy: userOf(dispatchPrincipal(b.state, task)),
+                attempt: task.counters.attempt,
+                row: false,
+                redo: pending.payload as CrewEffectPayload,
+              },
+            },
+          });
           return;
         case "lane-missing":
           park(b, task, "its copy of the code is missing");

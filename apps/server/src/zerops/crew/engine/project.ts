@@ -19,6 +19,7 @@ import {
   type CrewDevHost,
   type CrewLaneState,
   type CrewLogin,
+  type CrewOperation,
   type CrewRun,
   type CrewSnapshot,
   type CrewTask,
@@ -41,6 +42,7 @@ import {
   runElapsedMs,
   tasksInOrder,
   usagePercentOf,
+  type AttentionRecord,
   type CrewState,
   type MemberRecord,
   type TaskRecord,
@@ -281,6 +283,37 @@ const leadAttention = (
   ];
 };
 
+/** The operation a row stands for, in the shape V1's operations take. */
+const operationOf = (state: CrewState, entry: AttentionRecord): CrewOperation | undefined => {
+  const facts = entry.operation;
+  if (facts === undefined) return undefined;
+  const member = entry.handle === null ? undefined : state.members[entry.handle];
+  return {
+    id: entry.id,
+    crew: state.ownerId.replace(/^crew\//u, ""),
+    handle: entry.handle ?? "",
+    taskId: entry.taskId,
+    kind: facts.kind,
+    stage: facts.stage,
+    confirmedStage: facts.confirmedStage,
+    status: facts.status,
+    startedBy: facts.startedBy,
+    resumeState: facts.resumeState,
+    targets: {
+      host: member?.host ?? null,
+      path: null,
+      ref: null,
+      threadId: member?.conversationId ?? null,
+      commandId: null,
+      attempt: facts.attempt,
+    },
+    result: null,
+    detail: entry.text,
+    startedAt: iso(entry.at),
+    updatedAt: iso(entry.at),
+  };
+};
+
 /** Rows the crew raised itself: an effect that failed for good, a copy gone, a redeploy unread. */
 const crewAttention = (state: CrewState): ReadonlyArray<CrewAttention> => [
   ...membersInOrder(state)
@@ -295,18 +328,21 @@ const crewAttention = (state: CrewState): ReadonlyArray<CrewAttention> => [
       host: member.host,
       at: iso(member.session.startedAt),
     })),
-  ...state.attention.map((entry): CrewAttention => ({
-    id: entry.id,
-    kind: entry.id.startsWith("deploy-unreadable:") ? "deploy-unreadable" : "interrupted",
-    handle: entry.handle,
-    taskId: entry.taskId,
-    text: entry.text,
-    paths: [],
-    host: entry.id.startsWith("deploy-unreadable:")
-      ? entry.id.slice("deploy-unreadable:".length)
-      : null,
-    at: iso(entry.at),
-  })),
+  ...state.attention
+    .filter((entry) => entry.operation?.row !== false)
+    .map((entry): CrewAttention => ({
+      id: entry.id,
+      kind: entry.id.startsWith("deploy-unreadable:") ? "deploy-unreadable" : "interrupted",
+      ...(entry.operation === undefined ? {} : { operation: operationOf(state, entry)! }),
+      handle: entry.handle,
+      taskId: entry.taskId,
+      text: entry.text,
+      paths: [],
+      host: entry.id.startsWith("deploy-unreadable:")
+        ? entry.id.slice("deploy-unreadable:".length)
+        : null,
+      at: iso(entry.at),
+    })),
 ];
 
 const toCrewmate = (
@@ -471,6 +507,7 @@ export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot =
       ...claimAttention,
       ...crewAttention(state),
     ],
+    operations: state.attention.flatMap((entry) => operationOf(state, entry) ?? []),
     devHosts: devHostsOf(view),
     landedNotDelivered: all.filter(
       (task) =>
