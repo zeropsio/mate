@@ -19,6 +19,7 @@ import {
   failEnvironmentNotFound,
   failEnvironmentOperationForbidden,
   requireEnvironmentScope,
+  EnvironmentHttpRequestStartedAt,
 } from "../auth/http.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
@@ -81,7 +82,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
       .handle(
         "threadSnapshot",
         Effect.fn("environment.orchestration.threadSnapshot")(function* (args) {
-          const started = performance.now();
+          const started = (yield* EnvironmentHttpRequestStartedAt) ?? performance.now();
           const stages: Array<{ name: string; duration: number }> = [];
           let stageStarted = started;
           const endStage = (name: string) => {

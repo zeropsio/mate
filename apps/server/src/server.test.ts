@@ -8514,6 +8514,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   for (const reasoningMessages of [undefined, true] as const) {
     it.effect(`preserves reasoning wire compatibility with opt-in ${reasoningMessages}`, () =>
       Effect.gen(function* () {
+        let timingNow = 0;
         const message = {
           id: MessageId.make("thinking-compatibility"),
           role: "reasoning" as const,
@@ -8570,6 +8571,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             projectionSnapshotQuery: {
               getThreadDetailSnapshot: () =>
                 Effect.gen(function* () {
+                  timingNow += 30;
                   yield* PubSub.publishAll(liveEvents, [event, answer]);
                   return Option.some({
                     snapshotSequence: 1,
@@ -8586,14 +8588,39 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           },
         });
         const role = reasoningMessages ? "reasoning" : "system";
+        const authorization = yield* getAuthenticatedAuthorizationHeader();
+        const auth = yield* testAuth;
+        const authenticate = auth.authenticateHttpRequest;
+        const authenticateSpy = vi
+          .spyOn(auth, "authenticateHttpRequest")
+          .mockImplementation((request) =>
+            authenticate(request).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  timingNow += 200;
+                }),
+              ),
+            ),
+          );
+        timingNow = 0;
+        const timingClock = vi.spyOn(performance, "now").mockImplementation(() => timingNow);
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => {
+            timingClock.mockRestore();
+            authenticateSpy.mockRestore();
+          }),
+        );
         const response = yield* fetchEffect(
           yield* getHttpServerUrl(
             `/api/orchestration/threads/${defaultThreadId}?turnLimit=1${reasoningMessages ? "&reasoningMessages=true" : ""}`,
           ),
-          { headers: { authorization: yield* getAuthenticatedAuthorizationHeader() } },
+          { headers: { authorization } },
         );
         const timing = response.headers["server-timing"];
         assert.isNotNull(timing);
+        // Authentication, including the session/DPoP middleware, is visible before headers.
+        assert.include(timing!, "authorize;dur=200.00");
+        assert.include(timing!, "snapshot;dur=230.00");
         for (const stage of [
           "authorize",
           "read",

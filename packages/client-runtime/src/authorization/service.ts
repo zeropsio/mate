@@ -344,12 +344,14 @@ export const make = Effect.gen(function* () {
       yield* tokenStore
         .put(token)
         .pipe(Effect.withSpan("environment.authorization.accessToken.persist"));
+      const threadSnapshot = threadSnapshotCapabilitiesOf(descriptor);
       return {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
         httpBaseUrl: bootstrap.endpoint.httpBaseUrl,
         contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
         ...mateEngineOf(descriptor),
+        ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
         socketUrl,
         httpAuthorization: {
           _tag: "Dpop" as const,

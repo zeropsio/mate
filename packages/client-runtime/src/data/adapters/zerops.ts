@@ -754,12 +754,6 @@ export function zeropsNavigationLink(options: {
        * generation), and then it is read again.
        */
       const observed = new Map<ScopeKey, number>();
-      const navigationRegistered = new Set<ScopeKey>();
-      /** A sampled detail reads nothing a registration observes: it is read at once. */
-      const readsAtOnce = (scope: ScopeKey) => {
-        const { spec, detail } = scopeListing(scope);
-        return detail === null && spec.sampled !== undefined;
-      };
       const inFlight = new Set<ScopeKey>();
       const wakes = yield* Queue.sliding<void>(1);
       const wake = () => Queue.offerUnsafe(wakes, undefined);
@@ -786,9 +780,12 @@ export function zeropsNavigationLink(options: {
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
           const renewed = demands.takeRenewal(scope);
+          const navigation = scopeOf(scopeListing(scope).spec, orgId);
+          const navigationPhase = streamOf(store.state(), navigation).phase;
           if (
-            !readsAtOnce(scope) &&
-            !navigationRegistered.has(scopeOf(scopeListing(scope).spec, orgId))
+            scopes.includes(navigation) &&
+            navigationPhase !== "live" &&
+            navigationPhase !== "refused"
           )
             continue;
           const stream = streamOf(store.state(), scope);
@@ -858,7 +855,6 @@ export function zeropsNavigationLink(options: {
             yield* signal(scope, { kind: "attempt" });
             // A scope refused alone stays so until the person tries again: nothing registers it.
             if (streamOf(store.state(), scope).phase === "refused") {
-              navigationRegistered.add(scope);
               wake();
               return;
             }
@@ -919,7 +915,6 @@ export function zeropsNavigationLink(options: {
               );
               yield* signal(scope, { kind: "baseline-committed" });
             }
-            navigationRegistered.add(scope);
             wake();
           }),
         { concurrency: "unbounded", discard: true },
@@ -933,14 +928,19 @@ export function zeropsNavigationLink(options: {
             : Queue.take(wakes);
         }),
       );
-      // A sampled detail is read at once, beside the registrations: it waits for none of them
-      // (the official HQ's anchor gates the product). Every other detail waits for its family's
-      // own scope to be registered first, so no change of its members slips between.
+      // Only details with a navigation scope wait for it; independent queries open at once.
       const details = yield* Effect.forkIn(observeForever, attemptScope);
-      yield* registerNavigation;
-      yield* signal(key, { kind: "baseline-committed" });
-      wake();
-      yield* Effect.raceAllFirst([Fiber.join(frames), Fiber.join(details), Deferred.await(ended)]);
+      yield* Effect.raceAllFirst([
+        Effect.gen(function* () {
+          yield* registerNavigation;
+          yield* signal(key, { kind: "baseline-committed" });
+          wake();
+          return yield* Effect.never;
+        }),
+        Fiber.join(frames),
+        Fiber.join(details),
+        Deferred.await(ended),
+      ]);
       return yield* Effect.fail(corrupt("The receiver's socket closed."));
     });
 

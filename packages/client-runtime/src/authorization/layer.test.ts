@@ -424,6 +424,53 @@ describe("RemoteEnvironmentAuthorization", () => {
     }),
   );
 
+  it.effect.each(["first sign-in", "expired token", "rejected token"] as const)(
+    "opens HTTP history after $0 without waiting for socket configuration",
+    (path) =>
+      Effect.gen(function* () {
+        const descriptor = {
+          ...DESCRIPTOR,
+          capabilities: {
+            ...DESCRIPTOR.capabilities,
+            threadSnapshotPagination: true,
+            reasoningMessages: true,
+          },
+        };
+        const harness = yield* makeHarness({
+          ...(path === "first sign-in"
+            ? {}
+            : {
+                initialToken: new TokenStore.RemoteDpopAccessToken({
+                  environmentId: ENVIRONMENT_ID,
+                  label: DESCRIPTOR.label,
+                  endpoint: ENDPOINT,
+                  accessToken: "old-access-token",
+                  expiresAtEpochMs: path === "expired token" ? 0 : Number.MAX_SAFE_INTEGER,
+                  dpopThumbprint: "thumbprint-1",
+                }),
+              }),
+          responses: [
+            ...(path === "rejected token" ? [authInvalid()] : []),
+            Response.json(descriptor),
+            accessToken("fresh-access-token"),
+            websocketTicket("fresh-ticket"),
+          ],
+        });
+        const authorized =
+          yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.pipe(
+            Effect.flatMap((remote) =>
+              remote.authorizeDpop({
+                expectedEnvironmentId: ENVIRONMENT_ID,
+                obtainBootstrap: harness.obtainBootstrap,
+              }),
+            ),
+            Effect.provide(harness.layer),
+          );
+        expect(authorized.threadSnapshot).toEqual({ pagination: true, reasoningMessages: true });
+        expect(yield* Ref.get(harness.bootstrapCalls)).toBe(1);
+      }),
+  );
+
   it.effect("refreshes and persists an expired environment token", () =>
     Effect.gen(function* () {
       const expired = new TokenStore.RemoteDpopAccessToken({

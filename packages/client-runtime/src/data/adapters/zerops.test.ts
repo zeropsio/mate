@@ -27,6 +27,10 @@ import { STREAM_POLICY } from "../streamMachine.ts";
 import { ownRowWanted, listedProject } from "../projections/projects.ts";
 import { platformInventory } from "../projections/platformInventory.ts";
 import { readsOfState } from "../store.ts";
+import { usageScope, usageOwnerOf } from "../families/usage.ts";
+import { usageHistoryScope } from "../families/usageHistory.ts";
+import { projectVariablesScope } from "../families/projectVariables.ts";
+import { serviceVariablesScope } from "../families/serviceVariables.ts";
 
 import {
   RECORDED_ROUTING,
@@ -87,6 +91,56 @@ function answers(
 }
 
 describe("zeropsNavigationLink", () => {
+  it.effect.each([
+    {
+      family: "usage",
+      path: "/current-stats/group-by-search",
+      owner: usageOwnerOf(ORG, PROBE_PROJECT_ID),
+      scope: usageScope,
+    },
+    {
+      family: "usageHistory",
+      path: "/stats-history/group-by-search",
+      owner: usageOwnerOf(ORG, PROBE_PROJECT_ID),
+      scope: usageHistoryScope,
+    },
+    {
+      family: "projectVariables",
+      path: "/project/search",
+      owner: PROBE_PROJECT_ID,
+      scope: projectVariablesScope,
+    },
+    {
+      family: "serviceVariable",
+      path: "/user-data/search",
+      owner: PROBE_PROJECT_ID,
+      scope: serviceVariablesScope,
+    },
+  ] as const)(
+    "opens $family while resources or Vault is demanded",
+    ({ family, path, owner, scope }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const baseline = answers(() => []);
+        const fixture = fixtureWire((request) =>
+          request.path === path && request.body?.wsOutputType === undefined
+            ? Effect.succeed({ items: [] })
+            : baseline(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        link.demandDetail({ family, ownerId: owner });
+        yield* settle;
+        expect(store.state().streams.get(scope(ORG, owner))?.phase).toBe("live");
+        expect(
+          fixture.requests.some(
+            (request) => request.path === path && request.body?.wsOutputType === undefined,
+          ),
+        ).toBe(true);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("shows services while an unrelated process baseline is still opening", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -637,6 +691,28 @@ describe("a demanded detail", () => {
   const historyReads = (fixture: ReturnType<typeof fixtureWire>) =>
     fixture.requests.filter((request) => request.method === "GET" && request.path === HISTORY_PATH)
       .length;
+
+  it.effect("repairs a refused history session while an unrelated baseline is still opening", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const baseline = answers(() => []);
+      const fixture = fixtureWire((request) =>
+        request.path === "/app-version/search" && request.body?.wsOutputType === "listStream"
+          ? Effect.never
+          : request.method === "GET" && request.path === HISTORY_PATH && fixture.opens() === 1
+            ? Effect.fail({ outcome: "recoverable-session", message: "HTTP 401" } as const)
+            : request.method === "GET"
+              ? Effect.succeed({ status: 200, body: { list: [finished] } })
+              : baseline(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(DEMAND);
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
+      expect(factOf(store.state(), "process", "old")?.content.kind).toBe("value");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 
   it.effect("shows demanded history once its own family is ready, while versions still open", () =>
     Effect.gen(function* () {

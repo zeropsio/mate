@@ -161,7 +161,7 @@ export type MateDiagnosticEvent =
         | "paint";
       readonly source?: "http" | "socket";
       readonly durationMs?: number;
-      readonly decodedChars?: number;
+      readonly decodedBytes?: number;
       readonly serverTiming?: string;
     }
   /** A thread route rendered its conversation. */

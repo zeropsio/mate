@@ -79,15 +79,14 @@ export const fetchEnvironmentThreadSnapshot = Effect.fn(
               ? {}
               : { serverTiming: response.headers["server-timing"] }),
           });
-          const text = yield* response.text;
-          // Keep the generated client's status/error/schema decoder. Its JSON reader uses
-          // this already-read text, so measuring transfer does not decode the body twice.
-          Object.defineProperty(response, "text", { value: Effect.succeed(text) });
+          // The transport caches bytes; leave UTF-8, JSON and schema decoding to the
+          // generated client, including its typed error decoder.
+          const bytes = yield* response.arrayBuffer;
           mateDiagnostics.record({
             ...fields,
             stage: "body",
             durationMs: performance.now() - received,
-            decodedChars: text.length,
+            decodedBytes: bytes.byteLength,
           });
           decodeStarted = performance.now();
           return response;
