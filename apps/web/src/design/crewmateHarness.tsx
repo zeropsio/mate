@@ -56,7 +56,6 @@ import { parseBrief, renderCrewHome, type CrewDefinition } from "@t3tools/shared
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { resolveZeropsConversationReadOnly } from "~/components/ChatView.logic";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
@@ -478,10 +477,10 @@ function LineHeader({ current }: { readonly current: Seat | null }) {
 const COMPOSER_HEIGHT = 136;
 
 /** Someone else signed the crew's agent in: the lock notice stands where the composer would. */
-const LOCKED = resolveZeropsConversationReadOnly({
-  agent: { flagToken: false },
-  ownership: "someone-else",
-});
+const LOCKED = {
+  notice: "Signed in by another project member — only they can run this agent.",
+  waitingLabel: "Waiting for the agent's owner",
+};
 
 /**
  * Where the composer is: a stand-in in the composer's own glass shell and at its resting height —

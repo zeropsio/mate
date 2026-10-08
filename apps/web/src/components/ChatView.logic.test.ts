@@ -4,7 +4,10 @@ import {
   isBranchMismatchDismissedForSession,
   shouldShowBranchMismatchBanner,
 } from "./BranchToolbar.logic";
-import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import {
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
+} from "@t3tools/client-runtime/data";
 // @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -28,7 +31,6 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
 
 import type { Thread, ThreadShell } from "../types";
-import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
   projectScriptKeybindingWrites,
@@ -48,7 +50,6 @@ import {
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   shouldRefocusComposerOnWindowFocus,
-  isZeropsInstanceRunnable,
   reconcileMountedTerminalThreadIds,
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,

@@ -1,8 +1,44 @@
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
-import type { LoginDigest } from "@t3tools/shared/mateLink";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { mateLoginsReadOnly, mateReadOnly } from "./useMateReadOnly";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EnvironmentId } from "@t3tools/contracts";
+import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
+import { useMateReadOnly } from "./useMateReadOnly";
+
+const facts = vi.hoisted(() => ({
+  read: undefined as Known<ZeropsAgentAuthSnapshot> | undefined,
+  viewerSubject: undefined as string | undefined,
+}));
+vi.mock("./useZeropsFeeds", () => ({ useZeropsAgentAuth: () => facts.read }));
+vi.mock("./ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({ user: { id: facts.viewerSubject } }),
+}));
+
+function Reader({ instanceId }: { instanceId: string | undefined }) {
+  return String(useMateReadOnly(EnvironmentId.make("rig"), instanceId));
+}
+
+// Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.
+const mateReadOnly = (input: {
+  snapshot: ZeropsAgentAuthSnapshot | null;
+  instanceId: string | undefined;
+  viewerSubject: string | undefined;
+}) => {
+  facts.read =
+    input.snapshot === null
+      ? undefined
+      : {
+          state: "known",
+          value: input.snapshot,
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        };
+  facts.viewerSubject = input.viewerSubject;
+  return renderToStaticMarkup(createElement(Reader, { instanceId: input.instanceId })) === "true";
+};
 
 const claude = (overrides: Partial<ZeropsAgentAuth> = {}): ZeropsAgentAuth => ({
   agentId: "claude-code",
@@ -27,7 +63,7 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
   } as const;
 
   it.each([
-    { case: "an agent another member signed in", input: {}, readOnly: true },
+    { case: "an agent another member signed in", input: {}, readOnly: false },
     {
       case: "an agent the viewer signed in",
       input: { snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })) },
@@ -58,56 +94,5 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
     },
   ])("$case: $readOnly", ({ input, readOnly }) => {
     expect(mateReadOnly({ ...base, ...input })).toBe(readOnly);
-  });
-});
-
-describe("mateLoginsReadOnly — the same rule over the logins HQ holds of a Mate", () => {
-  const login = (overrides: Partial<LoginDigest> = {}): LoginDigest => ({
-    signedInBy: "petra",
-    present: true,
-    token: false,
-    ...overrides,
-  });
-  const base = {
-    logins: { "claude-code": login() },
-    instanceId: "claudeAgent",
-    viewerSubject: "ada",
-  } as const;
-
-  it.each([
-    { case: "an agent another member signed in", input: {}, readOnly: true },
-    {
-      case: "an agent the viewer signed in",
-      input: { logins: { "claude-code": login({ signedInBy: "ada" }) } },
-      readOnly: false,
-    },
-    {
-      case: "an agent the project's token signed in",
-      input: { logins: { "claude-code": login({ token: true }) } },
-      readOnly: false,
-    },
-    {
-      case: "an agent whose sign-in nobody recorded",
-      input: { logins: { "claude-code": login({ signedInBy: null }) } },
-      readOnly: false,
-    },
-    {
-      case: "an agent whose credential is gone",
-      input: { logins: { "claude-code": login({ present: false }) } },
-      readOnly: false,
-    },
-    { case: "a Mate whose logins HQ holds none of", input: { logins: undefined }, readOnly: false },
-    {
-      case: "a conversation whose agent is not known yet",
-      input: { instanceId: undefined },
-      readOnly: false,
-    },
-    {
-      case: "a viewer nobody can name",
-      input: { viewerSubject: undefined },
-      readOnly: false,
-    },
-  ])("$case: $readOnly", ({ input, readOnly }) => {
-    expect(mateLoginsReadOnly({ ...base, ...input })).toBe(readOnly);
   });
 });

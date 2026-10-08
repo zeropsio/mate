@@ -23,7 +23,10 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ComposerRoomHeld, ComposerStandInDock } from "~/components/chat/ComposerStandIn";
-import { HQ_SAID_READ_ONLY } from "~/components/ChatView.logic";
+const HQ_SAID_READ_ONLY = {
+  notice: "Signed in by another project member — only they can run this agent.",
+  waitingLabel: "Waiting for the agent's owner",
+};
 import { ConversationFooterStandIn } from "~/components/zerops/ConversationFooterStandIn";
 import { ZeropsReadOnlyConversationFooter } from "~/components/zerops/ZeropsReadOnlyConversationFooter";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";

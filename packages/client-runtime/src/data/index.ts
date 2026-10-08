@@ -595,6 +595,8 @@ export {
 
 export {
   agentAdmission,
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
   admissionRefusalWords,
   mateAdmissionSummary,
   admissionExplainsRefusal,

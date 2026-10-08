@@ -24,7 +24,7 @@ import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/age
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
-import { isZeropsInstanceRunnable } from "../ChatView.logic";
+import { isZeropsInstanceRunnable } from "@t3tools/client-runtime/data";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useZeropsAgentSignInDialog } from "../../zerops/useZeropsAgentSignInDialog";
 import { ZEROPS_AGENT_NAMES } from "../zerops/ZeropsAgentSignIn.logic";

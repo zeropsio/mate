@@ -284,3 +284,63 @@ it.each(["unsupported", "broken"] as const)(
     });
   },
 );
+
+describe("one admission answer for composer, Send and Continue", () => {
+  const snapshot = {
+    available: true,
+    agents: [
+      {
+        agentId: "codex",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        providerAuth: "authenticated",
+        state: "authorized",
+        authorizedBy: { subject: "another" },
+      },
+    ],
+  } as const;
+  const base = {
+    environmentId: "rig",
+    instanceId: "codex",
+    viewerSubject: "viewer",
+    providers: [],
+    mateName: "Wren",
+  } as const;
+  it.each(["unread", "reading"] as const)(
+    "A cold %s holds Send and Continue without inventing sign-in guidance",
+    (state) => {
+      expect(
+        agentAdmission({
+          ...base,
+          read:
+            state === "unread" ? { state, waitingFor: null } : { state, sinceMs: 0, attempt: 1 },
+        }),
+      ).toMatchObject({
+        attention: null,
+        footer: "held",
+        canSend: false,
+        readOnly: false,
+      });
+    },
+  );
+  it("Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.", () => {
+    expect(
+      agentAdmission({
+        ...base,
+        read: {
+          state: "known",
+          value: snapshot,
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
+      }),
+    ).toMatchObject({
+      attention: null,
+      footer: "composer",
+      canSend: true,
+      readOnly: false,
+    });
+  });
+});

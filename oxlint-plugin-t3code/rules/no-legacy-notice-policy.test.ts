@@ -50,6 +50,17 @@ chat.valid(
 
 admissionChat.valid(
   "the chat's existing arrival query stays with its arrival owner",
+  'import { agentAdmission } from "@t3tools/client-runtime/data"; export const state = agentAdmission(input).holdsComposer;',
+);
+const admission = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+  filename: "packages/client-runtime/src/data/projections/agentAdmission.ts",
+});
+admission.valid(
+  "The admission owner derives the existing arrival hold",
+  'import { zeropsAgentSignInRequired } from "../../zerops/agentLogin"; export const held = zeropsAgentSignInRequired(feed, providers);',
+);
+admissionChat.invalid(
+  "ChatView cannot restore an arrival admission join",
   'import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin"; export const state = mateArrivalHoldsComposer({signInRequired: zeropsAgentSignInRequired(feed)});',
 );
 const crew = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {

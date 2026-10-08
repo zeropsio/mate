@@ -1,14 +1,13 @@
 import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
-import {
-  agentAdmission,
-  admissionExplainsRefusal,
-  type AgentRefusalSource,
-} from "@t3tools/client-runtime/data";
+import { agentAdmission, type AgentRefusalSource } from "@t3tools/client-runtime/data";
 import { useAgentAdmissionPlacement } from "../zerops/AgentAdmissionComposition";
 import { AgentAdmissionExplanation } from "./chat/AgentAdmissionExplanation";
-import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import {
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
+} from "@t3tools/client-runtime/data";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
@@ -366,12 +365,7 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import {
-  agentAuthAction,
-  zeropsAgentAuthView,
-  zeropsAgentSignInRequired,
-} from "@t3tools/client-runtime/zerops/agentLogin";
-import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
+import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
@@ -467,7 +461,6 @@ import {
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
-  isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
@@ -3211,11 +3204,24 @@ export default function ChatView(props: ChatViewProps) {
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
   >(null);
+  const mateStandUp = useMateStandUp({
+    environmentId: activeThreadEnvironmentId,
+    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
+    messageCount: activeThread?.messages.length ?? 0,
+  });
   const admission = agentAdmission({
     environmentId,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
     viewerSubject: zeropsViewerSubject,
     read: zeropsAgentAuthRead,
+    standUpHolds: mateStandUp.holdsComposer,
+    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
+    refusalSource:
+      localServerError !== null
+        ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
+        : localDraftError !== null
+          ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
+          : undefined,
     providers: providerStatuses,
     mateName: (() => {
       const mate = zeropsMateAt(zeropsMates, environmentId);
@@ -3228,15 +3234,7 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const admissionRefusal = admissionExplainsRefusal(
-    admission.attention,
-    localServerError !== null
-      ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
-      : localDraftError !== null
-        ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
-        : undefined,
-  );
-  const shownThreadError = admissionRefusal ? null : visibleThreadError;
+  const shownThreadError = admission.explainsRefusal ? null : visibleThreadError;
   const visibleProviderStatus = shouldShowProviderStatusBanner(
     admission.providerStatus,
     dismissedProviderStatusBannerKey,
@@ -4044,33 +4042,14 @@ export default function ChatView(props: ChatViewProps) {
     openProviderSetup,
     zeropsSignInDialog,
   ]);
-  // A cold authentication read holds the input; the server decides permission on every command.
-  const zeropsFooter =
-    zeropsAgentAuthRead?.state === "unread" || zeropsAgentAuthRead?.state === "reading"
-      ? "held"
-      : "composer";
+  const zeropsFooter = admission.footer;
   const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
   );
   // A started conversation keeps its login; its admission item explains why Send waits.
-  const zeropsSendBlockReason = admission.attention?.text;
-  // A new Mate's stand-up holds the composer while its person waits on it; its server sends it.
-  const mateStandUp = useMateStandUp({
-    environmentId: activeThreadEnvironmentId,
-    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
-    messageCount: activeThread?.messages.length ?? 0,
-  });
-  // A Mate's empty conversation with no agent to run is its arrival's sign-in: nothing typed
-  // there could be acted on, so the composer waits with the stand-up's. An agent outside the
-  // sign-in (Cursor, OpenCode…) that is ready is one to run.
-  const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
-    standUpHolds: mateStandUp.holdsComposer,
-    signInRequired:
-      zeropsAgentAuth.snapshot !== null &&
-      zeropsAgentSignInRequired(zeropsAgentAuth.snapshot, providerStatuses),
-    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
-  });
+  const zeropsSendBlockReason = admission.sendBlockReason;
+  const zeropsArrivalHoldsComposer = admission.holdsComposer;
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -6494,7 +6473,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable) {
+    if (!admission.canSend || !sendCtx?.providerAvailable) {
       return;
     }
     const {
@@ -7405,7 +7384,7 @@ export default function ChatView(props: ChatViewProps) {
     isRevertingCheckpoint ||
     threadDetailLoading ||
     activeProviderStatus === null ||
-    zeropsSendBlockReason !== undefined;
+    !admission.canSend;
   useEffect(() => {
     if (!nextQueuedMessage || isSendBusy || queueBlockedByPendingRequest || queueSendGate) return;
     if (sendInFlightRef.current) return;
@@ -8610,10 +8589,7 @@ export default function ChatView(props: ChatViewProps) {
                   onUsageAutoResumeChange,
                   interruption: activeServerThread?.session?.interruption ?? null,
                   onRestartContinue:
-                    isWorking ||
-                    isSendBusy ||
-                    queueBlockedByPendingRequest ||
-                    zeropsSendBlockReason !== undefined
+                    isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
                       ? null
                       : (interruption) => {
                           const pending = activeServerThread?.session?.interruption;
