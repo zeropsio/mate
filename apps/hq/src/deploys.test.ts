@@ -225,7 +225,7 @@ const withDeploys = <A, E>(
   keySecret: KeySecret = testKey(),
 ) =>
   Effect.gen(function* () {
-    const url = yield* (yield* TempPostgres).createDatabase;
+    const url = yield* (yield* TempPostgres).createMigratedDatabase;
     const root = yield* Effect.acquireRelease(
       Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-deploys-"))),
       (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),

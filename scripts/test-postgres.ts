@@ -8,11 +8,10 @@ import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import { acquireProcessLock } from "./test-process-lock.ts";
 
-/** Shared by worktrees, private to this OS user; independent of their module caches and ports. */
-export const postgresHome = NodePath.join(
-  "/tmp",
-  `mate-test-pg-${process.getuid?.() ?? NodeOS.userInfo().username}`,
-);
+/** Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases. */
+export const postgresHome =
+  process.env["MATE_TEST_PG_HOME"] ??
+  NodePath.join("/tmp", `mate-test-pg-${process.getuid?.() ?? NodeOS.userInfo().username}`);
 const socketPath = NodePath.join(postgresHome, "supervisor.sock");
 
 /** Serialize server election and idle shutdown, never test execution. The kernel releases on death. */
@@ -36,8 +35,17 @@ function connect(): Promise<NodeNet.Socket | undefined> {
   });
 }
 
+interface SupervisorReply {
+  readonly url?: string;
+  readonly capabilities?: ReadonlyArray<string>;
+}
+
 export interface TestPostgresLease {
+  readonly supportsTemplates: boolean;
   readonly createDatabase: () => Promise<string>;
+  readonly cloneDatabase: (templateUrl: string) => Promise<string>;
+  /** Publish a closed, owned database as an immutable clone source. */
+  readonly freezeDatabase: (url: string) => Promise<void>;
   readonly close: () => Promise<void>;
 }
 
@@ -84,7 +92,8 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     }
     opened = socket;
     const replies = NodeReadline.createInterface({ input: socket });
-    const pending: { resolve: (url: string) => void; reject: (error: Error) => void }[] = [];
+    const pending: { resolve: (reply: SupervisorReply) => void; reject: (error: Error) => void }[] =
+      [];
     let failed: Error | undefined;
     const fail = (error: Error) => {
       failed = error;
@@ -98,9 +107,14 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
         fail(new Error("Unexpected PostgreSQL supervisor reply"));
         return;
       }
-      const answer = JSON.parse(line) as { url?: string; error?: string };
+      const answer = JSON.parse(line) as SupervisorReply & { error?: string };
       if (answer.error !== undefined) reply.reject(new Error(answer.error));
-      else if (typeof answer.url === "string") reply.resolve(answer.url);
+      else if (
+        typeof answer.url === "string" ||
+        (Array.isArray(answer.capabilities) &&
+          answer.capabilities.every((value) => typeof value === "string"))
+      )
+        reply.resolve(answer);
       else reply.reject(new Error("Invalid PostgreSQL supervisor reply"));
     });
     // Node must be allowed to exit even when a runner omits its layer finalizer.
@@ -109,7 +123,7 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const request = (command: string) => {
       if (failed) return Promise.reject(failed);
       socket.ref();
-      return new Promise<string>((resolve, reject) => {
+      return new Promise<SupervisorReply>((resolve, reject) => {
         pending.push({ resolve, reject });
         socket.write(`${command}\n`);
       }).finally(() => {
@@ -118,11 +132,39 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     };
     // Transfer the bootstrap owner only after the supervisor acknowledges the live lease.
     await request("own");
+    const capabilities: ReadonlyArray<string> = await request("capabilities").then(
+      (reply) => {
+        if (!reply.capabilities) throw new Error("Invalid PostgreSQL supervisor capabilities");
+        return reply.capabilities;
+      },
+      (error: unknown) => {
+        if (
+          error instanceof Error &&
+          error.message === "Error: Unknown PostgreSQL supervisor command: capabilities"
+        )
+          return [];
+        throw error;
+      },
+    );
+    const database = (command: string) =>
+      request(command).then((reply) => {
+        if (typeof reply.url !== "string") throw new Error("Invalid PostgreSQL database reply");
+        return reply.url;
+      });
     if (daemon?.connected) daemon.disconnect();
     daemon?.unref();
     return {
+      supportsTemplates: capabilities.includes("freeze") && capabilities.includes("clone"),
       createDatabase: () =>
-        closing ? Promise.reject(new Error("PostgreSQL owner is released")) : request("create"),
+        closing ? Promise.reject(new Error("PostgreSQL owner is released")) : database("create"),
+      cloneDatabase: (templateUrl) =>
+        closing
+          ? Promise.reject(new Error("PostgreSQL owner is released"))
+          : database(`clone ${templateUrl}`),
+      freezeDatabase: (url) =>
+        closing
+          ? Promise.reject(new Error("PostgreSQL owner is released"))
+          : request(`freeze ${url}`).then(() => undefined),
       close: () =>
         (closing ??= request("release").then(() => {
           replies.close();

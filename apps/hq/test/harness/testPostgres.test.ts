@@ -35,6 +35,65 @@ it.effect("isolates databases while sharing one PostgreSQL server and drops rele
   }).pipe(Effect.scoped),
 );
 
+it.effect(
+  "only an owner's frozen database can be cloned and release drops templates and clones",
+  () =>
+    Effect.gen(function* () {
+      const first = yield* lease;
+      const second = yield* lease;
+      const template = yield* Effect.promise(first.createDatabase);
+      const adminUrl = yield* Effect.promise(second.createDatabase);
+      const admin = yield* connection(adminUrl);
+      const unfrozen = yield* Effect.tryPromise(() => first.cloneDatabase(template)).pipe(
+        Effect.flip,
+      );
+      assert.include(String(unfrozen.cause), "not a frozen template owned by this lease");
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const source = yield* connection(template);
+          yield* source.query("CREATE TABLE baseline (value text)");
+          yield* source.query("INSERT INTO baseline VALUES ('original')");
+          const stillOpen = yield* Effect.tryPromise(() => first.freezeDatabase(template)).pipe(
+            Effect.flip,
+          );
+          assert.include(
+            String(stillOpen.cause),
+            "Close database connections before freezing a template",
+          );
+          assert.deepEqual((yield* source.query("SELECT value FROM baseline")).rows, [
+            { value: "original" },
+          ]);
+        }),
+      );
+      const foreignFreeze = yield* Effect.tryPromise(() => second.freezeDatabase(template)).pipe(
+        Effect.flip,
+      );
+      assert.include(String(foreignFreeze.cause), "not owned by this lease");
+      yield* Effect.promise(() => first.freezeDatabase(template));
+      const frozen = yield* admin.query("SELECT datallowconn FROM pg_database WHERE datname = $1", [
+        new URL(template).pathname.slice(1),
+      ]);
+      assert.deepEqual(frozen.rows, [{ datallowconn: false }]);
+      const reconnect = yield* connection(template).pipe(Effect.exit);
+      assert.equal(reconnect._tag, "Failure");
+      const foreignClone = yield* Effect.tryPromise(() => second.cloneDatabase(template)).pipe(
+        Effect.flip,
+      );
+      assert.include(String(foreignClone.cause), "not owned by this lease");
+      const clone = yield* Effect.promise(() => first.cloneDatabase(template));
+      const copied = yield* connection(clone);
+      assert.deepEqual((yield* copied.query("SELECT value FROM baseline")).rows, [
+        { value: "original" },
+      ]);
+      yield* Effect.promise(first.close);
+      const remaining = yield* admin.query(
+        "SELECT datname FROM pg_database WHERE datname = ANY($1::text[])",
+        [[template, clone].map((url) => new URL(url).pathname.slice(1))],
+      );
+      assert.deepEqual(remaining.rows, []);
+    }).pipe(Effect.scoped),
+);
+
 it.effect.each(["SIGKILL", "exit"] as const)(
   "reclaims a worker database after %s before the next owner's work",
   (mode) =>
@@ -54,10 +113,13 @@ it.effect.each(["SIGKILL", "exit"] as const)(
       yield* Effect.addFinalizer(() => Effect.sync(() => child.kill("SIGKILL")));
       const ownedUrl = yield* Effect.promise(() =>
         Promise.race([
-          new Promise<string>((resolve, reject) =>
+          new Promise<{ template: string; clone: string }>((resolve, reject) =>
             child.once("message", (message) =>
-              typeof message === "string"
-                ? resolve(message)
+              typeof message === "object" &&
+              message !== null &&
+              "template" in message &&
+              "clone" in message
+                ? resolve(message as { template: string; clone: string })
                 : reject(new Error("Invalid worker database")),
             ),
           ),
@@ -66,15 +128,16 @@ it.effect.each(["SIGKILL", "exit"] as const)(
           }),
         ]),
       );
-      assert.equal(new URL(ownedUrl).port, new URL(survivorUrl).port);
+      assert.equal(new URL(ownedUrl.clone).port, new URL(survivorUrl).port);
       if (mode === "SIGKILL") child.kill("SIGKILL");
       else child.send("exit");
       yield* Effect.promise(() => exited);
       const next = yield* lease;
       yield* Effect.promise(next.createDatabase);
-      const remaining = yield* admin.query("SELECT datname FROM pg_database WHERE datname = $1", [
-        new URL(ownedUrl).pathname.slice(1),
-      ]);
+      const remaining = yield* admin.query(
+        "SELECT datname FROM pg_database WHERE datname = ANY($1::text[])",
+        [[ownedUrl.template, ownedUrl.clone].map((url) => new URL(url).pathname.slice(1))],
+      );
       assert.deepEqual(remaining.rows, []);
     }).pipe(Effect.scoped),
 );
