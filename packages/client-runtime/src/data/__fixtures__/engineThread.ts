@@ -7,11 +7,16 @@ import {
   engineConversationScopes,
   engineFactId,
   type EngineConversationKey,
+  type EngineSpanValue,
 } from "../families/mateEngine.ts";
 import { emptyAccount } from "../model.ts";
-import { engineThread } from "../projections/mateEngine.ts";
+import {
+  engineCardPagingOf,
+  engineThread,
+  type EngineCardPaging,
+} from "../projections/mateEngine.ts";
 import { reduceAccount, type Row } from "../reducer.ts";
-import { readsOfState } from "../store.ts";
+import { readsOfState, type ProjectionReads } from "../store.ts";
 import { engineHeader } from "./mateEngine.ts";
 
 const revision = (environmentId: string, seq: number) => ({
@@ -21,11 +26,31 @@ const revision = (environmentId: string, seq: number) => ({
   seq,
 });
 
+/** A conversation's records as an account holds them. */
+export interface EngineRecords {
+  readonly runs: ReadonlyArray<RunRecord>;
+  readonly items: ReadonlyArray<Item>;
+  /** The stretches held of runs not read whole. */
+  readonly spans?: ReadonlyArray<Omit<EngineSpanValue, "environmentId" | "conversationId">>;
+}
+
 /** The thread a conversation's runs and items draw as, once an account holds them. */
 export function engineThreadOfRecords(
   key: EngineConversationKey,
-  records: { readonly runs: ReadonlyArray<RunRecord>; readonly items: ReadonlyArray<Item> },
+  records: EngineRecords,
 ): OrchestrationThread | null {
+  return Option.getOrNull(engineThread.derive(engineReadsOfRecords(key, records), key).data);
+}
+
+/** What the cards of a conversation's records not held whole count and hold. */
+export function engineCardPagingOfRecords(
+  key: EngineConversationKey,
+  records: EngineRecords,
+): Readonly<Record<string, EngineCardPaging>> {
+  return engineCardPagingOf(engineReadsOfRecords(key, records), key);
+}
+
+function engineReadsOfRecords(key: EngineConversationKey, records: EngineRecords): ProjectionReads {
   const environmentId = key.environmentId;
   const rows: Row[] = [
     {
@@ -50,6 +75,12 @@ export function engineThreadOfRecords(
       value: { ...item, environmentId },
       revision: revision(environmentId, item.rev),
     })),
+    ...(records.spans ?? []).map((span, n): Row => ({
+      family: "mateEngineSpan",
+      id: engineFactId(environmentId, span.runId),
+      value: { ...span, environmentId, conversationId: key.conversationId },
+      revision: { kind: "mate-link", sequence: n + 1 },
+    })),
   ];
   const { state } = reduceAccount(emptyAccount, {
     kind: "delivery",
@@ -63,5 +94,5 @@ export function engineThreadOfRecords(
     rows,
     removals: [],
   });
-  return Option.getOrNull(engineThread.derive(readsOfState(state), key).data);
+  return readsOfState(state);
 }

@@ -164,6 +164,7 @@ import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveMessage } from "~/zerops/useEngineLiveMessage";
+import { useEngineUnheldWork } from "~/zerops/useEngineCardPaging";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -525,6 +526,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const alongside = dockDraws(working);
   // What the last derive read and drew: a streamed update reads the live run again, no other.
   const [rowsCache] = useState(createMessagesTimelineRowsCache);
+  const timelineThread = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
+  const unheldWork = useEngineUnheldWork(timelineThread);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -545,8 +548,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         helperFinishes,
         alongside,
         provider,
+        ...(unheldWork === undefined ? {} : { unheldWork }),
       }),
     [
+      unheldWork,
       nowMs,
       newSince,
       timelineEntries,

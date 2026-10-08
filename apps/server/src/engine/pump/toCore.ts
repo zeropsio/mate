@@ -346,11 +346,18 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         });
         break;
       case "request.opened":
+        if (signal.item !== undefined && items.delete(signal.item)) {
+          // The question takes the place of the message that asked it: its words are the ask's,
+          // and nothing that item says later is a note.
+          live.push({ _tag: "Settle", key: signal.item });
+          keep(closedKeys, signal.item, "completed", KEPT_CLOSED_KEYS);
+        }
         signals.push({
           kind: "request-opened",
           ...(signal.turn === undefined ? {} : { turn: signal.turn }),
           key: signal.request,
           ask: engineAsk(signal.ask),
+          ...(signal.item === undefined ? {} : { item: signal.item }),
         });
         break;
       case "request.closed":

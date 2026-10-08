@@ -53,7 +53,7 @@ export function signalLine(signal: DriverSignal): string | undefined {
     case "work.upsert":
       return `${signal.work} ${signal.kind} ${signal.status}, from ${signal.origin}`;
     case "request.opened":
-      return `${signal.request} asks: ${signal.ask.kind}${signal.turn === undefined ? "" : ` in ${signal.turn}`}`;
+      return `${signal.request} asks: ${signal.ask.kind}${signal.turn === undefined ? "" : ` in ${signal.turn}`}${signal.item === undefined ? "" : `, by ${signal.item}`}`;
     case "request.closed":
       return `${signal.request} closed: ${signal.how}`;
     case "usage.context":

@@ -6,7 +6,7 @@
  * @module data/engineHost
  */
 import * as Schema from "effect/Schema";
-import { Atom } from "effect/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import type { PreparedConnection } from "../connection/model.ts";
@@ -25,6 +25,8 @@ import type { AccountStore } from "./store.ts";
 
 export interface MateEngineHost {
   readonly store: AccountStore;
+  /** The registry the store publishes into: where its projections are read. */
+  readonly atoms: AtomRegistry.AtomRegistry;
   readonly conversations: ReturnType<typeof makeMateEngineConversations>;
   readonly operations: MateEngineOperations;
   readonly live: EngineLiveText;
@@ -48,6 +50,7 @@ export const mateEngineHostAtom = Atom.make<MateEngineHost | null>(null).pipe(At
 
 export function makeMateEngineHost(options: {
   readonly store: AccountStore;
+  readonly atoms: AtomRegistry.AtomRegistry;
   readonly registry: EnvironmentRegistry["Service"];
   readonly makeId: () => string;
   readonly setTimer: (callback: () => void, delayMs: number) => unknown;
@@ -72,6 +75,7 @@ export function makeMateEngineHost(options: {
   });
   return {
     store: options.store,
+    atoms: options.atoms,
     conversations,
     operations,
     live,

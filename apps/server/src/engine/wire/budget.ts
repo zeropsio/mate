@@ -138,10 +138,21 @@ const cutEnd = (end: RunRecord["end"]): RunRecord["end"] => {
 export const fitRun = (run: RunRecord): RunRecord => {
   const fitted = { ...run, end: cutEnd(run.end) };
   if (bytesOf(fitted) <= ENGINE_WIRE_BUDGETS.runBytes) return fitted;
-  const calls = Object.entries(fitted.summary.calls)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 16);
-  return { ...fitted, summary: { ...fitted.summary, calls: Object.fromEntries(calls) } };
+  const most = (counts: Readonly<Record<string, number>>) =>
+    Object.fromEntries(
+      Object.entries(counts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 16),
+    );
+  const { tools } = fitted.summary;
+  return {
+    ...fitted,
+    summary: {
+      ...fitted.summary,
+      calls: most(fitted.summary.calls),
+      ...(tools === undefined ? {} : { tools: most(tools) }),
+    },
+  };
 };
 
 /** A request within its budget: what an approval shows cut to it. */

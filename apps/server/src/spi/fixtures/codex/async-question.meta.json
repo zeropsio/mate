@@ -1,5 +1,11 @@
 {
   "driver": "codex",
-  "synthetic": true,
-  "notes": "An async question (agentMessage delivery \"async\" with questions) on the parent turn of the 0.160.0 multi-agent recording (multi-agent-wire): its thread start, turn, user message and final agent message, the message's delivery and questions set and its words replaced. Protocol coverage until a live async question is recorded; not a new live capture."
+  "cliVersion": "codex-cli 0.161.0",
+  "model": "gpt-6-astra",
+  "prompt": "If you have a tool for asking the user a question (request_user_input or similar), use it to ask which colour I prefer, Red or Blue, then reply with the colour. If you have no such tool, reply exactly: NO QUESTION TOOL.",
+  "capturedAt": "2026-10-08T07:57:00.000Z",
+  "capturedOn": "local codex app-server probe (thread/start ephemeral, read-only)",
+  "capturedBy": "engine/codexq",
+  "synthetic": false,
+  "notes": "Codex asks with request_user_input_async (an agentMessage delivered async, its full text at item/started, no deltas) and waits inside the same turn with clock.sleep. 4 s later the answer goes as a mid-turn turn/start, which Codex takes into the running turn: the response names the same turn (inProgress), the sleep ends early, a userMessage item opens in that turn, the agent answers and the turn completes. Account, rate-limit and remote-control notifications are left out; the cwd is redacted."
 }

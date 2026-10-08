@@ -12,7 +12,14 @@
  * @module engine/effects/providerSend
  */
 import * as Effect from "effect/Effect";
-import type { ChatAttachment, ThreadId, TurnHandle, TurnId } from "@t3tools/contracts";
+import type {
+  ChatAttachment,
+  ModelSelection,
+  ProviderInteractionMode,
+  ThreadId,
+  TurnHandle,
+  TurnId,
+} from "@t3tools/contracts";
 
 import { WorkspaceHistory } from "../../checkpointing/WorkspaceHistory.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -31,6 +38,10 @@ interface SendPayload {
   readonly turn: string;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
+  /** The conversation's model and options: a session applies those it takes per turn. */
+  readonly modelSelection?: ModelSelection;
+  /** Absent: default. */
+  readonly interactionMode?: ProviderInteractionMode;
 }
 
 /** Records a send, makes the call in the session's scope, and waits on the bridge's evidence. */
@@ -45,6 +56,8 @@ export const makeDeliver = Effect.gen(function* () {
       readonly mode: SendMode;
       readonly text: string;
       readonly attachments: ReadonlyArray<ChatAttachment>;
+      readonly modelSelection?: ModelSelection | undefined;
+      readonly interactionMode?: ProviderInteractionMode | undefined;
     },
   ) {
     const host = yield* liveHost(provider, yield* pump.existing(row.conversationId), input.session);
@@ -57,6 +70,10 @@ export const makeDeliver = Effect.gen(function* () {
           threadId: host.thread,
           ...(trimmed === "" ? {} : { input: input.text }),
           ...(input.attachments.length === 0 ? {} : { attachments: input.attachments }),
+          ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
+          ...(input.interactionMode === undefined
+            ? {}
+            : { interactionMode: input.interactionMode }),
         })
         .pipe(
           Effect.matchCauseEffect({
@@ -99,6 +116,8 @@ export const makeProviderSend = Effect.gen(function* () {
           mode: "new",
           text: payload.text,
           attachments: payload.attachments ?? [],
+          modelSelection: payload.modelSelection,
+          interactionMode: payload.interactionMode,
         });
         if (!sent.live) return failed(NO_LIVE_SESSION, { undelivered: true });
         const evidence = sent.evidence;

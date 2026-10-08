@@ -505,11 +505,15 @@ export * from "./operations/executors/mateEngine.ts";
 export {
   ENGINE_UPDATE_WORDS,
   HISTORY_CUT_KIND,
+  engineCardPaging,
+  engineCardPagingOf,
   engineRows,
   engineThread,
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  type EngineCardCounts,
+  type EngineCardPaging,
 } from "./projections/mateEngine.ts";
 
 export {

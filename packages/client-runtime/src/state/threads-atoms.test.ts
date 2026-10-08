@@ -37,6 +37,9 @@ import {
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import { ConnectionWakeups, type ConnectionWakeup } from "../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
+import { makeTestEngineHost } from "../data/__fixtures__/engineHost.ts";
+import { engineRun, noteItem, personItem } from "../data/__fixtures__/mateEngine.ts";
+import { mateEngineHostAtom, mateEngineReaderAtom } from "../data/engineHost.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { RpcSession } from "../rpc/session.ts";
 import { createEnvironmentThreadDetailAtoms } from "./threadDetail.ts";
@@ -333,6 +336,7 @@ describe("createEnvironmentThreadStateAtoms", () => {
     }),
   );
 
+  // A V1-only reader: one that says it reads no engine conversation.
   it.effect.each([
     { name: "once its door names the engine", options: { mateEngine: 1 } },
     {
@@ -344,6 +348,7 @@ describe("createEnvironmentThreadStateAtoms", () => {
     ({ options }) =>
       Effect.gen(function* () {
         const h = yield* makeHarness(options);
+        h.registry.set(mateEngineReaderAtom, "none");
         const unmount = h.registry.mount(h.stateAtom);
         const update = yield* observeState(h.registry, h.stateAtom, (state) =>
           Option.isSome(state.error),
@@ -352,6 +357,87 @@ describe("createEnvironmentThreadStateAtoms", () => {
         expect(update.data).toEqual(Option.none());
         unmount();
       }),
+  );
+
+  it.effect.each([
+    { name: "once its door names the engine", options: { mateEngine: 1 } },
+    {
+      name: "before its door answers, when the configuration it last cached named the engine",
+      options: { unprepared: true, cachedMateEngine: 1, cachedThread: SNAPSHOT },
+    },
+  ])(
+    "reads an engine Mate's conversation from its engine records, never its V1 history, $name",
+    ({ options }) =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness(options);
+        const engine = makeTestEngineHost({
+          environmentId: TARGET.environmentId,
+          conversationId: THREAD_ID,
+        });
+        engine.deliver({
+          runs: [engineRun(THREAD_ID, 1)],
+          items: [
+            personItem(`${THREAD_ID}/r/1`, 1, "Deploy the api"),
+            noteItem(`${THREAD_ID}/r/1`, 2, "Deployed."),
+          ],
+        });
+        h.registry.set(mateEngineHostAtom, engine.host);
+        const unmount = h.registry.mount(h.stateAtom);
+        const read = yield* observeState(h.registry, h.stateAtom, (state) =>
+          Option.isSome(state.data),
+        );
+        expect(Option.getOrThrow(read.data).messages.map(({ text }) => text)).toEqual([
+          "Deploy the api",
+          "Deployed.",
+        ]);
+        expect(engine.counts.held).toBe(1);
+        expect(h.counts().opened).toBe(0);
+        unmount();
+      }),
+  );
+
+  it.effect("opens an engine Mate's conversation once the account that reads it is ready", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ mateEngine: 1 });
+      const unmount = h.registry.mount(h.stateAtom);
+      const opening = yield* observeState(
+        h.registry,
+        h.stateAtom,
+        (state) => state.status === "synchronizing",
+      );
+      expect(opening.data).toEqual(Option.none());
+      const engine = makeTestEngineHost({
+        environmentId: TARGET.environmentId,
+        conversationId: THREAD_ID,
+      });
+      engine.deliver({
+        runs: [engineRun(THREAD_ID, 1)],
+        items: [personItem(`${THREAD_ID}/r/1`, 1, "Deploy the api")],
+      });
+      h.registry.set(mateEngineHostAtom, engine.host);
+      const read = yield* observeState(h.registry, h.stateAtom, (state) =>
+        Option.isSome(state.data),
+      );
+      expect(Option.getOrThrow(read.data).messages.map(({ text }) => text)).toEqual([
+        "Deploy the api",
+      ]);
+      expect(h.counts().opened).toBe(0);
+      unmount();
+    }),
+  );
+
+  it.effect("shows a Mate whose engine speaks only a newer protocol as an update", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness({ mateEngine: 99 });
+      const unmount = h.registry.mount(h.stateAtom);
+      const update = yield* observeState(h.registry, h.stateAtom, (state) =>
+        Option.isSome(state.error),
+      );
+      expect(Option.getOrThrow(update.error)).toMatch(/Update the app/);
+      expect(update.data).toEqual(Option.none());
+      expect(h.counts().opened).toBe(0);
+      unmount();
+    }),
   );
 
   it.effect("exposes snapshot loader defects before the RPC subscription starts", () =>

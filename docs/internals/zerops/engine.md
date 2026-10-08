@@ -8,12 +8,14 @@ build and `T3CODE_MATE_ENGINE` picks one per Mate at boot (`v1`, the default, or
 ## Terms
 
 - **Agent** — who does the work: the Mate, or a crewmate. Its profile is the persona, prompt, tool
-  gate, in-process tools, hooks, driver and model. The model is the Mate's setting, never a
-  per-message choice; changing it opens a new session with a hand-off.
+  gate, in-process tools, hooks, driver and model. The model, its options (effort) and the runtime
+  mode are the conversation's settings, never a per-message choice; an option the driver takes per
+  turn goes with the next message, any other change opens a new session with a hand-off, between
+  runs. Plan mode is per message. Another driver is taken only before the conversation started.
 - **Conversation** — exactly one per agent: the durable record a person reads, plus the queue of
   sends waiting for their turn. There is no second chat and no pinned main.
 - **Session** — the agent's context inside one driver. Sessions rotate under the conversation; each
-  boundary records its reason (model, context, restart, usage, cleared) and what the new session was
+  boundary records its reason (model, settings, context, restart, usage, cleared) and what the new session was
   seeded with. A session opens explicitly, never as a side effect of a send, stop or answer.
 - **Run** — one unit of work. It has a **trigger** (a person's message, or a wake: stand-up,
   usage resume, restart continuation, a helper's or job's report, the agent's own turn, crew), a

@@ -289,6 +289,8 @@ export function resolveThreadOutboxFailureAction(input: {
   readonly stage: ThreadOutboxCommandStage;
   readonly error: unknown;
   readonly interrupted: boolean;
+  /** The Mate's conversation runs on its engine, which decides a setting as it decides a send. */
+  readonly engine?: boolean;
 }): ThreadOutboxFailureAction {
   // An engine Mate this app cannot talk to: the words go back to the draft, the update route shows.
   if (
@@ -299,7 +301,7 @@ export function resolveThreadOutboxFailureAction(input: {
   )
     return "restore";
   if (
-    input.stage === "settings-sync" ||
+    (input.stage === "settings-sync" && input.engine !== true) ||
     input.interrupted ||
     shouldRetryThreadOutboxDelivery(input.error)
   ) {

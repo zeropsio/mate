@@ -17,6 +17,8 @@ const ACP_HOLDS_THE_TURN = {
   compaction: { reported: false, automatic: "unknown" },
   responses: "none",
   continuation: "prompted",
+  // apply*AcpModelSelection on every send.
+  modelOptions: "per-turn",
 } as const;
 
 export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabilities>> = {
@@ -36,6 +38,8 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     responses: "tool-calls",
     resume: "session-id",
     continuation: "prompted",
+    // Effort through applyFlagSettings on the next send; fast mode and thinking need a session.
+    modelOptions: "adapter",
   },
   codex: {
     sendReturns: "on-accept",
@@ -56,6 +60,8 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     resume: "thread-resume",
     // Resume keeps an interrupted turn's state, so an empty native turn can go on.
     continuation: "native",
+    // reasoningEffort goes with each turn/start.
+    modelOptions: "per-turn",
   },
   cursor: {
     ...ACP_HOLDS_THE_TURN,
@@ -109,6 +115,8 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     responses: "tool-calls",
     resume: "session-get",
     continuation: "prompted",
+    // agent and variant are read per prompt.
+    modelOptions: "per-turn",
   },
 };
 

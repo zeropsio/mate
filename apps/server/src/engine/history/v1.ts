@@ -6,8 +6,9 @@
  *
  * - A V1 turn is a run that ended (trigger `imported`), its ordinal its place among the turns.
  * - A person's message is a person item; the agent's message a note; its reasoning a thought.
- * - A tool's lifecycle is one call, in its last state, its V1 payload kept as the call's data
- *   (pictures out: they travel by reference, never inline). A task's is one piece of work.
+ * - A tool's lifecycle is one call, in its last state (its completion, once heard), its V1
+ *   payload kept as the call's data (pictures out: they travel by reference, never inline). A
+ *   task's is one piece of work.
  * - An approval or a question is a request in its final state, never answerable here.
  * - A compaction, an error, a warning, a plan, a capture's gap is a marker.
  *
@@ -18,6 +19,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   CommandId,
   ItemId,
@@ -199,6 +201,72 @@ const byTime = <A extends { readonly at: number; readonly order: number; readonl
   right: A,
 ) => left.at - right.at || left.order - right.order || left.id.localeCompare(right.id);
 
+const byActivityTime = (left: V1ActivityHead, right: V1ActivityHead) =>
+  ms(left.createdAt) - ms(right.createdAt) ||
+  (left.sequence ?? 0) - (right.sequence ?? 0) ||
+  left.id.localeCompare(right.id);
+
+/**
+ * The work V1 kept under no turn after a turn's last word, as turns of their own: V1 draws a
+ * turnless call inside the turn whose records surround it, and one past a turn's last record
+ * outside every card (`ownerOf` in the web's conversation), so no card counts it or runs on to it.
+ * The engine holds every item in a run: each such stretch between two turns is one run.
+ */
+const looseTurns = (skeleton: V1Skeleton): ReadonlyArray<V1Turn> => {
+  const turns = skeleton.turns.toSorted(
+    (left, right) =>
+      ms(left.requestedAt) - ms(right.requestedAt) || left.key.localeCompare(right.key),
+  );
+  const starts = turns.map((turn) => ms(turn.requestedAt));
+  const byTurnId = new Map(
+    turns.flatMap((turn, index) => (turn.turnId === null ? [] : [[turn.turnId, index] as const])),
+  );
+  const turnAt = (at: number) => starts.findLastIndex((start) => start <= at);
+  // When each turn last said or did something under its own name: where V1's card ends.
+  const lastNamed = turns.map(() => Number.NEGATIVE_INFINITY);
+  const named = (turnId: string | null, at: number) => {
+    const index = turnId === null ? undefined : byTurnId.get(turnId);
+    if (index !== undefined) lastNamed[index] = Math.max(lastNamed[index]!, at);
+  };
+  for (const head of skeleton.messages) named(head.turnId, ms(head.createdAt));
+  const lifecycles = new Map<string, Array<V1ActivityHead>>();
+  for (const head of skeleton.activities.toSorted(byActivityTime)) {
+    if (UNSHOWN.has(head.kind)) continue;
+    named(head.turnId, ms(head.createdAt));
+    const key =
+      TOOL.has(head.kind) && head.callId !== null
+        ? `call:${head.callId}`
+        : TASK.has(head.kind) && head.taskId !== null
+          ? `task:${head.taskId}`
+          : null;
+    if (key === null) continue;
+    lifecycles.set(key, [...(lifecycles.get(key) ?? []), head]);
+  }
+  // A call or a task no record of which names a turn, past its turn's last named record.
+  const loose = new Map<number, Array<V1ActivityHead>>();
+  for (const heads of lifecycles.values()) {
+    if (heads.some((head) => head.turnId !== null && byTurnId.has(head.turnId))) continue;
+    const first = heads[0]!;
+    const at = ms(first.createdAt);
+    const turn = turnAt(at);
+    if (turn < 0 || at <= lastNamed[turn]!) continue;
+    loose.set(turn, [...(loose.get(turn) ?? []), ...heads]);
+  }
+  return [...loose.values()].map((heads) => {
+    const first = heads.toSorted(byActivityTime)[0]!;
+    const last = heads.toSorted(byActivityTime).at(-1)!;
+    return {
+      key: `loose:${first.id}`,
+      turnId: null,
+      pendingMessageId: null,
+      state: "completed",
+      requestedAt: first.createdAt,
+      startedAt: first.createdAt,
+      completedAt: last.createdAt,
+    };
+  });
+};
+
 /**
  * The thread's turns in order, the newest `HISTORY_TURN_LIMIT` (fewer when they hold more than
  * `HISTORY_RECORD_LIMIT` records, the newest turn always whole), and what each holds: by its turn
@@ -211,7 +279,7 @@ export const planOf = (
     records: HISTORY_RECORD_LIMIT,
   },
 ): Plan => {
-  const turns = skeleton.turns.toSorted(
+  const turns = [...skeleton.turns, ...looseTurns(skeleton)].toSorted(
     (left, right) =>
       ms(left.requestedAt) - ms(right.requestedAt) || left.key.localeCompare(right.key),
   );
@@ -252,10 +320,42 @@ export const planOf = (
       turnAt(at);
     if (turn >= 0) held[turn]!.messages.push({ at, order: -1, id: head.id, head });
   }
+  /**
+   * The turn each call or background task is drawn in, as V1 draws a call (`callTurns` in the
+   * web's conversation): the first turn one of its activities names, else where its first activity
+   * falls. Claude can start a call before the turn that files its completion; a task can finish
+   * under no turn after loose work began a run of its own. Either is one, in that turn.
+   */
+  const lifecycleOf = (head: V1ActivityHead): string | null =>
+    TOOL.has(head.kind) && head.callId !== null
+      ? `call:${head.callId}`
+      : TASK.has(head.kind) && head.taskId !== null
+        ? `task:${head.taskId}`
+        : null;
+  const lifecycleTurn = new Map<string, number>();
+  const lifecycleNamed = new Set<string>();
+  for (const head of skeleton.activities.toSorted(
+    (left, right) =>
+      ms(left.createdAt) - ms(right.createdAt) ||
+      (left.sequence ?? 0) - (right.sequence ?? 0) ||
+      left.id.localeCompare(right.id),
+  )) {
+    const key = lifecycleOf(head);
+    if (key === null || lifecycleNamed.has(key)) continue;
+    const named = head.turnId === null ? undefined : byTurnId.get(head.turnId);
+    if (named !== undefined) {
+      lifecycleTurn.set(key, named);
+      lifecycleNamed.add(key);
+    } else if (!lifecycleTurn.has(key)) lifecycleTurn.set(key, turnAt(ms(head.createdAt)));
+  }
   for (const head of skeleton.activities) {
     if (UNSHOWN.has(head.kind)) continue;
     const at = ms(head.createdAt);
-    const turn = (head.turnId === null ? undefined : byTurnId.get(head.turnId)) ?? turnAt(at);
+    const key = lifecycleOf(head);
+    const turn =
+      (key === null ? undefined : lifecycleTurn.get(key)) ??
+      (head.turnId === null ? undefined : byTurnId.get(head.turnId)) ??
+      turnAt(at);
     if (turn >= 0)
       held[turn]!.activities.push({ at, order: head.sequence ?? 0, id: head.id, head });
   }
@@ -412,12 +512,14 @@ export const planOf = (
   return { runs, entries, leftTurns: first };
 };
 
-/** When a lifecycle ended, as its last word says; none while V1 never heard its end. */
+/** When a lifecycle ended; none while V1 never heard its end. */
 const endOf = (kind: "call" | "work", heads: ReadonlyArray<V1ActivityHead>): number | null => {
+  if (kind === "call") {
+    const completed = heads.findLast((head) => head.kind === "tool.completed");
+    return completed === undefined ? null : ms(completed.createdAt);
+  }
   const last = heads.at(-1);
-  if (last === undefined) return null;
-  const ended = kind === "call" ? last.kind === "tool.completed" : last.kind === "task.completed";
-  return ended ? ms(last.createdAt) : null;
+  return last?.kind === "task.completed" ? ms(last.createdAt) : null;
 };
 
 // ── the records ─────────────────────────────────────────────────────────────────────────────
@@ -430,6 +532,7 @@ const ENGINE: ItemActor = { kind: "engine" };
 
 const isPresentation = Schema.is(ToolPresentation);
 const decodeImage = Schema.decodeUnknownOption(ChatImageAttachment);
+const decodeFile = Schema.decodeUnknownOption(ChatFileAttachment);
 
 /** How a V1 turn ended, as a run's end and who said so. */
 const endOfRun = (run: PlannedRun): { readonly end: RunEnd; readonly source: RunEndSource } => {
@@ -539,6 +642,8 @@ const WORK_STATES: Readonly<Record<string, Extract<ItemBody, { kind: "work" }>["
 const attachmentOf = (raw: unknown): PersonAttachment => {
   const image = decodeImage(raw);
   if (Option.isSome(image)) return image.value;
+  const file = decodeFile(raw);
+  if (Option.isSome(file)) return file.value;
   const type = asText(asRecord(raw)?.type);
   return { type: "unknown", was: type ?? "unknown" };
 };
@@ -646,7 +751,10 @@ export const recordsOf = (
             ? []
             : [{ ...activity, payload: projectedPayload(activity) }];
         });
-        const last = lifecycle.at(-1);
+        // A call V1 heard return has returned: an update kept after its completion (V1 records
+        // one in the same millisecond) carries no end and never takes it back.
+        const last =
+          lifecycle.findLast((activity) => activity.kind === "tool.completed") ?? lifecycle.at(-1);
         const payload = asRecord(last?.payload) ?? {};
         const started = asRecord(lifecycle[0]?.payload) ?? {};
         const itemType =

@@ -36,7 +36,9 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineAnswer
   | typeof WS_METHODS.engineDismiss
   | typeof WS_METHODS.engineSteer
-  | typeof WS_METHODS.engineSwitchModel;
+  | typeof WS_METHODS.engineSwitchModel
+  | typeof WS_METHODS.engineSetRuntimeMode
+  | typeof WS_METHODS.engineAssignAgent;
 
 type EngineRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: EngineRpcTag }>;
 
@@ -136,6 +138,18 @@ export const registerEngineRpc = ({
       observeRpcEffect(
         WS_METHODS.engineSwitchModel,
         asCaller((who) => wire.switchModel(input, who)),
+        traceAttributes,
+      ),
+    [WS_METHODS.engineSetRuntimeMode]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.engineSetRuntimeMode,
+        asCaller((who) => wire.setRuntimeMode(input, who)),
+        traceAttributes,
+      ),
+    [WS_METHODS.engineAssignAgent]: (input) =>
+      observeRpcEffect(
+        WS_METHODS.engineAssignAgent,
+        asCaller((who) => wire.assignAgent(input, who)),
         traceAttributes,
       ),
   } satisfies EngineRpcHandlers;

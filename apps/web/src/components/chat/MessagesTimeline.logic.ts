@@ -536,6 +536,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       turnKey: string;
+      /** The turn it draws (an engine card's id: what it holds of a long run, `engineCardPaging`). */
+      turnId?: TurnId | null;
       live: boolean;
       items: ReadonlyArray<RecordItem>;
       /** What its hands are on right now, the newest bubble; null once the run is over. */
@@ -2081,6 +2083,12 @@ export function deriveMessagesTimelineRows(input: {
    */
   provider?: string | null;
   /**
+   * Turns whose work the account does not hold yet — an engine run read
+   * only for what its closed card draws (`engineCardPaging`): each is a card
+   * all the same, its work behind "Show work".
+   */
+  unheldWork?: ReadonlySet<string>;
+  /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
    * the same, and is not read again. The rows are the same with it or without.
@@ -2605,7 +2613,8 @@ export function deriveMessagesTimelineRows(input: {
       );
       extras.push(...built.rows);
     });
-    const hasRecord = items.some((item) => item.kind !== "person");
+    const unheld = turn.span.turnIds.some((turnId) => input.unheldWork?.has(turnId) ?? false);
+    const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
     // drawn as it will settle: a result that woke the Mate and was answered in
     // one breath flashed a card for a frame, and the answer jumped up as it
@@ -2632,6 +2641,7 @@ export function deriveMessagesTimelineRows(input: {
               () => turnActivity(turn),
             ),
             later: turnsAfter(structure, turn.key),
+            ...(unheld ? { unheld } : {}),
           });
     // What the result draws under the line: an outcome of what its calls came
     // to alone is said on the line (`outcomeDraws`).
@@ -2688,6 +2698,7 @@ export function deriveMessagesTimelineRows(input: {
       ...waitedOn(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
+        unheld ||
         items.some(
           (item) =>
             item.kind !== "thought" &&
@@ -2724,6 +2735,7 @@ export function deriveMessagesTimelineRows(input: {
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
+          turnId: turn.turnId,
           live: turn.live || waiting,
           items,
           now: waiting

@@ -346,6 +346,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
       case "AgentAssigned":
       case "SessionClosing":
       case "ModelSwitched":
+      case "RuntimeModeSet":
       case "UsagePauseLifted":
       case "ConversationArchived":
       case "ConversationUnarchived":

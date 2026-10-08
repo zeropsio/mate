@@ -43,6 +43,7 @@ export function useMateFeeds(store: AccountStore) {
     // The account's engine conversations: one host per store, gone with its account.
     const engine = makeMateEngineHost({
       store,
+      atoms: atomRegistry,
       registry,
       makeId: randomUUID,
       setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
