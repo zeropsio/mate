@@ -26,6 +26,23 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence: "a graceful shutdown during a check leaves it for the next boot to carry on",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      newTask(w, "backend", "Fix it");
+      w.start("backend");
+      w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+      w.end("backend");
+      w.checkpoint("backend");
+      w.settle("crew.mergeIn", "backend", { _tag: "merged", head: "h".repeat(40) });
+      restarted(w);
+      const [row] = w.task(1).attemptRows ?? [];
+      w.settle("crew.check", "backend", { _tag: "passed", tail: "ok", tip: "t".repeat(40) });
+      return [row?.ending, row?.endingDetail, w.task(1).state];
+    },
+    expected: ["interrupted", "Its turn had ended; the Mate restarted during its check.", "ready"],
+  },
+  {
     sentence: "a restart in a running run carries on a task its nudge left standing",
     journey: (w) => {
       w.apply(home(reader("reviewer")));

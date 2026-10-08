@@ -3089,6 +3089,13 @@ const loginsChanged = (b: Builder, logins: ReadonlyArray<string>): void => {
   }
 };
 
+/** What a restart stopped after a task's turn had ended, by the stage it stood in (V1's words). */
+const AFTER_TURN_STAGES: Readonly<Partial<Record<TaskRecord["state"], string>>> = {
+  merging: "Its turn had ended; the Mate restarted during its check.",
+  checking: "Its turn had ended; the Mate restarted during its check.",
+  landing: "Its turn had ended; the Mate restarted during its landing.",
+};
+
 const recovered = (b: Builder): void => {
   renewLeadWakes(b);
   // A redeploy the restart cut off may still run: its host stays frozen until a read says it ended.
@@ -3115,6 +3122,26 @@ const recovered = (b: Builder): void => {
         { handle: member.handle },
       );
     }
+  }
+  // What a restart cut after a turn's end (its save, its check, its landing) ends the attempt in
+  // V1's words; the work itself goes on as its effect is taken up again.
+  for (const task of tasksInOrder(b.state)) {
+    const stage = AFTER_TURN_STAGES[task.state];
+    if (stage === undefined) continue;
+    const rows = task.attemptRows ?? [];
+    const at = rows.findIndex((row) => row.attempt === task.counters.attempt);
+    if (at === -1 || rows[at]!.endedAt !== null) continue;
+    b.emit({
+      _tag: "TaskUpdated",
+      taskId: task.id,
+      set: {
+        attemptRows: rows.map((row, index) =>
+          index === at
+            ? { ...row, ending: "interrupted", endingDetail: stage, endedAt: b.now }
+            : row,
+        ),
+      },
+    });
   }
   // A running run carries on what a restart found stopped mid-way (V1's boot): its task goes on.
   if (runningRun(b.state) === undefined) return;
