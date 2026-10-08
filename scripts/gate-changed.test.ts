@@ -868,3 +868,197 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
     NodeFS.writeFileSync(file, original);
   }
 });
+
+// Exercise the gate CLI with observable check commands, rather than testing its cache helpers.
+it("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-receipt-"));
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  try {
+    for (const directory of ["scripts", "apps", "packages", "infra", "node_modules/.bin"])
+      NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+    for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+      NodeFS.copyFileSync(
+        NodePath.join(import.meta.dirname, name),
+        NodePath.join(root, "scripts", name),
+      );
+    NodeFS.symlinkSync(
+      NodePath.resolve(import.meta.dirname, "node_modules"),
+      NodePath.join(root, "scripts/node_modules"),
+    );
+    for (const name of [
+      "check-guard-exceptions.ts",
+      "check-runtime-cycles.ts",
+      "check-test-sentences.ts",
+    ])
+      NodeFS.writeFileSync(
+        NodePath.join(root, "scripts", name),
+        `import { appendFileSync } from "node:fs"; appendFileSync("checks.log", "${name}\\n");`,
+      );
+    NodeFS.writeFileSync(
+      NodePath.join(root, "node_modules/.bin/vp"),
+      '#!/bin/sh\necho vp >> checks.log\nexit "${GATE_FIXTURE_FAIL:-0}"\n',
+      { mode: 0o755 },
+    );
+    NodeFS.writeFileSync(NodePath.join(root, ".gitignore"), "node_modules/\nchecks.log\n");
+    NodeFS.writeFileSync(NodePath.join(root, "README.md"), "before");
+    git("init", "-q");
+    git("config", "user.name", "Gate fixture");
+    git("config", "user.email", "gate@example.test");
+    git("add", ".");
+    git("commit", "-qm", "base");
+    git("branch", "base");
+    NodeFS.writeFileSync(NodePath.join(root, "README.md"), "after");
+    const run = (args: string[] = [], fail = false) =>
+      NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/gate-changed.ts", "--base", "base", ...args],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, GATE_FIXTURE_FAIL: fail ? "9" : "0" },
+        },
+      );
+    const checks = () => NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8");
+    const first = run();
+    expect(first.status, first.stderr).toBe(0);
+    const checked = checks();
+    const second = run();
+    expect(second.status, second.stderr).toBe(0);
+    expect(second.stdout).toContain("reused receipt");
+    expect(checks()).toBe(checked);
+    const receiptPath = NodePath.join(root, ".gate-receipt.json");
+    const receipt = JSON.parse(NodeFS.readFileSync(receiptPath, "utf8"));
+    expect(receipt.selectedStages.map((stage: { name: string }) => stage.name)).toEqual([
+      "guard ledgers",
+      "runtime cycle ratchet",
+      "test sentence retention",
+      "check touched files",
+    ]);
+    expect(receipt.results.map((result: { status: number }) => result.status)).toEqual([
+      0, 0, 0, 0,
+    ]);
+    expect(receipt.durationMs).toBeGreaterThanOrEqual(0);
+    expect(changedPaths(root, "base")).toEqual(["README.md"]);
+    git("add", "README.md");
+    git("commit", "-qm", "lane");
+    expect(run().stdout).toContain("reused receipt");
+    expect(checks()).toBe(checked);
+    // --list is a preview; --force must execute and replace an old passing receipt even on failure.
+    expect(run(["--list"]).stdout).toContain("guard ledgers:");
+    expect(checks()).toBe(checked);
+    const failed = run(["--force"], true);
+    expect(failed.status).toBe(9);
+    expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
+    const retried = run();
+    expect(retried.status, retried.stderr).toBe(0);
+    expect(retried.stdout).not.toContain("reused receipt");
+    expect(run().stdout).toContain("reused receipt");
+    // A corrupt or incomplete receipt is evidence to run, never evidence to skip.
+    for (const content of [
+      "{",
+      JSON.stringify({ ...receipt, results: [] }),
+      JSON.stringify({ ...receipt, selectedStages: [] }),
+    ]) {
+      NodeFS.writeFileSync(receiptPath, content);
+      const result = run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain("reused receipt");
+    }
+    for (const mutate of [
+      () => NodeFS.writeFileSync(NodePath.join(root, "README.md"), "dirty"),
+      () => {
+        NodeFS.writeFileSync(NodePath.join(root, "README.md"), "staged");
+        git("add", "README.md");
+      },
+      () => NodeFS.writeFileSync(NodePath.join(root, "new.md"), "new"),
+      () => NodeFS.writeFileSync(NodePath.join(root, "new.md"), "changed untracked"),
+      () => NodeFS.renameSync(NodePath.join(root, "new.md"), NodePath.join(root, "renamed.md")),
+      () => NodeFS.writeFileSync(NodePath.join(root, "binary.md"), Buffer.from([0, 255, 3])),
+      () => NodeFS.writeFileSync(NodePath.join(root, "binary.md"), Buffer.from([0, 254, 3])),
+      () => NodeFS.chmodSync(NodePath.join(root, "binary.md"), 0o755),
+      () => NodeFS.symlinkSync("renamed.md", NodePath.join(root, "link.md")),
+      () => {
+        NodeFS.unlinkSync(NodePath.join(root, "link.md"));
+        NodeFS.symlinkSync("missing.md", NodePath.join(root, "link.md"));
+      },
+      () => NodeFS.unlinkSync(NodePath.join(root, "README.md")),
+    ]) {
+      const before = checks();
+      mutate();
+      const result = run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).not.toContain("reused receipt");
+      expect(checks()).not.toBe(before);
+      expect(run().stdout).toContain("reused receipt");
+    }
+    // Staging and committing additions must preserve the same diff identity as untracked bytes.
+    const beforeCommit = checks();
+    git("add", "--all", "--", "README.md", "renamed.md", "binary.md", "link.md");
+    git("commit", "-qm", "lane additions");
+    expect(run().stdout).toContain("reused receipt");
+    expect(checks()).toBe(beforeCommit);
+    // An unrelated main change and a clean rebase leave the lane diff and checks identical.
+    git("checkout", "-qb", "lane");
+    git("checkout", "-q", "base");
+    NodeFS.writeFileSync(NodePath.join(root, "main.md"), "unrelated");
+    git("add", "main.md");
+    git("commit", "-qm", "main moved");
+    git("checkout", "-q", "lane");
+    git("rebase", "base");
+    expect(run().stdout).toContain("reused receipt");
+    expect(checks()).toBe(beforeCommit);
+    // Decision: no test deleted or weakened; the receipt never masks a failure.
+    // Selection inputs can change on main without changing the lane patch or command list.
+    for (const path of [
+      "scripts/chat-gate.ts",
+      "scripts/gate-changed.ts",
+      "pnpm-lock.yaml",
+      "vite.config.ts",
+      "scripts/package.json",
+    ]) {
+      const before = checks();
+      const stages = JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).selectedStages;
+      git("checkout", "-q", "base");
+      NodeFS.appendFileSync(
+        NodePath.join(root, path),
+        path.endsWith(".json")
+          ? '{"name":"scripts","type":"module"}'
+          : path.endsWith(".ts")
+            ? "\n// selection revision\n"
+            : "# lock revision\n",
+      );
+      git("add", path);
+      git("commit", "-qm", "selection inputs changed");
+      git("checkout", "-q", "lane");
+      git("rebase", "base");
+      const result = run();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout, `changed selection input: ${path}`).not.toContain("reused receipt");
+      expect(checks()).not.toBe(before);
+      expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).selectedStages).toEqual(stages);
+      expect(run().stdout).toContain("reused receipt");
+    }
+    const scenario = "apps/web/test/scenarios/areas/b-menu/pick.scenario.ts";
+    git("checkout", "-q", "base");
+    NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, scenario)), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(root, scenario), "export {};\n");
+    git("add", scenario);
+    git("commit", "-qm", "scenario inventory");
+    git("checkout", "-q", "lane");
+    git("rebase", "base");
+    NodeFS.mkdirSync(NodePath.join(root, "apps/web/test/scenarios/areas/c-mate"), {
+      recursive: true,
+    });
+    const explicit = run(["--scenarios", scenario]);
+    expect(explicit.status, explicit.stderr).toBe(0);
+    expect(explicit.stdout).not.toContain("reused receipt");
+    expect(explicit.stdout).toContain("ok related scenario files");
+    expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
+    expect(run().stdout).not.toContain("reused receipt");
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});

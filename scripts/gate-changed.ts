@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host gate runner.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { chatGateStages, chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
@@ -459,7 +460,9 @@ export function changedPaths(root: string, base: string): string[] {
       ...git(["diff", "--name-only", "--no-renames", "-z", ancestor]),
       ...git(["ls-files", "--others", "--exclude-standard", "-z"]),
     ]),
-  ].sort();
+  ]
+    .filter((path) => path !== ".gate-receipt.json" && path !== ".gate-receipt.json.tmp")
+    .sort();
 }
 
 function workspacePackages(root: string): GatePackage[] {
@@ -489,6 +492,129 @@ export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
   return packages.filter((pkg) => /^(?:apps|infra)\//u.test(pkg.directory));
 }
 
+interface GateStage {
+  readonly name: string;
+  readonly command: string;
+  readonly args: string[];
+  readonly cwd?: string;
+}
+
+interface GateReceipt {
+  readonly diffHash: string;
+  readonly selectionHash: string;
+  readonly selectedStages: GateStage[];
+  readonly results: { name: string; status: number; durationMs: number }[];
+  durationMs: number;
+  completed: boolean;
+}
+
+// Hash before/after file identities, independent of whether additions are untracked, staged or committed.
+// Only the lane's changed paths participate, so unrelated main changes preserve the receipt on rebase.
+function diffHash(root: string, comparison: string): string {
+  const paths = changedPaths(root, comparison);
+  const hash = NodeCrypto.createHash("sha256");
+  if (paths.length)
+    hash.update(
+      NodeChildProcess.execFileSync(
+        "git",
+        ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...paths],
+        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
+      ),
+    );
+  for (const path of paths) {
+    const absolute = NodePath.join(root, path);
+    const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
+    if (!stat) {
+      hash.update(JSON.stringify([path, "deleted"]));
+      continue;
+    }
+    const bytes = stat.isSymbolicLink()
+      ? Buffer.from(NodeFS.readlinkSync(absolute))
+      : NodeFS.readFileSync(absolute);
+    hash.update(
+      JSON.stringify([
+        path,
+        stat.isSymbolicLink() ? "symlink" : "file",
+        Boolean(stat.mode & 0o111),
+        bytes.length,
+      ]),
+    );
+    hash.update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+// A rebase can update the selector or its configuration without changing the lane patch.
+function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
+  const hash = NodeCrypto.createHash("sha256");
+  hash.update(JSON.stringify([process.version, inventory]));
+  const inputs = [
+    "scripts/gate-changed.ts",
+    "scripts/chat-gate.ts",
+    "scripts/gate-log.ts",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "tsconfig.base.json",
+    "apps/web/test/scenarios/vitest.config.ts",
+    ...inventory,
+    ...[".", ...workspacePackages(root).map((pkg) => pkg.directory)].flatMap((directory) =>
+      ["package.json", "vite.config.ts", "tsconfig.json"].map((file) =>
+        NodePath.posix.join(directory, file),
+      ),
+    ),
+  ];
+  for (const path of inputs) {
+    const absolute = NodePath.join(root, path);
+    hash.update(
+      JSON.stringify([
+        path,
+        NodeFS.existsSync(absolute) ? NodeFS.readFileSync(absolute, "utf8") : null,
+      ]),
+    );
+  }
+  return hash.digest("hex");
+}
+
+function reusableReceipt(
+  path: string,
+  hash: string,
+  selection: string,
+  stages: GateStage[],
+): boolean {
+  if (!NodeFS.existsSync(path)) return false;
+  const content = NodeFS.readFileSync(path, "utf8");
+  let receipt: GateReceipt | null;
+  try {
+    receipt = JSON.parse(content) as GateReceipt | null;
+  } catch {
+    return false;
+  } // A partial or corrupt receipt cannot prove a passing run.
+  return (
+    receipt !== null &&
+    receipt.completed === true &&
+    receipt.diffHash === hash &&
+    receipt.selectionHash === selection &&
+    JSON.stringify(receipt.selectedStages) === JSON.stringify(stages) &&
+    Number.isFinite(receipt.durationMs) &&
+    receipt.durationMs >= 0 &&
+    Array.isArray(receipt.results) &&
+    receipt.results.length === stages.length &&
+    receipt.results.every(
+      (result, index) =>
+        result !== null &&
+        result.name === stages[index]?.name &&
+        result.status === 0 &&
+        Number.isFinite(result.durationMs) &&
+        result.durationMs >= 0,
+    )
+  );
+}
+
+function writeReceipt(path: string, receipt: GateReceipt): void {
+  NodeFS.writeFileSync(`${path}.tmp`, `${JSON.stringify(receipt, null, 2)}\n`);
+  NodeFS.renameSync(`${path}.tmp`, path);
+}
+
 if (import.meta.main) {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
@@ -496,7 +622,7 @@ if (import.meta.main) {
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--list") continue;
+    if (arg === "--list" || arg === "--force") continue;
     if (arg === "--base") {
       const ref = args[++index];
       if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
@@ -508,7 +634,7 @@ if (import.meta.main) {
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--force] [--scenarios <file...>]",
       );
     }
   }
@@ -578,7 +704,7 @@ if (import.meta.main) {
     stage.commands.filter((command) => command.args.includes("tsc")),
   );
   const packages = touchedPackages(meaningful.paths, workspacePackages(root));
-  const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
+  const steps: GateStage[] = [];
   steps.push({
     name: "guard ledgers",
     command: "node",
@@ -706,6 +832,32 @@ if (import.meta.main) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
   } else {
+    const receiptPath = NodePath.join(root, ".gate-receipt.json");
+    const hash = diffHash(root, comparison);
+    const selection = selectionHash(root, [...inventory, ...namedScenarios]);
+    // The ancestor SHA may move on rebase while the lane patch and selected checks stay identical.
+    const selectedStages = steps.map((step) => ({
+      ...step,
+      args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
+    }));
+    if (
+      !args.includes("--force") &&
+      reusableReceipt(receiptPath, hash, selection, selectedStages)
+    ) {
+      console.log(`reused receipt: ${receiptPath} (${hash})`);
+      process.exit(0);
+    }
+    const gateStarted = Date.now();
+    const receipt: GateReceipt = {
+      diffHash: hash,
+      selectionHash: selection,
+      selectedStages,
+      results: [],
+      durationMs: 0,
+      completed: false,
+    };
+    // Invalidate the previous success before any check, including a forced run that gets interrupted.
+    writeReceipt(receiptPath, receipt);
     const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
       NodePath.delimiter,
     );
@@ -732,6 +884,9 @@ if (import.meta.main) {
         { cwd: NodePath.join(root, step.cwd ?? "."), env },
         logPath,
       );
+      receipt.results.push({ name: step.name, status, durationMs: Date.now() - started });
+      receipt.durationMs = Date.now() - gateStarted;
+      writeReceipt(receiptPath, receipt);
       console.log(
         `${status === 0 ? "ok" : "FAIL"} ${step.name} (${((Date.now() - started) / 1000).toFixed(2)}s)`,
       );
@@ -740,5 +895,15 @@ if (import.meta.main) {
         process.exit(status);
       }
     }
+    if (
+      diffHash(root, comparison) !== hash ||
+      selectionHash(root, [...inventory, ...namedScenarios]) !== selection
+    )
+      throw new Error(
+        "Lane diff or selection inputs changed during the gate; run again for the changed code.",
+      );
+    receipt.completed = true;
+    receipt.durationMs = Date.now() - gateStarted;
+    writeReceipt(receiptPath, receipt);
   }
 }
