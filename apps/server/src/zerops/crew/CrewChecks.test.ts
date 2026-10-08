@@ -57,33 +57,31 @@ const ROWS: ReadonlyArray<Row> = [
 ];
 
 describe("CrewChecks", () => {
-  for (const row of ROWS) {
-    it.effect(row.name, () =>
-      Effect.gen(function* () {
-        const root = makeServiceRepository();
-        write(root, ".crew/backend/lane.txt", "lane\n");
-        const outcome = yield* Effect.gen(function* () {
-          const checks = yield* CrewChecks.CrewChecks;
-          return yield* checks.run({
-            ...LANE,
-            lane: row.lane ?? LANE.lane,
-            kind: "check",
-            command: row.command,
-            crewPort: 3001,
-            env: { DATABASE_NAME: "lane db" },
-            ...(row.timeout === undefined ? {} : { timeout: row.timeout }),
-          });
-        }).pipe(
-          Effect.provide(
-            CrewChecks.layer.pipe(Layer.provide(crewShellLayer([serviceRepository(root)]))),
-          ),
-          Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
-        );
-        assert.strictEqual(outcome._tag, row.expected);
-        for (const [key, value] of Object.entries(row.detail ?? {})) {
-          assert.strictEqual((outcome as unknown as Record<string, unknown>)[key], value, key);
-        }
-      }),
-    );
-  }
+  it.effect.each(Array.from(ROWS, (row) => ({ title: row.name, row })))("$title", ({ row }) =>
+    Effect.gen(function* () {
+      const root = makeServiceRepository();
+      write(root, ".crew/backend/lane.txt", "lane\n");
+      const outcome = yield* Effect.gen(function* () {
+        const checks = yield* CrewChecks.CrewChecks;
+        return yield* checks.run({
+          ...LANE,
+          lane: row.lane ?? LANE.lane,
+          kind: "check",
+          command: row.command,
+          crewPort: 3001,
+          env: { DATABASE_NAME: "lane db" },
+          ...(row.timeout === undefined ? {} : { timeout: row.timeout }),
+        });
+      }).pipe(
+        Effect.provide(
+          CrewChecks.layer.pipe(Layer.provide(crewShellLayer([serviceRepository(root)]))),
+        ),
+        Effect.ensuring(Effect.sync(() => removeServiceRepository(root))),
+      );
+      assert.strictEqual(outcome._tag, row.expected);
+      for (const [key, value] of Object.entries(row.detail ?? {})) {
+        assert.strictEqual((outcome as unknown as Record<string, unknown>)[key], value, key);
+      }
+    }),
+  );
 });

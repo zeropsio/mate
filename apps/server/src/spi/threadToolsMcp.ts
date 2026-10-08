@@ -15,10 +15,11 @@
  *
  * @module threadToolsMcp
  */
-import * as NodeCrypto from "node:crypto";
 import * as NodeNet from "node:net";
+import { randomBytes } from "@noble/hashes/utils";
 
 import * as Effect from "effect/Effect";
+import * as Hex from "effect/encoding/Hex";
 import type * as Scope from "effect/Scope";
 
 import type { ThreadTool } from "./threadToolPolicy.ts";
@@ -137,7 +138,7 @@ export const serveThreadTools = (
 ): Effect.Effect<ThreadToolsStdioServer, never, Scope.Scope> =>
   Effect.gen(function* () {
     const services = yield* Effect.context<never>();
-    const token = NodeCrypto.randomBytes(24).toString("hex");
+    const token = Hex.encode(randomBytes(24));
     const sockets = new Set<NodeNet.Socket>();
     const server = NodeNet.createServer((socket) => {
       sockets.add(socket);

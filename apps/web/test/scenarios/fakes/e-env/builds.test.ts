@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off preferSchemaOverJson:off -- loopback wire fidelity tests.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off -- loopback wire fidelity tests.
 import { describe, expect, it } from "vite-plus/test";
 import { emptyWorld } from "../../../../../hq/test/harness/zeropsFake.ts";
 import { serve } from "../../harness/http.ts";

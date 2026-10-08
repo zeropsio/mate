@@ -49,29 +49,29 @@ const CASES: ReadonlyArray<{
 ];
 
 describe("ThreadToolPolicyRegistry", () => {
-  for (const { name, steps, current } of CASES) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        const registry = yield* ThreadToolPolicyRegistry;
-        const policies = { first: policy(), second: policy() };
-        const scopes = new Map<"first" | "second", Scope.Closeable>();
-        for (const step of steps) {
-          if ("install" in step) {
-            const scope = yield* Scope.make();
-            scopes.set(step.install, scope);
-            yield* registry.install(policies[step.install]).pipe(Scope.provide(scope));
-          } else {
-            yield* Scope.close(scopes.get(step.release)!, Exit.void);
-          }
+  it.effect.each(
+    Array.from(CASES, ({ name, steps, current }) => ({ title: name, steps, current })),
+  )("$title", ({ steps, current }) =>
+    Effect.gen(function* () {
+      const registry = yield* ThreadToolPolicyRegistry;
+      const policies = { first: policy(), second: policy() };
+      const scopes = new Map<"first" | "second", Scope.Closeable>();
+      for (const step of steps) {
+        if ("install" in step) {
+          const scope = yield* Scope.make();
+          scopes.set(step.install, scope);
+          yield* registry.install(policies[step.install]).pipe(Scope.provide(scope));
+        } else {
+          yield* Scope.close(scopes.get(step.release)!, Exit.void);
         }
-        const installed = yield* registry.current;
-        assert.strictEqual(
-          Option.getOrUndefined(installed),
-          current === "none" ? undefined : policies[current],
-        );
-      }).pipe(Effect.provide(ThreadToolPolicyRegistry.layer)),
-    );
-  }
+      }
+      const installed = yield* registry.current;
+      assert.strictEqual(
+        Option.getOrUndefined(installed),
+        current === "none" ? undefined : policies[current],
+      );
+    }).pipe(Effect.provide(ThreadToolPolicyRegistry.layer)),
+  );
 });
 
 describe("profileModelSelection", () => {

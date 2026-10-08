@@ -160,27 +160,30 @@ function withFakeCodexEnv<A, E, R>(
 }
 
 it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
-  for (const selectedModel of ["gpt-5.6-luna", "openai.gpt-5.6-luna"]) {
-    it.effect(`dispatches the qualified live model for ${selectedModel}`, () =>
-      withFakeCodexEnv(
-        {
-          output: JSON.stringify({ title: "Bedrock title" }),
-          models: ["openai.gpt-5.6-luna"],
-          requireArg: "--model openai.gpt-5.6-luna",
-          forbidArg: "--model gpt-5.6-luna",
-        },
-        (textGeneration) =>
-          Effect.gen(function* () {
-            const result = yield* textGeneration.generateThreadTitle({
-              cwd: process.cwd(),
-              message: "Describe this change",
-              modelSelection: createModelSelection(ProviderInstanceId.make("codex"), selectedModel),
-            });
-            expect(result.title).toBe("Bedrock title");
-          }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(["gpt-5.6-luna", "openai.gpt-5.6-luna"], (selectedModel) => ({
+      title: `dispatches the qualified live model for ${selectedModel}`,
+      selectedModel,
+    })),
+  )("$title", ({ selectedModel }) =>
+    withFakeCodexEnv(
+      {
+        output: JSON.stringify({ title: "Bedrock title" }),
+        models: ["openai.gpt-5.6-luna"],
+        requireArg: "--model openai.gpt-5.6-luna",
+        forbidArg: "--model gpt-5.6-luna",
+      },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const result = yield* textGeneration.generateThreadTitle({
+            cwd: process.cwd(),
+            message: "Describe this change",
+            modelSelection: createModelSelection(ProviderInstanceId.make("codex"), selectedModel),
+          });
+          expect(result.title).toBe("Bedrock title");
+        }),
+    ),
+  );
   it.effect("generates and sanitizes commit messages without branch by default", () =>
     withFakeCodexEnv(
       {

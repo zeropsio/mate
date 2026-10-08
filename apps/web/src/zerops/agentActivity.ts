@@ -63,7 +63,11 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
-import { projectMateLimit, type MateLimit } from "@t3tools/client-runtime/data";
+import {
+  projectMateLimit,
+  type MateLimit,
+  type MateLimitSource,
+} from "@t3tools/client-runtime/data";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**
@@ -104,6 +108,7 @@ export type AgentActivityThread = Pick<
     | null
     | undefined;
   readonly liveStep?: ThreadLiveStep | null | undefined;
+  readonly refusal?: MateLimitSource["refusal"];
 };
 
 export interface ZeropsAgentActivity {

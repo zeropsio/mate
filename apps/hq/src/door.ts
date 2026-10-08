@@ -69,13 +69,14 @@ export const doorLayer = (options: {
         admit: (presented) =>
           Effect.gen(function* () {
             const token = yield* api.ownToken(presented).pipe(
-              Effect.catchTag("ZeropsRefused", (refusal) =>
-                Effect.fail(
-                  new DoorRefused({
-                    rule: refusal.reason === "unauthorized" ? "token_dead" : "wrong_org",
-                  }),
-                ),
-              ),
+              Effect.catchTags({
+                ZeropsRefused: (refusal) =>
+                  Effect.fail(
+                    new DoorRefused({
+                      rule: refusal.reason === "unauthorized" ? "token_dead" : "wrong_org",
+                    }),
+                  ),
+              }),
             );
             const facts = {
               doorProjectId: options.hqProjectId,
@@ -93,11 +94,12 @@ export const doorLayer = (options: {
             // a door that gives up on it: what it reads is the next door's.
             const reading = yield* Effect.forkIn(roles.recent, scope);
             const view = yield* Fiber.join(reading).pipe(
-              Effect.catchTag("ZeropsRefused", () =>
-                Effect.fail(
-                  new ZeropsUnavailable({ operation: "door", message: "own credential" }),
-                ),
-              ),
+              Effect.catchTags({
+                ZeropsRefused: () =>
+                  Effect.fail(
+                    new ZeropsUnavailable({ operation: "door", message: "own credential" }),
+                  ),
+              }),
             );
             const verdict = checkDoorToken({ ...facts, orgId: view.orgId, members: view.members });
             if (verdict.kind !== "admitted") return yield* failWith(verdict);

@@ -3291,6 +3291,8 @@ describe("provider admission evidence", () => {
         payload: { message: "Claude usage limit reached.", detail: info },
       }),
     ]);
-    expect(entry?.usageLimit).toEqual(limit ? { resetsAt: "2026-10-07T02:00:00.000Z" } : undefined);
+    expect(entry?.usageLimit).toEqual(
+      limit ? { resetsAt: "2026-10-07T02:00:00.000Z", provider: "Claude" } : undefined,
+    );
   });
 });

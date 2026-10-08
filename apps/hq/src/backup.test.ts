@@ -120,11 +120,12 @@ describe("the sets kept", () => {
       kept: ["20260301T000000.000Z"],
     },
   ];
-  for (const { name, ids, kept } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, ids, kept }) => ({ title: name, ids, kept })))(
+    "$title",
+    ({ ids, kept }) => {
       assert.deepStrictEqual([...retained(ids, NOW)].sort(), kept);
-    });
-  }
+    },
+  );
 });
 
 describe("the sets of a store", () => {
@@ -197,14 +198,20 @@ describe("the room a set makes in its store", () => {
       room: { remove: ["20260101T000000.000Z"], fits: false, cut: false, used: 80 },
     },
   ];
-  for (const { name, stored, incoming, limit, room } of cases) {
-    it(name, () => {
-      assert.deepStrictEqual(
-        roomFor(stored, { id: "20261002T115000.000Z", bytes: incoming }, limit, NOW),
-        room,
-      );
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, stored, incoming, limit, room }) => ({
+      title: name,
+      stored,
+      incoming,
+      limit,
+      room,
+    })),
+  )("$title", ({ stored, incoming, limit, room }) => {
+    assert.deepStrictEqual(
+      roomFor(stored, { id: "20261002T115000.000Z", bytes: incoming }, limit, NOW),
+      room,
+    );
+  });
 });
 
 describe("a backup set, taken", () => {

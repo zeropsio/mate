@@ -114,19 +114,22 @@ describe("ZeropsOffboarding", () => {
   );
 
   // Only a read that says so signs anybody out: one that cannot be read keeps everyone in.
-  for (const [name, access] of [
-    ["still has access", { [EVA]: true, [JAN]: true }],
-    ["cannot be read", {}],
-  ] as const) {
-    it.effect(`signs nobody out while every signer ${name}`, () =>
-      Effect.gen(function* () {
-        const { service, stopped, steps } = yield* offboarding(access);
-        assert.strictEqual(yield* service.checkNow, 0);
-        assert.deepStrictEqual(yield* Ref.get(stopped), []);
-        assert.deepStrictEqual(yield* Ref.get(steps), []);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["still has access", { [EVA]: true, [JAN]: true }],
+        ["cannot be read", {}],
+      ] as const,
+      ([name, access]) => ({ title: `signs nobody out while every signer ${name}`, access }),
+    ),
+  )("$title", ({ access }) =>
+    Effect.gen(function* () {
+      const { service, stopped, steps } = yield* offboarding(access);
+      assert.strictEqual(yield* service.checkNow, 0);
+      assert.deepStrictEqual(yield* Ref.get(stopped), []);
+      assert.deepStrictEqual(yield* Ref.get(steps), []);
+    }),
+  );
 });
 
 // R6: HQ relaying a different answer signs a person who lost access out now, not at the next

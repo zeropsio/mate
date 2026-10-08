@@ -65,7 +65,7 @@ describe("MateOverviews", () => {
               .pipe(
                 Effect.tap(() =>
                   Deferred.succeed(
-                    overview.main?.usagePause?.resetsAt === corrected ? saved : baseline,
+                    overview.main?.refusal?.resetsAt === corrected ? saved : baseline,
                     undefined,
                   ),
                 ),
@@ -75,7 +75,8 @@ describe("MateOverviews", () => {
         const main = {
           ...mainAt(""),
           session: { status: "error" as const, lastError: "Claude usage limit reached." },
-          usagePause: { resetsAt: "2026-10-09T02:00:00Z" },
+          usagePause: null,
+          refusal: { turnId: null, provider: "Claude", resetsAt: "2026-10-09T02:00:00Z" },
         };
         yield* overviews.report("P", link, {
           type: "overview",
@@ -86,13 +87,13 @@ describe("MateOverviews", () => {
         yield* overviews.report("P", link, {
           type: "overview",
           full: false,
-          sections: { main: { ...main, usagePause: { resetsAt: corrected } } },
+          sections: { main: { ...main, refusal: { ...main.refusal, resetsAt: corrected } } },
         });
         yield* Deferred.await(saved);
         const restarted = yield* makeMateOverviews(memoryStore([...rows.values()]).store);
         yield* restarted.restore;
         assert.strictEqual(
-          (yield* restarted.all).get("P")?.overview?.main?.usagePause?.resetsAt,
+          (yield* restarted.all).get("P")?.overview?.main?.refusal?.resetsAt,
           corrected,
         );
       }),

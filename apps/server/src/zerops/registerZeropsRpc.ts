@@ -94,18 +94,15 @@ export interface RegisterZeropsRpcDeps {
    * input: a client that could name its own subject could claim to be anyone.
    */
   readonly subject: string;
-  /** `ws.ts`'s own scope-checked, metrics/trace-instrumented wrapper — same one every other RPC in the router goes through. */
-  readonly observeRpcEffect: <A, E, R>(
+  /**
+   * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
+   * refused (or, for a continuation, let through) so the update starts once work is done.
+   */
+  readonly admit: <A, E, R>(
     method: string,
     effect: Effect.Effect<A, E, R>,
-    traceAttributes?: Readonly<Record<string, unknown>>,
     updateContinuation?: boolean,
   ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
-  readonly observeRpcStream: <A, E, R>(
-    method: string,
-    stream: Stream.Stream<A, E, R>,
-    traceAttributes?: Readonly<Record<string, unknown>>,
-  ) => Stream.Stream<A, E | EnvironmentAuthorizationError, R>;
 }
 
 /** `ProcessTimeoutError`'s message (processRunner.ts) always contains this phrase. */
@@ -265,27 +262,20 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsDataConsole,
     zeropsGitRemoteProbe,
     subject,
-    observeRpcEffect,
-    observeRpcStream,
+    admit,
   } = deps;
 
   return {
     [WS_METHODS.zeropsStandUpRetry]: () =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.zeropsStandUpRetry,
         deps.zeropsSetup?.retry(subject) ?? Effect.succeed(false),
-        { "rpc.aggregate": "zerops" },
       ),
-    [WS_METHODS.zeropsLifecycleGet]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsLifecycleGet, zeropsLifecycle.get(input.threadId), {
-        "rpc.aggregate": "zerops",
-      }),
+    [WS_METHODS.zeropsLifecycleGet]: (input) => zeropsLifecycle.get(input.threadId),
     [WS_METHODS.zeropsAgentAuthCheck]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsAgentAuthCheck, runAgentAuthCheck(deps, input), {
-        "rpc.aggregate": "zerops",
-      }),
+      admit(WS_METHODS.zeropsAgentAuthCheck, runAgentAuthCheck(deps, input)),
     [WS_METHODS.zeropsAgentLoginStart]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.zeropsAgentLoginStart,
         input.loginId === undefined
           ? zeropsAgentLogin.start(input.agentId, input.threadId, subject)
@@ -294,140 +284,82 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
                 zeropsAgentLogin.start(input.agentId, input.threadId, subject, login),
               ),
             ),
-        { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.zeropsAgentLoginCancel]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.zeropsAgentLoginCancel,
         zeropsAgentLogin.cancel(input.agentId, input.loginId),
-        { "rpc.aggregate": "zerops" },
       ),
     // The code rides only into the login terminal: no span attribute or log
     // line here names it.
     [WS_METHODS.zeropsAgentLoginSubmitCode]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.zeropsAgentLoginSubmitCode,
         zeropsAgentLogin.submitCode(input.agentId, input.code, input.loginId),
-        { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.zeropsAgentLoginSignOut]: (input) => {
       const loginId = input.loginId;
-      return observeRpcEffect(
+      return admit(
         WS_METHODS.zeropsAgentLoginSignOut,
         zeropsSignOut.signOut(loginId === undefined ? { agentId: input.agentId } : { loginId }),
-        { "rpc.aggregate": "zerops" },
       );
     },
     // The API key rides only into the settings' secret store: no span
     // attribute or log line here names it.
     [WS_METHODS.zeropsLoginAdd]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input, subject), {
-        "rpc.aggregate": "zerops",
-      }),
+      admit(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input, subject)),
     [WS_METHODS.zeropsLoginRemove]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsLoginRemove, zeropsSignOut.remove(input.id), {
-        "rpc.aggregate": "zerops",
-      }),
+      admit(WS_METHODS.zeropsLoginRemove, zeropsSignOut.remove(input.id)),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeZeropsLifecycle,
-        Stream.unwrap(
-          Effect.map(zeropsLifecycle.subscribe(input.threadId), ({ latest, changes }) =>
-            Stream.concat(Stream.make(latest), changes),
-          ),
+      Stream.unwrap(
+        Effect.map(zeropsLifecycle.subscribe(input.threadId), ({ latest, changes }) =>
+          Stream.concat(Stream.make(latest), changes),
         ),
-        { "rpc.aggregate": "zerops" },
       ),
     [WS_METHODS.subscribeZeropsAgentAuth]: (_input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeZeropsAgentAuth,
-        // Merges `ZeropsAgentAuth`'s snapshot with `ZeropsAgentLogin`'s
-        // per-login state (S7 follow-up F8) and `ZeropsLogins`' logins beyond
-        // the defaults into the ONE stream the client reads. Subscribing to
-        // all three FIRST (each returning its own value-at-subscribe-time
-        // bundled with a live change stream — the same subscribe-before-
-        // snapshot race the feeds' own `subscribe` already guards against)
-        // avoids a gap between reading an initial value and starting to
-        // listen; a later change from ANY source re-reads every feed's
-        // `latest` fresh rather than trusting a stale captured value, since a
-        // `Stream.merge`'d change only tells us SOMETHING moved, not which.
-        Stream.unwrap(
-          Effect.gen(function* () {
-            const authSub = yield* zeropsAgentAuth.subscribe;
-            const loginSub = yield* zeropsAgentLogin.subscribe;
-            const extrasSub = yield* zeropsLogins.subscribe;
-            const recombine = Effect.all([
-              zeropsAgentAuth.latest,
-              zeropsLogins.latest,
-              zeropsAgentLogin.latest,
-            ]).pipe(
-              Effect.map(([snapshot, extras, logins]) =>
-                ZeropsAgentLoginModule.combineAgentAuth(snapshot, extras, logins),
-              ),
-            );
-            const initial = ZeropsAgentLoginModule.combineAgentAuth(
-              authSub.latest,
-              extrasSub.latest,
-              loginSub.latest,
-            );
-            const changes = Stream.mergeAll(
-              [
-                Stream.map(authSub.changes, () => undefined),
-                Stream.map(loginSub.changes, () => undefined),
-                Stream.map(extrasSub.changes, () => undefined),
-              ],
-              { concurrency: "unbounded" },
-            ).pipe(Stream.mapEffect(() => recombine));
-            return Stream.concat(Stream.make(initial), changes);
-          }),
-        ),
-        { "rpc.aggregate": "zerops" },
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const authSub = yield* zeropsAgentAuth.subscribe;
+          const loginSub = yield* zeropsAgentLogin.subscribe;
+          const extrasSub = yield* zeropsLogins.subscribe;
+          const recombine = Effect.all([
+            zeropsAgentAuth.latest,
+            zeropsLogins.latest,
+            zeropsAgentLogin.latest,
+          ]).pipe(
+            Effect.map(([snapshot, extras, logins]) =>
+              ZeropsAgentLoginModule.combineAgentAuth(snapshot, extras, logins),
+            ),
+          );
+          const initial = ZeropsAgentLoginModule.combineAgentAuth(
+            authSub.latest,
+            extrasSub.latest,
+            loginSub.latest,
+          );
+          const changes = Stream.mergeAll(
+            [
+              Stream.map(authSub.changes, () => undefined),
+              Stream.map(loginSub.changes, () => undefined),
+              Stream.map(extrasSub.changes, () => undefined),
+            ],
+            { concurrency: "unbounded" },
+          ).pipe(Stream.mapEffect(() => recombine));
+          return Stream.concat(Stream.make(initial), changes);
+        }),
       ),
-    [WS_METHODS.subscribeZeropsHealth]: (_input) =>
-      observeRpcStream(WS_METHODS.subscribeZeropsHealth, zeropsMateAttention.healthChanges, {
-        "rpc.aggregate": "zerops",
-      }),
-    [WS_METHODS.subscribeZeropsAttention]: (_input) =>
-      observeRpcStream(WS_METHODS.subscribeZeropsAttention, zeropsMateAttention.changes, {
-        "rpc.aggregate": "zerops",
-      }),
+    [WS_METHODS.subscribeZeropsHealth]: (_input) => zeropsMateAttention.healthChanges,
+    [WS_METHODS.subscribeZeropsAttention]: (_input) => zeropsMateAttention.changes,
     [WS_METHODS.subscribeZeropsBrowserStream]: (input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeZeropsBrowserStream,
-        Stream.unwrap(zeropsBrowserStream.subscribe).pipe(
-          Stream.filter((event) => input.callFrames === true || event.type !== "call-result"),
-        ),
-        {
-          "rpc.aggregate": "zerops",
-        },
+      Stream.unwrap(zeropsBrowserStream.subscribe).pipe(
+        Stream.filter((event) => input.callFrames === true || event.type !== "call-result"),
       ),
     [WS_METHODS.zeropsBrowserInput]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input), {
-        "rpc.aggregate": "zerops",
-      }),
+      admit(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input)),
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps), {
-        "rpc.aggregate": "zerops",
-      }),
-    [WS_METHODS.zeropsMateCheckUpdate]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsMateCheckUpdate, runZeropsMateCheckUpdate(deps), {
-        "rpc.aggregate": "zerops",
-      }),
-    [WS_METHODS.zeropsDataConsoleCall]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsDataConsoleCall, zeropsDataConsole.call(input), {
-        "rpc.aggregate": "zerops",
-      }),
-    [WS_METHODS.zeropsGitProbeRemote]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsGitProbeRemote, zeropsGitRemoteProbe.probe(input), {
-        "rpc.aggregate": "zerops",
-      }),
-    [WS_METHODS.subscribeZeropsDataConsole]: (_input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeZeropsDataConsole,
-        Stream.unwrap(zeropsDataConsole.subscribe),
-        {
-          "rpc.aggregate": "zerops",
-        },
-      ),
+      admit(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps)),
+    [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),
+    [WS_METHODS.zeropsDataConsoleCall]: (input) => zeropsDataConsole.call(input),
+    [WS_METHODS.zeropsGitProbeRemote]: (input) => zeropsGitRemoteProbe.probe(input),
+    [WS_METHODS.subscribeZeropsDataConsole]: (_input) => Stream.unwrap(zeropsDataConsole.subscribe),
   } satisfies ZeropsRpcHandlers;
 };

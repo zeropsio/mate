@@ -16,65 +16,68 @@ const environment = resolveZeropsEnvironment({
 })!;
 const process = { serviceStackId: "own-zcp", actionName: "stack.restart", status: "FINISHED" };
 
-for (const status of [200, 401, 403, 500]) {
-  it.effect(`reads processes once with the Mate's key, without retries (${status})`, () =>
-    Effect.gen(function* () {
-      const requests: string[] = [];
-      let keyReads = 0;
-      const reader = yield* make({ serviceId: "own-zcp" }).pipe(
-        Effect.provideService(ZeropsMateKey, {
-          read: Effect.sync(() => {
-            keyReads++;
-            return "test-mate-key";
-          }),
-          invalidate: Effect.die("must not retry"),
-          lastSource: Effect.succeed("snapshot" as const),
+it.effect.each(
+  Array.from([200, 401, 403, 500], (status) => ({
+    title: `reads processes once with the Mate's key, without retries (${status})`,
+    status,
+  })),
+)("$title", ({ status }) =>
+  Effect.gen(function* () {
+    const requests: string[] = [];
+    let keyReads = 0;
+    const reader = yield* make({ serviceId: "own-zcp" }).pipe(
+      Effect.provideService(ZeropsMateKey, {
+        read: Effect.sync(() => {
+          keyReads++;
+          return "test-mate-key";
         }),
-        Effect.provideService(
-          HttpClient.HttpClient,
-          HttpClient.make((request) => {
-            requests.push(request.url);
-            assert.equal(
-              request.url,
-              `${environment.apiBaseUrl}/project/own-project/process?limit=1000`,
-            );
-            assert.equal(request.headers["authorization"], "Bearer test-mate-key");
-            return Effect.succeed(
-              HttpClientResponse.fromWeb(
-                request,
-                new Response(JSON.stringify({ list: [process] }), { status }),
-              ),
-            );
-          }),
-        ),
-        Effect.provideService(FileSystem.FileSystem, FileSystem.makeNoop({})),
-      );
-      const result = yield* reader.read.pipe(Effect.result);
-      assert.equal(requests.length, 1);
-      assert.equal(keyReads, 1);
-      assert.equal(result._tag, status === 200 ? "Success" : "Failure");
-      if (result._tag === "Success") {
-        assert.deepStrictEqual(result.success, {
-          name: "Fen",
-          serviceId: "own-zcp",
-          projectId: "own-project",
-          processes: [process],
-          containerStartedAt: null,
-        });
-      }
-    }).pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        zerops: environment,
-      } as ServerConfig.ServerConfig["Service"]),
-      Effect.provideService(ZeropsOrgRead, {
-        project: () =>
-          Effect.succeed({ kind: "answered", status: 200, body: { name: "Fen", clientId: "org" } }),
-        members: () => Effect.die("unused"),
+        invalidate: Effect.die("must not retry"),
+        lastSource: Effect.succeed("snapshot" as const),
       }),
-      Effect.provide(NodeServices.layer),
-    ),
-  );
-}
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make((request) => {
+          requests.push(request.url);
+          assert.equal(
+            request.url,
+            `${environment.apiBaseUrl}/project/own-project/process?limit=1000`,
+          );
+          assert.equal(request.headers["authorization"], "Bearer test-mate-key");
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(JSON.stringify({ list: [process] }), { status }),
+            ),
+          );
+        }),
+      ),
+      Effect.provideService(FileSystem.FileSystem, FileSystem.makeNoop({})),
+    );
+    const result = yield* reader.read.pipe(Effect.result);
+    assert.equal(requests.length, 1);
+    assert.equal(keyReads, 1);
+    assert.equal(result._tag, status === 200 ? "Success" : "Failure");
+    if (result._tag === "Success") {
+      assert.deepStrictEqual(result.success, {
+        name: "Fen",
+        serviceId: "own-zcp",
+        projectId: "own-project",
+        processes: [process],
+        containerStartedAt: null,
+      });
+    }
+  }).pipe(
+    Effect.provideService(ServerConfig.ServerConfig, {
+      zerops: environment,
+    } as ServerConfig.ServerConfig["Service"]),
+    Effect.provideService(ZeropsOrgRead, {
+      project: () =>
+        Effect.succeed({ kind: "answered", status: 200, body: { name: "Fen", clientId: "org" } }),
+      members: () => Effect.die("unused"),
+    }),
+    Effect.provide(NodeServices.layer),
+  ),
+);
 
 it("uses PID 1's start time to distinguish container replacement from a Mate-only restart", () => {
   const fields = ["S", ...Array.from({ length: 18 }, () => "0"), "30000"];

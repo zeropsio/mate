@@ -1,6 +1,6 @@
 import { admissionRefusalWords } from "@t3tools/client-runtime/data";
 import { mateFailureWords } from "../../zerops/noticeWords";
-import { usageLimitProvider } from "../../zerops/providerLimit.logic";
+import { projectLimitError } from "@t3tools/client-runtime/data";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -52,7 +52,7 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onDismiss?: () => void;
 }) {
   if (!error) return null;
-  const limit = usageLimitProvider(error);
+  const limit = projectLimitError(error);
   if (limit !== null && usageLimitShown) return null;
   const words = mateFailureWords(error, driver, mateName);
   const refusal = admissionRefusalWords(error, driver, mateName);

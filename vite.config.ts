@@ -59,6 +59,8 @@ export default defineConfig({
     ],
     hookTimeout: 60_000,
     testTimeout: 60_000,
+    // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     setupFiles: [
       NodeURL.fileURLToPath(
         new URL("./packages/shared/src/testing/longTempDir.ts", import.meta.url),
@@ -160,6 +162,7 @@ export default defineConfig({
       "t3code/no-legacy-vocabulary": "error",
       "t3code/no-manual-effect-runtime-in-tests": "error",
       "t3code/no-native-title-tooltip": "error",
+      "t3code/no-test-in-loop": "error",
       "t3code/no-platform-globals": "error",
       "t3code/no-remote-data-in-browser-storage": "error",
       "t3code/no-remote-io-outside-data-layer": "error",
@@ -172,8 +175,14 @@ export default defineConfig({
       "t3code/require-static-classes": "error",
       "t3code/no-theme-escape-hatches": "error",
       "t3code/namespace-node-imports": "error",
+      "t3code/prefer-catch-tags": "error",
     },
     overrides: [
+      {
+        // The Import zone is upstream's bytes (imported.lock): its tests change with a re-import.
+        files: ["packages/effect-acp/**", "packages/effect-codex-app-server/**"],
+        rules: { "t3code/no-test-in-loop": "off" },
+      },
       {
         files: ["apps/web/src/**"],
         excludeFiles: ["apps/web/src/components/ui/**"],

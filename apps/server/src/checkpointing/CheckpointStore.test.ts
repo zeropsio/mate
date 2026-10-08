@@ -332,37 +332,44 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
       }),
     );
 
-    for (const [label, policy] of [
-      ["file byte", { maxFileBytes: 4 }],
-      ["total input byte", { maxTotalBytes: 4 }],
-      ["candidate file", { maxPaths: 1 }],
-      ["candidate path byte", { maxPathBytes: 4 }],
-    ] as const) {
-      it.effect(`refuses ${label} overflow before storing content`, () =>
-        Effect.gen(function* () {
-          const tmp = yield* makeTmpDir();
-          yield* initRepoWithCommit(tmp);
-          yield* writeTextFile(NodePath.join(tmp, "new.txt"), "new content");
-          const store = yield* CheckpointStore.CheckpointStore;
-          const objectsBefore = yield* git(tmp, ["count-objects", "-v"]);
-          const result = yield* Effect.result(
-            store.captureSnapshot({
-              cwd: tmp,
-              checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/limit/before"),
-              policy,
-            }),
-          );
-          expect(String(result)).toContain(label);
-          expect(yield* git(tmp, ["count-objects", "-v"])).toBe(objectsBefore);
-          const fs = yield* FileSystem.FileSystem;
-          expect(
-            (yield* fs.readDirectory(NodePath.join(tmp, ".git"))).filter((name) =>
-              name.startsWith("mate-snapshot-"),
-            ),
-          ).toEqual([]);
+    it.effect.each(
+      Array.from(
+        [
+          ["file byte", { maxFileBytes: 4 }],
+          ["total input byte", { maxTotalBytes: 4 }],
+          ["candidate file", { maxPaths: 1 }],
+          ["candidate path byte", { maxPathBytes: 4 }],
+        ] as const,
+        ([label, policy]) => ({
+          title: `refuses ${label} overflow before storing content`,
+          label,
+          policy,
         }),
-      );
-    }
+      ),
+    )("$title", ({ label, policy }) =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        yield* writeTextFile(NodePath.join(tmp, "new.txt"), "new content");
+        const store = yield* CheckpointStore.CheckpointStore;
+        const objectsBefore = yield* git(tmp, ["count-objects", "-v"]);
+        const result = yield* Effect.result(
+          store.captureSnapshot({
+            cwd: tmp,
+            checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/limit/before"),
+            policy,
+          }),
+        );
+        expect(String(result)).toContain(label);
+        expect(yield* git(tmp, ["count-objects", "-v"])).toBe(objectsBefore);
+        const fs = yield* FileSystem.FileSystem;
+        expect(
+          (yield* fs.readDirectory(NodePath.join(tmp, ".git"))).filter((name) =>
+            name.startsWith("mate-snapshot-"),
+          ),
+        ).toEqual([]);
+      }),
+    );
 
     it.effect("refuses configured clean filters without invoking them", () =>
       Effect.gen(function* () {
@@ -428,29 +435,30 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
       }),
     );
 
-    for (const tracked of [false, true]) {
-      it.effect(
-        `skips ${tracked ? "tracked" : "untracked"} dependencies and snapshots the rest`,
-        () =>
-          Effect.gen(function* () {
-            const tmp = yield* makeTmpDir();
-            yield* initRepoWithCommit(tmp);
-            const fs = yield* FileSystem.FileSystem;
-            yield* fs.makeDirectory(NodePath.join(tmp, "node_modules"));
-            yield* writeTextFile(NodePath.join(tmp, "node_modules", "dep.js"), "dependency");
-            yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
-            if (tracked) yield* git(tmp, ["add", "node_modules"]);
-            const store = yield* CheckpointStore.CheckpointStore;
-            const snapshot = yield* store.captureSnapshot({
-              cwd: tmp,
-              checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/dependency/before"),
-            });
-            const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
-            expect(listed.split("\n")).toContain("app.js");
-            expect(listed).not.toContain("node_modules");
-          }),
-      );
-    }
+    it.effect.each(
+      Array.from([false, true], (tracked) => ({
+        title: `skips ${tracked ? "tracked" : "untracked"} dependencies and snapshots the rest`,
+        tracked,
+      })),
+    )("$title", ({ tracked }) =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.makeDirectory(NodePath.join(tmp, "node_modules"));
+        yield* writeTextFile(NodePath.join(tmp, "node_modules", "dep.js"), "dependency");
+        yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
+        if (tracked) yield* git(tmp, ["add", "node_modules"]);
+        const store = yield* CheckpointStore.CheckpointStore;
+        const snapshot = yield* store.captureSnapshot({
+          cwd: tmp,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/dependency/before"),
+        });
+        const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
+        expect(listed.split("\n")).toContain("app.js");
+        expect(listed).not.toContain("node_modules");
+      }),
+    );
     /**
      * A Zerops service's repository has no `.gitignore`, so its whole
      * `node_modules` is a candidate: listed before it was skipped, its names
@@ -458,39 +466,40 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
      * a diff ("Snapshot refused: candidate path byte limit exceeded", read
      * live on a Mate's dev service).
      */
-    for (const tracked of [false, true]) {
-      it.effect(
-        `skips ${tracked ? "committed" : "untracked"} dependencies before they count against the path budget`,
-        () =>
-          Effect.gen(function* () {
-            const tmp = yield* makeTmpDir();
-            yield* initRepoWithCommit(tmp);
-            const fs = yield* FileSystem.FileSystem;
-            yield* fs.makeDirectory(NodePath.join(tmp, "node_modules", "some-package"), {
-              recursive: true,
-            });
-            for (let index = 0; index < 8; index += 1) {
-              yield* writeTextFile(
-                NodePath.join(tmp, "node_modules", "some-package", `module-number-${index}.js`),
-                "dependency",
-              );
-            }
-            if (tracked) {
-              yield* git(tmp, ["add", "node_modules"]);
-              yield* git(tmp, ["commit", "-m", "vendor"]);
-            }
-            yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
-            const store = yield* CheckpointStore.CheckpointStore;
-            const snapshot = yield* store.captureSnapshot({
-              cwd: tmp,
-              checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/budget/before"),
-              policy: { maxPathBytes: 64 },
-            });
-            const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
-            expect(listed.split("\n").toSorted()).toEqual(["README.md", "app.js"]);
-          }),
-      );
-    }
+    it.effect.each(
+      Array.from([false, true], (tracked) => ({
+        title: `skips ${tracked ? "committed" : "untracked"} dependencies before they count against the path budget`,
+        tracked,
+      })),
+    )("$title", ({ tracked }) =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.makeDirectory(NodePath.join(tmp, "node_modules", "some-package"), {
+          recursive: true,
+        });
+        for (let index = 0; index < 8; index += 1) {
+          yield* writeTextFile(
+            NodePath.join(tmp, "node_modules", "some-package", `module-number-${index}.js`),
+            "dependency",
+          );
+        }
+        if (tracked) {
+          yield* git(tmp, ["add", "node_modules"]);
+          yield* git(tmp, ["commit", "-m", "vendor"]);
+        }
+        yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
+        const store = yield* CheckpointStore.CheckpointStore;
+        const snapshot = yield* store.captureSnapshot({
+          cwd: tmp,
+          checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/budget/before"),
+          policy: { maxPathBytes: 64 },
+        });
+        const listed = yield* git(tmp, ["ls-tree", "-r", "--name-only", snapshot.oid]);
+        expect(listed.split("\n").toSorted()).toEqual(["README.md", "app.js"]);
+      }),
+    );
 
     /**
      * Untracked dependency directories of the other common ecosystems are not

@@ -50,31 +50,21 @@ type EngineRpcHandlers = {
 export interface RegisterEngineRpcDeps {
   /** The connecting session's subject: a client never names its own. */
   readonly subject: string;
-  /** `ws.ts`'s scope-checked, instrumented wrappers, as every RPC in the router goes through. */
-  readonly observeRpcEffect: <A, E, R>(
+  /**
+   * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
+   * refused (or, for a continuation, let through) so the update starts once work is done.
+   */
+  readonly admit: <A, E, R>(
     method: string,
     effect: Effect.Effect<A, E, R>,
-    traceAttributes?: Readonly<Record<string, unknown>>,
+    updateContinuation?: boolean,
   ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
-  readonly observeRpcStream: <A, E, R>(
-    method: string,
-    stream: Stream.Stream<A, E, R>,
-    traceAttributes?: Readonly<Record<string, unknown>>,
-  ) => Stream.Stream<A, E | EnvironmentAuthorizationError, R>;
   readonly engine: Pick<MateEngineService, "wire">;
   /** The Mate's environment and this start's epoch: the revision every record carries. */
   readonly source: Effect.Effect<{ readonly environmentId: string; readonly epoch: number }>;
 }
 
-const traceAttributes = { "rpc.aggregate": "engine" } as const;
-
-export const registerEngineRpc = ({
-  engine,
-  source,
-  subject,
-  observeRpcEffect,
-  observeRpcStream,
-}: RegisterEngineRpcDeps) => {
+export const registerEngineRpc = ({ engine, source, subject, admit }: RegisterEngineRpcDeps) => {
   const wire = engine.wire;
   const caller: Effect.Effect<WireCaller> = Effect.map(source, (known) => ({
     subject,
@@ -85,72 +75,52 @@ export const registerEngineRpc = ({
     Effect.flatMap(caller, use);
   return {
     [WS_METHODS.subscribeEngineConversation]: (input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeEngineConversation,
-        Stream.unwrap(Effect.map(caller, (who) => wire.subscribe(input, who))),
-        traceAttributes,
-      ),
+      Stream.unwrap(Effect.map(caller, (who) => wire.subscribe(input, who))),
     [WS_METHODS.subscribeEngineRows]: (input) =>
-      observeRpcStream(
-        WS_METHODS.subscribeEngineRows,
-        Stream.unwrap(Effect.map(caller, (who) => wire.subscribeRows(input, who))),
-        traceAttributes,
-      ),
-    [WS_METHODS.engineReadEarlier]: (input) =>
-      observeRpcEffect(WS_METHODS.engineReadEarlier, wire.readEarlier(input), traceAttributes),
-    [WS_METHODS.engineReadRun]: (input) =>
-      observeRpcEffect(WS_METHODS.engineReadRun, wire.readRun(input), traceAttributes),
-    [WS_METHODS.engineReadDetail]: (input) =>
-      observeRpcEffect(WS_METHODS.engineReadDetail, wire.readDetail(input), traceAttributes),
-    [WS_METHODS.engineReceipt]: (input) =>
-      observeRpcEffect(WS_METHODS.engineReceipt, wire.receipt(input), traceAttributes),
+      Stream.unwrap(Effect.map(caller, (who) => wire.subscribeRows(input, who))),
+    [WS_METHODS.engineReadEarlier]: (input) => wire.readEarlier(input),
+    [WS_METHODS.engineReadRun]: (input) => wire.readRun(input),
+    [WS_METHODS.engineReadDetail]: (input) => wire.readDetail(input),
+    [WS_METHODS.engineReceipt]: (input) => wire.receipt(input),
     [WS_METHODS.engineSend]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineSend,
         asCaller((who) => wire.send(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineStop]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineStop,
         asCaller((who) => wire.stop(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineAnswer]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineAnswer,
         asCaller((who) => wire.answer(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineDismiss]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineDismiss,
         asCaller((who) => wire.dismiss(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineSteer]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineSteer,
         asCaller((who) => wire.steer(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineSwitchModel]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineSwitchModel,
         asCaller((who) => wire.switchModel(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineSetRuntimeMode]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineSetRuntimeMode,
         asCaller((who) => wire.setRuntimeMode(input, who)),
-        traceAttributes,
       ),
     [WS_METHODS.engineAssignAgent]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.engineAssignAgent,
         asCaller((who) => wire.assignAgent(input, who)),
-        traceAttributes,
       ),
   } satisfies EngineRpcHandlers;
 };

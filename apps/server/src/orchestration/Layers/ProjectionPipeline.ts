@@ -2258,9 +2258,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
         Effect.provideService(ServerConfig, serverConfig),
-        Effect.catchTag("SqlError", (sqlError) =>
-          Effect.fail(toPersistenceSqlError("ProjectionPipeline.projectEvent:query")(sqlError)),
-        ),
+        Effect.catchTags({
+          SqlError: (sqlError) =>
+            Effect.fail(toPersistenceSqlError("ProjectionPipeline.projectEvent:query")(sqlError)),
+        }),
       );
 
     const projectEvent: OrchestrationProjectionPipelineShape["projectEvent"] = Effect.fn(
@@ -2331,9 +2332,10 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           Effect.annotateLogs({ projectors: projectors.length }),
         ),
       ),
-      Effect.catchTag("SqlError", (sqlError) =>
-        Effect.fail(toPersistenceSqlError("ProjectionPipeline.bootstrap:query")(sqlError)),
-      ),
+      Effect.catchTags({
+        SqlError: (sqlError) =>
+          Effect.fail(toPersistenceSqlError("ProjectionPipeline.bootstrap:query")(sqlError)),
+      }),
     );
 
     return {

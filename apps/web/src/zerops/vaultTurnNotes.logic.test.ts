@@ -91,15 +91,22 @@ describe("vaultTurnChanges", () => {
       told: ["Z added", "A changed"],
     },
   ];
-  for (const { name, own, since, hidden, told } of cases)
-    it(name, () => {
-      const changes = vaultTurnChanges({
-        own,
-        since,
-        hidden: new Set((hidden ?? []).map(vaultChangeIdOf)),
-      });
-      expect(changes.map(vaultChipLabel)).toEqual(told);
+  it.each(
+    Array.from(cases, ({ name, own, since, hidden, told }) => ({
+      title: name,
+      own,
+      since,
+      hidden,
+      told,
+    })),
+  )("$title", ({ own, since, hidden, told }) => {
+    const changes = vaultTurnChanges({
+      own,
+      since,
+      hidden: new Set((hidden ?? []).map(vaultChangeIdOf)),
     });
+    expect(changes.map(vaultChipLabel)).toEqual(told);
+  });
 });
 
 describe("vaultChipsOnlyText", () => {

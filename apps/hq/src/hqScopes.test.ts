@@ -669,44 +669,44 @@ describe("revisioned HQ values", () => {
         );
       }),
   );
-  for (const remove of [false, true])
-    it.effect(
-      `a ${remove ? "removed" : "suspended"} member loses policy evidence and cannot read later changes`,
-      () =>
-        Effect.gen(function* () {
-          const f = yield* fixture;
-          const reader = yield* f.connect("reader");
-          yield* reader.subscribe([{ scope: nav }]);
-          assert.isTrue(
-            resetOf(yield* reader.take).values.some((value) => value.key === "auto-update-policy"),
-          );
-          yield* reader.take;
-          yield* f.revokeMember("reader", remove);
-          let revoked = resetOf(yield* reader.take);
-          while (!revoked.removals.some((removal) => removal.key === "auto-update-policy"))
-            revoked = resetOf(yield* reader.take);
-          assert.deepStrictEqual(
-            revoked.removals.find((removal) => removal.key === "auto-update-policy"),
-            { key: "auto-update-policy", reason: "no-access" },
-          );
-          assert.isFalse(revoked.values.some((value) => value.key === "auto-update-policy"));
-          yield* f.changePolicy(false);
-          yield* reader.request({ type: "unsubscribe", scopes: [nav] });
-          yield* reader.subscribe([{ scope: nav }]);
-          let message = yield* reader.take;
-          while (message.type !== "scope-ready") {
-            assert.isFalse(
-              resetOf(message).values.some((value) => value.key === "auto-update-policy"),
-            );
-            message = yield* reader.take;
-          }
-          const reconnect = yield* f.connect("reader", "retained-session");
-          yield* reconnect.subscribe([{ scope: nav }]);
-          const baseline = resetOf(yield* reconnect.take);
-          assert.isFalse(baseline.values.some((value) => value.key === "auto-update-policy"));
-          assert.include(json(baseline.removals), "auto-update-policy");
-        }),
-    );
+  it.effect.each(
+    Array.from([false, true], (remove) => ({
+      title: `a ${remove ? "removed" : "suspended"} member loses policy evidence and cannot read later changes`,
+      remove,
+    })),
+  )("$title", ({ remove }) =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const reader = yield* f.connect("reader");
+      yield* reader.subscribe([{ scope: nav }]);
+      assert.isTrue(
+        resetOf(yield* reader.take).values.some((value) => value.key === "auto-update-policy"),
+      );
+      yield* reader.take;
+      yield* f.revokeMember("reader", remove);
+      let revoked = resetOf(yield* reader.take);
+      while (!revoked.removals.some((removal) => removal.key === "auto-update-policy"))
+        revoked = resetOf(yield* reader.take);
+      assert.deepStrictEqual(
+        revoked.removals.find((removal) => removal.key === "auto-update-policy"),
+        { key: "auto-update-policy", reason: "no-access" },
+      );
+      assert.isFalse(revoked.values.some((value) => value.key === "auto-update-policy"));
+      yield* f.changePolicy(false);
+      yield* reader.request({ type: "unsubscribe", scopes: [nav] });
+      yield* reader.subscribe([{ scope: nav }]);
+      let message = yield* reader.take;
+      while (message.type !== "scope-ready") {
+        assert.isFalse(resetOf(message).values.some((value) => value.key === "auto-update-policy"));
+        message = yield* reader.take;
+      }
+      const reconnect = yield* f.connect("reader", "retained-session");
+      yield* reconnect.subscribe([{ scope: nav }]);
+      const baseline = resetOf(yield* reconnect.take);
+      assert.isFalse(baseline.values.some((value) => value.key === "auto-update-policy"));
+      assert.include(json(baseline.removals), "auto-update-policy");
+    }),
+  );
   it.effect(
     "policy broadcasts use validated navigation membership without calling recipient readers",
     () =>
@@ -885,48 +885,48 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
-  for (const runsWithoutSignIn of [false, true]) {
-    it.effect(`sign-in-free=${runsWithoutSignIn}: attention waits on the operating owner`, () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const f = yield* fixture;
-          yield* f.roles({
-            ...facts,
-            projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
-          });
-          const link = yield* f.overviews.connect("P");
-          yield* f.overviews.report("P", link, {
-            type: "overview",
-            full: true,
-            overview: overviewOf({
-              identity: { ...overviewOf().identity, runsWithoutSignIn },
-            }),
-          });
-          for (const userId of ["owner", "reader"]) {
-            const client = yield* f.connect(userId);
-            yield* client.subscribe([{ scope: nav }]);
-            const delivery = resetOf(yield* client.take);
-            yield* client.take;
-            const project = delivery.values.find((value) => value.key === "project:P")!.value as {
-              person: { ownerUserId: string | null; waitsOnViewer: boolean };
-              signedInNow: unknown;
-              everSignedIn: unknown;
-            };
-            assert.strictEqual(
-              project.person.waitsOnViewer,
-              runsWithoutSignIn && userId === "owner",
-            );
-            assert.strictEqual(
-              project.person.ownerUserId,
-              runsWithoutSignIn && userId === "owner" ? "owner" : null,
-            );
-            assert.deepStrictEqual(project.signedInNow, {});
-            assert.deepStrictEqual(project.everSignedIn, {});
-          }
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from([false, true], (runsWithoutSignIn) => ({
+      title: `sign-in-free=${runsWithoutSignIn}: attention waits on the operating owner`,
+      runsWithoutSignIn,
+    })),
+  )("$title", ({ runsWithoutSignIn }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        yield* f.roles({
+          ...facts,
+          projects: facts.projects.map((project) => ({ ...project, userRoles: [] })),
+        });
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({
+            identity: { ...overviewOf().identity, runsWithoutSignIn },
+          }),
+        });
+        for (const userId of ["owner", "reader"]) {
+          const client = yield* f.connect(userId);
+          yield* client.subscribe([{ scope: nav }]);
+          const delivery = resetOf(yield* client.take);
+          yield* client.take;
+          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+            person: { ownerUserId: string | null; waitsOnViewer: boolean };
+            signedInNow: unknown;
+            everSignedIn: unknown;
+          };
+          assert.strictEqual(project.person.waitsOnViewer, runsWithoutSignIn && userId === "owner");
+          assert.strictEqual(
+            project.person.ownerUserId,
+            runsWithoutSignIn && userId === "owner" ? "owner" : null,
+          );
+          assert.deepStrictEqual(project.signedInNow, {});
+          assert.deepStrictEqual(project.everSignedIn, {});
+        }
+      }),
+    ),
+  );
 
   it.effect("navigation separates current login holders from historical and saved signers", () =>
     Effect.scoped(
@@ -988,50 +988,53 @@ describe("revisioned HQ values", () => {
       }),
     ),
   );
-  for (const failure of [undefined, "forbidden", "unavailable"] as const) {
-    it.effect(`compare privately correlates ${failure ?? "success"} without subscribing`, () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const f = yield* fixture;
-          f.compareFailure(failure);
-          const client = yield* f.connect("owner"),
-            other = yield* f.connect("reader");
-          const query = { base: "a".repeat(40), head: "b".repeat(40) };
-          yield* client.request({
-            type: "compare",
-            requestId: "r",
-            appId: "A",
-            repo: "appdev",
-            ...query,
-          });
-          const reply = yield* client.take;
-          assert.deepStrictEqual(
-            reply,
-            failure === undefined
-              ? {
-                  type: "compare",
-                  requestId: "r",
-                  appId: "A",
-                  repo: "appdev",
-                  result: { ...query, commits: [], total: 0, truncated: false },
-                }
-              : {
-                  type: "compare-error",
-                  requestId: "r",
-                  appId: "A",
-                  repo: "appdev",
-                  code: failure,
-                  reason: failure === "forbidden" ? "app_not_seen" : null,
-                  disposition: failure === "forbidden" ? "refused" : "transient",
-                },
-          );
-          assert.deepStrictEqual(f.compareCalls, [["owner", "A", "appdev", query]]);
-          assert.strictEqual(yield* Queue.size(other.queue), 0);
-          assert.strictEqual(yield* Ref.get(f.reads), 0);
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from([undefined, "forbidden", "unavailable"] as const, (failure) => ({
+      title: `compare privately correlates ${failure ?? "success"} without subscribing`,
+      failure,
+    })),
+  )("$title", ({ failure }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.compareFailure(failure);
+        const client = yield* f.connect("owner"),
+          other = yield* f.connect("reader");
+        const query = { base: "a".repeat(40), head: "b".repeat(40) };
+        yield* client.request({
+          type: "compare",
+          requestId: "r",
+          appId: "A",
+          repo: "appdev",
+          ...query,
+        });
+        const reply = yield* client.take;
+        assert.deepStrictEqual(
+          reply,
+          failure === undefined
+            ? {
+                type: "compare",
+                requestId: "r",
+                appId: "A",
+                repo: "appdev",
+                result: { ...query, commits: [], total: 0, truncated: false },
+              }
+            : {
+                type: "compare-error",
+                requestId: "r",
+                appId: "A",
+                repo: "appdev",
+                code: failure,
+                reason: failure === "forbidden" ? "app_not_seen" : null,
+                disposition: failure === "forbidden" ? "refused" : "transient",
+              },
+        );
+        assert.deepStrictEqual(f.compareCalls, [["owner", "A", "appdev", query]]);
+        assert.strictEqual(yield* Queue.size(other.queue), 0);
+        assert.strictEqual(yield* Ref.get(f.reads), 0);
+      }),
+    ),
+  );
   it.effect(
     "handover candidates are on request, org-admin-only and never broadcast to another person",
     () =>
@@ -1080,72 +1083,75 @@ describe("revisioned HQ values", () => {
         }),
       ),
   );
-  for (const [userId, allowed] of [
-    ["signer", false],
-    ["owner", true],
-  ] as const)
-    it.effect(
-      `handover candidates ${allowed ? "allow org ADMIN" : "refuse org NO_ACCESS with project Basic access"}`,
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const f = yield* fixture;
-            const members = facts.members.map((member) => ({
-              ...member,
-              roleCode: member.userId === "owner" ? "ADMIN" : member.roleCode,
-              avatarUrl: `avatar-${member.userId}`,
-            }));
-            yield* f.roles({
-              ...facts,
-              members,
-              projects: facts.projects.map((project) => ({
-                ...project,
-                userRoles: [
-                  ...project.userRoles,
-                  { clientUserId: "C-signer", roleCode: "BASIC_USER" },
-                ],
-              })),
-            });
-            const client = yield* f.connect(userId);
-            yield* client.subscribe([{ scope: nav }]);
-            const navigation = resetOf(yield* client.take);
-            yield* client.take;
-            const project = navigation.values.find((value) => value.key === "project:P")!.value as {
-              can: { observe_mate: { allow: boolean } };
-            };
-            assert.isTrue(project.can.observe_mate.allow);
-            yield* client.request({
-              type: "handover-candidates",
-              requestId: "handover",
-              projectId: "P",
-            });
-            const reply = yield* client.take;
-            assert.deepStrictEqual(
-              reply,
-              allowed
-                ? {
-                    type: "handover-candidates",
-                    requestId: "handover",
-                    projectId: "P",
-                    candidates: members.map((member) => ({
-                      userId: member.userId,
-                      clientUserId: member.clientUserId,
-                      name: member.name,
-                      avatarUrl: member.avatarUrl,
-                    })),
-                  }
-                : {
-                    type: "handover-candidates-error",
-                    requestId: "handover",
-                    projectId: "P",
-                    code: "forbidden",
-                    reason: "no-access",
-                    disposition: "refused",
-                  },
-            );
-          }),
-        ),
-    );
+  it.effect.each(
+    Array.from(
+      [
+        ["signer", false],
+        ["owner", true],
+      ] as const,
+      ([userId, allowed]) => ({
+        title: `handover candidates ${allowed ? "allow org ADMIN" : "refuse org NO_ACCESS with project Basic access"}`,
+        userId,
+        allowed,
+      }),
+    ),
+  )("$title", ({ userId, allowed }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        const members = facts.members.map((member) => ({
+          ...member,
+          roleCode: member.userId === "owner" ? "ADMIN" : member.roleCode,
+          avatarUrl: `avatar-${member.userId}`,
+        }));
+        yield* f.roles({
+          ...facts,
+          members,
+          projects: facts.projects.map((project) => ({
+            ...project,
+            userRoles: [...project.userRoles, { clientUserId: "C-signer", roleCode: "BASIC_USER" }],
+          })),
+        });
+        const client = yield* f.connect(userId);
+        yield* client.subscribe([{ scope: nav }]);
+        const navigation = resetOf(yield* client.take);
+        yield* client.take;
+        const project = navigation.values.find((value) => value.key === "project:P")!.value as {
+          can: { observe_mate: { allow: boolean } };
+        };
+        assert.isTrue(project.can.observe_mate.allow);
+        yield* client.request({
+          type: "handover-candidates",
+          requestId: "handover",
+          projectId: "P",
+        });
+        const reply = yield* client.take;
+        assert.deepStrictEqual(
+          reply,
+          allowed
+            ? {
+                type: "handover-candidates",
+                requestId: "handover",
+                projectId: "P",
+                candidates: members.map((member) => ({
+                  userId: member.userId,
+                  clientUserId: member.clientUserId,
+                  name: member.name,
+                  avatarUrl: member.avatarUrl,
+                })),
+              }
+            : {
+                type: "handover-candidates-error",
+                requestId: "handover",
+                projectId: "P",
+                code: "forbidden",
+                reason: "no-access",
+                disposition: "refused",
+              },
+        );
+      }),
+    ),
+  );
   it.effect("saved agent signer facts are withheld from a reader who cannot operate the Mate", () =>
     Effect.scoped(
       Effect.gen(function* () {

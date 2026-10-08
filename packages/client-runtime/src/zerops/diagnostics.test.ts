@@ -182,24 +182,26 @@ describe("what the ring never stores", () => {
     ["a tagged reason", "ConnectionBlockedError:authentication"],
   ];
 
-  for (const [name, value] of redacted) {
-    it(`redacts ${name}`, () => {
+  it.each(Array.from(redacted, ([name, value]) => ({ title: `redacts ${name}`, value })))(
+    "$title",
+    ({ value }) => {
       const diagnostics = createMateDiagnostics({ now: clock().now, enabled: true });
       diagnostics.record({ kind: "thread-content", environmentId: value, threadId: "t-1" });
       expect(diagnostics.snapshot()).toEqual([
         { t: 0, kind: "thread-content", environmentId: REDACTED, threadId: "t-1" },
       ]);
       expect(JSON.stringify(diagnostics.snapshot())).not.toContain(value);
-    });
-  }
+    },
+  );
 
-  for (const [name, value] of kept) {
-    it(`keeps ${name}`, () => {
+  it.each(Array.from(kept, ([name, value]) => ({ title: `keeps ${name}`, value })))(
+    "$title",
+    ({ value }) => {
       const diagnostics = createMateDiagnostics({ now: clock().now, enabled: true });
       diagnostics.record({ kind: "flow-pr-row", groupId: value });
       expect(diagnostics.snapshot()).toEqual([{ t: 0, kind: "flow-pr-row", groupId: value }]);
-    });
-  }
+    },
+  );
 
   it("drops a field that is not a primitive", () => {
     const diagnostics = createMateDiagnostics({ now: clock().now, enabled: true });
@@ -249,9 +251,10 @@ describe("diagnosticFailure", () => {
     ["anything else is unknown", "person@example.com", { code: "unknown" }],
   ];
 
-  for (const [name, cause, expected] of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ([name, cause, expected]) => ({ title: name, cause, expected })))(
+    "$title",
+    ({ cause, expected }) => {
       expect(diagnosticFailure(cause)).toEqual(expected);
-    });
-  }
+    },
+  );
 });

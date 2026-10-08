@@ -136,37 +136,37 @@ const CASES: ReadonlyArray<{
 ];
 
 describe("a call reads on the engine as V1's row of the same call", () => {
-  for (const { driver, lines } of CASES) {
-    it(
-      `${driver} [recorded]: a command, a read, an edit and a deploy carry their step, input line, whole parts and result`,
-      { timeout: 30_000 },
-      async () => {
-        const calls = engineCalls(driver, await recordCallHeavy(driver));
-        assert.deepStrictEqual(calls.map(callLine), lines);
-      },
-    );
-
-    it(
-      `${driver} [recorded]: each call's record carries the line, the facts and the result V1's activity carries`,
-      { timeout: 30_000 },
-      async () => {
-        const recording = await recordCallHeavy(driver);
-        const engine = engineCalls(driver, recording);
-        const v1 = v1Calls(recording);
-        assert.strictEqual(engine.length, v1.length);
-        engine.forEach(({ body }, n) => {
-          const call = v1[n]!;
-          assert.strictEqual(STEP_ITEM_KINDS[body.step], call.itemType, `${body.tool.name}'s kind`);
-          assert.strictEqual(body.input, call.detail, `${body.tool.name}'s line`);
-          assert.deepStrictEqual(body.shows, call.shows, `${body.tool.name}'s facts`);
-          const { images: _images, ...result } = call.result ?? {};
-          assert.deepStrictEqual(
-            body.result,
-            call.result === undefined ? undefined : result,
-            `${body.tool.name}'s result`,
-          );
-        });
-      },
-    );
-  }
+  it.each(
+    Array.from(CASES, ({ driver, lines }) => ({
+      title: `${driver} [recorded]: a command, a read, an edit and a deploy carry their step, input line, whole parts and result`,
+      driver,
+      lines,
+    })),
+  )("$title", { timeout: 30_000 }, async ({ driver, lines }) => {
+    const calls = engineCalls(driver, await recordCallHeavy(driver));
+    assert.deepStrictEqual(calls.map(callLine), lines);
+  });
+  it.each(
+    Array.from(CASES, ({ driver }) => ({
+      title: `${driver} [recorded]: each call's record carries the line, the facts and the result V1's activity carries`,
+      driver,
+    })),
+  )("$title", { timeout: 30_000 }, async ({ driver }) => {
+    const recording = await recordCallHeavy(driver);
+    const engine = engineCalls(driver, recording);
+    const v1 = v1Calls(recording);
+    assert.strictEqual(engine.length, v1.length);
+    engine.forEach(({ body }, n) => {
+      const call = v1[n]!;
+      assert.strictEqual(STEP_ITEM_KINDS[body.step], call.itemType, `${body.tool.name}'s kind`);
+      assert.strictEqual(body.input, call.detail, `${body.tool.name}'s line`);
+      assert.deepStrictEqual(body.shows, call.shows, `${body.tool.name}'s facts`);
+      const { images: _images, ...result } = call.result ?? {};
+      assert.deepStrictEqual(
+        body.result,
+        call.result === undefined ? undefined : result,
+        `${body.tool.name}'s result`,
+      );
+    });
+  });
 });

@@ -1,6 +1,7 @@
-import type { ConversationRow } from "@t3tools/contracts";
+import { PROVIDER_DISPLAY_NAMES, type ConversationRow } from "@t3tools/contracts";
+import type { OverviewMain } from "@t3tools/shared/mateLink";
 import * as DateTime from "effect/DateTime";
-import { usageLimitProvider } from "@t3tools/shared/threadStatus";
+import * as Option from "effect/Option";
 
 export interface UsageLimitNotice {
   /** When the limit resets, when the notice says. */
@@ -46,7 +47,7 @@ function zoneOffsetMinutes(timeZone: string, atMs: number): number | null {
  * own row ("Claude usage limit reached. … resets in 32m."). The reset is the
  * first such wall-clock time after the notice was written.
  */
-export function readUsageLimitNotice(text: string, createdAt: string): UsageLimitNotice | null {
+function readUsageLimitNotice(text: string, createdAt: string): UsageLimitNotice | null {
   const parsed = Date.parse(createdAt);
   const writtenMs = Number.isFinite(parsed) ? parsed : null;
   const cli = CLI_LIMIT.exec(text);
@@ -84,6 +85,8 @@ export function readUsageLimitNotice(text: string, createdAt: string): UsageLimi
 }
 
 export interface MateLimitSource {
+  /** Absent on legacy HQ frames; null is authoritative recovery. */
+  readonly refusal?: OverviewMain["refusal"];
   /** The engine row supersedes retained V1 scheduling/session fields. */
   readonly engineRow?: ConversationRow;
   readonly latestTurn: {
@@ -135,6 +138,16 @@ export function projectMateLimit(source: MateLimitSource | null, nowMs: number):
       resetsAt,
     };
   }
+  if (source.refusal !== undefined) {
+    if (source.refusal === null) return NO_MATE_LIMIT;
+    return {
+      kind:
+        source.refusal.resetsAt !== null && Date.parse(source.refusal.resetsAt) <= nowMs
+          ? "expired"
+          : "limited",
+      ...source.refusal,
+    };
+  }
   const turn = source.latestTurn;
   const startedAt = turn?.startedAt;
   const pause = source.usagePause;
@@ -173,5 +186,184 @@ export function projectMateLimit(source: MateLimitSource | null, nowMs: number):
       usageLimitProvider("Coding agent usage limit reached", source.session?.providerName) ??
       "coding agent",
     resetsAt,
+  };
+}
+
+/** A provider refusal, distinct from allowed or warning admission telemetry. */
+function usageLimitProvider(
+  error: string | null | undefined,
+  driver?: string | null,
+): string | null {
+  if (!error) return null;
+  const known = Object.entries(PROVIDER_DISPLAY_NAMES).find(([key]) => key === driver)?.[1];
+  const matched =
+    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
+      error.trim(),
+    );
+  if (matched)
+    return matched[1]!.toLowerCase() === "coding agent"
+      ? (known ?? "coding agent")
+      : matched[1]!.replace(/ AI$/i, "");
+  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim())
+    ? (known ?? "coding agent")
+    : null;
+}
+
+/** A legacy diagnostic's refusal, normalized only here. */
+export function projectLimitError(error: string | null | undefined, driver?: string | null) {
+  const provider = usageLimitProvider(error, driver);
+  return provider === null ? null : { provider };
+}
+
+/** The evidence consumed by both hosted history and admission; no presentation types required. */
+export interface LimitHistoryEntry {
+  readonly kind: string;
+  readonly createdAt: string;
+  readonly message?: {
+    readonly role: string;
+    readonly text: string;
+    readonly createdAt: string;
+  };
+  readonly entry?: {
+    readonly tone?: string;
+    readonly label: string;
+    readonly detail?: string;
+    readonly turnEnd?: string;
+    readonly usageLimit?: { readonly resetsAt: string | null; readonly provider?: string | null };
+  };
+}
+
+export interface HistoricalLimit extends UsageLimitNotice {
+  readonly provider: string | null;
+  readonly createdAt: string;
+}
+
+/** An entry's refusal remains a historical fact after recovery or expiry. */
+export function projectLimitEntry(
+  entry: LimitHistoryEntry,
+  driver?: string | null,
+): HistoricalLimit | null {
+  const work = entry.kind === "work" ? entry.entry : undefined;
+  if (work?.usageLimit !== undefined) {
+    return {
+      resetsAt: work.usageLimit.resetsAt,
+      provider: work.usageLimit.provider ?? usageLimitProvider(work.detail ?? work.label, driver),
+      createdAt: entry.createdAt,
+    };
+  }
+  if (work !== undefined && work.tone !== "error") return null;
+  const text =
+    work !== undefined
+      ? `${work.detail ?? ""} ${work.label}`.trim()
+      : entry.kind === "message" && entry.message?.role === "assistant"
+        ? entry.message.text
+        : null;
+  if (text === null) return null;
+  const notice = readUsageLimitNotice(text, entry.createdAt);
+  if (notice === null && work?.turnEnd !== "usage-limit") return null;
+  return {
+    resetsAt: notice?.resetsAt ?? null,
+    provider: usageLimitProvider(text, driver),
+    createdAt: entry.createdAt,
+  };
+}
+
+/** Error rows suppressed by the historical pause, regardless of the provider driver. */
+export function isUsageLimitError(entry: LimitHistoryEntry): boolean {
+  return (
+    entry.kind === "work" && entry.entry?.tone === "error" && projectLimitEntry(entry) !== null
+  );
+}
+
+/** Refusal selection, recovery, and refusal-only content have one owner for every history surface. */
+export function projectLimitHistory(input: {
+  readonly entries: ReadonlyArray<LimitHistoryEntry>;
+  readonly answer: LimitHistoryEntry | null;
+  readonly live: boolean;
+  readonly waiting: boolean;
+  readonly driver?: string | null | undefined;
+}) {
+  const { entries, live, driver } = input;
+  const answer = live || input.waiting ? null : input.answer;
+  const terminalLimit = input.answer === null ? null : projectLimitEntry(input.answer, driver);
+  const answerLimit = answer === null ? null : terminalLimit;
+  let structured: HistoricalLimit | null = null;
+  let error: HistoricalLimit | null = null;
+  let record: HistoricalLimit | null = null;
+  let onlyRefusals = true;
+  for (const entry of entries) {
+    const evidence = entry === input.answer ? terminalLimit : projectLimitEntry(entry, driver);
+    if (entry.kind === "work" && evidence !== null) {
+      if (entry.entry?.usageLimit !== undefined) structured = evidence;
+      if (entry.entry?.tone === "error") error = evidence;
+      record = evidence;
+    }
+    if (
+      !(
+        entry === answer ||
+        entry.kind === "turn-plan" ||
+        (entry.kind === "message" &&
+          (entry.message?.role !== "assistant" || !entry.message.text.trim())) ||
+        evidence !== null
+      )
+    )
+      onlyRefusals = false;
+  }
+  // A normal answer is recovery; a provider deadline outranks legacy rounded notice text.
+  const selected =
+    (answer === null || answerLimit !== null ? structured : null) ??
+    answerLimit ??
+    (live ? null : error);
+  // The record is placed where the provider refused, even when its answer supplied the deadline.
+  const limit =
+    selected === null
+      ? null
+      : {
+          ...selected,
+          provider: record === null ? selected.provider : record.provider,
+          createdAt: record?.createdAt ?? selected.createdAt,
+        };
+  return {
+    limit,
+    limitOnly: limit !== null && onlyRefusals,
+    answerIsRefusal: answerLimit !== null,
+    hasRefusal: error !== null || terminalLimit !== null,
+  };
+}
+
+/** The latest assistant refusal with no subsequent work; retained historical dock evidence. */
+export function projectLatestUsagePause(
+  entries: ReadonlyArray<LimitHistoryEntry>,
+): UsageLimitNotice | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (entry.kind === "change-landed" || entry.kind === "turn-plan") continue;
+    if (entry.kind !== "message") return null;
+    if (entry.message?.role === "user" || entry.message?.role === "reasoning") continue;
+    const limit = projectLimitEntry(entry);
+    return limit === null ? null : { resetsAt: limit.resetsAt };
+  }
+  return null;
+}
+
+/** Rejected provider telemetry is refusal evidence; allowed overage and warnings never are. */
+export function projectActivityLimit(summary: string, detail: unknown) {
+  if (detail === null || typeof detail !== "object" || Array.isArray(detail)) return null;
+  const fields = detail as Record<string, unknown>;
+  const provider = usageLimitProvider(summary);
+  if (
+    provider === null ||
+    fields.status !== "rejected" ||
+    fields.overageStatus === "allowed" ||
+    fields.overageStatus === "allowed_warning" ||
+    fields.isUsingOverage === true ||
+    fields.overageInUse === true
+  )
+    return null;
+  const reset =
+    typeof fields.resetsAt === "number" ? DateTime.make(fields.resetsAt * 1000) : Option.none();
+  return {
+    provider,
+    resetsAt: Option.getOrNull(Option.map(reset, DateTime.formatIso)),
   };
 }

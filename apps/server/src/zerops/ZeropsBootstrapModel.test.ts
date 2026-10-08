@@ -276,11 +276,11 @@ describe("pickReadyAgentWithoutSignIn", () => {
       undefined,
     ],
   ];
-  for (const [name, providers, expected] of cases) {
-    it(name, () =>
-      assert.strictEqual(pickReadyAgentWithoutSignIn(providers)?.instanceId, expected),
-    );
-  }
+  it.each(
+    Array.from(cases, ([name, providers, expected]) => ({ title: name, providers, expected })),
+  )("$title", ({ providers, expected }) =>
+    assert.strictEqual(pickReadyAgentWithoutSignIn(providers)?.instanceId, expected),
+  );
 
   // The conversation's own instance when it is one of the ready ones; the registry's order else.
   it.each([

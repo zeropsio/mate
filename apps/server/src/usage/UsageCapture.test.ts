@@ -74,68 +74,70 @@ const org = ZeropsOrgRead.of({
 });
 
 describe("usage capture admission", () => {
-  for (const failure of ["open", "migration"] as const)
-    it.effect(
-      `waits through a transient ${failure} failure, then captures the first 100-token turn`,
-      () =>
-        Effect.gen(function* () {
-          const fs = yield* FileSystem.FileSystem;
-          const path = yield* Path.Path;
-          const directory = yield* fs.makeTempDirectoryScoped({ prefix: "mate-usage-recovery-" });
-          const filename = path.join(directory, "usage.sqlite");
-          let blocker: NodeSqlite.DatabaseSync | undefined;
-          if (failure === "open") yield* fs.makeDirectory(filename);
-          else {
-            blocker = yield* Effect.acquireRelease(
-              Effect.sync(() => new NodeSqlite.DatabaseSync(filename)),
-              (database) => Effect.sync(() => database.close()),
-            );
-            blocker.exec(
-              "PRAGMA journal_mode=WAL; PRAGMA user_version=1; CREATE TABLE usage_snapshot(old TEXT); BEGIN IMMEDIATE",
-            );
-          }
-          const hub = yield* PubSub.unbounded<SpiEvent>();
-          const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
-          const acquiring = yield* Effect.forkScoped(
-            makeUsageCapture(filename).pipe(Effect.provide(bus)),
-          );
-          yield* TestClock.adjust("0 seconds");
-          // No command admission may open with a missing usage subscription.
-          assert.isUndefined(acquiring.pollUnsafe());
-          if (failure === "open") yield* fs.remove(filename, { recursive: true });
-          else blocker!.exec("COMMIT");
-          yield* TestClock.adjust("1 second");
-          const capture = yield* Fiber.join(acquiring);
-          // The acquisition receipt guarantees capture is ready before the first provider event.
-          yield* PubSub.publish(hub, completion);
-          const sent = yield* Queue.unbounded<MateLinkUp>();
-          const lane = yield* capture.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
-          yield* Effect.forkScoped(lane.run);
-          if (state.type !== "state") throw new Error("Expected state fixture");
-          yield* lane.state(state);
-          const frame = yield* Queue.take(sent);
-          if (frame.type !== "usage-facts") throw new Error("Expected usage facts");
-          assert.equal(frame.facts[0]!.models[0]!.components.inclusiveTotal, "100");
-          yield* lane.receive({
-            type: "usage-ack",
-            batchId: frame.batchId,
-            accepted: frame.facts.map(({ originId, factId }) => ({ originId, factId })),
-          });
-          yield* TestClock.adjust("0 seconds");
-          const inspector = yield* Effect.acquireRelease(
-            Effect.sync(() => new NodeSqlite.DatabaseSync(filename)),
-            (database) => Effect.sync(() => database.close()),
-          );
-          assert.deepEqual(inspector.prepare("SELECT identity FROM usage_outbox").all(), []);
-          assert.equal(inspector.prepare("PRAGMA user_version").get()?.user_version, 2);
-          assert.deepEqual(
-            inspector.prepare("SELECT name FROM sqlite_master WHERE name='usage_snapshot'").all(),
-            [],
-          );
-        }).pipe(
-          Effect.provide(NodeServices.layer),
-          Effect.provideService(ServerConfig, config),
-          Effect.provideService(ZeropsOrgRead, org),
-        ),
-    );
+  it.effect.each(
+    Array.from(["open", "migration"] as const, (failure) => ({
+      title: `waits through a transient ${failure} failure, then captures the first 100-token turn`,
+      failure,
+    })),
+  )("$title", ({ failure }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "mate-usage-recovery-" });
+      const filename = path.join(directory, "usage.sqlite");
+      let blocker: NodeSqlite.DatabaseSync | undefined;
+      if (failure === "open") yield* fs.makeDirectory(filename);
+      else {
+        blocker = yield* Effect.acquireRelease(
+          Effect.sync(() => new NodeSqlite.DatabaseSync(filename)),
+          (database) => Effect.sync(() => database.close()),
+        );
+        blocker.exec(
+          "PRAGMA journal_mode=WAL; PRAGMA user_version=1; CREATE TABLE usage_snapshot(old TEXT); BEGIN IMMEDIATE",
+        );
+      }
+      const hub = yield* PubSub.unbounded<SpiEvent>();
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+      const acquiring = yield* Effect.forkScoped(
+        makeUsageCapture(filename).pipe(Effect.provide(bus)),
+      );
+      yield* TestClock.adjust("0 seconds");
+      // No command admission may open with a missing usage subscription.
+      assert.isUndefined(acquiring.pollUnsafe());
+      if (failure === "open") yield* fs.remove(filename, { recursive: true });
+      else blocker!.exec("COMMIT");
+      yield* TestClock.adjust("1 second");
+      const capture = yield* Fiber.join(acquiring);
+      // The acquisition receipt guarantees capture is ready before the first provider event.
+      yield* PubSub.publish(hub, completion);
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* capture.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      if (state.type !== "state") throw new Error("Expected state fixture");
+      yield* lane.state(state);
+      const frame = yield* Queue.take(sent);
+      if (frame.type !== "usage-facts") throw new Error("Expected usage facts");
+      assert.equal(frame.facts[0]!.models[0]!.components.inclusiveTotal, "100");
+      yield* lane.receive({
+        type: "usage-ack",
+        batchId: frame.batchId,
+        accepted: frame.facts.map(({ originId, factId }) => ({ originId, factId })),
+      });
+      yield* TestClock.adjust("0 seconds");
+      const inspector = yield* Effect.acquireRelease(
+        Effect.sync(() => new NodeSqlite.DatabaseSync(filename)),
+        (database) => Effect.sync(() => database.close()),
+      );
+      assert.deepEqual(inspector.prepare("SELECT identity FROM usage_outbox").all(), []);
+      assert.equal(inspector.prepare("PRAGMA user_version").get()?.user_version, 2);
+      assert.deepEqual(
+        inspector.prepare("SELECT name FROM sqlite_master WHERE name='usage_snapshot'").all(),
+        [],
+      );
+    }).pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
+    ),
+  );
 });

@@ -611,9 +611,10 @@ export const startTask = (
       admitCrewTurn(core, probe, principal),
     ).pipe(
       Effect.as(undefined),
-      Effect.catchTag("CrewCommandError", (error) =>
-        error.reason === "not-allowed" ? Effect.succeed(error.detail ?? "") : Effect.fail(error),
-      ),
+      Effect.catchTags({
+        CrewCommandError: (error) =>
+          error.reason === "not-allowed" ? Effect.succeed(error.detail ?? "") : Effect.fail(error),
+      }),
     );
     const now = yield* core.now;
     if (refused !== undefined) {

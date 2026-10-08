@@ -65,11 +65,12 @@ describe("agentsFromOAuthFlags", () => {
     },
   ] as const;
 
-  for (const { name, records, expected } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, records, expected }) => ({ title: name, records, expected })))(
+    "$title",
+    ({ records, expected }) => {
       expect(agentsFromOAuthFlags(records)).toEqual(expected);
-    });
-  }
+    },
+  );
 });
 
 describe("unionAgents", () => {

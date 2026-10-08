@@ -26,9 +26,13 @@ describe("deployStateOf", () => {
     ],
     ["a process with no status", [{ serviceStackId: "svc-app" }], "unknown"],
   ];
-  for (const [title, processes, expected] of cases) {
-    it(title, () => {
-      assert.strictEqual(deployStateOf(processes, APPDEV), expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ([title, processes, expected]) => ({
+      testTitle: title,
+      processes,
+      expected,
+    })),
+  )("$testTitle", ({ processes, expected }) => {
+    assert.strictEqual(deployStateOf(processes, APPDEV), expected);
+  });
 });

@@ -1202,7 +1202,7 @@ const routes = (
             // Only a session HQ no longer takes ends it: one it cannot check now is still held.
             return yield* holderOf(token).pipe(
               Effect.as(undefined),
-              Effect.catchTag("SessionRequired", () => Effect.succeed("session" as const)),
+              Effect.catchTags({ SessionRequired: () => Effect.succeed("session" as const) }),
               Effect.orElseSucceed(() => undefined),
             );
           });

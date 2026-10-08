@@ -217,7 +217,7 @@ export const make = Effect.fn("RepositoryIdentityResolver.make")(function* (
       if (cacheKey === null) return null;
       if (options?.refresh) yield* Cache.invalidate(repositoryIdentityCache, cacheKey);
       return yield* Cache.get(repositoryIdentityCache, cacheKey).pipe(
-        Effect.catchTag("RemoteLookupFailed", () => Effect.succeed(null)),
+        Effect.catchTags({ RemoteLookupFailed: () => Effect.succeed(null) }),
       );
     },
   );

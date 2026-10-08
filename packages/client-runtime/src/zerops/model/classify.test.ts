@@ -138,14 +138,24 @@ describe("classifyZeropsCall — mutating zerops_* tools are cards", () => {
     ["zerops_manage", { hostname: "weatherdash" }],
     ["zerops_env", { hostname: "weatherdash" }],
   ];
-  for (const [toolName, input] of cases) {
-    it(`is a card for ${toolName}`, () => {
-      expect(classifyZeropsCall(toolName, input, "completed")).toBe("card");
-    });
-    it(`is a card for a failed ${toolName}`, () => {
-      expect(classifyZeropsCall(toolName, input, "failed")).toBe("card");
-    });
-  }
+  it.each(
+    Array.from(cases, ([toolName, input]) => ({
+      title: `is a card for ${toolName}`,
+      toolName,
+      input,
+    })),
+  )("$title", ({ toolName, input }) => {
+    expect(classifyZeropsCall(toolName, input, "completed")).toBe("card");
+  });
+  it.each(
+    Array.from(cases, ([toolName, input]) => ({
+      title: `is a card for a failed ${toolName}`,
+      toolName,
+      input,
+    })),
+  )("$title", ({ toolName, input }) => {
+    expect(classifyZeropsCall(toolName, input, "failed")).toBe("card");
+  });
 });
 
 describe("classifyZeropsCall — dev_server and browser", () => {
@@ -168,11 +178,12 @@ describe("classifyZeropsCall — dev_server and browser", () => {
 
 describe("classifyZeropsCall — generic zerops_* tools", () => {
   const cases = ["zerops_knowledge", "zerops_yml_exists"];
-  for (const toolName of cases) {
-    it(`is generic for ${toolName}`, () => {
+  it.each(Array.from(cases, (toolName) => ({ title: `is generic for ${toolName}`, toolName })))(
+    "$title",
+    ({ toolName }) => {
       expect(classifyZeropsCall(toolName, {}, "completed")).toBe("generic");
-    });
-  }
+    },
+  );
 
   it("is a card when a generic zerops_* tool call fails", () => {
     expect(classifyZeropsCall("zerops_knowledge", {}, "failed")).toBe("card");
@@ -183,11 +194,14 @@ describe("classifyZeropsCall — read tools", () => {
   const tools = ["zerops_discover", "zerops_events", "zerops_logs", "zerops_process"];
   const statuses = ["inProgress", "completed", "failed", "interrupted"] as const;
   for (const toolName of tools) {
-    for (const status of statuses) {
-      it(`is a card for ${toolName} ${status}, from its name alone`, () => {
-        expect(classifyZeropsCall(toolName, {}, status)).toBe("card");
-      });
-    }
+    it.each(
+      Array.from(statuses, (status) => ({
+        title: `is a card for ${toolName} ${status}, from its name alone`,
+        status,
+      })),
+    )("$title", ({ status }) => {
+      expect(classifyZeropsCall(toolName, {}, status)).toBe("card");
+    });
   }
 });
 

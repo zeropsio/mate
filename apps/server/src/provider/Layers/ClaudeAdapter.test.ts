@@ -3286,37 +3286,37 @@ describe("ClaudeAdapterLive", () => {
       );
     });
 
-    for (const { name, messages, check } of cases) {
-      it.effect(name, () => {
-        const harness = makeHarness();
-        return Effect.gen(function* () {
-          const adapter = yield* ClaudeAdapter;
-          const eventsFiber = yield* adapter.streamEvents.pipe(
-            Stream.takeUntil(
-              (event) => event.type === "task.completed" && event.payload.taskId === "task-end",
-            ),
-            Stream.runCollect,
-            Effect.forkChild,
-          );
-          const session = yield* adapter.startSession({
-            threadId: THREAD_ID,
-            provider: ProviderDriverKind.make("claudeAgent"),
-            runtimeMode: "full-access",
-          });
-          yield* adapter.sendTurn({
-            threadId: session.threadId,
-            input: "delegate",
-            attachments: [],
-          });
-          for (const message of messages) harness.query.emit(message);
-          harness.query.emit(notified("task-end", "toolu_end", "end"));
-          check(Array.from(yield* Fiber.join(eventsFiber)));
-        }).pipe(
-          Effect.provideService(Random.Random, makeDeterministicRandomService()),
-          Effect.provide(harness.layer),
+    it.effect.each(
+      Array.from(cases, ({ name, messages, check }) => ({ title: name, messages, check })),
+    )("$title", ({ messages, check }) => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const eventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) => event.type === "task.completed" && event.payload.taskId === "task-end",
+          ),
+          Stream.runCollect,
+          Effect.forkChild,
         );
-      });
-    }
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({
+          threadId: session.threadId,
+          input: "delegate",
+          attachments: [],
+        });
+        for (const message of messages) harness.query.emit(message);
+        harness.query.emit(notified("task-end", "toolu_end", "end"));
+        check(Array.from(yield* Fiber.join(eventsFiber)));
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
   });
 
   // The calls of one model response are one batch: the live slot tells a
@@ -5917,8 +5917,9 @@ describe("ClaudeAdapterLive", () => {
         words: "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
       },
     ];
-    for (const { name, run, words } of cases) {
-      it.effect(name, () => {
+    it.effect.each(Array.from(cases, ({ name, run, words }) => ({ title: name, run, words })))(
+      "$title",
+      ({ run, words }) => {
         const harness = makeHarness();
         return Effect.gen(function* () {
           const adapter = yield* ClaudeAdapter;
@@ -5958,8 +5959,8 @@ describe("ClaudeAdapterLive", () => {
           Effect.provideService(Random.Random, makeDeterministicRandomService()),
           Effect.provide(harness.layer),
         );
-      });
-    }
+      },
+    );
   });
 
   // The Mate idle, its helpers at work, and the stream dies: the person is
@@ -9755,126 +9756,139 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  for (const scenario of [
-    "restores conversation messages between retained turns",
-    "changes retained assistant content without changing its role",
-  ] as const) {
-    it.effect(`rejects a Claude fork that ${scenario}`, () => {
-      const turnIds: Array<string> = [];
-      const harness = makeHarness({
-        forkSession: async () => ({ sessionId: CLAUDE_FORK_SESSION_ID }),
-        getSessionMessages: async (sessionId) => {
-          const history = turnIds.flatMap((turnId, index) => [
+  it.effect.each(
+    Array.from(
+      [
+        "restores conversation messages between retained turns",
+        "changes retained assistant content without changing its role",
+      ] as const,
+      (scenario) => ({ title: `rejects a Claude fork that ${scenario}`, scenario }),
+    ),
+  )("$title", ({ scenario }) => {
+    const turnIds: Array<string> = [];
+    const harness = makeHarness({
+      forkSession: async () => ({ sessionId: CLAUDE_FORK_SESSION_ID }),
+      getSessionMessages: async (sessionId) => {
+        const history = turnIds.flatMap((turnId, index) => [
+          claudeHistoryMessage({
+            type: "user",
+            uuid: turnId,
+            content: `prompt ${index + 1}`,
+          }),
+          claudeHistoryMessage({
+            type: "assistant",
+            uuid: `assistant-${index + 1}`,
+            content: [{ type: "text", text: `reply ${index + 1}` }],
+          }),
+        ]);
+        if (sessionId !== CLAUDE_FORK_SESSION_ID) return history;
+        const forkHistory = history.slice(0, 4).map((message) => ({
+          ...message,
+          uuid: `fork-${message.uuid}`,
+          session_id: sessionId,
+        }));
+        if (scenario === "restores conversation messages between retained turns") {
+          forkHistory.splice(
+            2,
+            0,
             claudeHistoryMessage({
               type: "user",
-              uuid: turnId,
-              content: `prompt ${index + 1}`,
+              uuid: "fork-restored-steer",
+              sessionId,
+              content: "earlier steer omitted by compaction",
             }),
             claudeHistoryMessage({
               type: "assistant",
-              uuid: `assistant-${index + 1}`,
-              content: [{ type: "text", text: `reply ${index + 1}` }],
-            }),
-          ]);
-          if (sessionId !== CLAUDE_FORK_SESSION_ID) return history;
-          const forkHistory = history.slice(0, 4).map((message) => ({
-            ...message,
-            uuid: `fork-${message.uuid}`,
-            session_id: sessionId,
-          }));
-          if (scenario === "restores conversation messages between retained turns") {
-            forkHistory.splice(
-              2,
-              0,
-              claudeHistoryMessage({
-                type: "user",
-                uuid: "fork-restored-steer",
-                sessionId,
-                content: "earlier steer omitted by compaction",
-              }),
-              claudeHistoryMessage({
-                type: "assistant",
-                uuid: "fork-restored-reply",
-                sessionId,
-                content: [{ type: "text", text: "earlier steering reply" }],
-              }),
-            );
-          } else {
-            forkHistory[1] = claudeHistoryMessage({
-              type: "assistant",
-              uuid: "fork-assistant-1",
+              uuid: "fork-restored-reply",
               sessionId,
-              content: [{ type: "text", text: "different retained reply" }],
-            });
-          }
-          return forkHistory;
-        },
-      });
-      return Effect.gen(function* () {
-        const adapter = yield* ClaudeAdapter;
-        const session = yield* adapter.startSession({
-          threadId: THREAD_ID,
-          provider: ProviderDriverKind.make("claudeAgent"),
-          runtimeMode: "full-access",
-        });
-        for (let index = 0; index < 3; index++) {
-          const turn = yield* sendCompletedClaudeTurn(
-            adapter,
-            harness,
-            session.threadId,
-            `prompt ${index + 1}`,
+              content: [{ type: "text", text: "earlier steering reply" }],
+            }),
           );
-          turnIds.push(turn.turnId);
+        } else {
+          forkHistory[1] = claudeHistoryMessage({
+            type: "assistant",
+            uuid: "fork-assistant-1",
+            sessionId,
+            content: [{ type: "text", text: "different retained reply" }],
+          });
         }
-        const cursorBeforeRollback = (yield* adapter.listSessions())[0]?.resumeCursor;
-        const queryCountBeforeRollback = harness.queries.length;
-
-        const error = yield* adapter.rollbackThread(session.threadId, 1).pipe(Effect.flip);
-        assert.match(error.message, /did not preserve the retained turn boundaries/);
-        assert.equal(harness.queries.length, queryCountBeforeRollback);
-        assert.equal(harness.queries.at(-1)?.closeCalls, 0);
-        assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, cursorBeforeRollback);
-      }).pipe(
-        Effect.provideService(Random.Random, makeDeterministicRandomService()),
-        Effect.provide(harness.layer),
-      );
+        return forkHistory;
+      },
     });
-  }
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      for (let index = 0; index < 3; index++) {
+        const turn = yield* sendCompletedClaudeTurn(
+          adapter,
+          harness,
+          session.threadId,
+          `prompt ${index + 1}`,
+        );
+        turnIds.push(turn.turnId);
+      }
+      const cursorBeforeRollback = (yield* adapter.listSessions())[0]?.resumeCursor;
+      const queryCountBeforeRollback = harness.queries.length;
 
-  for (const { message, tag } of [
-    { message: "Query closed before response received", tag: "ProviderAdapterSessionClosedError" },
-    { message: "Unknown session: abc", tag: "ProviderAdapterSessionNotFoundError" },
-    { message: "Model not found: claude-unknown", tag: "ProviderAdapterRequestError" },
-    { message: "Connection closed by the proxy", tag: "ProviderAdapterRequestError" },
-  ]) {
-    it.effect(`reads a failed control request "${message}" as ${tag}`, () => {
-      const harness = makeHarness();
-      return Effect.gen(function* () {
-        const adapter = yield* ClaudeAdapter;
-        const session = yield* adapter.startSession({
-          threadId: THREAD_ID,
-          provider: ProviderDriverKind.make("claudeAgent"),
-          runtimeMode: "full-access",
-        });
-        harness.query.setModelError = new Error(message);
-        const error = yield* adapter
-          .sendTurn({
-            threadId: session.threadId,
-            input: "hello",
-            modelSelection: {
-              instanceId: ProviderInstanceId.make("claudeAgent"),
-              model: SYNTHETIC_CLAUDE_CAPABLE_MODEL,
-            },
-            attachments: [],
-          })
-          .pipe(Effect.flip);
-        assert.equal(error._tag, tag);
-      }).pipe(
-        Effect.provideService(Random.Random, makeDeterministicRandomService()),
-        Effect.provide(harness.layer),
-      );
-    });
-  }
+      const error = yield* adapter.rollbackThread(session.threadId, 1).pipe(Effect.flip);
+      assert.match(error.message, /did not preserve the retained turn boundaries/);
+      assert.equal(harness.queries.length, queryCountBeforeRollback);
+      assert.equal(harness.queries.at(-1)?.closeCalls, 0);
+      assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, cursorBeforeRollback);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect.each(
+    Array.from(
+      [
+        {
+          message: "Query closed before response received",
+          tag: "ProviderAdapterSessionClosedError",
+        },
+        { message: "Unknown session: abc", tag: "ProviderAdapterSessionNotFoundError" },
+        { message: "Model not found: claude-unknown", tag: "ProviderAdapterRequestError" },
+        { message: "Connection closed by the proxy", tag: "ProviderAdapterRequestError" },
+      ],
+      ({ message, tag }) => ({
+        title: `reads a failed control request "${message}" as ${tag}`,
+        message,
+        tag,
+      }),
+    ),
+  )("$title", ({ message, tag }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      harness.query.setModelError = new Error(message);
+      const error = yield* adapter
+        .sendTurn({
+          threadId: session.threadId,
+          input: "hello",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+          },
+          attachments: [],
+        })
+        .pipe(Effect.flip);
+      assert.equal(error._tag, tag);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
 
   it.effect("updates model on sendTurn when model override is provided", () => {
     const harness = makeHarness();

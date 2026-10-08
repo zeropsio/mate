@@ -61,92 +61,101 @@ describe("planMembershipRecheck", () => {
   const relayed = (agoMs: number) => ({ atMs: NOW - agoMs, relayed: true });
   // Everything that ends a session, and everything that does not. Each row is one pass: the
   // sessions live, what the read said, and when the last good answer before it was read.
-  for (const [name, sessions, read, lastGood, ended] of [
-    [
-      "a member whose role still opens the door keeps their session",
-      [session("s1", JAN)],
-      opens(JAN),
-      good(INTERVAL_MS),
-      [],
-    ],
-    [
-      "a removed member's session ends within one re-check",
-      [session("s1", JAN)],
-      opens(EVA),
-      good(INTERVAL_MS),
-      ["s1"],
-    ],
-    [
-      "a lowered role ends it — the read simply stops naming them",
-      [session("s1", JAN), session("s2", EVA)],
-      opens(EVA),
-      good(INTERVAL_MS),
-      ["s1"],
-    ],
-    [
-      "every device that person signed in from ends together",
-      [session("s1", JAN), session("s2", JAN)],
-      opens(),
-      good(INTERVAL_MS),
-      ["s1", "s2"],
-    ],
-    [
-      "a failed read keeps sessions for one more interval",
-      [session("s1", JAN)],
-      BLIND,
-      good(INTERVAL_MS),
-      [],
-    ],
-    [
-      "a second failed read in a row ends them",
-      [session("s1", JAN)],
-      BLIND,
-      good(2 * INTERVAL_MS),
-      ["s1"],
-    ],
-    // R6: HQ's relay held for one interval from its read already; with nothing answering after
-    // it, the bound a removed person keeps their screen for is spent.
-    [
-      "HQ's relay past its hold with nothing answering ends them",
-      [session("s1", JAN)],
-      BLIND,
-      relayed(INTERVAL_MS + 1),
-      ["s1"],
-    ],
-    [
-      "a session older than a day ends whatever the read said",
-      [session("s1", JAN, DAY_MS + 1)],
-      opens(JAN),
-      good(INTERVAL_MS),
-      ["s1"],
-    ],
-    [
-      "and ends on a pass that could not read at all",
-      [session("s1", JAN, DAY_MS + 1)],
-      BLIND,
-      good(INTERVAL_MS),
-      ["s1"],
-    ],
-    [
-      "a session one second short of a day stays",
-      [session("s1", JAN, DAY_MS - 1_000)],
-      opens(JAN),
-      good(INTERVAL_MS),
-      [],
-    ],
-  ] as const) {
-    it(name, () => {
-      const plan = planMembershipRecheck({
+  it.each(
+    Array.from(
+      [
+        [
+          "a member whose role still opens the door keeps their session",
+          [session("s1", JAN)],
+          opens(JAN),
+          good(INTERVAL_MS),
+          [],
+        ],
+        [
+          "a removed member's session ends within one re-check",
+          [session("s1", JAN)],
+          opens(EVA),
+          good(INTERVAL_MS),
+          ["s1"],
+        ],
+        [
+          "a lowered role ends it — the read simply stops naming them",
+          [session("s1", JAN), session("s2", EVA)],
+          opens(EVA),
+          good(INTERVAL_MS),
+          ["s1"],
+        ],
+        [
+          "every device that person signed in from ends together",
+          [session("s1", JAN), session("s2", JAN)],
+          opens(),
+          good(INTERVAL_MS),
+          ["s1", "s2"],
+        ],
+        [
+          "a failed read keeps sessions for one more interval",
+          [session("s1", JAN)],
+          BLIND,
+          good(INTERVAL_MS),
+          [],
+        ],
+        [
+          "a second failed read in a row ends them",
+          [session("s1", JAN)],
+          BLIND,
+          good(2 * INTERVAL_MS),
+          ["s1"],
+        ],
+        // R6: HQ's relay held for one interval from its read already; with nothing answering after
+        // it, the bound a removed person keeps their screen for is spent.
+        [
+          "HQ's relay past its hold with nothing answering ends them",
+          [session("s1", JAN)],
+          BLIND,
+          relayed(INTERVAL_MS + 1),
+          ["s1"],
+        ],
+        [
+          "a session older than a day ends whatever the read said",
+          [session("s1", JAN, DAY_MS + 1)],
+          opens(JAN),
+          good(INTERVAL_MS),
+          ["s1"],
+        ],
+        [
+          "and ends on a pass that could not read at all",
+          [session("s1", JAN, DAY_MS + 1)],
+          BLIND,
+          good(INTERVAL_MS),
+          ["s1"],
+        ],
+        [
+          "a session one second short of a day stays",
+          [session("s1", JAN, DAY_MS - 1_000)],
+          opens(JAN),
+          good(INTERVAL_MS),
+          [],
+        ],
+      ] as const,
+      ([name, sessions, read, lastGood, ended]) => ({
+        title: name,
         sessions,
         read,
-        nowEpochMs: NOW,
-        maxSessionAgeMs: DAY_MS,
         lastGood,
-        intervalMs: INTERVAL_MS,
-      });
-      assert.deepStrictEqual([...plan.endSessions], [...ended]);
+        ended,
+      }),
+    ),
+  )("$title", ({ sessions, read, lastGood, ended }) => {
+    const plan = planMembershipRecheck({
+      sessions,
+      read,
+      nowEpochMs: NOW,
+      maxSessionAgeMs: DAY_MS,
+      lastGood,
+      intervalMs: INTERVAL_MS,
     });
-  }
+    assert.deepStrictEqual([...plan.endSessions], [...ended]);
+  });
 
   it("leaves sessions that did not come from the Zerops door alone", () => {
     const plan = planMembershipRecheck({
@@ -453,46 +462,50 @@ describe("the re-check loop", () => {
     ),
   };
 
-  for (const [label, secondPass] of [
-    ["the second pass reads", "reads"],
-    ["the second pass fails", "fails"],
-  ] as const) {
-    it.effect(
-      `a lowered role ends the session within two recheck intervals whether or not the second pass reads (${label})`,
-      () =>
-        Effect.gen(function* () {
-          let members: { readonly status: number; readonly body: unknown } = {
-            status: 200,
-            body: MEMBERS,
-          };
-          const { layer, seen } = readLayer((url) =>
-            url.endsWith("/user/list")
-              ? json(members.body, members.status)
-              : json({ id: PROJECT_ID, clientId: CLIENT_ID, userRoles: [] }),
-          );
-          const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
-          yield* makeWatch.pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                layer,
-                auth.layer,
-                ServerConfig.layer({ zerops: clamped } as ServerConfig.ServerConfig["Service"]),
-              ),
-            ),
-          );
-          yield* TestClock.adjust(Duration.zero);
-          assert.strictEqual(seen.length, 2, "the first pass ran at start");
-          assert.deepStrictEqual(auth.revoked, []);
+  it.effect.each(
+    Array.from(
+      [
+        ["the second pass reads", "reads"],
+        ["the second pass fails", "fails"],
+      ] as const,
+      ([label, secondPass]) => ({
+        title: `a lowered role ends the session within two recheck intervals whether or not the second pass reads (${label})`,
+        secondPass,
+      }),
+    ),
+  )("$title", ({ secondPass }) =>
+    Effect.gen(function* () {
+      let members: { readonly status: number; readonly body: unknown } = {
+        status: 200,
+        body: MEMBERS,
+      };
+      const { layer, seen } = readLayer((url) =>
+        url.endsWith("/user/list")
+          ? json(members.body, members.status)
+          : json({ id: PROJECT_ID, clientId: CLIENT_ID, userRoles: [] }),
+      );
+      const auth = fakeAuth([{ sessionId: "jan", subject: `${ZEROPS_SUBJECT_PREFIX}${JAN}` }]);
+      yield* makeWatch.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layer,
+            auth.layer,
+            ServerConfig.layer({ zerops: clamped } as ServerConfig.ServerConfig["Service"]),
+          ),
+        ),
+      );
+      yield* TestClock.adjust(Duration.zero);
+      assert.strictEqual(seen.length, 2, "the first pass ran at start");
+      assert.deepStrictEqual(auth.revoked, []);
 
-          // Lowered right after that pass; the next one cannot read.
-          members = { status: 500, body: LOWERED };
-          yield* TestClock.adjust(Duration.seconds(300));
-          assert.deepStrictEqual(auth.revoked, [], "one failed pass is tolerated");
+      // Lowered right after that pass; the next one cannot read.
+      members = { status: 500, body: LOWERED };
+      yield* TestClock.adjust(Duration.seconds(300));
+      assert.deepStrictEqual(auth.revoked, [], "one failed pass is tolerated");
 
-          members = secondPass === "reads" ? { status: 200, body: LOWERED } : members;
-          yield* TestClock.adjust(Duration.seconds(300));
-          assert.deepStrictEqual(auth.revoked, ["jan"]);
-        }).pipe(Effect.scoped),
-    );
-  }
+      members = secondPass === "reads" ? { status: 200, body: LOWERED } : members;
+      yield* TestClock.adjust(Duration.seconds(300));
+      assert.deepStrictEqual(auth.revoked, ["jan"]);
+    }).pipe(Effect.scoped),
+  );
 });

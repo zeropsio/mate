@@ -12,7 +12,11 @@
  *
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
-import { readUsageLimitNotice, type UsageLimitNotice } from "../../zerops/providerLimit.logic";
+import {
+  projectLimitEntry,
+  projectLimitHistory,
+  type HistoricalLimit,
+} from "@t3tools/client-runtime/data";
 import { isEngineItemId, type CrewCard as ContractCrewCard, type TurnId } from "@t3tools/contracts";
 import {
   envChangeWords,
@@ -169,32 +173,6 @@ export function isImageOnlyPlaceholder(text: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Usage limits
-// ---------------------------------------------------------------------------
-
-/** The server's own row for a limit ("Claude usage limit reached. Send the message again…"). */
-export function isUsageLimitError(entry: TimelineEntry): boolean {
-  return (
-    entry.kind === "work" &&
-    entry.entry.tone === "error" &&
-    // Every driver's limit is typed by the server; Claude's older rows by their words.
-    (entry.entry.turnEnd === "usage-limit" ||
-      readUsageLimitNotice(`${entry.entry.label} ${entry.entry.detail ?? ""}`, entry.createdAt) !==
-        null)
-  );
-}
-
-function usageLimitErrorNotice(entries: ReadonlyArray<TimelineEntry>): UsageLimitNotice | null {
-  const error = entries.findLast(isUsageLimitError);
-  if (error?.kind !== "work") return null;
-  return (
-    readUsageLimitNotice(`${error.entry.detail ?? ""} ${error.entry.label}`, error.createdAt) ?? {
-      resetsAt: null,
-    }
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Turns
 // ---------------------------------------------------------------------------
 
@@ -344,12 +322,7 @@ function endsOnALimit(
     .map((index) => entries[index])
     .findLast((entry) => entry !== undefined && !isTaskReport(entry));
   if (last === undefined) return false;
-  return (
-    isUsageLimitError(last) ||
-    (last.kind === "message" &&
-      last.message.role === "assistant" &&
-      readUsageLimitNotice(last.message.text, last.createdAt) !== null)
-  );
+  return projectLimitEntry(last) !== null;
 }
 
 /**
@@ -600,7 +573,8 @@ export interface ConversationTurn {
    */
   readonly brokeOff: BrokeOff | null;
   /** The usage-limit notice the turn ended on, when it did. */
-  readonly limit: UsageLimitNotice | null;
+  readonly limit: HistoricalLimit | null;
+  readonly answerIsRefusal: boolean;
   /** Nothing but a usage-limit notice: a turn a limit refused before it did anything. */
   readonly limitOnly: boolean;
   /** The turn's window on the clock, for placing landings. */
@@ -683,14 +657,10 @@ export interface BrokeOff {
 
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
-  readonly terminal: MessageEntry | null;
   readonly latest: boolean;
+  readonly refused: boolean;
 }): BrokeOff | null {
-  const limited =
-    usageLimitErrorNotice(input.entries) !== null ||
-    (input.terminal !== null &&
-      readUsageLimitNotice(input.terminal.message.text, input.terminal.createdAt) !== null);
-  if (limited) return null;
+  if (input.refused) return null;
   const terminalFailure = input.entries.findLast(
     (entry) =>
       entry.kind === "work" &&
@@ -801,6 +771,7 @@ export function deriveConversationStructure(given: {
   readonly runningTurnId: TurnId | null;
   readonly isWorking: boolean;
   readonly activeTurnStartedAt: string | null;
+  readonly provider?: string | null | undefined;
   /** The clock the last words' wait is read against; without it nothing waits. */
   readonly nowMs?: number;
   /**
@@ -938,13 +909,20 @@ export function deriveConversationStructure(given: {
     // words stream in the working row, however much they read as an answer:
     // drawn under a live card, an answer streamed "below while still writing"
     // and turned back into a note when a question followed.
+    const refusal = projectLimitHistory({
+      entries: turnEntries,
+      answer: span.terminalEntry,
+      live,
+      waiting,
+      driver: given.provider,
+    });
     const brokeOff =
       live || waiting
         ? null
         : brokeOffOn({
             entries: turnEntries,
-            terminal: span.terminalEntry,
             latest: span === spans.at(-1),
+            refused: refusal.hasRefusal,
           });
     const answer = live || waiting || brokeOff !== null ? null : span.terminalEntry;
     // Words still streaming, nothing after them: the working row's, as they
@@ -971,33 +949,7 @@ export function deriveConversationStructure(given: {
       (terminal.message.streaming === true || justFinished)
         ? terminal
         : null;
-    // The limit speaks as Claude's own last words, or as the server's error row.
-    const answerNotice =
-      answer === null ? null : readUsageLimitNotice(answer.message.text, answer.message.createdAt);
-    const structuredLimit =
-      answer === null || answerNotice !== null
-        ? turnEntries.findLast(
-            (entry) => entry.kind === "work" && entry.entry.usageLimit !== undefined,
-          )
-        : undefined;
-    // The provider's timestamp outranks a rounded wait or an undated CLI hour. A later normal
-    // response is recovery evidence, so an earlier rejection cannot replace that response.
-    const limit =
-      (structuredLimit?.kind === "work" ? structuredLimit.entry.usageLimit! : null) ??
-      answerNotice ??
-      (live ? null : usageLimitErrorNotice(turnEntries));
-    const limitOnly =
-      limit !== null &&
-      turnEntries.every(
-        (entry) =>
-          entry === answer ||
-          !hasMeaningfulContent(entry) ||
-          isUsageLimitError(entry) ||
-          (entry.kind === "work" && entry.entry.usageLimit !== undefined) ||
-          (entry.kind === "message" && entry.message.role === "reasoning") ||
-          (entry.kind === "message" &&
-            readUsageLimitNotice(entry.message.text, entry.createdAt) !== null),
-      );
+    const { limit, limitOnly, answerIsRefusal } = refusal;
 
     const turnStart =
       span.opener?.createdAt ??
@@ -1108,6 +1060,7 @@ export function deriveConversationStructure(given: {
       brokeOff,
       limit,
       limitOnly,
+      answerIsRefusal,
       startMs: parseMs(turnStart),
       endMs: live ? Infinity : (parseMs(turnEnd) ?? parseMs(turnStart) ?? -Infinity),
     });

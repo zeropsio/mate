@@ -247,14 +247,17 @@ describe("container machine (DESIGN §4.5)", () => {
     { project: "ACTIVE", service: "ACTIVE", verdict: { level: "unknown" } },
   ];
 
-  for (const row of PLATFORM_ROWS) {
-    it(`project ${row.project}, service ${row.service ?? "unread"} → ${row.verdict.level}`, () => {
-      const run = drive([
-        { type: "PLATFORM", status: { project: row.project, service: row.service } },
-      ]);
-      expect(containerVerdict(run.machine)).toEqual(row.verdict);
-    });
-  }
+  it.each(
+    Array.from(PLATFORM_ROWS, (row) => ({
+      title: `project ${row.project}, service ${row.service ?? "unread"} → ${row.verdict.level}`,
+      row,
+    })),
+  )("$title", ({ row }) => {
+    const run = drive([
+      { type: "PLATFORM", status: { project: row.project, service: row.service } },
+    ]);
+    expect(containerVerdict(run.machine)).toEqual(row.verdict);
+  });
 
   it("a new Mate's container comes up through its first build, never reading as not running", () => {
     // An Add, as the platform said it (2026-10-02): the import, the first build, the container.
@@ -382,19 +385,22 @@ describe("container machine (DESIGN §4.5)", () => {
     },
   ];
 
-  for (const row of CADENCE_ROWS) {
-    it(`a boot is read as its evidence asks: ${row.name}`, () => {
-      const run = drive(row.events);
-      // Only a boot nothing vouches for is guessed: its verdict says so.
-      const guessed = row.cadence.kind === "on-demand" ? { guessed: true } : {};
-      expect(containerVerdict(run.machine)).toEqual({
-        level: "booting",
-        overdue: false,
-        ...guessed,
-      });
-      expect(probeCadence(run.machine)).toEqual(row.cadence);
+  it.each(
+    Array.from(CADENCE_ROWS, (row) => ({
+      title: `a boot is read as its evidence asks: ${row.name}`,
+      row,
+    })),
+  )("$title", ({ row }) => {
+    const run = drive(row.events);
+    // Only a boot nothing vouches for is guessed: its verdict says so.
+    const guessed = row.cadence.kind === "on-demand" ? { guessed: true } : {};
+    expect(containerVerdict(run.machine)).toEqual({
+      level: "booting",
+      overdue: false,
+      ...guessed,
     });
-  }
+    expect(probeCadence(run.machine)).toEqual(row.cadence);
+  });
 
   it("a socket dropping under a ready container leaves it ready until a fact says why", () => {
     const linked = drive([{ type: "LINK", connected: true }], ready());
@@ -632,29 +638,32 @@ describe("container machine (DESIGN §4.5)", () => {
     },
   ];
 
-  for (const row of REINIT_ROWS) {
-    it(`a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`, () => {
-      const up = drive(row.held);
-      const since = instant(up.nowMs + 1_000);
-      let run = drive(
-        [
-          {
-            type: "INTENT",
-            intent:
-              row.initAt === undefined
-                ? { kind: row.intent, since }
-                : { kind: row.intent, since, initAt: row.initAt },
-          },
-        ],
-        up,
-      );
-      for (const reading of row.after) {
-        expect(containerVerdict(run.machine).level).toBe("restarting");
-        run = drive([probed(reading, run.nowMs)], run);
-      }
-      expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
-    });
-  }
+  it.each(
+    Array.from(REINIT_ROWS, (row) => ({
+      title: `a re-init ends our ${row.intent} whatever the browser's clock says: ${row.name}`,
+      row,
+    })),
+  )("$title", ({ row }) => {
+    const up = drive(row.held);
+    const since = instant(up.nowMs + 1_000);
+    let run = drive(
+      [
+        {
+          type: "INTENT",
+          intent:
+            row.initAt === undefined
+              ? { kind: row.intent, since }
+              : { kind: row.intent, since, initAt: row.initAt },
+        },
+      ],
+      up,
+    );
+    for (const reading of row.after) {
+      expect(containerVerdict(run.machine).level).toBe("restarting");
+      run = drive([probed(reading, run.nowMs)], run);
+    }
+    expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+  });
 
   it("a read sent after the verb is never the restart's baseline", () => {
     // Nothing said the initAt before the verb, and the container's clock runs behind the browser's.

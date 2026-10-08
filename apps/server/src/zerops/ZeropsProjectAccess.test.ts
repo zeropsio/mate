@@ -124,42 +124,51 @@ describe("ZeropsProjectAccess", () => {
     }),
   );
 
-  for (const [name, relay] of [
-    ["with no relay", undefined],
-    ["once the relay is past five minutes from HQ's read", { ageMs: 0, after: RELAY_HOLDS }],
-  ] as const) {
-    it.effect(`reads Zerops itself ${name}`, () =>
-      Effect.gen(function* () {
-        const { access, calls } = yield* accessOver();
-        if (relay !== undefined) {
-          yield* access.relayed({ members: RELAYED, ageMs: relay.ageMs });
-          yield* TestClock.adjust(Duration.sum(relay.after, Duration.millis(1)));
-        }
-        const read = yield* access.read;
-        assert.deepStrictEqual(read.ok ? [read.members, read.relayed] : read, [OWN, false]);
-        assert.deepStrictEqual(calls, [
-          `/api/rest/public/project/${PROJECT_ID}`,
-          `/api/rest/public/client/${CLIENT_ID}/user/list`,
-        ]);
-        assert.isTrue(Option.isNone(yield* access.relay));
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["with no relay", undefined],
+        ["once the relay is past five minutes from HQ's read", { ageMs: 0, after: RELAY_HOLDS }],
+      ] as const,
+      ([name, relay]) => ({ title: `reads Zerops itself ${name}`, relay }),
+    ),
+  )("$title", ({ relay }) =>
+    Effect.gen(function* () {
+      const { access, calls } = yield* accessOver();
+      if (relay !== undefined) {
+        yield* access.relayed({ members: RELAYED, ageMs: relay.ageMs });
+        yield* TestClock.adjust(Duration.sum(relay.after, Duration.millis(1)));
+      }
+      const read = yield* access.read;
+      assert.deepStrictEqual(read.ok ? [read.members, read.relayed] : read, [OWN, false]);
+      assert.deepStrictEqual(calls, [
+        `/api/rest/public/project/${PROJECT_ID}`,
+        `/api/rest/public/client/${CLIENT_ID}/user/list`,
+      ]);
+      assert.isTrue(Option.isNone(yield* access.relay));
+    }),
+  );
 
   // An empty list is an outage dressed as an answer, and a page is not the whole org (S6).
-  for (const [name, zerops] of [
-    ["Zerops fails", { status: 500 }],
-    ["the member list comes back empty", { members: { clientUserList: [] } }],
-    ["the member list is not a list", { members: { members: [] } }],
-    ["the member list is a partial page", { members: { ...ORG, totalCount: 3 } }],
-  ] as const) {
-    it.effect(`answers nothing when ${name} and HQ relays nothing fresh`, () =>
-      Effect.gen(function* () {
-        const { access } = yield* accessOver(zerops);
-        assert.deepStrictEqual(yield* access.read, { ok: false });
+  it.effect.each(
+    Array.from(
+      [
+        ["Zerops fails", { status: 500 }],
+        ["the member list comes back empty", { members: { clientUserList: [] } }],
+        ["the member list is not a list", { members: { members: [] } }],
+        ["the member list is a partial page", { members: { ...ORG, totalCount: 3 } }],
+      ] as const,
+      ([name, zerops]) => ({
+        title: `answers nothing when ${name} and HQ relays nothing fresh`,
+        zerops,
       }),
-    );
-  }
+    ),
+  )("$title", ({ zerops }) =>
+    Effect.gen(function* () {
+      const { access } = yield* accessOver(zerops);
+      assert.deepStrictEqual(yield* access.read, { ok: false });
+    }),
+  );
 
   it.effect("reads Zerops as the Mate, with its own key", () =>
     Effect.gen(function* () {

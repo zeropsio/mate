@@ -329,60 +329,62 @@ it.live("a killed check ends after one command and waits for a person", () =>
   ),
 );
 
-for (const [ending, setup] of [
-  ["failed", "test ! -f fail-setup.txt"],
-  ["killed", "if [ -f fail-setup.txt ]; then kill -TERM $$; fi"],
-] as const) {
-  it.live(`a ${ending} setup ends its check operation before the check command starts`, () =>
-    crewJourney((world) =>
-      Effect.gen(function* () {
-        world.writeHome();
-        const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
-        const config = NodeFS.readFileSync(home, "utf8").replace(
-          "    check: test -f ok.txt",
-          () => `    setup: ${setup}\n    check: printf x >> check-count.txt; test -f ok.txt`,
-        );
-        world.writeHome({ "crew.yaml": config });
-        yield* world.press({ _tag: "apply" });
-        yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
-        const lane = NodePath.join(world.root, ".crew/backend");
-        const thread = yield* firstTurn(world, () => {
-          write(lane, "ok.txt", "ok\n");
-          write(lane, "fail-setup.txt", "stop\n");
-        });
-        write(world.root, "package-lock.json", "{}\n");
-        git(world.root, ["add", "package-lock.json"]);
-        git(world.root, ["commit", "-m", "new lockfile"]);
-        yield* reportDone(world, thread);
-        yield* world.turnEnds(thread);
-        const stopped = yield* world.snapshotWhere((frame) =>
-          ["ready", "parked"].includes(frame.board.tasks[0]?.state ?? ""),
-        );
-        assert.strictEqual(stopped.board.tasks[0]!.state, "parked");
-        const receipt = yield* world.snapshotWhere(
-          (frame) =>
-            frame.operations?.some((row) => row.kind === "check" && row.status === "failed") ===
-            true,
-        );
-        const operation = receipt.operations!.find((row) => row.kind === "check")!;
-        assert.strictEqual(operation.status, "failed");
-        assert.strictEqual(operation.confirmedStage, "setting-up");
-        assert.strictEqual(NodeFS.existsSync(NodePath.join(lane, "check-count.txt")), false);
-        NodeFS.unlinkSync(NodePath.join(lane, "fail-setup.txt"));
-        yield* world.press({
-          _tag: "operationContinue",
-          handle: "backend",
-          operationId: operation.id,
-        });
-        yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
-        assert.strictEqual(
-          NodeFS.readFileSync(NodePath.join(lane, "check-count.txt"), "utf8"),
-          "x",
-        );
-      }),
-    ),
-  );
-}
+it.live.each(
+  Array.from(
+    [
+      ["failed", "test ! -f fail-setup.txt"],
+      ["killed", "if [ -f fail-setup.txt ]; then kill -TERM $$; fi"],
+    ] as const,
+    ([ending, setup]) => ({
+      title: `a ${ending} setup ends its check operation before the check command starts`,
+      setup,
+    }),
+  ),
+)("$title", ({ setup }) =>
+  crewJourney((world) =>
+    Effect.gen(function* () {
+      world.writeHome();
+      const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
+      const config = NodeFS.readFileSync(home, "utf8").replace(
+        "    check: test -f ok.txt",
+        () => `    setup: ${setup}\n    check: printf x >> check-count.txt; test -f ok.txt`,
+      );
+      world.writeHome({ "crew.yaml": config });
+      yield* world.press({ _tag: "apply" });
+      yield* world.snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+      const lane = NodePath.join(world.root, ".crew/backend");
+      const thread = yield* firstTurn(world, () => {
+        write(lane, "ok.txt", "ok\n");
+        write(lane, "fail-setup.txt", "stop\n");
+      });
+      write(world.root, "package-lock.json", "{}\n");
+      git(world.root, ["add", "package-lock.json"]);
+      git(world.root, ["commit", "-m", "new lockfile"]);
+      yield* reportDone(world, thread);
+      yield* world.turnEnds(thread);
+      const stopped = yield* world.snapshotWhere((frame) =>
+        ["ready", "parked"].includes(frame.board.tasks[0]?.state ?? ""),
+      );
+      assert.strictEqual(stopped.board.tasks[0]!.state, "parked");
+      const receipt = yield* world.snapshotWhere(
+        (frame) =>
+          frame.operations?.some((row) => row.kind === "check" && row.status === "failed") === true,
+      );
+      const operation = receipt.operations!.find((row) => row.kind === "check")!;
+      assert.strictEqual(operation.status, "failed");
+      assert.strictEqual(operation.confirmedStage, "setting-up");
+      assert.strictEqual(NodeFS.existsSync(NodePath.join(lane, "check-count.txt")), false);
+      NodeFS.unlinkSync(NodePath.join(lane, "fail-setup.txt"));
+      yield* world.press({
+        _tag: "operationContinue",
+        handle: "backend",
+        operationId: operation.id,
+      });
+      yield* world.snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+      assert.strictEqual(NodeFS.readFileSync(NodePath.join(lane, "check-count.txt"), "utf8"), "x");
+    }),
+  ),
+);
 
 for (const taskState of ["landing", "landed"] as const) {
   // A crash's operation row is written into V1's own tables.

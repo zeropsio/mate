@@ -35,6 +35,8 @@ export default defineConfig({
       {
         test: {
           name: "scenario-drivers",
+          // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+          taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
           include: ["test/scenarios/fakes/**/*.test.ts"],
           environment: "node",
           testTimeout: 10_000,

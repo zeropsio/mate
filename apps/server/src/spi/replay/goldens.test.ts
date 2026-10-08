@@ -120,33 +120,41 @@ const liveCases: ReadonlyArray<GoldenCase> = [
   { driver: "opencode", name: "hello-baseline", record: recordOpenCodeBaseline, timeoutMs: 15_000 },
 ];
 
+// One timeout for the whole table: vitest's `each` takes no per-row timeout, so the slowest case's.
+const goldenTimeoutMs = Math.max(...[...jsonlCases, ...liveCases].map((c) => c.timeoutMs));
+
 describe("SPI replay goldens", () => {
-  for (const { driver, name, record, timeoutMs } of [...jsonlCases, ...liveCases]) {
-    it(
-      `${driver}/${name} matches its golden`,
-      async () => {
-        const dir = NodePath.join(fixturesRoot, driver);
-        const events = await record();
-        // Goldens capture the enriched bus shape — the SPI boundary
-        // consumers actually read (SPI-4) — not the driver's raw output: a
-        // regression a driver-shape change causes on `event.toolCall` fails
-        // here too, not only downstream in `apps/server/src/zerops/**`.
-        const enriched = events.map(applyToolCall);
-        const redacted = redact(enriched as ReadonlyArray<Record<string, unknown>>, {
-          ids: REDACT_IDS,
-        });
+  it.each(
+    Array.from([...jsonlCases, ...liveCases], ({ driver, name, record }) => ({
+      title: `${driver}/${name} matches its golden`,
+      driver,
+      name,
+      record,
+    })),
+  )(
+    "$title",
+    async ({ driver, name, record }) => {
+      const dir = NodePath.join(fixturesRoot, driver);
+      const events = await record();
+      // Goldens capture the enriched bus shape — the SPI boundary
+      // consumers actually read (SPI-4) — not the driver's raw output: a
+      // regression a driver-shape change causes on `event.toolCall` fails
+      // here too, not only downstream in `apps/server/src/zerops/**`.
+      const enriched = events.map(applyToolCall);
+      const redacted = redact(enriched as ReadonlyArray<Record<string, unknown>>, {
+        ids: REDACT_IDS,
+      });
 
-        const { updated, expected } = checkOrUpdateGolden(dir, name, redacted);
-        if (updated) {
-          return;
-        }
+      const { updated, expected } = checkOrUpdateGolden(dir, name, redacted);
+      if (updated) {
+        return;
+      }
 
-        const divergence = describeFirstDivergence(`${driver}/${name}`, redacted, expected);
-        assert.isUndefined(divergence, divergence);
-      },
-      timeoutMs,
-    );
-  }
+      const divergence = describeFirstDivergence(`${driver}/${name}`, redacted, expected);
+      assert.isUndefined(divergence, divergence);
+    },
+    goldenTimeoutMs,
+  );
 });
 
 interface McpToolCallItemCompleted {

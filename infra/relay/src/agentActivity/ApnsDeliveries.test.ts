@@ -4,6 +4,7 @@ import type {
 } from "@t3tools/contracts/relay";
 import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no generateKeyPairSync.
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -1782,56 +1783,59 @@ describe("live activity alert decisions", () => {
 });
 
 describe("queued iOS alert policy", () => {
-  for (const scenario of ["enabled", "muted", "late"] as const) {
-    it.effect(`checks the current policy for a ${scenario} completion`, () => {
-      let sent = 0;
-      const completed = { ...state, phase: "completed" as const };
-      const prefs = JSON.parse(enabledPreferences);
-      if (scenario === "muted") prefs.notifyOnCompletion = false;
-      const payload = makeApnsDeliveryJobPayload({
-        kind: "push_notification",
-        userId: target.user_id,
-        deviceId: target.device_id,
-        token: "push",
-        aggregate: null,
-        notification: {
-          title: "Thread",
-          body: "Done: Project",
-          environmentId: "env",
-          threadId: "thread",
-          deepLink: "/",
-          phase: "completed",
-          updatedAt: completed.updatedAt,
-        },
-        createdAt: completed.updatedAt,
-        expiresAt: "1970-01-01T00:10:00.000Z",
-        jobId: `delivery-policy-${scenario}`,
-      });
-      const signed = signApnsDeliveryJob({ secret: config.apnsDeliveryJobSigningSecret, payload });
-      return Effect.gen(function* () {
-        if (scenario === "late") yield* TestClock.adjust("3 minutes");
-        const d = yield* ApnsDeliveries.ApnsDeliveries;
-        yield* d.processSignedJob(signed);
-        expect(sent).toBe(scenario === "enabled" ? 1 : 0);
-      }).pipe(
-        Effect.provide(
-          makeLayer({
-            attempts: [],
-            config: signingConfig,
-            currentTargets: [
-              { ...target, push_token: "push", preferences_json: JSON.stringify(prefs) },
-            ],
-            currentActivityStates: [completed],
-            execute: (request) =>
-              Effect.sync(() => {
-                sent++;
-                return HttpClientResponse.fromWeb(request, new Response("", { status: 200 }));
-              }),
-          }),
-        ),
-      );
+  it.effect.each(
+    Array.from(["enabled", "muted", "late"] as const, (scenario) => ({
+      title: `checks the current policy for a ${scenario} completion`,
+      scenario,
+    })),
+  )("$title", ({ scenario }) => {
+    let sent = 0;
+    const completed = { ...state, phase: "completed" as const };
+    const prefs = JSON.parse(enabledPreferences);
+    if (scenario === "muted") prefs.notifyOnCompletion = false;
+    const payload = makeApnsDeliveryJobPayload({
+      kind: "push_notification",
+      userId: target.user_id,
+      deviceId: target.device_id,
+      token: "push",
+      aggregate: null,
+      notification: {
+        title: "Thread",
+        body: "Done: Project",
+        environmentId: "env",
+        threadId: "thread",
+        deepLink: "/",
+        phase: "completed",
+        updatedAt: completed.updatedAt,
+      },
+      createdAt: completed.updatedAt,
+      expiresAt: "1970-01-01T00:10:00.000Z",
+      jobId: `delivery-policy-${scenario}`,
     });
-  }
+    const signed = signApnsDeliveryJob({ secret: config.apnsDeliveryJobSigningSecret, payload });
+    return Effect.gen(function* () {
+      if (scenario === "late") yield* TestClock.adjust("3 minutes");
+      const d = yield* ApnsDeliveries.ApnsDeliveries;
+      yield* d.processSignedJob(signed);
+      expect(sent).toBe(scenario === "enabled" ? 1 : 0);
+    }).pipe(
+      Effect.provide(
+        makeLayer({
+          attempts: [],
+          config: signingConfig,
+          currentTargets: [
+            { ...target, push_token: "push", preferences_json: JSON.stringify(prefs) },
+          ],
+          currentActivityStates: [completed],
+          execute: (request) =>
+            Effect.sync(() => {
+              sent++;
+              return HttpClientResponse.fromWeb(request, new Response("", { status: 200 }));
+            }),
+        }),
+      ),
+    );
+  });
 });
 
 describe("fast completion delivery", () => {
@@ -1893,73 +1897,76 @@ describe("fast completion delivery", () => {
 
 describe("signed APNs registration metadata", () => {
   for (const kind of ["live_activity_update", "push_notification"] as const) {
-    for (const changed of ["bundle", "environment", "legacy"] as const) {
-      it.effect(`routes ${kind} using current registration with ${changed} job metadata`, () => {
-        const attempts: DeliveryAttempts.DeliveryAttemptInput[] = [];
-        const requests: HttpClientRequest.HttpClientRequest[] = [];
-        const payload = makeApnsDeliveryJobPayload({
-          kind,
-          userId: target.user_id,
-          deviceId: target.device_id,
-          token: "unchanged-token",
-          ...(changed === "legacy"
-            ? {}
-            : { bundleId: "com.t3tools.t3code.dev", apsEnvironment: "sandbox" as const }),
-          aggregate: kind === "live_activity_update" ? aggregate : null,
-          ...(kind === "push_notification"
-            ? {
-                notification: {
-                  title: "Thread",
-                  body: "Input: Project",
-                  environmentId: "env",
-                  threadId: "thread",
-                  deepLink: "/",
-                },
-              }
-            : {}),
-          createdAt: "1970-01-01T00:00:00.000Z",
-          expiresAt: "1970-01-01T00:10:00.000Z",
-          jobId: `metadata-${kind}-${changed}`,
-        });
-        const signed = signApnsDeliveryJob({
-          secret: config.apnsDeliveryJobSigningSecret,
-          payload,
-        });
-        return Effect.gen(function* () {
-          const deliveries = yield* ApnsDeliveries.ApnsDeliveries;
-          const result = yield* deliveries.processSignedJob(signed);
-          expect(result.ok).toBe(true);
-          expect(requests).toHaveLength(1);
-          expect(requests[0]?.url).toBe(
-            `${changed === "environment" ? "https://api.push.apple.com" : "https://api.sandbox.push.apple.com"}/3/device/unchanged-token`,
-          );
-          expect(requests[0]?.headers["apns-topic"]).toBe(
-            `${changed === "bundle" ? "com.t3tools.t3code.preview" : "com.t3tools.t3code.dev"}${kind === "live_activity_update" ? ".push-type.liveactivity" : ""}`,
-          );
-        }).pipe(
-          Effect.provide(
-            makeLayer({
-              attempts,
-              config: signingConfig,
-              currentTargets: [
-                {
-                  ...target,
-                  push_token: "unchanged-token",
-                  activity_push_token: "unchanged-token",
-                  bundle_id:
-                    changed === "bundle" ? "com.t3tools.t3code.preview" : "com.t3tools.t3code.dev",
-                  aps_environment: changed === "environment" ? "production" : "sandbox",
-                },
-              ],
-              execute: (request) =>
-                Effect.sync(() => {
-                  requests.push(request);
-                  return HttpClientResponse.fromWeb(request, new Response("", { status: 200 }));
-                }),
-            }),
-          ),
-        );
+    it.effect.each(
+      Array.from(["bundle", "environment", "legacy"] as const, (changed) => ({
+        title: `routes ${kind} using current registration with ${changed} job metadata`,
+        changed,
+      })),
+    )("$title", ({ changed }) => {
+      const attempts: DeliveryAttempts.DeliveryAttemptInput[] = [];
+      const requests: HttpClientRequest.HttpClientRequest[] = [];
+      const payload = makeApnsDeliveryJobPayload({
+        kind,
+        userId: target.user_id,
+        deviceId: target.device_id,
+        token: "unchanged-token",
+        ...(changed === "legacy"
+          ? {}
+          : { bundleId: "com.t3tools.t3code.dev", apsEnvironment: "sandbox" as const }),
+        aggregate: kind === "live_activity_update" ? aggregate : null,
+        ...(kind === "push_notification"
+          ? {
+              notification: {
+                title: "Thread",
+                body: "Input: Project",
+                environmentId: "env",
+                threadId: "thread",
+                deepLink: "/",
+              },
+            }
+          : {}),
+        createdAt: "1970-01-01T00:00:00.000Z",
+        expiresAt: "1970-01-01T00:10:00.000Z",
+        jobId: `metadata-${kind}-${changed}`,
       });
-    }
+      const signed = signApnsDeliveryJob({
+        secret: config.apnsDeliveryJobSigningSecret,
+        payload,
+      });
+      return Effect.gen(function* () {
+        const deliveries = yield* ApnsDeliveries.ApnsDeliveries;
+        const result = yield* deliveries.processSignedJob(signed);
+        expect(result.ok).toBe(true);
+        expect(requests).toHaveLength(1);
+        expect(requests[0]?.url).toBe(
+          `${changed === "environment" ? "https://api.push.apple.com" : "https://api.sandbox.push.apple.com"}/3/device/unchanged-token`,
+        );
+        expect(requests[0]?.headers["apns-topic"]).toBe(
+          `${changed === "bundle" ? "com.t3tools.t3code.preview" : "com.t3tools.t3code.dev"}${kind === "live_activity_update" ? ".push-type.liveactivity" : ""}`,
+        );
+      }).pipe(
+        Effect.provide(
+          makeLayer({
+            attempts,
+            config: signingConfig,
+            currentTargets: [
+              {
+                ...target,
+                push_token: "unchanged-token",
+                activity_push_token: "unchanged-token",
+                bundle_id:
+                  changed === "bundle" ? "com.t3tools.t3code.preview" : "com.t3tools.t3code.dev",
+                aps_environment: changed === "environment" ? "production" : "sandbox",
+              },
+            ],
+            execute: (request) =>
+              Effect.sync(() => {
+                requests.push(request);
+                return HttpClientResponse.fromWeb(request, new Response("", { status: 200 }));
+              }),
+          }),
+        ),
+      );
+    });
   }
 });

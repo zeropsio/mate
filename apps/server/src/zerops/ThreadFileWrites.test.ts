@@ -44,9 +44,9 @@ const writtenFile = (path: string, writes: ReadonlyArray<CompletedWrite>) =>
     .writtenFile({ threadId: THREAD, path })
     .pipe(
       Effect.map((file) => ({ shown: file }) as const),
-      Effect.catchTag("ThreadFileWritesError", (error) =>
-        Effect.succeed({ refused: error.reason } as const),
-      ),
+      Effect.catchTags({
+        ThreadFileWritesError: (error) => Effect.succeed({ refused: error.reason } as const),
+      }),
     );
 
 describe("writtenFile — the Files tab's view of a file the agent wrote outside the workspace", () => {

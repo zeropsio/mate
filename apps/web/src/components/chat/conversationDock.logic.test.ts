@@ -1,3 +1,4 @@
+import { projectLatestUsagePause } from "@t3tools/client-runtime/data";
 import type {
   AgentPanelModel,
   RuntimeSubagent,
@@ -16,7 +17,6 @@ import {
   withEndingsHeld,
   dockHelpers,
   foldBackgroundTasks,
-  latestUsagePause,
   type DockModel,
 } from "./conversationDock.logic";
 
@@ -630,7 +630,7 @@ describe("latestUsagePause", () => {
     ["an ordinary answer", [assistant("a1", "t1", 48, "Deployed.")], false],
     ["nothing yet", [], false],
   ])("%s", (_label, entries, paused) => {
-    expect(latestUsagePause(entries) !== null).toBe(paused);
+    expect(projectLatestUsagePause(entries) !== null).toBe(paused);
   });
 });
 

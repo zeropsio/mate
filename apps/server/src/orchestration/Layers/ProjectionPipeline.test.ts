@@ -560,7 +560,6 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-base-")))(
             WHERE message_id = 'message-attachments'
           `;
         assert.equal(rows.length, 1);
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
           {
             type: "image",
@@ -634,7 +633,6 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
             WHERE message_id = 'message-attachments-safe'
           `;
         assert.equal(rows.length, 1);
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
           {
             type: "image",
@@ -779,7 +777,6 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           WHERE message_id = 'message-clear-attachments'
         `;
         assert.equal(rows.length, 1);
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), []);
       }),
   );
@@ -915,7 +912,6 @@ it.layer(
               WHERE message_id = 'message-overwrite'
             `;
       assert.equal(rows.length, 1);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
         {
           type: "image",

@@ -249,18 +249,21 @@ const goldenCases: ReadonlyArray<GoldenCase> = [
 ];
 
 describe("the bridge over every SPI golden", () => {
-  for (const golden of goldenCases) {
-    it(`${golden.driver}/${golden.name} [${golden.mark}]: ${golden.title}`, () => {
-      const events = readGolden(golden.dir, golden.name);
-      const { signals } = run(
-        golden.driver,
-        String(events[0]!.threadId),
-        commandLogAround(golden.driver, events),
-      );
-      assert.isUndefined(integrityBreach(signals));
-      assert.deepStrictEqual(signalLines(signals), golden.lines);
-    });
-  }
+  it.each(
+    Array.from(goldenCases, (golden) => ({
+      title: `${golden.driver}/${golden.name} [${golden.mark}]: ${golden.title}`,
+      golden,
+    })),
+  )("$title", ({ golden }) => {
+    const events = readGolden(golden.dir, golden.name);
+    const { signals } = run(
+      golden.driver,
+      String(events[0]!.threadId),
+      commandLogAround(golden.driver, events),
+    );
+    assert.isUndefined(integrityBreach(signals));
+    assert.deepStrictEqual(signalLines(signals), golden.lines);
+  });
 
   it("claudeAgent/plain-text-turn [recorded]: the text item carries every word the agent streamed, in order", () => {
     const events = readGolden("claude", "plain-text-turn");
@@ -959,27 +962,33 @@ const SCENARIOS = [
   ["a usage limit mid-turn", usageLimit],
 ] as const;
 
-for (const [scenario, make] of SCENARIOS) {
-  describe(scenario, () => {
-    for (const driver of DRIVERS) {
-      const script = make(driver);
-      it(`${driver} [scripted]: ${script.title}`, () => {
-        assert.deepStrictEqual(runScript(driver, script.inputs), script.lines);
-      });
-    }
-  });
-}
+describe.each(Array.from(SCENARIOS, ([scenario, make]) => ({ title: scenario, make })))(
+  "$title",
+  ({ make }) => {
+    it.each(
+      Array.from(DRIVERS, (driver) => {
+        const script = make(driver);
+        return { title: `${driver} [scripted]: ${script.title}`, driver, script };
+      }),
+    )("$title", ({ driver, script }) => {
+      assert.deepStrictEqual(runScript(driver, script.inputs), script.lines);
+    });
+  },
+);
 
 describe("a restart mid-turn", () => {
-  for (const driver of DRIVERS) {
-    const { before, after } = restartMidTurn(driver);
-    it(`${driver} [scripted]: ${before.title}`, () => {
-      assert.deepStrictEqual(runScript(driver, before.inputs), before.lines);
-    });
-    it(`${driver} [scripted]: ${after.title}`, () => {
-      assert.deepStrictEqual(runScript(driver, after.inputs), after.lines);
-    });
-  }
+  it.each(
+    Array.from(DRIVERS, (driver) => {
+      const { before, after } = restartMidTurn(driver);
+      return [before, after].map((script) => ({
+        title: `${driver} [scripted]: ${script.title}`,
+        driver,
+        script,
+      }));
+    }).flat(),
+  )("$title", ({ driver, script }) => {
+    assert.deepStrictEqual(runScript(driver, script.inputs), script.lines);
+  });
 });
 
 describe("the fold's rules", () => {
@@ -1577,50 +1586,40 @@ describe("real adapters, driven by a mock or an authored wire", () => {
     );
   });
 
-  for (const driver of ["cursor", "grok"] as const) {
-    it(
-      `${driver} [mock]: Stop during a tool call is a local cancel the agent never confirms`,
-      { timeout: 30_000 },
-      async () => {
-        assert.deepStrictEqual(
-          await record(
-            driver,
-            recordAcp(
-              driver,
-              { T3_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1" },
-              { kind: "stop-mid-tool" },
-            ),
-          ),
-          [
-            ...OPENS_H1,
-            "h1.i1 tool command_execution running ×2",
-            "h1.i1 tool command_execution unreturned",
-            "h1 ended interrupted — stop-asked",
-          ],
-        );
-      },
+  it.each(
+    Array.from(["cursor", "grok"] as const, (driver) => ({
+      title: `${driver} [mock]: Stop during a tool call is a local cancel the agent never confirms`,
+      driver,
+    })),
+  )("$title", { timeout: 30_000 }, async ({ driver }) => {
+    assert.deepStrictEqual(
+      await record(
+        driver,
+        recordAcp(driver, { T3_ACP_EMIT_ACTIVE_TOOL_THEN_HANG: "1" }, { kind: "stop-mid-tool" }),
+      ),
+      [
+        ...OPENS_H1,
+        "h1.i1 tool command_execution running ×2",
+        "h1.i1 tool command_execution unreturned",
+        "h1 ended interrupted — stop-asked",
+      ],
     );
-  }
+  });
 
-  for (const driver of ["cursor", "antigravity"] as const) {
-    it(
-      `${driver} [mock]: the agent dying on its prompt ends the turn cut by the process exit, as the adapter says, and closes the session`,
-      { timeout: 30_000 },
-      async () => {
-        assert.deepStrictEqual(
-          await record(
-            driver,
-            recordAcp(
-              driver,
-              { T3_ACP_CRASH_ONCE_PATH: await crashOncePath() },
-              { kind: "until-end" },
-            ),
-          ),
-          [...OPENS_H1, "h1 ended cut: process-exit — agent", "session s1 closed: process-exit"],
-        );
-      },
+  it.each(
+    Array.from(["cursor", "antigravity"] as const, (driver) => ({
+      title: `${driver} [mock]: the agent dying on its prompt ends the turn cut by the process exit, as the adapter says, and closes the session`,
+      driver,
+    })),
+  )("$title", { timeout: 30_000 }, async ({ driver }) => {
+    assert.deepStrictEqual(
+      await record(
+        driver,
+        recordAcp(driver, { T3_ACP_CRASH_ONCE_PATH: await crashOncePath() }, { kind: "until-end" }),
+      ),
+      [...OPENS_H1, "h1 ended cut: process-exit — agent", "session s1 closed: process-exit"],
     );
-  }
+  });
 
   it(
     "grok [mock]: a monitor outlives its turn and ends after it",

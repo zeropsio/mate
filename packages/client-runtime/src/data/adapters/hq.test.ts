@@ -126,31 +126,39 @@ const navigationRequests = (fixture: HqFixtureWire, segment: number) =>
     .map(({ request }) => request);
 
 describe("hqNavigationLink", () => {
-  for (const { name, core, updateRequired } of [
-    { name: "undeclared", core: undefined, updateRequired: true },
-    { name: "unreadable", core: { protocol: "bad" }, updateRequired: true },
-    { name: "older", core: { protocol: 0, build: "old" }, updateRequired: true },
-    { name: "supported", core: { protocol: 1, build: "current" }, updateRequired: false },
-    { name: "newer", core: { protocol: 2, build: "new" }, updateRequired: false },
-  ])
-    it.effect(`reads a ${name} Core declaration without discarding navigation`, () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* run(store, fixture);
-        yield* fixture.send(
-          navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
-        );
-        yield* fixture.send({ ...ready(1), core });
-        yield* settle;
-        expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
-          updateRequired,
-        });
-        expect(appName(store, "shop")).toBe("Shop");
-        expect(fixture.sent).toHaveLength(1);
-        yield* Fiber.interrupt(fiber);
+  it.effect.each(
+    Array.from(
+      [
+        { name: "undeclared", core: undefined, updateRequired: true },
+        { name: "unreadable", core: { protocol: "bad" }, updateRequired: true },
+        { name: "older", core: { protocol: 0, build: "old" }, updateRequired: true },
+        { name: "supported", core: { protocol: 1, build: "current" }, updateRequired: false },
+        { name: "newer", core: { protocol: 2, build: "new" }, updateRequired: false },
+      ],
+      ({ name, core, updateRequired }) => ({
+        title: `reads a ${name} Core declaration without discarding navigation`,
+        core,
+        updateRequired,
       }),
-    );
+    ),
+  )("$title", ({ core, updateRequired }) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* run(store, fixture);
+      yield* fixture.send(
+        navigation("scope-reset", 1, [{ key: "app:shop", value: app("shop", "Shop") }]),
+      );
+      yield* fixture.send({ ...ready(1), core });
+      yield* settle;
+      expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
+        updateRequired,
+      });
+      expect(appName(store, "shop")).toBe("Shop");
+      expect(fixture.sent).toHaveLength(1);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 
   it.effect("accepts a Core declaration even when navigation has not changed", () =>
     Effect.gen(function* () {

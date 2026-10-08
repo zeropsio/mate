@@ -192,13 +192,13 @@ const readServiceEnv = Effect.fn("ZeropsAgentFlag.readEnv")(function* (input: {
       token,
     }),
   ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
+    Effect.catchTags({
+      ZeropsApiUnavailableError: () => Effect.succeed({ token: undefined, response: undefined }),
+    }),
   );
   if (response === undefined || response.status !== 200) return undefined;
   const body = yield* readJson(response).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
+    Effect.catchTags({ ZeropsApiUnavailableError: () => Effect.succeed(undefined) }),
   );
   return readServiceEnvRows(body);
 });
@@ -232,15 +232,15 @@ const createUserDataRow = Effect.fn("ZeropsAgentFlag.createRow")(function* (inpu
       body: { key: input.key, content: input.content, sensitive: false },
     }),
   ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
+    Effect.catchTags({
+      ZeropsApiUnavailableError: () => Effect.succeed({ token: undefined, response: undefined }),
+    }),
   );
   if (response === undefined || response.status !== 200) {
     return yield* new ZeropsAgentFlagError({ reason: `Could not write ${input.key}.` });
   }
   const body = yield* readJson(response).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
+    Effect.catchTags({ ZeropsApiUnavailableError: () => Effect.succeed(undefined) }),
   );
   if (
     typeof body !== "object" ||
@@ -269,9 +269,9 @@ const deleteUserDataRow = Effect.fn("ZeropsAgentFlag.deleteRow")(function* (inpu
   const { response } = yield* requestWithMateKey(mateKey, (token) =>
     zeropsDelete({ url: `${input.apiBaseUrl}/user-data/${encodeURIComponent(input.id)}`, token }),
   ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
+    Effect.catchTags({
+      ZeropsApiUnavailableError: () => Effect.succeed({ token: undefined, response: undefined }),
+    }),
   );
   if (response === undefined || response.status !== 200) {
     return yield* new ZeropsAgentFlagError({ reason: `Could not delete row ${input.id}.` });

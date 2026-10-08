@@ -259,11 +259,12 @@ describe("parseProjectsSearch", () => {
     ["an empty group names none", { group: "" }, {}],
     ["a group that is not a string names none", { group: 7 }, {}],
   ];
-  for (const [name, raw, expected] of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ([name, raw, expected]) => ({ title: name, raw, expected })))(
+    "$title",
+    ({ raw, expected }) => {
       expect(parseProjectsSearch(raw)).toEqual(expected);
-    });
-  }
+    },
+  );
 });
 
 describe("nextStepAwaitsSomebody", () => {
@@ -320,11 +321,12 @@ describe("the ungrouped containers' one line", () => {
       0,
     ],
   ];
-  for (const [name, kinds, line, retry] of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ([name, kinds, line, retry]) => ({ title: name, kinds, line, retry })))(
+    "$title",
+    ({ kinds, line, retry }) => {
       expect(containersSummary(kinds)).toEqual({ line, retry });
-    });
-  }
+    },
+  );
 });
 
 describe("lastMergedCode", () => {
@@ -470,17 +472,23 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       undefined,
     ],
   ];
-  for (const [name, group, found, conversationsRead, talked] of cases) {
-    it(name, () => {
-      const [facts] = groupMemberFactsOf(
-        [{ item: mate(group), role: "dev" }],
-        () => found,
-        () => conversationsRead,
-        () => false,
-      );
-      expect(facts?.mate?.talked).toBe(talked);
-    });
-  }
+  it.each(
+    Array.from(cases, ([name, group, found, conversationsRead, talked]) => ({
+      title: name,
+      group,
+      found,
+      conversationsRead,
+      talked,
+    })),
+  )("$title", ({ group, found, conversationsRead, talked }) => {
+    const [facts] = groupMemberFactsOf(
+      [{ item: mate(group), role: "dev" }],
+      () => found,
+      () => conversationsRead,
+      () => false,
+    );
+    expect(facts?.mate?.talked).toBe(talked);
+  });
 
   // A Mate asking waits on the viewer only when HQ says it does (`waitsOnViewer`): the overview's
   // "is waiting on an answer" step says what the group's detail and the menu say.

@@ -12,7 +12,8 @@
  *
  * @module coreIdentity
  */
-import * as NodeCrypto from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 
 /** The stamp a Core bundle is built with, replaced by its identity once that is known. */
 export const CORE_BUILD_PLACEHOLDER = "hq-core-build-placeholder";
@@ -24,11 +25,14 @@ export function coreIdentity(input: {
   readonly bundle: string;
   readonly zeropsYaml: string;
 }): string {
-  const digest = NodeCrypto.createHash("sha256")
-    .update(input.bundle)
-    .update(input.zeropsYaml)
-    .digest("hex")
-    .slice(0, 12);
+  const encoder = new TextEncoder();
+  const digest = Hex.encode(
+    sha256
+      .create()
+      .update(encoder.encode(input.bundle))
+      .update(encoder.encode(input.zeropsYaml))
+      .digest(),
+  ).slice(0, 12);
   return `${input.committedAt}.${digest}`;
 }
 

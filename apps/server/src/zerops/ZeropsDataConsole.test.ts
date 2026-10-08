@@ -212,11 +212,15 @@ describe("ZeropsDataConsole", () => {
       { source: "1.5", expected: 1.5 },
       { source: "42", expected: 42 },
     ];
-    for (const { source, expected } of cases) {
-      it(`parses ${source} as ${JSON.stringify(expected)}`, () => {
-        expect(parseConsoleJson(`{"value":${source}}`)).toEqual({ value: expected });
-      });
-    }
+    it.each(
+      Array.from(cases, ({ source, expected }) => ({
+        title: `parses ${source} as ${JSON.stringify(expected)}`,
+        source,
+        expected,
+      })),
+    )("$title", ({ source, expected }) => {
+      expect(parseConsoleJson(`{"value":${source}}`)).toEqual({ value: expected });
+    });
 
     it("preserves an unsafe integer inside a table cell array", () => {
       expect(parseConsoleJson('{"rows":[[9007199254740993,"alice"]]}')).toEqual({
@@ -235,27 +239,38 @@ describe("ZeropsDataConsole", () => {
       { url: "http://evil.example.com:54321", loopback: false },
       { url: "not a url", loopback: false },
     ];
-    for (const { url, loopback } of cases) {
-      it(`${loopback ? "accepts" : "rejects"} ${url}`, () => {
-        expect(isLoopbackReadyUrl(url)).toBe(loopback);
-      });
-    }
+    it.each(
+      Array.from(cases, ({ url, loopback }) => ({
+        title: `${loopback ? "accepts" : "rejects"} ${url}`,
+        url,
+        loopback,
+      })),
+    )("$title", ({ url, loopback }) => {
+      expect(isLoopbackReadyUrl(url)).toBe(loopback);
+    });
   });
 
   describe("startupFailureReason", () => {
-    for (const [stderr, reason] of [
-      ["unknown studio subcommand: console\n\n", "unknown studio subcommand: console"],
-      [
-        "listen tcp 127.0.0.1:0: bind: permission denied",
-        "listen tcp 127.0.0.1:0: bind: permission denied",
-      ],
-      ["open /var/www/.zcp/state.json: no such file", "open <path>: no such file"],
-      ["", undefined],
-    ] as const) {
-      it(`reads ${JSON.stringify(stderr)} as ${String(reason)}`, () => {
-        expect(startupFailureReason(stderr)).toBe(reason);
-      });
-    }
+    it.each(
+      Array.from(
+        [
+          ["unknown studio subcommand: console\n\n", "unknown studio subcommand: console"],
+          [
+            "listen tcp 127.0.0.1:0: bind: permission denied",
+            "listen tcp 127.0.0.1:0: bind: permission denied",
+          ],
+          ["open /var/www/.zcp/state.json: no such file", "open <path>: no such file"],
+          ["", undefined],
+        ] as const,
+        ([stderr, reason]) => ({
+          title: `reads ${JSON.stringify(stderr)} as ${String(reason)}`,
+          stderr,
+          reason,
+        }),
+      ),
+    )("$title", ({ stderr, reason }) => {
+      expect(startupFailureReason(stderr)).toBe(reason);
+    });
 
     it("caps the reason at 120 characters", () => {
       expect(startupFailureReason("x".repeat(200))?.length).toBe(120);

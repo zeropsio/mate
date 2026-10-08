@@ -409,55 +409,56 @@ describe("RpcSessionFactory", () => {
     ),
   );
 
-  for (const options of [{ usageLimitSources: true }]) {
-    it.effect(
-      `shares only a config subscription with the same opt-ins: ${JSON.stringify(options)}`,
-      () =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const { factory, sockets } = yield* makeFactory(options);
-            const session = yield* factory.connect(PREPARED);
-            const readyFiber = yield* Effect.forkChild(session.ready);
-            const socket = yield* awaitSocket(sockets);
-            socket.open();
-            yield* completeInitialConfig(socket, ENCODED_SERVER_CONFIG, options);
-            yield* Fiber.join(readyFiber);
+  it.effect.each(
+    Array.from([{ usageLimitSources: true }], (options) => ({
+      title: `shares only a config subscription with the same opt-ins: ${JSON.stringify(options)}`,
+      options,
+    })),
+  )("$title", ({ options }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { factory, sockets } = yield* makeFactory(options);
+        const session = yield* factory.connect(PREPARED);
+        const readyFiber = yield* Effect.forkChild(session.ready);
+        const socket = yield* awaitSocket(sockets);
+        socket.open();
+        yield* completeInitialConfig(socket, ENCODED_SERVER_CONFIG, options);
+        yield* Fiber.join(readyFiber);
 
-            const shared = yield* session.subscribeServerConfig(options).pipe(Stream.runHead);
-            expect(shared).toMatchObject({ _tag: "Some", value: { type: "snapshot" } });
-            expect(
-              socket.sent.map((message) => decodeJson(message)).filter(isRpcRequest),
-            ).toHaveLength(1);
+        const shared = yield* session.subscribeServerConfig(options).pipe(Stream.runHead);
+        expect(shared).toMatchObject({ _tag: "Some", value: { type: "snapshot" } });
+        expect(socket.sent.map((message) => decodeJson(message)).filter(isRpcRequest)).toHaveLength(
+          1,
+        );
 
-            const fallbackFiber = yield* session
-              .subscribeServerConfig({})
-              .pipe(Stream.runHead, Effect.forkChild);
-            const fallbackRequest = yield* awaitRequest(socket, 1);
-            expect(fallbackRequest).toMatchObject({
-              tag: WS_METHODS.subscribeServerConfig,
-              payload: {},
-            });
-            socket.serverMessage(
-              encodeJson({
-                _tag: "Chunk",
-                requestId: fallbackRequest.id,
-                values: [
-                  {
-                    version: 1,
-                    type: "snapshot",
-                    config: ENCODED_SERVER_CONFIG,
-                  },
-                ],
-              }),
-            );
-            expect(yield* Fiber.join(fallbackFiber)).toMatchObject({
-              _tag: "Some",
-              value: { type: "snapshot" },
-            });
+        const fallbackFiber = yield* session
+          .subscribeServerConfig({})
+          .pipe(Stream.runHead, Effect.forkChild);
+        const fallbackRequest = yield* awaitRequest(socket, 1);
+        expect(fallbackRequest).toMatchObject({
+          tag: WS_METHODS.subscribeServerConfig,
+          payload: {},
+        });
+        socket.serverMessage(
+          encodeJson({
+            _tag: "Chunk",
+            requestId: fallbackRequest.id,
+            values: [
+              {
+                version: 1,
+                type: "snapshot",
+                config: ENCODED_SERVER_CONFIG,
+              },
+            ],
           }),
-        ),
-    );
-  }
+        );
+        expect(yield* Fiber.join(fallbackFiber)).toMatchObject({
+          _tag: "Some",
+          value: { type: "snapshot" },
+        });
+      }),
+    ),
+  );
 
   it.effect.each([{ usageLimitSources: true }])(
     "replays usage sources, removal, and capability downgrade with %j",

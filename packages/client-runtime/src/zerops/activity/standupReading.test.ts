@@ -347,8 +347,9 @@ describe("readStandup — each service a stand-up call builds, from the project'
     },
   ];
 
-  for (const testCase of cases) {
-    it(testCase.name, () => {
+  it.each(Array.from(cases, (testCase) => ({ title: testCase.name, testCase })))(
+    "$title",
+    ({ testCase }) => {
       const reading = readStandup({
         half: testCase.half,
         ...(testCase.expected === undefined ? {} : { expected: testCase.expected }),
@@ -371,8 +372,8 @@ describe("readStandup — each service a stand-up call builds, from the project'
         up: reading.up,
         failed: reading.failed,
       }).toEqual(testCase.counts);
-    });
-  }
+    },
+  );
 
   it("a row's start never moves later: a queued build counts from when it was made", () => {
     const { started: _started, ...pending } = build("s-apidev", "PENDING", { created: at(1) });

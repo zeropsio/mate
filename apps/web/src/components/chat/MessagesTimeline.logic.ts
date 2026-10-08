@@ -1,5 +1,5 @@
 import { type MateLimit } from "@t3tools/client-runtime/data";
-import { readUsageLimitNotice, usageLimitProvider } from "../../zerops/providerLimit.logic";
+import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
@@ -42,7 +42,6 @@ import {
   isImageOnlyPlaceholder,
   isQuestionToolCall,
   isResumePrompt,
-  isUsageLimitError,
   isUserMessageEntry,
   messageReceipt,
   crewCardOf,
@@ -2117,6 +2116,7 @@ export function deriveMessagesTimelineRows(input: {
     runningTurnId: input.runningTurnId ?? null,
     isWorking: input.isWorking,
     activeTurnStartedAt: input.activeTurnStartedAt,
+    provider: input.provider,
     ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
     // The helpers a run launched work on with no turn running: it waits on
     // them. The server's live tasks say which — a moment past their end
@@ -2196,22 +2196,8 @@ export function deriveMessagesTimelineRows(input: {
       if (turn.span.opener === null) foldedTurnKeys.add(turn.key);
       continue;
     }
-    // The pause sits where the limit struck: its own error row, else the notice.
-    const limitError = turn.stretches
-      .flatMap((stretch) => stretch.entries)
-      .findLast(
-        (entry) =>
-          isUsageLimitError(entry) ||
-          (entry.kind === "work" && entry.entry.usageLimit !== undefined),
-      );
-    const provider = usageLimitProvider(
-      limitError?.kind === "work"
-        ? (limitError.entry.detail ?? limitError.entry.label)
-        : turn.answer?.message.text,
-      input.provider,
-    );
-    const answerAt =
-      limitError?.createdAt ?? turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;
+    const provider = turn.limit.provider;
+    const answerAt = turn.limit.createdAt;
     const row: Extract<MessagesTimelineRow, { kind: "pause" }> = {
       kind: "pause",
       id: `pause:${turn.key}`,
@@ -2501,11 +2487,7 @@ export function deriveMessagesTimelineRows(input: {
     }
 
     // An answer that is the limit's own notice is the pause's to tell.
-    const answer =
-      turn.answer !== null &&
-      readUsageLimitNotice(turn.answer.message.text, turn.answer.message.createdAt) === null
-        ? turn.answer
-        : null;
+    const answer = turn.answerIsRefusal ? null : turn.answer;
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
     const pausedHere = pause !== null || turn.limitOnly;
 

@@ -266,11 +266,14 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             }),
           )
           .pipe(
-            Effect.catchTag("SqlError", (sqlError) =>
-              Effect.fail(
-                toPersistenceSqlError("OrchestrationEngine.processEnvelope:transaction")(sqlError),
-              ),
-            ),
+            Effect.catchTags({
+              SqlError: (sqlError) =>
+                Effect.fail(
+                  toPersistenceSqlError("OrchestrationEngine.processEnvelope:transaction")(
+                    sqlError,
+                  ),
+                ),
+            }),
           );
 
         const committedCommand = yield* transaction.pipe(

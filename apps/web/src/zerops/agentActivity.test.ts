@@ -1,3 +1,4 @@
+import { MateOverview } from "@t3tools/shared/mateLink";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -1048,6 +1049,49 @@ describe("a provider refusal in the menu", () => {
     vi.setSystemTime(new Date("2026-10-08T10:00:00Z"));
     expect(threadAgentActivity(thread, undefined).usageLimited).toBe(false);
   });
+  it.each([-1, 0])(
+    "a cold menu reads typed HQ refusal at reset offset %j without a new delivery",
+    (offset) => {
+      const overview = decodeOverview(
+        JSON.parse(
+          JSON.stringify({
+            identity: { environmentId: "env-vera", serverVersion: "0.1.0", update: null },
+            main: {
+              ...refused(),
+              backgroundLiveness: null,
+              latestUserMessagePreview: null,
+              planProgress: null,
+              pendingQuestion: null,
+              usagePause: null,
+              liveStep: null,
+              session: { status: "stopped", lastError: null },
+              refusal: {
+                turnId: "turn-1",
+                provider: "Claude",
+                resetsAt: "2026-10-07T02:00:00.000Z",
+              },
+            },
+            threads: { list: [], omitted: 0 },
+            logins: {},
+            crew: { status: "off" },
+          }),
+        ),
+      );
+      const main = overview.main;
+      if (main === null) throw new Error("Expected main conversation");
+      const read = threadAgentActivity(
+        { ...main, environmentId: EnvironmentId.make("env-vera") },
+        undefined,
+        Date.parse("2026-10-07T02:00:00.000Z") + offset,
+      );
+      expect(read.usageLimited).toBe(offset < 0);
+      expect(read.kind).toBe(offset < 0 ? "failed" : "idle");
+      expect(read.limitHistory).toEqual({
+        provider: "Claude",
+        resetsAt: "2026-10-07T02:00:00.000Z",
+      });
+    },
+  );
   it("a parked SDK refusal expires without an assistant preview or another provider event", () => {
     const thread = refused();
     const parked = {
@@ -1084,6 +1128,8 @@ describe("a provider refusal in the menu", () => {
     expect(read.face).toBe("working");
   });
 });
+
+const decodeOverview = Schema.decodeUnknownSync(MateOverview);
 
 const ENV = EnvironmentId.make("env-vera");
 const STARTED = Date.parse("2026-10-08T09:00:00.000Z");

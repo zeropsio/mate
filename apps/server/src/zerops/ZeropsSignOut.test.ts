@@ -342,25 +342,32 @@ const shell = (
 });
 
 describe("threadsToStop, an agent's own login", () => {
-  for (const [name, status, expected] of [
-    ["idle", "idle", true],
-    ["starting", "starting", true],
-    ["running", "running", true],
-    ["ready", "ready", true],
-    ["interrupted", "interrupted", true],
-    ["stopped", "stopped", false],
-    ["error", "error", true],
-  ] as const) {
-    it(`${expected ? "stops" : "leaves"} a thread whose session status is ${name}`, () => {
-      const threads = [
-        shell({ id: THREAD_ID_1, session: { ...shell({}).session, status } as never }),
-      ];
-      assert.deepStrictEqual(
-        threadsToStop(threads, { agentId: "claude-code" }),
-        expected ? [THREAD_ID_1] : [],
-      );
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        ["idle", "idle", true],
+        ["starting", "starting", true],
+        ["running", "running", true],
+        ["ready", "ready", true],
+        ["interrupted", "interrupted", true],
+        ["stopped", "stopped", false],
+        ["error", "error", true],
+      ] as const,
+      ([name, status, expected]) => ({
+        title: `${expected ? "stops" : "leaves"} a thread whose session status is ${name}`,
+        status,
+        expected,
+      }),
+    ),
+  )("$title", ({ status, expected }) => {
+    const threads = [
+      shell({ id: THREAD_ID_1, session: { ...shell({}).session, status } as never }),
+    ];
+    assert.deepStrictEqual(
+      threadsToStop(threads, { agentId: "claude-code" }),
+      expected ? [THREAD_ID_1] : [],
+    );
+  });
 
   it("leaves a thread with no session at all", () => {
     const threads = [shell({ id: THREAD_ID_1, session: null })];

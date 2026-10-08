@@ -132,6 +132,23 @@ describe("mateLink", () => {
     });
   });
 
+  it.each([
+    undefined,
+    null,
+    { turnId: "refused", provider: "Claude", resetsAt: "2026-10-10T02:00:00.123Z" },
+  ])(
+    "preserves absent legacy evidence, explicit recovery and typed refusal in full and partial overviews: %j",
+    (refusal) => {
+      const main = { ...overview.main, ...(refusal === undefined ? {} : { refusal }) };
+      for (const frame of [
+        { type: "overview", full: true, overview: { ...overview, main } },
+        { type: "overview", full: false, sections: { main } },
+      ]) {
+        expect(readLinkUp(JSON.stringify(frame))).toEqual({ kind: "message", message: frame });
+      }
+    },
+  );
+
   it("carries a crew's status, and its digest only once one is applied", () => {
     const crewOf = (crew: unknown) => {
       const decoded = decodeUp(
@@ -255,6 +272,14 @@ describe("mateLink", () => {
     const { crew: _crew, ...partial } = overview;
     for (const frame of [
       JSON.stringify({ type: "overview", full: true, overview: long }),
+      ...[{ provider: "Claude", turnId: null, resetsAt: 42 }, { provider: "Claude" }].map(
+        (refusal) =>
+          JSON.stringify({
+            type: "overview",
+            full: false,
+            sections: { main: { ...overview.main, refusal } },
+          }),
+      ),
       JSON.stringify({ type: "overview", full: true, overview: partial }),
       JSON.stringify({ type: "overview", full: false, overview }),
       JSON.stringify({ kind: "overview" }),

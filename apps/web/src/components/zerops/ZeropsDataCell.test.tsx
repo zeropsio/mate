@@ -36,16 +36,17 @@ describe("ZeropsDataCell", () => {
     },
   ];
 
-  for (const testCase of cases) {
-    it(`renders ${testCase.name} as one line${testCase.expander ? " with an expander" : ""}`, () => {
-      const tree = ZeropsDataCell({ value: testCase.value, onExpand: vi.fn() });
-      expect(visitElements(tree, (el) => el.props.children === testCase.oneLine)).not.toBeNull();
-      expect(findByAttribute(tree, "data-zerops-data-cell-expand") !== null).toBe(
-        testCase.expander,
-      );
-      expect(cellNeedsExpander(testCase.value)).toBe(testCase.expander);
-    });
-  }
+  it.each(
+    Array.from(cases, (testCase) => ({
+      title: `renders ${testCase.name} as one line${testCase.expander ? " with an expander" : ""}`,
+      testCase,
+    })),
+  )("$title", ({ testCase }) => {
+    const tree = ZeropsDataCell({ value: testCase.value, onExpand: vi.fn() });
+    expect(visitElements(tree, (el) => el.props.children === testCase.oneLine)).not.toBeNull();
+    expect(findByAttribute(tree, "data-zerops-data-cell-expand") !== null).toBe(testCase.expander);
+    expect(cellNeedsExpander(testCase.value)).toBe(testCase.expander);
+  });
 
   it("drops the expander when the caller wired no handler", () => {
     const tree = ZeropsDataCell({ value: LONG_TEXT, onExpand: undefined });

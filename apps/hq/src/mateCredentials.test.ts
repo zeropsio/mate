@@ -264,11 +264,12 @@ describe("enrollmentVerdict", () => {
       verdict: { kind: "issue", pin: null },
     },
   ];
-  for (const { name, verdict, ...input } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, verdict, ...input }) => ({ title: name, verdict, input })))(
+    "$title",
+    ({ verdict, input }) => {
       assert.deepStrictEqual(enrollmentVerdict(input), verdict);
-    });
-  }
+    },
+  );
 });
 
 describe("mate credentials", () => {

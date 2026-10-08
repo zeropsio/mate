@@ -1,5 +1,6 @@
 /** Read-only remote observations. No init, fetch, checkout, config or FUSE calls. */
-import * as NodeCrypto from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -39,9 +40,9 @@ export type ZeropsWorkspaceObservation =
       readonly observedAt: string;
     };
 export const workspaceRootId = (projectId: string, serviceId: string, remotePath: string): string =>
-  `zerops:${NodeCrypto.createHash("sha256")
-    .update(JSON.stringify([projectId, serviceId, remotePath]))
-    .digest("hex")}`;
+  `zerops:${Hex.encode(
+    sha256(new TextEncoder().encode(JSON.stringify([projectId, serviceId, remotePath]))),
+  )}`;
 
 /** NUL-delimited fixed fields avoid interpreting file paths or environment as shell code. */
 export const workspaceProbeScript = (remotePath: string): string => `

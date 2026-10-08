@@ -477,7 +477,7 @@ export const installDoorRegistration = Effect.fn("zerops.identityExchange.instal
     yield* registry
       .rotateCredential(registration.target.environmentId, registration.credential)
       .pipe(
-        Effect.catchTag("EnvironmentNotRegisteredError", () => registry.register(registration)),
+        Effect.catchTags({ EnvironmentNotRegisteredError: () => registry.register(registration) }),
       );
   },
 );

@@ -193,15 +193,14 @@ export const mateCredentialsLayer = (options: {
         read: (credential: Redacted.Redacted) => Effect.Effect<A, ZeropsError>,
       ) =>
         Effect.flatMap(own, read).pipe(
-          Effect.catchTag(
-            "ZeropsRefused",
-            (error): Effect.Effect<never, MateRefused | ZeropsRefused> =>
+          Effect.catchTags({
+            ZeropsRefused: (error): Effect.Effect<never, MateRefused | ZeropsRefused> =>
               error.reason === "not_found"
                 ? Effect.fail(new MateRefused({ code: "project_gone" }))
                 : error.reason === "forbidden"
                   ? Effect.fail(new MateRefused({ code: "project_not_in_org" }))
                   : Effect.fail(error),
-          ),
+          }),
         );
       /** Whether HQ holds the project as a Mate now, over the org as a write is decided. */
       const enrollable = (projectId: string) =>
@@ -233,7 +232,7 @@ export const mateCredentialsLayer = (options: {
           return yield* grants(credential).pipe(
             // The one definition the client's harden shares, so the two never loop.
             Effect.map((projects) => mateKeyReach(projects, projectId)),
-            Effect.catchTag("ZeropsRefused", () => Effect.succeed("none" as const)),
+            Effect.catchTags({ ZeropsRefused: () => Effect.succeed("none" as const) }),
           );
         });
       /**
@@ -290,7 +289,9 @@ export const mateCredentialsLayer = (options: {
       const serviceGone = (serviceId: string) =>
         Effect.flatMap(own, (credential) => api.service(serviceId)(credential)).pipe(
           Effect.map((service) => GONE_SERVICE_STATUSES.has(service.status)),
-          Effect.catchTag("ZeropsRefused", (error) => Effect.succeed(error.reason === "not_found")),
+          Effect.catchTags({
+            ZeropsRefused: (error) => Effect.succeed(error.reason === "not_found"),
+          }),
         );
       const keyOf = (projectId: string) =>
         Effect.map(
@@ -348,7 +349,7 @@ export const mateCredentialsLayer = (options: {
               keyTokenId === undefined
                 ? ("none" as const)
                 : yield* keyReach(projectId, keyTokenId).pipe(
-                    Effect.catchTag("ZeropsUnavailable", () => Effect.succeed("none" as const)),
+                    Effect.catchTags({ ZeropsUnavailable: () => Effect.succeed("none" as const) }),
                   );
             const namedKey = reach === "own" ? keyTokenId : undefined;
             let keyWiderMoved = false;

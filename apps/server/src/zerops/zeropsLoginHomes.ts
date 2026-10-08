@@ -165,7 +165,9 @@ export const makeLoginHomes = (
           mode: 0o600,
         });
         yield* fs.rename(next, configPath);
-      }).pipe(Effect.catchTag("PlatformError", (error) => Effect.fail(unavailable(error.message))));
+      }).pipe(
+        Effect.catchTags({ PlatformError: (error) => Effect.fail(unavailable(error.message)) }),
+      );
 
     const discard: LoginHomes["discard"] = (key) => drop(pending(key));
 

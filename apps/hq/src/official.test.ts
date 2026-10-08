@@ -90,11 +90,16 @@ describe("anchorVerdict", () => {
       verdict: "ok",
     },
   ];
-  for (const { name, members, self, verdict } of cases) {
-    it(`${name}: ${verdict}`, () => {
-      assert.strictEqual(anchorVerdict(self ?? SELF, members), verdict);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, members, self, verdict }) => ({
+      title: `${name}: ${verdict}`,
+      members,
+      self,
+      verdict,
+    })),
+  )("$title", ({ members, self, verdict }) => {
+    assert.strictEqual(anchorVerdict(self ?? SELF, members), verdict);
+  });
 });
 
 describe("credentialFits", () => {
@@ -124,11 +129,11 @@ describe("credentialFits", () => {
       false,
     ],
   ];
-  for (const [name, own, fits] of cases) {
-    it(`${name}: ${String(fits)}`, () => {
-      assert.strictEqual(credentialFits(own, "ORG"), fits);
-    });
-  }
+  it.each(
+    Array.from(cases, ([name, own, fits]) => ({ title: `${name}: ${String(fits)}`, own, fits })),
+  )("$title", ({ own, fits }) => {
+    assert.strictEqual(credentialFits(own, "ORG"), fits);
+  });
 });
 
 /** A rig-like world: Core's fitting token, the HQ project, and whatever anchors a test adds. */

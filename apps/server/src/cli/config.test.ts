@@ -343,51 +343,54 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
-  for (const [configured, logged] of [
-    ["3600", ["Zerops role re-check interval is clamped."]],
-    ["300", []],
-    ["60", []],
-  ] as const) {
-    it.effect(
-      `logs once at startup only when the configured re-check interval is clamped (${configured} s)`,
-      () =>
-        Effect.gen(function* () {
-          const { join } = yield* Path.Path;
-          const messages: Array<unknown> = [];
-          const logger = Logger.make<unknown, void>((options) => {
-            messages.push(options.message);
-          });
-          yield* resolveServerConfig(
-            {
-              ...noFlags,
-              port: Option.some(3773),
-              baseDir: Option.some(join(NodeOS.tmpdir(), "t3-cli-config-role-recheck")),
-            },
-            Option.none(),
-          ).pipe(
-            Effect.provide(
-              Layer.mergeAll(
-                ConfigProvider.layer(
-                  ConfigProvider.fromEnv({
-                    env: {
-                      T3CODE_ZEROPS_PROJECT_ID: "nTV3oMB2SS634ImDJnQckg",
-                      T3CODE_ZEROPS_ROLE_RECHECK_SECONDS: configured,
-                    },
-                  }),
-                ),
-                NetService.layer,
-                Logger.layer([logger], { mergeWithExisting: false }),
-              ),
+  it.effect.each(
+    Array.from(
+      [
+        ["3600", ["Zerops role re-check interval is clamped."]],
+        ["300", []],
+        ["60", []],
+      ] as const,
+      ([configured, logged]) => ({
+        title: `logs once at startup only when the configured re-check interval is clamped (${configured} s)`,
+        configured,
+        logged,
+      }),
+    ),
+  )("$title", ({ configured, logged }) =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const messages: Array<unknown> = [];
+      const logger = Logger.make<unknown, void>((options) => {
+        messages.push(options.message);
+      });
+      yield* resolveServerConfig(
+        {
+          ...noFlags,
+          port: Option.some(3773),
+          baseDir: Option.some(join(NodeOS.tmpdir(), "t3-cli-config-role-recheck")),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: {
+                  T3CODE_ZEROPS_PROJECT_ID: "nTV3oMB2SS634ImDJnQckg",
+                  T3CODE_ZEROPS_ROLE_RECHECK_SECONDS: configured,
+                },
+              }),
             ),
-          );
+            NetService.layer,
+            Logger.layer([logger], { mergeWithExisting: false }),
+          ),
+        ),
+      );
 
-          const firstLines = messages.map((message) =>
-            Array.isArray(message) ? message[0] : message,
-          );
-          expect(firstLines.filter((line) => String(line).includes("re-check"))).toEqual(logged);
-        }),
-    );
-  }
+      const firstLines = messages.map((message) => (Array.isArray(message) ? message[0] : message));
+      expect(firstLines.filter((line) => String(line).includes("re-check"))).toEqual(logged);
+    }),
+  );
 
   const openBootstrapFd = Effect.fn(function* (payload: DesktopBackendBootstrapValue) {
     const fs = yield* FileSystem.FileSystem;
@@ -844,7 +847,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
@@ -1002,7 +1004,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",
@@ -1046,7 +1047,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       yield* fs.makeDirectory(path.dirname(derivedPaths.settingsPath), { recursive: true });
       yield* fs.writeFileString(
         derivedPaths.settingsPath,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         `${JSON.stringify({
           observability: {
             otlpTracesUrl: "http://localhost:4318/v1/traces",

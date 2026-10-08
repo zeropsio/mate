@@ -123,33 +123,36 @@ describe("exchangeZeropsContainerIdentity", () => {
   // The deletion runs on every path. A throwaway that outlives its call is a
   // row in the account's token list, and Zerops refuses to remove a member who
   // still holds tokens.
-  for (const [name, connect] of [
-    ["admitted", async () => AsyncResult.success("environment-1" as EnvironmentId)],
-    [
-      "refused",
-      async () =>
-        AsyncResult.failure(
-          Cause.fail(new ConnectionBlockedError({ reason: "permission", detail: "no" })),
-        ),
-    ],
-    [
-      "the network never answered",
-      async () => {
-        throw new Error("Failed to fetch");
-      },
-    ],
-  ] as const) {
-    it(`takes the throwaway back after the door ${name}`, async () => {
-      const { platform, removed } = recordingPlatform();
-      await exchangeZeropsContainerIdentity(
-        { throwaway: throwaway(platform), connect: connect as never },
-        CONTAINER_ORIGIN,
-        { reason: "user" },
-      ).catch(() => undefined);
+  it.each(
+    Array.from(
+      [
+        ["admitted", async () => AsyncResult.success("environment-1" as EnvironmentId)],
+        [
+          "refused",
+          async () =>
+            AsyncResult.failure(
+              Cause.fail(new ConnectionBlockedError({ reason: "permission", detail: "no" })),
+            ),
+        ],
+        [
+          "the network never answered",
+          async () => {
+            throw new Error("Failed to fetch");
+          },
+        ],
+      ] as const,
+      ([name, connect]) => ({ title: `takes the throwaway back after the door ${name}`, connect }),
+    ),
+  )("$title", async ({ connect }) => {
+    const { platform, removed } = recordingPlatform();
+    await exchangeZeropsContainerIdentity(
+      { throwaway: throwaway(platform), connect: connect as never },
+      CONTAINER_ORIGIN,
+      { reason: "user" },
+    ).catch(() => undefined);
 
-      expect(removed).toEqual(["token-1"]);
-    });
-  }
+    expect(removed).toEqual(["token-1"]);
+  });
 
   it("reports a deletion that failed without turning a good connect into a failure", async () => {
     const { platform } = recordingPlatform({ failRemove: true });

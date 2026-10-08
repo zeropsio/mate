@@ -202,20 +202,23 @@ const goldens: ReadonlyArray<{
 ];
 
 describe("the engine's inputs over every bridge golden", () => {
-  for (const golden of goldens) {
-    it(`${golden.driver}/${golden.name}: ${golden.title}`, () => {
-      const events = readGolden(golden.dir, golden.name);
-      const translator = makeTranslator({
-        driver: golden.driver,
-        threadId: String(events[0]!.threadId),
-      });
-      const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
-      const lines = commandLogAround(golden.driver, events)
-        .flatMap((input) => translator.step(input))
-        .flatMap((signal) => stepLines(toCore.step(signal, 0)));
-      assert.deepStrictEqual(lines, golden.lines);
+  it.each(
+    Array.from(goldens, (golden) => ({
+      title: `${golden.driver}/${golden.name}: ${golden.title}`,
+      golden,
+    })),
+  )("$title", ({ golden }) => {
+    const events = readGolden(golden.dir, golden.name);
+    const translator = makeTranslator({
+      driver: golden.driver,
+      threadId: String(events[0]!.threadId),
     });
-  }
+    const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
+    const lines = commandLogAround(golden.driver, events)
+      .flatMap((input) => translator.step(input))
+      .flatMap((signal) => stepLines(toCore.step(signal, 0)));
+    assert.deepStrictEqual(lines, golden.lines);
+  });
 });
 
 const S1 = "s1" as SessionId;

@@ -357,23 +357,26 @@ describe("CrewEngine", () => {
     },
   ];
 
-  for (const { name, press } of pressesDuringTurnEnd) {
-    it.live(`${name} pressed while its crewmate's turn end is handled is refused at once`, () =>
-      crewJourney((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* world.press({
-            _tag: "message",
-            handle: "backend",
-            text: "First",
-            attachments: [],
-          });
-          const { atOnce } = yield* pressDuringTurnEnd(world, press);
-          refusedAsBusy(atOnce);
-        }),
-      ),
-    );
-  }
+  it.live.each(
+    Array.from(pressesDuringTurnEnd, ({ name, press }) => ({
+      title: `${name} pressed while its crewmate's turn end is handled is refused at once`,
+      press,
+    })),
+  )("$title", ({ press }) =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* world.press({
+          _tag: "message",
+          handle: "backend",
+          text: "First",
+          attachments: [],
+        });
+        const { atOnce } = yield* pressDuringTurnEnd(world, press);
+        refusedAsBusy(atOnce);
+      }),
+    ),
+  );
 
   /** `backend` reported done; its check after the turn end is held. */
   const holdTheCheck = (world: CrewWorld) =>
@@ -1108,43 +1111,46 @@ describe("CrewEngine", () => {
     ]),
   );
 
-  for (const [state, processes, words] of [
-    [
-      "still runs",
-      [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
-      "still redeploying",
-    ],
-    ["cannot be read", "unreadable", "could not read"],
-  ] as const) {
-    it.live(
-      `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
-      () =>
-        crewJourney([
-          (world) =>
-            Effect.gen(function* () {
-              yield* applied(world);
-              yield* world.deploy("started");
-              yield* world.snapshotWhere(
-                (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
-              );
-            }),
-          (world) =>
-            Effect.gen(function* () {
-              yield* world.deployState(processes);
-              yield* world.serverReady;
-              const held = yield* world.snapshotWhere(
-                (snapshot) => snapshot.lastError?.includes(words) === true,
-              );
-              assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
-              yield* world.deployState([]);
-              const thawed = yield* world.snapshotWhere(
-                (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
-              );
-              assert.isNull(thawed.lastError);
-            }),
-        ]),
-    );
-  }
+  it.live.each(
+    Array.from(
+      [
+        [
+          "still runs",
+          [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
+          "still redeploying",
+        ],
+        ["cannot be read", "unreadable", "could not read"],
+      ] as const,
+      ([state, processes, words]) => ({
+        title: `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
+        processes,
+        words,
+      }),
+    ),
+  )("$title", ({ processes, words }) =>
+    crewJourney([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* world.deployState(processes);
+          yield* world.serverReady;
+          const held = yield* world.snapshotWhere(
+            (snapshot) => snapshot.lastError?.includes(words) === true,
+          );
+          assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
+          yield* world.deployState([]);
+          const thawed = yield* world.snapshotWhere(
+            (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
+          );
+          assert.isNull(thawed.lastError);
+        }),
+    ]),
+  );
 
   it.live("a restart leaves a frozen host's interrupted work untouched until its deploy ends", () =>
     crewJourney([

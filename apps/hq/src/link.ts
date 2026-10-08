@@ -234,7 +234,7 @@ export const serveMateLink = (
             }
           }
         }
-      }).pipe(Effect.catchTag("SocketError", heardClose), Effect.ignore);
+      }).pipe(Effect.catchTags({ SocketError: heardClose }), Effect.ignore);
 
       const ping = Effect.gen(function* () {
         for (;;) {

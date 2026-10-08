@@ -309,7 +309,6 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
 
       assert.strictEqual(
         row.defaultModelSelection,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify({
           instanceId: ProviderInstanceId.make("codex"),
           model: "gpt-5.4",
@@ -374,7 +373,6 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
 
       assert.strictEqual(
         row.modelSelection,
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         JSON.stringify({
           instanceId: ProviderInstanceId.make("claudeAgent"),
           model: "claude-opus-4-6",

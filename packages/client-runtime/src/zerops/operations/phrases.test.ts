@@ -18,25 +18,28 @@ import {
 
 describe("statusWord", () => {
   const doneRaws = ["ACTIVE", "DEPLOYED", "FINISHED", "complete", "pass", "healthy", "mounted"];
-  for (const raw of doneRaws) {
-    it(`maps ${raw} to Done`, () => {
+  it.each(Array.from(doneRaws, (raw) => ({ title: `maps ${raw} to Done`, raw })))(
+    "$title",
+    ({ raw }) => {
       expect(statusWord(raw)).toBe("Done");
-    });
-  }
+    },
+  );
 
   const runningRaws = ["BUILDING", "DEPLOYING", "RUNNING", "in_progress", "running"];
-  for (const raw of runningRaws) {
-    it(`maps ${raw} to Running`, () => {
+  it.each(Array.from(runningRaws, (raw) => ({ title: `maps ${raw} to Running`, raw })))(
+    "$title",
+    ({ raw }) => {
       expect(statusWord(raw)).toBe("Running");
-    });
-  }
+    },
+  );
 
   const failedRaws = ["FAILED", "BUILD_FAILED", "fail", "error"];
-  for (const raw of failedRaws) {
-    it(`maps ${raw} to Failed`, () => {
+  it.each(Array.from(failedRaws, (raw) => ({ title: `maps ${raw} to Failed`, raw })))(
+    "$title",
+    ({ raw }) => {
       expect(statusWord(raw)).toBe("Failed");
-    });
-  }
+    },
+  );
 
   it("maps pending to Waiting", () => {
     expect(statusWord("pending")).toBe("Waiting");

@@ -115,49 +115,54 @@ describe("remote thread lifecycle commands", () => {
     ["reorderActive", { orderKey: "b" }, { activeOrderKey: "b" }],
   ] as const;
 
-  for (const [action, input, expected] of actions) {
-    it.effect(`shows ${action} before a delayed remote reply and rolls back a rejection`, () =>
-      Effect.gen(function* () {
-        const h = yield* makeHarness();
-        const source = h.snapshotAtom(ENVIRONMENT_ID);
-        const initial = {
-          ...SNAPSHOT,
-          threads: [
-            {
-              ...SNAPSHOT.threads[0]!,
-              ...(action === "unsettle" || action === "pin"
-                ? { settledOverride: "settled" as const, settledAt: NOW }
-                : {}),
-              ...(action === "unsnooze" || action === "settle" || action === "pin"
-                ? { snoozedUntil: "2099-01-01T00:00:00.000Z", snoozedAt: NOW }
-                : {}),
-              ...(action === "unpin" || action === "settle"
-                ? { pinnedAt: NOW, pinOrderKey: "a" }
-                : {}),
-            },
-          ],
-        };
-        h.registry.set(source, initial);
-        const result = h.commands[action].run(h.registry, {
-          environmentId: ENVIRONMENT_ID,
-          input: {
-            threadId: THREAD_ID,
-            commandId: CommandId.make(action),
-            reason: "user",
-            orderKey: "a",
-            snoozedUntil: "2099-01-01T00:00:00.000Z",
-            ...input,
+  it.effect.each(
+    Array.from(actions, ([action, input, expected]) => ({
+      title: `shows ${action} before a delayed remote reply and rolls back a rejection`,
+      action,
+      input,
+      expected,
+    })),
+  )("$title", ({ action, input, expected }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const source = h.snapshotAtom(ENVIRONMENT_ID);
+      const initial = {
+        ...SNAPSHOT,
+        threads: [
+          {
+            ...SNAPSHOT.threads[0]!,
+            ...(action === "unsettle" || action === "pin"
+              ? { settledOverride: "settled" as const, settledAt: NOW }
+              : {}),
+            ...(action === "unsnooze" || action === "settle" || action === "pin"
+              ? { snoozedUntil: "2099-01-01T00:00:00.000Z", snoozedAt: NOW }
+              : {}),
+            ...(action === "unpin" || action === "settle"
+              ? { pinnedAt: NOW, pinOrderKey: "a" }
+              : {}),
           },
-        });
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(expected);
-        const request = yield* Queue.take(h.requests);
-        expect(h.registry.get(source)).toBe(initial);
-        yield* Deferred.fail(request.reply, new Error("Remote rejected the action"));
-        expect((yield* Effect.promise(() => result))._tag).toBe("Failure");
-        expect(h.registry.get(h.visibleAtom)).toBe(initial);
-      }),
-    );
-  }
+        ],
+      };
+      h.registry.set(source, initial);
+      const result = h.commands[action].run(h.registry, {
+        environmentId: ENVIRONMENT_ID,
+        input: {
+          threadId: THREAD_ID,
+          commandId: CommandId.make(action),
+          reason: "user",
+          orderKey: "a",
+          snoozedUntil: "2099-01-01T00:00:00.000Z",
+          ...input,
+        },
+      });
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(expected);
+      const request = yield* Queue.take(h.requests);
+      expect(h.registry.get(source)).toBe(initial);
+      yield* Deferred.fail(request.reply, new Error("Remote rejected the action"));
+      expect((yield* Effect.promise(() => result))._tag).toBe("Failure");
+      expect(h.registry.get(h.visibleAtom)).toBe(initial);
+    }),
+  );
 
   it.effect("keeps the preview after acknowledgement until the matching shell update arrives", () =>
     Effect.gen(function* () {
@@ -267,98 +272,107 @@ describe("remote thread lifecycle commands", () => {
     }),
   );
 
-  for (const action of ["settle", "snooze"] as const) {
-    it.effect(`restores a confirmed ${action} when a queued undo fails`, () =>
-      Effect.gen(function* () {
-        const h = yield* makeHarness();
-        const parked =
-          action === "settle"
-            ? { settledOverride: "settled" as const }
-            : { snoozedUntil: "2099-01-01T00:00:00.000Z" };
-        const awake = action === "settle" ? { settledOverride: "active" } : { snoozedUntil: null };
-        const result = h.commands[action].run(h.registry, {
-          environmentId: ENVIRONMENT_ID,
-          input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
-        });
-        const first = yield* Queue.take(h.requests);
-        const undo = h.commands[action === "settle" ? "unsettle" : "unsnooze"].run(h.registry, {
-          environmentId: ENVIRONMENT_ID,
-          input: { threadId: THREAD_ID, reason: "user" },
-        });
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
-        yield* Deferred.succeed(first.reply, { sequence: 2 });
-        expect((yield* Effect.promise(() => result))._tag).toBe("Success");
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
-        const confirmed = {
-          ...SNAPSHOT,
-          snapshotSequence: 2,
-          threads: [{ ...SNAPSHOT.threads[0]!, ...parked }],
-        };
-        h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), confirmed);
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
-        const second = yield* Queue.take(h.requests);
-        expect(second.command.type).toBe(
-          action === "settle" ? "thread.unsettle" : "thread.unsnooze",
-        );
-        yield* Deferred.fail(second.reply, new Error("Undo rejected"));
-        expect((yield* Effect.promise(() => undo))._tag).toBe("Failure");
-        expect(h.registry.get(h.visibleAtom)).toBe(confirmed);
-      }),
-    );
-
-    it.effect(`preserves a newer approval when the ${action} reply arrives after the shell`, () =>
-      Effect.gen(function* () {
-        const h = yield* makeHarness();
-        const result = h.commands[action].run(h.registry, {
-          environmentId: ENVIRONMENT_ID,
-          input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
-        });
-        const request = yield* Queue.take(h.requests);
-        const newer = {
-          ...SNAPSHOT,
-          snapshotSequence: 3,
-          threads: [{ ...SNAPSHOT.threads[0]!, hasPendingApprovals: true }],
-        };
-        h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), newer);
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toBe(newer.threads[0]);
-        yield* Deferred.succeed(request.reply, { sequence: 2 });
-        expect((yield* Effect.promise(() => result))._tag).toBe("Success");
-        expect(h.registry.get(h.visibleAtom)).toBe(newer);
-      }),
-    );
-
-    it.effect(`shows an accepted ${action} while the shell still has an old input request`, () =>
-      Effect.gen(function* () {
-        const h = yield* makeHarness();
-        const stale = {
-          ...SNAPSHOT,
-          threads: [
-            {
-              ...SNAPSHOT.threads[0]!,
-              hasPendingUserInput: true,
-              pendingQuestion: "Which colour?",
-            },
-          ],
-        };
-        h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), stale);
-        const result = h.commands[action].run(h.registry, {
-          environmentId: ENVIRONMENT_ID,
-          input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
-        });
-        const request = yield* Queue.take(h.requests);
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toBe(stale.threads[0]);
-        yield* Deferred.succeed(request.reply, { sequence: 2 });
-        expect((yield* Effect.promise(() => result))._tag).toBe("Success");
-        expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(
-          action === "settle"
-            ? { settledOverride: "settled" }
-            : { snoozedUntil: "2099-01-01T00:00:00.000Z" },
-        );
-        expect(h.registry.get(h.visibleAtom)?.threads[0]?.hasPendingUserInput).toBe(false);
-        // What it waited on goes with the wait.
-        expect(h.registry.get(h.visibleAtom)?.threads[0]?.pendingQuestion).toBeNull();
-        expect(h.registry.get(h.snapshotAtom(ENVIRONMENT_ID))).toBe(stale);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(["settle", "snooze"] as const, (action) => ({
+      title: `restores a confirmed ${action} when a queued undo fails`,
+      action,
+    })),
+  )("$title", ({ action }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const parked =
+        action === "settle"
+          ? { settledOverride: "settled" as const }
+          : { snoozedUntil: "2099-01-01T00:00:00.000Z" };
+      const awake = action === "settle" ? { settledOverride: "active" } : { snoozedUntil: null };
+      const result = h.commands[action].run(h.registry, {
+        environmentId: ENVIRONMENT_ID,
+        input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
+      });
+      const first = yield* Queue.take(h.requests);
+      const undo = h.commands[action === "settle" ? "unsettle" : "unsnooze"].run(h.registry, {
+        environmentId: ENVIRONMENT_ID,
+        input: { threadId: THREAD_ID, reason: "user" },
+      });
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
+      yield* Deferred.succeed(first.reply, { sequence: 2 });
+      expect((yield* Effect.promise(() => result))._tag).toBe("Success");
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
+      const confirmed = {
+        ...SNAPSHOT,
+        snapshotSequence: 2,
+        threads: [{ ...SNAPSHOT.threads[0]!, ...parked }],
+      };
+      h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), confirmed);
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(awake);
+      const second = yield* Queue.take(h.requests);
+      expect(second.command.type).toBe(action === "settle" ? "thread.unsettle" : "thread.unsnooze");
+      yield* Deferred.fail(second.reply, new Error("Undo rejected"));
+      expect((yield* Effect.promise(() => undo))._tag).toBe("Failure");
+      expect(h.registry.get(h.visibleAtom)).toBe(confirmed);
+    }),
+  );
+  it.effect.each(
+    Array.from(["settle", "snooze"] as const, (action) => ({
+      title: `preserves a newer approval when the ${action} reply arrives after the shell`,
+      action,
+    })),
+  )("$title", ({ action }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const result = h.commands[action].run(h.registry, {
+        environmentId: ENVIRONMENT_ID,
+        input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
+      });
+      const request = yield* Queue.take(h.requests);
+      const newer = {
+        ...SNAPSHOT,
+        snapshotSequence: 3,
+        threads: [{ ...SNAPSHOT.threads[0]!, hasPendingApprovals: true }],
+      };
+      h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), newer);
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toBe(newer.threads[0]);
+      yield* Deferred.succeed(request.reply, { sequence: 2 });
+      expect((yield* Effect.promise(() => result))._tag).toBe("Success");
+      expect(h.registry.get(h.visibleAtom)).toBe(newer);
+    }),
+  );
+  it.effect.each(
+    Array.from(["settle", "snooze"] as const, (action) => ({
+      title: `shows an accepted ${action} while the shell still has an old input request`,
+      action,
+    })),
+  )("$title", ({ action }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      const stale = {
+        ...SNAPSHOT,
+        threads: [
+          {
+            ...SNAPSHOT.threads[0]!,
+            hasPendingUserInput: true,
+            pendingQuestion: "Which colour?",
+          },
+        ],
+      };
+      h.registry.set(h.snapshotAtom(ENVIRONMENT_ID), stale);
+      const result = h.commands[action].run(h.registry, {
+        environmentId: ENVIRONMENT_ID,
+        input: { threadId: THREAD_ID, snoozedUntil: "2099-01-01T00:00:00.000Z" },
+      });
+      const request = yield* Queue.take(h.requests);
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toBe(stale.threads[0]);
+      yield* Deferred.succeed(request.reply, { sequence: 2 });
+      expect((yield* Effect.promise(() => result))._tag).toBe("Success");
+      expect(h.registry.get(h.visibleAtom)?.threads[0]).toMatchObject(
+        action === "settle"
+          ? { settledOverride: "settled" }
+          : { snoozedUntil: "2099-01-01T00:00:00.000Z" },
+      );
+      expect(h.registry.get(h.visibleAtom)?.threads[0]?.hasPendingUserInput).toBe(false);
+      // What it waited on goes with the wait.
+      expect(h.registry.get(h.visibleAtom)?.threads[0]?.pendingQuestion).toBeNull();
+      expect(h.registry.get(h.snapshotAtom(ENVIRONMENT_ID))).toBe(stale);
+    }),
+  );
 });

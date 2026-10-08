@@ -10,7 +10,6 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
@@ -20,15 +19,14 @@ import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
 import { crewJourney } from "./testing/crewWorld.ts";
 import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
-const observe = {
-  observeRpcEffect: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
-  observeRpcStream: <A, E, R>(_method: string, stream: Stream.Stream<A, E, R>) => stream,
+const passThrough = {
+  admit: <A, E, R>(_method: string, effect: Effect.Effect<A, E, R>) => effect,
 };
 
 const SUBJECT = `${ZEROPS_SUBJECT_PREFIX}user-karel`;
 
 describe("registerCrewRpc", () => {
-  const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...observe });
+  const inert = registerCrewRpc({ crew: inertCrewEngine, subject: SUBJECT, ...passThrough });
 
   it.effect(
     "during update, an accepted crew can pause or stop while new crew work is refused",
@@ -39,8 +37,7 @@ describe("registerCrewRpc", () => {
         const handlers = registerCrewRpc({
           crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },
           subject: SUBJECT,
-          observeRpcStream: observe.observeRpcStream,
-          observeRpcEffect: (_method, effect, _attributes, continuation = false) =>
+          admit: (_method, effect, continuation = false) =>
             admission.run(
               effect,
               new EnvironmentAuthorizationError({
@@ -85,7 +82,11 @@ describe("registerCrewRpc", () => {
   it.live("live on V1: the board holds every task, so no finished work pages past it", () =>
     withCrewEngine(() =>
       Effect.gen(function* () {
-        const handlers = registerCrewRpc({ crew: yield* CrewEngine, subject: SUBJECT, ...observe });
+        const handlers = registerCrewRpc({
+          crew: yield* CrewEngine,
+          subject: SUBJECT,
+          ...passThrough,
+        });
         expect(
           yield* handlers[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null }),
         ).toEqual({ tasks: [], next: null });
@@ -100,7 +101,7 @@ describe("registerCrewRpc", () => {
         const handlers = registerCrewRpc({
           crew: yield* world.service,
           subject: SUBJECT,
-          ...observe,
+          ...passThrough,
         });
         const latest = handlers[WS_METHODS.subscribeZeropsCrew]({}).pipe(
           Stream.take(1),

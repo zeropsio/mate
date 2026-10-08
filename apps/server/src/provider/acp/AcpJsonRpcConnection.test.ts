@@ -32,59 +32,62 @@ const mockRuntimeOptions = {
 } satisfies AcpSessionRuntime.AcpSessionRuntimeOptions;
 
 describe("AcpSessionRuntime", () => {
-  for (const setupMethod of ["session/new", "session/resume"] as const) {
-    it.effect(`buffers root metadata while ${setupMethod} startup is still pending`, () =>
-      Effect.gen(function* () {
-        const setupReplied = yield* Deferred.make<void>();
-        const allowStartup = yield* Deferred.make<void>();
-        const events: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
-        const runtime = yield* AcpSessionRuntime.make({
-          ...mockRuntimeOptions,
-          ...(setupMethod === "session/resume"
-            ? { resumeSessionId: "mock-session-1", resumeMethod: "resume" as const }
-            : {}),
-          requestLogger: (event) =>
-            event.method === setupMethod && event.status === "succeeded"
-              ? Deferred.succeed(setupReplied, undefined).pipe(
-                  Effect.andThen(Deferred.await(allowStartup)),
-                )
-              : Effect.void,
-        });
-        yield* runtime.getEvents().pipe(
-          Stream.runForEach((event) => {
-            if (event._tag === "EventStreamBarrier") {
-              return Deferred.succeed(event.acknowledge, undefined);
-            }
-            events.push(event);
-            return Effect.void;
-          }),
-          Effect.forkChild,
-        );
-        const startup = yield* runtime.start().pipe(Effect.forkChild);
-        yield* Deferred.await(setupReplied);
-        yield* runtime.request("_test/startup-metadata", {});
-        yield* Deferred.succeed(allowStartup, undefined);
-        yield* Fiber.join(startup);
-        yield* runtime.drainEvents;
+  it.effect.each(
+    Array.from(["session/new", "session/resume"] as const, (setupMethod) => ({
+      title: `buffers root metadata while ${setupMethod} startup is still pending`,
+      setupMethod,
+    })),
+  )("$title", ({ setupMethod }) =>
+    Effect.gen(function* () {
+      const setupReplied = yield* Deferred.make<void>();
+      const allowStartup = yield* Deferred.make<void>();
+      const events: Array<AcpSessionRuntime.AcpSessionRuntimeEvent> = [];
+      const runtime = yield* AcpSessionRuntime.make({
+        ...mockRuntimeOptions,
+        ...(setupMethod === "session/resume"
+          ? { resumeSessionId: "mock-session-1", resumeMethod: "resume" as const }
+          : {}),
+        requestLogger: (event) =>
+          event.method === setupMethod && event.status === "succeeded"
+            ? Deferred.succeed(setupReplied, undefined).pipe(
+                Effect.andThen(Deferred.await(allowStartup)),
+              )
+            : Effect.void,
+      });
+      yield* runtime.getEvents().pipe(
+        Stream.runForEach((event) => {
+          if (event._tag === "EventStreamBarrier") {
+            return Deferred.succeed(event.acknowledge, undefined);
+          }
+          events.push(event);
+          return Effect.void;
+        }),
+        Effect.forkChild,
+      );
+      const startup = yield* runtime.start().pipe(Effect.forkChild);
+      yield* Deferred.await(setupReplied);
+      yield* runtime.request("_test/startup-metadata", {});
+      yield* Deferred.succeed(allowStartup, undefined);
+      yield* Fiber.join(startup);
+      yield* runtime.drainEvents;
 
-        expect(events.map((event) => event._tag)).toEqual([
-          "AvailableCommandsUpdated",
-          "ModeChanged",
-          "ConfigOptionsUpdated",
-        ]);
-        expect(events[0]).toMatchObject({
-          availableCommands: [{ name: "plan", description: "Native command" }],
-        });
-        expect(yield* runtime.getModeState).toMatchObject({ currentModeId: "code" });
-        expect(events[2]).toMatchObject({
-          configOptions: yield* runtime.getConfigOptions,
-        });
-        expect(
-          (yield* runtime.getConfigOptions).find((option) => option.category === "model"),
-        ).toMatchObject({ currentValue: "gpt-5.4" });
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-  }
+      expect(events.map((event) => event._tag)).toEqual([
+        "AvailableCommandsUpdated",
+        "ModeChanged",
+        "ConfigOptionsUpdated",
+      ]);
+      expect(events[0]).toMatchObject({
+        availableCommands: [{ name: "plan", description: "Native command" }],
+      });
+      expect(yield* runtime.getModeState).toMatchObject({ currentModeId: "code" });
+      expect(events[2]).toMatchObject({
+        configOptions: yield* runtime.getConfigOptions,
+      });
+      expect(
+        (yield* runtime.getConfigOptions).find((option) => option.category === "model"),
+      ).toMatchObject({ currentValue: "gpt-5.4" });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 
   it.live("a session-update handler that dies leaves the connection answering", () =>
     Effect.gen(function* () {

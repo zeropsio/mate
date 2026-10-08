@@ -16,7 +16,8 @@
  *
  * @module openCodeThreadProfile
  */
-import * as NodeCrypto from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 
 import type { ModelSelection } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -92,7 +93,7 @@ const stringOf = (value: unknown): string | undefined =>
  * directory, and an MCP tool's key is that name, `_`, the tool.
  */
 export const threadToolsServerName = (threadId: string): string =>
-  `crew-${NodeCrypto.createHash("sha256").update(threadId).digest("hex").slice(0, 10)}`;
+  `crew-${Hex.encode(sha256(new TextEncoder().encode(threadId))).slice(0, 10)}`;
 
 /**
  * The calls one ask makes, shaped as Claude's tools so the crew's gate

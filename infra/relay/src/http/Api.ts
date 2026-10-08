@@ -69,28 +69,6 @@ export const RELAY_HTTP_ROUTER_CONFIG = {
   maxParamLength: 512,
 } as const;
 
-const relayCorsAllowedMethods = ["GET", "POST", "DELETE", "OPTIONS"] as const;
-const relayCorsAllowedHeaders = [
-  "authorization",
-  "b3",
-  "traceparent",
-  "content-type",
-  "dpop",
-] as const;
-const relayCorsExposedHeaders = ["traceparent", "www-authenticate"] as const;
-
-const relayCorsHeaders = {
-  "access-control-allow-origin": "*",
-  "access-control-expose-headers": relayCorsExposedHeaders.join(","),
-} as const;
-
-const relayCorsPreflightHeaders = {
-  ...relayCorsHeaders,
-  "access-control-allow-methods": relayCorsAllowedMethods.join(","),
-  "access-control-allow-headers": relayCorsAllowedHeaders.join(","),
-  "access-control-max-age": "86400",
-} as const;
-
 const appendRelayCredentialResponseHeaders = HttpEffect.appendPreResponseHandler(
   (_request, response) =>
     Effect.succeed(
@@ -123,26 +101,17 @@ const appendRelayTraceContextResponseHeader = Effect.gen(function* () {
   );
 }).pipe(Effect.ignore);
 
-export const relayCors = HttpRouter.middleware(
-  Effect.fnUntraced(function* <E, R>(
-    httpEffect: Effect.Effect<
-      HttpServerResponse.HttpServerResponse,
-      E,
-      HttpServerRequest.HttpServerRequest | R
-    >,
-  ) {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    if (request.method === "OPTIONS") {
-      return HttpServerResponse.empty({
-        status: 204,
-        headers: relayCorsPreflightHeaders,
-      });
-    }
-    const response = yield* httpEffect;
-    return HttpServerResponse.setHeaders(response, relayCorsHeaders);
-  }),
-  { global: true },
-);
+const relayCorsMiddleware = HttpMiddleware.cors({
+  allowedMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["authorization", "b3", "traceparent", "content-type", "dpop"],
+  exposedHeaders: ["traceparent", "www-authenticate"],
+  maxAge: 86_400,
+});
+
+// The CORS headers come from a pre-response handler, so they reach every response
+// the request sends: handler failures and defects, and the deadline 504 that
+// `traceRelayHttpRequest` produces outside the router.
+export const relayCors = HttpRouter.middleware(relayCorsMiddleware, { global: true });
 
 export const relayNotFoundRoute = HttpRouter.add(
   "*",

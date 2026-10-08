@@ -1,4 +1,5 @@
-import * as NodeCrypto from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import * as Hex from "effect/encoding/Hex";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Effect's symlink has no type argument, and Windows needs a junction to link without elevation.
 import * as NodeFSP from "node:fs/promises";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - resolveAntigravityProfileDirectory is a pure sync helper, so it cannot use the Path service.
@@ -189,7 +190,7 @@ export function resolveAntigravityProfileDirectory(
   stateDir: string,
   instanceId: ProviderInstanceId,
 ): string {
-  const directoryName = NodeCrypto.createHash("sha256").update(instanceId).digest("hex");
+  const directoryName = Hex.encode(sha256(new TextEncoder().encode(instanceId)));
   return NodePath.join(stateDir, "providers", "antigravity", directoryName);
 }
 

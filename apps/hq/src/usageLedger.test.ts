@@ -272,48 +272,46 @@ describe("HQ immutable usage", () => {
           }),
         ),
     );
-    for (const mode of [
-      "duplicate batch",
-      "lost ACK",
-      "clone resend",
-      "new observation timestamp",
-    ]) {
-      it.effect(`${mode} acknowledges one permanent response contribution`, () =>
-        database(
-          Effect.gen(function* () {
-            const { ledger, sender, batch, total, sql } = yield* setup;
-            const completed = {
-              ...fact("response", "150"),
-              time: {
-                kind: "instant" as const,
-                at: "2020-01-01T12:00:00.000Z",
-                provenance: "server-completion",
-              },
-            };
-            const first = batch([completed]);
-            const ack = yield* ledger.receive(sender, first);
-            assert.deepStrictEqual(ack, {
-              type: "usage-ack",
-              batchId: first.batchId,
-              accepted: [{ originId, factId: usageFactId("native-thread", "response") }],
-            });
-            const active =
-              mode === "clone resend" ? yield* ledger.open("P", sender.credential) : sender;
-            const repeat =
-              mode === "new observation timestamp"
-                ? { ...completed, time: { ...completed.time, at: "2020-01-01T13:00:00.000Z" } }
-                : completed;
-            yield* ledger.receive(active, mode === "duplicate batch" ? first : batch([repeat]));
-            assert.strictEqual(yield* total, "150");
-            assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt`, 1);
-            const [stored] = yield* sql<{
-              readonly value: UsageFact;
-            }>`SELECT value FROM hq_usage_fact`;
-            assert.deepStrictEqual(stored!.value.time, completed.time);
-          }),
-        ),
-      );
-    }
+    it.effect.each(
+      Array.from(
+        ["duplicate batch", "lost ACK", "clone resend", "new observation timestamp"],
+        (mode) => ({ title: `${mode} acknowledges one permanent response contribution`, mode }),
+      ),
+    )("$title", ({ mode }) =>
+      database(
+        Effect.gen(function* () {
+          const { ledger, sender, batch, total, sql } = yield* setup;
+          const completed = {
+            ...fact("response", "150"),
+            time: {
+              kind: "instant" as const,
+              at: "2020-01-01T12:00:00.000Z",
+              provenance: "server-completion",
+            },
+          };
+          const first = batch([completed]);
+          const ack = yield* ledger.receive(sender, first);
+          assert.deepStrictEqual(ack, {
+            type: "usage-ack",
+            batchId: first.batchId,
+            accepted: [{ originId, factId: usageFactId("native-thread", "response") }],
+          });
+          const active =
+            mode === "clone resend" ? yield* ledger.open("P", sender.credential) : sender;
+          const repeat =
+            mode === "new observation timestamp"
+              ? { ...completed, time: { ...completed.time, at: "2020-01-01T13:00:00.000Z" } }
+              : completed;
+          yield* ledger.receive(active, mode === "duplicate batch" ? first : batch([repeat]));
+          assert.strictEqual(yield* total, "150");
+          assert.lengthOf(yield* sql`SELECT 1 FROM hq_usage_receipt`, 1);
+          const [stored] = yield* sql<{
+            readonly value: UsageFact;
+          }>`SELECT value FROM hq_usage_fact`;
+          assert.deepStrictEqual(stored!.value.time, completed.time);
+        }),
+      ),
+    );
     it.effect(
       "parents and child responses remain distinct even when their reported counts match",
       () =>
@@ -355,60 +353,66 @@ describe("HQ immutable usage", () => {
           }),
         ),
     );
-    for (const damage of [
-      "tokens",
-      "native-time",
-      "provider",
-      "origin",
-      "channel",
-      "protocol",
-      "fact-key",
-      "origin-key",
-    ]) {
-      it.effect(`${damage} conflict refuses the whole batch and preserves accepted usage`, () =>
-        database(
-          Effect.gen(function* () {
-            const { ledger, sender, origin, batch, total, sql } = yield* setup;
-            yield* ledger.receive(sender, batch([fact("same", "30")]));
-            const current = sender;
-            let changed = fact("same", "30");
-            if (damage === "tokens") changed = fact("same", "50");
-            if (damage === "native-time")
-              changed = {
-                ...changed,
-                time: { kind: "instant", at: "2020-01-01T13:00:00.000Z", provenance: "native" },
-              };
-            if (damage === "provider") changed = { ...changed, provider: "codex" };
-            if (damage === "fact-key") changed = { ...changed, factId: "reminted-response" };
-            if (damage === "channel") {
-              yield* ledger.open("P", sender.credential);
-            }
-            const message = batch([fact("new", "100"), changed]);
-            const refused = yield* Effect.result(
-              ledger.receive(current, {
-                ...message,
-                ...(damage === "protocol" ? { protocol: 1 } : {}),
-                ...(damage === "origin-key"
-                  ? {
-                      origins: [{ ...origin, originId: "reminted-origin" }],
-                      facts: [{ ...fact("same", "30"), originId: "reminted-origin" }],
-                    }
-                  : {}),
-                ...(damage === "origin"
-                  ? { origins: [{ ...origin, mateId: "00000000-0000-0000-0000-000000000000" }] }
-                  : {}),
-              }),
-            );
-            assert.strictEqual(refused._tag, "Failure");
-            assert.strictEqual(yield* total, "30");
-            assert.lengthOf(
-              yield* sql`SELECT 1 FROM hq_usage_receipt WHERE fact_id=${usageFactId("native-thread", "new")}`,
-              0,
-            );
-          }),
-        ),
-      );
-    }
+    it.effect.each(
+      Array.from(
+        [
+          "tokens",
+          "native-time",
+          "provider",
+          "origin",
+          "channel",
+          "protocol",
+          "fact-key",
+          "origin-key",
+        ],
+        (damage) => ({
+          title: `${damage} conflict refuses the whole batch and preserves accepted usage`,
+          damage,
+        }),
+      ),
+    )("$title", ({ damage }) =>
+      database(
+        Effect.gen(function* () {
+          const { ledger, sender, origin, batch, total, sql } = yield* setup;
+          yield* ledger.receive(sender, batch([fact("same", "30")]));
+          const current = sender;
+          let changed = fact("same", "30");
+          if (damage === "tokens") changed = fact("same", "50");
+          if (damage === "native-time")
+            changed = {
+              ...changed,
+              time: { kind: "instant", at: "2020-01-01T13:00:00.000Z", provenance: "native" },
+            };
+          if (damage === "provider") changed = { ...changed, provider: "codex" };
+          if (damage === "fact-key") changed = { ...changed, factId: "reminted-response" };
+          if (damage === "channel") {
+            yield* ledger.open("P", sender.credential);
+          }
+          const message = batch([fact("new", "100"), changed]);
+          const refused = yield* Effect.result(
+            ledger.receive(current, {
+              ...message,
+              ...(damage === "protocol" ? { protocol: 1 } : {}),
+              ...(damage === "origin-key"
+                ? {
+                    origins: [{ ...origin, originId: "reminted-origin" }],
+                    facts: [{ ...fact("same", "30"), originId: "reminted-origin" }],
+                  }
+                : {}),
+              ...(damage === "origin"
+                ? { origins: [{ ...origin, mateId: "00000000-0000-0000-0000-000000000000" }] }
+                : {}),
+            }),
+          );
+          assert.strictEqual(refused._tag, "Failure");
+          assert.strictEqual(yield* total, "30");
+          assert.lengthOf(
+            yield* sql`SELECT 1 FROM hq_usage_receipt WHERE fact_id=${usageFactId("native-thread", "new")}`,
+            0,
+          );
+        }),
+      ),
+    );
     it.effect(
       "a known zero turn does not infer participation from Haiku 10 and Opus 100 history",
       () =>

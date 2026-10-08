@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- real Core HTTP adapters against loopback.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off -- real Core HTTP adapters against loopback.
 import { WebSocket } from "ws";
 import { expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";

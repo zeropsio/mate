@@ -33,44 +33,23 @@ type CrewRpcHandlers = {
   readonly [Current in CrewRpc as Current["_tag"]]: Rpc.ToHandlerFn<Current, never>;
 };
 
-type RegisterCrewRpcDeps = Pick<
-  RegisterZeropsRpcDeps,
-  "observeRpcEffect" | "observeRpcStream" | "subject"
-> & {
+type RegisterCrewRpcDeps = Pick<RegisterZeropsRpcDeps, "admit" | "subject"> & {
   readonly crew: CrewEngineService;
 };
 
-const traceAttributes = { "rpc.aggregate": "zerops" } as const;
-
-export const registerCrewRpc = ({
-  crew,
-  subject,
-  observeRpcEffect,
-  observeRpcStream,
-}: RegisterCrewRpcDeps) =>
+export const registerCrewRpc = ({ crew, subject, admit }: RegisterCrewRpcDeps) =>
   ({
-    [WS_METHODS.subscribeZeropsCrew]: (_input) =>
-      observeRpcStream(WS_METHODS.subscribeZeropsCrew, crew.snapshot, traceAttributes),
-    [WS_METHODS.zeropsCrewFilesGet]: (_input) =>
-      observeRpcEffect(WS_METHODS.zeropsCrewFilesGet, crew.readFiles, traceAttributes),
+    [WS_METHODS.subscribeZeropsCrew]: (_input) => crew.snapshot,
+    [WS_METHODS.zeropsCrewFilesGet]: (_input) => crew.readFiles,
     [WS_METHODS.zeropsCrewFilesPut]: (input) =>
-      observeRpcEffect(
-        WS_METHODS.zeropsCrewFilesPut,
-        crew.writeFiles(input, { kind: "session", subject }),
-        traceAttributes,
-      ),
+      admit(WS_METHODS.zeropsCrewFilesPut, crew.writeFiles(input, { kind: "session", subject })),
     [WS_METHODS.zeropsCrewCommand]: (input) =>
-      observeRpcEffect(
+      admit(
         WS_METHODS.zeropsCrewCommand,
         crew.command(input, { kind: "session", subject }),
-        traceAttributes,
         input._tag === "pause" || input._tag === "stop",
       ),
+    // A board that holds every task (V1's) has nothing past it.
     [WS_METHODS.zeropsCrewTaskPage]: (input) =>
-      observeRpcEffect(
-        WS_METHODS.zeropsCrewTaskPage,
-        // A board that holds every task (V1's) has nothing past it.
-        crew.taskPage?.(input) ?? Effect.succeed({ tasks: [], next: null }),
-        traceAttributes,
-      ),
+      crew.taskPage?.(input) ?? Effect.succeed({ tasks: [], next: null }),
   }) satisfies CrewRpcHandlers;
