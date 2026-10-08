@@ -43,6 +43,7 @@ import type { EngineAcceptance } from "./operations/mateEngine.ts";
 import {
   ENGINE_UPDATE_WORDS,
   NATIVE_UPDATE_WORDS,
+  engineSteerTarget,
   engineStopTarget,
 } from "./projections/mateEngine.ts";
 import { readsOfState } from "./store.ts";
@@ -111,8 +112,9 @@ const PICTURES_BY_REFERENCE =
   "Pictures reach this Mate once they are uploaded; send the words, then the pictures again.";
 
 /**
- * A turn's start as the engine's send: the message's own id is the command id, its files and
- * pictures go with it, and its interaction mode with it (the engine keeps no thread-wide mode).
+ * A turn's start as the engine's send or steer: the message's own id is the command id. A send
+ * carries its files and pictures, and its interaction mode with it (the engine keeps no
+ * thread-wide mode).
  */
 export const engineStartTurn =
   (environmentId: string, input: Command<"thread.turn.start">) => (host: MateEngineHost) => {
@@ -121,9 +123,20 @@ export const engineStartTurn =
       return Effect.fail(
         new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
       );
+    const target = { environmentId, conversationId: input.threadId };
+    // Into the run that works, as V1 sends a message into its running turn; files and pictures
+    // go as the next run, since a steer carries words only.
+    const steered =
+      attachments.length === 0 ? engineSteerTarget(readsOfState(host.store.state()), target) : null;
+    if (steered !== null)
+      return host.operations.steer({
+        ...target,
+        runId: steered,
+        text: input.message.text,
+        commandId: input.message.messageId,
+      });
     return host.operations.send({
-      environmentId,
-      conversationId: input.threadId,
+      ...target,
       text: input.message.text,
       attachments,
       ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),

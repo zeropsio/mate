@@ -227,7 +227,7 @@ export class MateEngineFake {
           runId: run,
           seq,
           rev: seq,
-          at: AT + seq,
+          at: this.stamp(seq),
           ask,
           state: "open",
           answerable: true,
@@ -246,13 +246,28 @@ export class MateEngineFake {
 
   /** The agent starts a run of its own, joining the last: its engine id. */
   startRun(): string {
-    return this.commit((change) =>
-      this.openRun(
+    return this.commit((change) => {
+      this.openSession(change);
+      return this.openRun(
         change,
         { kind: "wake", cause: "self", wakeId: null },
         [...this.runs.values()].at(-1)?.id ?? null,
-      ),
-    );
+      );
+    });
+  }
+
+  /** The agent's session is open: it can take a message into the turn it runs. */
+  private openSession(change: Changed) {
+    if (this.header.session !== null) return;
+    this.header = decodeHeader({
+      ...this.header,
+      session: {
+        driver: this.header.agent?.driver ?? "codex",
+        model: this.header.model,
+        steer: true,
+      },
+    });
+    change.header = true;
   }
 
   /** Run `id` ends as the agent's turn did. */
@@ -374,6 +389,12 @@ export class MateEngineFake {
     return ++this.seq;
   }
 
+  /** Once a person sends, the engine records the wall clock, as the real one always does. */
+  private wallClock = false;
+  private stamp(seq: number) {
+    return this.wallClock ? Date.now() : AT + seq;
+  }
+
   private openRun(
     change: Changed,
     trigger: { kind: "person" } | { kind: "wake"; cause: string; wakeId: null },
@@ -402,9 +423,9 @@ export class MateEngineFake {
         endSource: null,
         sessionId: null,
         providerTurnId: null,
-        queuedAt: AT + seq,
-        admittedAt: AT + seq,
-        startedAt: AT + seq,
+        queuedAt: this.stamp(seq),
+        admittedAt: this.stamp(seq),
+        startedAt: this.stamp(seq),
         endedAt: null,
         unresponsiveSince: null,
         summary: { items: 0, calls: {}, answerItemId: null, lastItemSeq: null },
@@ -428,7 +449,7 @@ export class MateEngineFake {
       waitingOn: null,
       end,
       endSource: "agent",
-      endedAt: AT + this.seq,
+      endedAt: this.stamp(this.seq),
       summary: { ...run.summary, answerItemId: answerItemId ?? run.summary.answerItemId },
     });
   }
@@ -456,7 +477,7 @@ export class MateEngineFake {
         runId: run,
         seq,
         rev: seq,
-        at: AT + seq,
+        at: this.stamp(seq),
         ...body,
       }),
     );
@@ -604,7 +625,7 @@ export class MateEngineFake {
         latest === null ? null : { id: latest.id, end: latest.end, endedAt: latest.endedAt },
       subject: person?.kind === "person" ? person.text.split("\n")[0] : null,
       snippet: note?.kind === "note" ? note.text : null,
-      at: AT + this.seq,
+      at: this.stamp(this.seq),
       askedAt: open?.at ?? null,
     });
   }
@@ -860,6 +881,7 @@ export class MateEngineFake {
     switch (tag) {
       case WS_METHODS.engineSend: {
         this.applied.push({ commandId, op: "send", payload });
+        this.wallClock = true;
         const interactionMode = payload.interactionMode === "plan" ? "plan" : "default";
         const [runId, itemId] = this.commit((change) => {
           if (this.header.interactionMode !== interactionMode) {
@@ -879,14 +901,45 @@ export class MateEngineFake {
           return [run, item] as const;
         });
         const accepted = { _tag: "Accepted" as const, seq: this.seq, runId, itemId };
+        // The run is sent as its session opens, then runs: each its own commit, as the engine's.
         queueMicrotask(() => {
           this.commit((change) => {
-            this.setItem(change, itemId, { delivery: { state: "delivered", at: AT + this.seq } });
-            this.setRun(change, runId, { state: "running", startedAt: AT + this.seq });
+            this.setRun(change, runId, { state: "sending" });
+            this.openSession(change);
           });
-          this.mate.publishAttention();
+          queueMicrotask(() => {
+            this.commit((change) => {
+              this.setItem(change, itemId, {
+                delivery: { state: "delivered", at: this.stamp(this.seq) },
+              });
+              this.setRun(change, runId, { state: "running", startedAt: this.stamp(this.seq) });
+            });
+            this.mate.publishAttention();
+          });
         });
         return accepted as never;
+      }
+      case WS_METHODS.engineSteer: {
+        // Into the run that works, while its session can take it, as the engine's steer.
+        const run = this.runs.get(String(payload.runId));
+        if (run === undefined)
+          return { _tag: "Rejected", rejection: { reason: "unknown-run" } } as never;
+        if (run.state !== "running" && run.state !== "waiting")
+          return { _tag: "Rejected", rejection: { reason: "run-not-running" } } as never;
+        if (this.header.session?.steer !== true)
+          return { _tag: "Rejected", rejection: { reason: "steer-unsupported" } } as never;
+        this.applied.push({ commandId, op: "steer", payload });
+        const itemId = this.commit((change) =>
+          this.addItem(change, run.id, {
+            kind: "person",
+            by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+            text: String(payload.text),
+            attachments: [],
+            sendId: commandId,
+            delivery: { state: "steered", at: this.stamp(this.seq) },
+          }),
+        );
+        return { _tag: "Accepted", seq: this.seq, runId: run.id, itemId } as never;
       }
       case WS_METHODS.engineAnswer: {
         const requestId = String(payload.requestId);
@@ -915,7 +968,7 @@ export class MateEngineFake {
               state: "answered",
               answer: {
                 by: { kind: "person", subject: "owner" },
-                at: AT + seq,
+                at: this.stamp(seq),
                 summary: String(payload.summary),
                 // A question's record keeps its words and pictures, as the engine's does.
                 ...(request.ask.kind === "question"

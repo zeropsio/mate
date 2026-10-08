@@ -4,9 +4,9 @@ import { runId, type Principal } from "@t3tools/contracts";
 
 import { makeEngineWorld, mate } from "./testing/pump/engineWorld.ts";
 
-const bob: Principal = { kind: "person", subject: "zerops:bob" };
+const bob: Principal = { kind: "person", subject: "zerops-user:bob" };
 const refuseBob = (principal: Principal) =>
-  principal.kind === "person" && principal.subject === "zerops:bob"
+  principal.kind === "person" && principal.subject === "zerops-user:bob"
     ? "Bob did not sign this agent in."
     : undefined;
 

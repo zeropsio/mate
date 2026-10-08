@@ -637,6 +637,22 @@ export function engineStopTarget(
   );
 }
 
+/**
+ * The run a message sent now goes into, as V1 sends a message into its running turn: the run that
+ * works (or waits on the person) while the session it runs in can take a message; else none, and
+ * the message is the conversation's next run.
+ */
+export function engineSteerTarget(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): string | null {
+  const conversation = read.fact("mateEngineConversation", engineConversationId(key));
+  if (conversation.kind !== "known" || conversation.value.header.session?.steer !== true)
+    return null;
+  const { runs } = cardsOf(read, engineConversationId(key));
+  return runs.findLast((run) => run.state === "running" || run.state === "waiting")?.id ?? null;
+}
+
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
 export interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;

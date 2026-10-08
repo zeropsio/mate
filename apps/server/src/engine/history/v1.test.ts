@@ -199,3 +199,94 @@ describe("a call V1 heard return", () => {
     });
   });
 });
+
+describe("a call V1 began before the turn it is filed under", () => {
+  // Claude woke the Mate with a call already started: V1 kept its start and an update under no
+  // turn (time puts them in the turn before) and its completion under the turn that began.
+  const head = (id: string, kind: string, at: string, turnId: string | null) => ({
+    id,
+    kind,
+    summary: "Ran command",
+    turnId,
+    callId: "call-early",
+    taskId: null,
+    createdAt: at,
+    sequence: null,
+    payload: null,
+  });
+  const lifecycle = [
+    head("a-started", "tool.started", "2026-10-05T07:00:50.000Z", null),
+    head("b-updated", "tool.updated", "2026-10-05T07:00:55.000Z", null),
+    head("c-completed", "tool.completed", "2026-10-05T07:01:05.000Z", "turn-1"),
+  ];
+
+  it("is one call, in the turn V1 draws it in, and leaves the turn before as it ended", () => {
+    const plan = planOf({ ...skeleton(2, 0), activities: lifecycle }, { turns: 10, records: 100 });
+    const calls = plan.entries.filter((entry) => entry.kind === "call");
+    expect(calls.map((entry) => entry.run)).toEqual([2]);
+    expect(calls[0]).toMatchObject({ ids: ["a-started", "b-updated", "c-completed"] });
+    expect(plan.runs[0]?.lastAt).toBe(Date.parse(iso(0)));
+  });
+});
+
+describe("work V1 kept under no turn, after a turn's last word", () => {
+  // The agent went on between turns: V1 kept the calls under no turn and drew them outside every
+  // card, so no card counted them or ran on to them.
+  const call = (id: string, at: string) => [
+    {
+      id: `${id}-started`,
+      kind: "tool.started",
+      summary: "Ran command",
+      turnId: null,
+      callId: id,
+      taskId: null,
+      createdAt: at,
+      sequence: null,
+      payload: null,
+    },
+    {
+      id: `${id}-completed`,
+      kind: "tool.completed",
+      summary: "Ran command",
+      turnId: null,
+      callId: id,
+      taskId: null,
+      createdAt: at.replace(".000Z", ".500Z"),
+      sequence: null,
+      payload: null,
+    },
+  ];
+  const inside = {
+    id: "named-call-started",
+    kind: "tool.started",
+    summary: "Ran command",
+    turnId: "turn-0",
+    callId: "named-call",
+    taskId: null,
+    createdAt: "2026-10-05T07:00:20.000Z",
+    sequence: null,
+    payload: null,
+  };
+
+  it("is a run of its own between the turns, never counted on the turn before", () => {
+    const activities = [
+      ...call("before-last", "2026-10-05T07:00:10.000Z"),
+      inside,
+      ...call("loose-1", "2026-10-05T07:00:40.000Z"),
+      ...call("loose-2", "2026-10-05T07:00:45.000Z"),
+    ];
+    // Turn 0's note at :30 is its last word; turn 1 is asked at 07:01.
+    const plan = planOf({ ...skeleton(2, 1), activities }, { turns: 10, records: 100 });
+    expect(plan.runs.map((run) => run.turn.turnId)).toEqual(["turn-0", null, "turn-1"]);
+    const callsByRun = plan.entries.flatMap((entry) =>
+      entry.kind === "call" ? [[entry.run, entry.ids[0]] as const] : [],
+    );
+    expect(callsByRun).toEqual([
+      [1, "before-last-started"],
+      [1, "named-call-started"],
+      [2, "loose-1-started"],
+      [2, "loose-2-started"],
+    ]);
+    expect(plan.runs[0]?.lastAt).toBe(Date.parse("2026-10-05T07:00:30.000Z"));
+  });
+});

@@ -1445,6 +1445,14 @@ export class ChatDriver {
     this.wire.history(text, turnId);
   }
 
+  exchange(question: string, answer: string) {
+    this.wire.exchange(question, answer);
+  }
+
+  reply(turnId: string, text: string) {
+    this.wire.reply(turnId, text);
+  }
+
   approval() {
     this.wire.approval();
   }

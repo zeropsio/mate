@@ -42,6 +42,10 @@ export class EngineChatWire implements ChatWire {
     this.engine.personTurn(text);
   }
 
+  exchange(question: string, answer: string) {
+    this.engine.note(this.engine.personRun(question), answer, { kind: "completed" });
+  }
+
   approval() {
     const id = this.engine.ask({
       kind: "approval",
@@ -59,6 +63,11 @@ export class EngineChatWire implements ChatWire {
       run === undefined ? {} : { runId: run },
     );
     this.asks.set(id, { ask: "question", named: requestId });
+  }
+
+  reply(turnId: string, text: string) {
+    const run = this.journeyRuns.get(turnId);
+    if (run !== undefined) this.engine.note(run, text);
   }
 
   /** The journey's runs are the engine's own runs, under the engine's ids. */
@@ -81,7 +90,8 @@ export class EngineChatWire implements ChatWire {
       }
       if (op === "set-runtime-mode")
         return [{ kind: "access", runtimeMode: String(payload.runtimeMode) }];
-      if (op === "send") {
+      // A message steered into the running run is a turn as V1's mid-turn send is.
+      if (op === "send" || op === "steer") {
         const effort = effortOf(options as never);
         return [
           {

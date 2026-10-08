@@ -38,7 +38,7 @@ import {
   type WireCaller,
 } from "./EngineWire.ts";
 
-const ana: WireCaller = { subject: "ana", environmentId: "env-1", epoch: 4 };
+const ana: WireCaller = { subject: "zerops-user:ana", environmentId: "env-1", epoch: 4 };
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
 const preview = {
   type: "image",
@@ -654,7 +654,7 @@ describe("a client's calls to an engine conversation", () => {
         );
         assert.deepStrictEqual(
           principals.map((row) => JSON.parse(row.principal_json)),
-          [{ kind: "person", subject: "ana" }],
+          [{ kind: "person", subject: "zerops-user:ana" }],
         );
         yield* w.shutdown;
       }),

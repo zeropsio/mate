@@ -66,10 +66,13 @@ function rig(mateEngine: number | undefined) {
         Effect.provideService(EnvironmentSupervisor, { prepared } as never),
       );
     });
-  /** The conversation the account holds, with these runs. */
-  const runs = (held: ReadonlyArray<ReturnType<typeof engineRun>>) => {
+  /** The conversation the account holds, with these runs (and its header so patched). */
+  const runs = (
+    held: ReadonlyArray<ReturnType<typeof engineRun>>,
+    headerPatch: Parameters<typeof engineHeader>[1] = {},
+  ) => {
     const key = { environmentId: ENV, conversationId: "thread-ada" };
-    header();
+    header(headerPatch);
     store.dispatch({
       kind: "delivery",
       via: "mate-direct",
@@ -124,6 +127,61 @@ function rig(mateEngine: number | undefined) {
 describe("the thread commands a view sends, by its Mate's wire", () => {
   // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
   // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
+  const SESSION = (steer: boolean) => ({
+    session: { driver: "claudeAgent", model: "claude-sonnet-4-5", steer },
+  });
+  const working = (state: "running" | "waiting" | "admitted") =>
+    engineRun("thread-ada", 2, { state, end: null, endedAt: null } as never);
+
+  it.effect.each(["running", "waiting"] as const)(
+    "a message sent while the conversation's run is %s steers that run, as V1's mid-turn send does",
+    (state) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs([engineRun("thread-ada", 1), working(state)], SESSION(true));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        expect(r.calls).toEqual([
+          {
+            kind: "steer",
+            conversationId: "thread-ada",
+            commandId: "message-7",
+            runId: "thread-ada/r/2",
+            text: "And the worker",
+          },
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
+
+  const picture = {
+    type: "image",
+    id: "img-1",
+    name: "a.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+  } as const;
+  const file = {
+    type: "file",
+    id: "file-1",
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 9,
+  } as const;
+  it.effect.each([
+    { name: "no run works", runs: [engineRun("thread-ada", 1)], steer: true, carries: [] },
+    { name: "the run is not started yet", runs: [working("admitted")], steer: true, carries: [] },
+    { name: "its session cannot steer", runs: [working("running")], steer: false, carries: [] },
+    { name: "it carries pictures", runs: [working("running")], steer: true, carries: [picture] },
+    { name: "it carries a file", runs: [working("running")], steer: true, carries: [file] },
+  ])("a message sent when $name goes as the conversation's next run", ({ runs, steer, carries }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs(runs, SESSION(steer));
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
+      expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
+    }),
+  );
+
   it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>
     Effect.gen(function* () {
       const r = rig(1);
