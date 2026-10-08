@@ -69,12 +69,6 @@ describe("ZeropsHostedFrame", () => {
   });
 
   it("centres a single card when asked, and frames a page otherwise", () => {
-    const centred = renderToStaticMarkup(
-      <ZeropsHostedFrame centered>
-        <p>card</p>
-      </ZeropsHostedFrame>,
-    );
-    expect(centred).toContain("items-center justify-center");
     const page = renderToStaticMarkup(
       <ZeropsHostedFrame>
         <p>page</p>

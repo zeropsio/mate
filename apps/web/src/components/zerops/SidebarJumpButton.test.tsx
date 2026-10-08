@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -25,7 +26,8 @@ describe("SidebarJumpButton", () => {
 
   it("is the small chip the plan draws: 28 px tall, its key in 12 px mono", () => {
     const html = button("⌘K");
-    expect(html).toMatch(/<button[^>]*class="[^"]*\bzerops-jump-button\b/u);
-    expect(html).toMatch(/<span class="[^"]*\bzerops-jump-key\b[^"]*">⌘K<\/span>/u);
+    const control = markupDom(html).querySelector("button");
+    expect(control?.textContent).toContain("⌘K");
+    expect(control?.getAttribute("aria-label")).toBe("Jump to a Mate, project, change or stop");
   });
 });

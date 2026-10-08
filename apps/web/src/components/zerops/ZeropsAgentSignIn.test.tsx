@@ -120,16 +120,16 @@ describe("the sign-in's cards", () => {
 
   it("opens the chosen card in place, starting its login at once", () => {
     draw();
-    click(host.querySelector(".arrival-card[data-agent-id='claude-code']"));
+    click(host.querySelector("[data-agent-id='claude-code']"));
     expect(calls.start).toEqual(["claude-code"]);
-    const open = host.querySelector(".arrival-open");
+    const open = host.querySelector("[data-agent-id][data-sign-in]");
     expect(open?.getAttribute("data-agent-id")).toBe("claude-code");
     expect(open?.textContent).toContain("Open Claude and approve Fen.");
     expect(open?.textContent).toContain("Paste the code Claude shows you.");
     expect(open?.textContent).toContain("Use Codex instead");
     // The cards left fade where they stood, out of reach.
     expect(host.querySelectorAll(".arrival-cards:not([data-leaving])")).toHaveLength(0);
-    expect(host.querySelector(".arrival-cards[data-leaving]")?.hasAttribute("inert")).toBe(true);
+    expect(host.querySelector("[data-leaving]")?.hasAttribute("inert")).toBe(true);
   });
 });
 
@@ -189,7 +189,7 @@ describe("Claude's steps", () => {
 
   it("says a failed sign-in in its own words, and Try again starts it afresh", () => {
     draw();
-    click(host.querySelector(".arrival-card[data-agent-id='claude-code']"));
+    click(host.querySelector("[data-agent-id='claude-code']"));
     draw({
       agents: [
         {
@@ -217,7 +217,7 @@ describe("Claude's steps", () => {
         { agentId: "codex", login: undefined },
       ],
     });
-    click(host.querySelector(".arrival-card[data-agent-id='claude-code']"));
+    click(host.querySelector("[data-agent-id='claude-code']"));
     expect(host.querySelector("[role='alert']")).toBeNull();
     expect(host.textContent).toContain("Open Claude and approve Fen.");
   });
@@ -262,7 +262,9 @@ describe("the sign-in in a dialog", () => {
   it("opens on the agent asked for and starts its login, with no other to switch to", () => {
     draw({ agents: [{ agentId: "codex", login: undefined }], fixed: true });
     expect(calls.start).toEqual(["codex"]);
-    expect(host.querySelector(".arrival-open")?.getAttribute("data-agent-id")).toBe("codex");
+    expect(host.querySelector("[data-agent-id][data-sign-in]")?.getAttribute("data-agent-id")).toBe(
+      "codex",
+    );
     expect(host.querySelector("[data-sign-in-switch]")).toBeNull();
   });
 
@@ -283,7 +285,7 @@ describe("the sign-in in a dialog", () => {
       nameOf: (subject) => (subject === "u-ann" ? "Ann" : undefined),
     });
     expect(calls.start).toEqual([]);
-    const open = host.querySelector(".arrival-open");
+    const open = host.querySelector("[data-agent-id][data-sign-in]");
     expect(open?.textContent).toContain("Signing in replaces Ann's sign-in.");
     click(host.querySelector("[data-sign-in-replace]"));
     expect(calls.start).toEqual(["codex"]);

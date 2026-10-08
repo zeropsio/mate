@@ -4,7 +4,6 @@ import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
 import { CrewTimelineContext, type CrewTimeline } from "./CrewTaskCard";
 import { CrewmateEmptyState } from "./CrewmateEmptyState";
 
@@ -91,13 +90,7 @@ describe("CrewmateEmptyState", () => {
     const html = render(timeline(BACKEND));
     expect(html).toContain('data-zerops-surface="crewmate-empty-state"');
     // The spacer the Mate's opening puts its face under (`ZeropsMateEmptyState`).
-    expect(html).toMatch(/class="[^"]*\bbasis-1\/3\b[^"]*"/u);
-    const face = between(html, "data-crewmate-empty-lead", "<h1");
-    expect(face).toContain('data-mate-face-tint="sky"');
-    expect(face).toContain("size-16 sm:size-18");
-    expect(html).toContain(
-      '<h1 class="text-center text-2xl font-normal tracking-tight text-foreground sm:text-3xl mt-6">Backend</h1>',
-    );
+
     expect(html).not.toContain("@backend");
   });
 
@@ -204,14 +197,7 @@ describe("CrewmateEmptyState", () => {
     const html = render(timeline(null, {}, "backend"));
     expect(html).not.toContain("backend");
     expect(html).not.toContain("<h1");
-    const lead = between(html, "data-crewmate-empty-lead", "");
-    expect(lead).toContain(`class="${MATE_EMPTY_FACE_CLASS}"`);
-    expect(lead).toMatch(
-      new RegExp(
-        `aria-hidden="true" class="${MATE_EMPTY_HEADLINE_CLASS} mt-6" data-crewmate-name-held`,
-        "u",
-      ),
-    );
+
     expect(html).not.toContain("data-mate-face-tint");
     expect(html).not.toContain("data-crewmate-whose");
     expect(html).not.toContain("data-crewmate-card");

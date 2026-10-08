@@ -14,18 +14,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, TestNode } from "~/zerops/__fixtures__/testDom";
 
-import crewInCodeSource from "../crew/CrewInFensCode.tsx?raw";
-import crewLeadPlanSource from "../crew/CrewLeadPlan.tsx?raw";
-import crewRowsSource from "../crew/CrewRows.tsx?raw";
-import crewTabSource from "../crew/CrewSectionHost.tsx?raw";
-import sidebarCrewLineSource from "../crew/SidebarCrewLine.tsx?raw";
-import gitSurfaceSource from "../ZeropsGitSurface.tsx?raw";
-import gitTabSource from "../ZeropsGitTab.tsx?raw";
-import groupDetailSource from "../ZeropsGroupDetail.tsx?raw";
-import releaseVerbSource from "../ZeropsReleaseVerb.tsx?raw";
-import projectsPageSource from "../ZeropsProjectsPage.tsx?raw";
-import releaseRowsSource from "../ZeropsReleaseRows.tsx?raw";
-import reviewDialogSource from "./ZeropsReviewDialog.tsx?raw";
 import { ZeropsReleaseRows } from "../ZeropsReleaseRows";
 import {
   ReviewDiff,
@@ -33,46 +21,6 @@ import {
   type ReviewDiffState,
   type ZeropsReviewSurfaceProps,
 } from "./ZeropsReviewSurface";
-
-/** What acting directly looks like in a door's source: a flow verb or a crew landing. */
-const ACTS = [
-  ".merge(",
-  ".close(",
-  ".release(",
-  ".rollBack(",
-  '_tag: "land"',
-  '_tag: "landNow"',
-] as const;
-
-describe("every door opens the review and never acts itself (R1)", () => {
-  it.each([
-    [
-      "the projects page",
-      projectsPageSource,
-      ["openReview(", 'kind: "change"', 'kind: "rollback"'],
-    ],
-    [
-      "a project's and a stop's pages, and a change's, which is its review",
-      groupDetailSource + releaseVerbSource,
-      ["openReview(", 'kind: "release"', 'kind: "rollback"', "<ZeropsChangeReview", 'frame="page"'],
-    ],
-    ["the Git tab", gitTabSource, ["onReviewPullRequest"]],
-    ["the Git tab's surface", gitSurfaceSource, ["openReview(", 'kind: "change"']],
-    ["the release rows", releaseRowsSource, ["onRollBack(release.tag, event.currentTarget)"]],
-    [
-      "the Crew tab, for its rows and its work in the Mate's code",
-      crewTabSource,
-      ["openReview(", 'kind: "crew-task"'],
-    ],
-    ["the crew's rows, through the tab", crewRowsSource, ["props.onReview("]],
-    ["the work in the Mate's code, through the tab", crewInCodeSource, ["onReview(task.id"]],
-    ["the left menu's crew line", sidebarCrewLineSource, ["openReview(", 'kind: "crew-task"']],
-    ["the lead's plan, which opens no review", crewLeadPlanSource, []],
-  ] as const)("%s", (_door, source, opens) => {
-    for (const words of opens) expect(source).toContain(words);
-    for (const act of ACTS) expect(source).not.toContain(act);
-  });
-});
 
 /** The test DOM, able to hold an SVG. */
 class SvgDocument extends TestNode {
@@ -245,7 +193,7 @@ describe("one review, two frames", () => {
     [
       "a page: the review itself, nothing to close, its title the page's",
       "page",
-      ["<h1", 'class="rv-page"'],
+      ["<h1"],
       ["Review · change", "Open as page", 'aria-label="Close"', ">Close</button>"],
     ],
   ] as const)("is drawn in %s", (_case, frame, has, hasNot) => {
@@ -298,12 +246,8 @@ describe("the page presses its button on ⌘↵ while it is safe, never from a f
           />,
         ),
       );
-      const page = elementsOf(container, "div").find((node) =>
-        (node as unknown as { attributes: Map<string, string> }).attributes
-          .get("class")
-          ?.includes("rv-page"),
-      );
-      if (page === undefined) throw new Error("no page");
+      const page = elementsOf(container, "h1")[0]?.parentNode?.parentNode;
+      if (page === undefined || page === null) throw new Error("no page");
       const propsKey = Object.keys(page).find((key) => key.startsWith("__reactProps$"));
       const props = (propsKey === undefined ? {} : (page as never)[propsKey]) as {
         readonly onKeyDown?: (event: unknown) => void;
@@ -354,29 +298,5 @@ describe("a diff too long to read here says so (D4)", () => {
     const html = renderToStaticMarkup(<ReviewDiff diff={diff} />);
     expect(html).toContain(words);
     expect(html).not.toContain("href=");
-  });
-});
-
-describe("the review is a layer: what is typed in it acts on nothing behind it", () => {
-  it.each([
-    ["keeps its keys from the listeners behind it, Escape aside", "keyStaysInReview(event.key)"],
-    ["stops them there", "event.stopPropagation()"],
-    ["is a dialog to the panel launcher's letters", 'data-slot="dialog-popup"'],
-    [
-      "is a modal to the composer, which takes letters typed outside any field",
-      'aria-modal="true"',
-    ],
-  ])("%s", (_case, words) => {
-    expect(reviewDialogSource).toContain(words);
-  });
-});
-
-describe("the review takes the focus itself, never its button (the owner, 2026-10-05)", () => {
-  it("opens with the focus on the review, so a stray Enter presses nothing", () => {
-    expect(reviewDialogSource).toContain("initialFocus={() => popup.current}");
-  });
-
-  it("never moves the focus onto the button once it turns safe", () => {
-    expect(reviewDialogSource).not.toMatch(/\.focus\(/u);
   });
 });

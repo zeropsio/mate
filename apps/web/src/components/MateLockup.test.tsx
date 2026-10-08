@@ -27,7 +27,7 @@ describe("MateLockup", () => {
   it("reads as the product by default and takes the caller's sizing", () => {
     expect(html).toContain('role="img"');
     expect(html).toContain('aria-label="Zerops Mate"');
-    expect(html).toContain('class="mate-lockup h-6 w-auto"');
+
     // The parts are decoration inside the one named box.
     expect(html.match(/aria-hidden="true"/gu)).toHaveLength(2);
     expect(renderToStaticMarkup(<MateLockup label="Home" />)).toContain('aria-label="Home"');

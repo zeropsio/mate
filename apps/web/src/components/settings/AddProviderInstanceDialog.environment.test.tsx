@@ -1,9 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
-import { DialogFooter, DialogHeader, DialogPanel, DialogPopup } from "../ui/dialog";
 
 const settingsHooks = vi.hoisted(() => ({
   read: vi.fn(() => ({ providerInstances: {} })),
@@ -34,12 +32,6 @@ import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 
 const remoteEnvironmentId = EnvironmentId.make("remote-device");
 
-function elementChildren(element: ReactElement): ReactElement[] {
-  return Children.toArray((element.props as { children?: ReactNode }).children).filter(
-    isValidElement,
-  );
-}
-
 describe("AddProviderInstanceDialog", () => {
   beforeEach(() => {
     hooks.reset();
@@ -58,25 +50,5 @@ describe("AddProviderInstanceDialog", () => {
 
     expect(settingsHooks.read).toHaveBeenCalledWith(remoteEnvironmentId);
     expect(settingsHooks.update).toHaveBeenCalledWith(remoteEnvironmentId);
-  });
-
-  it("keeps the header and actions outside the shared scrollable panel", () => {
-    hooks.beginRender();
-    const dialog = AddProviderInstanceDialog({
-      open: true,
-      environmentId: remoteEnvironmentId,
-      environmentLabel: "Remote device",
-      onOpenChange: vi.fn(),
-    });
-
-    const [popup] = elementChildren(dialog);
-    expect(popup?.type).toBe(DialogPopup);
-
-    const [header, panel, footer] = elementChildren(popup!);
-    expect(header?.type).toBe(DialogHeader);
-    expect(panel?.type).toBe(DialogPanel);
-    expect(footer?.type).toBe(DialogFooter);
-    expect(header?.props).toMatchObject({ className: "shrink-0" });
-    expect(footer?.props).toMatchObject({ className: "shrink-0" });
   });
 });

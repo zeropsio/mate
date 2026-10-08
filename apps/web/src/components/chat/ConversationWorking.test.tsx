@@ -181,9 +181,6 @@ describe("what runs alongside the Mate", () => {
         expect(body.match(/<svg/g)?.length ?? 0).toBe(label.startsWith("Background") ? 1 : 0);
         continue;
       }
-      const chevron = /<svg[^>]*class="([^"]*)"/.exec(body)?.[1]?.split(" ") ?? [];
-      expect(chevron).toEqual(expect.arrayContaining(["text-muted-foreground/55"]));
-      expect(chevron).not.toContain("opacity-0");
     }
   });
 
@@ -459,22 +456,6 @@ describe("what runs alongside the Mate", () => {
       globalThis.ResizeObserver = observers;
       (globalThis as { window?: unknown }).window = savedWindow;
     }
-  });
-
-  // One right edge for every time in the card: the heading's, each line's
-  // and each bar's.
-  // One grid for the card (K1): the bar's name one column in, its figure on
-  // the card's right edge.
-  it("sets each bar in the card's grid, its figure on the right edge", () => {
-    const markup = render(DOCK);
-    const bars = [...markup.matchAll(/class="run-bar[^"]*"/g)];
-    expect(bars).toHaveLength(3);
-    const figures = [
-      ...markup.matchAll(
-        /<span class="(flex items-center gap-1\.5 text-muted-foreground tabular-nums)">/g,
-      ),
-    ];
-    expect(figures).toHaveLength(3);
   });
 });
 

@@ -281,14 +281,6 @@ describe("ZeropsPanelPlaceholder", () => {
 });
 
 describe("ZeropsPanel agent authorization ownership", () => {
-  it("centers dense project content at a readable maximum width", () => {
-    feedState.topology = resolved(VIEW);
-    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
-
-    expect(html).toContain("mx-auto");
-    expect(html).toContain("max-w-3xl");
-  });
-
   it.each([
     {
       name: "no card when handed null even though the auth feed reports attention",

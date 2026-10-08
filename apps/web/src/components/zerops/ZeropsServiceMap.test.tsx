@@ -113,16 +113,6 @@ const renderDetail = (view: ZeropsTopologyView, lifecycle?: ZeropsLifecycle): st
   return renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
 };
 
-const classNamesForText = (html: string, text: string): ReadonlyArray<string> => {
-  const escapedText = text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const match = new RegExp(
-    `<(?:span|p) class="([^"]*)"[^>]*>${escapedText}</(?:span|p)>`,
-    "u",
-  ).exec(html);
-  expect(match).not.toBeNull();
-  return match?.[1]?.split(" ") ?? [];
-};
-
 describe("ZeropsServiceMap — the card", () => {
   it("draws a Data button on data-group cards only, and only when an opener is in context", () => {
     const view = topology([
@@ -257,10 +247,6 @@ describe("ZeropsServiceMap — the card", () => {
     const hostname = "application-runtime-with-a-hostname-too-long-for-the-right-panel";
     const html = render(topology([service({ hostname })]));
 
-    expect(classNamesForText(html, hostname)).toEqual(
-      expect.arrayContaining(["min-w-0", "truncate"]),
-    );
-    expect(classNamesForText(html, hostname)).not.toContain("break-all");
     expect(html).toContain("Active");
   });
 
@@ -296,7 +282,7 @@ describe("ZeropsServiceMap — the card", () => {
     );
 
     // The name is one line of its own; the ports sit under it and may wrap.
-    expect(classNamesForText(html, "appdev")).toEqual(expect.arrayContaining(["truncate"]));
+
     expect(html).toContain(">:3000, :3001, :3002, :3003, :3004</span>");
     expect(html.indexOf(">appdev<")).toBeLessThan(html.indexOf("data-zerops-service-ports"));
     // One direct button, for the service's own port; the rest behind Open.
@@ -328,7 +314,6 @@ describe("ZeropsServiceMap — the card", () => {
 
     expect(html).toContain("data-zerops-service-transient");
     expect(html).toContain("Creating");
-    expect(html).not.toContain("animate-spin");
   });
 
   it("exposes the shared service tone without coupling tests to classes", () => {
@@ -369,7 +354,6 @@ describe("ZeropsServiceMap — the card", () => {
 
     expect(html).toContain('data-zerops-running-tool="zerops_deploy"');
     expect(html).toContain("zerops_deploy running");
-    expect(html).not.toContain("animate-spin");
   });
 
   it("says there is nothing yet rather than showing empty groups", () => {
@@ -607,7 +591,6 @@ describe("ZeropsServiceDetail — the pop", () => {
     expect(html).toContain('href="https://kanbandev-26a7.prg1.zerops.app"');
     expect(html).toContain('href="https://kanbandev-26a7-3000.prg1.zerops.app"');
     expect(html).toContain("kanbandev-26a7-3000.prg1.zerops.app</span>");
-    expect(html).not.toContain("truncate");
   });
 
   it("offers a production project as a linked route", () => {

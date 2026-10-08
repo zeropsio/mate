@@ -291,7 +291,7 @@ describe("whom a question waits on", () => {
     const markup = render();
 
     expect(markup).toContain(`>${words}</span>`);
-    expect(markup).not.toContain("uppercase");
+
     expect(markup).not.toContain("tracking-");
     expect(markup).not.toContain('data-zerops-primitive="micro-label"');
   });

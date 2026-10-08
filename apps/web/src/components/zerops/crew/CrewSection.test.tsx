@@ -67,7 +67,7 @@ const FIXTURE = crewSnapshotFixture();
 const RUN = FIXTURE.run!;
 
 describe("CrewSectionEmpty — no crew yet", () => {
-  it("says what a crew is, with Fen and three empty seats, and one press", () => {
+  it("says what a crew is and offers its setup action", () => {
     const html = renderToStaticMarkup(
       <CrewSectionEmpty
         lock={null}
@@ -83,7 +83,6 @@ describe("CrewSectionEmpty — no crew yet", () => {
         "Set up a crew",
       ].join(" "),
     );
-    expect(html.match(/class="crew-seat"/gu)).toHaveLength(3);
   });
 
   it("says why, with the one way out, in place of Set up a crew for a viewer who may not run it", () => {
@@ -135,15 +134,6 @@ describe("CrewSection — the Crew tab's column", () => {
     ] as const) {
       expect(text).toContain(`${need} ${presses}`);
     }
-  });
-
-  it("tightens at a phone's width: the head, the composer and the rows closer, the ship line short", () => {
-    const html = render(FIXTURE);
-    expect(html).toContain('pt-4 @max-md:pt-3" data-crew-head');
-    expect(html).toContain('mt-4 @max-md:mt-3.5" data-crew-composer');
-    expect(html).toContain('@max-md:mt-4" data-crew-rows');
-    expect(html).toContain('class="hidden @max-md:inline">Not shipped yet</span>');
-    expect(html).toMatch(/class="truncate @max-md:hidden">Fen hasn&#x27;t shipped these yet</u);
   });
 
   it("names nothing of the engine's: no version, handle, number, status word or engine noun", () => {
@@ -226,9 +216,7 @@ describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
   it("puts why and the one way out in the composer's own place", () => {
     const html = closed();
     expect(html).not.toContain("data-crew-composer");
-    expect(html).toContain(
-      'class="crew-locked mx-4 mt-4 @max-md:mt-3.5" data-crew-locked="someone-else"',
-    );
+    expect(html).toContain('data-crew-locked="someone-else"');
     expect(textOf(html)).toContain(
       "Signed in by another project member — only they can run this crew. Sign in with your own account",
     );

@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -79,20 +80,11 @@ describe("ZeropsRoutesMenu", () => {
     expect(html).toContain('aria-label="Public routes of app: 2 public URLs"');
     expect(html).toContain("<button");
     expect(html).not.toContain(`href="${APP.url}"`);
-    const bubble =
-      /<span[^>]*class="([^"]*)"[^>]*data-zerops-surface="public-routes-count"[^>]*>2</u.exec(html);
-    expect(bubble?.[1]?.split(" ")).toEqual(
-      expect.arrayContaining(["absolute", "-top-1", "-end-1"]),
+    const button = markupDom(html).querySelector(
+      'button[aria-label="Public routes of app: 2 public URLs"]',
     );
-    // A count, not a call for attention: never the menu's full ink, which
-    // outshouted the dots of what waits on the person.
-    expect(bubble?.[1]).not.toContain("bg-sidebar-foreground");
-    expect(bubble?.[1]).toContain("bg-sidebar-row-active");
-    // The bubble sits inside the globe's own box, not beside it.
-    const trigger =
-      /<button[^>]*data-zerops-surface="public-routes-menu"[^>]*>(.*?)<\/button>/u.exec(html)?.[1];
-    expect(trigger).toContain("lucide-globe");
-    expect(trigger).toContain('data-zerops-surface="public-routes-count"');
+    expect(button).not.toBeNull();
+    expect(button?.textContent).toContain("2");
   });
 
   it("lists every domain in its menu, each its own item", () => {

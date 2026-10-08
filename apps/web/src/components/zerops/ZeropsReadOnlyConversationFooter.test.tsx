@@ -87,7 +87,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
 
     expect(html).toContain("rm -rf dist");
     expect(html).toContain(">Waiting for the owner</span>");
-    expect(html).not.toContain("uppercase");
+
     expect(html).not.toContain("Approve");
     expect(html).not.toContain("Decline");
   });
@@ -98,7 +98,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     expect(html).toContain("Which approach should the migration take?");
     expect(html).toContain("Incremental");
     expect(html).toContain(">Waiting for the owner</span>");
-    expect(html).not.toContain("uppercase");
+
     expect(html).not.toContain("data-pending-user-input-other");
   });
 

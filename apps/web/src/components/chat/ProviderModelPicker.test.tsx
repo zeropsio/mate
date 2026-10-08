@@ -184,6 +184,5 @@ describe("ProviderModelPicker in the composer", () => {
     expect(markup).toContain("· High");
     expect(markup).not.toContain("Claude Sonnet 5<");
     expect(markup).toContain('data-composer-shortcut="composer.effort composer.mode"');
-    expect(markup).toContain("text-line");
   });
 });

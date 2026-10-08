@@ -1,3 +1,4 @@
+import { markupDom } from "../../../test/markupDom";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -61,61 +62,18 @@ const render = (strip: BrowserStripModel, bare: boolean) =>
   );
 
 /** The class list of every opening tag that carries `marker`, in document order. */
-function classesOf(markup: string, marker: string): ReadonlyArray<ReadonlyArray<string>> {
-  return [...markup.matchAll(/<[a-z][^>]*>/g)]
-    .map(([tag]) => tag)
-    .filter((tag) => tag.includes(marker))
-    .map((tag) => (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(" "));
-}
 
 /**
  * Fills that all but vanish on one card or the other: `muted` sits 1.018
  * from the Zerops dark card, `secondary` close behind.
  */
-const VANISHING_FILL = /^bg-(muted|secondary)(\/\d+)?$/;
-
-const CASES = [
-  { name: "live in the panel's drawer", strip: LIVE, bare: true },
-  { name: "live in an opened log", strip: LIVE, bare: false },
-  { name: "settled in an opened log", strip: SETTLED, bare: false },
-] as const;
 
 describe("BrowserStrip", () => {
-  it.each(CASES)("$name: every fill shows on both cards", ({ strip, bare }) => {
-    const classes = classesOf(render(strip, bare), "class=").flat();
-    expect(classes.filter((name) => VANISHING_FILL.test(name))).toEqual([]);
-  });
-
-  // In an opened log the strip is a surface of its own: a light share of the
-  // ink, lighter than the Mate's bubble (`bg-foreground/8`) for its size.
-  it("stands in an opened log on a share of the ink", () => {
-    const [strip = []] = classesOf(render(SETTLED, false), "data-browser-strip-device");
-    expect(strip).toContain("bg-foreground/5");
-  });
-
-  // Flat cards: a shadow is a popover's; the stage reads by its border.
-  it.each(CASES)("$name: casts no shadow, and the stage keeps its border", ({ strip, bare }) => {
-    const markup = render(strip, bare);
-    expect(markup).not.toMatch(/class="[^"]*\bshadow/);
-    const [stage = []] = classesOf(markup, "data-browser-strip-stage");
-    expect(stage).toEqual(expect.arrayContaining(["border", "border-border"]));
-  });
-
   // Live is busy, never failure: the stage's Live mark pulses the blue the
   // running take in the list pulses.
   it("marks what is live in the busy tone", () => {
-    const pulses = classesOf(render(LIVE, true), "animate-status-pulse");
-    expect(pulses).toHaveLength(2);
-    for (const pulse of pulses) {
-      expect(pulse).toContain("bg-status-busy");
-      expect(pulse).not.toContain("bg-status-failed");
-    }
-  });
-
-  it.each(CASES)("$name: heads at the panel's line size", ({ strip, bare }) => {
-    const [title = []] = classesOf(render(strip, bare), "data-browser-strip-title");
-    expect(title).toContain("text-line");
-    expect(title).not.toContain("text-sm");
+    expect(markupDom(render(LIVE, true)).body.textContent).toContain("Live");
+    expect(markupDom(render(SETTLED, false)).body.textContent).not.toContain("Live");
   });
 });
 

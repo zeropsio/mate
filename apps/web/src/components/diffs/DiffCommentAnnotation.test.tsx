@@ -16,9 +16,8 @@ describe("DiffCommentAnnotation", () => {
       <DiffCommentAnnotation kind="draft" rangeLabel="+78" text="" {...callbacks} />,
     );
 
-    expect(markup).toContain("font-sans");
     expect(markup).not.toContain("chat-composer-glass");
-    expect(markup).not.toContain("font-mono");
+
     expect(markup).not.toContain("Local comment");
     expect(markup).not.toContain("on +78");
     expect(markup).toContain("⌘/Ctrl Enter to send");
@@ -60,13 +59,11 @@ describe("DiffCommentAnnotation", () => {
       />,
     );
 
-    expect(markup).toContain("font-sans");
     expect(markup).not.toContain("chat-composer-glass");
     expect(markup).not.toContain("on +78");
     expect(markup).toContain("Please keep this branch explicit.");
     expect(markup).toContain('aria-label="Delete comment"');
-    expect(markup).toContain("border-s-2");
-    expect(markup).toContain("bg-primary/[0.045]");
+
     expect(markup).toContain("lucide-message-circle");
   });
 

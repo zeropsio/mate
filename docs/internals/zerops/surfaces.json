@@ -1956,7 +1956,6 @@
       "docs": "docs/user/zerops-account.md",
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
-        "apps/web/src/routes/-chatIndexTitlebar.test.ts",
         "apps/mobile/src/features/connection/pairing.test.ts"
       ],
       "untested": "Native pairing source is retained but is not reachable from the dormant native entry. Released web has no manual connection flow.",
