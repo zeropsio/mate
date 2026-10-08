@@ -33,8 +33,10 @@ describe("resolveThreadStatus", () => {
         session: { status: "running" as const, providerName: "claudeAgent", lastError },
         usagePause: lastError === null ? { resetsAt: "2026-10-10T00:00:00Z" } : null,
       };
-      expect(resolveThreadStatus(thread)).toEqual({ kind: "failed", toneId: "danger" });
-      expect(resolveThreadStatus({ ...thread, hasPendingUserInput: true }).kind).toBe("input");
+      expect(resolveThreadStatus(thread, "limited")).toEqual({ kind: "failed", toneId: "danger" });
+      expect(resolveThreadStatus({ ...thread, hasPendingUserInput: true }, "limited").kind).toBe(
+        "input",
+      );
       expect(
         resolveThreadStatus({
           ...thread,

@@ -54,6 +54,40 @@ describe("mateAttentionOf", () => {
   it.each([
     { name: "no chats", threads: [], working: 0, waiting: 0 },
     {
+      name: "a parked SDK's refused turn waits instead of claiming work",
+      threads: [
+        shell("a", {
+          latestTurn: turn("refused", "running"),
+          usagePause: {
+            resetsAt: "2026-10-02T00:00:00Z",
+            pausedAt: "2026-10-01T00:00:00Z",
+            held: 0,
+            window: "7-day",
+            autoResume: false,
+          },
+        }),
+      ],
+      working: 0,
+      waiting: 1,
+    },
+    {
+      name: "an admitted turn works without inheriting the old scheduling pause",
+      threads: [
+        shell("a", {
+          latestTurn: { ...turn("admitted", "running"), startedAt: "2026-10-01T01:00:00Z" },
+          usagePause: {
+            resetsAt: "2026-10-02T00:00:00Z",
+            pausedAt: "2026-10-01T00:00:00Z",
+            held: 0,
+            window: "7-day",
+            autoResume: false,
+          },
+        }),
+      ],
+      working: 1,
+      waiting: 0,
+    },
+    {
       name: "a running turn works, a pending approval and a question wait",
       threads: [
         shell("a", { latestTurn: turn("t-a", "running") }),

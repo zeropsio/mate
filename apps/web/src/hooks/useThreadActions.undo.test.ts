@@ -2,6 +2,8 @@ import { EnvironmentId, ThreadId, TurnId, type OrchestrationThreadShell } from "
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useThreadActions } from "./useThreadActions";
+import { projectMateLimit } from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { threadEnvironment } from "../state/threads";
 import { toastManager } from "../components/ui/toast";
 
@@ -148,6 +150,9 @@ describe("archive Undo", () => {
         lastError: refused ? "You've hit your weekly limit" : null,
         updatedAt: "2026-10-08T10:00:00Z",
       };
+      vi.spyOn(appAtomRegistry, "get").mockReturnValue(
+        projectMateLimit({ ...threadShell, latestTurn: null }, Date.parse("2026-10-08T10:00:00Z")),
+      );
       const result = await useThreadActions().archiveThread(target);
       expect(result._tag).toBe(refused ? "Success" : "Failure");
       expect(commands.archive).toHaveBeenCalledTimes(refused ? 1 : 0);

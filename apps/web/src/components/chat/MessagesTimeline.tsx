@@ -1,4 +1,5 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import {
   deriveTimelineMinimapItems,
@@ -364,7 +365,7 @@ interface MessagesTimelineProps {
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
-  usageRefused?: boolean;
+  limit?: MateLimit;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
@@ -424,7 +425,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   usagePause = null,
-  usageRefused = usagePause !== null,
+  limit = NO_MATE_LIMIT,
   onUsageAutoResumeChange = null,
   onUsageContinue = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
@@ -528,6 +529,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () =>
       deriveMessagesTimelineRows({
         cache: rowsCache,
+        limit,
         nowMs,
         newSince,
         timelineEntries,
@@ -561,6 +563,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       alongside,
       provider,
       rowsCache,
+      limit,
     ],
   );
   const stableRows = useStableRows(rawRows);
@@ -666,7 +669,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [rows],
   );
   const activePause =
-    usagePause === null
+    limit.kind !== "limited"
       ? undefined
       : rows.find((row) => row.kind === "pause" && row.id === livePauseId);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
@@ -796,6 +799,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [
     contentInsetEndAdjustment,
     listPlaced,
+    listReady,
     listRef,
     restoringReadingPosition,
     routeThreadKey,
@@ -1237,7 +1241,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             ? undefined
             : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
       },
-      usageRefused,
+      limit,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
@@ -1271,7 +1275,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       mate,
       pauseViewportHeight,
       contentInsetEndAdjustment,
-      usageRefused,
+      limit,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel,
@@ -1369,13 +1373,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return () => cancelAnimationFrame(frame);
   }, [standing, showsList, kept?.shown, routeThreadKey, activeThreadEnvironmentId]);
   const rowsRef = useRef(rows);
-  const listReadyRef = useRef(listReady);
   useLayoutEffect(() => {
     rowsRef.current = rows;
-    listReadyRef.current = listReady;
   });
   useLayoutEffect(() => {
-    if (!showsList || listPlaced) return;
+    if (!showsList || !listReady || listPlaced) return;
     const list = listRef.current;
     const viewport: HTMLElement | null = list?.getScrollableNode() ?? null;
     if (!list || !viewport) return;
@@ -1451,7 +1453,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       const target = aim();
       const judged = judgeTimelinePlacing(
         {
-          listReady: listReadyRef.current,
+          listReady,
           offBy: target === null ? null : viewport.scrollTop - target,
         },
         stableFrames,
@@ -1486,6 +1488,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, [
     cancelPositionRestoreRef,
     listPlaced,
+    listReady,
     listRef,
     onManualNavigation,
     rememberedPosition,
@@ -2438,38 +2441,22 @@ function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-
   return <CrewTaskCard card={row.task} id={row.id} />;
 }
 
-/** Wake at the provider deadline; a historical refusal does not keep a clock running. */
 function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
   const ctx = use(TimelineRowCtx);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const resetsAt = (row.id === ctx.livePauseId ? ctx.usagePause?.resetsAt : null) ?? row.resetsAt;
-  const waiting = row.resumedAt === null && resetsAt !== null;
-  useEffect(() => {
-    if (!waiting || resetsAt === null || Date.parse(resetsAt) <= nowMs) return;
-    const refreshClock = () => setNowMs(Date.now());
-    // Browser timer bounds only schedule another comparison, never an early reset.
-    const delay = Math.max(0, Math.min(Date.parse(resetsAt) - Date.now(), 2 ** 31 - 1));
-    const id = setTimeout(refreshClock, delay);
-    window.addEventListener("focus", refreshClock);
-    return () => {
-      clearTimeout(id);
-      window.removeEventListener("focus", refreshClock);
-    };
-  }, [waiting, resetsAt, nowMs]);
   return (
     <div
       style={
-        row.id === ctx.livePauseId && ctx.usagePause !== null
+        row.id === ctx.livePauseId && ctx.limit?.kind === "limited"
           ? { height: ctx.pauseStage?.height }
           : undefined
       }
     >
       <PauseBlock
         mate={ctx.pauseStage?.mate ?? null}
-        nowMs={nowMs}
+        nowMs={Date.now()}
         onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
-        refused={row.id === ctx.livePauseId && ctx.usageRefused === true}
+        limit={row.id === ctx.livePauseId ? (ctx.limit ?? NO_MATE_LIMIT) : NO_MATE_LIMIT}
         blockedByAnswer={row.id === ctx.livePauseId && ctx.queueBlockedByAnswer === true}
         row={row}
         serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}

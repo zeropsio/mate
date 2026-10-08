@@ -4,7 +4,8 @@ import {
   scopeThreadRef,
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
-import { isProviderRefused } from "@t3tools/shared/threadStatus";
+import { mateLimitAtom } from "@t3tools/client-runtime/data";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { canSettle, canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
@@ -282,7 +283,7 @@ export function useThreadActions() {
       if (
         thread.session?.status === "running" &&
         thread.session.activeTurnId != null &&
-        !isProviderRefused(thread)
+        appAtomRegistry.get(mateLimitAtom(scopedThreadKey(threadRef))).kind === "none"
       ) {
         return AsyncResult.failure(
           Cause.fail(

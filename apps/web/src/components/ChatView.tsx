@@ -7,7 +7,7 @@ import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
 import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
-import { isProviderRefused } from "@t3tools/shared/threadStatus";
+import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
   ChatAttachment as ContractChatAttachment,
@@ -417,7 +417,7 @@ import {
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./chat/conversationDock.logic";
+import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
 import { useLiveJobs } from "./chat/useLiveJobs";
 import {
@@ -1996,7 +1996,14 @@ export default function ChatView(props: ChatViewProps) {
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
-  const usageRefused = isProviderRefused(activeThreadShell);
+  const limit = useAtomValue(
+    mateLimitAtom(
+      activeThreadShell === null
+        ? ""
+        : scopedThreadKey(scopeThreadRef(activeThreadShell.environmentId, activeThreadShell.id)),
+    ),
+  );
+  const usageRefused = limit.kind !== "none";
   const activeLatestTurn = activeThread?.latestTurn ?? null;
   const activeRunningTurnId = usageRefused
     ? null
@@ -5768,9 +5775,7 @@ export default function ChatView(props: ChatViewProps) {
         backgroundLiveness: activeBackgroundLiveness,
         liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
-        pause: activeThreadShell?.usagePause
-          ? { resetsAt: activeThreadShell.usagePause.resetsAt }
-          : latestUsagePause(displayedTimeline.entries),
+        pause: limit.kind === "limited" ? { resetsAt: limit.resetsAt } : null,
         standupsDone,
       }),
     [
@@ -5784,7 +5789,7 @@ export default function ChatView(props: ChatViewProps) {
       activePlan,
       backgroundTasks,
       activeBackgroundLiveness,
-      activeThreadShell?.usagePause,
+      limit,
     ],
   );
   const setUsageAutoResume = useAtomCommand(threadEnvironment.setUsageAutoResume, {
@@ -8747,7 +8752,7 @@ export default function ChatView(props: ChatViewProps) {
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
-                  usageRefused,
+                  limit,
                   onUsageAutoResumeChange,
                   onUsageContinue:
                     isWorking ||

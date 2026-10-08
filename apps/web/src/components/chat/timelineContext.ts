@@ -1,3 +1,4 @@
+import type { MateLimit } from "@t3tools/client-runtime/data";
 /**
  * What every row of the conversation reads from the list around it: shared
  * callbacks and state, through context, so they pass the list's memo
@@ -50,7 +51,7 @@ export interface TimelineRowSharedState {
     readonly mate: Parameters<typeof PauseBlock>[0]["mate"];
     readonly height: number | undefined;
   };
-  usageRefused?: boolean;
+  limit?: MateLimit;
   onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   onUsageContinue?: (() => void) | null;
   agentPanelModel: AgentPanelModel;

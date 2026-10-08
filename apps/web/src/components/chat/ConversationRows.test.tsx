@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -9,6 +10,14 @@ import { EventLine, PauseBlock, type ConversationSpeaker } from "./ConversationR
 
 const NOVA: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW_MS = Date.parse("2026-09-27T10:00:00.000Z");
+const limitAt = (resetsAt: string | null, provider = "Claude") =>
+  projectMateLimit(
+    {
+      latestTurn: null,
+      session: { lastError: `${provider} usage limit reached`, usageLimitResetAt: resetsAt },
+    },
+    NOW_MS,
+  );
 const at = (secondsAgo: number) => new Date(NOW_MS - secondsAgo * 1000).toISOString();
 
 describe("the usage-limit pause", () => {
@@ -20,7 +29,7 @@ describe("the usage-limit pause", () => {
     renderToStaticMarkup(
       <PauseBlock
         nowMs={NOW_MS}
-        refused={true}
+        limit={limitAt(reset, "Codex")}
         row={{
           kind: "pause",
           id: "pause:1",
@@ -36,14 +45,14 @@ describe("the usage-limit pause", () => {
         timestampFormat="24-hour"
       />,
     );
-  it("shows the day of a weekly reset in both the marker and continuation explanation", () => {
+  it("shows the day of a weekly reset in the continuation explanation", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW_MS);
     try {
       const reset = new Date(NOW_MS + 7 * 86_400_000).toISOString();
       const when = formatUpcomingTimestamp(reset, "24-hour", NOW_MS);
       const notice = render(false, reset);
-      expect(notice).toContain(`Limit · until ${when}`);
+      expect(notice).toContain("Nova hit the Codex limit.");
       expect(notice).toContain(`Reset time: ${when}.`);
     } finally {
       vi.useRealTimers();
@@ -65,7 +74,7 @@ describe("the usage-limit pause", () => {
     expect(render(true, at(60))).not.toContain("still paused");
     expect(render(true, at(60))).toContain("Reset time passed");
     expect(render(true, at(60))).not.toContain("Limit · until");
-    expect(render(true, at(60))).toContain("Nova hit the Codex limit.");
+    expect(render(true, at(60))).toContain("Nova hit the Codex limit on ");
     expect(render(true, at(60))).not.toContain("picking up");
   });
   it("a known reset cannot invent an unread continuation choice", () => {
@@ -110,7 +119,7 @@ describe("the pause's automatic-resume choice", () => {
               provider: "Claude",
             }}
             serverPause={null}
-            refused={true}
+            limit={limitAt(at(60))}
             blockedByAnswer={blockedByAnswer}
             onAutoResumeChange={null}
             onContinue={blockedByAnswer ? null : continued}
@@ -154,7 +163,7 @@ describe("the pause's automatic-resume choice", () => {
               nowMs={NOW_MS}
               row={{ ...row, resumedAt }}
               serverPause={null}
-              refused={true}
+              limit={limitAt(resetsAt)}
               onAutoResumeChange={null}
               onContinue={continued}
               speaker={NOVA}
@@ -192,6 +201,7 @@ describe("the pause's automatic-resume choice", () => {
             provider: "Claude",
           }}
           serverPause={{ resetsAt, autoResume: false }}
+          limit={limitAt(resetsAt)}
           onAutoResumeChange={null}
           onContinue={continued}
           speaker={NOVA}
@@ -225,6 +235,7 @@ describe("the pause's automatic-resume choice", () => {
               provider: "Claude",
             }}
             serverPause={serverPause}
+            limit={serverPause === null ? { kind: "none" } : limitAt(resetsAt)}
             onAutoResumeChange={null}
             onContinue={continued}
             speaker={NOVA}
@@ -265,6 +276,7 @@ describe("the pause's automatic-resume choice", () => {
                 held: 0,
               }}
               serverPause={{ resetsAt, autoResume: choice }}
+              limit={limitAt(resetsAt)}
               speaker={NOVA}
               timestampFormat="24-hour"
             />,

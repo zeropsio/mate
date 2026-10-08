@@ -249,6 +249,28 @@ describe("ConversationStrip", () => {
     },
   );
 
+  it("the header's parked Claude face becomes idle when the projected reset expires", () => {
+    const startedAt = "2020-01-01T10:00:00.000Z";
+    state.shells = [
+      shell("main", {
+        latestTurn: { ...running, startedAt, completedAt: null },
+        session: {
+          threadId: ThreadId.make("main"),
+          status: "running",
+          providerName: "claudeAgent",
+          runtimeMode: "full-access",
+          activeTurnId: running.turnId,
+          lastError: "You've hit your weekly limit",
+          updatedAt: startedAt,
+          usageLimitResetAt: "2020-01-02T10:00:00.000Z",
+        },
+      }),
+    ];
+    const html = matePill(line({ current: "main" }));
+    expect(html).toContain('data-mate-face-state="idle"');
+    expect(html).not.toContain('data-mate-face-state="needs"');
+  });
+
   it("draws nothing where no Mate lives", () => {
     state.mate = false;
     state.shells = [shell("main")];

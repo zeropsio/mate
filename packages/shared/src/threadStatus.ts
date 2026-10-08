@@ -134,20 +134,14 @@ function status(kind: ThreadStatusKind): ThreadStatus {
   return { kind, toneId: toneIdForKind(kind) };
 }
 
-/** Refused admission stays refused until the source clears it; a running SDK is not admission. */
-export function isProviderRefused(
-  thread: Pick<ThreadStatusFields, "session" | "usagePause"> | null | undefined,
-): boolean {
-  return (
-    thread?.usagePause != null ||
-    usageLimitProvider(thread?.session?.lastError, thread?.session?.providerName) !== null
-  );
-}
-
-export function resolveThreadStatus(thread: ThreadStatusFields): ThreadStatus {
+export function resolveThreadStatus(
+  thread: ThreadStatusFields,
+  limit: "limited" | "expired" | "none" = "none",
+): ThreadStatus {
   if (thread.hasPendingApprovals) return status("approval");
   if (thread.hasPendingUserInput) return status("input");
-  if (isProviderRefused(thread)) return status("failed");
+  if (limit === "limited") return status("failed");
+  if (limit === "expired") return status("idle");
   if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
     return status("working");
   }

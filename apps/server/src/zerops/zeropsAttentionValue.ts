@@ -15,6 +15,7 @@ import {
 } from "@t3tools/contracts";
 import { linkFrameBytes, MATE_LINK_FRAME_MAX } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
+import { projectMateLimit } from "../../../../packages/client-runtime/src/data/projections/mateLimit.ts";
 import { mateMarkStateForThreadStatus, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 /** The person's chats: neither archived nor a crewmate's, which speaks through the crew. */
@@ -75,7 +76,10 @@ export function mateAttentionOf(
   const questions: Array<MateAttentionQuestion & { readonly at: number }> = [];
   const results: Array<MateAttentionResult> = [];
   for (const thread of chats) {
-    const { kind } = resolveThreadStatus(thread);
+    const { kind } = resolveThreadStatus(
+      thread,
+      projectMateLimit(thread, Date.parse(thread.updatedAt)).kind,
+    );
     const mark = mateMarkStateForThreadStatus(kind);
     if (mark === "working") working += 1;
     if (isQuestionKind(kind)) {

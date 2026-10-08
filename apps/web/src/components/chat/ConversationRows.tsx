@@ -1,5 +1,6 @@
 import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { MateConnectionState } from "../zerops/ZeropsMateEmptyState";
+import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
 /**
  * The conversation's own rows — the line for each stretch of the Mate's work,
  * the receipt on a message it has not read yet, the quiet seams between days,
@@ -395,7 +396,7 @@ export function PauseBlock({
   nowMs,
   timestampFormat,
   serverPause,
-  refused = serverPause !== null,
+  limit = NO_MATE_LIMIT,
   onAutoResumeChange,
   onContinue = null,
   blockedByAnswer = false,
@@ -408,34 +409,35 @@ export function PauseBlock({
   /** Present only on the pause that holds the thread now, on a server that keeps one. */
   readonly serverPause: ServerUsagePause | null;
   /** Current source refusal; a historical deadline alone cannot block another attempt. */
-  readonly refused?: boolean;
+  readonly limit?: MateLimit;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
   readonly blockedByAnswer?: boolean;
 }) {
   const resumed = row.resumedAt !== null;
-  const resetsAt = serverPause?.resetsAt ?? row.resetsAt;
-  const reset = resetsAt === null ? null : Date.parse(resetsAt);
-  const passed = reset !== null && reset <= nowMs;
+  const resetsAt = limit.kind === "none" ? row.resetsAt : limit.resetsAt;
+  const refused = limit.kind === "limited";
+  const passed = limit.kind === "expired";
+  const provider = limit.kind === "none" ? row.provider : limit.provider;
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed || !refused;
   const [waitingAt, setWaitingAt] = useState<string | null>(null);
   const detail =
     !history && resetsAt !== null && waitingAt === resetsAt
-      ? `${speaker.name} can’t continue with ${row.provider ?? "the coding agent"} before ${formatDayAwareTimestamp(resetsAt, timestampFormat)}: the provider’s limit still holds this work.`
+      ? `${speaker.name} can't continue with ${provider ?? "the coding agent"} before ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}: the provider's limit still holds this work.`
       : resumed
         ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
-        : !refused
-          ? "Continue to try again."
-          : resetsAt === null
-            ? "The coding agent hasn't given a reset time yet."
-            : passed
-              ? `Reset time passed. Continue to try again.`
+        : passed
+          ? "Reset time passed. Continue to try again."
+          : !refused
+            ? "Continue to try again."
+            : resetsAt === null
+              ? "The coding agent hasn't given a reset time yet."
               : serverPause === null
-                ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+                ? `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
                 : autoResume
-                  ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
-                  : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
+                  ? `${speaker.name} will try again automatically at ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
+                  : `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}. Automatic continuation is off.`;
   const actions = !resumed ? (
     <div className="flex flex-col items-center gap-4">
       {blockedByAnswer ? (
@@ -449,14 +451,14 @@ export function PauseBlock({
           variant="ghost"
           disabled={blockedByAnswer}
           onClick={() => {
-            if (refused && reset !== null && !passed) setWaitingAt(resetsAt);
+            if (refused && resetsAt !== null) setWaitingAt(resetsAt);
             else onContinue?.();
           }}
         >
           Continue
         </Button>
       )}
-      {serverPause === null || onAutoResumeChange === null ? null : (
+      {history || serverPause === null || onAutoResumeChange === null ? null : (
         <label
           className="flex cursor-pointer items-center gap-2 text-line text-foreground"
           data-pause-switch
@@ -476,7 +478,7 @@ export function PauseBlock({
       conversationShown: false,
       nowMs,
       mateName: speaker.name,
-      limit: { provider: row.provider ?? "coding agent", detail },
+      limit: { provider: provider ?? "coding agent", detail },
     });
     if (voice.surface === "none") return null;
     return (
@@ -512,15 +514,15 @@ export function PauseBlock({
         <span className="font-medium">
           {history
             ? usageLimitHistoryWords(
-                row.provider ?? "coding agent",
+                provider ?? "coding agent",
                 row.createdAt,
                 resetsAt,
                 speaker.name,
                 timestampFormat,
               )
-            : row.provider === undefined
+            : provider === undefined
               ? usageLimitWords("coding agent", undefined, speaker.name)
-              : usageLimitWords(row.provider, undefined, speaker.name)}
+              : usageLimitWords(provider, undefined, speaker.name)}
         </span>
         {row.held > 0 ? (
           <Tooltip>

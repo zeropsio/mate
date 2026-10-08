@@ -1,3 +1,4 @@
+import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -1874,6 +1875,12 @@ describe("MessagesTimeline — the conversation", () => {
       <MessagesTimeline
         {...buildProps()}
         latestTurn={settled}
+        limit={{
+          kind: "limited",
+          turnId: settled.turnId,
+          provider: "coding agent",
+          resetsAt: "2026-09-27T10:00:00Z",
+        }}
         usagePause={{ resetsAt: "2026-09-27T10:00:00Z", autoResume: false }}
         onUsageContinue={() => undefined}
         onUsageAutoResumeChange={() => undefined}
@@ -2077,6 +2084,47 @@ describe("MessagesTimeline — placing its rows", () => {
       await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
       await settleFrames(6);
       expect(outOfSight(renderer)).toBe(false);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
+  it("a parked refusal hands over the opening stage when its conversation list loads", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const lateList = createRef<LegendListRef>();
+    const limit = projectMateLimit(
+      {
+        latestTurn: {
+          turnId: "refused",
+          state: "running",
+          startedAt: MESSAGE_CREATED_AT,
+          completedAt: null,
+        },
+        session: { lastError: "Claude usage limit reached", providerName: "claudeAgent" },
+      },
+      Date.parse(MESSAGE_CREATED_AT),
+    );
+    let renderer!: ReactTestRenderer;
+    await act(() => {
+      renderer = create(
+        <MessagesTimeline
+          {...buildProps()}
+          routeThreadKey="environment-local:refused"
+          listRef={lateList}
+          timelineEntries={[buildUserTimelineEntry("Continue the work")]}
+          limit={limit}
+        />,
+      );
+    });
+    try {
+      expect(outOfSight(renderer)).toBe(true);
+      lateList.current = listRef.current;
+      await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(outOfSight(renderer)).toBe(false);
+      expect(
+        renderer.root.findAll((node) => node.props["data-conversation-opening"] === "waiting"),
+      ).toHaveLength(0);
     } finally {
       await act(() => renderer.unmount());
     }

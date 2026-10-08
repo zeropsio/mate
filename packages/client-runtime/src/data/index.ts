@@ -511,3 +511,13 @@ export {
   overlayEngineRow,
   overlayEngineShell,
 } from "./projections/mateEngine.ts";
+
+export {
+  projectMateLimit,
+  NO_MATE_LIMIT,
+  readUsageLimitNotice,
+  type MateLimit,
+  type MateLimitSource,
+  type UsageLimitNotice,
+} from "./projections/mateLimit.ts";
+export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";

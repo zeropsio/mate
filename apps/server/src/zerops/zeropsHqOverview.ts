@@ -1,3 +1,4 @@
+import { projectMateLimit } from "../../../../packages/client-runtime/src/data/projections/mateLimit.ts";
 /**
  * The overview a Mate sends up its link to HQ (`@t3tools/shared/mateLink`, step A): what every
  * surface that draws this Mate without opening it reads — its main chat as the shell fields a menu
@@ -115,12 +116,16 @@ function liveStepOf(step: ThreadLiveStep | null | undefined): LiveStep | null {
 
 function mainOf(thread: OrchestrationThreadShell): OverviewMain {
   const error = textOf(thread.session?.lastError?.split("\n")[0]);
-  const provider = usageLimitProvider(error, thread.session?.providerName);
-  // A compact overview omits the driver: qualify its refusal before losing that identity.
-  const lastError =
-    provider !== null && provider !== usageLimitProvider(error)
-      ? textOf(`${provider} usage limit reached. ${error}`)
-      : error;
+  const limit = projectMateLimit(thread, Date.parse(thread.updatedAt));
+  // Old HQ readers keep this existing field: qualify identity and the exact deadline before compaction.
+  const refusal =
+    limit.kind === "none"
+      ? usageLimitProvider(error) !== null
+        ? null
+        : error
+      : textOf(
+          `${limit.provider} usage limit reached.${limit.resetsAt === null ? "" : ` |${Date.parse(limit.resetsAt) / 1000}`}`,
+        );
   return {
     id: thread.id,
     title: titleOf(thread.title),
@@ -134,11 +139,7 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
         ? null
         : {
             status: thread.session.status,
-            lastError:
-              lastError ??
-              (thread.usagePause && thread.session.providerName
-                ? `${thread.session.providerName === "claudeAgent" ? "Claude" : thread.session.providerName === "codex" ? "Codex" : "Coding agent"} usage limit reached.`
-                : null),
+            lastError: refusal,
           },
     latestTurn:
       thread.latestTurn === null
@@ -157,11 +158,9 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
     planProgress: withText(thread.planProgress?.step, (step) => ({ step })),
     pendingQuestion: textOf(thread.pendingQuestion),
     usagePause:
-      thread.usagePause != null
+      limit.kind !== "none" && thread.usagePause != null
         ? { resetsAt: thread.usagePause.resetsAt }
-        : thread.session?.usageLimitResetAt != null
-          ? { resetsAt: thread.session.usageLimitResetAt }
-          : null,
+        : null,
     liveStep: liveStepOf(thread.liveStep),
   };
 }
@@ -187,7 +186,10 @@ const messagePreviewOf = (
  * would be the reader's to finish from `idle`.
  */
 function mateKindOf(thread: OrchestrationThreadShell): MateThreadKind {
-  const { kind } = resolveThreadStatus(thread);
+  const { kind } = resolveThreadStatus(
+    thread,
+    projectMateLimit(thread, Date.parse(thread.updatedAt)).kind,
+  );
   return kind === "done" || kind === "woke" ? "idle" : kind;
 }
 

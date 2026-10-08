@@ -717,7 +717,7 @@ describe("what a Mate's row says without words", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-05T10:05:00Z"));
     const paused = shell({
-      latestTurn: COMPLETED,
+      latestTurn: { ...COMPLETED, state: "error" },
       usagePause: {
         resetsAt: "2026-09-05T14:20:00.000Z",
         window: "5-hour",

@@ -132,6 +132,7 @@ describe("C: provider refusal and its real deadline", () => {
               "codex-reply",
             );
             wire.run("codex-reply", "completed", null, "codex-answer");
+            yield* reportConversation(s.drivers, "Ada", wire.mate.shellThread());
             yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
             yield* chat.then.noText("Thinking");
             yield* Effect.promise(() => settled());
@@ -147,6 +148,9 @@ describe("C: provider refusal and its real deadline", () => {
               }),
             );
             yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
+            expect(
+              yield* Effect.promise(() => s.page.$$('pierce/[data-mate-status="limit"]')),
+            ).toHaveLength(0);
             const output = process.env.MATE_LIMIT_EVIDENCE;
             if (output)
               yield* Effect.promise(() => s.page.screenshot({ path: `${output}/codex.png` }));
@@ -186,7 +190,7 @@ describe("C: provider refusal and its real deadline", () => {
             resetsAt,
             window: "7-day",
             held: 0,
-            pausedAt: "2019-12-31T23:59:00.000Z",
+            pausedAt: wire.mate.thread.latestTurn?.startedAt ?? "2026-10-08T10:00:00.000Z",
             autoResume: false,
           };
           wire.question("question-target", "refused");
@@ -523,6 +527,22 @@ describe("C: provider refusal and its real deadline", () => {
                   "Ada hit the Claude limit",
                 );
             });
+            yield* Effect.promise(() => completedHttp(s.page)());
+            yield* Effect.promise(() =>
+              s.page.waitForSelector("pierce/[data-timeline-placing]", {
+                hidden: true,
+                timeout: 8000,
+              }),
+            );
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () => {
+                  const stage = document.querySelector("[data-conversation-opening]");
+                  return stage === null || getComputedStyle(stage).visibility === "hidden";
+                },
+                { timeout: 8000, polling: "raf" },
+              ),
+            );
             yield* capture("refused");
             const before = wire.commands.length;
             yield* chat.when.press("Continue");
@@ -546,6 +566,8 @@ describe("C: provider refusal and its real deadline", () => {
               ),
             );
             yield* chat.then.text("Ada hit the Claude limit on");
+            yield* chat.then.noText("Ada paused at the limit");
+            yield* chat.then.noText("Ada thought");
             yield* chat.then.control("Continue");
             yield* Effect.promise(() =>
               s.page.waitForFunction(

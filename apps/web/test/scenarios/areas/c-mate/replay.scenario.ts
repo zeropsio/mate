@@ -181,7 +181,7 @@ describe("C: reading, replay and attention", () => {
           resetsAt: "2099-10-07T14:00:00.000Z",
           window: "5-hour",
           held: 2,
-          pausedAt: "2026-10-07T12:00:00.000Z",
+          pausedAt: wire.mate.thread.latestTurn!.startedAt!,
           autoResume: true,
         };
         wire.event("thread.usage-pause-set", {

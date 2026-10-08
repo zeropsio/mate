@@ -1,4 +1,7 @@
 import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
+import { useAtomValue } from "@effect/atom-react";
+import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
+import { ConversationReadiness } from "./conversationReadiness";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -739,6 +742,7 @@ export function ConversationStrip({
     mate: mate ?? { connected: false },
     chats,
   });
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   if (mate === null) return null;
 
   const crew = lineCrew({
@@ -748,6 +752,7 @@ export function ConversationStrip({
     mateName: mate.name,
     connected: mate.connected,
     lastVisitedAtById,
+    activityByThread,
   });
 
   const open = (threadId: ThreadId) => {
@@ -793,11 +798,12 @@ export function ConversationStrip({
     crewChatOpen: crewChat !== null,
     subject,
     lastVisitedAtById,
+    activityByThread,
   });
   return (
     // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
     <ConversationStripView
-      chats={lineChats(chats, currentThreadId)}
+      chats={lineChats(chats, currentThreadId, activityByThread)}
       crew={crew}
       key={environmentId}
       renderCrewmateMenu={(crewmate) =>
@@ -828,9 +834,14 @@ export function ConversationStrip({
 /** Whether the Mate living in `environmentId` is at work in any of its chats (`mateWorks`). */
 export function useMateWorks(environmentId: EnvironmentId): boolean {
   const shells = useThreadShells();
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   return useMemo(
-    () => mateWorks(mateChats(shells.filter((thread) => thread.environmentId === environmentId))),
-    [environmentId, shells],
+    () =>
+      mateWorks(
+        mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
+        activityByThread,
+      ),
+    [environmentId, shells, activityByThread],
   );
 }
 
@@ -849,6 +860,7 @@ export function useAlsoWorkingBanner({
 }): ComposerBannerStackItem | null {
   const whoLivesHere = useZeropsMate(environmentId);
   const shells = useThreadShells();
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   const mateName = whoLivesHere.kind === "mate" ? whoLivesHere.mate.name : null;
   return useMemo(() => {
     if (mateName === null) return null;
@@ -857,6 +869,7 @@ export function useAlsoWorkingBanner({
       chats: mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
       currentThreadId,
       typing,
+      activityByThread,
     });
     if (line === null) return null;
     return {
@@ -865,5 +878,5 @@ export function useAlsoWorkingBanner({
       icon: <MessagesSquareIcon />,
       title: line,
     };
-  }, [currentThreadId, environmentId, mateName, shells, typing]);
+  }, [currentThreadId, environmentId, mateName, shells, typing, activityByThread]);
 }
