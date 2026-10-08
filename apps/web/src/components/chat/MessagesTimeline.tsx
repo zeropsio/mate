@@ -48,7 +48,12 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { createEndFollow, takeOwnScroll, type EndFollow } from "./timelineEndFollow";
+import {
+  createEndFollow,
+  ownListScrolls,
+  takeOwnScroll,
+  type EndFollow,
+} from "./timelineEndFollow";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -719,6 +724,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // position coming back, a sent message kept near the top, history being
   // read.
   const followingEnd = !restoringReadingPosition && !anchoredEndSpace && liveFollowEnabled;
+  const listPlacedRef = useRef(listPlaced);
+  useLayoutEffect(() => {
+    listPlacedRef.current = listPlaced;
+  }, [listPlaced]);
   const followingEndRef = useRef(followingEnd);
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
@@ -1107,7 +1116,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const node = listRef.current?.getScrollableNode();
     const own = node !== null && node !== undefined && takeOwnScroll(node);
     readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
-  }, [listRef, readList]);
+    // A move of the page's own that left the end while it follows: back to the end.
+    if (own && followingEndRef.current && listPlacedRef.current) followEnd();
+  }, [followEnd, listRef, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {
@@ -1377,6 +1388,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
     return () => cancelAnimationFrame(frame);
   }, [standing, showsList, kept?.shown, routeThreadKey, activeThreadEnvironmentId]);
+  // The list's own scrolls are the page's moves: its initial scroll to the end re-applied after
+  // the conversation was placed was read as a jump far up, and the conversation stopped following
+  // its end mid-way.
+  useLayoutEffect(() => {
+    if (!showsList) return;
+    const node = listRef.current?.getScrollableNode();
+    return node ? ownListScrolls(node) : undefined;
+  }, [listRef, showsList]);
   const rowsRef = useRef(rows);
   useLayoutEffect(() => {
     rowsRef.current = rows;

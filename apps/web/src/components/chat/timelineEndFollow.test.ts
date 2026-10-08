@@ -4,6 +4,7 @@ import {
   createEndFollow,
   GLIDE_FROM_PX,
   GLIDING_ATTRIBUTE,
+  ownListScrolls,
   scrollOwn,
   takeOwnScroll,
 } from "./timelineEndFollow";
@@ -289,5 +290,31 @@ describe("takeOwnScroll", () => {
     element.scrollTop = 600;
     element.scrollTop = 900;
     expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(false);
+  });
+});
+
+describe("ownListScrolls", () => {
+  it("tells each scroll the list makes itself as the page's own, once, and the person's after it as theirs", () => {
+    const element = {
+      scrollTop: 0,
+      scrollTo(options: ScrollToOptions) {
+        this.scrollTop = options.top ?? this.scrollTop;
+      },
+      scrollBy(options: ScrollToOptions) {
+        this.scrollTop += options.top ?? 0;
+      },
+    };
+    const list = element as unknown as HTMLElement;
+    const undo = ownListScrolls(list);
+    list.scrollTo({ top: 1764 });
+    expect(takeOwnScroll(list)).toBe(true);
+    expect(takeOwnScroll(list)).toBe(false);
+    list.scrollBy({ top: 74 });
+    expect(takeOwnScroll(list)).toBe(true);
+    element.scrollTop = 400;
+    expect(takeOwnScroll(list)).toBe(false);
+    undo();
+    list.scrollTo({ top: 10 });
+    expect(takeOwnScroll(list)).toBe(false);
   });
 });

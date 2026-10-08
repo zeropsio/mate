@@ -38,6 +38,7 @@ import { LiveBus } from "../../LiveBus.ts";
 import { MateEngine } from "../../MateEngine.ts";
 import {
   AgentWorkspace,
+  HandedOverResume,
   MessagePictures,
   RestartEvidence,
   RunAdmission,
@@ -81,6 +82,11 @@ export interface WorldOptions {
   readonly refuse?: string | ((principal: Principal) => string | undefined);
   /** Admission itself breaks (a defect) with these words. */
   readonly admissionDies?: string;
+  /** What another instance of the driver left on the thread; nothing by default. */
+  readonly handedOver?: (input: {
+    readonly thread: string;
+    readonly instanceId: string;
+  }) => unknown;
 }
 
 let lives = 0;
@@ -135,6 +141,10 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         AgentWorkspace,
         AgentWorkspace.of({ of: () => Effect.succeed({ cwd: dir, runtimeMode: "full-access" }) }),
+      ),
+      Layer.succeed(
+        HandedOverResume,
+        HandedOverResume.of({ of: (input) => Effect.succeed(options.handedOver?.(input)) }),
       ),
       // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
       Layer.succeed(

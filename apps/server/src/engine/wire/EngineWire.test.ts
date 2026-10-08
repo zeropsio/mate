@@ -690,6 +690,35 @@ describe("a client's calls to an engine conversation", () => {
   );
 
   it.effect(
+    "a message in an interaction mode this engine does not know goes in the default mode",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const result = yield* wire.send(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("send-review"),
+              text: "Look it over",
+              interactionMode: "unknown",
+            },
+            ana,
+          );
+          assert.strictEqual(result._tag, "Accepted");
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.strictEqual(snapshot.header.interactionMode ?? "default", "default");
+          const sent = w.provider.sends.at(-1) as { readonly interactionMode?: string } | undefined;
+          assert.strictEqual(sent?.interactionMode ?? "default", "default");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
     "a model switch carries its options, and the header names the conversation's runtime mode and latest interaction mode",
     () =>
       Effect.scoped(
@@ -728,6 +757,39 @@ describe("a client's calls to an engine conversation", () => {
           assert.strictEqual(snapshot.header.interactionMode, "plan");
           assert.deepInclude(w.provider.sends.at(-1), { interactionMode: "plan" });
           assert.deepInclude(w.provider.starts.at(-1), { runtimeMode: "approval-required" });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a session opened after an agent pick resumes from the state another instance of its driver left",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({
+            driver: "claudeAgent",
+            handedOver: ({ instanceId }) =>
+              instanceId === "claudeAgent:second" ? { session: "left-by-claudeAgent" } : undefined,
+          });
+          yield* w.boot;
+          const wire = yield* wireOf(w);
+          const picked = yield* wire.assignAgent(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("agent-second"),
+              instanceId: "claudeAgent:second",
+              model: "m1",
+            },
+            ana,
+          );
+          assert.strictEqual(picked._tag, "Accepted");
+          yield* send(wire, "Deploy the api");
+          yield* w.settle;
+          assert.deepInclude(w.provider.starts.at(-1), {
+            resumeCursor: { session: "left-by-claudeAgent" },
+          });
           yield* w.shutdown;
         }),
       ),

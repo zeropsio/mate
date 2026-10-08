@@ -39,6 +39,28 @@ export function takeOwnScroll(element: HTMLElement): boolean {
   return own !== undefined && Math.abs(element.scrollTop - own) <= 1;
 }
 
+/**
+ * The scrolls `element`'s list makes itself — its initial scroll to the end, re-applied as rows
+ * measure, a correction while content is remeasured, keeping a row in place — are the page's own
+ * moves too, never the person's: each is told as `scrollOwn`'s. Returns the undo.
+ */
+export function ownListScrolls(element: HTMLElement): () => void {
+  const scrollTo = element.scrollTo;
+  const scrollBy = element.scrollBy;
+  element.scrollTo = function (...args: Parameters<HTMLElement["scrollTo"]>) {
+    scrollTo.apply(element, args as never);
+    ownTops.set(element, element.scrollTop);
+  } as HTMLElement["scrollTo"];
+  element.scrollBy = function (...args: Parameters<HTMLElement["scrollBy"]>) {
+    scrollBy.apply(element, args as never);
+    ownTops.set(element, element.scrollTop);
+  } as HTMLElement["scrollBy"];
+  return () => {
+    element.scrollTo = scrollTo;
+    element.scrollBy = scrollBy;
+  };
+}
+
 export interface EndFollow {
   /** Something may have moved the end: the list stands at it, or glides there. */
   readonly follow: () => void;

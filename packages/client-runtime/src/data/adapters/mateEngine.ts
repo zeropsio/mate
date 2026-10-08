@@ -458,7 +458,8 @@ export function makeMateEngineConversations(options: {
    * Each such run says what stretch of its lines it holds (`mateEngineSpan`): a finished one none
    * until its card opens, a live one from its earliest held; the rest are read a page at a time
    * as its card opens and scrolls (`readRunPage`). A read that fails leaves the run with what it
-   * holds, its span all the same.
+   * holds, its span all the same. A finished run already read from its start keeps its span (its
+   * pages stay held across a resubscribe), and reads nothing again.
    */
   const wholeRuns = (
     key: EngineConversationKey,
@@ -502,6 +503,11 @@ export function makeMateEngineConversations(options: {
                   : Math.min(...lines.map((item) => item.seq));
               return { items: [], requests: [], spans: [span(from, null)] };
             }
+            // Read from its start before (a resubscribe to the same sequence space; a reset or
+            // another space forgot it): what it read stays held, so its card keeps its pages.
+            const kept = read.fact("mateEngineSpan", engineFactId(key.environmentId, run.id));
+            if (kept.kind === "known" && kept.value.from === null)
+              return { items: [], requests: [], spans: [span(null, kept.value.to)] };
             const items: Item[] = [];
             const requests: Request[] = [];
             if (Object.keys(run.summary.calls).length > 0)

@@ -41,6 +41,7 @@ import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { engineLayer } from "../engine/layer.ts";
+import { serverHandedOverResume } from "../engineSessionDirectory.ts";
 import {
   noRestartEvidence,
   serverMessagePictures,
@@ -603,6 +604,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
           noRestartEvidence,
           serverWorkspace,
           serverMessagePictures,
+          serverHandedOverResume,
         ),
       ),
       Layer.provide(admission),
