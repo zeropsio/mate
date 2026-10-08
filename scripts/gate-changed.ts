@@ -3,8 +3,9 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
+import { chatGateStages, chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
 import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
+import { parseSync } from "oxc-parser";
 
 export const scenarioAreas = [
   "a-signin",
@@ -20,65 +21,181 @@ export const scenarioAreas = [
   "lifecycle-mutations",
 ] as const;
 
-// An area owns these paths. Shared transport, data and shell changes reach every area.
-const areaPaths: ReadonlyArray<readonly [string, RegExp]> = [
-  ["a-signin", /(?:auth|account|signIn|organization)/iu],
-  ["b-menu", /(?:Sidebar|menu|overview|mateRow)/iu],
-  ["c-mate", /(?:chat|conversation|composer|thread|terminal|ZeropsAgentSignIn)/iu],
-  ["d-change", /(?:review|change|merge|git)/iu],
-  ["e-env", /(?:deploy|operation|environment|appDetail|service)/iu],
-  ["f-create", /(?:creat|provision|pool|import)/iu],
-  ["g-outage", /(?:connect|retry|outage|lease|network)/iu],
-];
+const sourceFile = /\.[cm]?[jt]sx?$/u;
+const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 
-export function selectScenarioAreas(paths: ReadonlyArray<string>): string[] {
-  const selected = new Set<string>();
-  for (const path of paths) {
-    if (path.endsWith(".md")) continue;
-    const boundaries = selectLaneChatStages([path], []);
-    if (boundaries.length && boundaries.every((stage) => stage.id === "A" || stage.id === "E"))
-      continue;
-    if (
-      boundaries.some((stage) => stage.id === "E") &&
-      !boundaries.some((stage) => stage.id === "A")
-    ) {
-      selected.add("c-mate");
-      continue;
+function sourceShape(path: string, text: string): string | undefined {
+  const parsed = parseSync(path, text);
+  if (parsed.errors.length) return undefined;
+  return JSON.stringify(parsed.program, (key, value: unknown) =>
+    key === "start" || key === "end" ? undefined : value,
+  );
+}
+
+/** Compare parsed programs, preserving ASI, strings, regexes and JSX while ignoring comments. */
+export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
+  const previous = new Map<string, string>();
+  const tracked = NodeChildProcess.spawnSync(
+    "git",
+    ["ls-tree", "-r", "--name-only", "-z", base, "--", ...paths],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (tracked.status !== 0) throw new Error(tracked.stderr);
+  const oldFiles = new Set(tracked.stdout.split("\0"));
+  const meaningful = paths.filter((path) => {
+    if (documentation(path)) return false;
+    if (oldFiles.has(path)) {
+      const old = NodeChildProcess.spawnSync("git", ["show", `${base}:${path}`], {
+        cwd: root,
+        encoding: "utf8",
+      });
+      if (old.status !== 0) throw new Error(old.stderr);
+      previous.set(path, old.stdout);
     }
-    if (!path.startsWith("apps/web/") && boundaries.some((stage) => stage.id === "C"))
-      selected.add("c-mate");
-    if (path.startsWith("apps/server/src/")) continue;
-    const own = /^apps\/web\/test\/scenarios\/(?:areas|fakes)\/([^/]+)\//u.exec(path)?.[1];
-    if (own && scenarioAreas.some((area) => area === own)) {
-      selected.add(own);
-      continue;
+    if (!sourceFile.test(path) || !NodeFS.existsSync(NodePath.join(root, path))) return true;
+    const current = sourceShape(path, NodeFS.readFileSync(NodePath.join(root, path), "utf8"));
+    const before = previous.get(path);
+    return current === undefined || current !== sourceShape(path, before ?? "");
+  });
+  return { paths: meaningful, previous };
+}
+
+/** Static import reachability includes the old imports/exports of renamed and deleted modules.
+ * Browser-built React code has no declared edge to a journey; do not manufacture one by area.
+ */
+export function relatedFiles(
+  root: string,
+  paths: ReadonlyArray<string>,
+  candidates: ReadonlyArray<string>,
+  previous: ReadonlyMap<string, string> = new Map(),
+): string[] {
+  const changed = new Set(paths.filter((path) => !documentation(path)));
+  if (!changed.size) return [];
+  const exists = (path: string) =>
+    previous.has(path) ||
+    (NodeFS.existsSync(NodePath.join(root, path)) &&
+      NodeFS.statSync(NodePath.join(root, path)).isFile());
+  const resolveFile = (path: string): string | undefined => {
+    const variants = [
+      path,
+      ...[".ts", ".tsx", ".js", ".jsx", ".json"].map((extension) => path + extension),
+      ...[".ts", ".tsx", ".js"].map((extension) => `${path}/index${extension}`),
+    ];
+    if (/\.[cm]?js$/u.test(path)) variants.push(path.replace(/\.[cm]?js$/u, ".ts"));
+    return variants.find(exists);
+  };
+  const manifests = new Map<
+    string,
+    {
+      path: string;
+      exports: Record<string, string | { types?: string; import?: string; default?: string }>;
     }
-    if (
-      /^(?:apps\/web\/test\/scenarios\/|apps\/hq\/|packages\/hq-git\/)/u.test(path) ||
-      /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|apps\/web\/(?:package\.json|tsconfig\.json|vite\.config\.ts))$/u.test(
-        path,
-      )
-    )
-      return [...scenarioAreas];
-    if (!/^(?:apps\/web\/src\/|packages\/(?:client-runtime|shared|contracts)\/src\/)/u.test(path))
-      continue;
-    if (/\.test\.[cm]?[jt]sx?$/u.test(path)) continue;
-    if (
-      path.startsWith("packages/") ||
-      /\/components\/Sidebar[^/]*\.tsx$/u.test(path) ||
-      /apps\/web\/src\/(?:zerops\/(?:.*[Aa]uth|.*[Aa]ccount|.*[Dd]ata)|auth|runtime|store)/u.test(
-        path,
-      )
-    )
-      return [...scenarioAreas];
-    const matches = areaPaths.filter(([, pattern]) => pattern.test(path));
-    if (matches.length === 0 || /\/(?:data|connection|state)\//u.test(path))
-      return [...scenarioAreas];
-    for (const [area] of matches) selected.add(area);
-    selected.add("h-budget");
-    selected.add("foundation");
+  >();
+  for (const parent of ["apps", "packages", "infra"]) {
+    if (!NodeFS.existsSync(NodePath.join(root, parent))) continue;
+    for (const entry of NodeFS.readdirSync(NodePath.join(root, parent), { withFileTypes: true })) {
+      const path = `${parent}/${entry.name}/package.json`;
+      if (!entry.isDirectory() || !exists(path)) continue;
+      const manifest = JSON.parse(
+        NodeFS.existsSync(NodePath.join(root, path))
+          ? NodeFS.readFileSync(NodePath.join(root, path), "utf8")
+          : previous.get(path)!,
+      ) as {
+        name?: string;
+        exports?: Record<string, string | { types?: string; import?: string; default?: string }>;
+      };
+      if (manifest.name && manifest.exports)
+        manifests.set(manifest.name, { path, exports: manifest.exports });
+    }
   }
-  return scenarioAreas.filter((area) => selected.has(area));
+  const resolveImport = (file: string, request: string): string[] => {
+    const specifier = request.split("?")[0]!;
+    if (specifier.startsWith(".")) {
+      const resolved = resolveFile(
+        NodePath.posix.normalize(NodePath.posix.join(NodePath.posix.dirname(file), specifier)),
+      );
+      return resolved ? [resolved] : [];
+    }
+    if (specifier.startsWith("~/") && file.startsWith("apps/web/")) {
+      const resolved = resolveFile(`apps/web/src/${specifier.slice(2)}`);
+      return resolved ? [resolved] : [];
+    }
+    const pkg = [...manifests].find(
+      ([name]) => specifier === name || specifier.startsWith(`${name}/`),
+    );
+    if (!pkg) return [];
+    const [name, manifest] = pkg;
+    const exported =
+      manifest.exports[specifier === name ? "." : `.${specifier.slice(name.length)}`];
+    const target =
+      typeof exported === "string"
+        ? exported
+        : (exported?.types ?? exported?.import ?? exported?.default);
+    const resolved =
+      target && resolveFile(NodePath.posix.join(NodePath.posix.dirname(manifest.path), target));
+    return [manifest.path, ...(resolved ? [resolved] : [])];
+  };
+  const edges = new Map<string, string[]>();
+  const imports = (file: string): string[] => {
+    const cached = edges.get(file);
+    if (cached) return cached;
+    const dependencies: string[] = [];
+    const sources = [
+      previous.get(file),
+      NodeFS.existsSync(NodePath.join(root, file))
+        ? NodeFS.readFileSync(NodePath.join(root, file), "utf8")
+        : undefined,
+    ];
+    for (const source of new Set(sources)) {
+      if (source === undefined || !sourceFile.test(file)) continue;
+      const parsed = parseSync(file, source);
+      if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
+      const visit = (value: unknown): void => {
+        if (Array.isArray(value)) {
+          for (const child of value) visit(child);
+          return;
+        }
+        if (typeof value !== "object" || value === null) return;
+        const node = value as Record<string, unknown>;
+        const literal =
+          node.source ??
+          (node.type === "TSImportType" ? node.argument : undefined) ??
+          (node.type === "CallExpression" && (node.callee as { name?: string })?.name === "require"
+            ? (node.arguments as unknown[])[0]
+            : undefined);
+        if (
+          typeof literal === "object" &&
+          literal !== null &&
+          "value" in literal &&
+          typeof literal.value === "string"
+        )
+          dependencies.push(...resolveImport(file, literal.value));
+        for (const child of Object.values(node)) visit(child);
+      };
+      visit(parsed.program);
+    }
+    edges.set(file, dependencies);
+    return dependencies;
+  };
+  return candidates
+    .filter((test) => {
+      const pending = [
+        test,
+        ...(test.startsWith("apps/web/test/scenarios/")
+          ? ["apps/web/test/scenarios/vitest.config.ts"]
+          : []),
+      ];
+      const visited = new Set<string>();
+      while (pending.length) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        if (changed.has(file)) return true;
+        pending.push(...imports(file));
+      }
+      return false;
+    })
+    .sort();
 }
 
 /** Explicit files relative to the web root, matching the scenario config's include paths. */
@@ -218,16 +335,43 @@ if (import.meta.main) {
     process.exit(0);
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  // Validate selection before any check, including --list.
-  const areas = selectScenarioAreas(paths);
-  const chatStages = selectLaneChatStages(paths, areas);
+  const meaningful = meaningfulChanges(root, comparison, paths);
+  const hasScenarioInventory = NodeFS.existsSync(
+    NodePath.join(root, "apps/web/test/scenarios/areas"),
+  );
+  const inventory =
+    meaningful.paths.length &&
+    (hasScenarioInventory || meaningful.paths.some((path) => path.startsWith("apps/web/src/")))
+      ? scenarioFiles(root, scenarioAreas, []).map((file) => `apps/web/${file}`)
+      : [];
+  const related = relatedFiles(
+    root,
+    meaningful.paths,
+    [
+      ...inventory,
+      ...chatGateTestFiles(
+        root,
+        chatGateStages.filter((stage) => stage.id === "A" || stage.id === "E"),
+      ),
+    ],
+    meaningful.previous,
+  );
+  const chatStages = selectLaneChatStages(meaningful.paths, related, root);
   const ownedFiles = chatGateTestFiles(root, chatStages);
   validateSelectedFiles(root, ownedFiles);
-  const files = scenarioFiles(root, areas, ownedFiles);
-  const contractTypechecks = chatStages.flatMap((stage) =>
-    stage.commands.filter((command) => command.args.includes("tsc")),
+  const files = related
+    .filter((file) => file.startsWith("apps/web/test/scenarios/") && !ownedFiles.includes(file))
+    .map((file) => NodePath.posix.relative("apps/web", file));
+  for (const stage of chatGateStages) {
+    const selection = chatStages.find((selected) => selected.id === stage.id);
+    console.log(
+      `Selection ${stage.id}: ${selection?.reason ?? "skip: no related tests in its owning seam"}`,
+    );
+  }
+  console.log(
+    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${meaningful.paths.length ? "static imports (including old imports for removals)" : "documentation/comments only"}`,
   );
-  const packages = touchedPackages(paths, workspacePackages(root));
+  const packages = touchedPackages(meaningful.paths, workspacePackages(root));
   const steps: { name: string; command: string; args: string[]; cwd?: string }[] = [];
   steps.push({
     name: "guard ledgers",
@@ -249,22 +393,22 @@ if (import.meta.main) {
     steps.push({
       name: `chat contract gate (${chatStages.map((stage) => stage.id).join(" + ")})`,
       command: "node",
-      args: ["scripts/chat-gate.ts", "--stages", chatStages.map((stage) => stage.id).join(",")],
+      args: [
+        "scripts/chat-gate.ts",
+        "--stages",
+        chatStages.map((stage) => stage.id).join(","),
+        "--files",
+        JSON.stringify(ownedFiles),
+      ],
     });
-  for (const pkg of packages.filter(
-    (pkg) =>
-      pkg.typecheck &&
-      !contractTypechecks.some(
-        (command) => command.cwd === pkg.directory && !command.args.includes("-p"),
-      ),
-  ))
+  for (const pkg of packages.filter((pkg) => pkg.typecheck))
     steps.push({
       name: `typecheck ${pkg.name}`,
       command: "vp",
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (meaningful.paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
@@ -286,7 +430,7 @@ if (import.meta.main) {
   // Run related tests with each consumer's real configuration, including web's wasm assets and
   // mobile's aliases. Consumers are cheap to discover; --changed selects their actual imports.
   if (
-    paths.some(
+    meaningful.paths.some(
       (path) =>
         /\.(?:[cm]?[jt]sx?|wasm|css|sql|snap)$/u.test(path) ||
         /(?:package\.json|pnpm-lock\.yaml)$/u.test(path),
@@ -337,7 +481,7 @@ if (import.meta.main) {
   // Exclude only files owned by selected contract commands; retain affected drivers here.
   if (files.length)
     steps.push({
-      name: `scenarios ${areas.join(",")}`,
+      name: "related scenario files",
       cwd: "apps/web",
       command: "vp",
       args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
