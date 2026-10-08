@@ -12,7 +12,14 @@ import {
   type ConversationHeader,
   type ClientOrchestrationCommand,
   type DispatchResult,
+  type ModelCapabilities,
+  type ModelSelection,
+  type ProviderOptionDescriptor,
+  type ProviderOptionSelection,
+  type ServerProvider,
 } from "@t3tools/contracts";
+import { resolveSelectableModel } from "@t3tools/shared/model";
+import { EFFORT_OPTION_IDS } from "@t3tools/shared/zeropsEffort";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -181,17 +188,79 @@ export const engineDismissUserInput =
 const refused = (message: string) =>
   Effect.fail(new EngineOperationFailed({ outcome: "refused", message }));
 
-const sameOptions = (left: unknown, right: unknown) =>
-  JSON.stringify(left ?? []) === JSON.stringify(right ?? []);
+/** What an option is called to a person: any agent's effort is its effort, else its own label. */
+const optionWords = (id: string, descriptor: ProviderOptionDescriptor | undefined) =>
+  EFFORT_OPTION_IDS.has(id) ? "effort" : (descriptor?.label ?? id);
+
+/** An option left out is the driver's default: a select's default choice, a switch off. */
+const defaultOf = (descriptor: ProviderOptionDescriptor): string | boolean | undefined =>
+  descriptor.type === "boolean"
+    ? (descriptor.currentValue ?? false)
+    : (descriptor.currentValue ?? descriptor.options.find((choice) => choice.isDefault)?.id);
+
+/**
+ * The options a selection really changes on the agent a conversation runs, in words: an option
+ * either side leaves out is the driver's default for the model, and their order means nothing.
+ * Without the model's capabilities only what both sides spell out can be judged the same.
+ */
+export function changedModelOptions(
+  capabilities: ModelCapabilities | null | undefined,
+  current: ReadonlyArray<ProviderOptionSelection> | undefined,
+  next: ReadonlyArray<ProviderOptionSelection> | undefined,
+): ReadonlyArray<string> {
+  const descriptors = capabilities?.optionDescriptors ?? [];
+  const valuesOf = (options: ReadonlyArray<ProviderOptionSelection> | undefined) => {
+    const values = new Map<string, string | boolean | undefined>(
+      descriptors.map((descriptor) => [descriptor.id, defaultOf(descriptor)]),
+    );
+    for (const option of options ?? []) values.set(option.id, option.value);
+    return values;
+  };
+  const before = valuesOf(current);
+  const after = valuesOf(next);
+  const ids = [...new Set([...before.keys(), ...after.keys()])];
+  return ids
+    .filter((id) => before.get(id) !== after.get(id))
+    .map((id) =>
+      optionWords(
+        id,
+        descriptors.find((descriptor) => descriptor.id === id),
+      ),
+    )
+    .filter((words, index, all) => all.indexOf(words) === index);
+}
+
+/** What a selection's model takes, as the Mate's providers report it; null until they are read. */
+export function modelCapabilitiesIn(
+  providers: ReadonlyArray<ServerProvider> | null,
+  selection: ModelSelection,
+): ModelCapabilities | null {
+  const provider = providers?.find((candidate) => candidate.instanceId === selection.instanceId);
+  if (provider === undefined) return null;
+  const slug = resolveSelectableModel(provider.driver, selection.model, provider.models);
+  return provider.models.find((model) => model.slug === slug)?.capabilities ?? null;
+}
+
+/** The refusal for an options change the engine does not take yet, naming what changed. */
+const optionsChangeWords = (changed: ReadonlyArray<string>) => {
+  const named = changed.join(" or ");
+  const article = /^[aeiou]/i.test(named) ? "an" : "a";
+  const kept = named === "effort" ? "the effort" : named;
+  return `This Mate's engine does not take ${article} ${named} change yet; keep ${kept} as it was.`;
+};
 
 /**
  * A thread's metadata on an engine conversation: its title is never sent (the engine generates
  * none; the menu's subject is the person's latest message), a model change on the agent the
  * conversation runs goes as the engine's model switch, and anything the engine does not take —
- * another agent, a changed effort, a branch or worktree — is refused in words.
+ * another agent, a model option really changed, a branch or worktree — is refused in words.
  */
 export const engineUpdateMetadata =
-  (environmentId: string, input: Command<"thread.meta.update">) =>
+  (
+    environmentId: string,
+    input: Command<"thread.meta.update">,
+    capabilitiesOf: (selection: ModelSelection) => ModelCapabilities | null = () => null,
+  ) =>
   (host: MateEngineHost): Effect.Effect<EngineAcceptance, EngineOperationFailed> => {
     if (
       input.branch !== undefined ||
@@ -216,8 +285,11 @@ export const engineUpdateMetadata =
       return refused(
         "This Mate's engine runs one agent per conversation; switch the model, not the agent.",
       );
-    if (agent !== null && !sameOptions(selection.options, agent.options))
-      return refused("This Mate's engine does not take an effort change yet; keep the effort.");
+    const changed =
+      agent === null
+        ? []
+        : changedModelOptions(capabilitiesOf(selection), agent.options, selection.options);
+    if (changed.length > 0) return refused(optionsChangeWords(changed));
     if (selection.model === (header.model ?? agent?.model ?? null))
       return Effect.succeed({ seq: 0 });
     return host.operations.switchModel({

@@ -426,6 +426,135 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     }),
   );
 
+  /** Claude's options as its model reports them: an effort, a context window, Fast Mode. */
+  const CLAUDE = {
+    optionDescriptors: [
+      {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium", isDefault: true },
+          { id: "high", label: "High" },
+          { id: "xhigh", label: "Extra High" },
+        ],
+      },
+      { id: "fastMode", label: "Fast Mode", type: "boolean" },
+      {
+        id: "contextWindow",
+        label: "Context Window",
+        type: "select",
+        options: [
+          { id: "200k", label: "200k" },
+          { id: "1m", label: "1M", isDefault: true },
+        ],
+      },
+    ],
+  } as const;
+  const DEFAULTS = [
+    { id: "effort", value: "medium" },
+    { id: "fastMode", value: false },
+    { id: "contextWindow", value: "1m" },
+  ];
+
+  it.effect.each([
+    { name: "the composer's spelled-out defaults", runs: undefined, picked: DEFAULTS },
+    {
+      name: "the same options in another order",
+      runs: [
+        { id: "contextWindow", value: "200k" },
+        { id: "effort", value: "xhigh" },
+      ],
+      picked: [
+        { id: "effort", value: "xhigh" },
+        { id: "fastMode", value: false },
+        { id: "contextWindow", value: "200k" },
+      ],
+    },
+    { name: "no options against the defaults it runs on", runs: DEFAULTS, picked: undefined },
+  ])("$name on the conversation's model change nothing and send nothing", ({ runs, picked }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header({
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          ...(runs === undefined ? {} : { options: runs }),
+          profile: { kind: "mate" },
+        },
+      } as never);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(
+            ENV,
+            {
+              threadId: "thread-ada",
+              modelSelection: {
+                instanceId: "claudeAgent",
+                model: "claude-sonnet-4-5",
+                ...(picked === undefined ? {} : { options: picked }),
+              },
+            } as never,
+            () => CLAUDE as never,
+          ),
+          r.v1,
+        ),
+      );
+      expect(r.calls).toEqual([]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
+  it.effect.each([
+    { name: "an effort", option: { id: "effort", value: "xhigh" }, words: /effort/, not: null },
+    {
+      name: "Fast Mode",
+      option: { id: "fastMode", value: true },
+      words: /Fast Mode/,
+      not: /effort/,
+    },
+    {
+      name: "a context window",
+      option: { id: "contextWindow", value: "200k" },
+      words: /Context Window/,
+      not: /effort/,
+    },
+  ])("a change to $name is refused in words naming what changed", ({ option, words, not }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      const failure = yield* Effect.flip(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineUpdateMetadata(
+              ENV,
+              {
+                threadId: "thread-ada",
+                modelSelection: {
+                  instanceId: "claudeAgent",
+                  model: "claude-sonnet-4-5",
+                  options: DEFAULTS.map((each) => (each.id === option.id ? option : each)),
+                },
+              } as never,
+              () => CLAUDE as never,
+            ),
+            r.v1,
+          ),
+        ),
+      );
+      expect(failure.message).toMatch(words);
+      if (not !== null) expect(failure.message).not.toMatch(not);
+      expect(r.calls).toEqual([]);
+      expect(r.v1Calls).toEqual([]);
+    }),
+  );
+
   it.effect.each(["runtime", "interaction"] as const)(
     "a %s mode change for an engine conversation is refused in words, never sent over V1",
     (mode) =>
