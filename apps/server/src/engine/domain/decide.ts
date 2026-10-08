@@ -403,6 +403,24 @@ const misfit = (state: ConversationState, session: SessionRecord): "model" | "se
   return inSession === "all" || changed.every((id) => inSession.includes(id)) ? null : "settings";
 };
 
+/**
+ * A session is gone, and with it the background work it ran: nothing can report that work's end
+ * any more (a session's own close says so through the bridge, but a restart or a close recorded
+ * first never hears it), so the work ends as lost and its card stops showing it running.
+ */
+const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionCloseReason): void => {
+  b.emit({ _tag: "SessionClosed", sessionId, reason });
+  for (const item of Object.values(b.state.items)) {
+    if (item.body.kind !== "work" || WORK_ENDED.has(item.body.status)) continue;
+    b.emit({
+      _tag: "ItemClosed",
+      runId: item.runId,
+      itemId: item.id,
+      body: { ...item.body, status: "lost" },
+    });
+  }
+};
+
 /** The agent's background work lives in the session: a new session would end it. */
 const workLives = (state: ConversationState): boolean =>
   Object.values(state.items).some(
@@ -1284,7 +1302,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
 const sendsAgain = (b: StepBuilder, run: RunRecord, reason: string): boolean => {
   if (run.sendAttempts >= 2 || run.stopAsked !== null || run.state !== "sending") return false;
   if (b.state.session !== null && b.state.session.id === run.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "exited" });
+    sessionClosed(b, b.state.session.id, "exited");
   }
   b.emit({ _tag: "RunRequeued", runId: run.id, reason: `undelivered: ${reason}` });
   admitNext(b);
@@ -1347,7 +1365,7 @@ const sessionCloseSettled = (
     );
   }
   if (b.state.session?.id === closing.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: closing.sessionId, reason: closing.reason });
+    sessionClosed(b, closing.sessionId, closing.reason);
   }
   const admitted = activeRun(b.state);
   if (admitted?.state === "admitted") return dispatch(b, admitted);
@@ -1371,7 +1389,7 @@ const openSession = (b: StepBuilder, value: unknown): void => {
   if (opened === undefined || typeof opened.sessionId !== "string") return;
   const previous = b.state.session;
   if (previous !== null && previous.id !== opened.sessionId) {
-    b.emit({ _tag: "SessionClosed", sessionId: previous.id, reason: "model" });
+    sessionClosed(b, previous.id, "model");
   }
   b.emit({
     _tag: "SessionOpened",
@@ -1658,7 +1676,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash");
         }
       }
-      b.emit({ _tag: "SessionClosed", sessionId, reason: "exited" });
+      sessionClosed(b, sessionId, "exited");
       admitNext(b);
       return;
     }
@@ -1852,7 +1870,7 @@ const recovered = (
     }
   }
   if (b.state.session !== null) {
-    b.emit({ _tag: "SessionClosed", sessionId: b.state.session.id, reason: "restart" });
+    sessionClosed(b, b.state.session.id, "restart");
   }
   const admitted = activeRun(b.state);
   if (admitted?.state === "admitted") {

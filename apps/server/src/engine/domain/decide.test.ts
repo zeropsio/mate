@@ -2273,6 +2273,27 @@ describe("decide: a conversation's settings reach its agent as V1's do", () => {
     ]);
   });
 
+  it("background work a restart cut is lost, and holds no setting after it", () => {
+    const afterRestart = [
+      ...firstRun(["effort"]),
+      work("running"),
+      ended(1),
+      recovered(),
+      send("next"),
+      prepared(2),
+      openedWith(2, ["effort"]),
+    ];
+    const { log, state } = playAll(afterRestart);
+    expect(log).toContainEqual(
+      expect.objectContaining({
+        _tag: "ItemClosed",
+        body: expect.objectContaining({ kind: "work", status: "lost" }),
+      }),
+    );
+    expect(Object.values(state.items).some((item) => item.body.kind === "work")).toBe(false);
+    expect(play([...afterRestart, approvalRequired]).decision._tag).toBe("Accept");
+  });
+
   it.each([
     ["plan", { interactionMode: "plan" } as const, "plan"],
     ["default", {}, undefined],
