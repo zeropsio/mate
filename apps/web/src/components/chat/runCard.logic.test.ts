@@ -14,6 +14,7 @@ import {
   earlierShown,
   FOLLOW_SLACK_PX,
   followAfter,
+  type RunFold,
   type RunScrollFollow,
   footTop,
   forgetRunFolds,
@@ -26,6 +27,8 @@ import {
   reachesEarlier,
   recoveredFailures,
   runCardShows,
+  chooseLiveRunFold,
+  liveRunFold,
   runFoldOf,
   setRunFold,
   severalWords,
@@ -1009,6 +1012,36 @@ describe("the runs a person watched", () => {
     forgetRunFolds("thread-b");
     stop();
     expect(heard).toHaveLength(6);
+  });
+
+  // An engine card draws every run that joins it: the card can go live again after it folded.
+  it.each([
+    {
+      name: "that folded on its own as its run settled",
+      before: ["auto:watched", "auto:folding", "auto:folded"],
+      live: "watched",
+    },
+    { name: "that settled out of sight", before: ["auto:folded"], live: "watched" },
+    { name: "the person opened after it settled", before: ["auto:shown"], live: "watched" },
+    {
+      name: "the person hid while it ran",
+      before: ["auto:watched", "chose:folded", "auto:folded"],
+      live: "folded",
+    },
+    {
+      name: "the person hid and showed again while it ran",
+      before: ["auto:watched", "chose:folded", "chose:watched", "auto:folded"],
+      live: "watched",
+    },
+  ] as const)("a card $name is $live when a run goes on in it", ({ before, live }) => {
+    for (const step of before) {
+      const [how, fold] = step.split(":") as ["auto" | "chose", RunFold];
+      if (how === "chose") chooseLiveRunFold("thread-c", "turn-1", fold as "watched" | "folded");
+      else setRunFold("thread-c", "turn-1", fold);
+    }
+    expect(liveRunFold("thread-c", "turn-1")).toBe(live);
+    forgetRunFolds("thread-c");
+    expect(liveRunFold("thread-c", "turn-1")).toBe("watched");
   });
 });
 

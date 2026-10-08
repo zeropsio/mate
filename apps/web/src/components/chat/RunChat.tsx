@@ -216,6 +216,8 @@ import {
   operationNowWords,
   reachesEarlier,
   runCardShows,
+  chooseLiveRunFold,
+  liveRunFold,
   runFoldOf,
   setRunFold,
   severalCallsWords,
@@ -4163,7 +4165,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                     open={false}
                     onToggle={() => {
                       hold(false);
-                      setRunFold(ctx.routeThreadKey, row.turnKey, "watched");
+                      chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "watched");
                     }}
                   />
                 }
@@ -4173,7 +4175,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                 open
                 onToggle={() => {
                   hold(true);
-                  setRunFold(ctx.routeThreadKey, row.turnKey, "folded");
+                  chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "folded");
                 }}
               />
             )
@@ -4270,7 +4272,7 @@ function useRunFold({
     wasLiveRef.current = live;
     setDrawnLive(live);
     if (live) {
-      setRunFold(conversation, run, runFoldOf(conversation, run, "watched"));
+      setRunFold(conversation, run, liveRunFold(conversation, run));
       return;
     }
     if (runFoldOf(conversation, run) !== "watched") return;
