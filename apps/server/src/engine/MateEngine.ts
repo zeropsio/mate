@@ -17,6 +17,7 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
@@ -34,7 +35,9 @@ import type {
   WakeId,
 } from "@t3tools/contracts";
 
+import type { OwnerHandle } from "./Conversations.ts";
 import type { Command } from "./domain/command.ts";
+import type { Domain, OwnerEvent } from "./owners.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
 import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
@@ -199,6 +202,23 @@ export interface MateEngineService {
     afterSeq: number,
     limit?: number,
   ) => Effect.Effect<ReadonlyArray<EngineEvent>, EventsUnreadable>;
+  /**
+   * A registered owner kind's door (the crew's): its commands, state and events. None when the
+   * engine does not run here.
+   */
+  readonly owner: <
+    S extends { readonly headSeq: number },
+    C extends { readonly _tag: string },
+    E extends OwnerEvent,
+    D,
+  >(
+    domain: Domain<S, C, E, D>,
+  ) => Option.Option<OwnerHandle<S, C, E>>;
+  /**
+   * The session generation a conversation runs on now (its provider thread is `<conv>/s/<n>`);
+   * none when the engine cannot say.
+   */
+  readonly generation: (conversationId: ConversationId) => Effect.Effect<number | undefined>;
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
@@ -245,5 +265,7 @@ export const inertMateEngine: MateEngineService = {
       rejection: { reason: "unknown", detail: "The Mate engine is not running on this Mate." },
     }),
   eventsAfter: () => Effect.succeed([]),
+  owner: () => Option.none(),
+  generation: () => Effect.succeed(undefined),
   wire: unservedWire,
 };

@@ -13,6 +13,7 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -395,6 +396,12 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       runOf,
       deliver,
       eventsAfter,
+      owner: (domain) => Option.some(conversations.owner(domain)),
+      generation: (conversationId) =>
+        conversations.state(conversationId).pipe(
+          Effect.map((state) => state.threadGeneration),
+          Effect.orElseSucceed(() => undefined),
+        ),
     });
   });
 
