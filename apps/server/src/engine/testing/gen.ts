@@ -35,6 +35,7 @@ import type { Rng } from "./rng.ts";
 
 export const ana: Principal = { kind: "person", subject: "ana" };
 export const bo: Principal = { kind: "person", subject: "bo" };
+export const crew: Principal = { kind: "crew", startedBy: "ana" };
 const ENGINE: Principal = { kind: "engine" };
 
 export interface Played {
@@ -118,6 +119,7 @@ export class Gen {
       ["dismiss", Object.keys(state.requests).length > 0 ? 0.5 : 0.05],
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
+      ["rotate", 0.3],
       ["archive", 0.15],
       ["sign-out", 0.05],
       ["unarchive", state.archived ? 1 : 0.05],
@@ -137,7 +139,8 @@ export class Gen {
         return {
           envelope: this.env(
             { _tag: "Send", text, ...(rng.chance(0.05) ? { maintenance: true } : {}) },
-            rng.chance(0.8) ? ana : bo,
+            // A crew's card now and then: its run is the crew's to carry on.
+            rng.chance(0.1) ? crew : rng.chance(0.8) ? ana : bo,
           ),
           now: at,
         };
@@ -189,6 +192,19 @@ export class Gen {
       case "model":
         return {
           envelope: this.env({ _tag: "SwitchModel", model: rng.pick(["m1", "m2"]) }),
+          now: at,
+        };
+      case "rotate":
+        return {
+          envelope: this.env(
+            {
+              _tag: "RotateSession",
+              reason: rng.pick(["context", "cleared", "job", "login", "budget", "task"] as const),
+              fresh: rng.chance(0.7),
+              seed: rng.chance(0.8) ? "the state packet" : null,
+            },
+            crew,
+          ),
           now: at,
         };
       case "archive":
