@@ -48,6 +48,8 @@ export interface ChatWire {
   readonly name: "v1" | "engine";
   /** The person said `text`, in run `turnId` when given; that exchange is over. */
   history(text: string, turnId?: string | null): void;
+  /** The person asked `question` and the agent answered `answer`; that exchange is over. */
+  exchange(question: string, answer: string): void;
   /** The agent waits on approval to run `vp run build`; a response gets RESPONSE_RECEIVED. */
   approval(): void;
   /** The agent asks TARGET_QUESTION as `requestId`, in run `turnId` when given; same reply. */

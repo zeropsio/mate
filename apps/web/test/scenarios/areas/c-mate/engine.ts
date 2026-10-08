@@ -41,6 +41,10 @@ export class EngineChatWire implements ChatWire {
     this.engine.personTurn(text);
   }
 
+  exchange(question: string, answer: string) {
+    this.engine.note(this.engine.personRun(question), answer, { kind: "completed" });
+  }
+
   approval() {
     const id = this.engine.ask({
       kind: "approval",

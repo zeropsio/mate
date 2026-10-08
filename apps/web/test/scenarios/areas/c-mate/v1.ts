@@ -84,6 +84,13 @@ export class V1ChatWire implements ChatWire {
     this.message("history", "user", text, turnId);
   }
 
+  private exchanges = 0;
+  exchange(question: string, answer: string) {
+    this.exchanges += 1;
+    this.message(`exchange-${this.exchanges}-ask`, "user", question);
+    this.message(`exchange-${this.exchanges}-answer`, "assistant", answer);
+  }
+
   approval() {
     this.activity("approval.requested", "Command approval requested", {
       requestId: "approval-build",

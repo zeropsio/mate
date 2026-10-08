@@ -1413,6 +1413,10 @@ export class ChatDriver {
     this.wire.history(text, turnId);
   }
 
+  exchange(question: string, answer: string) {
+    this.wire.exchange(question, answer);
+  }
+
   approval() {
     this.wire.approval();
   }
