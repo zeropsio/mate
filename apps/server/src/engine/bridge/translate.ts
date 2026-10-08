@@ -17,7 +17,8 @@
  * - a late item never reopens a turn: it carries `afterEnd`;
  * - an open call is closed `unreturned` at its turn's end, an open request
  *   `superseded`, and at a session's close every live work is `lost` and every
- *   open request `expired`.
+ *   open request `expired` — except a question asked by message, which no
+ *   callback waits on: a person's message answers it after its turn.
  *
  * Its state lives in memory: a host restart kills every driver process, so the
  * engine's own boot ends what was open and a new session starts a new fold.
@@ -161,6 +162,8 @@ interface RequestState {
   readonly turn?: TurnState;
   readonly kind: NativeRequest["kind"];
   readonly native?: string;
+  /** Asked by message: no callback waits on it, so neither its turn's end nor a close ends it. */
+  readonly byMessage?: true;
   open: boolean;
 }
 
@@ -311,7 +314,8 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       }
     }
     for (const request of owner.requests.values()) {
-      if (request.open && request.turn === turn) closeRequest(request, "superseded");
+      if (request.open && request.turn === turn && request.byMessage !== true)
+        closeRequest(request, "superseded");
     }
     turn.phase = "ended";
     if (owner.open === turn) owner.open = undefined;
@@ -419,7 +423,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       }
     }
     for (const request of owner.requests.values()) {
-      if (request.open) closeRequest(request, "expired");
+      if (request.open && request.byMessage !== true) closeRequest(request, "expired");
     }
     owner.phase = "closed";
     owner.open = undefined;
@@ -591,6 +595,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     owner: SessionState,
     event: SpiEvent,
     kind: NativeRequest["kind"],
+    byMessage = false,
   ): RequestState => {
     owner.requestCount += 1;
     const turn =
@@ -601,6 +606,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       ...(turn !== undefined && turn.phase === "open" ? { turn } : {}),
       kind,
       ...(event.requestId === undefined ? {} : { native: String(event.requestId) }),
+      ...(byMessage ? { byMessage: true as const } : {}),
       open: true,
     };
     if (event.requestId !== undefined) owner.requests.set(String(event.requestId), request);
@@ -770,7 +776,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         return;
       }
       case "user-input.requested": {
-        const request = openRequest(owner, event, "question");
+        const request = openRequest(
+          owner,
+          event,
+          "question",
+          event.payload.responseMode === "message",
+        );
         const questions = event.payload.questions;
         emit(owner, {
           type: "request.opened",

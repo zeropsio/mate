@@ -1,0 +1,5 @@
+{
+  "driver": "codex",
+  "synthetic": true,
+  "notes": "An async question (agentMessage delivery \"async\" with questions) on the parent turn of the 0.160.0 multi-agent recording (multi-agent-wire): its thread start, turn, user message and final agent message, the message's delivery and questions set and its words replaced. Protocol coverage until a live async question is recorded; not a new live capture."
+}

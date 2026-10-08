@@ -186,6 +186,23 @@ const goldenCases: ReadonlyArray<GoldenCase> = [
       "h1.i1 tool collab_agent_tool_call completed",
     ],
   },
+  {
+    driver: "codex",
+    dir: "codex",
+    name: "async-question",
+    mark: "recorded",
+    title: "a question it asks by message outlives its turn: nothing closes it",
+    lines: [
+      "session s1 opened",
+      "h1 opened by engine",
+      "h1 accepted: opened",
+      "h1.i1 text running",
+      "s1.r1 asks: question in h1",
+      "context usage",
+      "h1.i1 text completed",
+      "h1 ended completed — agent",
+    ],
+  },
   ...(["cursor", "grok", "antigravity"] as const).map((driver): GoldenCase => ({
     driver,
     dir: driver,
