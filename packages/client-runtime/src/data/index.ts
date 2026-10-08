@@ -581,8 +581,8 @@ export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";
 export { agentUsageOwner } from "./families/agentUsage.ts";
 export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";
 
+export { projectRestarts } from "./projections/restartEvidence.ts";
 export {
-  projectRestarts,
   readRestart,
   restartReadout,
   readRestartRecovery,
