@@ -178,6 +178,9 @@ export const crewEngineHooksLayer = Layer.effectContext(
 
 /* ------------------------------------------------------------ the front */
 
+/** How long a press waits for its crewmate's copy to come back before it is asked anyway. */
+const PRESS_WAIT_MS = 120_000;
+
 /** The crew's timing as this server runs it (tests shorten a redeploy's reads). */
 export const CrewTimingConfig = Context.Reference<CrewTiming>(
   "t3/zerops/crew/engine/CrewEngineLayer/CrewTimingConfig",
@@ -610,11 +613,39 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
             Effect.catch((error) => Effect.succeed<string | null>(error.message)),
           );
 
+    /**
+     * A press waits its turn while its crewmate's copy is being brought back (the boot sweep, a
+     * redeploy's recovery), as V1's copy lock held it; a turn's own save refuses it at once.
+     */
+    const copyHeld = (current: CrewState, press: CrewCommand): boolean => {
+      const handle =
+        "handle" in press && typeof press.handle === "string"
+          ? press.handle
+          : "taskId" in press && typeof press.taskId === "string"
+            ? current.tasks[press.taskId]?.owner
+            : undefined;
+      const member = handle === undefined ? undefined : current.members[handle];
+      if (member === undefined) return false;
+      return Object.values(current.effects).some(
+        (effect) =>
+          (effect.kind === "crew.sweep" && effect.handle === member.handle) ||
+          (effect.kind === "crew.recover" && member.host !== null && effect.host === member.host),
+      );
+    };
+    const waitsItsTurn = (press: CrewCommand) =>
+      Effect.gen(function* () {
+        for (let waited = 0; waited < PRESS_WAIT_MS; waited += 50) {
+          if (!copyHeld(yield* state, press)) return;
+          yield* Effect.sleep("50 millis");
+        }
+      });
+
     const command: CrewEngineService["command"] = (press, principal) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
           return yield* refuse("unavailable", "This crew can't do that on the new engine yet.");
         }
+        yield* waitsItsTurn(press);
         const current = yield* state;
         const needsHome =
           press._tag === "apply" || press._tag === "briefSave" || press._tag === "jobSave";
