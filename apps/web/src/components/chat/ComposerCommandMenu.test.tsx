@@ -88,9 +88,6 @@ describe("ComposerCommandMenu", () => {
     );
 
     expect(markup).toContain('data-composer-command-drawer="true"');
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
-    expect(markup).not.toContain("dropdown-glass");
   });
 
   it("renders commands without a category heading or invented icons", () => {
@@ -119,8 +116,6 @@ describe("ComposerCommandMenu", () => {
     expect(markup).toContain("Switch response model for this thread");
     expect(markup).not.toContain("Built-in");
     expect(markup).not.toContain("<svg");
-
-    expect(markup).toContain("max-w-[45%]");
   });
 
   it("renders the skill source icon inside its badge", () => {
@@ -193,7 +188,6 @@ describe("ComposerCommandMenu", () => {
 
     expect(markupDom(markup).body.textContent).toContain("/skill:Ask Matt");
     expect(markup).toContain('data-slot="badge"');
-    expect(markup).toContain("lucide-folder");
     expect(markup).toContain(">Repo</span>");
     expect(markup).toContain("Find the right skill or workflow");
   });

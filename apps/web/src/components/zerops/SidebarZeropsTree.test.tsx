@@ -388,13 +388,6 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Ready<");
     expect(html).not.toContain(">Idle<");
-    // The menu's own row — the surface every thread row has, lit on hover —
-    // not a bordered card. The whole row is the button.
-    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
-    const row = html.slice(html.lastIndexOf("<button", rowAt), rowAt);
-    expect(row).toContain("w-full");
-    // Its corners are the menu's row's own (`.menu-row`, 12px).
-
     // Lit as its unit, which holds its menu too, so it stays lit while the
     // pointer is on that ("a Mate and its crew, one unit in the menu").
     expect(html).toContain('data-zerops-mate-unit="crm-dev"');

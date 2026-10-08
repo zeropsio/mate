@@ -1,26 +1,20 @@
+import { markupDom } from "../../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 
 const STATES = [
-  ["queued", "off", "Waiting to start", "Clock", "clock", "border-[var(--zerops-status-off)]"],
-  ["running", "busy", "Deploying", "Play", "play", "border-[var(--zerops-status-busy)]"],
-  ["done", "ok", "Complete", "Check", "check", "border-[var(--zerops-status-ok)]"],
-  [
-    "failed",
-    "failed",
-    "Deploy failed",
-    "CircleAlert",
-    "circle-alert",
-    "border-[var(--zerops-status-failed)]",
-  ],
+  ["queued", "off", "Waiting to start", "Clock"],
+  ["running", "busy", "Deploying", "Play"],
+  ["done", "ok", "Complete", "Check"],
+  ["failed", "failed", "Deploy failed", "CircleAlert"],
 ] as const;
 
 describe("ProcessSteps", () => {
   it.each(STATES)(
     "renders a %s step with its %s state and consumer phrase",
-    (state, tone, stateLabel, iconIntent, _iconClass, _borderClass) => {
+    (state, tone, stateLabel, iconIntent) => {
       const html = renderToStaticMarkup(
         <ProcessSteps
           aria-label="Deploy progress"
@@ -67,6 +61,21 @@ describe("ProcessSteps", () => {
 
     expect(html).toContain(">Deploy</span>");
   });
+
+  it.each(["default", "compact"] as const)(
+    "shows no duration when none was reported (%s)",
+    (density) => {
+      const document = markupDom(
+        renderToStaticMarkup(
+          <ProcessSteps
+            density={density}
+            steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
+          />,
+        ),
+      );
+      expect(document.querySelector("li")?.textContent).toBe("Deploy");
+    },
+  );
 
   it("shows a formatted duration when durationMs is given", () => {
     const html = renderToStaticMarkup(

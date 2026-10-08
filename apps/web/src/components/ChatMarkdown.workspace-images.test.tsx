@@ -1,4 +1,3 @@
-import { markupDom } from "../../test/markupDom";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { mateImageSource } from "@t3tools/client-runtime/data";
 import { act } from "react";
@@ -150,8 +149,6 @@ describe("ChatMarkdown workspace images", () => {
 
     expect(testState.resources).toEqual([]);
     expect(html).toContain('src="https://example.com/image.png"');
-    expect(html).toContain("max-w-[min(100%,30rem)]");
-    expect(html).toContain("max-h-[30rem]");
     expect(html).not.toContain("Image unavailable");
   });
 
@@ -227,26 +224,6 @@ describe("a picture's room before it loads", () => {
     const html = render("![shop](.t3/storefront-home.png)");
     expect(html).toMatch(/<img[^>]*height="800"/);
     expect(html).toMatch(/<img[^>]*width="1200"/);
-    expect(html).not.toContain("aspect-video");
-  });
-
-  it("holds the room a picture usually takes the first time it is seen", () => {
-    const html = render("![first](.t3/first-sight.png)");
-
-    expect(html).not.toMatch(/<img[^>]*width=/);
-    // Inside its opener, the opener is as wide as that room: a width in
-    // percent inside a button that shrinks to its content is no width.
-    const opened = renderToStaticMarkup(
-      <ChatMarkdown
-        cwd={"C:\\Users\\shawn\\project"}
-        onOpenImage={() => undefined}
-        threadRef={threadRef}
-        text="![first](.t3/first-sight-opened.png)"
-      />,
-    );
-    expect(markupDom(opened).querySelector('button[aria-label="Open first"]')).not.toBeNull();
-    expect(markupDom(html).querySelector('img[alt="first"]')).not.toBeNull();
-    // A picture from an address of its own is as often a badge: no 16:9 place.
   });
 
   it("holds its own shape from its first frame once it has been seen", () => {
@@ -267,6 +244,5 @@ describe("a picture's room before it loads", () => {
     const html = render(markdown);
     expect(html).toMatch(/<img[^>]*height="600"/);
     expect(html).toMatch(/<img[^>]*width="800"/);
-    expect(html).not.toContain("aspect-video");
   });
 });

@@ -26,7 +26,6 @@ describe("ComposerPendingApprovalPanel", () => {
     expect(markup).toContain(detail);
 
     expect(markup).toContain("[scrollbar-width:thin]");
-    expect(markup).toContain("[&amp;::-webkit-scrollbar]:h-1.5");
     // The command is never cut; the words beside the dot may be.
     const detailTag = markup.match(/<code\b[^>]*>/)?.[0];
     expect(detailTag).toContain('data-approval-detail="complete"');

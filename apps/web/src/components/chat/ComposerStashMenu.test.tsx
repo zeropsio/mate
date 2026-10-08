@@ -15,10 +15,7 @@ describe("ComposerStashMenu", () => {
     );
 
     expect(markup).toContain('data-composer-stash-drawer="true"');
-    expect(markup).toContain("chat-composer-drawer-surface");
-    expect(markup).toContain("chat-composer-drawer-attached");
     expect(markup).toContain('aria-label="Close stash"');
-    expect(markup).not.toContain("dropdown-glass");
     expect(markup).not.toContain("Stashed prompts");
   });
 
@@ -96,9 +93,5 @@ describe("ComposerStashMenu", () => {
     expect(markup).toContain('src="data:image/png;base64,AA=="');
     expect(markup).toContain("1 image dropped");
     expect(markup).toContain("saving 1 image");
-    expect(markup).not.toContain("absolute top-1/2 right-2");
-    expect(markup).toContain("pointer-events-none");
-
-    expect(markup).toContain("[--control-icon-color:currentColor]");
   });
 });

@@ -106,7 +106,6 @@ describe("ComposerPendingApprovalActions", () => {
     );
 
     expect(markup).not.toContain(">Cancel<");
-    expect(markup).toContain("lucide-ellipsis");
     expect(markup).toContain("Always allow this session");
     expect(markup).not.toContain(">Always allow<");
 

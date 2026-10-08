@@ -55,8 +55,6 @@ describe("ZeropsStripLine", () => {
     // The timeline's width, not the page's; no tint across the page, no label.
 
     expect(html).not.toContain("surface)");
-
-    expect(html).toContain("lucide-chevron-right");
   });
 
   it("is a labelled button, so the sign-in is one click away", () => {

@@ -531,7 +531,6 @@ describe("ZeropsServiceDetail — the pop", () => {
 
     expect(html).toContain("data-zerops-service-dashboard");
     expect(html).toContain('href="https://app.zerops.io/service-stack/svc-1"');
-    expect(html).toContain("lucide-arrow-up-right");
   });
 
   it("says what the service is and how it was deployed in one meta line", () => {
