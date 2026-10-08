@@ -81,11 +81,9 @@ export const deployOf = (
   if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_deploy") return undefined;
   const host = deployTarget(body.shows, body.input);
   if (host === undefined) return undefined;
-  return {
-    itemId: event.itemId,
-    host,
-    ended: event._tag === "ItemClosed" || body.state !== "running",
-  };
+  // A call a restart cut off (`unreturned`, `stopped`) says nothing of the deploy: it may still run.
+  if (body.state === "unreturned" || body.state === "stopped") return undefined;
+  return { itemId: event.itemId, host, ended: body.state !== "running" };
 };
 
 /**

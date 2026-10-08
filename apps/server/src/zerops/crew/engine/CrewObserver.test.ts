@@ -25,7 +25,7 @@ const header = (conversationId: ConversationId, seq: number) => ({
   commandId: CommandId.make(`c${seq}`),
 });
 
-const deployCall = (state: "running" | "done"): ItemBody =>
+const deployCall = (state: "running" | "done" | "unreturned"): ItemBody =>
   ({
     kind: "call",
     step: "mcp",
@@ -140,6 +140,29 @@ describe("the crew's observer", () => {
                 : input._tag,
           ),
           ["appdev started", "appdev ended", "observed mate"],
+        );
+      }),
+    ),
+  );
+
+  it.effect("a deploy call a restart cut off is no deploy's end: it may still run", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const item = ItemId.make("mate/r/1/i/2");
+        const world = yield* scene({
+          [MATE]: [
+            {
+              _tag: "ItemClosed",
+              ...header(MATE, 1),
+              runId: null,
+              itemId: item,
+              body: deployCall("unreturned" as never),
+            } as unknown as EngineEvent,
+          ],
+        });
+        assert.deepStrictEqual(
+          world.told.map(({ input }) => input._tag),
+          ["Observed"],
         );
       }),
     ),
