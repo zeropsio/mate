@@ -52,7 +52,7 @@ export const ENGINE_MOVED =
   "This conversation moved to the Mate's engine. Update Zerops Mate to keep talking to it.";
 
 type Changed = { runs: Set<string>; items: Set<string>; requests: Set<string>; header: boolean };
-export type EngineOp = "send" | "answer" | "stop" | "steer";
+export type EngineOp = "send" | "answer" | "stop" | "steer" | "switch-model";
 
 export class MateEngineFake {
   readonly mate: MateFake;
@@ -457,7 +457,8 @@ export class MateEngineFake {
       case WS_METHODS.engineSend:
       case WS_METHODS.engineAnswer:
       case WS_METHODS.engineStop:
-      case WS_METHODS.engineSteer: {
+      case WS_METHODS.engineSteer:
+      case WS_METHODS.engineSwitchModel: {
         if (unserved !== null) {
           this.mate.reply(socket, id, encodeCall({ _tag: "Unserved", unserved }));
           return true;
@@ -509,13 +510,8 @@ export class MateEngineFake {
         ]);
         return true;
       case ORCHESTRATION_WS_METHODS.dispatchCommand: {
+        // The engine owns the conversation: every V1 command is refused, as the server's door does.
         const type = (payload as { type?: string }).type ?? "unknown";
-        if (
-          !type.startsWith("thread.turn.") &&
-          !type.startsWith("thread.approval.") &&
-          !type.startsWith("thread.user-input.")
-        )
-          return false;
         this.mate.unknownMethods.add(`${tag} ${type} (V1 write to an engine conversation)`);
         socket.send(
           JSON.stringify({
@@ -605,6 +601,15 @@ export class MateEngineFake {
         const answered = this.requests.get(requestId)!;
         for (const listener of this.onAnswer) listener(answered);
         return { _tag: "Accepted", seq: this.seq, requestId, runId: request.runId } as never;
+      }
+      case WS_METHODS.engineSwitchModel: {
+        this.applied.push({ commandId, op: "switch-model", payload });
+        this.commit((change) => {
+          this.next();
+          this.header = decodeHeader({ ...this.header, model: String(payload.model) });
+          change.header = true;
+        });
+        return { _tag: "Accepted", seq: this.seq } as never;
       }
       case WS_METHODS.engineStop: {
         if (running === undefined)

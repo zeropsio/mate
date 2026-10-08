@@ -175,3 +175,43 @@ it("refuses and flags a V1 turn sent to an engine conversation", async () => {
     await r.close();
   }
 });
+
+// Catches a client that still sends any V1 command (a title, a model, a mode) to an engine Mate.
+it("refuses and flags every V1 command sent to an engine conversation, as the server does", async () => {
+  const r = await connect();
+  try {
+    const exit = await r.call("meta", ORCHESTRATION_WS_METHODS.dispatchCommand, {
+      type: "thread.meta.update",
+      commandId: "c-2",
+      threadId: "thread-Ada",
+      title: "Deploy the api",
+    });
+    expect(exit._tag).toBe("Failure");
+    expect([...r.mate.unknownMethods].join()).toMatch(/thread\.meta\.update/);
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches a model change on an engine Mate going anywhere but the engine's model switch.
+it("switches the conversation's model and sends the new header", async () => {
+  const r = await connect();
+  try {
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    const switched = decodeCall(
+      (
+        await r.call("m", WS_METHODS.engineSwitchModel, {
+          ...conversation,
+          commandId: "switch-1",
+          model: "gpt-5.5",
+        })
+      ).value,
+    );
+    expect(switched._tag).toBe("Accepted");
+    await r.until(() =>
+      r.stream("c").some((frame) => frame.type === "changes" && frame.header?.model === "gpt-5.5"),
+    );
+  } finally {
+    await r.close();
+  }
+});
