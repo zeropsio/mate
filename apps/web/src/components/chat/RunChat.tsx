@@ -4029,6 +4029,30 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       />
     );
   const settledOutcome = settled ? row.outcome : null;
+  const toggleWork = () => {
+    hold(folded);
+    // Watched to its end and still open over its line: it
+    // folds into the line as a run settling does.
+    if (fold === "watched") {
+      foldNow();
+      return;
+    }
+    fromHeightRef.current = feedRef.current?.getBoundingClientRect().height ?? null;
+    setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+  };
+  // "Show work" pressed before its lines were read: it opens as their first page lands, or
+  // stays closed if the read fails (pressed again, it reads again).
+  const openingRef = useRef<{ reading: boolean } | null>(null);
+  const openWhenHeld = useEffectEvent(toggleWork);
+  useLayoutEffect(() => {
+    const opening = openingRef.current;
+    if (opening === null || paging === null) return;
+    if (paging.holdsLines) {
+      openingRef.current = null;
+      openWhenHeld();
+    } else if (paging.reading !== null) opening.reading = true;
+    else if (opening.reading) openingRef.current = null;
+  }, [paging]);
   // What the result's strip draws, as it said (`resultStripFiles`); the first six until then.
   const stripGuess = useMemo(
     () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(allResultPictures(settledOutcome))),
@@ -4075,19 +4099,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.
                 shows.toggle !== null &&
-                opensOnto({ control: "work", lines: chatLineCount(row.items) }) ? (
+                ((paging?.hasWork ?? false) ||
+                  opensOnto({ control: "work", lines: chatLineCount(row.items) })) ? (
                   <WorkToggle
                     onToggle={() => {
-                      hold(folded);
-                      // Watched to its end and still open over its line: it
-                      // folds into the line as a run settling does.
-                      if (fold === "watched") {
-                        foldNow();
+                      // Its lines not read yet: it opens once their first page is held.
+                      if (folded && paged !== null && !paged.paging.holdsLines) {
+                        if (openingRef.current !== null) return;
+                        openingRef.current = { reading: false };
+                        paged.pages.read("later");
                         return;
                       }
-                      fromHeightRef.current =
-                        feedRef.current?.getBoundingClientRect().height ?? null;
-                      setRunFold(ctx.routeThreadKey, row.turnKey, folded ? "shown" : "folded");
+                      toggleWork();
                     }}
                     open={!folded}
                   />
@@ -4421,6 +4444,10 @@ function RunScroll({
   // it, and again once they move it down onto its foot or close what they
   // opened; where its top last stood tells their move from the page's. It
   // opens at its foot.
+  const laterRef = useRef(pages?.later ?? false);
+  useLayoutEffect(() => {
+    laterRef.current = pages?.later ?? false;
+  });
   const followRef = useRef<RunScrollFollow>({
     follows: !opensAtStart,
     stood: opensAtStart ? 0 : Number.POSITIVE_INFINITY,
@@ -4435,6 +4462,10 @@ function RunScroll({
     const heard = (event: RunScrollEvent) => {
       const stood = followRef.current.stood;
       followRef.current = followAfter(followRef.current, event);
+      // Its foot is not its run's end while later lines are still to read: what pages in joins
+      // under what the person reads, and the scroll never follows it there.
+      if (laterRef.current && followRef.current.follows)
+        followRef.current = { ...followRef.current, follows: false };
       const element = scrollRef.current;
       if (element !== null && (event.kind === "set" || followRef.current.stood !== stood)) {
         stoodAt.max = element.scrollHeight - element.clientHeight;

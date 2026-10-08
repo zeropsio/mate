@@ -1,7 +1,7 @@
 /**
- * An engine Mate's run too long to read whole before its card paints (`engineCardPaging`): its
- * worked line counts its effort from the server's summary of its runs, and its scroll draws the
- * stretch of lines held whole, the rest paging in as the person scrolls to them.
+ * An engine Mate's run not held whole when its card paints (`engineCardPaging`): its worked line
+ * counts its effort from the server's summary of its runs, and its scroll draws the stretch of
+ * lines held whole, the rest paging in as the person opens it and scrolls to them.
  */
 import type { EngineCardCounts, EngineCardPaging } from "@t3tools/client-runtime/data";
 import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
@@ -76,6 +76,7 @@ export function heldLines<Line extends { readonly at: string }>(
   paging: EngineCardPaging | null,
 ): ReadonlyArray<Line> {
   if (paging === null || (paging.since === null && paging.through === null)) return lines;
+  if (!paging.holdsLines) return [];
   const since = paging.since === null ? Number.NEGATIVE_INFINITY : Date.parse(paging.since);
   const through = paging.through === null ? Number.POSITIVE_INFINITY : Date.parse(paging.through);
   return lines.filter((line) => {

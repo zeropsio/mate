@@ -166,6 +166,8 @@ describe("a paging card's scroll", () => {
   const paging = (since: number | null, through: number | null): EngineCardPaging => ({
     runId: run,
     counts: { calls: {}, tools: {}, edited: 0 },
+    hasWork: true,
+    holdsLines: since !== null || through !== 0,
     since: since === null ? null : at(since),
     through: through === null ? null : at(through),
     reading: null,
@@ -190,6 +192,7 @@ describe("a paging card's scroll", () => {
       through: null,
       keys: ["l1", "l2", "l3", "l4", "l5"],
     },
+    { held: "none, before its card first opens", since: null, through: 0, keys: [] },
   ])("draws the lines held whole: $held", ({ since, through, keys }) => {
     expect(heldLines(lines, paging(since, through)).map((line) => line.key)).toEqual(keys);
   });
