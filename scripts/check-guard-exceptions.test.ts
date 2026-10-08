@@ -4,6 +4,9 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import * as NodeModule from "node:module";
 
 import {
   formatFindingMessage,
@@ -12,6 +15,7 @@ import {
 
 import {
   checkGuardExceptions,
+  GUARD_SCOPE_PATHS,
   type GuardLintOutput,
   type GuardLintRequest,
 } from "./check-guard-exceptions.ts";
@@ -125,6 +129,104 @@ const cacheFixture = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("guard exception driver", (it) => {
+  it.effect(
+    "reports restyling through the TypeScript wrapper when a JSX sibling is also present",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "guard-restyle-cache-" });
+          const directory = path.join(cwd, "ledgers");
+          const cacheDirectory = path.join(cwd, "cache");
+          for (const root of [...GUARD_SCOPE_PATHS, "apps/web/src/components/ui", "ledgers"])
+            yield* fs.makeDirectory(path.join(cwd, root), { recursive: true });
+          yield* fs.writeFileString(path.join(cwd, "package.json"), '{"name":"fixture"}');
+          yield* fs.writeFileString(path.join(cwd, "apps/web/package.json"), '{"name":"web"}');
+          yield* fs.writeFileString(path.join(directory, "no-restyle.json"), "[]");
+          const config = path.join(cwd, ".oxlintrc.json");
+          yield* fs.writeFileString(
+            config,
+            encodeUnknownJson({
+              jsPlugins: [path.join(import.meta.dirname, "../oxlint-plugin-t3code/index.ts")],
+              rules: { "t3code/no-restyle": "error" },
+            }),
+          );
+          yield* fs.writeFileString(
+            path.join(cwd, "apps/web/src/components/ui/button.tsx"),
+            "export const Button = () => <button />;",
+          );
+          const wrapper = path.join(cwd, "apps/web/src/wrapper.ts");
+          const plainWrapper = "export const Alias = () => null;";
+          yield* fs.writeFileString(wrapper, plainWrapper);
+          yield* fs.writeFileString(path.join(cwd, "apps/web/src/wrapper.jsx"), plainWrapper);
+          yield* fs.writeFileString(
+            path.join(cwd, "apps/web/src/consumer.tsx"),
+            'import { Alias } from "./wrapper"; export const view = <Alias className="bg-red-500" />;',
+          );
+          const oxlintPackage = NodeModule.createRequire(
+            NodeModule.createRequire(import.meta.url).resolve("vite-plus/package.json"),
+          ).resolve("oxlint/package.json");
+          const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+          const runLint = (request: GuardLintRequest) =>
+            Effect.scoped(
+              Effect.gen(function* () {
+                const child = yield* spawner.spawn(
+                  ChildProcess.make(
+                    process.execPath,
+                    [
+                      path.join(path.dirname(oxlintPackage), "bin/oxlint"),
+                      "--config",
+                      config,
+                      ...request.args.slice(1),
+                    ],
+                    {
+                      cwd: request.cwd,
+                      env: { ...request.env, T3CODE_NO_RESTYLE_LEDGER_DIRECTORY: directory },
+                      extendEnv: true,
+                    },
+                  ),
+                );
+                const collect = <E>(stream: Stream.Stream<Uint8Array, E>) =>
+                  stream.pipe(
+                    Stream.decodeText(),
+                    Stream.runCollect,
+                    Effect.map((parts) => parts.join("")),
+                  );
+                const [stdout, stderr, exitCode] = yield* Effect.all(
+                  [
+                    collect(child.stdout),
+                    collect(child.stderr),
+                    child.exitCode.pipe(Effect.map(Number)),
+                  ],
+                  { concurrency: "unbounded" },
+                );
+                return { stdout, stderr, exitCode };
+              }),
+            );
+          const options = { cwd, directory, ruleNames: ["no-restyle"], runLint };
+          const cached = { ...options, cacheDirectory };
+          const initial = yield* checkGuardExceptions(cached);
+          assert.equal(initial.problemCount, 0);
+          assert.equal(initial.exitCode, 0);
+          assert.deepStrictEqual(yield* checkGuardExceptions(cached), initial);
+          yield* fs.writeFileString(
+            wrapper,
+            'export { Button as Alias } from "./components/ui/button";',
+          );
+          const uncached = yield* checkGuardExceptions(options);
+          assert.equal(uncached.problemCount, 1);
+          assert.equal(uncached.exitCode, 1);
+          assert.match(uncached.reports[0]!, /consumer\.tsx/u);
+          const warm = yield* checkGuardExceptions(cached);
+          assert.equal(warm.problemCount, 1);
+          assert.equal(warm.exitCode, 1);
+          assert.deepStrictEqual(warm, uncached);
+        }),
+      ),
+    { timeout: 60_000 },
+  );
+
   it.effect(
     "Decision: no check weakened or skipped; results must equal the uncached run (add a test comparing cached vs uncached output on a fixture).",
     () =>

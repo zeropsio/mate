@@ -179,7 +179,10 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
   >();
   const globalInputs = new Set<string>();
 
-  const localFile = (candidate: string): string | undefined => {
+  const localFile = (
+    candidate: string,
+    extensions: ReadonlyArray<string> = [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs", ".css"],
+  ): string | undefined => {
     const extension = NodePath.extname(candidate);
     const swapped = {
       ".js": [".ts", ".tsx"],
@@ -192,9 +195,9 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       ...(swapped[extension as keyof typeof swapped] ?? []).map(
         (suffix) => candidate.slice(0, -extension.length) + suffix,
       ),
-      ...[".tsx", ".jsx", ".ts", ".js", ".mts", ".mjs", ".cts", ".cjs", ".json", ".css"].flatMap(
-        (suffix) => [candidate + suffix, NodePath.join(candidate, `index${suffix}`)],
-      ),
+      // Match shadcn's extension priority and try every file before directory indexes.
+      ...extensions.map((suffix) => candidate + suffix),
+      ...extensions.map((suffix) => NodePath.join(candidate, `index${suffix}`)),
     ];
     return alternatives.find((file) => NodeFS.existsSync(file) && NodeFS.statSync(file).isFile());
   };
@@ -216,7 +219,9 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       if (typeof config.extends === "string") {
         let parent: string | undefined;
         if (config.extends.startsWith("."))
-          parent = localFile(NodePath.resolve(NodePath.dirname(filename), config.extends));
+          parent = localFile(NodePath.resolve(NodePath.dirname(filename), config.extends), [
+            ".json",
+          ]);
         else {
           try {
             parent = NodeModule.createRequire(filename).resolve(config.extends);
