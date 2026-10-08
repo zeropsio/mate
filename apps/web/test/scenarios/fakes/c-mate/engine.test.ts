@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import {
   EngineCallResult,
   EngineConversationFrame,
+  EngineDetail,
   EnginePage,
   EngineReceiptResult,
   ORCHESTRATION_WS_METHODS,
@@ -18,6 +19,7 @@ import { deadline, serve } from "../../harness/http.ts";
 const decodeFrame = Schema.decodeUnknownSync(EngineConversationFrame);
 const decodeCall = Schema.decodeUnknownSync(EngineCallResult);
 const decodeReceipt = Schema.decodeUnknownSync(EngineReceiptResult);
+const decodeDetail = Schema.decodeUnknownSync(EngineDetail);
 
 interface Frame {
   readonly _tag: string;
@@ -269,6 +271,56 @@ it("streams an item's text at its offsets, whole to a subscriber that opens late
       stream: "text",
       text: "Deploying the api",
     });
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches a call served without what its row shows, or a long result served half.
+it("serves a call's line, facts and result, a long result cut and read whole, its output on demand", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    const run = engine.personRun("Deploy the api");
+    const deployed = `{"status":"DEPLOYED","buildLogs":"${"ok ".repeat(6_000)}"}`;
+    const call = engine.item(run, {
+      kind: "call",
+      step: "mcp",
+      tool: { name: "zerops_deploy", server: "zerops" },
+      words: "MCP tool call",
+      state: "done",
+      endedAt: null,
+      input: 'mcp__zerops__zerops_deploy: {"targetService":"api"}',
+      shows: { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "api" } },
+      result: { toolName: "zerops_deploy", resultText: deployed },
+      parts: ["detail"],
+    });
+    engine.detail(call, "detail", "Deploying api…\nDeployed.");
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    const [snapshot] = r.stream("c");
+    expect(snapshot?.type === "snapshot" && snapshot.items.at(-1)).toMatchObject({
+      input: 'mcp__zerops__zerops_deploy: {"targetService":"api"}',
+      shows: { toolName: "mcp__zerops__zerops_deploy" },
+      result: { toolName: "zerops_deploy" },
+      cut: { part: "result", total: deployed.length },
+    });
+    const part = async (id: string, name: string) =>
+      decodeDetail(
+        (
+          await r.call(id, WS_METHODS.engineReadDetail, {
+            ...conversation,
+            itemId: call,
+            part: name,
+          })
+        ).value,
+      );
+    expect(await part("r", "result")).toMatchObject({ _tag: "Detail", text: deployed });
+    expect(await part("o", "detail")).toMatchObject({
+      _tag: "Detail",
+      text: "Deploying api…\nDeployed.",
+    });
+    expect(await part("d", "data")).toEqual({ _tag: "Missing" });
   } finally {
     await r.close();
   }
