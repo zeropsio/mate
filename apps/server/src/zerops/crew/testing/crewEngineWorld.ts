@@ -61,6 +61,7 @@ import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "../cre
 import { installCrewThreadPolicy } from "../CrewThreadPolicy.ts";
 import { taskAssignment, type CrewEffectPayload } from "../engine/command.ts";
 import {
+  CrewTimingConfig,
   crewEngineHooksLayer,
   crewEngineLinkLayer,
   engineCrewLayer,
@@ -577,7 +578,19 @@ const enginePort = (input: {
     refuseTurns: (words) => Ref.set(fx.refusal, words),
     logins: (logins) => Ref.set(fx.logins, logins),
     agentsNotLive: (instanceIds) => Ref.set(fx.missingAgents, instanceIds),
-    chatWas: () => Effect.void,
+    // The engine's record is how a chat stood: a running turn is one its provider took up.
+    chatWas: (chat, was) =>
+      was.running === true
+        ? waitFor(
+            `${chat}'s turn running`,
+            Effect.map(
+              crewState,
+              (state) =>
+                membersInOrder(state).find((member) => member.conversationId === chat)?.active
+                  ?.reached === true,
+            ),
+          )
+        : Effect.void,
     taskLastMovedAt: (taskId) =>
       Effect.gen(function* () {
         // The task has waited as long as the crew can tell: its waits come due now.
@@ -690,6 +703,12 @@ const lifeLayer = (
   const { world, signIns, holds } = fixture;
   const history = makeFakeWorkspaceHistory();
   const base = Layer.mergeAll(
+    // A redeploy's reads come within moments, not minutes, as V1's world has them.
+    Layer.succeed(CrewTimingConfig, {
+      deployPollFirstMs: 50,
+      deployPollMaxMs: 200,
+      thawOfferMs: 600,
+    }),
     platformFakes(world, signIns),
     admissionFake(world),
     countingSsh(world.sshCalls, holds),

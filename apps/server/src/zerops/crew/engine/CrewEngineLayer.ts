@@ -84,7 +84,7 @@ import { doorLogins, filesDoorLogins } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
-import { membersInOrder, type CrewState } from "./state.ts";
+import { DEFAULT_CREW_TIMING, membersInOrder, type CrewState, type CrewTiming } from "./state.ts";
 
 /* ------------------------------------------------------------ the link */
 
@@ -177,6 +177,12 @@ export const crewEngineHooksLayer = Layer.effectContext(
 );
 
 /* ------------------------------------------------------------ the front */
+
+/** The crew's timing as this server runs it (tests shorten a redeploy's reads). */
+export const CrewTimingConfig = Context.Reference<CrewTiming>(
+  "t3/zerops/crew/engine/CrewEngineLayer/CrewTimingConfig",
+  { defaultValue: () => DEFAULT_CREW_TIMING },
+);
 
 const refuse = (reason: CrewRefusalReason, detail: string | null = null) =>
   new CrewCommandError({ reason, detail });
@@ -483,8 +489,17 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const frameOf = (current: CrewState) =>
       Effect.map(viewOf(current), (view) => crewSnapshotOf(current, view));
     const hub = yield* SubscriptionRef.make<CrewSnapshot>(yield* frameOf(yield* state));
+    /** A frame's content, its revision aside: a commit that changes nothing shown moves no frame. */
+    const contentOf = (frame: CrewSnapshot) => {
+      const { seq: _seq, revision: _revision, ...shown } = frame;
+      return JSON.stringify(shown);
+    };
     const refresh = Effect.flatMap(state, frameOf).pipe(
-      Effect.flatMap((frame) => SubscriptionRef.set(hub, frame)),
+      Effect.flatMap((frame) =>
+        Effect.flatMap(SubscriptionRef.get(hub), (current) =>
+          contentOf(current) === contentOf(frame) ? Effect.void : SubscriptionRef.set(hub, frame),
+        ),
+      ),
     );
     yield* Stream.merge(
       Stream.map(door.subscribe(CREW_OWNER_ID, (yield* state).headSeq), () => undefined).pipe(
@@ -692,6 +707,10 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     /* ------------------------------------------------------- boot */
 
+    yield* tell(
+      { _tag: "Configure", timing: yield* CrewTimingConfig },
+      `configure:${yield* Clock.currentTimeMillis}`,
+    );
     yield* listDevHosts.pipe(Effect.ignore);
     const booted = yield* state;
     if (booted.applied !== null) {
