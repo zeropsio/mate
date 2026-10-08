@@ -162,6 +162,11 @@ export const unservedWire: EngineWireShape = {
 // ── served ──────────────────────────────────────────────────────────────────────────────────
 
 export interface EngineWireOptions {
+  /**
+   * A person's send waits on it: while a flipped Mate's main conversation is not yet adopted, its
+   * earlier record goes in before anything of the person's runs.
+   */
+  readonly sendsWait?: Effect.Effect<void>;
   /** How long a subscription gathers commits and deltas before it sends them (default 50 ms). */
   readonly coalesce?: Duration.Input;
   /** Records a resume carries at most; past it the subscriber is reset. */
@@ -759,11 +764,14 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       readDetail,
       receipt,
       send: (input, caller) =>
-        command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Send",
-          text: input.text,
-          ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-        }),
+        Effect.andThen(
+          options.sendsWait ?? Effect.void,
+          command(input.protocol, input.conversationId, input.commandId, caller, {
+            _tag: "Send",
+            text: input.text,
+            ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
+          }),
+        ),
       stop: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Stop",

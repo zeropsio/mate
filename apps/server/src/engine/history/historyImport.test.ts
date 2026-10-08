@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
@@ -33,7 +34,7 @@ import { ProjectionThreadMessageRepository } from "../../persistence/Services/Pr
 import { ProjectionThreadProposedPlanRepository } from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
 import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionTurns.ts";
 import { Conversations, type ConversationsShape } from "../Conversations.ts";
-import { askImport, makeHistoryImport } from "../effects/historyImport.ts";
+import { askImport, importOrSayGap, makeHistoryImport } from "../effects/historyImport.ts";
 import { EffectHandlers, handlersOf, makeEffectWorker } from "../outbox/EffectWorker.ts";
 import { EngineStoreError, type CommitStage } from "../store/EngineStore.ts";
 import {
@@ -643,6 +644,71 @@ const cached = Effect.suspend(() =>
 );
 
 // ── once, whatever happens ──────────────────────────────────────────────────────────────────
+
+describe("an import that cannot start", () => {
+  // Catches an import failure swallowed as "nothing to bring": the agent was then given and the
+  // earlier record never came, with no word of it.
+  it.live("is asked again while it fails, and copies the record once it can", () =>
+    Effect.gen(function* () {
+      const file = yield* seededDb("again");
+      const held = yield* lifetime(file, ({ worker, conversations }) =>
+        Effect.gen(function* () {
+          let refused = 2;
+          const door: ConversationsShape = {
+            ...conversations,
+            ask: (envelope) =>
+              refused-- > 0
+                ? Effect.fail(
+                    new EngineStoreError({ operation: "ask", cause: "the store is busy" }) as never,
+                  )
+                : conversations.ask(envelope),
+          };
+          const turns = yield* importOrSayGap(c, source, Schedule.spaced(10)).pipe(
+            Effect.provideService(Conversations, door),
+          );
+          yield* drain(worker);
+          return { turns, ...(yield* recordOf(file)) };
+        }),
+      );
+      expect(held.turns).toBeGreaterThan(0);
+      expect(held.runs.length).toBe(held.turns);
+    }),
+  );
+
+  it.live("leaves its gap marker when the earlier record can never be read", () =>
+    Effect.gen(function* () {
+      const file = yield* seededDb("never");
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DROP TABLE projection_turns`;
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: file })));
+      const held = yield* lifetime(file, () =>
+        Effect.gen(function* () {
+          const turns = yield* importOrSayGap(c, source, Schedule.recurs(2));
+          const sql = yield* SqlClient.SqlClient;
+          const runs = yield* sql`SELECT run_id FROM engine_run WHERE conversation_id = ${c}`;
+          const rows = yield* sql<Parameters<typeof itemOfRow>[0]>`
+            SELECT * FROM engine_item WHERE conversation_id = ${c} ORDER BY opened_seq
+          `;
+          return { turns, runs, items: yield* Effect.forEach(rows, itemOfRow) };
+        }),
+      );
+      expect(held.turns).toBe(0);
+      expect(held.runs).toEqual([]);
+      expect(held.items).toMatchObject([
+        {
+          kind: "marker",
+          marker: {
+            kind: "error",
+            reason: expect.stringContaining(
+              "The earlier conversation could not all be brought over",
+            ),
+          },
+        },
+      ]);
+    }),
+  );
+});
 
 describe("a client watching while the earlier record comes in", () => {
   // Catches an import streamed to a subscriber record by record: thousands of items as changes,

@@ -271,4 +271,34 @@ describe("a conversation's earlier record", () => {
       expect(scene.events[2]).toMatchObject({ outcome: "failed", reason });
     },
   );
+
+  // Catches an import whose earlier record could not be read leaving nothing: the conversation
+  // would start as if it had no past, with no word of what stayed behind.
+  it("that could not be read leaves its gap marker, and the conversation runs", () => {
+    const scene = play([
+      { _tag: "ImportHistory", source, runs: 0, unread: "the V1 thread could not be read" },
+      { _tag: "Send", text: "hi" },
+    ]);
+    expect(tags(scene.all)).toEqual([
+      "HistoryImportStarted",
+      "ItemImported",
+      "HistoryImportEnded",
+      "RunQueued",
+      "ItemOpened",
+      "RunAdmitted",
+      "EffectRequested",
+    ]);
+    expect(scene.all[1]).toMatchObject({
+      runId: null,
+      body: {
+        kind: "marker",
+        marker: {
+          kind: "error",
+          reason:
+            "The earlier conversation could not all be brought over: the V1 thread could not be read",
+        },
+      },
+    });
+    expect(scene.all[2]).toMatchObject({ outcome: "failed" });
+  });
 });

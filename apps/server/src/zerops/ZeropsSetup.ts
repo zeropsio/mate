@@ -270,6 +270,10 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const engine = yield* MateEngine;
     // The Mate engine owns the conversation: the stand-up is a wake on it, never a V1 turn.
     const onEngine = config.mateEngine === "mate";
+    // A flipped Mate's main conversation takes its earlier record before anything of the
+    // person's runs: their sends wait from here until it is adopted (or the server stops).
+    const letSendsGo = onEngine ? yield* engine.holdSends : Effect.void;
+    if (onEngine) yield* Effect.addFinalizer(() => letSendsGo);
     const environment = config.zerops;
     const projectId = environment?.projectId ?? "";
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -964,6 +968,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           cause,
         ),
       ),
+      Effect.ensuring(letSendsGo),
     );
 
     /** One look, on the engine that owns the conversation. */

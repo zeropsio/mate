@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
@@ -506,6 +508,28 @@ describe("a client subscribed to a Mate's conversation rows", () => {
 });
 
 describe("a client's calls to an engine conversation", () => {
+  // Catches a send right after a flipped Mate's restart taking run 1, so its earlier record is
+  // never brought in: the send waits until the conversation is adopted.
+  it.effect("a send waits while the Mate holds sends, and is applied once it lets them go", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const held = yield* Deferred.make<void>();
+        const wire = yield* wireOf(w, { sendsWait: Deferred.await(held) });
+        const sent = yield* Effect.forkScoped(send(wire, "Hello"));
+        yield* w.settle;
+        const before = yield* w.within(
+          Effect.flatMap(SqlClient.SqlClient, (sql) => sql`SELECT run_id FROM engine_run`),
+        );
+        assert.deepStrictEqual(before, []);
+        yield* Deferred.succeed(held, undefined);
+        const result = yield* Fiber.join(sent);
+        assert.strictEqual(result._tag, "Accepted");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a send is confirmed when the engine accepts it, as the person who sent it", () =>
     Effect.scoped(
       Effect.gen(function* () {

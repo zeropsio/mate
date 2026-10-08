@@ -178,7 +178,13 @@ export type Command =
    * Copy the conversation's earlier record in, once, before it runs anything of its own: its
    * first `runs` ordinals are the imported turns'. The `history.import` effect reads it in batches.
    */
-  | { readonly _tag: "ImportHistory"; readonly source: HistorySource; readonly runs: number }
+  | {
+      readonly _tag: "ImportHistory";
+      readonly source: HistorySource;
+      readonly runs: number;
+      /** The earlier record could not be read, for good: why. The gap is said, nothing copied. */
+      readonly unread?: string;
+    }
   /** One batch of the earlier record, as the import read it: its plan's records `from`..`to`. */
   | {
       readonly _tag: "HistoryBatch";

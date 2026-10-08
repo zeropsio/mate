@@ -1653,7 +1653,13 @@ const importHistory = (
   command: Extract<Command, { readonly _tag: "ImportHistory" }>,
 ): void => {
   if (b.state.history !== null || b.state.archived) return;
-  if (b.state.nextRunOrdinal !== 1 || command.runs < 1) return;
+  if (b.state.nextRunOrdinal !== 1) return;
+  if (command.unread !== undefined) {
+    // Nothing could be read: the gap is said where the earlier record would have been.
+    b.emit({ _tag: "HistoryImportStarted", source: command.source, runs: 0 });
+    return endHistoryFailed(b, command.unread);
+  }
+  if (command.runs < 1) return;
   b.emit({ _tag: "HistoryImportStarted", source: command.source, runs: command.runs });
   askHistory(b, 0);
 };
@@ -1728,6 +1734,11 @@ const historySettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): v
         : outcome.kind === "timed-out"
           ? "the earlier record took too long to read"
           : `an outcome this build does not know (${outcome.type})`;
+  endHistoryFailed(b, reason);
+};
+
+/** An import that could not bring everything: a marker says so, and the queue moves. */
+const endHistoryFailed = (b: StepBuilder, reason: string): void => {
   b.emit({
     _tag: "ItemImported",
     runId: null,

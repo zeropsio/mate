@@ -12,6 +12,7 @@
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
@@ -32,7 +33,7 @@ import { Conversations } from "./Conversations.ts";
 import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
-import { askImport } from "./effects/historyImport.ts";
+import { importOrSayGap } from "./effects/historyImport.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
@@ -207,12 +208,12 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       );
 
     const importHistory: MateEngineService["importHistory"] = (conversationId, source) =>
-      askImport(conversationId, source).pipe(
+      importOrSayGap(conversationId, source).pipe(
         Effect.provideService(SqlClient.SqlClient, sql),
         Effect.provideService(Conversations, conversations),
         Effect.catchCause((cause) =>
           Effect.logWarning(
-            "Mate engine: the earlier conversation could not be brought",
+            "Mate engine: the earlier conversation's gap could not be said",
             cause,
           ).pipe(Effect.as(0)),
         ),
@@ -335,11 +336,14 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => undefined),
       );
 
-    const wire = yield* makeEngineWire(options.wire);
+    // Open unless a flipped Mate holds its people's sends until its main conversation is adopted.
+    const sends = yield* Latch.make(true);
+    const wire = yield* makeEngineWire({ ...options.wire, sendsWait: sends.await });
 
     return MateEngine.of({
       live: true,
       wire,
+      holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),
       start,
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),
