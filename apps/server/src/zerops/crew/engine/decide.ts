@@ -1488,7 +1488,8 @@ const pressed = (
         throw wrongState(`#${task.number} is ${task.state}`);
       }
       // The person edits from the task they saw: one that moved since is theirs to look at again.
-      if (seen === undefined || seen.state !== task.state || seen.attempts !== attemptsOf(task)) {
+      // An edit that names no read (an older client, V1's press) writes as V1's did.
+      if (seen !== undefined && (seen.state !== task.state || seen.attempts !== attemptsOf(task))) {
         throw wrongState(`#${task.number} is ${task.state}`);
       }
       b.emit({
