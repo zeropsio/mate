@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 import { chatGateStages, chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
 import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 import { parseSync } from "oxc-parser";
+import { transform as parseCss } from "lightningcss";
 
 export const scenarioAreas = [
   "a-signin",
@@ -25,6 +26,28 @@ const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 
 function sourceShape(path: string, text: string): string | undefined {
+  if (path.endsWith(".css")) {
+    let shape: string | undefined;
+    try {
+      parseCss({
+        filename: path,
+        code: Buffer.from(text),
+        visitor: {
+          StyleSheet(stylesheet) {
+            shape = JSON.stringify(stylesheet, (key, value: unknown) =>
+              ["loc", "sources", "sourceMapUrls", "licenseComments"].includes(key)
+                ? undefined
+                : value,
+            );
+          },
+        },
+      });
+    } catch {
+      // Invalid syntax must remain meaningful rather than silently dropping coverage.
+      return undefined;
+    }
+    return shape;
+  }
   const parsed = parseSync(path, text);
   if (parsed.errors.length) return undefined;
   return JSON.stringify(parsed.program, (key, value: unknown) =>
@@ -32,7 +55,7 @@ function sourceShape(path: string, text: string): string | undefined {
   );
 }
 
-/** Compare parsed programs, preserving ASI, strings, regexes and JSX while ignoring comments. */
+/** Compare parsed source, preserving syntax and literal content while ignoring comments. */
 export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
   const previous = new Map<string, string>();
   const tracked = NodeChildProcess.spawnSync(
@@ -52,7 +75,11 @@ export function meaningfulChanges(root: string, base: string, paths: ReadonlyArr
       if (old.status !== 0) throw new Error(old.stderr);
       previous.set(path, old.stdout);
     }
-    if (!sourceFile.test(path) || !NodeFS.existsSync(NodePath.join(root, path))) return true;
+    if (
+      (!sourceFile.test(path) && !path.endsWith(".css")) ||
+      !NodeFS.existsSync(NodePath.join(root, path))
+    )
+      return true;
     const current = sourceShape(path, NodeFS.readFileSync(NodePath.join(root, path), "utf8"));
     const before = previous.get(path);
     return current === undefined || current !== sourceShape(path, before ?? "");
@@ -244,6 +271,17 @@ export function relatedFiles(
             ? resolveFile(`apps/web${path}`)
             : resolveFile(NodePath.posix.join("apps/web", path));
           if (resolved) dependencies.push(resolved);
+        }
+      }
+      if (file.endsWith(".css")) {
+        const parsed = parseCss({
+          filename: file,
+          code: Buffer.from(source),
+          analyzeDependencies: true,
+        });
+        for (const dependency of parsed.dependencies ?? []) {
+          if (dependency.type === "import")
+            dependencies.push(...resolveImport(file, dependency.url));
         }
       }
       if (!sourceFile.test(file)) continue;

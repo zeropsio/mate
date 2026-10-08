@@ -13,6 +13,7 @@ import {
   touchedPackages,
   relatedTestPackages,
   relatedFiles,
+  meaningfulChanges,
 } from "./gate-changed.ts";
 
 it("includes relay consumers when discovering related tests for shared changes", () => {
@@ -594,6 +595,14 @@ it.each([
     consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
   },
   {
+    path: "apps/web/src/fonts.css",
+    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+  },
+  {
+    path: "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+  },
+  {
     path: "apps/server/src/spi/fixtures/claude/plain-text-turn.expected.json",
     consumer: "apps/server/src/spi/replay/goldens.test.ts",
   },
@@ -603,4 +612,94 @@ it.each([
   const selected = relatedFiles(root, [path], candidates);
   expect(selected).toContain(consumer);
   expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
+});
+
+it("a comments-only stylesheet edit schedules no browser scenarios or chat stages", () => {
+  const file = NodePath.join(repositoryFixture, "apps/web/src/index.css");
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(file, original + "\n/* Updated stylesheet explanation. */\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Scenario files: 0; reason: documentation/comments only");
+    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
+    expect(result.stdout).not.toContain(".scenario.ts");
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("stylesheet strings containing comment delimiters remain meaningful changes", () => {
+  const path = "apps/web/src/index.css";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(
+      file,
+      original + '\n.example::after { content: "/* actual content */"; }\n',
+    );
+    expect(meaningfulChanges(repositoryFixture, "HEAD", [path]).paths).toEqual([path]);
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("stylesheet syntax ignores inline and license comments without hiding invalid edits", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-css-"));
+  const path = "style.css";
+  const file = NodePath.join(root, path);
+  const original = 'a/**/.b { content: "/* literal */"; color: red; }';
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  try {
+    NodeFS.writeFileSync(file, original);
+    git("init", "-q");
+    git("config", "user.name", "Gate fixture");
+    git("config", "user.email", "gate@example.test");
+    git("add", ".");
+    git("commit", "-qm", "stylesheet fixture");
+    NodeFS.writeFileSync(file, "/*! license */" + original.replace("/**/", "/* explanation */"));
+    expect(meaningfulChanges(root, "HEAD", [path]).paths).toEqual([]);
+    NodeFS.writeFileSync(file, original + "\n@import ;");
+    expect(meaningfulChanges(root, "HEAD", [path]).paths).toEqual([path]);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("stylesheet imports retain nested url inputs and removed imports", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-css-imports-"));
+  const test = "journey.test.ts";
+  try {
+    for (const [file, source] of [
+      [test, 'import "./index.css";'],
+      ["index.css", '@import /* explanation */ url("./nested.css") screen;'],
+      ["nested.css", '@import "./fonts.css";'],
+      ["fonts.css", "a { color: red; }"],
+      ["unrelated.test.ts", "export {};"],
+    ] as const)
+      NodeFS.writeFileSync(NodePath.join(root, file), source);
+    expect(relatedFiles(root, ["fonts.css"], [test, "unrelated.test.ts"])).toEqual([test]);
+    NodeFS.writeFileSync(NodePath.join(root, "nested.css"), "");
+    NodeFS.rmSync(NodePath.join(root, "fonts.css"));
+    expect(
+      relatedFiles(
+        root,
+        ["fonts.css"],
+        [test, "unrelated.test.ts"],
+        new Map([
+          ["nested.css", '@import "./fonts.css";'],
+          ["fonts.css", "a { color: red; }"],
+        ]),
+      ),
+    ).toEqual([test]);
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
 });
