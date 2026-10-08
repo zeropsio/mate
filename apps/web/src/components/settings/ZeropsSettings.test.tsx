@@ -198,6 +198,21 @@ it.each(["none", "unreadable"] as const)(
   },
 );
 
+it.each(["unknown", "withheld"] as const)(
+  "an %s policy offers no toggle and explains its read state",
+  (kind) => {
+    if (kind === "withheld") {
+      observePolicy(store, { orgId: "org", enabled: true, revision: 1 });
+      store.dispatch({ kind: "access", family: "hqAutoUpdatePolicy", id: "org", access: "denied" });
+    }
+    const tree = render();
+    expect(control(tree)).toBeNull();
+    expect(fixture.policy).toMatchObject({ policy: { kind }, editable: false, recoverable: false });
+    expect(words(tree)).toContain(kind === "withheld" ? "Access refused" : "Waiting for HQ…");
+    expect(fixture.submit).not.toHaveBeenCalled();
+  },
+);
+
 function observePolicy(
   store: ReturnType<typeof makeAccountStore>,
   policy: { orgId: string; enabled: boolean; revision: number },
@@ -312,7 +327,7 @@ it("a completed toggle stays settled when a fresh HQ starts at revision zero", (
   expect(fixture.policy).toMatchObject({
     pending: false,
     editable: true,
-    enabled: true,
+    policy: { kind: "known", enabled: true },
     words: "On",
   });
 });

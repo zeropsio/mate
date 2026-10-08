@@ -42,10 +42,14 @@ it.effect("settings observes another admin's changes and a fresh Core's lower re
       revision: 8,
     });
     yield* settle;
-    expect(current()).toMatchObject({ enabled: false, editable: true, words: "Off" });
+    expect(current()).toMatchObject({
+      policy: { kind: "known", enabled: false },
+      editable: true,
+      words: "Off",
+    });
     yield* show("old-hq", 9, true, "scope-values");
     yield* settle;
-    expect(current()).toMatchObject({ enabled: true, words: "On" });
+    expect(current()).toMatchObject({ policy: { kind: "known", enabled: true }, words: "On" });
     yield* show("old-hq", 10, false, "scope-values");
     yield* show("fresh-hq", 0, true, "scope-reset");
     yield* fixture.send({
@@ -56,7 +60,11 @@ it.effect("settings observes another admin's changes and a fresh Core's lower re
       revision: 0,
     });
     yield* settle;
-    expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
+    expect(current()).toMatchObject({
+      policy: { kind: "known", enabled: true },
+      editable: true,
+      words: "On",
+    });
     yield* Fiber.interrupt(fiber);
   }),
 );
@@ -89,7 +97,7 @@ it.effect("an existing HQ without policy streaming gives an actionable upgrade s
       autoUpdatePolicySettings.derive(readsOfState(store.state()), { orgId: "org", admin: true }),
     ).toMatchObject({
       editable: false,
-      enabled: null,
+      policy: { kind: "unknown" },
       words: "Update HQ Core to manage automatic Mate updates.",
     });
     yield* Fiber.interrupt(fiber);

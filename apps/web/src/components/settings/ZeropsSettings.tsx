@@ -153,28 +153,29 @@ export function ZeropsSettings() {
                       Retry read
                     </Button>
                   ) : null}
-                  {policy.recoverable ? (
+                  {policy.recoverable && policy.policy.kind === "known" ? (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
+                        if (policy.policy.kind !== "known") return;
                         void operations.submit(
                           {
                             kind: "set-auto-update-policy",
                             orgId: activeOrganization.id,
-                            enabled: !policy.enabled,
+                            enabled: !policy.policy.enabled,
                           },
                           policy.requestId,
                         );
                       }}
                     >
-                      Send new change: {policy.enabled ? "Off" : "On"}
+                      Send new change: {policy.policy.enabled ? "Off" : "On"}
                     </Button>
                   ) : null}
-                  {policy.enabled === null ? null : (
+                  {policy.policy.kind !== "known" ? null : (
                     <Switch
                       aria-label="Update Mates automatically"
-                      checked={policy.enabled}
+                      checked={policy.policy.enabled}
                       disabled={!policy.editable}
                       onCheckedChange={(enabled) => {
                         if (!policy.editable) return;
