@@ -1,6 +1,6 @@
 /**
  * The thread commands a conversation's view already sends — start a turn, interrupt it, answer an
- * approval or a question — routed per Mate: through the account's engine operations when the
+ * approval or a question, dismiss a question — routed per Mate: through the account's engine operations when the
  * Mate's door named an engine protocol this build speaks, else unchanged over V1. The view keeps
  * its calls; the Mate decides the wire.
  *
@@ -123,26 +123,28 @@ export const engineRespondToApproval =
       summary: DECISION_WORDS[input.decision] ?? input.decision,
     });
 
-const ANSWER_PICTURES =
-  "This Mate's engine takes an answer's words, not its pictures yet; answer in words.";
-
+/** A question's answer: its words and the pictures attached to each question, by reference. */
 export const engineRespondToUserInput =
   (environmentId: string, input: Command<"thread.user-input.respond">) => (host: MateEngineHost) =>
-    Object.values(input.attachmentsByQuestionId ?? {}).some((pictures) => pictures.length > 0)
-      ? Effect.fail(new EngineOperationFailed({ outcome: "refused", message: ANSWER_PICTURES }))
-      : host.operations.answer({
-          environmentId,
-          conversationId: input.threadId,
-          requestId: input.requestId,
-          answer: { kind: "input", answers: input.answers },
-          summary: "Answered",
-        });
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: {
+        kind: "input",
+        answers: input.answers,
+        ...(input.attachmentsByQuestionId === undefined
+          ? {}
+          : { attachmentsByQuestionId: input.attachmentsByQuestionId }),
+      },
+      summary: "Answered",
+    });
 
-/** Protocol 1 has no dismissal: the person answers, or Stop ends the run waiting on it. */
-export const engineDismissUserInput = () => () =>
-  Effect.fail(
-    new EngineOperationFailed({
-      outcome: "refused",
-      message: "Answer the question or stop the work; this Mate's engine has no dismissal yet.",
-    }),
-  );
+/** A question closed unanswered: the engine takes it only when its agent does not wait on it. */
+export const engineDismissUserInput =
+  (environmentId: string, input: Command<"thread.user-input.dismiss">) => (host: MateEngineHost) =>
+    host.operations.dismiss({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+    });

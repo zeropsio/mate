@@ -15,7 +15,7 @@ import { engineFactId } from "../../families/mateEngine.ts";
 import type { Row } from "../../reducer.ts";
 import { makeAccountStore, readsOfState } from "../../store.ts";
 import { engineRequest, engineRun, personItem } from "../../__fixtures__/mateEngine.ts";
-import { mateEngineAnswer, mateEngineSend } from "../mateEngine.ts";
+import { mateEngineAnswer, mateEngineDismiss, mateEngineSend } from "../mateEngine.ts";
 import {
   makeMateEngineOperations,
   type EngineCallError,
@@ -259,6 +259,80 @@ describe("what a person does to an engine conversation", () => {
   );
 });
 
+describe("a question's answer and its dismissal", () => {
+  it.effect("an answer's pictures go with its words, and its record keeps neither", () =>
+    Effect.gen(function* () {
+      const r = rig({ answers: [Effect.succeed(accepted)] });
+      const answer = {
+        kind: "input" as const,
+        answers: { target: "Inspect the preview" },
+        attachmentsByQuestionId: {
+          target: [
+            {
+              type: "image" as const,
+              id: "img-1",
+              name: "preview.png",
+              mimeType: "image/png",
+              sizeBytes: 2048,
+            },
+          ],
+        },
+      };
+      yield* r.operations.answer({
+        ...target,
+        requestId: "thread-ada/r/2/q/1",
+        answer: answer as never,
+        summary: "Answered",
+      });
+      expect(r.calls[0]).toMatchObject({ kind: "answer", answer });
+      expect(r.record()?.intent).toEqual({
+        kind: "mate-engine-answer",
+        ...target,
+        requestId: "thread-ada/r/2/q/1",
+        summary: "Answered",
+      });
+    }),
+  );
+
+  it.effect("a dismissal goes under its own command id, naming the request it closes", () =>
+    Effect.gen(function* () {
+      const r = rig({ answers: [Effect.succeed(accepted)] });
+      const result = yield* r.operations.dismiss({ ...target, requestId: "thread-ada/r/2/q/1" });
+      expect(result).toMatchObject({ requestId: "op-1" });
+      expect(r.calls).toEqual([
+        {
+          kind: "dismiss",
+          conversationId: "thread-ada",
+          commandId: "op-1",
+          requestId: "thread-ada/r/2/q/1",
+        },
+      ]);
+      expect(r.record()).toMatchObject({
+        intent: { kind: "mate-engine-dismiss", requestId: "thread-ada/r/2/q/1" },
+        receipt: { acceptance: { kind: "accepted" }, outcome: { kind: "succeeded" } },
+      });
+    }),
+  );
+
+  it.effect("a dismissal the engine refuses is the answer, in words", () =>
+    Effect.gen(function* () {
+      const r = rig({
+        answers: [
+          Effect.succeed({
+            _tag: "Rejected",
+            rejection: { reason: "not-dismissible" },
+          } as EngineCallResult),
+        ],
+      });
+      const failure = yield* Effect.flip(
+        r.operations.dismiss({ ...target, requestId: "thread-ada/r/2/q/1" }),
+      );
+      expect(failure).toMatchObject({ outcome: "refused", code: "not-dismissible" });
+      expect(failure.message).toMatch(/needs an answer/);
+    }),
+  );
+});
+
 describe("when an engine operation shows in the conversation", () => {
   const receipt = {
     requestId: "op-1",
@@ -312,5 +386,32 @@ describe("when an engine operation shows in the conversation", () => {
     expect(mateEngineAnswer.reflected(readsOfState(r.store.state()), intent, receipt)).toBe(false);
     deliver(r.store, [request("answered", 4)]);
     expect(mateEngineAnswer.reflected(readsOfState(r.store.state()), intent, receipt)).toBe(true);
+  });
+
+  it("a dismissal shows once its request is no longer open", () => {
+    const r = rig({ answers: [] });
+    const intent = {
+      kind: "mate-engine-dismiss" as const,
+      ...target,
+      requestId: "thread-ada/r/2/q/1",
+    };
+    const request = (state: Request["state"], seq: number): Row => {
+      const value = engineRequest(
+        "thread-ada/r/2",
+        1,
+        { kind: "question", questions: [], dismissible: true },
+        { state },
+      );
+      return {
+        family: "mateEngineRequest",
+        id: engineFactId("env-ada", value.id),
+        value: { ...value, environmentId: "env-ada" },
+        revision: { kind: "mate-conversation", environmentId: "env-ada", epoch: 1, seq },
+      };
+    };
+    deliver(r.store, [request("open", 3)]);
+    expect(mateEngineDismiss.reflected(readsOfState(r.store.state()), intent, receipt)).toBe(false);
+    deliver(r.store, [request("dismissed", 4)]);
+    expect(mateEngineDismiss.reflected(readsOfState(r.store.state()), intent, receipt)).toBe(true);
   });
 });

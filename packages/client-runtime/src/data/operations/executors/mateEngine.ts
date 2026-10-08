@@ -1,5 +1,5 @@
 /**
- * The engine conversation's one write boundary: send, stop, answer and steer, each recorded before
+ * The engine conversation's one write boundary: send, stop, answer, dismiss and steer, each recorded before
  * it leaves under the engine command id it carries. The engine's receipt is the answer; a call
  * that never left stays unsent (Send again re-sends under the same id); a lost answer is asked of
  * the engine by that id — its stored receipt settles it, its absence lets the same id go once
@@ -85,6 +85,12 @@ export interface EngineCallWire {
           readonly summary: string;
         }
       | {
+          readonly kind: "dismiss";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly requestId: string;
+        }
+      | {
           readonly kind: "steer";
           readonly conversationId: string;
           readonly commandId: string;
@@ -140,6 +146,14 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               summary: command.summary,
             }),
           );
+        case "dismiss":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineDismiss, {
+              ...base,
+              requestId: command.requestId as never,
+            }),
+          );
         case "steer":
           return registry.run(
             id,
@@ -173,6 +187,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   archived: "This conversation is archived.",
   "unknown-request": "That question is no longer open.",
   "not-answerable": "That question can no longer be answered.",
+  "not-dismissible": "The agent waits on this question: it needs an answer, or stop the work.",
   "run-not-running": "Nothing is running to stop.",
   "stop-already-asked": "Stop was already asked.",
   "steer-unsupported": "This agent cannot take a message while it works.",
@@ -410,6 +425,21 @@ export function makeMateEngineOperations(options: {
           requestId: target.requestId,
           answer: target.answer,
           summary: target.summary,
+        }),
+      ),
+    dismiss: (target: EngineOperationTarget & { readonly requestId: string }) =>
+      execute(
+        {
+          kind: "mate-engine-dismiss",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          requestId: target.requestId,
+        },
+        (commandId) => ({
+          kind: "dismiss",
+          conversationId: target.conversationId,
+          commandId,
+          requestId: target.requestId,
         }),
       ),
     steer: (target: EngineOperationTarget & { readonly runId: string; readonly text: string }) =>
