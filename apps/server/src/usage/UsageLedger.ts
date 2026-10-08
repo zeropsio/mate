@@ -236,6 +236,22 @@ export const makeUsageLedger = Effect.gen(function* () {
       yield* sql`INSERT OR IGNORE INTO usage_aliases VALUES (${fact.originId}, ${alias}, ${native})`;
     return true;
   });
+  /** A provider's explicit refusal corrects prior accounting, independent of transcript position. */
+  const retract = Effect.fnUntraced(function* (originId: string, nativeId: string) {
+    const rows = yield* sql<{
+      value: string;
+    }>`SELECT value FROM usage_facts WHERE origin=${originId} AND native=${nativeId}`;
+    if (!rows[0]) return;
+    const previous = decodeFact(rows[0].value);
+    if (previous.state === "retracted") return;
+    const fact: UsageFact = {
+      ...previous,
+      revision: String(BigInt(previous.revision) + 1n),
+      state: "retracted",
+    };
+    yield* append([fact], []);
+    yield* sql`UPDATE usage_facts SET value=${usageCanonical(fact)} WHERE origin=${originId} AND native=${nativeId}`;
+  });
   const checkpoint = Effect.fnUntraced(function* (source: string) {
     const rows = yield* sql<{
       value: string;
@@ -450,6 +466,7 @@ export const makeUsageLedger = Effect.gen(function* () {
     batch,
     bind: (...args: Parameters<typeof bind>) => transaction(bind(...args)),
     capture: (...args: Parameters<typeof capture>) => transaction(capture(...args)),
+    retract: (...args: Parameters<typeof retract>) => transaction(retract(...args)),
     coverage: (...args: Parameters<typeof coverage>) => transaction(coverage(...args)),
     checkpoint,
     saveCheckpoint,

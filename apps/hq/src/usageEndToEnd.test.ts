@@ -11,6 +11,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   USAGE_GENESIS_DIGEST,
   usageCanonical,
+  usageDigest,
   type UsageLinkDown,
 } from "@t3tools/shared/agentUsage";
 import * as DateTime from "effect/DateTime";
@@ -20,6 +21,7 @@ import * as Schema from "effect/Schema";
 
 import * as MateSqlite from "../../server/src/persistence/NodeSqliteClient.ts";
 import { captureSource } from "../../server/src/usage/usageCapture.ts";
+import { initialMeterState, meterLine } from "../../server/src/usage/usageMeters.ts";
 import {
   makeUsageLedger,
   UsageLedgerError,
@@ -117,7 +119,7 @@ const world = Effect.gen(function* () {
     }>`SELECT coalesce(sum((statistics->>'tokens')::numeric),0)::text AS tokens FROM hq_usage_daily`,
     (rows) => rows[0]!.tokens,
   );
-  return { core, link, ledger, append, scan, recorded, database };
+  return { core, link, ledger, append, scan, recorded, database, transcripts };
 });
 
 type Socket = Effect.Success<Effect.Success<typeof world>["link"]>["socket"];
@@ -144,6 +146,70 @@ const replicate = (mate: UsageLedger, socket: Socket) =>
 
 describe("a Mate's usage reaching HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "an upgrade removes previously replicated synthetic refusals while preserving real usage",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { core, link, ledger, append, scan, transcripts } = yield* world;
+            const first = yield* link;
+            const mate = yield* ledger;
+            yield* mate.begin(first.binding);
+            const real = request("real", 120);
+            const synthetic = request("synthetic", 9);
+            const refusal = synthetic.replace(
+              '"type":"assistant"',
+              '"error":"rate_limit","type":"assistant"',
+            );
+            yield* append(real + refusal);
+            const origin = yield* mate.bind(
+              usageDigest(["container-provider-history", "claude"]),
+              first.binding,
+              "claude",
+            );
+            const file = NodePath.join(transcripts, "session.jsonl");
+            const key = usageDigest([
+              usageDigest(["claude", yield* Effect.promise(() => NodeFSP.realpath(transcripts))]),
+              file,
+            ]);
+            for (const [line, offset] of [
+              [real, Buffer.byteLength(real)],
+              [synthetic, Buffer.byteLength(real + refusal)],
+            ] as const) {
+              const fact = meterLine("claude", line.trim(), initialMeterState()).fact!;
+              yield* mate.capture({ ...fact, originId: origin.originId }, key, offset);
+            }
+            const stats = yield* Effect.promise(() => NodeFSP.stat(file));
+            yield* mate.saveCheckpoint(
+              key,
+              usageCanonical({
+                offset: stats.size,
+                meter: initialMeterState(),
+                stamp: usageDigest([
+                  stats.dev,
+                  stats.ino,
+                  stats.size,
+                  stats.mtimeMs,
+                  stats.ctimeMs,
+                ]),
+              }),
+            );
+            yield* replicate(mate, first.socket);
+            const totals = core.sql<{
+              records: string;
+              tokens: string;
+            }>`SELECT coalesce(sum((statistics->>'records')::numeric),0)::text AS records, coalesce(sum((statistics->>'tokens')::numeric),0)::text AS tokens FROM hq_usage_daily`;
+            assert.deepStrictEqual((yield* totals)[0], { records: "2", tokens: "129" });
+            yield* scan(mate, first.binding);
+            const second = yield* link;
+            yield* replicate(mate, second.socket);
+            assert.deepStrictEqual((yield* totals)[0], { records: "1", tokens: "120" });
+            const cut = (yield* mate.hello).highWater;
+            yield* scan(mate, first.binding);
+            assert.equal((yield* mate.hello).highWater, cut);
+          }),
+        ),
+    );
     it.effect("refused Claude admissions add no records, tokens or cost to the Usage report", () =>
       Effect.scoped(
         Effect.gen(function* () {

@@ -463,7 +463,7 @@ export function mateRowView(
       return view(asked("ink-2"));
     case "paused": {
       const text =
-        activity.errorLine === undefined
+        activity.limitProvider !== undefined || activity.errorLine === undefined
           ? undefined
           : mateFailureWords(activity.errorLine, undefined, name);
       return view(

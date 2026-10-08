@@ -57,6 +57,12 @@ function cacheWith(entries: readonly [string, number, readonly UsageRecord[]][])
 }
 
 describe("scan cache round trip", () => {
+  it("pre-filter Claude caches re-read unchanged transcripts before reusing their totals", () => {
+    const legacy = { ...encodeScanCache(cacheWith([["/old.jsonl", 100, [record()]]])), version: 5 };
+    const restored = decodeScanCache(legacy)!;
+    expect(restored.get("/old.jsonl")?.size).toBe(-1);
+    expect(restored.get("/old.jsonl")?.position.resumeOffset).toBe(0);
+  });
   it("restores records unchanged", () => {
     const original = cacheWith([
       [

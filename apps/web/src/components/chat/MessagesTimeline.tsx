@@ -364,6 +364,7 @@ interface MessagesTimelineProps {
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
+  usageRefused?: boolean;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
@@ -423,6 +424,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   usagePause = null,
+  usageRefused = usagePause !== null,
   onUsageAutoResumeChange = null,
   onUsageContinue = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
@@ -1235,6 +1237,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             ? undefined
             : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
       },
+      usageRefused,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
@@ -1268,6 +1271,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       mate,
       pauseViewportHeight,
       contentInsetEndAdjustment,
+      usageRefused,
       onUsageAutoResumeChange,
       onUsageContinue,
       agentPanelModel,
@@ -2465,6 +2469,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
         nowMs={nowMs}
         onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
+        refused={row.id === ctx.livePauseId && ctx.usageRefused === true}
         row={row}
         serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
         speaker={ctx.speaker}

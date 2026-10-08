@@ -20,6 +20,7 @@ describe("the usage-limit pause", () => {
     renderToStaticMarkup(
       <PauseBlock
         nowMs={NOW_MS}
+        refused={true}
         row={{
           kind: "pause",
           id: "pause:1",
@@ -111,6 +112,7 @@ describe("the pause's automatic-resume choice", () => {
               nowMs={NOW_MS}
               row={{ ...row, resumedAt }}
               serverPause={null}
+              refused={true}
               onAutoResumeChange={null}
               onContinue={continued}
               speaker={NOVA}
@@ -147,7 +149,7 @@ describe("the pause's automatic-resume choice", () => {
             held: 0,
             provider: "Claude",
           }}
-          serverPause={null}
+          serverPause={{ resetsAt, autoResume: false }}
           onAutoResumeChange={null}
           onContinue={continued}
           speaker={NOVA}
@@ -161,6 +163,41 @@ describe("the pause's automatic-resume choice", () => {
     expect(document.body.textContent).toContain(
       formatUpcomingTimestamp(resetsAt, "24-hour", NOW_MS),
     );
+  });
+
+  it("an early recovery leaves the dated refusal but Continue submits immediately", async () => {
+    const continued = vi.fn();
+    const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
+    const show = (serverPause: { resetsAt: string; autoResume: boolean } | null) =>
+      act(() =>
+        root!.render(
+          <PauseBlock
+            nowMs={NOW_MS}
+            row={{
+              kind: "pause",
+              id: "recovered",
+              createdAt: at(600),
+              resetsAt,
+              resumedAt: null,
+              held: 0,
+              provider: "Claude",
+            }}
+            serverPause={serverPause}
+            onAutoResumeChange={null}
+            onContinue={continued}
+            speaker={NOVA}
+            timestampFormat="24-hour"
+          />,
+        ),
+      );
+    await show({ resetsAt, autoResume: false });
+    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await show(null);
+    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    expect(continued).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain("limit still holds");
+    expect(document.querySelector('[data-mate-status="limit"]')).toBeNull();
+    expect(document.body.textContent).toContain("Nova hit the Claude limit on");
   });
 
   it.each([

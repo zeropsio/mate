@@ -1050,7 +1050,12 @@ describe("a provider refusal in the menu", () => {
     const parked = {
       ...thread,
       latestMessagePreview: null,
-      session: { ...thread.session!, usageLimitResetAt: "2026-10-07T02:00:00Z" },
+      session: {
+        ...thread.session!,
+        status: "running" as const,
+        activeTurnId: thread.latestTurn!.turnId,
+        usageLimitResetAt: "2026-10-07T02:00:00Z",
+      },
     };
     expect(
       threadAgentActivity(parked, undefined, Date.parse("2026-10-07T01:59:59Z")).usageLimited,
@@ -1058,6 +1063,8 @@ describe("a provider refusal in the menu", () => {
     const expired = threadAgentActivity(parked, undefined, Date.parse("2026-10-08T10:00:00Z"));
     expect(expired.usageLimited).toBe(false);
     expect(expired.errorLine).toBeUndefined();
+    expect(expired.kind).toBe("idle");
+    expect(expired.face).not.toBe("working");
   });
   it("a new turn keeps the past refusal out of the menu", () => {
     const thread = refused();

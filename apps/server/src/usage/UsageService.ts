@@ -61,6 +61,7 @@ import {
   decodeScanCache,
   dedupeWithinFile,
   LEGACY_SCAN_CACHE_FILE_NAME,
+  PREVIOUS_SCAN_CACHE_FILE_NAME,
   makeScanCacheWriter,
   pruneScanCache,
   SCAN_CACHE_FILE_NAME,
@@ -367,6 +368,10 @@ export const make = Effect.gen(function* () {
           Effect.catchCause(() => Effect.succeed(null)),
         );
       let document = yield* readDocument(scanCachePath);
+      if (document === null) {
+        document = yield* readDocument(path.join(config.stateDir, PREVIOUS_SCAN_CACHE_FILE_NAME));
+        cacheDirty = document !== null;
+      }
       if (document === null) {
         document = yield* readDocument(legacyScanCachePath);
         // Write the migrated cache to its own file on the next scan.

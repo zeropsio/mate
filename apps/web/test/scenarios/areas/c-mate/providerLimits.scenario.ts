@@ -1,7 +1,21 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  TurnId,
+  OrchestrationThread,
+  ClientOrchestrationCommand,
+  ORCHESTRATION_WS_METHODS,
+  WS_METHODS,
+  USAGE_CONTRACT_VERSION,
+  UsageSummary,
+  UsageSummaryInput,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { usageCanonical } from "@t3tools/shared/agentUsage";
+import { readTranscriptRecords } from "../../../../../server/src/usage/usageTranscriptReader.ts";
+import { UsageAggregator } from "../../../../../server/src/usage/usageAggregation.ts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
@@ -9,14 +23,246 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { completedHttp } from "../../harness/completedHttp.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
+
+const decodeThread = Schema.decodeUnknownSync(OrchestrationThread);
+const decodeCommand = Schema.decodeUnknownSync(ClientOrchestrationCommand);
+const decodeUsageInput = Schema.decodeUnknownSync(UsageSummaryInput);
+const encodeUsage = Schema.encodeSync(UsageSummary);
 
 // A deadline changes the reading, even when the provider and HQ send nothing more.
 describe("C: provider refusal and its real deadline", () => {
   it.layer(Layer.merge(tempPostgresLayer, NodeServices.layer), { excludeTestServices: true })(
     (it) => {
+      it.effect(
+        "a fresh Codex session on the same Mate can send while Claude's refusal remains in history",
+        () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([installArea]);
+            const settled = completedHttp(s.page);
+            yield* s.given.project("Ada", { mate: true, app: "Shop" });
+            const chat = mateChat(s);
+            const wire = chat.fixture();
+            wire.history();
+            wire.claudeLoginFacts("ready");
+            wire.run("refused", "error", "You've hit your weekly limit");
+            const resetsAt = "2099-10-10T00:00:00.000Z";
+            wire.snapshot({
+              session: {
+                ...wire.mate.thread.session!,
+                providerName: "claudeAgent",
+                providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+                usageLimitResetAt: resetsAt,
+              },
+            });
+            wire.activity(
+              "runtime.error",
+              "Claude usage limit reached",
+              {
+                message: "You've hit your weekly limit",
+                turnEnd: "usage-limit",
+                usageLimit: { resetsAt, window: "7-day" },
+              },
+              "refused",
+            );
+            wire.usagePause = {
+              resetsAt,
+              window: "7-day",
+              held: 0,
+              pausedAt: "2026-10-08T10:00:00.000Z",
+              autoResume: false,
+            };
+            wire.shell();
+            const refused = wire.mate.thread;
+            wire.mate.rpcHandlers.unshift((request) => {
+              if (request.tag !== ORCHESTRATION_WS_METHODS.dispatchCommand) return false;
+              const command = decodeCommand(request.payload);
+              if (command.type === "thread.archive") {
+                wire.usagePause = null;
+                wire.snapshot({ archivedAt: "2026-10-08T10:01:00.000Z" });
+              }
+              if (command.type === "thread.turn.start" && command.threadId !== refused.id) {
+                const fresh = decodeThread({
+                  ...refused,
+                  id: command.threadId,
+                  messages: [],
+                  activities: [],
+                  session: null,
+                  latestTurn: null,
+                  archivedAt: null,
+                  modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+                });
+                wire.threadCollection(fresh, [
+                  { ...refused, archivedAt: "2026-10-08T10:01:00.000Z" },
+                ]);
+              }
+              return false;
+            });
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* Effect.promise(() =>
+              s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+            );
+            yield* s.given.signedIn;
+            yield* chat.when.open();
+            yield* chat.then.text("Ada hit the Claude limit.");
+            yield* chat.when.press("More header actions");
+            yield* chat.when.press("Archive and start fresh", "menuitem");
+            yield* Effect.promise(() => wire.waitForCommand("thread.archive"));
+            yield* chat.when.send("Use Codex while Claude waits");
+            const sent = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
+            if (sent.type !== "thread.turn.start")
+              throw new Error("Expected the Codex turn request");
+            expect(sent).toMatchObject({
+              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            });
+            expect(sent.threadId).not.toBe(refused.id);
+            expect(wire.otherThreads.get(String(refused.id))?.session?.lastError).toBe(
+              "You've hit your weekly limit",
+            );
+            yield* chat.then.once("Use Codex while Claude waits");
+            wire.run("codex-reply", "running");
+            wire.message(
+              "codex-answer",
+              "assistant",
+              "Codex is ready to work while Claude waits for its reset.",
+              "codex-reply",
+            );
+            wire.run("codex-reply", "completed", null, "codex-answer");
+            yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
+            yield* chat.then.noText("Thinking");
+            yield* Effect.promise(() => settled());
+            yield* Effect.promise(() =>
+              s.page.waitForSelector('pierce/[data-conversation-opening="ready"]', {
+                timeout: 8000,
+              }),
+            );
+            yield* Effect.promise(() =>
+              s.page.waitForSelector("pierce/[data-conversation-opening]", {
+                hidden: true,
+                timeout: 8000,
+              }),
+            );
+            yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
+            const output = process.env.MATE_LIMIT_EVIDENCE;
+            if (output)
+              yield* Effect.promise(() => s.page.screenshot({ path: `${output}/codex.png` }));
+            yield* s.then.noExternalNetwork;
+          }),
+      );
+
+      it.effect(
+        "connected Usage shows zero records, sessions and cost for a refused Claude transcript",
+        () =>
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const directory = yield* fs.makeTempDirectoryScoped();
+            const file = path.join(directory, "refused.jsonl");
+            yield* fs.writeFileString(
+              file,
+              usageCanonical({
+                type: "assistant",
+                error: "rate_limit",
+                sessionId: "refused-session",
+                timestamp: "2026-10-08T10:00:00.000Z",
+                message: {
+                  id: "refused",
+                  model: "<synthetic>",
+                  usage: {
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    cache_read_input_tokens: 0,
+                    cache_creation_input_tokens: 0,
+                  },
+                },
+              }) + "\n",
+            );
+            const parsed = yield* Effect.promise(() => readTranscriptRecords(file, "claude"));
+            expect(parsed?.records).toEqual([]);
+            const s = yield* createScenario([installArea]);
+            yield* s.given.project("Ada", { mate: true, app: "Shop" });
+            const chat = mateChat(s);
+            const wire = chat.fixture();
+            wire.history();
+            let heard = () => {};
+            const summaryRead = new Promise<void>((resolve) => {
+              heard = resolve;
+            });
+            wire.mate.rpcHandlers.unshift((request, socket) => {
+              if (request.tag !== WS_METHODS.serverGetUsageSummary) return false;
+              const input = decodeUsageInput(request.payload);
+              const aggregate = new UsageAggregator({
+                timeZone: input.timeZone,
+                sinceDay: input.sinceDay,
+                untilDay: input.untilDay,
+                rates: new Map(),
+                resolution: input.resolution ?? "day",
+                ...(input.sinceTime === undefined
+                  ? {}
+                  : { sinceTimeMs: Date.parse(input.sinceTime) }),
+                ...(input.untilTime === undefined
+                  ? {}
+                  : { untilTimeMs: Date.parse(input.untilTime) }),
+              });
+              for (const record of parsed!.records) aggregate.add(record);
+              const summary: typeof UsageSummary.Type = {
+                contractVersion: USAGE_CONTRACT_VERSION,
+                readAt: "2026-10-08T10:00:00.000Z",
+                timeZone: input.timeZone,
+                sinceDay: input.sinceDay,
+                untilDay: input.untilDay,
+                buckets: aggregate.finish().buckets,
+                sources: [
+                  {
+                    fingerprint: {
+                      hostId: "Ada",
+                      provider: "claude",
+                      resolvedHomePath: "/home/claude",
+                      volumeId: "1:1",
+                    },
+                    status: "ok",
+                    scannedFiles: 1,
+                    skippedFiles: 0,
+                    malformedRecords: 0,
+                    distinctSessions: 0,
+                    message: null,
+                  },
+                ],
+                pricing: {
+                  status: "cached",
+                  source: "fixture",
+                  fetchedAt: "2026-10-08T10:00:00.000Z",
+                  knownModels: 0,
+                },
+                scanDurationMs: 0,
+              };
+              wire.mate.reply(socket, request.id, encodeUsage(summary));
+              heard();
+              return true;
+            });
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* Effect.promise(() =>
+              s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+            );
+            yield* s.given.signedIn;
+            yield* chat.when.open();
+            yield* Effect.promise(() => s.page.goto(`${s.web.origin}/usage`));
+            yield* chat.when.press("Cost");
+            yield* chat.when.press("30 days");
+            yield* Effect.promise(() => summaryRead);
+            yield* chat.then.text("0 sessions");
+            yield* chat.then.text("$0.00");
+            yield* chat.then.text("No activity in this window.");
+            yield* chat.then.noText("Not connected, so not counted: Ada");
+            const output = process.env.MATE_LIMIT_EVIDENCE;
+            if (output)
+              yield* Effect.promise(() => s.page.screenshot({ path: `${output}/usage.png` }));
+            yield* s.then.noExternalNetwork;
+          }),
+      );
       it.effect("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () =>
         Effect.gen(function* () {
           let unavailable = false;
@@ -128,6 +374,8 @@ describe("C: provider refusal and its real deadline", () => {
             wire.snapshot({
               session: {
                 ...wire.mate.thread.session!,
+                status: "running",
+                activeTurnId: TurnId.make("refused"),
                 providerName: "claudeAgent",
                 providerInstanceId: ProviderInstanceId.make("claudeAgent"),
                 usageLimitResetAt: resetsAt,
@@ -214,6 +462,15 @@ describe("C: provider refusal and its real deadline", () => {
             );
             yield* chat.then.text("Ada hit the Claude limit on");
             yield* chat.then.control("Continue");
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () =>
+                  !document
+                    .querySelector('[data-zerops-mate-row="Ada"]')
+                    ?.textContent?.includes("Needs attention"),
+                { timeout: 8000, polling: "raf" },
+              ),
+            );
             yield* capture("after-reset");
             yield* chat.when.press("Continue");
             expect(

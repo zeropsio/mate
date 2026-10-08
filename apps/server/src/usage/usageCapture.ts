@@ -29,6 +29,8 @@ export const CAPTURE_FILES_MAX = 2048;
 /** The bytes before a checkpoint that a resumed scan re-reads to notice a rewritten transcript. */
 export const CAPTURE_GUARD_BYTES = 64 * 1024;
 const Checkpoint = Schema.Struct({
+  /** Claude v2 excludes synthetic refusals; an older checkpoint needs one reconciliation scan. */
+  normalization: Schema.optionalKey(Schema.String),
   offset: Schema.Number,
   /** Digest of the bytes from `from` up to `offset`; absent on a checkpoint from an older build. */
   guard: Schema.optionalKey(Schema.Struct({ from: Schema.Number, digest: Schema.String })),
@@ -121,6 +123,9 @@ export const captureSource = Effect.fnUntraced(function* (
         let checkpoint: Checkpoint = saved
           ? decodeCheckpoint(saved)
           : { offset: 0, meter: initialMeterState() };
+        const normalization = source.provider === "claude" ? "claude-refusals-v2" : undefined;
+        if (saved && normalization !== undefined && checkpoint.normalization !== normalization)
+          checkpoint = { offset: 0, meter: initialMeterState() };
         const handle = yield* Effect.acquireRelease(
           Effect.tryPromise(() => NodeFSP.open(file, "r")),
           (handle) => Effect.promise(() => handle.close()),
@@ -154,6 +159,7 @@ export const captureSource = Effect.fnUntraced(function* (
             key,
             usageCanonical({
               offset,
+              normalization,
               guard: { from, digest: bytesDigest(yield* read(from, offset - from)) },
               identity,
               meter: initialMeterState(),
@@ -181,6 +187,7 @@ export const captureSource = Effect.fnUntraced(function* (
               key,
               usageCanonical({
                 offset,
+                normalization,
                 guard: { from, digest: bytesDigest(yield* read(from, offset - from)) },
                 identity,
                 meter: checkpoint.meter,
@@ -241,6 +248,8 @@ export const captureSource = Effect.fnUntraced(function* (
           if (source.provider === "grok") metered = meterGrokLine(line, options.floor);
           else {
             const result = meterLine(source.provider, line, checkpoint.meter, options.floor);
+            if (result.retract !== undefined)
+              yield* ledger.retract(origin.originId, result.retract);
             metered = {
               facts: result.fact ? [result.fact] : [],
               gaps: result.gap ? [result.gap] : [],
@@ -266,6 +275,7 @@ export const captureSource = Effect.fnUntraced(function* (
           key,
           usageCanonical({
             offset,
+            normalization,
             guard: { from, digest: bytesDigest(tail) },
             identity,
             meter: checkpoint.meter,

@@ -30,6 +30,12 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as UsageService from "./UsageService.ts";
+import {
+  encodeScanCache,
+  PREVIOUS_SCAN_CACHE_FILE_NAME,
+  SCAN_CACHE_FILE_NAME,
+} from "./usageScanCache.ts";
+import { parseClaudeLine } from "./usageTranscripts.ts";
 
 const encodeUnknownJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const encodeUnknownJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -156,6 +162,64 @@ function totalOutputTokens(summary: { buckets: readonly { totals: { outputTokens
 }
 
 describe("UsageService", () => {
+  it.live(
+    "an upgrade re-reads an unchanged Claude transcript and removes cached refused usage",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { settings, home, transcript } = yield* setup;
+          const legacy = claudeLine(1, 10);
+          yield* Effect.promise(() =>
+            NodeFSP.writeFile(
+              transcript,
+              legacy.replace('"type":"assistant"', '"type":"assistant","error":"rate_limit"'),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const { stateDir } = yield* ServerConfig.ServerConfig;
+            const stat = yield* Effect.promise(() => NodeFSP.stat(transcript));
+            const cache = encodeScanCache(
+              new Map([
+                [
+                  transcript,
+                  {
+                    size: stat.size,
+                    mtimeMs: stat.mtimeMs,
+                    provider: "claude",
+                    records: [parseClaudeLine(legacy)!],
+                    tailRecords: [],
+                    position: {
+                      resumeOffset: stat.size,
+                      guardLength: 0,
+                      guardHash: 0,
+                      codexState: null,
+                    },
+                  },
+                ],
+              ]),
+            );
+            yield* Effect.promise(async () => {
+              await NodeFSP.mkdir(stateDir, { recursive: true });
+              await NodeFSP.writeFile(
+                NodePath.join(stateDir, PREVIOUS_SCAN_CACHE_FILE_NAME),
+                encodeUnknownJsonString({ ...cache, version: 5 }),
+              );
+            });
+            const summary = yield* (yield* UsageService.make).readSummary(WINDOW);
+            assert.deepStrictEqual(summary.buckets, []);
+            assert.equal(
+              summary.sources.find((source) => source.fingerprint.provider === "claude")
+                ?.distinctSessions,
+              0,
+            );
+          }).pipe(
+            Effect.provide(
+              serviceLayers({ prefix: "usage-service-refusal-upgrade", home, settings }),
+            ),
+          );
+        }),
+      ),
+  );
   it.live("omits Cursor account usage when no file login is saved", () =>
     Effect.gen(function* () {
       const { settings, home } = yield* setup;
@@ -750,7 +814,7 @@ describe("UsageService", () => {
 
         yield* Effect.gen(function* () {
           const { stateDir } = yield* ServerConfig.ServerConfig;
-          const cachePath = NodePath.join(stateDir, "usage-scan-cache-v5.json");
+          const cachePath = NodePath.join(stateDir, SCAN_CACHE_FILE_NAME);
           const legacyPath = NodePath.join(stateDir, "usage-scan-cache.json");
           yield* (yield* UsageService.make).readSummary(WINDOW);
 

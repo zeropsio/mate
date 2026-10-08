@@ -7,6 +7,7 @@ import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
 import { isUsageLimitError, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
+import { usageLimitProvider } from "../zerops/providerLimit.logic";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
   ChatAttachment as ContractChatAttachment,
@@ -1994,10 +1995,18 @@ export default function ChatView(props: ChatViewProps) {
     const existingThreadKeys = new Set<string>([...serverThreadKeys, ...draftThreadKeys]);
     return openTerminalThreadKeys.filter((nextThreadKey) => existingThreadKeys.has(nextThreadKey));
   }, [draftThreadKeys, openTerminalThreadKeys, serverThreadKeys]);
+  const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
+  const usageRefused =
+    activeThreadShell?.usagePause != null ||
+    usageLimitProvider(
+      activeThreadShell?.session?.lastError,
+      activeThreadShell?.session?.providerName,
+    ) !== null;
   const activeLatestTurn = activeThread?.latestTurn ?? null;
-  const activeRunningTurnId =
-    (activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null) ??
-    (activeLatestTurn?.state === "running" ? activeLatestTurn.turnId : null);
+  const activeRunningTurnId = usageRefused
+    ? null
+    : ((activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null) ??
+      (activeLatestTurn?.state === "running" ? activeLatestTurn.turnId : null));
   // Reading a finished thread clears the sidebar's Done badge. The visit is
   // stamped at the turn's completion time — not now/updatedAt — so it clears
   // exactly the completion the user is looking at: a wake or completion that
@@ -2913,7 +2922,7 @@ export default function ChatView(props: ChatViewProps) {
     compactRequestIsActive &&
     !compactionSettled;
   const isWorking =
-    phase === "running" ||
+    (phase === "running" && !usageRefused) ||
     phase === "connecting" ||
     isSendBusy ||
     isConnecting ||
@@ -4992,7 +5001,6 @@ export default function ChatView(props: ChatViewProps) {
   // Settled state of the open thread, resolved exactly like the sidebar
   // partition (same shell, same capability gate, same PR auto-settle input)
   // so the banner and the sidebar row never disagree.
-  const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
   const activeComposerTasksProgress =
     activeLatestTurn !== null && !latestTurnSettled
       ? (activeThreadShell?.planProgress ?? null)
@@ -8744,9 +8752,13 @@ export default function ChatView(props: ChatViewProps) {
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
+                  usageRefused,
                   onUsageAutoResumeChange,
                   onUsageContinue:
-                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                    isWorking ||
+                    isSendBusy ||
+                    (activePendingProgress && !usageRefused) ||
+                    zeropsShownReadOnly !== null
                       ? null
                       : () => {
                           if (activeThreadKey === null) return;

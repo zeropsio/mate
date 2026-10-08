@@ -50,6 +50,7 @@ export interface TimelineRowSharedState {
     readonly mate: Parameters<typeof PauseBlock>[0]["mate"];
     readonly height: number | undefined;
   };
+  usageRefused?: boolean;
   onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   onUsageContinue?: (() => void) | null;
   agentPanelModel: AgentPanelModel;

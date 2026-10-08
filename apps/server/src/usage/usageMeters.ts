@@ -95,6 +95,8 @@ export type MeterFact = Omit<UsageFact, "originId" | "revision">;
 export interface MeterResult {
   readonly fact?: MeterFact;
   readonly gap?: string;
+  /** Explicit refusal evidence can retract an older synthetic response with this identity. */
+  readonly retract?: string;
 }
 /** A cumulative counter as it stood when capture began, subtracted from every later total. */
 const CounterBaseline = Schema.Struct({
@@ -183,7 +185,12 @@ export function meterLine(
   const json = decodeJson(line);
   if (Option.isNone(json)) return { gap: "damaged-transcript" };
   if (provider === "claude") {
-    if (isClaudeRateLimitRecord(json.value)) return {};
+    if (isClaudeRateLimitRecord(json.value)) {
+      const identity = decodeClaude(json.value);
+      return Option.isSome(identity)
+        ? { retract: usageDigest([provider, [identity.value.message.id]]) }
+        : {};
+    }
     const decoded = decodeClaude(json.value);
     if (Option.isNone(decoded)) {
       const isAssistant = isAssistantRecord(json.value);

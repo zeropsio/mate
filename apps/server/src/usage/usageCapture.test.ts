@@ -9,6 +9,7 @@ import { makeUsageLedger, type UsageLedger } from "./UsageLedger.ts";
 import { makeUsageReplication } from "./usageReplication.ts";
 import { captureSource, CAPTURE_READ_BYTES, CAPTURE_RECORD_MAX_BYTES } from "./usageCapture.ts";
 import * as Sqlite from "../persistence/NodeSqliteClient.ts";
+import { initialMeterState, meterLine } from "./usageMeters.ts";
 
 const binding = { orgId: "org", projectId: "project", mateId: "mate" };
 const response = (id: string, amount: number) =>
@@ -46,6 +47,72 @@ const consume = (ledger: UsageLedger) =>
       0n,
     );
   });
+
+it.effect(
+  "an upgrade retracts already captured refusals from unchanged transcripts exactly once",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* temporary;
+        const file = NodePath.join(directory, "session.jsonl");
+        const admitted = response("real", 120);
+        const legacy = response("synthetic", 9);
+        const refused = legacy.replace(
+          '"type":"assistant"',
+          '"error":"rate_limit","type":"assistant"',
+        );
+        yield* Effect.tryPromise(() => NodeFSP.writeFile(file, admitted + refused));
+        yield* makeUsageLedger.pipe(
+          Effect.flatMap((ledger) =>
+            Effect.gen(function* () {
+              const origin = yield* ledger.bind(
+                usageDigest(["container-provider-history", "claude"]),
+                binding,
+                "claude",
+              );
+              const legacyFact = meterLine("claude", legacy.trim(), initialMeterState()).fact!;
+              const key = usageDigest([
+                usageDigest(["claude", yield* Effect.promise(() => NodeFSP.realpath(directory))]),
+                file,
+              ]);
+              yield* ledger.capture(
+                { ...legacyFact, originId: origin.originId },
+                key,
+                Buffer.byteLength(admitted + refused),
+              );
+              const stats = yield* Effect.promise(() => NodeFSP.stat(file));
+              yield* ledger.saveCheckpoint(
+                key,
+                usageCanonical({
+                  offset: stats.size,
+                  meter: initialMeterState(),
+                  stamp: usageDigest([
+                    stats.dev,
+                    stats.ino,
+                    stats.size,
+                    stats.mtimeMs,
+                    stats.ctimeMs,
+                  ]),
+                }),
+              );
+              yield* captureSource(ledger, binding, { provider: "claude", directory });
+              const facts = yield* journaled(ledger);
+              assert.equal(facts.get(legacyFact.nativeId)?.state, "retracted");
+              assert.equal(facts.get(legacyFact.nativeId)?.revision, "2");
+              assert.equal(
+                [...facts.values()].filter((fact) => fact.state !== "retracted").length,
+                1,
+              );
+              const cut = (yield* ledger.hello).highWater;
+              yield* captureSource(ledger, binding, { provider: "claude", directory });
+              assert.equal((yield* ledger.hello).highWater, cut);
+            }),
+          ),
+          Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+        );
+      }),
+    ),
+);
 it.effect(
   "retained import, appended correction, copied history and reopened home produce exact recorded totals",
   () =>
