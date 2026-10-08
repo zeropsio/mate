@@ -42,6 +42,7 @@ import {
   RestartEvidence,
   RunAdmission,
   RunRefused,
+  WorkspaceUnavailable,
 } from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
@@ -81,6 +82,8 @@ export interface WorldOptions {
   readonly refuse?: string | ((principal: Principal) => string | undefined);
   /** Admission itself breaks (a defect) with these words. */
   readonly admissionDies?: string;
+  /** The workspace's first this many reads cannot tell it. */
+  readonly workspaceUnavailable?: number;
 }
 
 let lives = 0;
@@ -90,6 +93,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "engine-pump-"));
     const filename = NodePath.join(dir, "state.sqlite");
     const history = makeFakeWorkspaceHistory();
+    let unavailable = options.workspaceUnavailable ?? 0;
     const thread = providerThreadOf(mate) as string;
     let provider: ScriptedProvider = yield* makeScriptedProvider({ driver: options.driver });
     let life: Scope.Closeable | undefined;
@@ -134,7 +138,12 @@ export const makeEngineWorld = (options: WorldOptions) =>
       ),
       Layer.succeed(
         AgentWorkspace,
-        AgentWorkspace.of({ of: () => Effect.succeed({ cwd: dir, runtimeMode: "full-access" }) }),
+        AgentWorkspace.of({
+          of: () =>
+            unavailable-- > 0
+              ? Effect.fail(new WorkspaceUnavailable({ message: "The copy cannot be read now." }))
+              : Effect.succeed({ cwd: dir, runtimeMode: "full-access" }),
+        }),
       ),
       // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
       Layer.succeed(

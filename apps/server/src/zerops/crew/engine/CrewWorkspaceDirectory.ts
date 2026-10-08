@@ -11,14 +11,17 @@ import type * as Effect from "effect/Effect";
 import type * as Option from "effect/Option";
 import type { ConversationId } from "@t3tools/contracts";
 
-import type { WorkspaceSetup } from "../../../engine/ports.ts";
+import type { WorkspaceSetup, WorkspaceUnavailable } from "../../../engine/ports.ts";
 
 export class CrewWorkspaceDirectory extends Context.Service<
   CrewWorkspaceDirectory,
   {
-    /** A crewmate's conversation's workspace; none for a conversation that is not a crewmate's. */
+    /**
+     * A crewmate's conversation's workspace; none for a conversation that is not a crewmate's.
+     * A crewmate's whose workspace cannot be told now fails: it never works in the Mate's tree.
+     */
     readonly workspaceOf: (
       conversation: ConversationId,
-    ) => Effect.Effect<Option.Option<WorkspaceSetup>>;
+    ) => Effect.Effect<Option.Option<WorkspaceSetup>, WorkspaceUnavailable>;
   }
 >()("t3/zerops/crew/engine/CrewWorkspaceDirectory") {}

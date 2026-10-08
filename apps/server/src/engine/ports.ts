@@ -88,9 +88,21 @@ export interface WorkspaceSetup {
   readonly runtimeMode: RuntimeMode;
 }
 
+/**
+ * A conversation's workspace that cannot be told now (a crewmate's copy unread): its session opens
+ * nowhere else, and tries again.
+ */
+export class WorkspaceUnavailable extends Data.TaggedError("WorkspaceUnavailable")<{
+  readonly message: string;
+}> {}
+
 export class AgentWorkspace extends Context.Service<
   AgentWorkspace,
-  { readonly of: (conversation: ConversationId) => Effect.Effect<WorkspaceSetup> }
+  {
+    readonly of: (
+      conversation: ConversationId,
+    ) => Effect.Effect<WorkspaceSetup, WorkspaceUnavailable>;
+  }
 >()("t3/engine/ports/AgentWorkspace") {}
 
 /** A picture a call carries that could not be claimed, in the words V1 refuses it with. */

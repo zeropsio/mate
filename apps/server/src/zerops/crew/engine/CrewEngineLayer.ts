@@ -66,7 +66,7 @@ import { Conversations } from "../../../engine/Conversations.ts";
 import { EngineEffectExtensions } from "../../../engine/effects/index.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
 import { OwnerDomains } from "../../../engine/owners.ts";
-import type { WorkspaceSetup } from "../../../engine/ports.ts";
+import { WorkspaceUnavailable, type WorkspaceSetup } from "../../../engine/ports.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ProviderRuntimeEventBus } from "../../../spi/ProviderRuntimeEventBus.ts";
@@ -150,6 +150,42 @@ export const seamWordsOf = (seam: RecordedCrewSeam): string | null => {
 };
 
 /**
+ * Where a conversation works, as the crew tells it: none for a conversation not a crewmate's; a
+ * crewmate's in the workspace its crew names. A crewmate's that its crew cannot place now (its copy
+ * unread, its crewmate unknown, the crew not started) fails, so its session opens nowhere else.
+ */
+export const crewWorkspaceOf =
+  (
+    front: Effect.Effect<
+      Option.Option<{
+        readonly workspaceOf: (
+          conversationId: ConversationId,
+        ) => Effect.Effect<Option.Option<WorkspaceSetup>>;
+      }>
+    >,
+  ) =>
+  (
+    conversationId: ConversationId,
+  ): Effect.Effect<Option.Option<WorkspaceSetup>, WorkspaceUnavailable> =>
+    isCrewmateConversation(conversationId)
+      ? Effect.flatMap(front, (found) =>
+          Option.isSome(found)
+            ? found.value.workspaceOf(conversationId)
+            : Effect.succeed(Option.none<WorkspaceSetup>()),
+        ).pipe(
+          Effect.flatMap((workspace) =>
+            Option.isSome(workspace)
+              ? Effect.succeed(workspace)
+              : Effect.fail(
+                  new WorkspaceUnavailable({
+                    message: "The crewmate's copy cannot be read now.",
+                  }),
+                ),
+          ),
+        )
+      : Effect.succeed(Option.none());
+
+/**
  * The crew's hooks under the engine: its owner kind, its effects' handlers (with deliveries told
  * to the engine's own conversations) and its crewmates' workspaces.
  */
@@ -185,16 +221,7 @@ export const crewEngineHooksLayer = Layer.effectContext(
     });
     return Context.make(OwnerDomains, [crewDomain]).pipe(
       Context.add(EngineEffectExtensions, extensions),
-      Context.add(CrewWorkspaceDirectory, {
-        workspaceOf: (conversationId) =>
-          isCrewmateConversation(conversationId)
-            ? Effect.flatMap(front, (found) =>
-                Option.isSome(found)
-                  ? found.value.workspaceOf(conversationId)
-                  : Effect.succeed(Option.none()),
-              )
-            : Effect.succeed(Option.none()),
-      }),
+      Context.add(CrewWorkspaceDirectory, { workspaceOf: crewWorkspaceOf(front) }),
     );
   }),
 );

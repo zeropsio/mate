@@ -30,6 +30,7 @@ const world = (
   options: {
     readonly refuse?: string;
     readonly admissionDies?: string;
+    readonly workspaceUnavailable?: number;
     readonly scripted?: Partial<{
       ignoreInterrupt: boolean;
       holdNextSend: boolean;
@@ -44,6 +45,9 @@ const world = (
       driver,
       ...(options.refuse === undefined ? {} : { refuse: options.refuse }),
       ...(options.admissionDies === undefined ? {} : { admissionDies: options.admissionDies }),
+      ...(options.workspaceUnavailable === undefined
+        ? {}
+        : { workspaceUnavailable: options.workspaceUnavailable }),
     });
     Object.assign(w.provider.options, options.scripted ?? {});
     yield* w.boot;
@@ -500,6 +504,26 @@ describe("the running engine", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  it.effect(
+    "a session whose workspace cannot be told yet opens nowhere else, and opens there once it can",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          // The capture's read and the session's first open find no workspace.
+          const w = yield* world("codex", { workspaceUnavailable: 2 });
+          yield* send(w);
+          assert.isFalse(w.provider.calls.some((call) => call.startsWith("start")));
+          yield* w.advance(100);
+          assert.include(w.provider.calls, sendLine(w, "hello"));
+          assert.deepStrictEqual(
+            w.provider.starts.map((start) => (start as { readonly cwd: string }).cwd),
+            [w.dir],
+          );
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect("a run cut while being sent sends its message again", () =>

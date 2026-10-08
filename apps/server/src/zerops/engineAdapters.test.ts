@@ -6,7 +6,12 @@ import * as Option from "effect/Option";
 import { ConversationId, type Principal, type RunTrigger } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
-import { AgentWorkspace, RestartEvidence, RunAdmission } from "../engine/ports.ts";
+import {
+  AgentWorkspace,
+  RestartEvidence,
+  RunAdmission,
+  WorkspaceUnavailable,
+} from "../engine/ports.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { engineAdaptersOpen, serverWorkspace, turnPrincipalOf } from "./engineAdapters.ts";
 import type { TurnPrincipal } from "./ZeropsTurnAdmission.ts";
@@ -117,6 +122,29 @@ describe("engineAdapters: where an agent works", () => {
           runtimeMode: "full-access",
         });
       }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(Layer.merge(config, crew))))),
+  );
+
+  it.effect(
+    "a crewmate's conversation whose workspace its crew cannot tell opens nowhere, never in the server's directory",
+    () =>
+      Effect.gen(function* () {
+        const unread = yield* Effect.flip((yield* AgentWorkspace).of(ana));
+        assert.strictEqual(unread._tag, "WorkspaceUnavailable");
+      }).pipe(
+        Effect.provide(
+          serverWorkspace.pipe(
+            Layer.provideMerge(
+              Layer.merge(
+                config,
+                Layer.succeed(CrewWorkspaceDirectory, {
+                  workspaceOf: () =>
+                    Effect.fail(new WorkspaceUnavailable({ message: "The copy cannot be read." })),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
   );
 
   it.effect("with no crew, every agent works in the server's directory", () =>
