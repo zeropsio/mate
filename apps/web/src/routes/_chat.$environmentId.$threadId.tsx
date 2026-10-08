@@ -11,10 +11,21 @@ import { EnvironmentId } from "@t3tools/contracts";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
+import { SurfaceLoading } from "~/components/SurfaceLoading";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
+
+function ChatThreadRoutePending() {
+  const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
+  const mate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  return threadRef === null || mate.kind === "nobody" ? (
+    <SurfaceLoading />
+  ) : (
+    <MateOpeningView threadRef={threadRef} />
+  );
+}
 
 function ChatThreadRouteView() {
   const threadRef = Route.useParams({
@@ -105,4 +116,7 @@ const NO_ENVIRONMENT = EnvironmentId.make("none");
 
 export const Route = createFileRoute("/_chat/$environmentId/$threadId")({
   component: ChatThreadRouteView,
+  pendingComponent: ChatThreadRoutePending,
+  // Its pending stage is already on screen while the conversation's code loads.
+  codeSplitGroupings: [["component"]],
 });
