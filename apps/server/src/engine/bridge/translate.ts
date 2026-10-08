@@ -739,10 +739,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       case "task.completed": {
         const payload = event.payload;
         const nativeIds = [String(payload.taskId), payload.toolUseId];
-        // A report that work ended which this session never saw run: a session before it ran it
-        // (a resumed agent re-reports the task a restart killed), and the engine closed that work
-        // with its session. It opens nothing.
+        // A resumed session's report that work ended which it never saw run: a session before it
+        // ran it (a resumed agent re-reports the task a restart killed), and the engine closed that
+        // work with its session. It opens nothing. A fresh session's first word may be an end (a
+        // child that failed before it began): that is its work.
         if (
+          owner.from === "resume" &&
           !nativeIds.some((id) => id !== undefined && owner.work.has(id)) &&
           WORK_ENDED.has(taskStatus(event, undefined))
         ) {
