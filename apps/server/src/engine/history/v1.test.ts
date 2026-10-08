@@ -290,3 +290,30 @@ describe("work V1 kept under no turn, after a turn's last word", () => {
     expect(plan.runs[0]?.lastAt).toBe(Date.parse("2026-10-05T07:00:30.000Z"));
   });
 });
+
+describe("a background task V1 began in a turn and finished under no turn", () => {
+  const head = (id: string, kind: string, at: string, turnId: string | null) => ({
+    id,
+    kind,
+    summary: "Ran a task",
+    turnId,
+    callId: kind.startsWith("tool.") ? `${id}-call` : null,
+    taskId: kind.startsWith("task.") ? "task-1" : null,
+    createdAt: at,
+    sequence: null,
+    payload: null,
+  });
+
+  it("is one item, in the turn that started it, though loose work fell between", () => {
+    const activities = [
+      head("task-started", "task.started", "2026-10-05T07:00:20.000Z", "turn-0"),
+      // Turn 0's note at :30 is its last word: this call is loose work, a run of its own.
+      head("loose", "tool.started", "2026-10-05T07:00:35.000Z", null),
+      head("task-completed", "task.completed", "2026-10-05T07:00:40.000Z", null),
+    ];
+    const plan = planOf({ ...skeleton(2, 1), activities }, { turns: 10, records: 100 });
+    const work = plan.entries.filter((entry) => entry.kind === "work");
+    expect(work).toHaveLength(1);
+    expect(work[0]).toMatchObject({ run: 1, ids: ["task-started", "task-completed"] });
+  });
+});

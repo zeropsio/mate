@@ -321,30 +321,39 @@ export const planOf = (
     if (turn >= 0) held[turn]!.messages.push({ at, order: -1, id: head.id, head });
   }
   /**
-   * The turn each call is drawn in, as V1 draws it (`callTurns` in the web's conversation): the
-   * first turn one of its activities names, else where its first activity falls. Claude can start a
-   * call before the turn that files its completion; the call is one, in that turn.
+   * The turn each call or background task is drawn in, as V1 draws a call (`callTurns` in the
+   * web's conversation): the first turn one of its activities names, else where its first activity
+   * falls. Claude can start a call before the turn that files its completion; a task can finish
+   * under no turn after loose work began a run of its own. Either is one, in that turn.
    */
-  const callTurn = new Map<string, number>();
-  const callNamed = new Set<string>();
+  const lifecycleOf = (head: V1ActivityHead): string | null =>
+    TOOL.has(head.kind) && head.callId !== null
+      ? `call:${head.callId}`
+      : TASK.has(head.kind) && head.taskId !== null
+        ? `task:${head.taskId}`
+        : null;
+  const lifecycleTurn = new Map<string, number>();
+  const lifecycleNamed = new Set<string>();
   for (const head of skeleton.activities.toSorted(
     (left, right) =>
       ms(left.createdAt) - ms(right.createdAt) ||
       (left.sequence ?? 0) - (right.sequence ?? 0) ||
       left.id.localeCompare(right.id),
   )) {
-    if (!TOOL.has(head.kind) || head.callId === null || callNamed.has(head.callId)) continue;
+    const key = lifecycleOf(head);
+    if (key === null || lifecycleNamed.has(key)) continue;
     const named = head.turnId === null ? undefined : byTurnId.get(head.turnId);
     if (named !== undefined) {
-      callTurn.set(head.callId, named);
-      callNamed.add(head.callId);
-    } else if (!callTurn.has(head.callId)) callTurn.set(head.callId, turnAt(ms(head.createdAt)));
+      lifecycleTurn.set(key, named);
+      lifecycleNamed.add(key);
+    } else if (!lifecycleTurn.has(key)) lifecycleTurn.set(key, turnAt(ms(head.createdAt)));
   }
   for (const head of skeleton.activities) {
     if (UNSHOWN.has(head.kind)) continue;
     const at = ms(head.createdAt);
+    const key = lifecycleOf(head);
     const turn =
-      (TOOL.has(head.kind) && head.callId !== null ? callTurn.get(head.callId) : undefined) ??
+      (key === null ? undefined : lifecycleTurn.get(key)) ??
       (head.turnId === null ? undefined : byTurnId.get(head.turnId)) ??
       turnAt(at);
     if (turn >= 0)
