@@ -260,16 +260,30 @@ const enginePort = (input: {
   const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     Effect.flatMap(crew, (service) => {
       let last: CrewSnapshot | undefined;
-      return service.snapshot.pipe(
-        Stream.tap((frame) => Effect.sync(() => (last = frame))),
-        Stream.filter(check),
-        Stream.runHead,
-        Effect.map(Option.getOrThrow),
-        Effect.timeoutOrElse({
-          duration: SNAPSHOT_WAIT,
-          orElse: () =>
-            Effect.die(new Error(`no frame held; the last: ${JSON.stringify(last, null, 1)}`)),
-        }),
+      // The feed's first frame is the crew's latest: wait until it is as new as the crew is now,
+      // so no frame from before the journey's last step stands in for its result.
+      const caughtUp = Effect.gen(function* () {
+        const head = (yield* crewState).headSeq;
+        for (let waited = 0; waited < 5_000; waited += 10) {
+          const first = yield* Stream.runHead(service.snapshot);
+          if (Option.isSome(first) && (first.value.revision?.seq ?? head) >= head) return;
+          yield* Effect.sleep("10 millis");
+        }
+      });
+      return caughtUp.pipe(
+        Effect.andThen(
+          service.snapshot.pipe(
+            Stream.tap((frame) => Effect.sync(() => (last = frame))),
+            Stream.filter(check),
+            Stream.runHead,
+            Effect.map(Option.getOrThrow),
+            Effect.timeoutOrElse({
+              duration: SNAPSHOT_WAIT,
+              orElse: () =>
+                Effect.die(new Error(`no frame held; the last: ${JSON.stringify(last, null, 1)}`)),
+            }),
+          ),
+        ),
       );
     });
 
@@ -281,7 +295,13 @@ const enginePort = (input: {
   const settled = Effect.gen(function* () {
     for (let waited = 0; waited < QUIET_WAIT; waited += 25) {
       const state = yield* crewState;
-      if (!Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind))) return;
+      // A task's dispatch is part of its step: V1's press returned once its turn went out.
+      if (
+        !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
+        !Object.values(state.tasks).some((task) => task.starting !== null)
+      ) {
+        return;
+      }
       yield* Effect.sleep("25 millis");
     }
   });

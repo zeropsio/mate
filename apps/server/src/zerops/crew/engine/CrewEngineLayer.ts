@@ -21,6 +21,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Random from "effect/Random";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -500,19 +501,28 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     const frameOf = (current: CrewState) =>
       Effect.map(viewOf(current), (view) => crewSnapshotOf(current, view));
-    const hub = yield* SubscriptionRef.make<CrewSnapshot>(yield* frameOf(yield* state));
+    const first = yield* frameOf(yield* state);
+    const hub = yield* SubscriptionRef.make<CrewSnapshot>(first);
+    /** The frame of the crew's latest commit, its revision too, published or not. */
+    const latest = yield* Ref.make<CrewSnapshot>(first);
     /** A frame's content, its revision aside: a commit that changes nothing shown moves no frame. */
     const contentOf = (frame: CrewSnapshot) => {
       const { seq: _seq, revision: _revision, ...shown } = frame;
       return JSON.stringify(shown);
     };
     const refresh = Effect.flatMap(state, frameOf).pipe(
+      Effect.tap((frame) => Ref.set(latest, frame)),
       Effect.flatMap((frame) =>
         Effect.flatMap(SubscriptionRef.get(hub), (current) =>
           contentOf(current) === contentOf(frame) ? Effect.void : SubscriptionRef.set(hub, frame),
         ),
       ),
     );
+    /** The latest frame at once (its revision current), then one per change of what it shows. */
+    const frames = Stream.concat(
+      Stream.fromEffect(Ref.get(latest)),
+      SubscriptionRef.changes(hub),
+    ).pipe(Stream.changesWith((a, b) => contentOf(a) === contentOf(b)));
     yield* Stream.merge(
       Stream.map(door.subscribe(CREW_OWNER_ID, (yield* state).headSeq), () => undefined).pipe(
         Stream.catchCause(() => Stream.empty),
@@ -747,7 +757,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       });
 
     const service: CrewEngineService = {
-      snapshot: SubscriptionRef.changes(hub),
+      snapshot: frames,
       readFiles: Effect.forkIn(probeDevHosts.pipe(Effect.ignore), scope).pipe(
         Effect.andThen(Effect.map(home.read, (files) => ({ files }))),
       ),
