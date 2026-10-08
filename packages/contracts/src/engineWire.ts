@@ -42,6 +42,7 @@ import {
   ChatImageAttachment,
   ProviderApprovalDecision,
   ProviderUserInputAnswers,
+  UserInputAttachments,
 } from "./orchestration.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
 
@@ -338,7 +339,12 @@ export const EngineAnswer = forwardCompatibleUnion({
   known: ["approval", "input", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
-    Schema.Struct({ kind: Schema.Literal("input"), answers: ProviderUserInputAnswers }),
+    Schema.Struct({
+      kind: Schema.Literal("input"),
+      answers: ProviderUserInputAnswers,
+      /** The pictures attached to each question's answer, by reference (V1's shape). */
+      attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+    }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
   toFallback: (_raw, type) => ({ kind: "unknown" as const, type }),

@@ -8,6 +8,7 @@ import {
   EngineEvent,
   ENGINE_EVENT_VERSION,
   Item,
+  Request,
   Run,
   RunEnd,
   effectId,
@@ -270,5 +271,46 @@ describe("a stored event from a newer build still decodes (rule 10)", () => {
       unresponsiveSince: null,
     };
     expect(Exit.isSuccess(decodeRunExit(run))).toBe(true);
+  });
+});
+
+const decodeRequest = Schema.decodeUnknownSync(Request);
+
+describe("an answered question's record", () => {
+  const request = {
+    id: "mate/r/1/q/1",
+    conversationId: "mate",
+    runId: "mate/r/1",
+    seq: 4,
+    rev: 6,
+    at: 1,
+    ask: { kind: "question", questions: [], dismissible: false },
+    state: "answered",
+    answerable: true,
+    principal: { kind: "engine" },
+  };
+  it("keeps what the person answered and the pictures attached to each question", () => {
+    const answer = {
+      by: { kind: "person", subject: "owner" },
+      at: 5,
+      summary: "Answered",
+      answers: { target: "Inspect the preview shown here" },
+      attachmentsByQuestionId: {
+        target: [
+          {
+            type: "image",
+            id: "img-1",
+            name: "question-preview.png",
+            mimeType: "image/png",
+            sizeBytes: 2048,
+          },
+        ],
+      },
+    };
+    expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
+  });
+  it("an approval's answer is its summary alone", () => {
+    const answer = { by: { kind: "person", subject: "owner" }, at: 5, summary: "Approved" };
+    expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
   });
 });
