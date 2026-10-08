@@ -2,6 +2,7 @@ import { MateHealth } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import { assert, describe, it } from "@effect/vitest";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
+import { MateLinkUp, readLinkUp } from "@t3tools/shared/mateLink";
 import * as Schema from "effect/Schema";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -26,6 +27,7 @@ import { makeMateOverviews } from "./mateOverviews.ts";
 /** What `saves` holds once the store's worker, which runs beside the link, has had its turns. */
 const readHealth = Schema.decodeUnknownSync(MateHealth);
 const readAttention = Schema.decodeEffect(HqAttentionValue);
+const writeLinkUp = Schema.encodeEffect(Schema.fromJsonString(MateLinkUp));
 it.effect("forget cleans retained result acknowledgements even without an overview", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -487,9 +489,23 @@ const healthSample = readHealth({
   evidence: {
     status: "strained",
     severity: "critical",
-    resources: ["memory"],
+    resources: ["cpu"],
     memory: null,
-    cpu: null,
+    cpu: {
+      some: { avg10: 20, total: 400000 },
+      full: null,
+      window: {
+        scope: "/sys/fs/cgroup",
+        elapsedUsec: 2000000,
+        usageUsec: 3800000,
+        someUsec: 400000,
+        fullUsec: null,
+        capacityCpus: 2,
+        throttledPeriods: 0,
+        saturated: true,
+        consumer: { pid: 42, name: "code-server (node)", cpuCores: 1.8 },
+      },
+    },
     io: null,
     disk: null,
     unavailable: ["memory.current"],
@@ -517,7 +533,15 @@ it.effect("keeps health without an overview and restores it as last-known", () =
       };
       const reports = yield* makeMateOverviews(store);
       const link = yield* reports.connect("P");
-      yield* reports.reportHealth("P", link, healthSample);
+      const wire = readLinkUp(
+        yield* writeLinkUp({
+          type: "health",
+          health: healthSample,
+        }),
+      );
+      assert.strictEqual(wire.kind, "message");
+      if (wire.kind !== "message" || wire.message.type !== "health") return;
+      yield* reports.reportHealth("P", link, wire.message.health);
       yield* Deferred.await(saved);
       assert.deepStrictEqual((yield* reports.all).get("P")?.health, healthSample);
       assert.strictEqual((yield* reports.all).get("P")?.healthState, "live");

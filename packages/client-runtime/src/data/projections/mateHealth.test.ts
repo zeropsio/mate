@@ -116,6 +116,69 @@ const direct = (value = health): AccountInput[] => [
   },
 ];
 describe("health at the screen boundary", () => {
+  const cpuHealth = (saturated: boolean): MateHealth => ({
+    ...health,
+    evidence: {
+      ...evidence,
+      status: "strained",
+      resources: ["cpu"],
+      severity: "warning",
+      memory: null,
+      cpu: {
+        some: { avg10: 25, total: 500000 },
+        full: null,
+        window: {
+          scope: "/sys/fs/cgroup",
+          elapsedUsec: 2000000,
+          usageUsec: 3800000,
+          someUsec: 400000,
+          fullUsec: null,
+          capacityCpus: 2,
+          throttledPeriods: 0,
+          saturated,
+          consumer: { pid: 42, name: "code-server (node)", cpuCores: 1.8 },
+        },
+      },
+    },
+  });
+  it("names the measured CPU consumer and allocation without guessing an update is still starting", () => {
+    const copy = mateHealthCopy("Hardy", project(relay(cpuHealth(true), true)));
+    expect(copy?.title).toBe("Hardy is under CPU pressure");
+    expect(copy?.description).toContain("1.9 CPU cores used out of a limit of 2 over 2 seconds");
+    expect(copy?.description).toContain("code-server (node) (PID 42) used 1.8 CPU cores");
+    expect(copy?.description).not.toContain("starting");
+  });
+  it("shows no CPU notice for an old average or a recovered current window", () => {
+    const old = cpuHealth(true);
+    const { window: _, ...averages } = old.evidence.cpu!;
+    expect(
+      mateHealthCopy(
+        "Hardy",
+        project(direct({ ...old, evidence: { ...old.evidence, cpu: averages } })),
+      ),
+    ).toBeNull();
+    expect(mateHealthCopy("Hardy", project(direct(cpuHealth(false))))).toBeNull();
+  });
+  it("says attribution is unknown when runnable work exhausts CPU but the consumer has exited", () => {
+    const value = cpuHealth(true);
+    const copy = mateHealthCopy(
+      "Hardy",
+      project(
+        direct({
+          ...value,
+          evidence: {
+            ...value.evidence,
+            cpu: {
+              ...value.evidence.cpu!,
+              window: { ...value.evidence.cpu!.window!, consumer: null },
+            },
+          },
+        }),
+      ),
+    );
+    expect(copy?.description).toContain("No current process could be attributed");
+    expect(copy?.description).not.toContain("Close idle container workloads");
+  });
   it("names measured starvation, the cap, actions, swap and severity", () => {
     const copy = mateHealthCopy("Skákala", project(direct()));
     expect(copy?.title).toBe("Skákala is short on memory — the container is capped at 1.5 GB");
