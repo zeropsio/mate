@@ -1718,3 +1718,74 @@ it("retains per-root incomplete history in the live thread projection", () => {
   expect(result.kind).toBe("updated");
   if (result.kind === "updated") expect(result.thread.checkpoints[0]?.history).toEqual(history);
 });
+
+it("restart evidence stays on the interrupted turn after an accepted continuation", () => {
+  const turnId = TurnId.make("cut-turn");
+  const at = "2026-10-08T08:24:39.700Z";
+  const interruption = {
+    turnId,
+    restart: { cause: "replaced" as const, at },
+    continuation: "manual" as const,
+  };
+  const result = applyThreadDetailEvent(
+    {
+      ...baseThread,
+      latestTurn: {
+        turnId,
+        state: "running",
+        requestedAt: baseThread.createdAt,
+        startedAt: baseThread.createdAt,
+        completedAt: null,
+        assistantMessageId: null,
+      },
+    },
+    {
+      ...baseEventFields,
+      sequence: 1,
+      aggregateKind: "thread",
+      aggregateId: baseThread.id,
+      occurredAt: at,
+      type: "thread.session-set",
+      payload: {
+        threadId: baseThread.id,
+        session: {
+          threadId: baseThread.id,
+          status: "interrupted",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          interruption,
+          updatedAt: at,
+        },
+      },
+    },
+  );
+  expect(result.kind).toBe("updated");
+  if (result.kind !== "updated") return;
+  expect(result.thread.latestTurn?.state).toBe("interrupted");
+  expect(result.thread.activities[0]).toMatchObject({
+    turnId,
+    kind: "runtime.interrupted",
+    payload: { interruption },
+  });
+  const accepted = applyThreadDetailEvent(result.thread, {
+    ...baseEventFields,
+    sequence: 2,
+    aggregateKind: "thread",
+    aggregateId: baseThread.id,
+    occurredAt: at,
+    type: "thread.turn-start-requested",
+    payload: {
+      threadId: baseThread.id,
+      messageId: MessageId.make("continue"),
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdAt: at,
+    },
+  });
+  expect(accepted.kind).toBe("updated");
+  if (accepted.kind !== "updated") return;
+  expect(accepted.thread.session?.interruption).toBeNull();
+  expect(accepted.thread.activities).toEqual(result.thread.activities);
+});

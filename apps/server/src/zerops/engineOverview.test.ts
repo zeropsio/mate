@@ -169,9 +169,9 @@ describe("HQ's overview of a Mate on the engine", () => {
           words: "Fen restarted.",
         }),
       },
-      "error",
+      "ready",
       "interrupted",
-      "failed",
+      "idle",
     ],
   ])("%s: V1's literals, nothing else", (_title, patch, session, turn, kind) => {
     const shell = engineShellOf(view(patch));
@@ -181,7 +181,7 @@ describe("HQ's overview of a Mate on the engine", () => {
     assert.strictEqual(resolveThreadStatus(shell).kind, kind);
   });
 
-  it("names why a cut run was not continued as the session's error", () => {
+  it("a guarded restart stays on its run without a session failure", () => {
     const shell = engineShellOf(
       view({
         lastEnded: ended(1, {
@@ -192,10 +192,8 @@ describe("HQ's overview of a Mate on the engine", () => {
         }),
       }),
     );
-    assert.strictEqual(
-      overviewOf([shell]).main?.session?.lastError,
-      "Fen was restarted by Ana. The run was cut and not continued (archived): send a message to go on.",
-    );
+    assert.strictEqual(overviewOf([shell]).main?.session?.lastError, null);
+    assert.strictEqual(mateAttentionOf([shell], undefined, source).waiting, 0);
   });
 
   it("carries the person's ask and the agent's last words as the row's previews, a usage pause with its reset", () => {

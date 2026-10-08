@@ -1,5 +1,5 @@
 import { agentAdmission, projectMateLimit } from "@t3tools/client-runtime/data";
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateStatus } from "./mateStatus.logic";
@@ -78,4 +78,18 @@ describe("Mate status across menu and conversation", () => {
       severity: "attention",
     });
   });
+});
+
+it("typed restart evidence requests Continue without treating the Mate as broken", () => {
+  const interruption = {
+    turnId: TurnId.make("turn"),
+    restart: { cause: "replaced" as const, at: "2026-10-08T08:24:39.700Z" },
+    continuation: "manual" as const,
+  };
+  expect(mateStatus(activity({ kind: "failed", interruption }))).toMatchObject({
+    kind: "interrupted",
+    severity: "attention",
+    interruption,
+  });
+  expect(mateStatus(activity({ kind: "idle", interruption: null }))).toBeNull();
 });

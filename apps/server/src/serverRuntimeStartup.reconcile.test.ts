@@ -161,7 +161,7 @@ it.effect("reconciles multiple active and archived orphans but skips live sessio
                 }
               : null,
           ),
-          orphanIds.map(() => ({ status: "error" as const, activeTurnId: null })),
+          orphanIds.map(() => ({ status: "interrupted" as const, activeTurnId: null })),
         );
         assert.equal(upserts.length, orphanIds.length);
         for (const binding of upserts) {
@@ -310,7 +310,6 @@ it.effect("does not fail startup when the live provider session inventory cannot
 
 const bootAt = "2026-08-20T12:05:00.000Z";
 const processAt = "2026-08-20T12:04:00.000Z";
-const continuation = "its running turn was interrupted. Send a message to continue.";
 const restartProcess = {
   projectId: "project-mate",
   serviceStackId: "zcp-own",
@@ -325,18 +324,18 @@ for (const row of [
   {
     label: "process with person",
     processes: [restartProcess],
-    expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+    expected: { cause: "restarted" as const, at: processAt },
   },
   {
     label: "process without person",
     processes: [{ ...restartProcess, createdByUser: null }],
-    expected: `Fen was restarted at ${processAt}; ${continuation}`,
+    expected: { cause: "restarted" as const, at: processAt },
   },
   {
     label: "read failed",
     failed: true,
     processes: [],
-    expected: `Mate restarted at ${bootAt}; ${continuation}`,
+    expected: { cause: "restarted" as const, at: bootAt },
   },
   {
     label: "only actions that could interrupt this turn, newest first",
@@ -353,14 +352,24 @@ for (const row of [
       { ...restartProcess, started: "2026-08-20T12:03:00.000Z" },
       restartProcess,
     ],
-    expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+    expected: { cause: "restarted" as const, at: processAt },
   },
-  { label: "no process", processes: [], expected: `Fen restarted at ${bootAt}; ${continuation}` },
+  {
+    label: "platform stop",
+    processes: [{ ...restartProcess, actionName: "stack.stop" }],
+    expected: { cause: "stopped" as const, at: processAt },
+  },
+  {
+    label: "platform deployment",
+    processes: [{ ...restartProcess, actionName: "stack.deploy" }],
+    expected: { cause: "redeployed" as const, at: processAt },
+  },
+  { label: "no process", processes: [], expected: { cause: "restarted" as const, at: bootAt } },
   {
     label: "container replaced without process",
     processes: [],
     containerStartedAt: processAt,
-    expected: `Fen's container was replaced at ${processAt}; ${continuation}`,
+    expected: { cause: "replaced" as const, at: processAt },
   },
 ]) {
   it.effect(`explains an orphaned turn: ${row.label}, reading once for all threads`, () =>
@@ -369,7 +378,10 @@ for (const row of [
       const commands: OrchestrationCommand[] = [];
       let reads = 0;
       yield* runReconciliation({
-        threads: [makeThread("orphan-one", "running"), makeThread("orphan-two", "running")],
+        threads: [
+          makeThread("orphan-one", "running", TurnId.make("one")),
+          makeThread("orphan-two", "running", TurnId.make("two")),
+        ],
         directory: {
           getBinding: () => Effect.succeedNone,
           upsert: () => Effect.void,
@@ -400,10 +412,12 @@ for (const row of [
       );
       assert.equal(commands.length, 2);
       for (const command of commands) {
-        assert.equal(
-          command.type === "thread.session.set" && command.session.lastError,
-          row.expected,
-        );
+        assert.strictEqual(command.type, "thread.session.set");
+        if (command.type !== "thread.session.set") continue;
+        assert.strictEqual(command.session.status, "interrupted");
+        assert.strictEqual(command.session.lastError, null);
+        assert.deepStrictEqual(command.session.interruption?.restart, row.expected);
+        assert.strictEqual(command.session.interruption?.continuation, "manual");
       }
       assert.equal(reads, 1);
     }),

@@ -86,6 +86,10 @@ export function mateAttentionOf(
       questions.push({
         threadId: thread.id,
         kind,
+        ...(thread.session?.status === "interrupted" &&
+        thread.session.interruption?.continuation === "manual"
+          ? { interruption: thread.session.interruption }
+          : {}),
         turnId: thread.latestTurn?.turnId ?? null,
         at: Date.parse(thread.updatedAt),
       });
@@ -108,7 +112,7 @@ export function mateAttentionOf(
     questions: questions
       .toSorted((left, right) => right.at - left.at)
       .slice(0, MATE_ATTENTION_IDS_MAX)
-      .map(({ threadId, kind, turnId }) => ({ threadId, kind, turnId })),
+      .map(({ at: _at, ...question }) => question),
     truncated: results.length > MATE_ATTENTION_IDS_MAX || questions.length > MATE_ATTENTION_IDS_MAX,
   });
   if (previous === undefined) return { source: { ...source, revision: 0 }, ...body };

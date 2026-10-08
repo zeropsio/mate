@@ -66,10 +66,24 @@ export const MateAttentionQuestionKind = Schema.Literals([
 ]);
 export type MateAttentionQuestionKind = typeof MateAttentionQuestionKind.Type;
 
+export const MateRestart = Schema.Struct({
+  cause: Schema.Literals(["restarted", "replaced", "stopped", "redeployed"]),
+  at: Schema.NullOr(IsoDateTime),
+});
+export type MateRestart = typeof MateRestart.Type;
+
+export const MateInterruption = Schema.Struct({
+  turnId: TurnId,
+  restart: MateRestart,
+  continuation: Schema.Literals(["manual", "automatic", "continued", "none"]),
+});
+export type MateInterruption = typeof MateInterruption.Type;
+
 /** A chat waiting on its person, at the turn it waits in (none before its first). */
 export const MateAttentionQuestion = Schema.Struct({
   threadId: ThreadId,
   kind: MateAttentionQuestionKind,
+  interruption: Schema.optionalKey(MateInterruption),
   turnId: Schema.NullOr(TurnId),
 });
 export type MateAttentionQuestion = typeof MateAttentionQuestion.Type;

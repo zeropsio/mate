@@ -103,6 +103,9 @@ const sessionOf = (view: ConversationView, run: ViewRun, at: string): Orchestrat
       lastError: null,
     };
   }
+  if (run.end.kind === "cut-by-restart") {
+    return { ...base, status: "ready", lastError: null };
+  }
   const brokeOff = lineOf(brokeOffLine(run.end) ?? undefined);
   return brokeOff === null
     ? { ...base, status: "ready", lastError: null }

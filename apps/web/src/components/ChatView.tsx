@@ -8664,6 +8664,30 @@ export default function ChatView(props: ChatViewProps) {
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
                   onUsageAutoResumeChange,
+                  interruption: activeServerThread?.session?.interruption ?? null,
+                  onRestartContinue:
+                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                      ? null
+                      : (turnId) => {
+                          if (
+                            activeThreadKey === null ||
+                            activeServerThread?.session?.interruption?.turnId !== turnId
+                          )
+                            return;
+                          const message = useQueuedMessageStore
+                            .getState()
+                            .enqueue(activeThreadKey, {
+                              prompt: "Continue the work that was interrupted by the restart.",
+                              images: [],
+                              terminalContexts: [],
+                              reviewComments: [],
+                              submissionIntent: "foreground",
+                              queuedAfterToolActivityId: null,
+                              createdAt: new Date().toISOString(),
+                              holdUntilUserAction: true,
+                            });
+                          void onSend(undefined, "foreground", message);
+                        },
                   onUsageContinue:
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null

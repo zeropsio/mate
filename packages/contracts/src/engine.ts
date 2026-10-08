@@ -8,6 +8,7 @@
  *
  * @module engine
  */
+import { MateRestart } from "./zeropsAttention.ts";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
@@ -192,6 +193,7 @@ export const RunEnd = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("cut-by-restart"),
       continuedBy: Schema.NullOr(RunId),
+      restart: Schema.optionalKey(MateRestart),
       notContinued: Schema.optionalKey(Schema.String),
       /** What the platform said about the restart, shown to the person. */
       words: Schema.optionalKey(Schema.String),

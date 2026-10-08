@@ -940,6 +940,39 @@ describe("RunChat, as the person uses it", () => {
     vi.unstubAllGlobals();
   });
 
+  it("Continue targets the interrupted turn and leaves when accepted evidence clears it", () => {
+    const interruption = {
+      turnId,
+      restart: { cause: "replaced" as const, at: at(9) },
+      continuation: "manual" as const,
+    };
+    const onRestartContinue = vi.fn();
+    const row = record([step(command("cut", "inspect"))], {
+      status: status({ live: false, face: "interrupted", endedAt: at(9), interruption }),
+    });
+    const view = (pending: typeof interruption | null) => (
+      <TimelineRowCtx value={{ ...SHARED, interruption: pending, onRestartContinue }}>
+        <TimelineRowActivityCtx value={ACTIVITY}>
+          <RunChat row={row} />
+        </TimelineRowActivityCtx>
+      </TimelineRowCtx>
+    );
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(view(interruption));
+    });
+    act(() => {
+      button(renderer, "Continue").props.onClick();
+    });
+    expect(onRestartContinue).toHaveBeenCalledExactlyOnceWith(turnId);
+    act(() => {
+      renderer.update(view(null));
+    });
+    expect(
+      renderer.root.findAll((node) => node.type === "button" && node.children.includes("Continue")),
+    ).toHaveLength(0);
+  });
+
   /** An item's own box (`data-capped`): a scroll of its own, never the run's. */
   const itemBox = () => ({
     scrollTop: 0,
@@ -2607,4 +2640,58 @@ describe("RunChat, as the person uses it", () => {
     );
     expect(rows()).toHaveLength(50);
   });
+});
+
+describe("a turn interrupted by a Mate restart", () => {
+  it.each(["light", "dark"] as const)(
+    "keeps the interruption and real Continue visible while folded in %s",
+    (resolvedTheme) => {
+      const interruption = {
+        turnId,
+        restart: { cause: "replaced" as const, at: at(9) },
+        continuation: "manual" as const,
+      };
+      const row = record([step(command("cut-work", "inspect"))], {
+        status: status({ live: false, face: "interrupted", endedAt: at(9), interruption }),
+      });
+      const onRestartContinue = vi.fn();
+      const drawWith = (pending: typeof interruption | null) =>
+        renderToStaticMarkup(
+          <TimelineRowCtx
+            value={{
+              ...SHARED,
+              resolvedTheme,
+              speaker: { name: "Eddy", tint: "sky" },
+              interruption: pending,
+              onRestartContinue,
+            }}
+          >
+            <TimelineRowActivityCtx value={ACTIVITY}>
+              <RunChat row={row} />
+            </TimelineRowActivityCtx>
+          </TimelineRowCtx>,
+        );
+      const html = drawWith(interruption);
+      expect(html).toContain("Interrupted — Eddy restarted at");
+      expect(html).toContain(">Continue</button>");
+      expect(html).not.toContain("2026-09-27T");
+      expect(html).not.toContain("Needs attention");
+      expect(drawWith(null)).not.toContain(">Continue</button>");
+    },
+  );
+});
+
+it.each([
+  ["automatic", "continuation scheduled"],
+  ["continued", "continued automatically"],
+] as const)("a restart says %s only from the recorded continuation", (continuation, words) => {
+  const interruption = { turnId, restart: { cause: "replaced" as const, at: at(9) }, continuation };
+  const html = draw(
+    record([step(command("cut", "inspect"))], {
+      status: status({ live: false, face: "interrupted", endedAt: at(9), interruption }),
+    }),
+  );
+  expect(html).toContain(words);
+  expect(html).not.toContain(">Continue</button>");
+  if (continuation === "automatic") expect(html).not.toContain("continued automatically");
 });

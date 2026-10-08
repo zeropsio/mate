@@ -5036,3 +5036,132 @@ it.layer(Layer.fresh(BaseTestLayer))("checkpoint root history", (it) => {
     }),
   );
 });
+
+it.layer(
+  OrchestrationProjectionSnapshotQueryLive.pipe(
+    Layer.provide(ThreadBackgroundLiveness.layer),
+    Layer.provide(ThreadPlanProgress.layer),
+    Layer.provide(ThreadLiveStep.layer),
+    Layer.provide(RepositoryIdentityResolver.layer),
+    Layer.provideMerge(BaseTestLayer),
+  ),
+)("restart interruption projections", (it) => {
+  it.effect(
+    "the same restart event settles its turn and keeps history after accepted continuation",
+    () =>
+      Effect.gen(function* () {
+        const pipeline = yield* OrchestrationProjectionPipeline;
+        const store = yield* OrchestrationEventStore;
+        const query = yield* ProjectionSnapshotQuery;
+        const sql = yield* SqlClient.SqlClient;
+        const threadId = ThreadId.make("restart-thread");
+        const projectId = ProjectId.make("restart-project");
+        const turnId = TurnId.make("cut-turn");
+        const at = "2026-10-08T08:24:39.700Z";
+        const fields = {
+          aggregateKind: "thread" as const,
+          aggregateId: threadId,
+          occurredAt: at,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+        };
+        const append = (event: Parameters<typeof store.append>[0]) =>
+          Effect.gen(function* () {
+            const persisted = yield* store.append(event);
+            yield* pipeline.projectEvent(persisted);
+          });
+        yield* pipeline.bootstrap;
+        yield* append({
+          ...fields,
+          aggregateKind: "project",
+          aggregateId: projectId,
+          eventId: EventId.make("project"),
+          type: "project.created",
+          payload: {
+            projectId,
+            title: "Project",
+            workspaceRoot: "/tmp/restart-project",
+            defaultModelSelection: null,
+            scripts: [],
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("thread"),
+          type: "thread.created",
+          payload: {
+            threadId,
+            projectId,
+            title: "Conversation",
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5-codex" },
+            runtimeMode: "full-access",
+            branch: null,
+            worktreePath: null,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        const session = {
+          threadId,
+          providerName: "codex",
+          runtimeMode: "full-access" as const,
+          lastError: null,
+          updatedAt: at,
+        };
+        yield* append({
+          ...fields,
+          eventId: EventId.make("running"),
+          type: "thread.session-set",
+          payload: { threadId, session: { ...session, status: "running", activeTurnId: turnId } },
+        });
+        const interruption = {
+          turnId,
+          restart: { cause: "replaced" as const, at },
+          continuation: "manual" as const,
+        };
+        yield* append({
+          ...fields,
+          eventId: EventId.make("restart"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: { ...session, status: "interrupted", activeTurnId: null, interruption },
+          },
+        });
+        const snapshot = yield* query.getCommandReadModel();
+        const thread = snapshot.threads.find((value) => value.id === threadId);
+        assert.deepStrictEqual(thread?.session?.interruption, interruption);
+        assert.strictEqual(thread?.latestTurn?.state, "interrupted");
+        const history = yield* sql<{
+          readonly turnId: string;
+          readonly kind: string;
+        }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.deepStrictEqual(history, [{ turnId, kind: "runtime.interrupted" }]);
+        yield* append({
+          ...fields,
+          eventId: EventId.make("accepted"),
+          type: "thread.turn-start-requested",
+          payload: {
+            threadId,
+            messageId: MessageId.make("continue"),
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: at,
+          },
+        });
+        const after = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(after?.session?.interruption, null);
+        const retained = yield* sql<{
+          readonly turnId: string;
+          readonly kind: string;
+        }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.deepStrictEqual(retained, history);
+      }),
+  );
+});

@@ -341,6 +341,15 @@ export function applyThreadDetailEvent(
         kind: "updated",
         thread: {
           ...thread,
+          session:
+            thread.session?.interruption == null
+              ? thread.session
+              : {
+                  ...thread.session,
+                  interruption: null,
+                  status: thread.session.status === "interrupted" ? "ready" : thread.session.status,
+                  updatedAt: event.occurredAt,
+                },
           ...(event.payload.modelSelection !== undefined
             ? { modelSelection: event.payload.modelSelection }
             : {}),
@@ -516,6 +525,22 @@ export function applyThreadDetailEvent(
         thread: {
           ...thread,
           session: event.payload.session,
+          activities:
+            event.payload.session.interruption == null
+              ? thread.activities
+              : [
+                  ...thread.activities,
+                  {
+                    id: event.eventId,
+                    tone: "info",
+                    kind: "runtime.interrupted",
+                    summary: "Interrupted by a Mate restart",
+                    payload: { interruption: event.payload.session.interruption },
+                    turnId: event.payload.session.interruption.turnId,
+                    sequence: event.sequence,
+                    createdAt: event.payload.session.updatedAt,
+                  },
+                ],
           latestTurn,
           updatedAt: event.occurredAt,
         },

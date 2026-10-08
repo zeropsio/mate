@@ -53,6 +53,8 @@ export interface TimelineRowSharedState {
   };
   limit?: MateLimit;
   onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
+  interruption?: import("@t3tools/contracts").MateInterruption | null;
+  onRestartContinue?: ((turnId: TurnId) => void) | null;
   onUsageContinue?: (() => void) | null;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;

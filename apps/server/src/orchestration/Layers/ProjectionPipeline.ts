@@ -1318,6 +1318,22 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           return;
 
+        case "thread.session-set": {
+          const interruption = event.payload.session.interruption;
+          if (interruption == null) return;
+          yield* projectionThreadActivityRepository.upsert({
+            activityId: event.eventId,
+            threadId: event.payload.threadId,
+            turnId: interruption.turnId,
+            tone: "info",
+            kind: "runtime.interrupted",
+            summary: "Interrupted by a Mate restart",
+            payload: { interruption },
+            sequence: event.sequence,
+            createdAt: event.payload.session.updatedAt,
+          });
+          return;
+        }
         case "thread.activity-appended":
           yield* projectionThreadActivityRepository.upsert({
             activityId: event.payload.activity.id,
@@ -1376,6 +1392,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         });
         return;
       }
+      if (event.type === "thread.turn-start-requested") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (Option.isSome(session) && session.value.interruption != null) {
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            interruption: null,
+            status: session.value.status === "interrupted" ? "ready" : session.value.status,
+            updatedAt: event.occurredAt,
+          });
+        }
+        return;
+      }
       if (event.type !== "thread.session-set") {
         return;
       }
@@ -1387,6 +1415,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
         runtimeMode: event.payload.session.runtimeMode,
         activeTurnId: event.payload.session.activeTurnId,
         lastError: event.payload.session.lastError,
+        interruption: event.payload.session.interruption,
         usageLimitResetAt: event.payload.session.usageLimitResetAt,
         updatedAt: event.payload.session.updatedAt,
       });

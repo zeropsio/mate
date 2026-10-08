@@ -147,6 +147,7 @@ function mainOf(thread: OrchestrationThreadShell): OverviewMain {
         ? null
         : {
             status: thread.session.status,
+            interruption: thread.session.interruption,
             lastError: refusal,
           },
     latestTurn:

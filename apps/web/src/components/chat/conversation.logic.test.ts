@@ -3742,3 +3742,24 @@ it("a normal response after a provider rejection is not replaced by a limit card
   expect(only?.limit).toBeNull();
   expect(only?.answer?.message.text).toBe("The work is done.");
 });
+
+it("a restart remains the cause on its turn after a later message", () => {
+  const interruption = {
+    turnId: turn("t1"),
+    restart: { cause: "replaced" as const, at: at(2) },
+    continuation: "manual" as const,
+  };
+  const entries = [
+    user("m1", 0),
+    tool("cut", "t1", 2, {
+      sourceActivityKind: "runtime.interrupted",
+      interruption,
+      command: undefined as never,
+    }),
+    user("m2", 3),
+    tool("w2", "t2", 4),
+  ];
+  const read = structure(entries, { latest: { id: "t2", state: "completed", completed: true } });
+  expect(read.turns[0]?.interruption).toEqual(interruption);
+  expect(read.turns[0]?.byMessage).toBe(false);
+});

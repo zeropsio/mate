@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { MateInterruption } from "./zeropsAttention.ts";
 import { ImageOccurrence } from "./assetReference.ts";
 import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaIssue from "effect/SchemaIssue";
@@ -408,6 +409,7 @@ export const OrchestrationSession = Schema.Struct({
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
   activeTurnId: Schema.NullOr(TurnId),
   lastError: Schema.NullOr(TrimmedNonEmptyString),
+  interruption: Schema.optional(Schema.NullOr(MateInterruption)),
   /** The provider's refusal deadline, retained after a scheduled pause clears. */
   usageLimitResetAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   updatedAt: IsoDateTime,

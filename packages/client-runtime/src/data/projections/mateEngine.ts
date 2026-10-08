@@ -491,6 +491,31 @@ function gaugeActivities(
 function breakActivity(run: RunRecord, card: string): OrchestrationThreadActivity | null {
   const end = run.end;
   if (end === null) return null;
+  if (end.kind === "cut-by-restart") {
+    return activity(
+      `${run.id}#break`,
+      "runtime.interrupted",
+      "Interrupted by a Mate restart",
+      {
+        interruption: {
+          turnId: card,
+          restart: end.restart ?? {
+            cause: "restarted",
+            at: run.endedAt === null ? null : iso(run.endedAt),
+          },
+          continuation:
+            end.continuedBy !== null
+              ? "continued"
+              : end.notContinued !== undefined
+                ? "none"
+                : "automatic",
+        },
+      },
+      card,
+      run.endedAt ?? run.queuedAt,
+      run.rev,
+    );
+  }
   const turnEnd =
     end.kind === "crashed"
       ? "crash"
@@ -1075,10 +1100,16 @@ export function overlayEngineRow(
       // A conversation the account holds says its turn by its own records: the live run, never a
       // queued one, on the card it draws on. The row names only a run.
       status:
-        held?.status ?? (working ? "running" : row.state.kind === "failed" ? "error" : "ready"),
+        held?.status ??
+        (working
+          ? "running"
+          : row.state.kind === "failed" && row.latestRun?.end?.kind !== "cut-by-restart"
+            ? "error"
+            : "ready"),
       activeTurnId: (held === undefined
         ? (row.activeRunId ?? null)
         : held.activeTurnId) as OrchestrationSession["activeTurnId"],
+      interruption: null,
       updatedAt: iso(row.at),
     },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",

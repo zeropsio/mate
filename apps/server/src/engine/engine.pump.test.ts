@@ -495,13 +495,14 @@ describe("the running engine", () => {
         yield* send(w);
         for (const command of after) yield* w.tell(command);
         yield* w.crash;
+        const bootAt = yield* Clock.currentTimeMillis;
         yield* w.boot;
         const cut = yield* w.run(r(1));
         assert.deepStrictEqual(cut?.end, {
           kind: "cut-by-restart",
           continuedBy: null,
           notContinued: refusal,
-          words: "Mate restarted.",
+          restart: { cause: "restarted", at: DateTime.formatIso(DateTime.makeUnsafe(bootAt)) },
         });
         assert.isFalse(w.provider.calls.includes(sendLine(w, CONTINUE_TEXT)));
         yield* w.shutdown;

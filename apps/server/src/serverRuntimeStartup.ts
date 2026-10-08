@@ -45,7 +45,7 @@ import {
   isBootstrapDecidable,
   resolveZeropsBootstrapModelSelection,
 } from "./zerops/ZeropsBootstrapModel.ts";
-import { interruptedTurnMessage, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
+import { restartCause, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
@@ -456,6 +456,9 @@ export const reconcileProviderSessions = Effect.gen(function* () {
     );
 
     yield* Effect.gen(function* () {
+      const interruptedTurnId =
+        session.activeTurnId ??
+        (thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null);
       const reconciledAt = DateTime.formatIso(yield* DateTime.now);
       yield* orchestrationEngine.dispatch({
         type: "thread.session.set",
@@ -463,16 +466,24 @@ export const reconcileProviderSessions = Effect.gen(function* () {
         threadId: thread.id,
         session: {
           ...session,
-          status: "error",
+          status: "interrupted",
           activeTurnId: null,
-          lastError: interruptedTurnMessage({
-            evidence,
-            lastActivityAt:
-              Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
-                ? thread.updatedAt
-                : session.updatedAt,
-            bootAt,
-          }),
+          lastError: null,
+          interruption:
+            interruptedTurnId === null
+              ? null
+              : {
+                  turnId: interruptedTurnId,
+                  continuation: "manual",
+                  restart: restartCause({
+                    evidence,
+                    lastActivityAt:
+                      Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
+                        ? thread.updatedAt
+                        : session.updatedAt,
+                    bootAt,
+                  }),
+                },
           updatedAt: reconciledAt,
         },
         createdAt: reconciledAt,

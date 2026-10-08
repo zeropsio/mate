@@ -127,6 +127,8 @@ import {
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
+import { Button } from "../ui/button";
+import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
@@ -3150,7 +3152,7 @@ function NowLine({
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
-  const latest = nowLineOf({
+  const baseLine = nowLineOf({
     status,
     now,
     answering,
@@ -3158,10 +3160,29 @@ function NowLine({
     speaker: ctx.speaker.name,
     effort,
   });
+  const latest =
+    !status.live && status.interruption !== undefined
+      ? {
+          kind: "worked" as const,
+          words:
+            status.interruption.continuation === "automatic"
+              ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continuation scheduled`
+              : status.interruption.continuation === "continued"
+                ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continued automatically`
+                : `Interrupted — ${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)}`,
+          effort: null,
+        }
+      : baseLine;
   // A line once shown stands a moment, and a burst shows its latest only
   // (`nowLineCalm.logic`); the run's end shows at once.
   const line = useCalmLine(latest, nowLineWords(latest), !status.live);
-  const face = nowLineFace(line, status);
+  const settledFace = nowLineFace(line, status);
+  const face =
+    !status.live &&
+    status.interruption?.continuation === "manual" &&
+    ctx.interruption?.turnId === status.interruption.turnId
+      ? { ...settledFace, state: "needs" as const }
+      : settledFace;
   const words = nowLineWords(line);
   // The line's words change in place as the run goes: the old ones leave
   // where they stood as the new ones rise into it, so a change reads as the
@@ -3217,6 +3238,19 @@ function NowLine({
       {status.live ? (
         <span className="flex items-center gap-3">
           <RunTicker status={status} />
+          {end}
+        </span>
+      ) : status.interruption?.continuation === "manual" &&
+        ctx.interruption?.turnId === status.interruption.turnId ? (
+        <span className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={ctx.onRestartContinue == null}
+            onClick={() => ctx.onRestartContinue?.(status.interruption!.turnId)}
+          >
+            Continue
+          </Button>
           {end}
         </span>
       ) : (

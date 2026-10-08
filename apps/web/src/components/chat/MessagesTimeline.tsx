@@ -373,6 +373,8 @@ interface MessagesTimelineProps {
   usagePause?: ServerUsagePause | null;
   limit?: MateLimit;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
+  interruption?: import("@t3tools/contracts").MateInterruption | null;
+  onRestartContinue?: ((turnId: TurnId) => void) | null;
   onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
@@ -433,6 +435,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   usagePause = null,
   limit = NO_MATE_LIMIT,
   onUsageAutoResumeChange = null,
+  interruption = null,
+  onRestartContinue = null,
   onUsageContinue = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
@@ -1252,6 +1256,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       },
       limit,
       onUsageAutoResumeChange,
+      interruption,
+      onRestartContinue,
       onUsageContinue,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
@@ -1286,6 +1292,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       contentInsetEndAdjustment,
       limit,
       onUsageAutoResumeChange,
+      interruption,
+      onRestartContinue,
       onUsageContinue,
       agentPanelModel,
       onOpenAgents,

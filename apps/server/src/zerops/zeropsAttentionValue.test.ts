@@ -278,3 +278,56 @@ describe("mateAttentionOf", () => {
     });
   });
 });
+
+it("a restart interruption waits on its affected turn and accepted work clears the same item", () => {
+  const interruption = {
+    turnId: "cut-turn",
+    restart: { cause: "replaced", at: "2026-10-08T08:24:39.700Z" },
+    continuation: "manual",
+  };
+  const session = {
+    threadId: "eddy",
+    providerName: "codex",
+    runtimeMode: "full-access",
+    activeTurnId: null,
+    lastError: null,
+    updatedAt: "2026-10-08T08:25:00Z",
+  };
+  const stopped = shell("eddy", {
+    latestTurn: turn("cut-turn", "interrupted", session.updatedAt),
+    session: { ...session, status: "interrupted", interruption },
+  });
+  const attention = attentionOf([stopped]);
+  expect(attention.waiting).toBe(1);
+  expect(attention.questions).toEqual([
+    { threadId: stopped.id, turnId: "cut-turn", kind: "failed", interruption },
+  ]);
+  const changed = mateAttentionOf(
+    [
+      shell("eddy", {
+        ...stopped,
+        session: {
+          ...stopped.session,
+          interruption: {
+            ...interruption,
+            restart: { ...interruption.restart, cause: "restarted" },
+          },
+        },
+      }),
+    ],
+    attention,
+    SOURCE,
+  );
+  expect(changed.source.revision).toBe(attention.source.revision + 1);
+  const continued = mateAttentionOf(
+    [shell("eddy", { ...stopped, session: { ...session, status: "ready", interruption: null } })],
+    changed,
+    SOURCE,
+  );
+  expect(continued.waiting).toBe(0);
+  expect(continued.questions).toEqual([]);
+  expect(continued.source.revision).toBe(changed.source.revision + 1);
+  expect(attentionOf([shell("idle", { session: { ...session, status: "ready" } })]).waiting).toBe(
+    0,
+  );
+});

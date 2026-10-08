@@ -310,6 +310,8 @@ it.effect(
         return {
           sessionStatus: restartedThread.session?.status,
           activeTurnId: restartedThread.session?.activeTurnId,
+          interruption: restartedThread.session?.interruption,
+          lastError: restartedThread.session?.lastError,
           latestTurn: restartedThread.latestTurn,
           pendingTurnCount: pendingRows.length,
           settleSucceeded: Exit.isSuccess(settleExit),
@@ -326,8 +328,10 @@ it.effect(
       }).pipe(Effect.provide(startupLayer));
 
       assert.deepStrictEqual(result, {
-        sessionStatus: "error",
+        sessionStatus: "interrupted",
         activeTurnId: null,
+        interruption: null,
+        lastError: null,
         latestTurn: null,
         pendingTurnCount: 0,
         settleSucceeded: true,
@@ -336,7 +340,7 @@ it.effect(
         bindingStatus: "stopped",
         resumeCursor,
         runtimePayload: { activeTurnId: null, unrelated: "preserve-me" },
-        stoppedBindingSessionStatus: "error",
+        stoppedBindingSessionStatus: "interrupted",
         stoppedBindingStatus: "stopped",
         stoppedBindingResumeCursor,
         stoppedBindingRuntimePayload: {
