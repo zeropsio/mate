@@ -113,8 +113,9 @@ export function createEndFollow({
     const end = endOf(element);
     // A measured range below our last position clamps the browser at its
     // new end. Attribute that observed correction before later measurements
-    // grow the range and before its coalesced scroll event arrives.
-    if (element === observedViewport && at > end && Math.abs(end - element.scrollTop) < 0.5) {
+    // grow the range and before its coalesced scroll event arrives. Dimensions
+    // round to integers while scrollTop stays fractional, so allow 1 px.
+    if (element === observedViewport && at > end && Math.abs(end - element.scrollTop) <= 1) {
       ownTops.set(element, element.scrollTop);
     }
     observedViewport = element;
