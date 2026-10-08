@@ -35,7 +35,7 @@ function curriedModifier(value: unknown): boolean {
   const node = record(value);
   return (
     node?.type === "MemberExpression" &&
-    ["each", "for", "skipIf", "runIf"].includes(String(memberName(node))) &&
+    ["each", "for", "skipIf", "runIf", "layer"].includes(String(memberName(node))) &&
     testCallee(node.object)
   );
 }

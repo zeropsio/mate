@@ -55,8 +55,17 @@ it.each([
   { change: "renamed", expected: ["routine memory reclaim shows no notice"] },
   { change: "moved", expected: [] },
   { change: "approved", expected: [] },
+  { change: "layer", expected: ["routine memory reclaim shows no notice"] },
 ])("a test sentence cannot disappear without approval ($change)", ({ change, expected }) => {
-  fixture(({ root, write, commit }) => {
+  fixture(({ root, write, commit, git }) => {
+    if (change === "layer") {
+      write(
+        "old.test.ts",
+        'it.layer(services)("routine memory reclaim shows no notice", () => {});',
+      );
+      commit("layer baseline");
+      git("branch", "-f", "origin/main");
+    }
     NodeFS.unlinkSync(NodePath.join(root, "old.test.ts"));
     expect(checkTestSentences(root, "origin/main")).toEqual([
       "routine memory reclaim shows no notice",
