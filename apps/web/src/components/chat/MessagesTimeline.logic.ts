@@ -1,3 +1,4 @@
+import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
 import { usageLimitProvider } from "../../zerops/noticeWords";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
@@ -45,7 +46,6 @@ import {
   messageReceipt,
   readCrewCard,
   readSlashCommand,
-  readUsageLimitNotice,
   stretchFace,
   standingIncidents,
   stretchIncidents,
@@ -2171,7 +2171,11 @@ export function deriveMessagesTimelineRows(input: {
     // The pause sits where the limit struck: its own error row, else the notice.
     const limitError = turn.stretches
       .flatMap((stretch) => stretch.entries)
-      .findLast((entry) => isUsageLimitError(entry));
+      .findLast(
+        (entry) =>
+          isUsageLimitError(entry) ||
+          (entry.kind === "work" && entry.entry.usageLimit !== undefined),
+      );
     const provider = usageLimitProvider(
       limitError?.kind === "work"
         ? (limitError.entry.detail ?? limitError.entry.label)

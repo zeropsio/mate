@@ -174,3 +174,7 @@ When Codex stops on a usage limit, the thread names the window that ran out and 
 when Codex reports them. Send the message again after the reset. On a workspace plan the message
 also says whether your workspace owner needs to add credits or raise the spend limit to continue
 sooner.
+
+After a reported reset time, the menu stops showing that refusal as a current limit.
+The conversation keeps its dated record with **Continue**; the reset does not mean
+the coding agent has resumed or will accept the next attempt.

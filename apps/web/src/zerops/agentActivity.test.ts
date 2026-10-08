@@ -11,7 +11,7 @@ import {
 import { MateLiveView } from "@t3tools/shared/hqMates";
 import { SECRET_MASK } from "@t3tools/shared/messagePreview";
 import * as Schema from "effect/Schema";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   agentActivityAt,
@@ -714,6 +714,8 @@ describe("what a Mate's row says without words", () => {
   });
 
   it("sleeps through a usage limit and says when it wakes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-05T10:05:00Z"));
     const paused = shell({
       latestTurn: COMPLETED,
       usagePause: {
@@ -728,6 +730,7 @@ describe("what a Mate's row says without words", () => {
     expect(activity?.face).toBe("sleep");
     expect(activity?.pausedUntil).toBe("2026-09-05T14:20:00.000Z");
     expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
+    vi.useRealTimers();
   });
 
   it("a refused turn with no reset time still shows a calm usage pause", () => {
@@ -992,5 +995,80 @@ describe("overviewAgentActivity", () => {
     };
     expect(overviewAgentActivity(told(main), false, {})?.threadKey).toBe("env-vera:t1");
     expect(overviewAgentActivity(told(null), false, {})).toBeUndefined();
+  });
+});
+
+// The reset expires the refusal, without asserting that an agent has resumed.
+describe("a provider refusal in the menu", () => {
+  afterEach(() => vi.useRealTimers());
+  const refused = () =>
+    shell({
+      latestTurn: {
+        ...RUNNING.latestTurn!,
+        state: "error",
+        completedAt: "2026-10-06T21:53:56.937Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        text: "You've hit your weekly limit · resets 2am (UTC)",
+        createdAt: "2026-10-06T21:53:56.892Z",
+      },
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "stopped",
+        providerName: "claudeAgent",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        updatedAt: "2026-10-06T22:24:44.519Z",
+      },
+      usagePause: null,
+    });
+  it.each([
+    { name: "before the provider reset", now: "2026-10-07T01:59:59Z", limited: true },
+    { name: "at the provider reset", now: "2026-10-07T02:00:00Z", limited: false },
+    { name: "after the provider reset", now: "2026-10-08T10:00:00Z", limited: false },
+  ])("shows a current limit only $name", ({ now, limited }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    const thread = refused();
+    const read = threadAgentActivity(thread, undefined);
+    expect(read.usageLimited).toBe(limited);
+    expect(read.pausedUntil).toBe(limited ? "2026-10-07T02:00:00.000Z" : undefined);
+    if (!limited) {
+      expect(read.face).not.toBe("sleep");
+      expect(read.errorLine).toBeUndefined();
+      expect(read.kind).not.toBe("failed");
+    }
+    // The same immutable shell must not freeze a current reading across its reset.
+    vi.setSystemTime(new Date("2026-10-08T10:00:00Z"));
+    expect(threadAgentActivity(thread, undefined).usageLimited).toBe(false);
+  });
+  it("a parked SDK refusal expires without an assistant preview or another provider event", () => {
+    const thread = refused();
+    const parked = {
+      ...thread,
+      latestMessagePreview: null,
+      session: { ...thread.session!, usageLimitResetAt: "2026-10-07T02:00:00Z" },
+    };
+    expect(
+      threadAgentActivity(parked, undefined, Date.parse("2026-10-07T01:59:59Z")).usageLimited,
+    ).toBe(true);
+    const expired = threadAgentActivity(parked, undefined, Date.parse("2026-10-08T10:00:00Z"));
+    expect(expired.usageLimited).toBe(false);
+    expect(expired.errorLine).toBeUndefined();
+  });
+  it("a new turn keeps the past refusal out of the menu", () => {
+    const thread = refused();
+    const read = threadAgentActivity(
+      {
+        ...thread,
+        latestTurn: { ...RUNNING.latestTurn!, requestedAt: "2026-10-08T10:00:00Z" },
+        session: { ...thread.session!, status: "running", lastError: null },
+      },
+      undefined,
+    );
+    expect(read.usageLimited).toBe(false);
+    expect(read.face).toBe("working");
   });
 });

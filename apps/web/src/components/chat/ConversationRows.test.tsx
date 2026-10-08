@@ -48,7 +48,10 @@ describe("the usage-limit pause", () => {
     expect(render(false, reset)).not.toContain("Send a message");
   });
   it("a passed reset time cannot claim the Mate has resumed", () => {
-    expect(render(true, at(60))).toContain("still paused");
+    expect(render(true, at(60))).not.toContain("still paused");
+    expect(render(true, at(60))).toContain("Reset time passed");
+    expect(render(true, at(60))).not.toContain("Limit · until");
+    expect(render(true, at(60))).toContain("hit the Codex limit on Sep 27");
     expect(render(true, at(60))).not.toContain("picking up");
   });
   it("a known reset cannot invent an unread continuation choice", () => {
@@ -76,7 +79,7 @@ describe("the pause's automatic-resume choice", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([null, new Date(NOW_MS + 3_600_000).toISOString()])(
+  it.each([null, at(60), new Date(NOW_MS + 3_600_000).toISOString()])(
     "offers an explicit continuation whether the reset time is known (%s)",
     async (resetsAt) => {
       const continued = vi.fn();

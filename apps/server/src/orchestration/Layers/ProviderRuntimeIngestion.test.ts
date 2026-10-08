@@ -4671,6 +4671,57 @@ describe("ProviderRuntimeIngestion", () => {
     expect(thread.session?.lastError).toBeNull();
   });
 
+  it("retains a refused turn's provider deadline after completion and clears it on a new turn", async () => {
+    const harness = await createHarness();
+    const base = {
+      provider: ProviderDriverKind.make("claudeAgent"),
+      createdAt: "2026-10-06T21:53:56Z",
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-limit"),
+    };
+    await harness.emitAndDrain([
+      { ...base, type: "turn.started", eventId: asEventId("deadline-start"), payload: {} },
+      {
+        ...base,
+        type: "account.rate-limits.updated",
+        eventId: asEventId("deadline-refused"),
+        payload: {
+          limits: { windows: [] },
+          refused: true,
+          blocked: { window: "7-day", resetsAt: "2026-10-07T02:00:00Z" },
+        },
+      },
+      {
+        ...base,
+        type: "runtime.error",
+        eventId: asEventId("deadline-error"),
+        payload: { message: "Claude usage limit reached.", class: "usage_limit" },
+      },
+      {
+        ...base,
+        type: "turn.completed",
+        eventId: asEventId("deadline-complete"),
+        payload: {
+          state: "failed",
+          terminalReason: "usage_limit",
+          errorMessage: "Claude usage limit reached.",
+        },
+      },
+    ]);
+    const snapshot = await harness.readModel();
+    expect(snapshot.threads[0]?.session?.usageLimitResetAt).toBe("2026-10-07T02:00:00Z");
+    await harness.emitAndDrain([
+      {
+        ...base,
+        turnId: asTurnId("turn-new"),
+        type: "turn.started",
+        eventId: asEventId("deadline-new"),
+        payload: {},
+      },
+    ]);
+    expect((await harness.readModel()).threads[0]?.session?.usageLimitResetAt).toBeUndefined();
+  });
+
   it("retains a provider limit without a reset until the provider confirms recovery", async () => {
     const harness = await createHarness();
     const base = {

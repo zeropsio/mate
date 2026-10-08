@@ -1,3 +1,5 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { formatShortTimestamp } from "../timestampFormat";
 import { signedOutAgent } from "@t3tools/client-runtime/zerops";
 
 /** Expected provider pauses use the same words in the menu and conversation. */
@@ -31,4 +33,24 @@ export function mateFailureWords(
   if (limit !== null) return usageLimitWords(limit, undefined, mateName);
   const agent = signedOutAgent(error, driver);
   return agent === null ? error : `${mateName} needs a ${agent} sign-in to continue.`;
+}
+
+/** A dated refusal is a record, never a claim about admission or work now. */
+export function usageLimitHistoryWords(
+  provider: string,
+  at: string | null,
+  resetsAt: string | null,
+  mateName: string,
+  timestampFormat: TimestampFormat,
+): string {
+  const date = (iso: string) =>
+    new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(
+      new Date(iso),
+    );
+  const name = provider === "coding agent" ? "coding agent's" : provider;
+  const reset =
+    resetsAt === null
+      ? ""
+      : `; reset ${formatShortTimestamp(resetsAt, timestampFormat)} ${date(resetsAt)}`;
+  return `${mateName} hit the ${name} limit${at === null ? "" : ` on ${date(at)}`}${reset}.`;
 }

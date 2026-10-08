@@ -35,13 +35,8 @@ describe("Mate status across menu and conversation", () => {
   ] as const)("%j is visible as %s", (patch, kind, severity) => {
     expect(mateStatus(activity(patch))).toMatchObject({ kind, severity });
   });
-  it("keeps the source reset even after it has passed", () => {
-    expect(mateStatus(activity({ pausedUntil: "2020-01-01T16:00:00Z" }))).toEqual({
-      kind: "limit",
-      severity: "attention",
-      until: "2020-01-01T16:00:00Z",
-      provider: undefined,
-    });
+  it("an expired provider reset is no longer a current menu limit", () => {
+    expect(mateStatus(activity({ pausedUntil: "2020-01-01T16:00:00Z" }))).toBeNull();
   });
   it("unknown and working states do not invent a stop", () => {
     expect(mateStatus(undefined)).toBeNull();
