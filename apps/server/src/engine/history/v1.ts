@@ -253,10 +253,33 @@ export const planOf = (
       turnAt(at);
     if (turn >= 0) held[turn]!.messages.push({ at, order: -1, id: head.id, head });
   }
+  /**
+   * The turn each call is drawn in, as V1 draws it (`callTurns` in the web's conversation): the
+   * first turn one of its activities names, else where its first activity falls. Claude can start a
+   * call before the turn that files its completion; the call is one, in that turn.
+   */
+  const callTurn = new Map<string, number>();
+  const callNamed = new Set<string>();
+  for (const head of skeleton.activities.toSorted(
+    (left, right) =>
+      ms(left.createdAt) - ms(right.createdAt) ||
+      (left.sequence ?? 0) - (right.sequence ?? 0) ||
+      left.id.localeCompare(right.id),
+  )) {
+    if (!TOOL.has(head.kind) || head.callId === null || callNamed.has(head.callId)) continue;
+    const named = head.turnId === null ? undefined : byTurnId.get(head.turnId);
+    if (named !== undefined) {
+      callTurn.set(head.callId, named);
+      callNamed.add(head.callId);
+    } else if (!callTurn.has(head.callId)) callTurn.set(head.callId, turnAt(ms(head.createdAt)));
+  }
   for (const head of skeleton.activities) {
     if (UNSHOWN.has(head.kind)) continue;
     const at = ms(head.createdAt);
-    const turn = (head.turnId === null ? undefined : byTurnId.get(head.turnId)) ?? turnAt(at);
+    const turn =
+      (TOOL.has(head.kind) && head.callId !== null ? callTurn.get(head.callId) : undefined) ??
+      (head.turnId === null ? undefined : byTurnId.get(head.turnId)) ??
+      turnAt(at);
     if (turn >= 0)
       held[turn]!.activities.push({ at, order: head.sequence ?? 0, id: head.id, head });
   }

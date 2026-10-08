@@ -199,3 +199,32 @@ describe("a call V1 heard return", () => {
     });
   });
 });
+
+describe("a call V1 began before the turn it is filed under", () => {
+  // Claude woke the Mate with a call already started: V1 kept its start and an update under no
+  // turn (time puts them in the turn before) and its completion under the turn that began.
+  const head = (id: string, kind: string, at: string, turnId: string | null) => ({
+    id,
+    kind,
+    summary: "Ran command",
+    turnId,
+    callId: "call-early",
+    taskId: null,
+    createdAt: at,
+    sequence: null,
+    payload: null,
+  });
+  const lifecycle = [
+    head("a-started", "tool.started", "2026-10-05T07:00:50.000Z", null),
+    head("b-updated", "tool.updated", "2026-10-05T07:00:55.000Z", null),
+    head("c-completed", "tool.completed", "2026-10-05T07:01:05.000Z", "turn-1"),
+  ];
+
+  it("is one call, in the turn V1 draws it in, and leaves the turn before as it ended", () => {
+    const plan = planOf({ ...skeleton(2, 0), activities: lifecycle }, { turns: 10, records: 100 });
+    const calls = plan.entries.filter((entry) => entry.kind === "call");
+    expect(calls.map((entry) => entry.run)).toEqual([2]);
+    expect(calls[0]).toMatchObject({ ids: ["a-started", "b-updated", "c-completed"] });
+    expect(plan.runs[0]?.lastAt).toBe(Date.parse(iso(0)));
+  });
+});
