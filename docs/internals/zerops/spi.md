@@ -183,14 +183,18 @@ The native print runtime restores resumed/forked history before accepting this c
 results supply cumulative `modelUsage`, which includes Task/sidechains and query-pipeline calls;
 Mate subtracts the baseline/previous result and keys the fact by `session_id` plus result `uuid`.
 Individual message meters and main-only `result.usage` are not added. A native
-result without model increments records its turn with empty model lines and retains its
-separately reported cost; unchanged historical counters do not identify participating models. A native
+result with no positive reported token or cost increment creates no usage fact. Historical
+models never stand in as participants on a zero result. A native
 `conversation_reset` supplies an explicit reset receipt: the native reset empties model counters
 and USD before the next result. Mate adopts that known-zero ledger, retires the old native
 session, and reads the next native session identity from its result (the conversation marker
 is a separate identity). Replayed reset receipts do not reset accounting twice. An
-unannounced ledger decrease, changed result receipt or incompatible cost basis stops accounting
-with a runtime warning. Native USD costs preserve the provider's reported estimated basis.
+invalid or missing category becomes unknown only for that category, and its next cumulative
+interval stays unknown rather than bridging the gap. Later trustworthy intervals recover.
+Changed receipt identities reject that receipt with a warning, without stopping later accounting.
+Native USD amounts are rounded in decimal to integer nanodollars (scale 9); costs with invalid
+values remain unknown while token accounting continues. Same-currency cumulative cost deltas
+retain the current provider-reported basis, including a basis change.
 Codex fresh `thread/start` opts into the installed native protocol's `experimentalRawEvents`
 through the raw request SPI; its generated public start schema omits that internal option.
 The app-server inherits the raw flag when attaching children and buffers their earlier events.
@@ -199,6 +203,8 @@ response IDs inside each native thread/turn, and emits one aggregate at own turn
 No context/lifetime counter participates. The raw meter supplies no model, so that model is null.
 Raw response usage is optional: an absent meter creates no fact and does not stop later
 reported parent or child usage from being recorded.
+Invalid token categories become unknown independently; known categories survive. Zero meters
+create no usage fact, and rejected duplicate receipts do not disable a session's accounting.
 Codex 0.160.1's native `ThreadResumeParams` has no raw opt-in, and its resume listener defaults
 raw off. Resumed chat continues with an explicit usage-unavailable warning and creates no guessed
 facts. Provider child creation broadcast lag is a native delivery limitation; no end-to-end

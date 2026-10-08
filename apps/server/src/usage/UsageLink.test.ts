@@ -123,12 +123,12 @@ describe("Mate usage on the existing HQ link", () => {
           yield* Queue.take(rejected);
           yield* PubSub.publish(hub, completion("later-130", "130"));
           for (let attempt = 1; attempt < failures; attempt++) {
-            yield* TestClock.adjust("1 second");
+            yield* TestClock.adjust(`${2 ** (attempt - 1)} seconds`);
             yield* Queue.take(rejected);
           }
           assert.deepEqual(yield* sql`SELECT identity FROM usage_outbox`, []);
           yield* sql`DROP TRIGGER reject_capture`;
-          yield* TestClock.adjust("1 second");
+          yield* TestClock.adjust(`${2 ** (failures - 1)} seconds`);
           const sent = yield* Queue.unbounded<MateLinkUp>();
           const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
           yield* Effect.forkScoped(lane.run);
@@ -165,6 +165,131 @@ describe("Mate usage on the existing HQ link", () => {
           Effect.provideService(ZeropsOrgRead, org),
         ),
     );
+  it.effect("a rejected conflicting fact does not stop the later 130-token turn", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const hub = yield* PubSub.unbounded<SpiEvent>();
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.fromPubSub(hub)));
+      const link = yield* makeUsageLink.pipe(Effect.provide(bus));
+      if (event.type !== "turn.usage.completed" || state.type !== "state")
+        throw new Error("Expected fixtures");
+      const completion = (id: string, tokens: string) =>
+        decodeEvent({
+          ...event,
+          eventId: `${id}-${tokens}`,
+          payload: {
+            ...event.payload,
+            nativeTurnId: id,
+            models: [
+              {
+                ...event.payload.models[0],
+                components: {
+                  ...event.payload.models[0]!.components,
+                  uncachedInput: tokens,
+                  output: "0",
+                  inclusiveTotal: tokens,
+                },
+              },
+            ],
+          },
+        });
+      yield* PubSub.publish(hub, completion("first", "100"));
+      yield* PubSub.publish(hub, completion("first", "150"));
+      yield* PubSub.publish(hub, completion("later", "130"));
+      yield* TestClock.adjust("0 seconds");
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 2);
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      yield* lane.state(state);
+      const frame = yield* Queue.take(sent);
+      if (frame.type !== "usage-facts") throw new Error("Expected known usage");
+      assert.deepEqual(
+        frame.facts.map((fact) => fact.models[0]!.components.inclusiveTotal),
+        ["100", "130"],
+      );
+    }).pipe(
+      Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
+    ),
+  );
+  it.effect("an ACK delete failure retains both turns and recovers on the same lane", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const rejected = yield* Queue.unbounded<void>();
+      const withTransaction: typeof sql.withTransaction = (effect) =>
+        sql.withTransaction(effect).pipe(Effect.tapError(() => Queue.offer(rejected, undefined)));
+      const observed = new Proxy(sql, {
+        get: (target, property, receiver) =>
+          property === "withTransaction"
+            ? withTransaction
+            : Reflect.get(target, property, receiver),
+      });
+      const bus = yield* Layer.build(ProviderRuntimeEventBusTest.make(Stream.empty));
+      const link = yield* makeUsageLink.pipe(
+        Effect.provide(bus),
+        Effect.provideService(SqlClient.SqlClient, observed),
+      );
+      const box = yield* makeUsageOutbox;
+      if (event.type !== "turn.usage.completed" || state.type !== "state")
+        throw new Error("Expected fixtures");
+      const completion = (id: string, tokens: string) => ({
+        ...event.payload,
+        provider: "codex" as const,
+        at: event.createdAt,
+        nativeTurnId: id,
+        models: [
+          {
+            ...event.payload.models[0]!,
+            components: {
+              ...event.payload.models[0]!.components,
+              uncachedInput: tokens,
+              output: "0",
+              inclusiveTotal: tokens,
+            },
+          },
+        ],
+      });
+      yield* box.record(completion("first-100", "100"));
+      const sent = yield* Queue.unbounded<MateLinkUp>();
+      const lane = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+      yield* Effect.forkScoped(lane.run);
+      yield* lane.state(state);
+      const first = yield* Queue.take(sent);
+      if (first.type !== "usage-facts") throw new Error("Expected first turn");
+      yield* box.record(completion("later-130", "130"));
+      yield* sql`CREATE TRIGGER reject_ack BEFORE DELETE ON usage_outbox BEGIN SELECT RAISE(ABORT, 'injected_ack_failure'); END`;
+      const ack = {
+        type: "usage-ack" as const,
+        batchId: first.batchId,
+        accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
+      };
+      yield* lane.receive(ack);
+      yield* Queue.take(rejected);
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 2);
+      yield* sql`DROP TRIGGER reject_ack`;
+      yield* lane.ping;
+      yield* lane.receive(ack);
+      yield* TestClock.adjust("1 second");
+      assert.equal((yield* sql`SELECT identity FROM usage_outbox`).length, 1);
+      const next = yield* Queue.take(sent);
+      if (next.type !== "usage-facts") throw new Error("Expected later turn");
+      assert.equal(next.facts[0]!.nativeId, "later-130");
+      assert.equal(next.facts[0]!.models[0]!.components.inclusiveTotal, "130");
+      yield* lane.receive({
+        type: "usage-ack",
+        batchId: next.batchId,
+        accepted: next.facts.map(({ originId, factId }) => ({ originId, factId })),
+      });
+      yield* TestClock.adjust("0 seconds");
+      assert.isUndefined(yield* box.batch);
+    }).pipe(
+      Effect.provide(Sqlite.layer({ filename: ":memory:" })),
+      Effect.provideService(ServerConfig, config),
+      Effect.provideService(ZeropsOrgRead, org),
+    ),
+  );
   it.effect(
     "completion capture is subscribed before the first turn and survives loss of its HQ acknowledgement",
     () =>
@@ -184,6 +309,7 @@ describe("Mate usage on the existing HQ link", () => {
         assert.equal(first.facts.length, 1);
         assert.equal(first.facts[0]!.models[0]!.components.inclusiveTotal, "30");
         const reconnect = yield* link.open((frame) => Queue.offer(sent, frame).pipe(Effect.asVoid));
+        yield* Effect.forkScoped(reconnect.run);
         yield* reconnect.state(state);
         const repeated = yield* Queue.take(sent);
         assert.deepEqual(repeated, first);
@@ -199,6 +325,7 @@ describe("Mate usage on the existing HQ link", () => {
           batchId: first.batchId,
           accepted: first.facts.map(({ originId, factId }) => ({ originId, factId })),
         });
+        yield* TestClock.adjust("0 seconds");
         assert.isUndefined(yield* box.batch);
         yield* Fiber.interrupt(running);
       }).pipe(

@@ -489,81 +489,155 @@ describe("ClaudeAdapterLive", () => {
     },
   );
 
-  it.effect("a replayed reset cannot restart accounting after a native ledger failure", () => {
+  it.effect("unknown startup costs preserve session readiness and turn admission", () => {
     const harness = makeHarness();
+    Object.defineProperty(
+      harness.query,
+      "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
+      {
+        value: async () => ({
+          session: {
+            total_cost_usd: null,
+            model_usage: {
+              model: {
+                inputTokens: 100,
+                outputTokens: 0,
+                cacheReadInputTokens: 0,
+                cacheCreationInputTokens: 0,
+                costUSD: "invalid",
+              },
+            },
+          },
+        }),
+      },
+    );
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
-      yield* adapter.startSession({
+      const session = yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: ProviderDriverKind.make("claudeAgent"),
         runtimeMode: "full-access",
       });
-      const complete = (sessionId: string, inputTokens: unknown, reset?: SDKMessage) =>
-        Effect.gen(function* () {
-          const turn = yield* adapter.sendTurn({
-            threadId: THREAD_ID,
-            input: "hello",
-            attachments: [],
-          });
-          const receipts = yield* adapter.streamEvents.pipe(
-            Stream.takeUntil(
-              (event) => event.type === "turn.completed" && event.turnId === turn.turnId,
-            ),
-            Stream.runCollect,
-            Effect.forkChild,
-          );
-          if (reset) harness.query.emit(reset);
-          harness.query.emit({
-            type: "result",
-            subtype: "success",
-            is_error: false,
-            errors: [],
-            session_id: sessionId,
-            uuid: `native-${turn.turnId}`,
-            total_cost_usd: 0,
-            modelUsage: {
-              model: {
-                inputTokens,
-                outputTokens: 0,
-                cacheReadInputTokens: 0,
-                cacheCreationInputTokens: 0,
-                thinkingTokens: 0,
-                costUSD: 0,
-                costBasis: "list",
-              },
-            },
-          } as unknown as SDKMessage);
-          return yield* Fiber.join(receipts);
-        });
-      const reset = (id: string, sessionId: string) =>
-        ({
-          type: "conversation_reset",
-          new_conversation_id: id,
-          session_id: sessionId,
-          uuid: id,
-        }) as unknown as SDKMessage;
-      yield* complete("original-session", 100);
-      const applied = yield* complete("new-session", 10, reset("reset", "original-session"));
-      assert.equal(
-        applied.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
-          ?.components.uncachedInput,
-        "10",
-      );
-      const malformed = yield* complete("new-session", "invalid");
-      assert(malformed.some((event) => event.type === "runtime.warning"));
-      const replayed = yield* complete("new-session", 20, reset("reset", "original-session"));
-      assert.equal(replayed.filter((event) => event.type === "turn.usage.completed").length, 0);
-      const recovered = yield* complete("third-session", 5, reset("new-reset", "new-session"));
-      assert.equal(
-        recovered.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
-          ?.components.uncachedInput,
-        "5",
-      );
+      assert.equal(session.status, "ready");
+      assert.equal(harness.query.closeCalls, 0);
+      const admitted = yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+      assert.isDefined(admitted.turnId);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
   });
+
+  it.effect(
+    "invalid native categories do not stop later turns or require a reset to recover",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        const complete = (
+          sessionId: string,
+          inputTokens: unknown,
+          reset?: SDKMessage,
+          outputTokens = 0,
+        ) =>
+          Effect.gen(function* () {
+            const turn = yield* adapter.sendTurn({
+              threadId: THREAD_ID,
+              input: "hello",
+              attachments: [],
+            });
+            const receipts = yield* adapter.streamEvents.pipe(
+              Stream.takeUntil(
+                (event) => event.type === "turn.completed" && event.turnId === turn.turnId,
+              ),
+              Stream.runCollect,
+              Effect.forkChild,
+            );
+            if (reset) harness.query.emit(reset);
+            harness.query.emit({
+              type: "result",
+              subtype: "success",
+              is_error: false,
+              errors: [],
+              session_id: sessionId,
+              uuid: `native-${turn.turnId}`,
+              total_cost_usd: 0,
+              modelUsage: {
+                model: {
+                  inputTokens,
+                  outputTokens,
+                  cacheReadInputTokens: 0,
+                  cacheCreationInputTokens: 0,
+                  thinkingTokens: 0,
+                  costUSD: 0,
+                  costBasis: "list",
+                },
+              },
+            } as unknown as SDKMessage);
+            return yield* Fiber.join(receipts);
+          });
+        const reset = (id: string, sessionId: string) =>
+          ({
+            type: "conversation_reset",
+            new_conversation_id: id,
+            session_id: sessionId,
+            uuid: id,
+          }) as unknown as SDKMessage;
+        yield* complete("original-session", 100);
+        const applied = yield* complete("new-session", 10, reset("reset", "original-session"));
+        assert.equal(
+          applied.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
+            ?.components.uncachedInput,
+          "10",
+        );
+        const malformed = yield* complete("new-session", "invalid", undefined, 5);
+        assert.equal(malformed.filter((event) => event.type === "runtime.warning").length, 0);
+        assert.equal(
+          malformed.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
+            ?.components.output,
+          "5",
+        );
+        const replayed = yield* complete("new-session", 20, reset("reset", "original-session"));
+        assert.equal(replayed.filter((event) => event.type === "turn.usage.completed").length, 0);
+        const withoutReset = yield* complete("new-session", 25, undefined, 5);
+        assert.equal(
+          withoutReset.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
+            ?.components.uncachedInput,
+          "5",
+        );
+        const rejectedReset = yield* complete(
+          "new-session",
+          30,
+          reset("reset", "unrelated-session"),
+          10,
+        );
+        assert.equal(rejectedReset.filter((event) => event.type === "runtime.warning").length, 1);
+        assert.equal(
+          rejectedReset.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
+            ?.components.uncachedInput,
+          "5",
+        );
+        const recovered = yield* complete("third-session", 5, reset("new-reset", "new-session"));
+        assert.equal(
+          recovered.find((event) => event.type === "turn.usage.completed")?.payload.models[0]
+            ?.components.uncachedInput,
+          "5",
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("returns validation error for non-claude provider on startSession", () => {
     const harness = makeHarness();
@@ -1679,9 +1753,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(10),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 10).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -2072,9 +2144,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(11),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 11).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3558,9 +3628,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(6),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 6).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3619,9 +3687,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(6),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 6).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -3682,9 +3748,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(7),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -4514,9 +4578,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(7),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 7).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -7848,9 +7910,7 @@ describe("ClaudeAdapterLive", () => {
       return Effect.gen(function* () {
         const adapter = yield* ClaudeAdapter;
 
-        const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-          Stream.filter((event) => event.type !== "turn.usage.completed"),
-          Stream.take(8),
+        const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
           Stream.runCollect,
           Effect.forkChild,
         );
@@ -8107,9 +8167,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(8),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 8).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );
@@ -8178,9 +8236,7 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
-      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
-        Stream.filter((event) => event.type !== "turn.usage.completed"),
-        Stream.take(13),
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 13).pipe(
         Stream.runCollect,
         Effect.forkChild,
       );

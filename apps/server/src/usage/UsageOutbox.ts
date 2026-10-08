@@ -19,6 +19,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import { retryUsageStorage } from "./UsageStorage.ts";
 
 const Binding = Schema.Struct({
   orgId: Schema.NonEmptyString,
@@ -196,13 +197,13 @@ export const makeUsageOutbox = Effect.gen(function* () {
     }
   });
   return {
-    record: (input: CompletedUsage) => sql.withTransaction(record(input)),
-    bind,
-    batch: sql.withTransaction(batch),
+    record: (input: CompletedUsage) => retryUsageStorage(sql.withTransaction(record(input))),
+    bind: (next: UsageBinding) => retryUsageStorage(bind(next)),
+    batch: retryUsageStorage(sql.withTransaction(batch)),
     acknowledge: (
       frame: UsageLinkUp,
       accepted: Extract<UsageLinkDown, { type: "usage-ack" }>["accepted"],
-    ) => sql.withTransaction(acknowledge(frame, accepted)),
+    ) => retryUsageStorage(sql.withTransaction(acknowledge(frame, accepted))),
   };
 });
 export type UsageOutbox = Effect.Success<typeof makeUsageOutbox>;

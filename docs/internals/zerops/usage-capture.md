@@ -18,15 +18,22 @@ counts one turn; model groups count participating turns and their own token comp
 participation counts are not additive across models. Header cost and per-model cost are separate
 views of reported evidence and are never added together. Unknown categories and models remain
 explicitly unknown; reasoning is a subset of output where the provider defines it that way.
+Zero usage creates no fact and no model participation. Invalid values affect only their own
+categories or cost, leaving known tokens and later turns intact. Native USD numbers round to
+integer nanodollars; each cost delta keeps its current reported basis.
 
 `usage.sqlite` is a durable outbox separate from orchestration state. Its provider subscription is
-acquired before command admission and capture continues while HQ is unavailable. A verified
+acquired before command admission and capture continues while HQ is unavailable. Database open,
+migration and every outbox operation retry storage failures with backoff while Mate runs. Failed
+acquisition attempts close their resources; admission waits for the ready subscription. A verified
 org/project/Mate binding authorizes delivery; a different binding refuses it. The forward migration
 drops old transcript tables without importing their unproved accounting.
 
 The existing Mate→HQ socket sends bounded batches. HQ acknowledges identities only after its
 transaction commits; Mate deletes only those facts. Permanent HQ receipts deduplicate retries and
-cloned outboxes. There is no journal cursor, filesystem checkpoint or snapshot-repair protocol.
+cloned outboxes. A delivery worker waits for storage recovery independently of the socket's pongs;
+failed ACK deletion retains the in-flight batch and retries without requiring reconnection.
+There is no journal cursor, filesystem checkpoint or snapshot-repair protocol.
 
 Before the first fact there is no recorded usage. Its date describes the observation boundary,
 not the beginning of consumption. HQ retains exact turn facts for thirty days and daily totals and

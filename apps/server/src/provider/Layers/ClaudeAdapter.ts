@@ -455,7 +455,6 @@ function rememberPendingTaskEntry(
 
 interface ClaudeSessionContext {
   readonly turnUsage: ReturnType<typeof makeClaudeTurnUsage>;
-  usageFailed: boolean;
   session: ProviderSession;
   /** The last of what the CLI wrote to stderr: why its stream died, for the log. */
   readonly stderrTail: StderrTail;
@@ -4637,27 +4636,26 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   ) {
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
-    const measured = context.usageFailed
-      ? []
-      : yield* Effect.try({
-          try: () => context.turnUsage(message),
-          catch: (cause) =>
-            new ProviderAdapterProcessError({
-              provider: PROVIDER,
-              threadId: context.session.threadId,
-              detail: "Exact Claude usage accounting failed.",
-              cause,
-            }),
-        }).pipe(
-          Effect.catch((cause) => {
-            context.usageFailed = true;
-            return emitRuntimeWarning(
-              context,
-              `${cause.detail} ${String(cause.cause)}`,
-              message,
-            ).pipe(Effect.as([]));
-          }),
+    const measured = yield* Effect.try({
+      try: () => {
+        if (message.type === "conversation_reset")
+          context.turnUsage.resetNativeLedger(message.new_conversation_id, message.session_id);
+        return context.turnUsage(message);
+      },
+      catch: (cause) =>
+        new ProviderAdapterProcessError({
+          provider: PROVIDER,
+          threadId: context.session.threadId,
+          detail: "Exact Claude usage accounting failed.",
+          cause,
+        }),
+    }).pipe(
+      Effect.catch((cause) => {
+        return emitRuntimeWarning(context, `${cause.detail} ${String(cause.cause)}`, message).pipe(
+          Effect.as([]),
         );
+      }),
+    );
     for (const payload of measured) {
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
@@ -4703,8 +4701,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       case "prompt_suggestion":
         return;
       case "conversation_reset": {
-        if (context.turnUsage.resetNativeLedger(message.new_conversation_id, message.session_id))
-          context.usageFailed = false;
         return;
       }
       default: {

@@ -6,10 +6,7 @@ import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import * as Schedule from "effect/Schedule";
-import { SqlError } from "effect/sql/SqlError";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
@@ -29,7 +26,6 @@ export interface UsageLink {
 const orgBody = Schema.Struct({ clientId: Schema.NonEmptyString });
 const decodeOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeProvider = Schema.decodeUnknownEffect(UsageProviderKind);
-const isSqlError = Schema.is(SqlError);
 
 export const makeUsageLink = Effect.gen(function* () {
   const outbox = yield* makeUsageOutbox;
@@ -46,23 +42,13 @@ export const makeUsageLink = Effect.gen(function* () {
               const provider = yield* decodeProvider(
                 event.provider === "claudeAgent" ? "claude" : event.provider,
               );
-              yield* outbox.record({ provider, at: event.createdAt, ...event.payload }).pipe(
-                Effect.tapError((error) =>
-                  Effect.logError(
-                    isSqlError(error)
-                      ? "Usage capture failed; completion retained for retry"
-                      : "Usage capture rejected; accounting stopped",
-                    error,
-                  ),
-                ),
-                // The lossless subscription retains this completion until its write succeeds.
-                // This interval bounds retry load; it never expires or discards a completion.
-                Effect.retry({
-                  schedule: Schedule.spaced("1 second"),
-                  while: isSqlError,
-                }),
-              );
-            }).pipe(Effect.tap(() => Effect.sync(() => wake?.())))
+              yield* outbox.record({ provider, at: event.createdAt, ...event.payload });
+              wake?.();
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError("Usage fact rejected; later turns remain independent", cause),
+              ),
+            )
           : Effect.void,
       ),
     ),
@@ -73,26 +59,25 @@ export const makeUsageLink = Effect.gen(function* () {
     open: (send) =>
       Effect.gen(function* () {
         const lane = {};
-        const changed = yield* Queue.sliding<void>(1);
-        const lock = Semaphore.makeUnsafe(1);
+        type Work =
+          | { readonly type: "state"; readonly message: Extract<MateLinkDown, { type: "state" }> }
+          | { readonly type: "receipt"; readonly message: MateLinkDown }
+          | { readonly type: "ping" }
+          | { readonly type: "changed" };
+        const changed = yield* Queue.unbounded<Work>();
         let negotiated = false;
-        let refused = false;
         let flight: UsageLinkUp | undefined;
         let lastState: Extract<MateLinkDown, { type: "state" }> | undefined;
         const safe = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
             Effect.catchCause((cause) =>
-              Effect.sync(() => {
-                refused = true;
-              }).pipe(
-                Effect.andThen(Effect.logError("Usage delivery refused; outbox retained", cause)),
-              ),
+              Effect.logError("Usage delivery failed; outbox retained", cause),
             ),
             Effect.asVoid,
           );
         const next = (resend = false) =>
           Effect.gen(function* () {
-            if (!negotiated || refused || active !== lane) return;
+            if (!negotiated || active !== lane) return;
             if (flight) {
               if (resend) yield* send(flight);
               return;
@@ -106,23 +91,12 @@ export const makeUsageLink = Effect.gen(function* () {
           lastState = message;
           if (
             negotiated ||
-            refused ||
             !config.zerops ||
             message.usage?.capture !== AGENT_USAGE_CAPTURE_PROTOCOL
           )
             return;
           if (message.mate.projectId !== config.zerops.projectId) return;
           const read = yield* orgRead.project(config.zerops);
-          if (
-            read.kind === "no-key" ||
-            (read.kind === "answered" &&
-              read.status >= 400 &&
-              read.status < 500 &&
-              read.status !== 429)
-          ) {
-            refused = true;
-            return;
-          }
           if (read.kind !== "answered" || read.status !== 200) return;
           const body = yield* decodeOrg(read.body);
           yield* outbox.bind({
@@ -132,7 +106,7 @@ export const makeUsageLink = Effect.gen(function* () {
           });
           active = lane;
           negotiated = true;
-          wake = () => Queue.offerUnsafe(changed, undefined);
+          wake = () => Queue.offerUnsafe(changed, { type: "changed" });
           yield* next();
         });
         yield* Effect.addFinalizer(() =>
@@ -143,39 +117,41 @@ export const makeUsageLink = Effect.gen(function* () {
             }
           }),
         );
+        const receive = Effect.fnUntraced(function* (message: MateLinkDown) {
+          if (!negotiated || active !== lane || !flight || !message.type.startsWith("usage-"))
+            return;
+          const receipt = message as UsageLinkDown;
+          if (receipt.batchId !== flight.batchId) return;
+          if (receipt.type === "usage-error") {
+            yield* Effect.logWarning("HQ did not acknowledge usage; outbox retained", receipt);
+            return;
+          }
+          yield* outbox.acknowledge(flight, receipt.accepted);
+          flight = undefined;
+          yield* next();
+        });
+        // Storage recovery must not hold the connection's reader or delay its pongs.
         return {
-          state: (message) => safe(lock.withPermits(1)(negotiate(message))),
-          ping: safe(
-            lock.withPermits(1)(
-              Effect.suspend(() => (!negotiated && lastState ? negotiate(lastState) : next(true))),
-            ),
-          ),
+          state: (message) => Queue.offer(changed, { type: "state", message }).pipe(Effect.asVoid),
+          ping: Queue.offer(changed, { type: "ping" }).pipe(Effect.asVoid),
           receive: (message) =>
-            safe(
-              lock.withPermits(1)(
-                Effect.gen(function* () {
-                  if (
-                    !negotiated ||
-                    refused ||
-                    active !== lane ||
-                    !flight ||
-                    !message.type.startsWith("usage-")
-                  )
-                    return;
-                  const receipt = message as UsageLinkDown;
-                  if (receipt.batchId !== flight.batchId) return;
-                  if (receipt.type === "usage-error") {
-                    if (receipt.disposition !== "transient") refused = true;
-                    return;
-                  }
-                  yield* outbox.acknowledge(flight, receipt.accepted);
-                  flight = undefined;
-                  yield* next();
-                }),
+            Queue.offer(changed, { type: "receipt", message }).pipe(Effect.asVoid),
+          run: Effect.forever(
+            Queue.take(changed).pipe(
+              Effect.flatMap((work) =>
+                safe(
+                  work.type === "state"
+                    ? negotiate(work.message)
+                    : work.type === "receipt"
+                      ? receive(work.message)
+                      : work.type === "ping"
+                        ? Effect.suspend(() =>
+                            !negotiated && lastState ? negotiate(lastState) : next(true),
+                          )
+                        : next(),
+                ),
               ),
             ),
-          run: Effect.forever(
-            Queue.take(changed).pipe(Effect.andThen(safe(lock.withPermits(1)(next())))),
           ),
         } satisfies UsageLane;
       }),

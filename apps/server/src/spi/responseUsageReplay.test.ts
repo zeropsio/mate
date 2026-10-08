@@ -156,4 +156,61 @@ describe("turn usage at the real provider adapter seam", () => {
       ["child", "valid-child", "130"],
     ]);
   });
+  it.each(["odd-category", "conflicting-retry"] as const)(
+    "%s affects only its native fact; later parent and child meters still count",
+    async (scenario) => {
+      const response = (threadId: string, id: string, meter = usage) => ({
+        method: "rawResponse/completed",
+        params: { threadId, turnId: id, responseId: id, usage: meter },
+      });
+      const done = (threadId: string, id: string) => ({
+        method: "turn/completed",
+        params: { threadId, turn: { id, items: [], status: "completed", error: null } },
+      });
+      const frames = [
+        response(
+          "parent",
+          "earlier",
+          scenario === "odd-category" ? { ...usage, reasoningOutputTokens: 40 } : usage,
+        ),
+        ...(scenario === "conflicting-retry"
+          ? [response("parent", "earlier", { ...usage, outputTokens: 60, totalTokens: 160 })]
+          : []),
+        done("parent", "earlier"),
+        response("parent", "later-parent"),
+        done("parent", "later-parent"),
+        response("child", "later-child"),
+        done("child", "later-child"),
+      ];
+      for (const frame of frames.filter((frame) => frame.method === "rawResponse/completed"))
+        expect(isCodexCompletion(frame.params)).toBe(true);
+      const fixture: Fixture = {
+        name: `constructed-${scenario}`,
+        dir: codexDir,
+        meta: { driver: "codex", synthetic: true },
+        lines: frames.map((message) => ({ kind: "message", message })),
+      };
+      const events = await replayCodex(fixture);
+      expect(events.filter((event) => event.type === "runtime.warning")).toHaveLength(
+        scenario === "conflicting-retry" ? 1 : 0,
+      );
+      const facts = events.filter((event) => event.type === "turn.usage.completed");
+      expect(facts[0]?.payload.models[0]?.components).toMatchObject({
+        output: "30",
+        inclusiveTotal: "130",
+        reasoning: scenario === "odd-category" ? null : "10",
+      });
+      expect(
+        facts
+          .slice(1)
+          .map((fact) => [
+            fact.payload.nativeThreadId,
+            fact.payload.models[0]?.components.inclusiveTotal,
+          ]),
+      ).toEqual([
+        ["parent", "130"],
+        ["child", "130"],
+      ]);
+    },
+  );
 });

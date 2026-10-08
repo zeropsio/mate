@@ -1,8 +1,11 @@
-import type { EnvironmentId, UsageReport } from "@t3tools/contracts";
+import type { EnvironmentId, UsageReport, UsageReportQuery } from "@t3tools/contracts";
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { UsageEnvironmentIdentity } from "../../zerops/usageEnvironmentIdentities";
+import type {
+  UsageEnvironmentIdentity,
+  UsageEnvironmentOwner,
+} from "../../zerops/usageEnvironmentIdentities";
 import { recordedReport, statistics } from "./usageTestFixtures";
 
 const testState = vi.hoisted(() => ({
@@ -11,6 +14,9 @@ const testState = vi.hoisted(() => ({
   metric: "cost" as "cost" | "tokens" | "limits",
   breakdown: "time" as "auto" | "person" | "project" | "mate" | "model" | "time",
   report: null as UsageReport | null,
+  overallReport: null as UsageReport | null,
+  accountObservation: false,
+  people: new Map<string, UsageEnvironmentOwner>(),
   models: null as UsageReport | null,
   periods: null as UsageReport | null,
   providers: null as UsageReport | null,
@@ -54,28 +60,50 @@ vi.mock("../../state/usage", async (original) => {
   const actual = await original<typeof import("../../state/usage")>();
   return {
     ...actual,
-    useAgentUsage: () => ({
-      merged: actual.usageReportView(
-        testState.report,
-        testState.models,
-        testState.providers,
-        testState.periods,
-        true,
-      ),
-      overall: actual.usageReportView(testState.report),
-      report: testState.report,
-      overallReport: testState.report,
-      detailPending: false,
-      detailUnavailable: false,
-      read: testState.read ?? { kind: "read", report: testState.report, stale: testState.stale },
-      stale: testState.stale,
-      refresh: vi.fn(),
-    }),
+    useAgentUsage: (...args: Parameters<typeof actual.useAgentUsage>) =>
+      testState.accountObservation
+        ? actual.useAgentUsage(...args)
+        : {
+            merged: actual.usageReportView(
+              testState.report,
+              testState.models,
+              testState.providers,
+              testState.periods,
+              true,
+            ),
+            overall: actual.usageReportView(testState.report),
+            report: testState.report,
+            overallReport: testState.report,
+            detailPending: false,
+            detailUnavailable: false,
+            read: testState.read ?? {
+              kind: "read",
+              report: testState.report,
+              stale: testState.stale,
+            },
+            stale: testState.stale,
+            refresh: vi.fn(),
+          },
   };
 });
+vi.mock("../../zerops/ZeropsAccountData", () => ({
+  useAccountDataOptional: () => ({ orgId: "org", retryDetail: vi.fn() }),
+  useDetailDemand: vi.fn(),
+  useProjection: (_projection: unknown, key: { owner: string } | null) => {
+    if (key === null) return { kind: "reading" };
+    const query = JSON.parse(key.owner) as UsageReportQuery;
+    const report = query.ownerUserId === null ? testState.overallReport : testState.report;
+    return {
+      kind: "read",
+      stale: false,
+      report: { ...report, query, groups: query.groupBy === "mate" ? report?.groups : [] },
+    };
+  },
+}));
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     identities: testState.identities,
+    people: testState.people,
     owners: testState.owners,
     listed: true,
     baseline: "resolved",
@@ -132,6 +160,9 @@ beforeEach(() => {
   testState.read = null;
   testState.stale = false;
   testState.report = recordedReport();
+  testState.overallReport = null;
+  testState.accountObservation = false;
+  testState.people = new Map();
   testState.providers = recordedReport({
     groups: [{ key: "codex", provider: "codex", totals: statistics(), costUsdNanos: "7830000000" }],
   });
@@ -187,6 +218,48 @@ beforeEach(() => {
   });
 });
 describe("recorded HQ usage presentation", () => {
+  it.each([
+    { name: "selecting Alice's 100 tokens", filteredMate: "mate-a" },
+    { name: "selecting Alice after a Mate's owner changed", filteredMate: "mate-b" },
+  ])("$name retains Bob's independently authorized selector identity", ({ filteredMate }) => {
+    testState.accountObservation = true;
+    testState.metric = "tokens";
+    testState.breakdown = "person";
+    testState.people = new Map([
+      ["alice", { id: "alice", name: "Alice", initials: "A", avatarUrl: null, isViewer: true }],
+      ["bob", { id: "bob", name: "Bob", initials: "B", avatarUrl: null, isViewer: false }],
+    ]);
+    const alice = { ...recordedReport().coverage[0]!, ownerUserId: "alice" };
+    const bob = {
+      ...alice,
+      originId: "origin-b",
+      mateId: "mate-b",
+      ownerUserId: "bob",
+      label: "Bob's Mate",
+    };
+    testState.overallReport = recordedReport({
+      totals: statistics("300", "2"),
+      coverage: [alice, bob],
+      groups: [
+        { key: "mate-a", totals: statistics("100"), costUsdNanos: "1000000000" },
+        { key: "mate-b", totals: statistics("200"), costUsdNanos: "2000000000" },
+      ],
+    });
+    testState.report = recordedReport({
+      totals: statistics("100"),
+      coverage: [{ ...alice, mateId: filteredMate }],
+      groups: [{ key: filteredMate, totals: statistics("100"), costUsdNanos: "1000000000" }],
+      generation: { ...recordedReport().generation, access: "f".repeat(64) },
+    });
+    const all = renderPage();
+    expect(all).toContain("Bob");
+    expect(bodyOf(all)).toContain("200");
+    const scoped = renderPage({ person: "alice" });
+    expect(scoped).toContain("100");
+    expect(scoped).toContain('value="bob"');
+    expect(scoped).toContain("Bob");
+    expect(scoped).not.toContain("Unknown owner");
+  });
   it("keeps recent activity visible first without empty hourly rows", () => {
     const body = bodyOf(renderPage());
     expect(body.match(/<tr/g)).toHaveLength(2);

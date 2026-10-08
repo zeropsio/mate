@@ -1894,7 +1894,6 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
         // children when it completes, so the consumer died on return and every
         // runtime event the session emitted afterwards was dropped.
         const turnUsage = makeCodexTurnUsage();
-        let usageFailed = false;
         const eventFiber = yield* Stream.runForEach(runtime.events, (event) =>
           Effect.gen(function* () {
             yield* writeNativeEvent(event);
@@ -1958,35 +1957,32 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
             }
 
             const usageEvents: ProviderRuntimeEvent[] = [];
-            if (!usageFailed) {
-              const measured = yield* Effect.try({
-                try: () => turnUsage(event.method, event.payload),
-                catch: (cause) =>
-                  new ProviderAdapterProcessError({
-                    provider: PROVIDER,
-                    threadId: input.threadId,
-                    detail: "Exact Codex usage accounting failed.",
-                    cause,
-                  }),
-              }).pipe(
-                Effect.catch((cause) => {
-                  usageFailed = true;
-                  usageEvents.push({
-                    ...runtimeEventBase(event, event.threadId),
-                    type: "runtime.warning",
-                    payload: { message: cause.detail, detail: String(cause.cause) },
-                  });
-                  return Effect.succeed([]);
+            const measured = yield* Effect.try({
+              try: () => turnUsage(event.method, event.payload),
+              catch: (cause) =>
+                new ProviderAdapterProcessError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  detail: "Exact Codex usage accounting failed.",
+                  cause,
                 }),
-              );
-              for (const payload of measured)
+            }).pipe(
+              Effect.catch((cause) => {
                 usageEvents.push({
                   ...runtimeEventBase(event, event.threadId),
-                  eventId: EventId.make(`${event.id}:usage`),
-                  type: "turn.usage.completed",
-                  payload,
+                  type: "runtime.warning",
+                  payload: { message: cause.detail, detail: String(cause.cause) },
                 });
-            }
+                return Effect.succeed([]);
+              }),
+            );
+            for (const payload of measured)
+              usageEvents.push({
+                ...runtimeEventBase(event, event.threadId),
+                eventId: EventId.make(`${event.id}:usage`),
+                type: "turn.usage.completed",
+                payload,
+              });
             const mappedEvents = [...usageEvents, ...mapToRuntimeEvents(event, event.threadId)].map(
               (runtimeEvent) =>
                 usageLimitMessage && runtimeEvent.type === "turn.completed"

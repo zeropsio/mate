@@ -558,8 +558,8 @@
             "inclusiveTotal": null
           },
           "nativeCost": {
-            "amount": "949",
-            "scale": 6,
+            "amount": "949000",
+            "scale": 9,
             "currency": "USD",
             "basis": "list"
           }
@@ -575,16 +575,16 @@
             "inclusiveTotal": null
           },
           "nativeCost": {
-            "amount": "105647",
-            "scale": 6,
+            "amount": "105647000",
+            "scale": 9,
             "currency": "USD",
             "basis": "list"
           }
         }
       ],
       "nativeCost": {
-        "amount": "10659600000000001",
-        "scale": 17,
+        "amount": "106596000",
+        "scale": 9,
         "currency": "USD",
         "basis": "provider-reported-estimate"
       },

@@ -60,7 +60,7 @@ import {
   type UsageScope,
 } from "./usageDimensions";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
-import { usagePageState } from "./usagePage.logic";
+import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsageProviderChart } from "./UsageProviderChart";
 import {
@@ -158,29 +158,25 @@ export function UsagePage({
     stale,
     refresh,
   } = useAgentUsage(window, scope, !showingLimits, provenance);
-  const identities = useMemo(() => {
-    const result = new Map(identityRead.identities);
-    for (const entry of [...(overallReport?.coverage ?? []), ...(report?.coverage ?? [])]) {
-      if (entry.mateId === undefined) continue;
-      const owner =
-        (entry.ownerUserId == null ? null : identityRead.people?.get(entry.ownerUserId)) ??
-        [...identityRead.identities.values()].find((value) => value.owner?.id === entry.ownerUserId)
-          ?.owner ??
-        null;
-      result.set(entry.mateId as EnvironmentId, {
-        mateName: entry.label ?? entry.mateId,
-        projectId: entry.appId ?? null,
-        projectName: entry.appId == null ? null : (projects.get(entry.appId) ?? entry.appId),
-        ownerState:
-          entry.ownerUserId === null ? "unassigned" : owner === null ? "unknown" : "known",
-        owner,
-      });
-    }
-    return result;
-  }, [identityRead.identities, identityRead.people, report, overallReport, projects]);
-  const labels = useMemo(
-    () => new Map([...identities].map(([id, value]) => [id, value.mateName])),
-    [identities],
+  const { identities, labels } = useMemo(
+    () =>
+      createUsageIdentityIndex({
+        report,
+        registered: identityRead.identities,
+        people: identityRead.people,
+        projects,
+      }),
+    [identityRead.identities, identityRead.people, report, projects],
+  );
+  const overallIndex = useMemo(
+    () =>
+      createUsageIdentityIndex({
+        report: overallReport,
+        registered: identityRead.identities,
+        people: identityRead.people,
+        projects,
+      }),
+    [identityRead.identities, identityRead.people, overallReport, projects],
   );
   const dimensionMetric = metric === "tokens" ? "tokens" : "cost";
   const dimensions = useMemo(
@@ -199,11 +195,11 @@ export function UsagePage({
     () =>
       usageDimensions({
         byEnvironment: overall.byEnvironment,
-        identities,
-        labels,
+        identities: overallIndex.identities,
+        labels: overallIndex.labels,
         metric: dimensionMetric,
       }),
-    [dimensionMetric, identities, labels, overall.byEnvironment],
+    [dimensionMetric, overallIndex, overall.byEnvironment],
   );
   const breakdownOptions: readonly { value: UsageBreakdown; label: string }[] = [
     ...DIMENSION_OPTIONS.filter((option) => dimensions.visible[option.value]),
@@ -350,7 +346,7 @@ export function UsagePage({
               scope={scope}
               identities={identities}
               projects={projects}
-              dimensions={overallDimensions}
+              dimensions={dimensions}
               labels={labels}
               onScopeChange={onScopeChange}
             />
@@ -361,7 +357,7 @@ export function UsagePage({
         {showingLimits ? null : (
           <UsageScopeFilters
             scope={scope}
-            identities={identities}
+            identities={overallIndex.identities}
             projects={projects}
             dimensions={overallDimensions}
             onScopeChange={onScopeChange}

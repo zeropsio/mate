@@ -49,8 +49,8 @@ counts overlap across groups and are never summed into headline turn counts. A m
 that model's participation, components and reported charge. Native headline charges are never added
 to model charges or allocated to a model without provider evidence. Automatic pricing uses model
 cells; its coverage denominator is model entries, independently of headline turn counts.
-A turn with an observed zero model delta has no model lines. It still counts one completed turn,
-without inferring participation from models used by earlier turns.
+A zero token and zero cost increment emits no fact. Cost-only evidence can retain a turn with no
+model lines, without inferring participation from models used by earlier turns.
 
 Exact rows and their per-turn model contributions expire after 30 days. Permanent receipts retain
 only identity and a semantic digest. Leader activation and daily maintenance prune bounded batches;
@@ -81,7 +81,9 @@ membership in the original organization and org READ_ONLY or higher. Every filte
 and detail page uses the same admitted sources. An inaccessible selector is refused; absence
 from the viewer's listing is not deletion. Summary groupings share a read generation only when
 their authorized sources and every filter agree. Detail generations also bind the grouping to
-protect pagination. New facts, access changes and pricing generations
+protect pagination. Filtered and overall reports each join identities from their own admitted
+coverage; their different queries do not require matching access hashes.
+New facts, access changes and pricing generations
 invalidate detail cursors. Reports do not open Mate sockets.
 
 Reports have bounded server groups and keyset detail pages with explicit truncation. Daily

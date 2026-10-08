@@ -69,7 +69,7 @@ export function useAgentUsage(
     merged,
     overall: useMemo(() => usageReportView(reportOf(overall.result)), [overall.result]),
     report,
-    overallReport: matchedReport(report, overall.result),
+    overallReport: reportOf(overall.result),
     detailPending: [models.result, providers.result, periods.result].some(
       (read) =>
         read.kind === "reading" || (read.kind === "read" && !sameGeneration(report, read.report)),

@@ -839,8 +839,8 @@
       "nativeTurnId": "00000000-0000-4000-8000-000000000025",
       "models": [],
       "nativeCost": {
-        "amount": "421",
-        "scale": 4,
+        "amount": "42100000",
+        "scale": 9,
         "currency": "USD",
         "basis": "provider-reported-estimate"
       },
