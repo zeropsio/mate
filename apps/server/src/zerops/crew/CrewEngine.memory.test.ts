@@ -18,6 +18,7 @@ import {
   opened,
   type CrewChat,
   type CrewWorld,
+  itV1,
 } from "./testing/crewWorld.ts";
 
 const decodeBoard = Schema.decodeUnknownEffect(
@@ -99,9 +100,8 @@ describe("CrewEngine memory", { timeout: CREW_ENGINE_TEST_TIMEOUT }, () => {
         );
         yield* world.compacted(thread);
         yield* world.turnEnds(thread);
-        const pending = yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints[0]?.state === "rotate-pending",
-        );
+        yield* world.sessionsWhere("backend", (sessions) => sessions.latest === "rotate-pending");
+        const pending = yield* world.snapshot;
         yield* world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] });
         const steered = (yield* opened(world)).length;
         yield* world.turnStarts(thread);
@@ -110,24 +110,25 @@ describe("CrewEngine memory", { timeout: CREW_ENGINE_TEST_TIMEOUT }, () => {
         yield* world.press({ _tag: "landNow", taskId: pending.board.tasks[0]!.id });
         yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
         yield* world.press({ _tag: "message", handle: "backend", text: "Next", attachments: [] });
-        const rotated = yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints.length === 2,
-        );
+        const rotated = yield* world.sessionsWhere("backend", (sessions) => sessions.count === 2);
         assert.deepStrictEqual(
-          [steered, rotated.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason])],
+          [steered, rotated],
           [
             1,
-            [
-              ["retired", null],
-              ["open", "A fresh conversation, carried on from memory"],
-            ],
+            {
+              count: 2,
+              latest: "open",
+              reasons: [null, "A fresh conversation, carried on from memory"],
+            },
           ],
         );
       }),
     ),
   );
 
-  it.live("a transcript gone before a resume rotates the conversation at once", () =>
+  // A transcript gone before a resume is V1's own mechanism (the engine resumes its sessions
+  // itself): it runs on V1 until the cutover (the owner, 2026-10-08).
+  itV1("a transcript gone before a resume rotates the conversation at once", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -152,7 +153,8 @@ describe("CrewEngine memory", { timeout: CREW_ENGINE_TEST_TIMEOUT }, () => {
     ),
   );
 
-  it.live("the crew-state ref carries each crewmate's memory and the board", () =>
+  // The engine keeps no crew-state git mirror (the owner, 2026-10-08): V1's until the cutover.
+  itV1("the crew-state ref carries each crewmate's memory and the board", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
