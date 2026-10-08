@@ -27,6 +27,8 @@ import {
   ENGINE_WIRE_BUDGETS,
   EngineWireError,
   MATE_ENGINE_PROTOCOLS,
+  type ChatAttachment,
+  type ChatImageAttachment,
   type CommandId,
   type ConversationId,
   type EngineAnswerInput,
@@ -63,6 +65,7 @@ import { conversationRowOf } from "../read/conversationRow.ts";
 import { readConversationView } from "../read/conversationView.ts";
 import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
+import type { MessagePictures } from "../ports.ts";
 
 /** Who calls, and the revision their records carry: the Mate's environment and start epoch. */
 export interface WireCaller {
@@ -166,6 +169,8 @@ export const unservedWire: EngineWireShape = {
 // ── served ──────────────────────────────────────────────────────────────────────────────────
 
 export interface EngineWireOptions {
+  /** How a call's pictures are claimed for its conversation; none passes them as they came. */
+  readonly pictures?: MessagePictures["Service"];
   /**
    * A person's send waits on it: while a flipped Mate's main conversation is not yet adopted, its
    * earlier record goes in before anything of the person's runs.
@@ -760,6 +765,52 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       );
     };
 
+    /**
+     * A call carrying pictures: each claimed under the conversation's id before the step that
+     * records it (the client lets its pending upload go once the call is answered), refused in
+     * V1's words when one cannot be, and let go again when the step does not take it. A call
+     * already answered returns its receipt and claims nothing again.
+     */
+    const withPictures = (
+      protocol: number,
+      conversationId: ConversationId,
+      commandId: CommandId,
+      caller: WireCaller,
+      pictures: ReadonlyArray<ChatAttachment>,
+      body: (claimed: ReadonlyArray<ChatAttachment>) => Command,
+    ): Effect.Effect<EngineCallResult, EngineWireError> => {
+      const claims = options.pictures;
+      if (claims === undefined || pictures.length === 0 || protocolRefusal(protocol) !== undefined)
+        return command(protocol, conversationId, commandId, caller, body(pictures));
+      return Effect.gen(function* () {
+        const stored = yield* records
+          .receipt(conversationId, commandId)
+          .pipe(Effect.catch(wireError(UNREADABLE)));
+        if (stored !== null)
+          return yield* decodeResult(stored).pipe(Effect.catch(wireError(UNREADABLE)));
+        const claimed = yield* claims.claim(conversationId, pictures).pipe(
+          Effect.map((held) => ({ held }) as const),
+          Effect.catchTag("PicturesRefused", (refused) =>
+            Effect.succeed({ refused: refused.message } as const),
+          ),
+        );
+        if ("refused" in claimed)
+          return {
+            _tag: "Rejected",
+            rejection: { reason: "attachment-refused", detail: claimed.refused },
+          } satisfies EngineCallResult;
+        const result = yield* command(
+          protocol,
+          conversationId,
+          commandId,
+          caller,
+          body(claimed.held),
+        ).pipe(Effect.onError(() => claims.release(claimed.held)));
+        if (result._tag !== "Accepted") yield* claims.release(claimed.held);
+        return result;
+      });
+    };
+
     return {
       subscribe,
       subscribeRows,
@@ -770,11 +821,20 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       send: (input, caller) =>
         Effect.andThen(
           options.sendsWait ?? Effect.void,
-          command(input.protocol, input.conversationId, input.commandId, caller, {
-            _tag: "Send",
-            text: input.text,
-            ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
-          }),
+          withPictures(
+            input.protocol,
+            input.conversationId,
+            input.commandId,
+            caller,
+            input.attachments ?? [],
+            (claimed) => ({
+              _tag: "Send",
+              text: input.text,
+              ...(input.attachments === undefined
+                ? {}
+                : { attachments: claimed as ReadonlyArray<ChatImageAttachment> }),
+            }),
+          ),
         ),
       stop: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
@@ -792,22 +852,43 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             },
           });
         }
-        return command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Answer",
-          requestId: input.requestId,
-          answer:
-            answer.kind === "approval"
-              ? { decision: answer.decision }
-              : answer.kind === "input"
-                ? {
-                    answers: answer.answers,
-                    ...(answer.attachmentsByQuestionId === undefined
-                      ? {}
-                      : { attachmentsByQuestionId: answer.attachmentsByQuestionId }),
-                  }
-                : null,
-          summary: input.summary,
-        });
+        // Each question's pictures, claimed together and given back to their questions.
+        const byQuestion = Object.entries(
+          answer.kind === "input" ? (answer.attachmentsByQuestionId ?? {}) : {},
+        );
+        return withPictures(
+          input.protocol,
+          input.conversationId,
+          input.commandId,
+          caller,
+          byQuestion.flatMap(([, pictures]) => pictures),
+          (claimed) => {
+            let at = 0;
+            const attachmentsByQuestionId = Object.fromEntries(
+              byQuestion.map(([question, pictures]) => {
+                const mine = claimed.slice(at, at + pictures.length);
+                at += pictures.length;
+                return [question, mine];
+              }),
+            );
+            return {
+              _tag: "Answer",
+              requestId: input.requestId,
+              answer:
+                answer.kind === "approval"
+                  ? { decision: answer.decision }
+                  : answer.kind === "input"
+                    ? {
+                        answers: answer.answers,
+                        ...(answer.attachmentsByQuestionId === undefined
+                          ? {}
+                          : { attachmentsByQuestionId }),
+                      }
+                    : null,
+              summary: input.summary,
+            };
+          },
+        );
       },
       dismiss: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {

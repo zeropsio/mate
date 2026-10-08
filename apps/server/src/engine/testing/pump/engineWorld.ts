@@ -36,7 +36,13 @@ import type { Command } from "../../domain/command.ts";
 import { liveEngineLayer } from "../../live.ts";
 import { LiveBus } from "../../LiveBus.ts";
 import { MateEngine } from "../../MateEngine.ts";
-import { AgentWorkspace, RestartEvidence, RunAdmission, RunRefused } from "../../ports.ts";
+import {
+  AgentWorkspace,
+  MessagePictures,
+  RestartEvidence,
+  RunAdmission,
+  RunRefused,
+} from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { makeFakeWorkspaceHistory } from "./fakeWorkspaceHistory.ts";
 import {
@@ -112,6 +118,14 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         AgentWorkspace,
         AgentWorkspace.of({ of: () => Effect.succeed({ cwd: dir, runtimeMode: "full-access" }) }),
+      ),
+      // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
+      Layer.succeed(
+        MessagePictures,
+        MessagePictures.of({
+          claim: (_conversation, attachments) => Effect.succeed(attachments),
+          release: () => Effect.void,
+        }),
       ),
     );
 

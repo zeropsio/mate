@@ -34,6 +34,7 @@ import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import { importOrSayGap } from "./effects/historyImport.ts";
+import { MessagePictures } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
@@ -338,7 +339,11 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
 
     // Open unless a flipped Mate holds its people's sends until its main conversation is adopted.
     const sends = yield* Latch.make(true);
-    const wire = yield* makeEngineWire({ ...options.wire, sendsWait: sends.await });
+    const wire = yield* makeEngineWire({
+      ...options.wire,
+      sendsWait: sends.await,
+      pictures: yield* MessagePictures,
+    });
 
     return MateEngine.of({
       live: true,

@@ -959,6 +959,8 @@ const rejectionReasons = [
   /** A request its agent waits on: only an answer or a Stop ends it. */
   "not-dismissible",
   "steer-unsupported",
+  /** A picture the call carries could not be claimed: the detail says why, in V1's words. */
+  "attachment-refused",
   "stale-session",
   "unknown-effect",
   "wake-not-armed",
