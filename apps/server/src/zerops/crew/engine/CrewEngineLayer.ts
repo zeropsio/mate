@@ -100,7 +100,13 @@ import { doorLogins, filesDoorLogins, noDevServerWords } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { importV1Crew } from "./importV1Crew.ts";
-import { crewSnapshotOf, crewTaskPage, type CrewView } from "./project.ts";
+import {
+  crewFrameContent,
+  crewSnapshotOf,
+  crewTaskPage,
+  nextCrewFrame,
+  type CrewView,
+} from "./project.ts";
 import { crewEngineUpdateFacts } from "./updateIdle.ts";
 import {
   DEFAULT_CREW_TIMING,
@@ -574,19 +580,6 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const hub = yield* SubscriptionRef.make<CrewSnapshot>(first);
     /** The frame of the crew's latest commit, its revision too, published or not. */
     const latest = yield* Ref.make<CrewSnapshot>(first);
-    /** A frame's content, its revision aside: a commit that changes nothing shown moves no frame. */
-    const contentOf = (frame: CrewSnapshot) => {
-      const { seq: _seq, revision: _revision, ...shown } = frame;
-      return JSON.stringify(shown);
-    };
-    const refresh = Effect.flatMap(state, frameOf).pipe(
-      Effect.tap((frame) => Ref.set(latest, frame)),
-      Effect.flatMap((frame) =>
-        Effect.flatMap(SubscriptionRef.get(hub), (current) =>
-          contentOf(current) === contentOf(frame) ? Effect.void : SubscriptionRef.set(hub, frame),
-        ),
-      ),
-    );
     /** Each commit the crew's frame was refreshed for: an update's drain reads its facts again. */
     const updateChanged = yield* PubSub.sliding<void>(1);
     /** What in the crew's record still holds an update back; an unreadable record holds it. */
@@ -595,11 +588,21 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     ).pipe(
       Effect.catchCause(() => Effect.succeed({ idle: false, blockers: ["crew state unreadable"] })),
     );
+    const refresh = Effect.flatMap(state, frameOf).pipe(
+      Effect.flatMap((frame) =>
+        Effect.flatMap(SubscriptionRef.get(hub), (current) => {
+          const next = nextCrewFrame(current, frame);
+          return Ref.set(latest, next ?? frame).pipe(
+            Effect.andThen(next === null ? Effect.void : SubscriptionRef.set(hub, next)),
+          );
+        }),
+      ),
+    );
     /** The latest frame at once (its revision current), then one per change of what it shows. */
     const frames = Stream.concat(
       Stream.fromEffect(Ref.get(latest)),
       SubscriptionRef.changes(hub),
-    ).pipe(Stream.changesWith((a, b) => contentOf(a) === contentOf(b)));
+    ).pipe(Stream.changesWith((a, b) => crewFrameContent(a) === crewFrameContent(b)));
     yield* Stream.merge(
       Stream.map(door.subscribe(CREW_OWNER_ID, (yield* state).headSeq), () => undefined).pipe(
         Stream.catchCause(() => Stream.empty),

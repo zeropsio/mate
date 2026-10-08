@@ -539,8 +539,15 @@ export const CrewDevHost = Schema.Struct({
 });
 export type CrewDevHost = typeof CrewDevHost.Type;
 
-/** Where a crew snapshot stands on the engine, as a conversation's revision does. */
-export const CrewRevision = Schema.Struct({ epoch: Schema.Int, seq: NonNegativeInt });
+/**
+ * Where a crew snapshot stands on the engine, as a conversation's revision does; `view` counts the
+ * frames of one step whose showing moved without a step (a dev service came up or went), absent as 0.
+ */
+export const CrewRevision = Schema.Struct({
+  epoch: Schema.Int,
+  seq: NonNegativeInt,
+  view: Schema.optionalKey(NonNegativeInt),
+});
 export type CrewRevision = typeof CrewRevision.Type;
 
 /**

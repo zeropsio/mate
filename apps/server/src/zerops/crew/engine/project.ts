@@ -444,6 +444,30 @@ const boardTasks = (state: CrewState): ReadonlyArray<TaskRecord> => {
   return tasks.filter((task) => kept.has(task.id));
 };
 
+/** A frame's content, its revision aside: a commit that changes nothing shown moves no frame. */
+export const crewFrameContent = (frame: CrewSnapshot): string => {
+  const { seq: _seq, revision: _revision, ...shown } = frame;
+  return JSON.stringify(shown);
+};
+
+/**
+ * The frame to publish after `published`, or none when it shows nothing new. A frame whose showing
+ * moved at the same step (a dev service came up or went) comes with its view moved on, so a client
+ * that takes only newer frames takes it.
+ */
+export const nextCrewFrame = (
+  published: CrewSnapshot,
+  frame: CrewSnapshot,
+): CrewSnapshot | null => {
+  if (crewFrameContent(published) === crewFrameContent(frame)) return null;
+  const was = published.revision;
+  const now = frame.revision;
+  if (was === undefined || now === undefined || was.epoch !== now.epoch || was.seq !== now.seq) {
+    return frame;
+  }
+  return { ...frame, revision: { ...now, view: (was.view ?? 0) + 1 } };
+};
+
 /** One frame of the crew feed. */
 export const crewSnapshotOf = (state: CrewState, view: CrewView): CrewSnapshot => {
   const revision = { epoch: view.epoch, seq: state.headSeq };

@@ -6,7 +6,13 @@ import * as Schema from "effect/Schema";
 import { TASK_START } from "../crewMachines.ts";
 import { CrewWorld, home, lead, reader, writer } from "./crewDecideFixture.ts";
 import { UNATTENDED_MS } from "./decide.ts";
-import { CREW_OFF_SNAPSHOT, EMPTY_VIEW, crewSnapshotOf, type CrewView } from "./project.ts";
+import {
+  CREW_OFF_SNAPSHOT,
+  EMPTY_VIEW,
+  crewSnapshotOf,
+  nextCrewFrame,
+  type CrewView,
+} from "./project.ts";
 import type { CrewState, LaneRecord, MemberRecord, RunRecord, TaskRecord } from "./state.ts";
 
 const AT = Date.parse("2026-09-27T10:00:00.000Z");
@@ -102,6 +108,19 @@ const run = (state: RunRecord["state"]): RunRecord => ({
 const decode = Schema.decodeUnknownSync(CrewSnapshot);
 
 describe("crew snapshot", () => {
+  it("a dev service that came up at the same step moves the frame's view, so a client takes it", () => {
+    const none = { ...new CrewWorld().state, headSeq: 12 };
+    const before = crewSnapshotOf(none, view({ devHosts: { appdev: null } }));
+    const up = crewSnapshotOf(none, view({ devHosts: { appdev: true } }));
+    const moved = nextCrewFrame(before, up);
+    const next = crewSnapshotOf({ ...none, headSeq: 13 }, view({ devHosts: { appdev: false } }));
+    expect([
+      moved?.revision,
+      nextCrewFrame(moved!, up),
+      nextCrewFrame(moved!, next)?.revision,
+    ]).toEqual([{ epoch: 4, seq: 12, view: 1 }, null, { epoch: 4, seq: 13 }]);
+  });
+
   it("off and none carry no crew and empty lists; none offers the dev services by name", () => {
     expect(decode(CREW_OFF_SNAPSHOT)).toEqual(CREW_OFF_SNAPSHOT);
     const none = new CrewWorld().state;

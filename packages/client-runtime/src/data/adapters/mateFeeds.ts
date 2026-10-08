@@ -49,30 +49,44 @@ const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 /**
  * Where a crew frame stands: the engine's revision (the crew owner's gapless seq under the Mate's
- * epoch), or V1's wall-clock `seq` where the frame carries none.
+ * epoch, then the view of that step it shows), or V1's wall-clock `seq` where the frame carries none.
  */
 export type CrewFrameMark =
-  | { readonly kind: "revision"; readonly epoch: number; readonly seq: number }
+  | {
+      readonly kind: "revision";
+      readonly epoch: number;
+      readonly seq: number;
+      readonly view: number;
+    }
   | { readonly kind: "seq"; readonly seq: number };
 
 export function crewFrameMark(frame: {
   readonly seq: number;
-  readonly revision?: { readonly epoch: number; readonly seq: number } | undefined;
+  readonly revision?:
+    | { readonly epoch: number; readonly seq: number; readonly view?: number | undefined }
+    | undefined;
 }): CrewFrameMark {
   return frame.revision === undefined
     ? { kind: "seq", seq: frame.seq }
-    : { kind: "revision", epoch: frame.revision.epoch, seq: frame.revision.seq };
+    : {
+        kind: "revision",
+        epoch: frame.revision.epoch,
+        seq: frame.revision.seq,
+        view: frame.revision.view ?? 0,
+      };
 }
 
-/** A crew frame is taken only when newer than the last: epoch first, then its sequence. */
+/** A crew frame is taken only when newer than the last: epoch first, then its sequence, its view. */
 export function isNewerCrewFrame(
   last: CrewFrameMark | null,
   frame: Parameters<typeof crewFrameMark>[0],
 ): boolean {
   if (last === null) return true;
   const next = crewFrameMark(frame);
-  if (next.kind === "revision" && last.kind === "revision")
-    return next.epoch !== last.epoch ? next.epoch > last.epoch : next.seq > last.seq;
+  if (next.kind === "revision" && last.kind === "revision") {
+    if (next.epoch !== last.epoch) return next.epoch > last.epoch;
+    return next.seq !== last.seq ? next.seq > last.seq : next.view > last.view;
+  }
   // A server that changed what it speaks within one session: its first frame is a baseline.
   if (next.kind !== last.kind) return true;
   return next.seq > last.seq;
