@@ -243,9 +243,10 @@ const comparable = (held: Held) => ({
     started_at,
     ended_at,
   })),
-  items: held.items.map(({ seq: _seq, rev: _rev, ...item }) => item),
+  // An occurrence's id is the store's own; its content is what two imports share. A call's
+  // record holds its result's pictures as its data does.
+  items: held.items.map(({ seq: _seq, rev: _rev, ...item }) => withoutOccurrenceIds(item)),
   requests: held.requests,
-  // An occurrence's id is the store's own; its content is what two imports share.
   data: [...held.data].map(([id, data]) => [id, withoutOccurrenceIds(data)]),
   details: [...held.details],
   originals: held.originals,
@@ -424,7 +425,7 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
       (held) => {
         const deploy = callOf(held, "mcp__zerops__zerops_deploy");
         expect(deploy).toMatchObject({
-          step: "tool",
+          step: "mcp",
           tool: { name: "mcp__zerops__zerops_deploy", server: "zerops" },
           words: "Deploy",
           state: "done",

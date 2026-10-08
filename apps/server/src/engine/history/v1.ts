@@ -24,6 +24,7 @@ import {
   RequestId,
   ToolPresentation,
   classifyTaskAgentKind,
+  importedCallFields,
   itemId as deriveItemId,
   requestId as deriveRequestId,
   runId as deriveRunId,
@@ -427,16 +428,6 @@ const MATE: ItemActor = { kind: "mate" };
 const PERSON: ItemActor = { kind: "person", principal: IMPORTER };
 const ENGINE: ItemActor = { kind: "engine" };
 
-const STEPS: Readonly<Record<string, string>> = {
-  command_execution: "command",
-  file_change: "edit",
-  web_search: "web",
-  image_view: "look",
-  collab_agent_tool_call: "helper",
-  mcp_tool_call: "tool",
-  dynamic_tool_call: "tool",
-};
-
 const isPresentation = Schema.is(ToolPresentation);
 const decodeImage = Schema.decodeUnknownOption(ChatImageAttachment);
 
@@ -677,13 +668,22 @@ export const recordsOf = (
         const helper = asText(payload.agentId) ?? asText(started.agentId);
         // The call as V1 drew it: its start's words and input, under its last state.
         const merged = { ...started, ...payload, data: toolData };
+        const callData = {
+          source: "v1",
+          kind: last?.kind ?? "tool.started",
+          summary: last?.summary ?? null,
+          payload: boundedCallData(merged),
+        };
+        // The record a live call of the same kind carries: its step, input line, facts, result.
+        const { step, ...fields } = importedCallFields(callData);
         const id = item(
           entry.run,
           entry.item,
           helper === undefined ? MATE : { kind: "helper", helperId: helper },
           {
             kind: "call",
-            step: STEPS[itemType] ?? "tool",
+            step: step ?? "tool",
+            ...fields,
             tool: { name: toolName, ...(server === undefined ? {} : { server }) },
             words: asText(payload.title) ?? asText(started.title) ?? last?.summary ?? null,
             state,
@@ -692,15 +692,7 @@ export const recordsOf = (
           },
           entry.at,
         );
-        data.push({
-          itemId: id,
-          data: {
-            source: "v1",
-            kind: last?.kind ?? "tool.started",
-            summary: last?.summary ?? null,
-            payload: boundedCallData(merged),
-          },
-        });
+        data.push({ itemId: id, data: callData });
         break;
       }
       case "work": {
