@@ -11,7 +11,7 @@
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
-import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { CommandId, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import {
   ChatImageAttachment,
@@ -20,6 +20,8 @@ import {
 } from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
+import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
+import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -130,6 +132,23 @@ const toUnknownKind = (_raw: Record<string, unknown>, type: string) => ({
   kind: "unknown" as const,
   type,
 });
+
+// ── owners ──────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Whose events a row of the engine's log is: a conversation's, or a Mate's crew (its own
+ * `decide`, one writer per crew). An owner kind from a newer build decodes as `unknown`.
+ */
+export const OWNER_KINDS = ["conversation", "crew"] as const;
+export const OwnerKind = forwardCompatibleLiterals(OWNER_KINDS);
+export type OwnerKind = typeof OwnerKind.Type;
+
+/**
+ * The crew owner's id: one crew per Mate. It lives in the conversations' id space, so its events,
+ * effects and wakes derive their ids as a conversation's do; a conversation is named by its thread
+ * or its crewmate (`crew-<crew>-<handle>-<n>`), never with a slash, so none takes this one.
+ */
+export const CREW_OWNER_ID: ConversationId = ConversationId.make("crew/main");
 
 // ── principals and actors ───────────────────────────────────────────────────────────────────
 
@@ -287,6 +306,77 @@ export const Run = Schema.Struct({
 });
 export type Run = typeof Run.Type;
 
+// ── crew on the record ──────────────────────────────────────────────────────────────────────
+
+/**
+ * What a crew card is for: a task's first turn, carrying it on in a new session, resolving a
+ * merge's conflicts, fixing a failed check, reworking after a review, the lead's review or a
+ * crewmate's question put to the lead, the lead's answer, the one nudge after a turn without a
+ * report, and showing work on a dev service or giving it back.
+ */
+export const CREW_CARD_KINDS = [
+  "task",
+  "continue",
+  "resolve",
+  "fix",
+  "rework",
+  "review",
+  "question",
+  "answer",
+  "nudge",
+  "claim-start",
+  "claim-release",
+] as const;
+
+/** Something a card names that a client can open. */
+export const CrewCardLink = forwardCompatibleUnion({
+  key: "kind",
+  known: ["crewmate", "path", "commit", "host", "conversation", "unknown"],
+  members: [
+    Schema.Struct({ kind: Schema.Literal("crewmate"), handle: CrewHandle }),
+    Schema.Struct({ kind: Schema.Literal("path"), path: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("commit"), commit: TrimmedNonEmptyString }),
+    Schema.Struct({ kind: Schema.Literal("host"), host: TrimmedNonEmptyString }),
+    Schema.Struct({ kind: Schema.Literal("conversation"), conversationId: ConversationId }),
+  ],
+  fallback: unknownKind,
+  toFallback: toUnknownKind,
+});
+export type CrewCardLink = typeof CrewCardLink.Type;
+
+/**
+ * A crew card: what the crew sent a crewmate (or the lead) as a turn, typed on its `note` item so
+ * a client draws it without reading the words the agent got.
+ */
+export const CrewCard = Schema.Struct({
+  kind: forwardCompatibleLiterals(CREW_CARD_KINDS),
+  /** `null` for a card about no task (showing work on dev). */
+  taskId: Schema.NullOr(CrewTaskId),
+  /** The task's `#N`; `null` with `taskId`. */
+  number: Schema.NullOr(PositiveInt),
+  /** The task's title, or the heading of a card about no task. */
+  title: Schema.String,
+  /**
+   * The words the card exists for: the task's brief, the question, the answer, the failed check's
+   * output, the review's note. Empty when its kind says it all.
+   */
+  why: Schema.String,
+  /** The task's *Done when*; `null` when it has none, or the card is not a task's first. */
+  doneWhen: Schema.NullOr(Schema.String),
+  links: Schema.Array(CrewCardLink),
+});
+export type CrewCard = typeof CrewCard.Type;
+
+/** A crew seam as a `crew.seam` marker holds it: a seam from a newer build decodes as unknown. */
+export const RecordedCrewSeam = forwardCompatibleUnion({
+  key: "seam",
+  known: ["landed", "closed", "saved", "stint", "swept", "unknown"],
+  members: CrewSeam.members,
+  fallback: Schema.Struct({ seam: Schema.Literal("unknown"), type: Schema.String }),
+  toFallback: (_raw, type) => ({ seam: "unknown" as const, type }),
+});
+export type RecordedCrewSeam = typeof RecordedCrewSeam.Type;
+
 // ── items ───────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -330,7 +420,13 @@ const itemBodyFields = {
       at: Schema.NullOr(Millis),
     }),
   },
-  note: { text: Schema.String, streaming: Schema.Boolean, answer: Schema.Boolean },
+  note: {
+    text: Schema.String,
+    streaming: Schema.Boolean,
+    answer: Schema.Boolean,
+    /** The crew's card, on a note the crew sent as a turn. */
+    card: Schema.optionalKey(CrewCard),
+  },
   thought: { preview: Schema.String, length: Schema.Int, streaming: Schema.Boolean },
   call: {
     step: Schema.String,
@@ -363,6 +459,8 @@ const itemBodyFields = {
       kind: Schema.String,
       reason: Schema.optionalKey(Schema.String),
       model: Schema.optionalKey(Schema.String),
+      /** A crew seam's facts, on a marker of kind `crew.seam`. */
+      seam: Schema.optionalKey(RecordedCrewSeam),
     }),
   },
 } as const;
@@ -701,7 +799,25 @@ export const RunStopAsked = event("RunStopAsked", {
   by: Principal,
   effectId: Schema.NullOr(EffectId),
 });
-export const RunEnded = event("RunEnded", { runId: RunId, end: RunEnd, source: RunEndSource });
+/**
+ * What a run's end says beyond its kind: it outgrew its context, the provider broke it off, or it
+ * was refused (admission's sentence in `refusal`).
+ */
+export const RunEndDetail = forwardCompatibleLiterals(["overflow", "provider-error", "refused"]);
+export type RunEndDetail = typeof RunEndDetail.Type;
+
+export const RunEnded = event("RunEnded", {
+  runId: RunId,
+  end: RunEnd,
+  source: RunEndSource,
+  /** What the run cost, as its driver reported it; absent when it reported none. */
+  costUsd: Schema.optionalKey(Schema.Number),
+  /** The context the conversation held when the run ended: its last gauge reading. */
+  contextTokens: Schema.optionalKey(Schema.Int),
+  detail: Schema.optionalKey(RunEndDetail),
+  /** The refusal's own words, for a run that was refused. */
+  refusal: Schema.optionalKey(Schema.String),
+});
 export const RunNotContinued = event("RunNotContinued", { runId: RunId, reason: Schema.String });
 /**
  * A run goes back to the head of the queue before its message reached the agent: a restart cut
@@ -942,6 +1058,25 @@ export const EngineEvent = forwardCompatibleUnion({
   }),
 });
 export type EngineEvent = typeof EngineEvent.Type;
+
+// ── internal commands ───────────────────────────────────────────────────────────────────────
+
+/** Why a conversation's session is rotated between turns (`zeropsCrewStates.ts` says each). */
+export const RotateSessionReason = forwardCompatibleLiterals(CREW_SESSION_REASONS);
+export type RotateSessionReason = typeof RotateSessionReason.Type;
+
+/**
+ * The crew's command to a crewmate's conversation: close its session between turns and open the
+ * next one. `fresh` opens it without resuming (a `budget` rotation resumes); `seed` is the state
+ * packet, recorded as a `context` item at the boundary and given to the agent as its session
+ * starts. Its own schema, since a `crew.deliver` effect stores it.
+ */
+export const RotateSession = Schema.TaggedStruct("RotateSession", {
+  reason: RotateSessionReason,
+  fresh: Schema.Boolean,
+  seed: Schema.NullOr(Schema.String),
+});
+export type RotateSession = typeof RotateSession.Type;
 
 // ── command results ─────────────────────────────────────────────────────────────────────────
 
