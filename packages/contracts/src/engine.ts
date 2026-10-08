@@ -1098,6 +1098,8 @@ const rejectionReasons = [
   "invalid-wake",
   "invalid-signal",
   "invalid-principal",
+  /** The id names another owner (the crew), which takes no conversation's command. */
+  "not-a-conversation",
   "unknown",
 ] as const;
 const knownRejectionReasons = new Set<string>(rejectionReasons);

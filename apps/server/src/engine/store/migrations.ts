@@ -14,6 +14,7 @@ import Migration0004 from "./Migrations/0004_EngineWakeRetry.ts";
 import Migration0005 from "./Migrations/0005_EngineConversationAgent.ts";
 import Migration0006 from "./Migrations/0006_EngineItemData.ts";
 import Migration0007 from "./Migrations/0007_EngineWire.ts";
+import Migration0008 from "./Migrations/0008_EngineOwners.ts";
 
 export const ENGINE_MIGRATIONS_TABLE = "engine_migrations";
 
@@ -25,6 +26,7 @@ const migrations = {
   "5_EngineConversationAgent": Migration0005,
   "6_EngineItemData": Migration0006,
   "7_EngineWire": Migration0007,
+  "8_EngineOwners": Migration0008,
 } as const;
 
 const run = Migrator.make({});

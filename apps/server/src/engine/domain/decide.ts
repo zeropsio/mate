@@ -52,7 +52,7 @@ import type {
   Decision,
   EffectClass,
   EffectDraft,
-  EffectLane,
+  ConversationLane,
   Envelope,
   EventDraft,
   ItemDataDraft,
@@ -97,7 +97,7 @@ export const EFFECT_KINDS = {
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
-} as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
+} as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
 /** What a `session.open` effect settles with. */

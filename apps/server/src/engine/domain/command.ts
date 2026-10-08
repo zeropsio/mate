@@ -222,14 +222,16 @@ export type ImportedRecord = Extract<
 >;
 
 /**
- * Where an effect queues; each conversation's lane is FIFO, lanes run side by side. `turn`: the
- * session and what goes into it (open, send, steer) — a send settles once the driver accepted it,
- * so the lane frees while the turn runs. `control`: what must never wait behind a send (interrupt,
- * answer). `close`: a session's close, which never waits behind an interrupt the driver does not
- * answer (a second Stop closes the session). `side`: work beside the agent (the workspace capture,
- * its finish).
+ * Where an effect queues; each owner's lane is FIFO, lanes run side by side. A conversation's:
+ * `turn`: the session and what goes into it (open, send, steer) — a send settles once the driver
+ * accepted it, so the lane frees while the turn runs. `control`: what must never wait behind a
+ * send (interrupt, answer). `close`: a session's close, which never waits behind an interrupt the
+ * driver does not answer (a second Stop closes the session). `side`: work beside the agent (the
+ * workspace capture, its finish). Another owner kind names its own (the crew's `git/<handle>`,
+ * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
-export type EffectLane = "turn" | "control" | "close" | "side";
+export type ConversationLane = "turn" | "control" | "close" | "side";
+export type EffectLane = ConversationLane | (string & {});
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";
 

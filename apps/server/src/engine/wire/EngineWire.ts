@@ -564,7 +564,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         Effect.gen(function* () {
           const commits = yield* PubSub.subscribe(signals.commits);
           const ids = yield* sql<{ readonly conversation_id: string }>`
-            SELECT conversation_id FROM engine_conversation ORDER BY rowid
+            SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation' ORDER BY rowid
           `;
           const rows = (yield* Effect.forEach(ids, (row) =>
             rowOf(row.conversation_id as ConversationId, caller),

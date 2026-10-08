@@ -262,7 +262,7 @@ export interface ConversationList {
 export const readConversationViews = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const ids = yield* sql<{ readonly conversation_id: string }>`
-    SELECT conversation_id FROM engine_conversation ORDER BY rowid
+    SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation' ORDER BY rowid
   `;
   const views: Array<ConversationView> = [];
   const unread: Array<ConversationId> = [];
