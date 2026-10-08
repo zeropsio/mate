@@ -32,7 +32,7 @@ import { NATIVE_ENGINE_WORDS } from "../state/threadState.ts";
 import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
-import { ENGINE_UPDATE_WORDS } from "./projections/mateEngine.ts";
+import { ENGINE_UPDATE_WORDS, NATIVE_UPDATE_WORDS } from "./projections/mateEngine.ts";
 
 type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
   Extract<ClientOrchestrationCommand, { readonly type: T }>,
@@ -61,9 +61,12 @@ export function viaEngine<E, R>(
     if (Option.isNone(prepared)) return yield* v1;
     const route = engineRouteOf(prepared.value);
     if (route.kind === "v1" || route.kind === "unknown") return yield* v1;
+    const native = registry.get(mateEngineReaderAtom) === "none";
     if (route.kind === "update")
-      return yield* Effect.fail(new MateEngineUnsupported({ message: ENGINE_UPDATE_WORDS }));
-    if (registry.get(mateEngineReaderAtom) === "none")
+      return yield* Effect.fail(
+        new MateEngineUnsupported({ message: native ? NATIVE_UPDATE_WORDS : ENGINE_UPDATE_WORDS }),
+      );
+    if (native)
       return yield* Effect.fail(new MateEngineUnsupported({ message: NATIVE_ENGINE_WORDS }));
     const host = registry.get(mateEngineHostAtom);
     if (host === null)

@@ -563,7 +563,8 @@ export class MateEngineFake {
             type: "unserved" as const,
             reason: "protocol" as const,
             protocols: [...MATE_ENGINE_PROTOCOLS],
-            message: "Update Zerops Mate to keep talking to it.",
+            message:
+              "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
           }
         : null;
     switch (tag) {

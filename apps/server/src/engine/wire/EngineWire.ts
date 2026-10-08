@@ -122,8 +122,12 @@ export interface EngineWireShape {
 export const NOT_ON_ENGINE = "This Mate's conversation runs on the orchestration wire.";
 /** What a client hears when it speaks a protocol newer than this Mate's. */
 export const MATE_TOO_OLD = "This Mate is older than this app. Update the Mate to talk to it here.";
-/** What a client hears when it speaks a protocol older than this Mate serves. */
-export const APP_TOO_OLD = "Update Zerops Mate to keep talking to this Mate.";
+/**
+ * What a client hears when it speaks a protocol older than this Mate serves. Only an engine reader
+ * (the web and desktop, which load the hosted client) speaks the wire, and a reload fixes it.
+ */
+export const APP_TOO_OLD =
+  "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.";
 
 const unserved = (reason: EngineUnserved["reason"], message: string): EngineUnserved => ({
   type: "unserved",

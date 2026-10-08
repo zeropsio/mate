@@ -16,7 +16,6 @@ import {
 
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
 import {
-  APP_TOO_OLD,
   NOT_ON_ENGINE,
   makeEngineWire,
   unservedWire,
@@ -696,29 +695,32 @@ describe("a client's calls to an engine conversation", () => {
     ),
   );
 
-  it.effect("a client speaking a protocol this Mate does not serve is routed to update", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const w = yield* world;
-        const wire = yield* wireOf(w);
-        const frames = yield* watch(w, wire, { protocol: 0 });
-        assert.deepStrictEqual(frames, [
-          {
-            type: "unserved",
-            reason: "protocol",
-            protocols: [...MATE_ENGINE_PROTOCOLS],
-            message: APP_TOO_OLD,
-          },
-        ]);
-        const sent = yield* wire.send(
-          { protocol: 0, conversationId: mate, commandId: CommandId.make("old"), text: "Hi" },
-          ana,
-        );
-        assert.strictEqual(sent._tag, "Unserved");
-        assert.deepStrictEqual(yield* w.runs, [], "nothing reached the engine");
-        yield* w.shutdown;
-      }),
-    ),
+  it.effect(
+    "a client speaking a protocol this Mate does not serve is routed to reload or update",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const frames = yield* watch(w, wire, { protocol: 0 });
+          assert.deepStrictEqual(frames, [
+            {
+              type: "unserved",
+              reason: "protocol",
+              protocols: [...MATE_ENGINE_PROTOCOLS],
+              message:
+                "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+            },
+          ]);
+          const sent = yield* wire.send(
+            { protocol: 0, conversationId: mate, commandId: CommandId.make("old"), text: "Hi" },
+            ana,
+          );
+          assert.strictEqual(sent._tag, "Unserved");
+          assert.deepStrictEqual(yield* w.runs, [], "nothing reached the engine");
+          yield* w.shutdown;
+        }),
+      ),
   );
 });
 

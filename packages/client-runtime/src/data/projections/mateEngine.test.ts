@@ -359,7 +359,7 @@ describe("an engine conversation as the thread the view draws", () => {
     });
   });
 
-  it("names the update route when its Mate speaks a newer protocol", () => {
+  it("names the reload-or-update route when its Mate speaks a newer protocol", () => {
     const scope = engineConversationScopes(key).item;
     const state = apply(emptyAccount, [
       { kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } },
@@ -374,8 +374,8 @@ describe("an engine conversation as the thread the view draws", () => {
         },
       },
     ]);
-    expect(Option.getOrNull(engineThread.derive(readsOfState(state), key).error)).toMatch(
-      /Update the app/,
+    expect(Option.getOrNull(engineThread.derive(readsOfState(state), key).error)).toBe(
+      "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
     );
   });
 
