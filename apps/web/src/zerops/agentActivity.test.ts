@@ -1,6 +1,8 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  ConversationRow,
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
@@ -25,6 +27,7 @@ import {
   mateReviewWaits,
   overviewAgentActivity,
   restingActivity,
+  rowAgentActivity,
   threadAgentActivity,
 } from "./agentActivity";
 
@@ -1079,5 +1082,152 @@ describe("a provider refusal in the menu", () => {
     );
     expect(read.usageLimited).toBe(false);
     expect(read.face).toBe("working");
+  });
+});
+
+const ENV = EnvironmentId.make("env-vera");
+const STARTED = Date.parse("2026-10-08T09:00:00.000Z");
+const ENDED = Date.parse("2026-10-08T09:05:00.000Z");
+const RESETS = Date.parse("2026-10-08T14:00:00.000Z");
+
+const decodeRow = Schema.decodeUnknownSync(ConversationRow);
+/** Vera's main conversation as her engine rows it: at rest, her last task answered. */
+const row = (patch: Record<string, unknown> = {}): ConversationRow =>
+  decodeRow({
+    conversationId: "t1",
+    agent: {
+      instanceId: "claudeAgent",
+      driver: "claudeAgent",
+      model: null,
+      profile: { kind: "mate" },
+    },
+    revision: { environmentId: "env-vera", epoch: 1, seq: 9 },
+    state: { kind: "idle" },
+    activeRunId: null,
+    latestRun: { id: "run-1", end: { kind: "completed" }, endedAt: ENDED },
+    subject: "Add a login page",
+    snippet: "The login page is up at /login.",
+    at: ENDED,
+    askedAt: null,
+    ...patch,
+  });
+
+describe("rowAgentActivity — an engine Mate's menu state off its own row", () => {
+  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ["at rest", {}, { kind: "idle", face: "idle" }],
+    [
+      "queued behind nothing yet",
+      { state: { kind: "queued", since: STARTED } },
+      { kind: "working", face: "working", awaitingWords: true },
+    ],
+    [
+      "at work",
+      { state: { kind: "working", since: STARTED, waitsOnHelpers: false } },
+      { kind: "working", face: "working" },
+    ],
+    [
+      "waiting on its helpers",
+      { state: { kind: "working", since: STARTED, waitsOnHelpers: true } },
+      { kind: "working", face: "working", waitsOnHelpers: true },
+    ],
+    [
+      "waiting on an approval",
+      { state: { kind: "waiting", on: "approval", words: "Run pnpm build?" } },
+      { kind: "approval", face: "needs" },
+    ],
+    [
+      "waiting on a question",
+      { state: { kind: "waiting", on: "question", words: "Which provider?" } },
+      { kind: "input", face: "needs", question: "Which provider?" },
+    ],
+    [
+      "waiting on a vault value",
+      { state: { kind: "waiting", on: "vault", words: null } },
+      { kind: "input", face: "needs" },
+    ],
+    [
+      "waiting on its plan",
+      { state: { kind: "waiting", on: "plan", words: null } },
+      { kind: "planReady", face: "needs" },
+    ],
+    [
+      "paused at a usage limit",
+      { state: { kind: "paused", resetsAt: RESETS } },
+      {
+        kind: "idle",
+        face: "sleep",
+        usageLimited: true,
+        pausedUntil: "2026-10-08T14:00:00.000Z",
+        limitProvider: "Claude",
+      },
+    ],
+    [
+      "stopped on an error",
+      { state: { kind: "failed", errorLine: "Claude crashed\nat line 3" } },
+      { kind: "failed", face: "needs", errorLine: "Claude crashed" },
+    ],
+    ["in a state a later engine adds", { state: { kind: "dreaming" } }, { kind: "idle" }],
+  ])("reads a row %s as the menu's kind and face", (_case, patch, expected) => {
+    expect(rowAgentActivity(row(patch), ENV, undefined, STARTED)).toMatchObject(expected);
+  });
+
+  it("reads a row's pause whose reset has passed as at rest, not asleep", () => {
+    const paused = row({ state: { kind: "paused", resetsAt: RESETS } });
+    expect(rowAgentActivity(paused, ENV, undefined, RESETS + 1)).toMatchObject({
+      kind: "idle",
+      face: "idle",
+      usageLimited: false,
+      limit: { kind: "expired" },
+    });
+  });
+
+  it("reads a result as unseen when its run ended after the person's last visit", () => {
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:01:00.000Z", STARTED)).toMatchObject({
+      kind: "done",
+      face: "done",
+      unread: true,
+    });
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:06:00.000Z", STARTED)).toMatchObject({
+      kind: "idle",
+      unread: false,
+    });
+  });
+
+  it("takes its task and last words from the row, never a command to the harness", () => {
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
+    expect([read.subject, read.task, read.snippet]).toEqual([
+      "Add a login page",
+      "Add a login page",
+      "The login page is up at /login.",
+    ]);
+    const command = rowAgentActivity(
+      row({ subject: "/compact", snippet: null }),
+      ENV,
+      undefined,
+      STARTED,
+    );
+    expect([command.subject, command.snippet]).toEqual([undefined, undefined]);
+  });
+
+  it("dates it by its run's start while it works, else by its last run's end", () => {
+    const working = row({
+      state: { kind: "working", since: STARTED, waitsOnHelpers: false },
+      at: ENDED + 1,
+    });
+    expect(rowAgentActivity(working, ENV, undefined, STARTED).at).toBe("2026-10-08T09:00:00.000Z");
+    expect(rowAgentActivity(row({ at: ENDED + 60_000 }), ENV, undefined, STARTED).at).toBe(
+      "2026-10-08T09:05:00.000Z",
+    );
+    expect(rowAgentActivity(row({ latestRun: null }), ENV, undefined, STARTED).at).toBe(
+      "2026-10-08T09:05:00.000Z",
+    );
+  });
+
+  it("names the conversation it reads, under the key its draft is kept by", () => {
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
+    expect([read.threadId, read.threadKey]).toEqual([
+      "t1",
+      scopedThreadKey(scopeThreadRef(ENV, ThreadId.make("t1"))),
+    ]);
   });
 });

@@ -102,6 +102,9 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
         scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
       ),
     );
+    // The chat the attention names: read off an engine Mate's row where this page holds no shell.
+    if (environmentId !== undefined && threadId != null)
+      keys.add(scopedThreadKey({ environmentId, threadId }));
     if (overview?.identity !== undefined && overview.main)
       keys.add(
         scopedThreadKey({

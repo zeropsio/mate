@@ -4,6 +4,7 @@
  *
  * @module test/harness/overviews
  */
+import type { ConversationRow } from "@t3tools/contracts";
 import type { MateOverview, ThreadDigest } from "@t3tools/shared/mateLink";
 import * as Effect from "effect/Effect";
 
@@ -21,6 +22,25 @@ export const digest = (id: string, kind: ThreadDigest["kind"] = "idle"): ThreadD
     turnState: null,
     completedAt: null,
   }) as ThreadDigest;
+
+/** An engine conversation as its Mate rows it: `state` and `snippet` over an idle one's. */
+export const row = (
+  id: string,
+  state: ConversationRow["state"] = { kind: "idle" },
+  snippet: string | null = null,
+): ConversationRow =>
+  ({
+    conversationId: id,
+    agent: null,
+    revision: { environmentId: "env-1", epoch: 1, seq: 1 },
+    state,
+    activeRunId: null,
+    latestRun: null,
+    subject: `Task ${id}`,
+    snippet,
+    at: 1_791_000_000_000,
+    askedAt: null,
+  }) as ConversationRow;
 
 /** A Mate's whole overview: one idle chat, nothing signed in, no crew; `patch` over it. */
 export const overviewOf = (patch: Partial<MateOverview> = {}): MateOverview =>

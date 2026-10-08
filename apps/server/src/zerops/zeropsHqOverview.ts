@@ -4,11 +4,15 @@ import { projectMateLimit } from "../../../../packages/client-runtime/src/data/p
  * surface that draws this Mate without opening it reads — its main chat as the shell fields a menu
  * row reads, a digest of its other chats, its logins and its crew — and who it is.
  *
+ * An engine Mate also sends its own rows (`conversations`) beside the shell fields, which an HQ
+ * from before them drops; a V1 Mate sends none.
+ *
  * Pure: the caller reads the thread shells, the agent-auth snapshot and the crew's.
  *
  * @module zeropsHqOverview
  */
 import type {
+  ConversationRow,
   CrewSnapshot,
   OrchestrationThreadShell,
   ThreadLiveCall,
@@ -23,10 +27,12 @@ import {
   MATE_LINK_TEXT_MAX,
   MATE_LIVE_STEP_BOUNDS,
   MATE_LOGINS_MAX,
+  MATE_OVERVIEW_CONVERSATIONS_MAX,
   MATE_OVERVIEW_THREADS_MAX,
   MATE_TITLE_MAX,
   type MateOverview,
   type MateThreadKind,
+  type OverviewConversations,
   type OverviewCrew,
   type OverviewIdentity,
   type OverviewLogins,
@@ -50,6 +56,8 @@ export interface MateOverviewInput {
   readonly lastSigners?: Readonly<Record<string, string>>;
   /** The crew engine's snapshot; none before its first. */
   readonly crew: CrewSnapshot | undefined;
+  /** An engine Mate's own rows of its person's conversations; none on a V1 Mate. */
+  readonly conversations?: ReadonlyArray<ConversationRow>;
 }
 
 /** `text` cut to `max` characters, the last of them an ellipsis where it was longer. */
@@ -227,6 +235,52 @@ function threadsOf(threads: ReadonlyArray<OrchestrationThreadShell>): OverviewTh
   return { list, omitted: ranked.length - list.length };
 }
 
+/** A row's free text as the overview carries it: masked, cut; its words as they were else. */
+const rowText = (value: string): string => cut(maskSecrets(value).trim(), MATE_LINK_TEXT_MAX);
+
+/** A row with every text it carries masked and cut: its wait's words, its error, its run's end. */
+function linkRowOf(row: ConversationRow): ConversationRow {
+  const { state } = row;
+  const end = row.latestRun?.end ?? null;
+  return {
+    ...row,
+    state:
+      state.kind === "failed"
+        ? { ...state, errorLine: rowText(state.errorLine) }
+        : state.kind === "waiting" && state.words !== null
+          ? { ...state, words: rowText(state.words) }
+          : state,
+    latestRun:
+      row.latestRun === null || end === null
+        ? row.latestRun
+        : {
+            ...row.latestRun,
+            end: Object.fromEntries(
+              Object.entries(end).map(([key, value]) => [
+                key,
+                key !== "kind" && typeof value === "string" ? rowText(value) : value,
+              ]),
+            ) as typeof end,
+          },
+  };
+}
+
+const restingRow = (row: ConversationRow) => row.state.kind === "idle";
+
+/**
+ * The rows an overview carries, as its chats: every one that is not idle, then the newest, up to
+ * {@link MATE_OVERVIEW_CONVERSATIONS_MAX}.
+ */
+function conversationsOf(rows: ReadonlyArray<ConversationRow>): OverviewConversations {
+  const newest = (left: ConversationRow, right: ConversationRow) => right.at - left.at;
+  return [
+    ...rows.filter((row) => !restingRow(row)).toSorted(newest),
+    ...rows.filter(restingRow).toSorted(newest),
+  ]
+    .slice(0, MATE_OVERVIEW_CONVERSATIONS_MAX)
+    .map(linkRowOf);
+}
+
 /**
  * Whether the person lands finished work themselves: always without a run on, else as the run's
  * landing option says — the client's `crewPersonLands` (`client-runtime/zerops/crew/phrases.ts`).
@@ -340,17 +394,30 @@ const wholeFrameBytes = (overview: MateOverview): number =>
 
 /**
  * The overview within `maxBytes` sent whole: resting chats go, the oldest first, counted in
- * `omitted`. The main chat, the chats that are not idle and the crew are never dropped.
+ * `omitted`; then an engine Mate's resting rows, the oldest first. The main chat and its row, the
+ * chats and rows that are not idle, and the crew are never dropped.
  */
 function fitted(overview: MateOverview, maxBytes: number): MateOverview {
   let { list, omitted } = overview.threads;
-  const within = () => wholeFrameBytes({ ...overview, threads: { list, omitted } }) <= maxBytes;
+  let rows = overview.conversations;
+  const sized = (): MateOverview => ({
+    ...overview,
+    threads: { list, omitted },
+    ...(rows === undefined ? {} : { conversations: rows }),
+  });
+  const within = () => wholeFrameBytes(sized()) <= maxBytes;
   for (let oldest = list.findLastIndex(isResting); !within() && oldest >= 0;) {
     list = list.toSpliced(oldest, 1);
     omitted += 1;
     oldest = list.findLastIndex(isResting);
   }
-  return { ...overview, threads: { list, omitted } };
+  const droppable = (row: ConversationRow) =>
+    restingRow(row) && (row.conversationId as string) !== overview.main?.id;
+  for (let oldest = rows?.findLastIndex(droppable) ?? -1; !within() && oldest >= 0;) {
+    rows = rows?.toSpliced(oldest, 1);
+    oldest = rows?.findLastIndex(droppable) ?? -1;
+  }
+  return sized();
 }
 
 /** The Mate's overview, within `maxBytes` (the link's frame bound) when it is sent whole. */
@@ -366,6 +433,9 @@ export function mateOverviewOf(
       threads: threadsOf(input.threads),
       logins: loginsOf(input.auth, input.lastSigners),
       crew: crewOf(input.crew, input.threads),
+      ...(input.conversations === undefined
+        ? {}
+        : { conversations: conversationsOf(input.conversations) }),
     },
     maxBytes,
   );

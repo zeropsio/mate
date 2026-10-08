@@ -11,8 +11,9 @@ import { MateHealth } from "@t3tools/contracts";
  *   brings it.
  * - A Mate is online while one of its links is open.
  * - The store keeps a Mate's overview as it stands when a whole one arrives and when one of its
- *   chats changes kind — a state moving, never a live step — so a Mate that sleeps keeps its last
- *   state for whoever reads it after a restart.
+ *   chats changes kind or one of its engine conversations its state — a state moving, never a live
+ *   step or a word — so a Mate that sleeps keeps its last state for whoever reads it after a
+ *   restart.
  *
  * @module mateOverviews
  */
@@ -142,9 +143,12 @@ const heardOf = (entry: Entry) =>
     );
   });
 
-/** Each listed chat's kind: what moving says a state moved. */
+/** Each listed chat's kind and each engine conversation's state: what moving says a state moved. */
 const kindsOf = (overview: MateOverview | null) =>
-  overview?.threads.list.map((thread) => `${thread.id}:${thread.kind}`).join(" ") ?? "";
+  [
+    ...(overview?.threads.list.map((thread) => `${thread.id}:${thread.kind}`) ?? []),
+    ...(overview?.conversations?.map((row) => `${row.conversationId}:${row.state.kind}`) ?? []),
+  ].join(" ");
 
 /** Refusal and reset evidence must survive a Core restart even when the thread's kind stays put. */
 const retainedStateOf = (overview: MateOverview | null) =>
